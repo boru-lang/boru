@@ -288,9 +288,10 @@ test-ts:
 # denominator got honest. From here the ratchet only rises, and the corpus is
 # the instrument: rows added to core/spec lift both engines at once.
 #
-# Current per-file, worst first: make 38, coretype 39, resolve 42, engine 42,
-# sugar 47, check-state 66, canon 70, value 72, registry 74, match 77.
-TS_CORE_GATE_LINES ?= 87
+# Current per-file, worst first: engine 68, match 85, resolve 96, value 96,
+# registry 97, coretype 94, canon 99 — the corpus is what moved them, and
+# rows added to core/spec lift both engines at once.
+TS_CORE_GATE_LINES ?= 88
 test-ts-core:
 	@echo "==> typecheck core/ts"
 	cd core/ts && npx tsc
@@ -317,14 +318,43 @@ test-ts-core:
 # ratchet discipline: raise the floor in the change that raises coverage,
 # never lower it. parser/go's gate has sat at 100 since the module was cut
 # (parser/go/CLAUDE.md: a leaf over core has no other suite that could be
-# covering it), so this floor is the honest measure of the parity gap.
-TS_PARSER_GATE_LINES ?= 92
+# covering it), and on 2026-08-08 parser/ts reached it too — the two halves
+# of the module are now gated identically.
+TS_PARSER_GATE_LINES ?= 100
 test-ts-parser:
 	@echo "==> typecheck parser/ts"
 	cd parser/ts && npx tsc
 	@echo "==> test parser/ts (source line-coverage floor $(TS_PARSER_GATE_LINES)%)"
 	cd parser/ts && node --test --experimental-strip-types --no-warnings \
 	  --experimental-test-coverage --test-coverage-lines=$(TS_PARSER_GATE_LINES) \
+	  --test-coverage-exclude='**/*.test.ts' \
+	  --test-coverage-include='src/**' \
+	  'src/**/*.test.ts'
+
+# ---- TypeScript base layer (basic/ts) ----------------------------------
+#
+# @boru-lang/basic is the TS twin of the basic/go module. It is the sixth
+# gate in the standalone set:
+#
+#   cover-gate-core    core/go by its own suite     floor 100
+#   test-ts-core       core/ts by its own suite     floor $(TS_CORE_GATE_LINES)
+#   cover-gate-parser  parser/go by its own suite   floor 100
+#   test-ts-parser     parser/ts by its own suite   floor $(TS_PARSER_GATE_LINES)
+#   cover-gate         basic/go via the merged gate floor 100
+#   test-ts-basic      basic/ts by its own suite    floor $(TS_BASIC_GATE_LINES)
+#
+# The floor starts at 100 rather than on a ratchet, and can: the module is
+# being built increment by increment against basic/spec, so every line that
+# exists is a line the shared corpus already reaches. It is a ratchet in
+# the other direction — the floor holds while the SURFACE grows, so a new
+# word cannot land without corpus rows that exercise it.
+TS_BASIC_GATE_LINES ?= 100
+test-ts-basic:
+	@echo "==> typecheck basic/ts"
+	cd basic/ts && npx tsc
+	@echo "==> test basic/ts (source line-coverage floor $(TS_BASIC_GATE_LINES)%)"
+	cd basic/ts && node --test --experimental-strip-types --no-warnings \
+	  --experimental-test-coverage --test-coverage-lines=$(TS_BASIC_GATE_LINES) \
 	  --test-coverage-exclude='**/*.test.ts' \
 	  --test-coverage-include='src/**' \
 	  'src/**/*.test.ts'

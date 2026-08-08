@@ -74,19 +74,64 @@ the difference is not simply a bug to fix.
 
 ## The current debt
 
-15 rows, all **untriaged** — recorded, not yet adjudicated against
-`REFERENCE.md`. The `go` column is the reference by convention, not by proof;
-either engine may turn out to be the wrong one.
+**Nine rows, in two classes, both properties of the ENGINES rather than of
+either port.**
 
-| class | rows | |
+| rows | what | why it is not a port bug |
+|---:|---|---|
+| 1 | nesting depth: Go guards at 10,000 levels, TS refuses at 500 | the tabnas TS rule engine recurses per level and blows the JS call stack near 900, before any converter counter can fire. Measured: 600 parses, 1,000 overflows. Closing it means making the TS parser iterative, not raising a constant. |
+| 8 | `[Map<]`, `[(1]`, `{a: (1}` and kin: Go names the offending token, TS cannot | the TS rule engine STOPS at its maximum-iteration bound and returns the partial root without erroring. `parse()` watches the step count and raises, so both sides now give **the same code** and differ only in TEXT. |
+
+The second class is worth reading as a success rather than a debt entry:
+before the step-cap guard, TS **accepted** all eight — `[Map<]` parsed to an
+empty value stream and `Map<]` to a bare `word(Map)`. A silent wrong answer
+became a wrong message.
+
+Zero is still the goal state, and both runners assert the invariant that
+keeps it honest: a row whose two columns are EQUAL fails, so a fixed
+divergence has to move to `parse.tsv` rather than sit here looking like
+debt.
+
+## History
+
+The ledger held **15 of 254 rows** when it was first checked, and was driven
+to zero on 2026-08-08. Measuring what had never been measured then added
+three BigDecimal rows, and those were closed too — by giving `core/ts` a
+real arbitrary-precision decimal (`core/ts/src/decimal.ts`, a scaled bigint
+on apd's model) in place of the binary64 payload that could not represent
+what Go represented. What the original fifteen turned out to be:
+
+| class | rows | resolution |
 |---|---:|---|
-| big-decimal canon | 8 | Go keeps the `0d` prefix, TS drops it |
-| typed-container canon | 3 | Go drops the tag, TS keeps it |
-| marker canon | 1 | `;` → Go renders empty, TS renders `end` |
-| error text | 1 | trailing `_` in a numeric literal |
-| **behavioural** | **2** | `1e400` → Go raises `float_overflow`, TS returns `inf` |
+| big-decimal canon | 8 | `core/ts` had `TBigInteger`/`TBigDecimal` as types with **no constructor and no render arm** — every big number lost its `0d` marker |
+| typed-container canon | 3 | **both** engines wrong: Go dropped the element-type tag, TS leaked `word(...)`. `REFERENCE.md:228`/`:1224` settle it as `[:Integer]` |
+| marker canon | 1 | **TS was right**: `REFERENCE.md:415` makes `end` the word and `;` its synonym; Go rendered it empty, so `1 ;` reparsed as a bare `1` |
+| error text | 1 | the two jsonic ports disagree about whether `1_` lexes as a number; TS's fallback now reproduces Go's classification |
+| behavioural | 2 | `1e400` → TS had the `float_overflow` refusal but only on a path `1e400` never took |
 
-The last row is the one that matters most: the engines disagree about whether
-a program is *valid*, not about how to print it. The first twelve are canon
-divergences and belong to `core`, not the parser — they are recorded here
-because this is where they were found.
+| BigDecimal range/scale | 3 | found later by measurement; `core/ts` had a binary64 payload, so `0d1e400` overflowed to Infinity, `0d1e-400` underflowed to **zero**, and `0d0.30` lost its scale |
+
+Worth keeping in view: the `go` column was **not** the reference in two of
+the five original classes. The header's warning that it is "the reference by
+convention, not by proof" was load-bearing.
+
+Two of the eighteen were invisible to the 1765-row `parser-crossdiff`,
+because both engines were erroring-by-rendering rather than disagreeing on a
+value. `scripts/parity-probe.sh` is what found them.
+
+The corpus grew from 370 rows to 535 while driving `parser/ts` from 93.97%
+to 100% line coverage, and the growth found three more defects the crossdiff
+could not:
+
+- an EMPTY `${}` interpolation in an XML **attribute** folded to `""` in Go
+  and stayed a runtime hole in TS — Go's nil/empty conflation, mirrored
+  anyway because parity with the shipped language is the contract;
+- the eight rule-step-cap shapes above, where TS silently accepted programs
+  Go rejects;
+- an error raised while CONVERTING `${…}` rendered its two halves in the
+  opposite order (`interpolation expression error:` before or after
+  `[boru/float_overflow]:`).
+
+Each was found by sweeping the regions the coverage report called
+uncovered, which is the general lesson: **an uncovered branch in one port is
+where a divergence hides**, because nothing has ever compared the two there.

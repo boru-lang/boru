@@ -90,7 +90,10 @@ function readSpec(name: string): SpecRow[] {
       cols: parts.slice(1).map(decodeSpecEscapes),
     })
   }
-  assert.ok(rows.length > 0, `${name}: no rows`)
+  // divergent.tsv is the parity DEBT, so empty is the goal state, not a
+  // broken corpus. Every other file must have rows — an empty one there
+  // means the corpus is not being read.
+  assert.ok(rows.length > 0 || name === 'divergent.tsv', `${name}: no rows`)
   return rows
 }
 
@@ -119,7 +122,17 @@ describe('parser spec — parse.tsv', () => {
 // stopped diverging — a fixed divergence must be MOVED to parse.tsv, not left
 // here, or the file stops being an honest debt list.
 describe('parser spec — divergent.tsv (parity debt)', () => {
-  for (const r of readSpec('divergent.tsv')) {
+  const divergentRows = readSpec('divergent.tsv')
+  if (divergentRows.length === 0) {
+    // The debt is paid. Kept as a live assertion rather than deleted: the
+    // file is the ratchet, and a NEW divergence has to be added here
+    // deliberately (with the justification the header demands) instead of
+    // quietly landing as a changed expectation elsewhere.
+    it('is empty — parser/go and parser/ts agree on every corpus row', () => {
+      assert.equal(divergentRows.length, 0)
+    })
+  }
+  for (const r of divergentRows) {
     it(`${r.line}: ${JSON.stringify(r.src)}`, () => {
       assert.ok(r.cols.length >= 2, 'need src, go, ts columns')
       const [wantGo, wantTs] = [r.cols[0]!, r.cols[1]!]

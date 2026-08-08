@@ -49,6 +49,41 @@ register one fixture word, `addq` (`Integer Integer -> Integer`), so the step
 loop, the registry, signature matching and dispatch are all exercised without
 pulling in a word library.
 
+### Structure tokens
+
+Three bracket forms assemble a nested VALUE out of the flat token stream, so
+a row can hand the step loop the containers a parser would have built. They
+nest, and they work in `run` and `list` alike.
+
+| form | builds |
+|---|---|
+| `[ … ]` | an **eval** list — what the parser emits for a `[…]` literal |
+| `[q … ]` | a **quoted** list — the same elements with evaluation off |
+| `{ … }` | an **eval** map — what the parser emits for a `{…}` literal |
+| `{q … }` | a plain map, as a word handler would return one |
+| `p( … )` | a paren-EXPRESSION value — the deferred form a map value takes |
+
+The bare bracket is always the PARSER's form and the `q` variant the
+runtime's, because that distinction is load-bearing: the step loop
+auto-evaluates a container only when the parser marked it `Eval`, so
+`{ a: [ addq 1 2 ] }` resolves to `{a:[3]}` and `{q a: [ addq 1 2 ] }`
+stays `{a:[word(addq) 1 2]}`. A row that could not say which it meant
+could not pin that rule.
+
+Inside a map the items alternate: a token ending in `:` is a KEY and the
+item after it is that key's value, so `{ a: 1 b: [ addq 1 2 ] }` is a
+two-entry map whose second value is an eval list. Every bracket is its own
+whitespace-separated token — `[1 2]` is not a list, `[ 1 2 ]` is — because
+the notation has no lexer and is not meant to grow one.
+
+`(` and `)` stay what they were: the paren MARKER values the step loop
+consumes inline, not a container. `p( … )` is the other thing a paren can
+be — one VALUE holding a deferred expression, which is what a map value
+like `{a: (1 add 2)}` actually is. The two need separate spellings because
+the notation has no context to tell them apart, and the distinction is
+real: markers are consumed by the step loop, a paren-expr value is
+evaluated by whatever consumes the container.
+
 `expected` is the canonical rendering (`core.Canon` / `canon()`), or
 `ERROR:<code>` for a row that must raise that BoruError taxonomy code.
 

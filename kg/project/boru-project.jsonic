@@ -122,6 +122,26 @@
       metadata: { repository: "boru-lang/boru" }
     }
     {
+      id: "src:basic-check-cut"
+      kind: "text"
+      locator: "design/BASIC-CHECK-CUT.0.md"
+      title: "removing basic's dependency on check"
+      retrieved_at: null
+      content_hash: "basic-check-cut-2026-08"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
+      id: "src:go-ts-parity"
+      kind: "text"
+      locator: "design/GO-TS-PARITY.0.md"
+      title: "full functional parity on core, parser and basic"
+      retrieved_at: null
+      content_hash: "go-ts-parity-2026-08"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:ts-parity-audit"
       kind: "text"
       locator: "design/TS-PARITY-AUDIT.0.md"
@@ -194,6 +214,10 @@
       attributes: { role: "the coverage program for core/ts (the sibling of ENG-COVERAGE-PARITY, one layer down): the staged work list, the ratcheting TS_CORE_GATE_LINES floor, and the measurement that core/spec is a cross-engine SPEC and not a coverage instrument" } }
     { key: "root-module", type: "Document", label: "design/ROOT-MODULE-FEASIBILITY.0.md"
       attributes: { role: "the measured verdict on a shared module below core and parser: Value alone closes over 75.7% of core/go, so the cut as posed is a rename — includes the piecetool -closure method and the priced seam alternatives" } }
+    { key: "basic-check-cut", type: "Document", label: "design/BASIC-CHECK-CUT.0.md"
+      attributes: { role: "why basic no longer depends on check: the 23 symbols it used, which moved into core as pure primitives, which became a core-owned analysis seam, and the two gates that keep the edge from coming back" } }
+    { key: "go-ts-parity", type: "Document", label: "design/GO-TS-PARITY.0.md"
+      attributes: { role: "the Go/TS parity program for core, parser and basic: the three shared TSV corpora and their two-runner rule, the capability table that forces core/ts before basic/ts, the divergence ledger, and the finding that an uncovered branch in one port is where a divergence hides" } }
     { key: "ts-parity-audit", type: "Document", label: "design/TS-PARITY-AUDIT.0.md"
       attributes: { role: "the parser twin parity audit: the render defects the stream oracle found, the parser/spec corpus that replaced the self-referential battery, and the open divergences" } }
     { key: "org", type: "Organization", label: "boru-lang" }
@@ -409,6 +433,26 @@
       object: { kind: "entity", entity: "core-go" }
       evidence: [{ source: "src:root-module", locator: "The finding",
         quote: "**The finding: `Value` alone closes over 75.7% of `core/go`.**" }]
+      confidence: 0.95 }
+    { subject: "basic-check-cut", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:basic-check-cut", locator: "title",
+        quote: "BASIC-CHECK-CUT.0 — removing `basic`'s dependency on `check`" }]
+      confidence: 0.95 }
+    { subject: "basic-check-cut", predicate: "supports"
+      object: { kind: "entity", entity: "basic-go" }
+      evidence: [{ source: "src:basic-check-cut", locator: "Status",
+        quote: "**Status:** COMPLETE (2026-08-08)" }]
+      confidence: 0.95 }
+    { subject: "go-ts-parity", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:go-ts-parity", locator: "title",
+        quote: "GO-TS-PARITY.0 — full functional parity on core, parser and basic" }]
+      confidence: 0.95 }
+    { subject: "go-ts-parity", predicate: "supports"
+      object: { kind: "entity", entity: "parser-go" }
+      evidence: [{ source: "src:go-ts-parity", locator: "The measurement",
+        quote: "the parity gap is the uncovered surface" }]
       confidence: 0.95 }
     { subject: "ts-parity-audit", predicate: "part_of"
       object: { kind: "entity", entity: "design-notes" }

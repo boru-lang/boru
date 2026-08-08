@@ -45,12 +45,13 @@ import {
   type SrcPos,
 } from './nodes.ts'
 import { setupXmlMatcher, setupXmlGrammar } from './xml.ts'
-// The escape processor lives in convert.ts (the parse.go twin), exported
-// for this file — the Go original sits in parse.go beside the other
-// converters but is called from grammar.go's template-literal matcher.
-// The import cycle (convert → grammar → convert) is benign: the function
-// is hoisted and only called at parse time.
-import { processTemplateEscapes } from './convert.ts'
+// The escape processor and the word-modifier scan live in convert.ts (the
+// parse.go twin), exported for this file — the Go originals sit in
+// parse.go beside the other converters but are called from grammar.go's
+// template-literal matcher and shorthand-key action. The import cycle
+// (convert → grammar → convert) is benign: both functions are hoisted and
+// only called at parse time.
+import { processTemplateEscapes, scanWordModifier } from './convert.ts'
 
 export interface ParserTokens {
   OP: number // (
@@ -1662,109 +1663,16 @@ export function setupNumberSub(j: any): void {
 // wordBaseName returns the base name of an unquoted word token, stripping
 // a valid `/...` modifier suffix (foo/r → foo, foo → foo). Used to derive
 // the key of a shorthand map entry, whose value keeps the full token.
-// (The Go original lives in parse.go beside scanWordModifier; this port
-// carries the modifier-validity scan inline since convert.ts is a
-// separately owned file. Only base-name extraction is needed here.)
+//
+// Go's original is a two-liner over the single scanWordModifier in
+// parse.go. This port used to carry an inlined COPY of that scan, on the
+// grounds that convert.ts is a separately owned file — but grammar.ts
+// already imports processTemplateEscapes from it, so the cycle was
+// already there and benign, and the copy had drifted: it bounded the
+// digit run with parseInt's NaN check where convert.ts bounds it with
+// INT64_MAX, so the two disagreed about `a/9223372036854775808`. Two
+// copies of a validity scan is one more place for the engines to
+// diverge, and its arms were reachable from neither corpus.
 function wordBaseName(text: string): string {
-  const idx = text.lastIndexOf('/')
-  if (idx < 0 || idx >= text.length - 1) {
-    return text
-  }
-  const mod = text.slice(idx + 1)
-  const baseName = text.slice(0, idx)
-
-  // Scan modifier chars in any order: digits, 'f', 's', 'q', 'r', 'u',
-  // 't'. Each letter appears at most once; f/s are mutually exclusive;
-  // q is mutually exclusive with r and u; t (the type-bound sugar,
-  // `Map/t` ≡ `(Type of [Map])`) combines with nothing — it produces a
-  // type expression, not a word; digits run contiguously and form a
-  // single argCount value.
-  let valid = true
-  let seenDigits = false
-  let forceForward = false
-  let forceStack = false
-  let quoteFlag = false
-  let refFlag = false
-  let usurpFlag = false
-  let typeFlag = false
-  let argCount = -1
-  let i = 0
-  while (i < mod.length) {
-    const c = mod[i] as string
-    if (c >= '0' && c <= '9') {
-      if (seenDigits) {
-        valid = false
-      } else {
-        let k = i
-        while (k < mod.length && (mod[k] as string) >= '0' && (mod[k] as string) <= '9') {
-          k++
-        }
-        const n = Number.parseInt(mod.slice(i, k), 10)
-        if (Number.isNaN(n) || n < 0) {
-          valid = false
-        } else {
-          argCount = n
-          seenDigits = true
-        }
-        i = k
-        if (!valid) {
-          break
-        }
-        continue
-      }
-    } else if ('f' === c) {
-      if (forceForward || forceStack) {
-        valid = false
-      } else {
-        forceForward = true
-      }
-    } else if ('s' === c) {
-      if (forceForward || forceStack) {
-        valid = false
-      } else {
-        forceStack = true
-      }
-    } else if ('q' === c) {
-      if (quoteFlag || refFlag || usurpFlag) {
-        valid = false
-      } else {
-        quoteFlag = true
-      }
-    } else if ('r' === c) {
-      if (refFlag || quoteFlag) {
-        valid = false
-      } else {
-        refFlag = true
-      }
-    } else if ('u' === c) {
-      if (usurpFlag || quoteFlag) {
-        valid = false
-      } else {
-        usurpFlag = true
-      }
-    } else if ('t' === c) {
-      if (typeFlag) {
-        valid = false
-      } else {
-        typeFlag = true
-      }
-    } else {
-      valid = false
-    }
-    if (!valid) {
-      break
-    }
-    i++
-  }
-
-  // /t combines with nothing — any companion flag invalidates, in
-  // either order.
-  if (typeFlag && (quoteFlag || refFlag || usurpFlag || forceStack || forceForward || argCount >= 0)) {
-    valid = false
-  }
-  if (!valid) {
-    // Unrecognized / malformed modifier — treat entire token as plain word.
-    return text
-  }
-  return baseName
+  return scanWordModifier(text).base
 }

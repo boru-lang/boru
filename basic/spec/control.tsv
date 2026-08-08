@@ -1,0 +1,35 @@
+# basic/spec/control.tsv — the control-flow words' parity corpus.
+#
+# Same notation as stack.tsv, plus BRACKETS: a `[ … ]` run in the program
+# column assembles into a LIST value. The corpus has no parser behind it,
+# so the brackets are the only way to write a code body.
+#
+# Only `do` is covered. `if`, `case` and `for` are not ported to basic/ts
+# yet — their runtime halves are entangled with their analysis halves, and
+# core/ts has no carrier lattice (design/GO-TS-PARITY.0.md). Rows for them
+# would encode a gap as a contract.
+
+# --- do: runs the body, returns its ENTIRE residual ------------------------
+do [ 1 ]	1	a single-value body
+do [ 1 2 3 ]	1 2 3	the WHOLE residual, not just the last value
+# `do [ ]` is DELIBERATELY ABSENT. Under this corpus's minimal fixture
+# registry it yields the empty list itself (`[]`), while the full `boru`
+# binary yields nothing at all — `print (do [])` raises no_value_error.
+# That difference is between two REGISTRIES, not between the two engines,
+# so it is not a parity row, and encoding either answer here would pin a
+# fixture artifact as a language contract. Open question, worth chasing
+# before `do`'s analysis half lands.
+do [ 1 2 swap ]	2 1	the body sees the word vocabulary
+do [ 1 dup ]	1 1	and its own stack
+
+# --- do: nesting ----------------------------------------------------------
+do [ do [ 1 ] ]	1	a nested body's residual flows out
+do [ 1 do [ 2 ] ]	1 2	both residuals survive, in order
+
+# --- do: the escape hatch -------------------------------------------------
+# A body error becomes an Error VALUE rather than propagating — that is the
+# word's whole point, and why the handler returns instead of re-raising.
+do [ nosuchword ]	error(undefined word: nosuchword)	an error in the body is caught and returned as a value
+do [ 1 nosuchword ]	error(undefined word: nosuchword)	the caught error REPLACES the residual, it does not join it
+do [ 1 5 pick ]	error(pick: index 5 out of range (stack depth 1))	the escape hatch catches UNCODED errors too, not just boru ones
+do List	ERROR:signature_error	a bare type literal fails to MATCH — dispatch refuses before the handler

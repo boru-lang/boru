@@ -37,6 +37,7 @@ import {
 } from '@boru-lang/core'
 import type { WordInfo, ReachSeg, ReachInfo, SugarInfo, InterpSegment } from '@boru-lang/core'
 import { TWord, TNone, TAbsent, TBigInteger, TBigDecimal } from '@boru-lang/core'
+import { Decimal, decimalFromString } from '@boru-lang/core'
 import { BoruError } from '@boru-lang/core'
 import {
   ParenGroup,
@@ -125,7 +126,7 @@ function hasOwn(m: Record<string, unknown>, key: string): boolean {
 // metaStrSet normalises a Meta channel that Go types as map[string]bool
 // (qm / ck / qk) into a Set of member keys, accepting whichever shape the
 // TS grammar recorded (Set, array, Map, or plain object).
-function metaStrSet(meta: Record<string, unknown> | undefined, key: string): Set<string> {
+export function metaStrSet(meta: Record<string, unknown> | undefined, key: string): Set<string> {
   const v = meta?.[key]
   if (!v) return new Set()
   if (v instanceof Set) return new Set([...v].map(String))
@@ -192,8 +193,8 @@ function newBigInteger(n: bigint): Value {
   return new Value(TBigInteger, n)
 }
 
-function newBigDecimal(f: number): Value {
-  return new Value(TBigDecimal, f)
+function newBigDecimal(d: Decimal): Value {
+  return new Value(TBigDecimal, d)
 }
 
 const INT64_MIN = -9223372036854775808n
@@ -207,7 +208,7 @@ function errMessage(e: unknown): string {
 
 // typeName renders a node's type for the "unsupported value type"
 // diagnostics (Go's %T; unreachable in practice).
-function typeName(v: unknown): string {
+export function typeName(v: unknown): string {
   if (v === null) return 'null'
   if (typeof v === 'object') return v.constructor?.name ?? 'object'
   return typeof v
@@ -328,6 +329,60 @@ function checkSourceNesting(src: string): void {
   }
 }
 
+/**
+ * watchRuleSteps counts the rule iterations one parse performs, so parse()
+ * can tell "the engine finished" from "the engine gave up".
+ *
+ * WHY THIS EXISTS. The tabnas TS rule engine bounds its main loop at
+ * `2 * ruleCount * srcLength * 2 * maxmul` iterations and, on reaching
+ * that bound, simply STOPS — the trailing-token check then sees #ZZ, so
+ * nothing is thrown and the partial root is returned. For boru that turns
+ * a malformed program into a silent wrong answer: `[Map<]` parsed to an
+ * EMPTY value stream and `Map<]` to a bare `word(Map)`, where Go's engine
+ * reports "unexpected `]`". The shapes that reach it are groups a
+ * container terminator cannot close — `[Map<]`, `{a: (1}`, `[1 (2]` —
+ * because the TS val rule's implicit-null alternate matches the `]`,
+ * backtracks, and the enclosing elem re-pushes forever.
+ *
+ * The cap is what the two ENGINES do differently, not what the two boru
+ * ports do, so this cannot be fixed by porting a rule more faithfully. It
+ * is caught rather than papered over: an error whose text differs from
+ * Go's is a recorded divergence (parser/spec/divergent.tsv), while
+ * silently accepting a program Go rejects is a correctness bug.
+ *
+ * The test is EQUALITY against the library's own formula, not `>=`. The
+ * loop exits with kI === cap, so the last subscriber call saw cap - 1. If
+ * the library ever changes the formula this guard stops firing rather
+ * than firing early — the fail-open direction. A valid parse uses O(token
+ * count) steps (~11 for `[1 2]` against a cap of ~1000), so landing on
+ * exactly cap - 1 by accident is not a practical concern.
+ */
+function watchRuleSteps(j: any): { exhausted: (src: string) => boolean } {
+  let last = -1
+  j.sub({
+    rule: (_rule: unknown, ctx: any) => {
+      last = ctx.kI
+    },
+  })
+  return {
+    exhausted: (src: string): boolean => {
+      // An EMPTY source short-circuits before the loop runs, leaving the
+      // step count at -1 and the cap at 0 — which would satisfy the
+      // equality below by coincidence. It is the one input where "no
+      // steps" means success rather than exhaustion.
+      const cap = ruleStepCap(j, src)
+      return cap > 0 && last === cap - 1
+    },
+  }
+}
+
+/** ruleStepCap mirrors the tabnas parser's own maximum-iteration bound. */
+function ruleStepCap(j: any, src: string): number {
+  const internal = j.internal()
+  const ruleCount = Object.keys(internal.parser.rsm).length
+  return 2 * ruleCount * src.length * 2 * internal.config.rule.maxmul
+}
+
 export function parse(src: string): Value[] {
   // A linear nesting pre-check guards the recursive rule engine (see
   // checkSourceNesting) before any parsing work happens.
@@ -339,11 +394,20 @@ export function parse(src: string): Value[] {
   // Stage 3: Parse and convert to engine values. The library's own error
   // rendering is silenced at the source (grammar.ts options); failures
   // are translated into boru syntax_errors here.
+  const steps = watchRuleSteps(j)
   let result: unknown
   try {
     result = j.parse(src)
   } catch (e) {
     throw translateParseError(e, src)
+  }
+  // The TS rule engine gave up rather than parsed: see ruleStepCap.
+  if (steps.exhausted(src)) {
+    throw new BoruError(
+      'syntax_error',
+      'the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it',
+      '',
+    )
   }
 
   if (result === null || result === undefined) {
@@ -668,7 +732,7 @@ function isChainReceiver(item: unknown): boolean {
 // `usurp (a get b)` and `a.b/2` as `force-arity 2 (a get b)`. null for
 // a plain word (no modifier). Prefix/suffix keep Go's nil-vs-present
 // distinction (null = the Go nil slice).
-function groupModifier(
+export function groupModifier(
   item: unknown,
 ): { base: string; prefix: Value[] | null; suffix: Value[] | null } | null {
   const [node] = deSite(item)
@@ -741,7 +805,7 @@ function convertTopLevelValue(v: unknown, d: ParseDepth): Value {
   return withPos(convertTopLevelValueInner(node, d), pos)
 }
 
-function convertTopLevelValueInner(v: unknown, d: ParseDepth): Value {
+export function convertTopLevelValueInner(v: unknown, d: ParseDepth): Value {
   if (v instanceof ArrowTag) {
     // `=>` — the lambda sugar marker; the engine lowers it to the
     // role-bound constructor word (ADR-012 rule 3 amendment).
@@ -1055,7 +1119,7 @@ function convertDataValue(v: unknown, d: ParseDepth): Value {
   return withPos(convertDataValueInner(node, d), pos)
 }
 
-function convertDataValueInner(v: unknown, d: ParseDepth): Value {
+export function convertDataValueInner(v: unknown, d: ParseDepth): Value {
   if (v instanceof ArrowTag) {
     // `=>` in data context — the same lambda sugar marker.
     return newSugar({ kind: 'lambda' })
@@ -1429,7 +1493,7 @@ interface WordMod {
 // the argCount digits form a single number. When the token has no `/` or a
 // malformed modifier suffix, valid is false, base is the whole text, and
 // every flag is at its zero value (argCount -1).
-function scanWordModifier(text: string): WordMod {
+export function scanWordModifier(text: string): WordMod {
   const invalid = (): WordMod => ({
     base: text,
     argCount: -1,
@@ -1590,7 +1654,7 @@ function wordBaseName(text: string): string {
 // the modifier syntax decoded by scanWordModifier. q produces an Atom and
 // overrides the other modifiers; u emits a usurp-word and r emits a
 // ref-word, both of which short-circuit the rest.
-function parseWord(text: string): Value {
+export function parseWord(text: string): Value {
   const m = scanWordModifier(text)
   const name = m.base
 
@@ -1737,9 +1801,48 @@ function parseWord(text: string): Value {
   // overflows binary64 to infinity; anything else is malformed (e.g.
   // `1e`, `2dup` — the renamed-away stack words are now `dup2` etc.).
   if (isDigitLed(name)) {
-    const f = Number(stripUnderscores(name))
+    // The two jsonic ports disagree about which underscore-bearing tokens
+    // are NUMBERS: the Go port lexes `1_` and `1_e5`, so Go classifies them
+    // in numberValToValue; the TS package declines both and drops them
+    // here. So this fallback has to reproduce what Go's lexer + classifier
+    // jointly decide, and the ORDER is what makes it agree:
+    //
+    //   1e400_  overflow first  — Go's fallback reports float_overflow,
+    //                             not a separator error, for a trailing `_`
+    //                             on an out-of-range literal
+    //   1_      misplaced `_`   — invalid placement, and the token is
+    //                             otherwise a number
+    //   1_+     malformed       — invalid placement, but stripping the `_`
+    //                             still leaves a non-number
+    //   1_e5    the VALUE       — `_` between two alnums is legal
+    //                             (validUnderscores is byte-identical on
+    //                             both sides), and Go returns 100000 here
+    //
+    // Only underscore-bearing tokens are valued: everything else that
+    // reaches this fallback is a token Go's lexer also declined.
+    const stripped = stripUnderscores(name)
+    const f = Number(stripped)
     if (f === Infinity || f === -Infinity) {
       throw floatLiteralOverflowError(name)
+    }
+    if (name.includes('_')) {
+      if (!validUnderscores(name)) {
+        if (Number.isNaN(f)) {
+          throw malformedNumberError(name)
+        }
+        throw new BoruError(
+          'syntax_error',
+          'misplaced `_` in numeric literal: ' + name,
+          name,
+        )
+      }
+      // Only a plain DECIMAL literal is valued. Number() also accepts the
+      // base prefixes (`0x1` -> 1), which Go's ParseFloat does not, so
+      // without this shape gate `0_x1` — invalid on both engines — came
+      // back as 1 here while Go reported a malformed literal.
+      if (!Number.isNaN(f) && /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(stripped)) {
+        return floatToValue(f)
+      }
     }
     throw malformedNumberError(name)
   }
@@ -1783,7 +1886,7 @@ function malformedNumberError(src: string): BoruError {
 // convertInterpGroup converts an InterpGroup (produced by the interp/ielem/iexpr
 // jsonic rules) into an engine InterpString value, or a plain string if there
 // are no expression parts.
-function convertInterpGroup(grp: InterpGroup, d: ParseDepth): Value {
+export function convertInterpGroup(grp: InterpGroup, d: ParseDepth): Value {
   if (grp.parts.length === 0) {
     return newString('')
   }
@@ -1803,14 +1906,24 @@ function convertInterpGroup(grp: InterpGroup, d: ParseDepth): Value {
       try {
         exprVals = convertTopLevelItems(item.items, d)
       } catch (err) {
-        // Preserve the BoruError taxonomy through the wrap — Go's
-        // `%w` keeps errors.As-unwrap to the inner code, so the TS
-        // twin re-raises the same code with the wrap prefix on the
-        // detail (the crossdiff compares by code).
-        if (err instanceof BoruError) {
-          throw new BoruError(err.code, `interpolation expression error: ${err.detail}`, err.word)
-        }
-        throw new Error(`interpolation expression error: ${errMessage(err)}`)
+        // Go wraps with `fmt.Errorf("…: %w", err)`, which renders the
+        // INNER error's own text — `[boru/float_overflow]: …` — after
+        // the prefix, and leaves the top-level error an ordinary wrapped
+        // one. An earlier version re-raised a BoruError carrying the
+        // inner CODE with the prefix moved onto the detail, which
+        // rendered the two halves in the opposite order:
+        //
+        //   go: interpolation expression error: [boru/float_overflow]: …
+        //   ts: [boru/float_overflow]: interpolation expression error: …
+        //
+        // Matching Go means the thrown error must render like Go's, so
+        // it is a plain Error over the inner error's rendered text. The
+        // taxonomy survives on `cause`, which is what errors.As unwraps
+        // to on the Go side — a caller that needs the code still has it,
+        // and the rendered text is identical.
+        throw Object.assign(new Error(`interpolation expression error: ${errMessage(err)}`), {
+          cause: err,
+        })
       }
       parts.push({ expr: exprVals })
       continue
@@ -1881,7 +1994,7 @@ export function processTemplateEscapes(s: string): string {
 
 // floatToValue converts a jsonic number to the appropriate boru numeric value.
 // Whole numbers become integers; fractional values become decimals.
-function floatToValue(f: number): Value {
+export function floatToValue(f: number): Value {
   // Mirrors Go `f == float64(int64(f))`: integral and inside the int64
   // range (both bounds exactly representable in binary64).
   if (Number.isFinite(f) && f === Math.trunc(f) && f >= -9223372036854775808 && f < 9223372036854775808) {
@@ -1907,7 +2020,7 @@ function floatToValue(f: number): Value {
 //     which already matches jsonic's own base interpretation.
 //
 // See design/INTEGER-OVERFLOW-STRATEGY.5.md.
-function numberValToValue(nv: NumberVal): Value {
+export function numberValToValue(nv: NumberVal): Value {
   // `_` is a single digit-separator only: it must sit between two
   // digits (no leading, trailing, or repeated underscores). `1__0` and
   // `1_` are rejected.
@@ -1928,6 +2041,17 @@ function numberValToValue(nv: NumberVal): Value {
     // Number() is IEEE-correct; fall back to jsonic's value
     // only if the (jsonic-validated) token somehow fails to reparse.
     const f = Number(stripUnderscores(nv.src))
+    // A literal whose magnitude overflows binary64 is REJECTED, not
+    // silently folded to ±inf — Go raises float_overflow here via
+    // strconv's ErrRange (parse.go floatLiteralOverflowError), and
+    // `1e400` evaluating to `inf` in one engine and refusing in the other
+    // is a disagreement about what the language accepts, not a rendering
+    // difference. The digit-led fallback below already had this check;
+    // this path never reached it because jsonic lexes `1e400` as a
+    // perfectly good number whose value happens to be Infinity.
+    if (f === Infinity || f === -Infinity) {
+      throw floatLiteralOverflowError(nv.src)
+    }
     if (!Number.isNaN(f)) {
       return newFloat(f)
     }
@@ -1951,6 +2075,15 @@ function numberValToValue(nv: NumberVal): Value {
     }
     return newInteger(n)
   }
+  // The scientific-notation tail (`1e3`, `1e400`). Same overflow refusal as
+  // the fractional branch above, and it has to live HERE rather than at the
+  // top of this function: an oversized PLAIN INTEGER (`999…`, 300 digits)
+  // also reads as Infinity through Number(), but Go raises integer_overflow
+  // for it, not float_overflow, and the integer branches above already
+  // classify it correctly.
+  if (nv.val === Infinity || nv.val === -Infinity) {
+    throw floatLiteralOverflowError(nv.src)
+  }
   return floatToValue(nv.val)
 }
 
@@ -1958,7 +2091,7 @@ function numberValToValue(nv: NumberVal): Value {
 // an optional 0x / 0o / 0b base prefix (Go's strconv.ParseInt base-0
 // contract, minus the bit-size bound — callers range-check). undefined
 // for invalid digits.
-function tryParseBigIntBase0(s: string): bigint | undefined {
+export function tryParseBigIntBase0(s: string): bigint | undefined {
   let sign = 1n
   let body = s
   if (body.startsWith('-')) {
@@ -2007,7 +2140,7 @@ function isBigNumberLiteral(src: string): boolean {
 // unbounded). Sign and `_` separators are handled like the int/float
 // paths. Errors carry no source position (parseWord has none — mirrors
 // the other parseWord numeric errors).
-function parseBigNumber(src: string): Value {
+export function parseBigNumber(src: string): Value {
   if (src.includes('_') && !validUnderscores(src)) {
     throw bigLiteralError(src)
   }
@@ -2023,11 +2156,13 @@ function parseBigNumber(src: string): Value {
   }
   const text = sign + digits
   if (/[.eE]/.test(digits)) {
-    const f = Number(text)
-    if (Number.isNaN(f)) {
+    // Parsed from the exact source digits — never through binary64, which
+    // is what used to turn `0d1e400` into Infinity and `0d1e-400` into 0.
+    const d = decimalFromString(text)
+    if (undefined === d) {
       throw bigLiteralError(src)
     }
-    return newBigDecimal(f)
+    return newBigDecimal(d)
   }
   // Go's big.Int SetString(text, 10): sign plus decimal digits only.
   if (!/^[0-9]+$/.test(digits)) {
@@ -2079,7 +2214,7 @@ function isLeadingDotFloat(src: string): boolean {
 // rejects base prefixes (0x/0o/0b — handled by isBasePrefixedInteger) and
 // exponents (1e3). Leading zeros stay decimal (jsonic treats 010 as 10,
 // not octal), which the base-10 parse also does.
-function isPlainDecimalInteger(src: string): boolean {
+export function isPlainDecimalInteger(src: string): boolean {
   if (src === '') {
     return false
   }

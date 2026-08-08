@@ -22,15 +22,25 @@ import {
   BoruError,
   canon,
   Engine,
+  decimalFromString,
+  newBigDecimal,
+  newBigInteger,
   newBoolean,
+  newDispatchMod,
+  newEnd,
+  newTypedList,
+  newTypedMap,
   newCloseParen,
   newInteger,
   newList,
+  newMap,
   newNone,
   newOpenParen,
+  newParenExpr,
   newString,
   newTypeLiteral,
   newWord,
+  OrderedMap,
   Registry,
   TAny,
   TBoolean,
@@ -95,11 +105,69 @@ function token(tok: string): Value {
   if (t !== undefined) return newTypeLiteral(t)
   if (tok === '(') return newOpenParen()
   if (tok === ')') return newCloseParen()
+  // The END marker. `end` is its word spelling and `;` its synonym
+  // (REFERENCE.md:415); the corpus uses the punctuation so a row can still
+  // name a WORD called end.
+  if (tok === ';') return newEnd()
   return newWord(tok)
 }
 
 function fields(s: string): string[] {
   return s.split(' ').filter((f) => f !== '')
+}
+
+/**
+ * assemble turns the flat token list into VALUES, folding the bracket forms
+ * the README describes into containers: `[ … ]` an eval list, `[q … ]` a
+ * quoted one, `{ k: v … }` a map. Written independently of the Go runner's
+ * copy — an asymmetry between the two shows up as a false divergence, which
+ * is the failure mode this corpus exists to prevent.
+ *
+ * Recursive-descent over an index the callers share, because the forms nest
+ * and a scan-for-the-matching-bracket pass would have to re-count depth at
+ * every level.
+ */
+function assemble(toks: string[]): Value[] {
+  const st = { i: 0 }
+  const out: Value[] = []
+  while (st.i < toks.length) out.push(item(toks, st))
+  return out
+}
+
+/** One item: a container if it opens one, else a single token. */
+function item(toks: string[], st: { i: number }): Value {
+  const tok = toks[st.i]!
+  if ('[' === tok || '[q' === tok) {
+    st.i++
+    const elems: Value[] = []
+    while (st.i < toks.length && ']' !== toks[st.i]) elems.push(item(toks, st))
+    assert.equal(toks[st.i], ']', `unclosed ${tok} in ${toks.join(' ')}`)
+    st.i++
+    return newList(elems, { eval: '[' === tok })
+  }
+  if ('p(' === tok) {
+    st.i++
+    const items: Value[] = []
+    while (st.i < toks.length && ')' !== toks[st.i]) items.push(item(toks, st))
+    st.i++
+    return newParenExpr(items)
+  }
+  if ('{' === tok || '{q' === tok) {
+    st.i++
+    const m = new OrderedMap()
+    while (st.i < toks.length && '}' !== toks[st.i]) {
+      const key = toks[st.i]!
+      assert.ok(key.endsWith(':'), `map key ${JSON.stringify(key)} must end with ':'`)
+      st.i++
+      assert.ok(st.i < toks.length, `map key ${key} has no value`)
+      m.set(key.slice(0, -1), item(toks, st))
+    }
+    assert.equal(toks[st.i], '}', `unclosed { in ${toks.join(' ')}`)
+    st.i++
+    return newMap(m, { eval: '{' === tok })
+  }
+  st.i++
+  return token(tok)
 }
 
 /** The fixture: a bare registry plus ONE word, so the registry, signature
@@ -119,6 +187,84 @@ function fixtureRegistry(): Registry {
       },
     ],
   })
+  // One word reaches only the one dispatch shape. These four add the shapes
+  // the step loop actually distinguishes — a STACK-form word, a MULTI-return
+  // word, a gradual (Any) slot, and a handler that RAISES — so a corpus row
+  // can exercise collection, residual layout, gradual matching and error
+  // propagation rather than just forward addition. core/go/corespec_test.go
+  // declares the same five independently; any asymmetry here shows up as a
+  // false divergence, which is the failure mode this corpus exists to
+  // prevent, so keep them in step.
+  r.registerNativeFunc({
+    name: 'negq',
+    signatures: [
+      {
+        args: [TInteger],
+        returns: [TInteger],
+        barrierPos: 1,
+        handler: (args: Value[]): Value[] => [newInteger(-args[0]!.asInteger())],
+      },
+    ],
+  })
+  r.registerNativeFunc({
+    name: 'pairq',
+    signatures: [
+      {
+        args: [TInteger],
+        returns: [TInteger, TInteger],
+        barrierPos: 1,
+        handler: (args: Value[]): Value[] => [
+          newInteger(args[0]!.asInteger()),
+          newInteger(args[0]!.asInteger()),
+        ],
+      },
+    ],
+  })
+  r.registerNativeFunc({
+    name: 'sumq',
+    signatures: [
+      {
+        args: [TInteger, TInteger],
+        returns: [TInteger],
+        barrierPos: 0, // STACK form: both operands come off the stack
+        handler: (args: Value[]): Value[] => [
+          newInteger(args[0]!.asInteger() + args[1]!.asInteger()),
+        ],
+      },
+    ],
+  })
+  r.registerNativeFunc({
+    name: 'boomq',
+    signatures: [
+      {
+        args: [TAny],
+        returns: [TAny],
+        barrierPos: 1,
+        handler: (): Value[] => {
+          throw new BoruError('fixture_boom', 'the fixture word always raises')
+        },
+      },
+    ],
+  })
+  // depthq is the FULL-STACK fixture: the handler receives the whole
+  // resolved stack of the current paren scope and returns its complete
+  // replacement, rather than N args and their replacement. Declared here
+  // independently of the Go runner's copy — any asymmetry shows up as a
+  // false divergence, which is the failure mode this corpus prevents.
+  r.registerNativeFunc({
+    name: 'depthq',
+    signatures: [
+      {
+        args: [],
+        fullStack: true,
+        barrierPos: 0,
+        handler: (_a: Value[], _c: Map<string, Value> | null, stack: Value[]): Value[] => [
+          ...stack,
+          newInteger(BigInt(stack.length)),
+        ],
+      },
+    ],
+  })
   return r
 }
 
@@ -133,22 +279,44 @@ function evalExpr(expr: string): string {
   switch (kind) {
     case 'int':
       return canon([newInteger(BigInt(arg))])
+    case 'bigint':
+      return canon([newBigInteger(BigInt(arg))])
+    case 'bigdec':
+      return canon([newBigDecimal(decimalFromString(arg)!)])
     case 'str':
       return canon([newString(arg)])
     case 'bool':
       return canon([newBoolean(arg === 'true')])
     case 'none':
       return canon([newNone()])
+    case 'end':
+      return canon([newEnd()])
+    case 'closeparen':
+      return canon([newCloseParen()])
+    case 'dispatchmod':
+      return canon([newDispatchMod({ ref: 'r' === arg, quote: 'q' === arg })])
+    case 'typedlist': {
+      const toks = fields(arg)
+      return canon([newTypedList(token(toks[0]!), toks.slice(1).map(token))])
+    }
+    case 'typedmap': {
+      const toks = fields(arg)
+      const entries = toks.slice(1).map((t) => {
+        const i = t.indexOf(':')
+        return { key: t.slice(0, i), value: token(t.slice(i + 1)) }
+      })
+      return canon([newTypedMap(token(toks[0]!), entries)])
+    }
     case 'typelit': {
       const t = TYPE_LITS[arg]
       assert.ok(t !== undefined, `typelit ${arg}: not a corpus-known type name`)
       return canon([newTypeLiteral(t)])
     }
     case 'list':
-      return canon([newList(fields(arg).map(token))])
+      return canon([newList(assemble(fields(arg)))])
     case 'run': {
       try {
-        return render(new Engine(fixtureRegistry()).run(fields(arg).map(token)))
+        return render(new Engine(fixtureRegistry()).run(assemble(fields(arg))))
       } catch (e) {
         if (e instanceof BoruError) return `ERROR:${e.code}`
         return `ERROR:non_boru:${(e as Error).message}`

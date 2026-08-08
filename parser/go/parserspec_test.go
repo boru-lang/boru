@@ -75,7 +75,10 @@ func readSpec(t *testing.T, name string) []specRow {
 	if err := sc.Err(); err != nil {
 		t.Fatalf("scan %s: %v", path, err)
 	}
-	if len(rows) == 0 {
+	// divergent.tsv is the parity DEBT, so empty is the goal state, not a
+	// broken corpus. Every other file must have rows — an empty one there
+	// means the corpus is not being read.
+	if len(rows) == 0 && filepath.Base(path) != "divergent.tsv" {
 		t.Fatalf("%s: no rows", path)
 	}
 	return rows
@@ -134,7 +137,16 @@ func TestParserSpecParse(t *testing.T) {
 // fails if a row has stopped diverging — a fixed divergence must be MOVED to
 // parse.tsv, not left here, or the file stops being an honest debt list.
 func TestParserSpecDivergent(t *testing.T) {
-	for _, r := range readSpec(t, "divergent.tsv") {
+	rows := readSpec(t, "divergent.tsv")
+	if len(rows) == 0 {
+		// The debt is paid. Kept as a live assertion rather than deleted:
+		// the file is the ratchet, and a NEW divergence has to be added
+		// here deliberately (with the justification the header demands)
+		// instead of quietly landing as a changed expectation elsewhere.
+		t.Log("divergent.tsv: empty — parser/go and parser/ts agree on every corpus row")
+		return
+	}
+	for _, r := range rows {
 		if len(r.cols) < 2 {
 			t.Errorf("divergent.tsv:%d: need src, go, ts columns", r.line)
 			continue

@@ -4,7 +4,8 @@
 // type-check propagation.
 
 import type { BoruType } from './type.ts'
-import type { Value } from './value.ts'
+import { TAny } from './type.ts'
+import { newCarrier, type Value } from './value.ts'
 
 /** A handler receives matched args and the registry, returns the values to push. */
 export type Handler = (
@@ -42,6 +43,18 @@ export interface Signature {
   noEvalArgs?: Set<number>
   /** Fallback marker — true for the generic 0-arg fallback. */
   fallback?: boolean
+  /**
+   * FULL-STACK words (`depth`, `pick`, `roll`): the handler receives the
+   * whole resolved stack of the current paren scope and returns its
+   * complete REPLACEMENT, rather than receiving N args and returning their
+   * replacement. Mirrors Go's FullStack() dispatch knob
+   * (core/go/sigimpl.go).
+   *
+   * Scoped to the nearest open paren so a full-stack word inside a group
+   * cannot reach values below it — `(1 2 depth)` sees two, not whatever
+   * the enclosing program left underneath.
+   */
+  fullStack?: boolean
   /**
    * Positions that must be filled by a bare type literal (data === null),
    * not a concrete value — used by `make` to require a type argument.
@@ -93,8 +106,32 @@ export interface Signature {
 /** Computes carrier return values for a signature in check mode. */
 export type ReturnsFunc = (args: Value[], registry: Registry) => Value[]
 
+/**
+ * returnsIdentity is the ReturnsFunc for words that PRESERVE their inputs —
+ * the stack vocabulary (dup, swap, over, rot, …), where the output types
+ * are expressible as a permutation of the input types. The twin of Go's
+ * ReturnsIdentity (core/go/carrier_new.go).
+ *
+ * The mapping is a permutation description: result[i] = args[mapping[i]].
+ * swap is returnsIdentity(0, 1); over is returnsIdentity(1, 0, 1). An
+ * index outside the args range yields an Any carrier rather than throwing,
+ * matching Go.
+ *
+ * PARITY NOTE: Go's version additionally mints a FRESH Value.ID for a
+ * DUPLICATED source index, so `dup`'s two outputs stay distinct for the
+ * bytecode emitter's per-value provenance. core/ts Values carry no ID —
+ * there is no compiler in the TS pieces to consume one — so that half has
+ * no analogue here and is deliberately absent rather than stubbed.
+ */
+export function returnsIdentity(...mapping: number[]): ReturnsFunc {
+  return (args: Value[]): Value[] =>
+    mapping.map((m) => (m < 0 || m >= args.length ? newCarrier(TAny) : args[m]!))
+}
+
 export interface NativeSig {
   args: BoruType[]
+  /** See Signature.fullStack. */
+  fullStack?: boolean
   handler: Handler
   barrierPos?: number
   patterns?: Map<number, Value>

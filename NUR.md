@@ -69,6 +69,7 @@ commit.
 | [NUR056](#nur056) | `make`-constructibility is the one capability with no opt-in | 2026-08-02 NUR register review |
 | [NUR057](#nur057) | The compiler exempts `set`/`del` by name on an unenforced no-shadow claim | 2026-08-03 lang/eng content audit (`design/LANG-ENG-CONTENT-AUDIT.0.md`) |
 | [NUR058](#nur058) | Language-layer guaranteed-error mirrors are emitted unstamped | 2026-08-03 lang/eng content audit (`design/LANG-ENG-CONTENT-AUDIT.0.md`) |
+| [NUR059](#nur059) | Several value kinds render in DEBUG spelling inside canon | 2026-08-08 Go/TS canon parity work |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1730,6 +1731,46 @@ that pins it … so the acceptance cannot silently rot"; this evidence
 had rotted by a factor of two.
 
 ---
+
+## NUR059 — Several value kinds render in DEBUG spelling inside canon {#nur059}
+
+**Status:** Pending · **Recorded:** 2026-08-08 · **Surfaced by:** closing
+the Go/TS parser parity ledger (`parser/spec/divergent.tsv` to zero)
+
+**Rule:** `CanonValue` renders canonical boru **source** — the string it
+produces parses back as the same value. Every other container type tag now
+obeys it: `[:Integer]`, `[:Integer 1 2]`, `{:String}`, `{:Integer a:1}`.
+**Divergence:** several kinds fall through to `Value.String`'s debug form,
+which is not boru syntax and does not parse back:
+
+```
+[:Box<Integer>]   canon ->  [:sugar(angle Box [word(Integer)])]
+foo/r             canon ->  word(foo)                  — the /r is LOST
+foo/2             canon ->  word(foo)                  — the /2 is LOST
+(1 add 2)/q       canon ->  paren([1 word(add) 2]) /q
+[:Integer]        canon ->  [:Integer]                 (correct)
+foo/q             canon ->  foo/q                      (correct)
+```
+
+Each has no source-form renderer, so the generic value path yields the
+debug spelling. The `/r` and `/2` cases are the worst of them: the
+modifier is not merely spelled oddly, it is **dropped**, so the canon says
+something the source did not.
+
+**Evidence:** `parser/spec/parse.tsv` pins the current output for each of
+these. Found by `scripts/parity-probe.sh` sweeping the language surface;
+the same sweep caught the dispatch-mod marker rendering two DIFFERENT
+debug spellings (Go `word()({false true})`, TS `word(undefined)`), which
+was a genuine parity defect and is fixed — these are the residue where
+both engines agree on a wrong render.
+**Both engines AGREE**, so this is not a parity defect and correctly does
+not sit in `divergent.tsv` — it is a render-quality gap that the parity
+work made visible by fixing every neighbouring case.
+**Proposed verdict:** fix — canon needs a source-form renderer for each
+of these (`Box<Integer>` for `SugarAngle` and the other sugar kinds, the
+`/r` and `/N` word modifiers off `WordInfo`, and the paren group), on both
+engines. Until then the corpus rows are the pin: a fix to one engine alone
+fails loudly.
 
 ## NUR052 — Store enumeration reads the top COW layer; lookup walks the chain {#nur052}
 

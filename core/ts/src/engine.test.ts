@@ -156,10 +156,21 @@ describe('Engine.run — containers', () => {
     assert.equal(run([l]), '(quote [word(addq) 1 2])')
   })
 
-  it('auto-evaluates map values', () => {
+  it('auto-evaluates the values of an EVAL map', () => {
     const m = new OrderedMap()
     m.set('k', newParenExpr([newWord('addq'), newInteger(1n), newInteger(1n)]))
-    assert.equal(run([newMap(m)]), '{k:2}')
+    assert.equal(run([newMap(m, { eval: true })]), '{k:2}')
+  })
+
+  it('leaves a RUNTIME map alone, however evaluable its values look', () => {
+    // The eval flag is the whole test. This assertion used to read
+    // `newMap(m)` — no flag — and expect `{k:2}`, which pinned a
+    // divergence: Go's autoEvalStack descends only into a container the
+    // PARSER built, so the same map is data there. core/spec/data.tsv now
+    // holds the pair of rows, and both engines are asked.
+    const m = new OrderedMap()
+    m.set('k', newParenExpr([newWord('addq'), newInteger(1n), newInteger(1n)]))
+    assert.equal(run([newMap(m)]), '{k:paren([word(addq) 1 1])}')
   })
 
   it('leaves a plain map alone', () => {

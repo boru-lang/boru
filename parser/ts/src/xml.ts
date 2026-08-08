@@ -457,13 +457,26 @@ function freezeXmlTmpl(t: XmlTmpl): XmlElement | undefined {
 }
 
 // staticParts concatenates InterpSegments when none is an expression hole.
+//
+// An EMPTY hole — `${}` or `${   }` — is not a hole. Go's test is
+// `p.Expr != nil`, and `Parse("")` yields a nil token slice, so an empty
+// attribute interpolation folds to the empty string and the element
+// freezes to a constant. That is an artifact of Go's nil/empty
+// conflation rather than a designed semantics — the proof is that Go's
+// CHILD path returns false for XmlCrenExpr unconditionally, so `<a>${}
+// </a>` stays an interp there while `<a b=${}/>` does not. Mirrored
+// anyway: parity with the shipped language is the contract, and
+// "improving" one side is the divergence this apparatus exists to catch.
+// Pinned by parser/spec/parse.tsv rows for both shapes.
 function staticParts(parts: InterpSegment[]): string | undefined {
   let b = ''
   for (const p of parts) {
-    if ('expr' in p) {
+    if ('expr' in p && p.expr.length > 0) {
       return undefined
     }
-    b += p.lit
+    if ('lit' in p) {
+      b += p.lit
+    }
   }
   return b
 }

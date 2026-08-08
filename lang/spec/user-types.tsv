@@ -304,5 +304,5 @@ def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 25 x	ERROR:does not
 # default arrived as `[]` — silent data loss (TS-parity find; the TS
 # twin always preserved). The materialised default is the plain list of
 # those elements; the child constraint has done its work by then.
-def R class {xs:[:Integer 1 2]} def r (make R {}) (r dot xs)	[1 2]	a populated typed-list default reaches the instance with its elements
+def R class {xs:[:Integer 1 2]} def r (make R {}) (r dot xs)	[:Integer 1 2]	a populated typed-list default reaches the instance with its elements
 def R class {xs:[:Integer 1 2]} def r (make R {xs:[9]}) (r dot xs)	[9]	an explicit field value still overrides the populated default

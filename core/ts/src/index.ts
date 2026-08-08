@@ -22,6 +22,7 @@
 
 export * from './error.ts'
 export * from './type.ts'
+export * from './decimal.ts'
 export * from './value.ts'
 export * from './canon.ts'
 export * from './coretype.ts'

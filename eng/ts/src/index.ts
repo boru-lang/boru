@@ -125,6 +125,8 @@ export {
   Value,
   newAny,
   newAtom,
+  newBigDecimal,
+  newBigInteger,
   newBoolean,
   newCarrier,
   newConstrainedWord,

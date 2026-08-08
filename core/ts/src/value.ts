@@ -10,6 +10,8 @@ import {
   BoruType,
   TAny,
   TAtom,
+  TBigDecimal,
+  TBigInteger,
   TBoolean,
   TDisjunct,
   TEnum,
@@ -45,7 +47,14 @@ import {
   TXml,
   TXmlInterp,
 } from './type.ts'
-import { canonValue, canonXml, formatFloat } from './canon.ts'
+import { Decimal } from './decimal.ts'
+import {
+  canonValue,
+  canonXml,
+  formatBigDecimal,
+  formatBigInteger,
+  formatFloat,
+} from './canon.ts'
 
 /** A reified word reference — produced by NewWord, dispatched by the engine. */
 export interface WordInfo {
@@ -416,6 +425,19 @@ export class Value {
     if (this.vType.matches(TInteger)) {
       return String(this.data)
     }
+    // Arbitrary-precision literals render as the PARSEABLE `0d…` form, sign
+    // before the marker — Go's FormatBigInteger / FormatBigDecimal
+    // (core/go/value.go). Without these arms both fell through to
+    // String(data) and dropped the prefix, so `0d123` rendered `123` — a
+    // BigInteger became indistinguishable from an Integer, and the round
+    // trip through the render was no longer parseable as the same value.
+    // Eight rows of parser/spec/divergent.tsv were this one omission.
+    if (this.vType.matches(TBigInteger)) {
+      return formatBigInteger(this.data as bigint)
+    }
+    if (this.vType.matches(TBigDecimal)) {
+      return formatBigDecimal(this.data as Decimal)
+    }
     if (this.vType.matches(TFloat)) {
       return formatFloat(this.data as number)
     }
@@ -521,6 +543,28 @@ export function newInteger(n: bigint | number): Value {
 
 export function newFloat(f: number): Value {
   return new Value(TFloat, f)
+}
+
+/**
+ * newBigInteger / newBigDecimal are the arbitrary-precision constructors,
+ * the twins of Go's NewBigInteger / NewBigDecimal. core/ts declared both
+ * TYPES from the start but neither constructor, so the only way to build
+ * one was `new Value(TBigInteger, …)` at the use site — which is how
+ * parser/ts came to have its own private pair, and how the render arms in
+ * toString came to be missing (nothing in core ever produced one of these
+ * values, so nothing in core ever rendered one).
+ *
+ * The BigDecimal payload is a Decimal (decimal.ts) — a scaled bigint, the
+ * same model as Go's apd.Decimal. It was a binary64 until 2026-08-08,
+ * which could not represent what Go represented: `0d1e400` overflowed to
+ * Infinity, `0d1e-400` underflowed to zero, and `0d0.30` lost its scale.
+ */
+export function newBigInteger(n: bigint): Value {
+  return new Value(TBigInteger, n)
+}
+
+export function newBigDecimal(d: Decimal): Value {
+  return new Value(TBigDecimal, d)
 }
 
 /** Back-compat alias: the decimal scalar is named Float in the lattice. */
@@ -734,8 +778,12 @@ export class OrderedMap {
 }
 
 /** Construct a map value with VType = Node/Map wrapping an OrderedMap. */
-export function newMap(m: OrderedMap): Value {
-  return new Value(TMap, m)
+export function newMap(m: OrderedMap, opts?: { eval?: boolean; quoted?: boolean }): Value {
+  // The flags are optional for the same reason newList's are: Go has both
+  // NewMap and NewEvalMap, and the difference decides whether the step
+  // loop auto-evaluates the map's values at all. A caller that omits them
+  // gets the runtime form (no auto-eval), which is what NewMap builds.
+  return new Value(TMap, m, { eval: opts?.eval, quoted: opts?.quoted })
 }
 
 /**

@@ -1,0 +1,73 @@
+# basic/spec/stack.tsv — the stack vocabulary's parity corpus.
+#
+# One row per program, tab-separated:  program <TAB> expected <TAB> note
+#
+# `program` is a space-separated token list; a bare decimal is an Integer,
+# '…' is a String, anything else is a Word. `expected` is the canon of the
+# residual stack, space-joined, or 'ERROR:<code>'.
+#
+# A line is a COMMENT only when it starts with '#' AND contains no tab.
+#
+# Both engines must produce `expected`: basic/go/basicspec_test.go and
+# basic/ts/src/basicspec.test.ts read this file with NO shared code, the
+# same two-runner discipline core/spec and parser/spec use. That
+# independence is the point — shared scaffolding can hide the same bug
+# from both engines.
+#
+# The stack convention these rows pin: args[0] is the TOP of stack, and a
+# returned array is laid back in source order. Reading a row against a
+# Forth reference means inverting that — `over` is ( a b -- a b a ), which
+# is why the row below leaves 1 2 1 and not 2 1 2.
+#
+# `depth`, `pick` and `roll` are FULL-STACK words: the handler receives the
+# whole resolved stack of the current paren scope and returns its complete
+# replacement. The scope matters — a paren bounds what they can see.
+
+# --- dup / drop -----------------------------------------------------------
+1 dup	1 1	the top is duplicated
+1 2 dup	1 2 2	only the top, not the whole stack
+'a' dup	'a' 'a'	any type duplicates
+1 drop		the sole value is dropped, leaving an empty residual
+1 2 drop	1	the top goes, the rest stays
+
+# --- swap / nip / tuck ----------------------------------------------------
+1 2 swap	2 1	the top two exchange
+1 2 3 swap	1 3 2	deeper values are untouched
+1 2 nip	2	the SECOND value goes, the top stays
+1 2 tuck	2 1 2	the top is copied below the second
+
+# --- over / rot -----------------------------------------------------------
+1 2 over	1 2 1	( a b -- a b a ): the SECOND is copied to the top
+1 2 3 rot	2 3 1	( a b c -- b c a ): the third rotates to the top
+1 2 3 4 rot	1 3 4 2	rot reaches exactly three deep, no further
+
+# --- the doubled forms ----------------------------------------------------
+1 2 dup2	1 2 1 2	the top PAIR is duplicated, order preserved
+1 2 3 4 swap2	3 4 1 2	( a b c d -- c d a b ): the two PAIRS exchange
+1 2 drop2		both go, leaving an empty residual
+1 2 3 drop2	1	drop2 reaches exactly two deep
+1 2 3 4 over2	1 2 3 4 1 2	the lower pair is copied to the top
+
+# --- composition ----------------------------------------------------------
+1 dup drop	1	dup then drop is the identity
+1 2 swap swap	1 2	swap is its own inverse
+1 2 over nip	1 1	NOT the identity — over leaves 1 2 1 and nip drops the 2
+
+# --- arity refusals -------------------------------------------------------
+dup	ERROR:signature_error	nothing to duplicate
+1 swap	ERROR:signature_error	swap needs two
+1 2 rot	ERROR:signature_error	rot needs three
+1 2 3 over2	ERROR:signature_error	over2 needs four
+
+# --- the full-stack words -------------------------------------------------
+depth	0	an empty stack has depth 0
+1 depth	1 1	depth pushes without consuming
+1 2 3 depth	1 2 3 3	three deep
+1 2 0 pick	1 2 2	pick 0 copies the top
+1 2 1 pick	1 2 1	pick 1 reaches one deeper
+1 2 3 2 pick	1 2 3 1	index counts DOWN from the top
+1 2 0 roll	1 2	roll 0 moves the top to the top — a no-op
+1 2 3 2 roll	2 3 1	roll MOVES rather than copies, unlike pick
+1 2 3 1 roll	1 3 2	roll 1 is swap
+1 5 pick	ERROR:non_boru:pick: index 5 out of range (stack depth 1)	refused, not silently none — and UNCODED, matching the Go handler's fmt.Errorf
+1 5 roll	ERROR:non_boru:roll: index 5 out of range (stack depth 1)	and so is roll

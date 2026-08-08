@@ -38,7 +38,7 @@ a => [1]	word(a) sugar(lambda) [1]
 <t a='1' b='2'><u/>text</t>	<t a="1" b="2"><u/>text</t>
 `v ${1} w`	interp('v ' ${1} ' w')
 `${x}`	interp(${word(x)})
-{:String}	{:word(String)}
+{:String}	{:String}
 # comment\n1	1
 1 # trailing	1
 (quote a)	paren([word(quote) word(a)])
@@ -252,7 +252,7 @@ _1	word(_1)
 a.b	a.b
 a.'k'	a.'k'
 a.0	a.0
-{:Integer}	{:word(Integer)}
+{:Integer}	{:Integer}
 {}	{}
 []	[]
 `a\\`b`	'a`b'
@@ -261,3 +261,482 @@ a.0	a.0
 (	ERR [boru/syntax_error]: unmatched opening parenthesis
 1 tor 2	1 word(tor) 2
 Integer tor String	word(Integer) word(tor) word(String)
+
+# --- arbitrary-precision `0d…` literals (REFERENCE.md) -------------------
+# Rendered by the PARSEABLE form, sign before the marker: -0d789, never
+# 0d-789. These eight were divergent.tsv rows until core/ts grew the
+# BigInteger / BigDecimal render arms it was missing entirely (both fell
+# through to String(data), so a BigInteger was indistinguishable from an
+# Integer and the render no longer parsed back as the same value).
+0d123	0d123
+0D45_6	0d456
+-0d789	-0d789
+0d1_2.3	0d12.3
+0d1e2	0d100
+0d1.5e2	0d150
+0d1_2e1_0	0d120000000000
+0d99999999999999999999	0d99999999999999999999
+0d1e25	0d10000000000000000000000000	plain form at every magnitude — never scientific, unlike a Float
+
+# --- numeric-literal REFUSALS (behavioural, not cosmetic) -----------------
+# A literal that overflows binary64 is rejected rather than folded to inf:
+# `1e400` evaluating to inf in one engine and refusing in the other is a
+# disagreement about what the language ACCEPTS. Likewise the misplaced-
+# separator message, which differed only because the two jsonic ports
+# disagree about whether `1_` lexes as a number token at all.
+1_	ERR [boru/syntax_error]: misplaced `_` in numeric literal: 1_
+1e400	ERR [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity
+-1e400	ERR [boru/float_overflow]: floating-point literal out of range: -1e400 overflows to infinity
+1__0	ERR [boru/syntax_error]: misplaced `_` in numeric literal: 1__0	a repeated separator is misplaced too
+_1	word(_1)	not digit-led, so an ordinary word — the separator rule is numeric-only
+1e308	1e+308	the largest exponent that still fits binary64
+1.7e308	1.7e+308	just under the Float ceiling — accepted, unlike 1e400
+
+# --- the element-type tag and the collection barrier survive canon -------
+# Both were being DROPPED by canon on one side or the other, so the render
+# did not parse back as the same value. REFERENCE.md:228 gives `[:Type]` as
+# the typed-list syntax and :1224 confirms the tag is on the value (deq is
+# specified to ignore it, which is only meaningful if it is there);
+# REFERENCE.md:415 makes `end` the word and `;` its synonym, so `1 ;` canons
+# as `1 end` rather than to a bare `1` with the barrier silently gone.
+1 ;	1 end
+[:Integer]	[:Integer]
+[:Integer 1 2]	[:Integer 1 2]
+[1 2]	[1 2]	the untagged twin — distinguishable again, as deq requires
+# The angle-sugar tag still renders in DEBUG spelling on both engines. They
+# AGREE, so it is not a parity defect and does not belong in divergent.tsv —
+# it is a render-quality gap: canon should emit `[:Box<Integer>]`. Recorded
+# as NUR059; pinned here so a fix to either engine alone fails loudly.
+[:Box<Integer>]	[:sugar(angle Box [word(Integer)])]
+{:Integer a:1}	{:Integer a:1}	a typed map with entries keeps BOTH the tag and the entries
+{a:1}	{a:1}	the untagged twin
+
+# --- XML edge cases: declines, interpolation errors, quoting -------------
+# The `<` decline (lexer reports the unexpected char rather than the XML
+# matcher swallowing it), both unterminated-interpolation paths (attribute
+# and text), and the attribute-quoting forms.
+<	ERR [boru/syntax_error]: unexpected `` — nothing valid can appear here
+<a x="a\\"b">t</a>	ERR xml: invalid attribute name in <a>
+<a>${</a>	ERR xml: unterminated ${...} interpolation
+<a x="${">t</a>	ERR xml: unterminated ${...} interpolation
+<a x='v'>t</a>	<a x="v">t</a>	single-quoted attributes normalise to double
+<a></a>	<a/>	an empty element normalises to the self-closing form
+<a b="1" c="2"/>	<a b="1" c="2"/>	multiple attributes keep source order
+<a>text &amp; more</a>	<a>text &amp; more</a>	entities are decoded on parse and re-escaped on render
+<a><b/></a>	<a><b/></a>	nested elements
+
+# --- dispatch modifiers ---------------------------------------------------
+# `m.k/q` rendered two DIFFERENT debug spellings before canon grew an arm for
+# the marker: go word()({false true}), ts word(undefined). The /r and /2
+# rows below pin renders that are still WRONG (the modifier is dropped) but
+# on which both engines agree — NUR059, not a parity defect.
+foo/q	foo/q	the modifier survives on a plain word
+m.k/q	m.k /q	the marker after a dotted path renders in source form
+foo/r	word(foo)	NUR059: the /r is dropped by canon
+foo/2	word(foo)	NUR059: the /N arity modifier is dropped by canon
+(1 add 2)/q	paren([1 word(add) 2]) /q	NUR059: the paren group leaks its debug spelling
+
+# --- language-surface sweep (scripts/parity-probe.sh) --------------------
+# Verified on BOTH engines before being written down, which is the point of
+# the probe: an expected column authored from one engine's behaviour is how
+# a divergence gets baselined as a contract.
+'a\\nb'	'a\\nb'
+"double"	'double'
+'it\\'s'	"it's"
+`tmpl`	'tmpl'
+a.b	a.b
+a.b.c	a.b.c
+m.k/q	m.k /q
+(1 2 add)	paren([1 2 word(add)])
+[1 2 3]	[1 2 3]
+{a:1 b:2}	{a:1 b:2}
+{}	{}
+[]	[]
+:atom	ERR [boru/syntax_error]: unexpected `:` — nothing valid can appear here
+/abs/path	word(/abs/path)
+rel/path	word(rel/path)
+a@b.com	a@b.com
+https://x.io/p?q=1	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)
+1.5	1.5
+-1.5	-1.5
+0x10	16
+0o17	15
+0b101	5
+true	word(true)
+false	word(false)
+none	none
+inf	inf
+-inf	-inf
+nan	nan
+x => [x]	word(x) sugar(lambda) [word(x)]
+def f fn [[a:Integer] [Integer] [a]]	word(def) word(f) word(fn) [[{a:word(Integer)}] [word(Integer)] [word(a)]]
+1 tor 2	1 word(tor) 2
+Integer tor String	word(Integer) word(tor) word(String)
+$x	word($x)
+#comment	
+1 # trailing	1
+"a${1}b"	'a${1}b'
+<a>${1}</a>	interp-xml(<a>${1}</a>)
+1_000	1000
+-0	0
+0.0	0.0
+-0.0	-0.0
+
+# --- BigDecimal is EXACT at every magnitude and scale ---------------------
+# These were the last three divergent.tsv rows. core/ts had a binary64
+# payload, so 0d1e400 overflowed to Infinity (rendering the unparseable
+# 0dInfinity), 0d1e-400 underflowed to zero (a nonzero value silently
+# becoming 0), and 0d0.30 lost its scale. The payload is now a Decimal —
+# a scaled bigint, the same model as apd — so all three round-trip.
+0d1e400	0d10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0d1e-400	0d0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001
+0d0.30	0d0.30	scale is part of the value — the trailing zero survives, as apd keeps it
+-0d0.50	-0d0.50	sign leads the marker, scale preserved
+0d0.0	0d0.0	a zero significand still carries its scale
+0d.	ERR [boru/syntax_error]: invalid numeric literal: 0d	a 0d marker with no digits
+0de	ERR [boru/syntax_error]: invalid 0d numeric literal: 0de	a 0d body that is not a number — decimalFromString declines, the caller raises
+0d	ERR [boru/syntax_error]: invalid numeric literal: 0d	the bare marker
+
+# --- word modifier suffixes, pathon escapes, shorthand keys --------------
+# Swept with scripts/parity-probe.sh; all verified on both engines. The
+# /f /s /u /t suffixes and their invalid combinations were entirely
+# unexercised by the corpus.
+#
+# PINNED, NOT BLESSED: the `word(foo)` and `sugar(...)` renders below are
+# NUR059 — canon falling through to the debug spelling, and for /f /s /u
+# /3 /0 the modifier is DROPPED, so the canon says something the source
+# did not. They are recorded because both engines agree on them, which
+# makes them a render-quality gap rather than a parity defect; a fix to
+# either engine alone will fail these rows loudly, which is the point.
+foo/f	word(foo)
+foo/s	word(foo)
+foo/u	word(foo)
+foo/t	sugar(type-bound [[foo]])
+foo/fs	ERR [boru/syntax_error]: invalid word modifier /fs on "foo"
+foo/sf	ERR [boru/syntax_error]: invalid word modifier /sf on "foo"
+foo/uu	ERR [boru/syntax_error]: invalid word modifier /uu on "foo"
+foo/qu	ERR [boru/syntax_error]: invalid word modifier /qu on "foo"
+foo/tq	ERR [boru/syntax_error]: invalid word modifier /tq on "foo"
+foo/3	word(foo)
+foo/0	word(foo)
+/a\ b	word(/a\\) word(b)
+/a\\b	word(/a\\b)
+'a\\ b'	'a b'
+{a}	{a:word(a)}
+{a b}	{a:word(a) b:word(b)}
+{$x}	{$x:word($x)}
+m.a.b.c	m.a.b.c
+m.0	m.0
+a!	word(a) word(!)
+a.	ERR [boru/syntax_error]: `.` member access has no receiver
+1 )	1 )	a stray close paren survives as a value and keeps its source form
+
+# --- string escapes, unterminated forms, delimiter edges ------------------
+# Swept with the probe. The unterminated-container and stray-delimiter
+# rows pin ERROR TEXT, which is where two engines drift most easily.
+"a\\tb"	'a\\tb'
+"a\\rb"	'a\\rb'
+'a\\\\b'	'a\\\\b'
+`a${1}b`	interp('a' ${1} 'b')
+`plain`	'plain'
+"unterminated	ERR [boru/syntax_error]: this string is never closed: "unterminated
+'unterminated	ERR [boru/syntax_error]: this string is never closed: 'unterminated
+[1 2	[1 2]
+{a:1	{a:1}
+(1 2	ERR [boru/syntax_error]: unmatched opening parenthesis
+1 ]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here
+1 }	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here
+def x 1 ;	word(def) word(x) 1 end
+[a: 1]	[{a:1}]
+{1: 2}	{1:2}
+{'k': 1}	{k:1}
+{"k": 1}	{k:1}
+$	word($)
+$$	word($$)
+..	ERR [boru/syntax_error]: `.` member access has no receiver
+...	ERR [boru/syntax_error]: `.` member access has no receiver
+a..b	a.. word(b)
+
+# --- empty `${}` interpolations -------------------------------------------
+# `${}` and `${   }` are NOT holes in an XML ATTRIBUTE: Go tests `p.Expr !=
+# nil` and Parse("") yields a nil slice, so the attribute folds to "" and
+# the element freezes to a constant. The CHILD path has no such test, so
+# `<a>${}</a>` stays an interp — an asymmetry inside Go itself, which is
+# what marks this as nil/empty conflation rather than design. core/ts had
+# `'expr' in p`, which is true for an empty array; mirrored deliberately.
+# The probe found it; the crossdiff could not, because both engines
+# rendered something.
+<a b=${}/>	<a b=""/>
+<a b=${  }/>	<a b=""/>
+<a b="x${}y"/>	<a b="xy"/>
+<a>${}</a>	interp-xml(<a>${}</a>)
+<a b=${1}/>	interp-xml(<a b="${1}"/>)
+"x${}y"	'x${}y'
+"${}"	'${}'
+`x${}y`	ERR [boru/syntax_error]: unexpected `y` — nothing valid can appear here
+
+# --- minilang literals: delimiters, escapes, and the open form ------------
+# `+name<delim>src<delim>`. An unescaped delimiter closes it; unescaped
+# whitespace ends it OPEN. `\<delim>`, `\\` and `\<space>` produce the
+# escaped char; every other backslash is preserved raw, so `\d` survives
+# into a regex. `+re/` before whitespace has an empty body and is not a
+# literal at all — it stays an ordinary word.
++re/x/	sugar(mini re 'x')
++re/a\/b/	sugar(mini re 'a/b')
++re/a\\b/	sugar(mini re 'a\\b')
++re/a\db/	sugar(mini re 'a\\db')
++re/a\ b/	sugar(mini re 'a b')
++re x	word(+re) word(x)
++re/x	sugar(mini re 'x')
++re/x/ 1	sugar(mini re 'x') 1
++re/ x	word(+re/) word(x)
++re/	word(+re/)
++re/x/ +re/y/	sugar(mini re 'x') sugar(mini re 'y')
+
+# --- template literals and dotted access ---------------------------------
+# A raw template spanning a real newline (the row's `\n` is decoded before
+# parsing) exercises the matcher's line/column bookkeeping; a lone backtick
+# exercises its decline-at-end-of-source path. The dotchain rows cover each
+# receiver kind, including a paren group — the arm that returns early
+# because the parent is already a ParenGroup.
+`a\nb`	'a\\nb'
+`a${1}b\nc`	interp('a' ${1} 'b\nc')
+`	ERR [boru/syntax_error]: unexpected `` — nothing valid can appear here
+(1).fst	(1).fst
+({a:1}).a	({a:1}).a
+(`x`).len	('x').len
+1 . 2	ERR [boru/syntax_error]: a number has no members to access with `.`
+a!b	word(a) word(!) word(b)
+[1 2].fst	[1 2].fst
+{a:1}.a	{a:1}.a
+
+# --- word and group modifiers --------------------------------------------
+# `/f` `/s` `/N` `/q` `/r` `/u` `/t` stack in any order, with f/s mutually
+# exclusive and q exclusive with both r and u. An out-of-int64 digit run and
+# a repeated letter are REJECTED, while a non-modifier tail (`/1x`) leaves
+# the whole text as one word — three different outcomes that are easy to
+# collapse into one. On a paren group the same suffix becomes a leading
+# sugar value instead. NUR059: canon spells `a/u` and `a/2` as a bare
+# `word(a)`, dropping the modifier — both engines agree, so these rows pin
+# the shared render and a one-sided fix fails loudly.
+a/qs	a/q
+a/f2	word(a)
+Map/t	sugar(type-bound [[Map]])
+a/9223372036854775808	ERR [boru/syntax_error]: invalid word modifier /9223372036854775808 on "a"
+a/1x	word(a/1x)
+a/ff	ERR [boru/syntax_error]: invalid word modifier /ff on "a"
+a/qr	ERR [boru/syntax_error]: invalid word modifier /qr on "a"
+a/	word(a/)
+(1 2)/2	sugar(force-arity 2) paren([1 2])
+(1 2)/s	sugar(stack-args) paren([1 2])
+(1 2)/f	sugar(forward-args) paren([1 2])
+(1 2)/u	sugar(usurp) paren([1 2])
+
+# --- optional keys, shorthand entries, and modifiers on keys --------------
+# `a?:` desugars to a disjunct with None and Absent. The shorthand forms
+# (`{a/r}`, `{a/t}`) take the base name as the key and keep the FULL token
+# as the value, so the modifier qualifies the value; spelling one on the
+# key itself (`{a/r: 1}`) is illegal_key. `{a/}` has no valid modifier at
+# all, so the slash stays part of both key and value.
+{a?: 1}	{a:(None tor Absent tor 1)}
+{'a'?: 1}	{a:(None tor Absent tor 1)}
+[a?: 1]	[{a:(1 tor None tor Absent)}]
+{a? }	{a:(word(a) tor None tor Absent)}
+{a/r}	{a:word(a)}
+{a/q}	{a:a/q}
+{a/}	{a/:word(a/)}
+{a/r: 1}	ERR [boru/illegal_key]: word modifier not allowed on map key "a/r" (modifiers qualify values, not keys; quote the key as 'a/r' for a literal slash)
+{a/s}	{a:word(a)}
+{a/u}	{a:word(a)}
+{a/t}	{a:sugar(type-bound [[a]])}
+{a/1x}	{a/1x:word(a/1x)}
+{'a b': 1}	{a b:1}
+{a: 1 a?: 2}	{a:(None tor Absent tor 2)}
+{a?: 1 a: 2}	{a:(None tor Absent tor 2)}
+
+# --- typed containers, floats, and bare true/false ------------------------
+# `true`/`false` are ordinary WORDS at parse time (ADR-012 rule 4: the
+# parser is name-opaque), so these rows pin that the front end does NOT
+# resolve them.
+{a: 1.5 b: true}	{a:1.5 b:word(true)}
+[1.5 true false]	[1.5 word(true) word(false)]
+
+# --- every rejecting arm of the modifier scan ----------------------------
+# One row per mutually-exclusive pair and per repeated letter, in both the
+# bare-word and the map-shorthand position — the two have SEPARATE scans
+# (convert.ts's scanWordModifier and grammar.ts's wordBaseName), and a
+# divergence between them would otherwise show only as a coverage hole.
+# `/22` and `/2f` are VALID (one contiguous digit run); `/1x` is not a
+# modifier at all, so the whole text stays the word.
+a/ss	ERR [boru/syntax_error]: invalid word modifier /ss on "a"
+a/uu	ERR [boru/syntax_error]: invalid word modifier /uu on "a"
+a/rr	ERR [boru/syntax_error]: invalid word modifier /rr on "a"
+a/tq	ERR [boru/syntax_error]: invalid word modifier /tq on "a"
+a/22	word(a)
+a/ru	word(a)
+a/2f	word(a)
+{a/ss}	ERR [boru/syntax_error]: invalid word modifier /ss on "a"
+{a/qq}	ERR [boru/syntax_error]: invalid word modifier /qq on "a"
+{a/rr}	ERR [boru/syntax_error]: invalid word modifier /rr on "a"
+{a/uu}	ERR [boru/syntax_error]: invalid word modifier /uu on "a"
+{a/tt}	ERR [boru/syntax_error]: invalid word modifier /tt on "a"
+{a/tq}	ERR [boru/syntax_error]: invalid word modifier /tq on "a"
+{a/22}	{a:word(a)}
+{a/2f}	{a:word(a)}
+{a/ff}	ERR [boru/syntax_error]: invalid word modifier /ff on "a"
+
+# --- angle generics, and where `<` is XML instead ------------------------
+# The angle gate needs a CAPITALISED bare name immediately before `<`; a
+# lowercase or quoted receiver leaves the `<` to the XML literal rule,
+# which is why `map<Integer>` reports an XML error rather than a generics
+# one. That the two never compete for `<` is the whole design.
+Map<Integer>	sugar(angle Map [word(Integer)])
+Map<Integer String>	sugar(angle Map [word(Integer) word(String)])
+Map<	ERR [boru/syntax_error]: unclosed angle bracket: Map<… has no matching `>`
+Map<>	sugar(angle Map [])
+map<Integer>	ERR xml: unterminated element <Integer>
+Map<Integer	ERR [boru/syntax_error]: unclosed angle bracket: Map<… has no matching `>`
+'Map'<Integer>	ERR xml: unterminated element <Integer>
+
+# --- `${…}` brace scanning: quotes, nesting, and unterminated forms -------
+# The hole's closing `}` is found by depth counting that skips quoted
+# spans, so an escaped quote inside one (`\'`, `\"`, `\``) must not end
+# the span and a `}` inside one must not close the hole early.
+<a b=${"x\"y"}/>	interp-xml(<a b="${'x"y'}"/>)
+<a b=${'x\'y'}/>	interp-xml(<a b="${'x'y'}"/>)
+<a b=${`x\`y`}/>	interp-xml(<a b="${'x`y'}"/>)
+<a b=${x	ERR xml: unterminated ${...} interpolation
+<a b="${x"/>	ERR xml: unterminated ${...} interpolation
+<a b=${ { } }/>	interp-xml(<a b="${{}}"/>)
+`${}`	ERR [boru/syntax_error]: unexpected ``` — nothing valid can appear here
+`${1}`	interp(${1})
+
+# --- pair keys that are not plain unquoted words --------------------------
+# A quoted member key keeps its string-ness through the dotchain; an EMPTY
+# key (`{'': 1}`) makes every key-recording BC bail before touching the
+# map's Meta; a numeric or computed key reaches the pair-open token by Src
+# rather than Val. `{[a]?: 1}` is REJECTED — computed and optional do not
+# compose.
+a.'b c'	a.'b c'
+a."b c"	a.'b c'
+{1?: 2}	{1:(None tor Absent tor 2)}
+{'': 1}	{:1}
+{''?: 1}	{:1}
+{[a]: 1}	{a:1}
+{[a]?: 1}	ERR [boru/syntax_error]: unexpected `?` — nothing valid can appear here
+{[1]: 2}	{1:2}
+[a?: 1 b: 2]	[{a:(1 tor None tor Absent)} {b:2}]
+[1?: 2]	[{1:(2 tor None tor Absent)}]
+{1: 2 3: 4}	{1:2 3:4}
+{a: 1 'b': 2}	{a:1 b:2}
+
+# --- the arrow fold, and the three positions that decline it --------------
+# `SIG => BODY` folds to `(SIG afn BODY)` in paren contents, plain list
+# elems, and fold bodies. It must NOT fold after a flat dot-chain — the
+# fold would capture only the final key as the sig — nor in a MAP-pair
+# value, where the sig is the whole pair; a list PAIR folds at the elem
+# level instead, which is why `[a: b => [b]]` groups the pair and
+# `{a: b => [b]}` is a syntax error.
+(m.k => [1])	paren([m.(k sugar(lambda) [1])])
+m.k => [1]	m.(k sugar(lambda) [1])
+(a k => [k])	paren([word(a) paren([word(k) sugar(lambda) [word(k)]])])
+[a b => [b]]	[word(a) paren([word(b) sugar(lambda) [word(b)]])]
+[a: b => [b]]	[paren([{a:word(b)} sugar(lambda) [word(b)]])]
+{a: b => [b]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here
+`${a => [1]}`	interp(${word(a) sugar(lambda) [1]})
+
+# --- dot chains in MAP-VALUE position ------------------------------------
+# Only this position runs the `dotchain` rule: everywhere else a flat
+# `a.b` is folded by convertTopLevelItems instead, so these rows are the
+# only ones that reach the rule's segment actions, its `!` strict marker,
+# and its quoted-key branch. `{n: bf.}` and `{n: bf!}` pin that a chain
+# must not end on a marker.
+{n: bf.a.b}	{n:paren([(bf.a).b])}
+{n: bf.'a b'}	{n:paren([bf.'a b'])}
+{n: bf."a b"}	{n:paren([bf.'a b'])}
+{n: bf!.a}	{n:paren([(bf !).a])}
+{n: bf!.'a b'}	{n:paren([(bf !).'a b'])}
+{n: bf.a!.b}	{n:paren([((bf.a) !).b])}
+{n: bf.}	ERR [boru/syntax_error]: unexpected `.` — nothing valid can appear here
+{n: bf!}	ERR [boru/syntax_error]: unexpected `!` — nothing valid can appear here
+
+# --- list-elem folds and angle groups in nested positions ----------------
+# `(Map)<Integer>` and `Map<Integer><String>` pin that the angle gate reads
+# the immediately preceding BARE name only — a parenthesised or already
+# angled receiver leaves the `<` to the XML rule.
+[a: 1 b: 2]	[{a:1} {b:2}]
+[a: b => [b] c: 2]	[paren([{a:word(b)} sugar(lambda) [word(b)]]) {c:2}]
+`${}${1}`	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here
+`x${1}${2}y`	interp('x' ${1} ${2} 'y')
+(Map)<Integer>	ERR xml: unterminated element <Integer>
+[Map<Integer>]	[sugar(angle Map [word(Integer)])]
+{a: Map<Integer>}	{a:sugar(angle Map [word(Integer)])}
+Map<Integer><String>	ERR xml: unterminated element <String>
+
+# --- DATA context: the same value kinds one level in ---------------------
+# A value inside a list or a map value runs a SEPARATE converter from the
+# top-level one (Go's convertDataValueInner vs convertTopLevelValueInner),
+# so every kind needs pinning twice — the two have drifted before. `[1 2,]`
+# tolerates a trailing comma where `[,1]` and `[1,,2]` do not.
+[1.5]	[1.5]
+[+re/x/]	[sugar(mini re 'x')]
+[`x${1}`]	[interp('x' ${1})]
+[{:Integer a:1}]	[{:Integer a:1}]
+[[:Integer 1]]	[[:Integer 1]]
+[a => b]	[paren([word(a) sugar(lambda) word(b)])]
+['x']	['x']
+[<a/>]	[<a/>]
+[1 2,]	[1 2]
+{a: 1.5}	{a:1.5}
+{a: +re/x/}	{a:sugar(mini re 'x')}
+{a: {b: 1}}	{a:{b:1}}
+{a: {:Integer b:1}}	{a:{:Integer b:1}}
+{a: [:Integer 1]}	{a:[:Integer 1]}
+{a: <b/>}	{a:<b/>}
+[[1 2] [3 4]]	[[1 2] [3 4]]
+[{a:1} {b:2}]	[{a:1} {b:2}]
+[a.b]	[a.b]
+[0d1.5]	[0d1.5]
+[1e400]	ERR [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity
+{a: 1e400}	ERR [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity
+
+# --- base-prefixed integers, big literals, and the empty word ------------
+# `_` separators are allowed singly and rejected doubled; the value is
+# parsed from the EXACT digits (a float64 round-trip would corrupt
+# anything past 2^53), and an out-of-int64 magnitude is integer_overflow
+# rather than a wrapped value. A bare `/r` has no base name at all.
+0b1_0	2
+0o7_7	63
++0x10	16
+0d1_0	0d10
++0d10	0d10
+0i	ERR [boru/syntax_error]: invalid numeric literal: 0i
+0i1_0	ERR [boru/syntax_error]: invalid numeric literal: 0i1_0
+/r	ERR empty word
+/q	ERR empty word
+a/2f2	ERR [boru/syntax_error]: invalid word modifier /2f2 on "a"
+
+# --- duplicate map keys, and errors raised inside `${…}` -----------------
+# A repeated key keeps its FIRST slot in source order and its LAST value
+# (matching OrderedMap.Set). An error inside an interpolation surfaces with
+# the inner code intact.
+{a:1 a:2}	{a:2}
+{a:1 b:2 a:3}	{a:3 b:2}
+``	''
+`${1 ]}`	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here
+`${(}`	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here
+`${'x}`	ERR [boru/syntax_error]: this string is never closed: 'x}`
+
+# --- errors raised while CONVERTING an interpolation, and key dedup -------
+# Go wraps a conversion failure inside `${…}` with `fmt.Errorf("…: %w")`,
+# which renders the inner error's own text after the prefix — so the
+# rendered halves are `interpolation expression error:` THEN
+# `[boru/float_overflow]:`. The TS port used to re-raise a BoruError
+# carrying the code with the prefix on the detail, which put them the
+# other way round; it now throws to match and keeps the taxonomy on
+# `cause`. A repeated key keeps its FIRST slot and LAST value however many
+# times it repeats.
+`${1e400}`	ERR interpolation expression error: [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity
+{a:1 a:2 a:3}	{a:3}
+{b:0 a:1 a:2}	{b:0 a:2}
+{a: `x${1}`}	{a:interp('x' ${1})}

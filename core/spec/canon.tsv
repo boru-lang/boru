@@ -35,3 +35,41 @@ typelit None	None	the unit type
 list 	[]	the empty list
 list 1	[1]	one element
 list 1 2 3	[1 2 3]	elements are space-separated, no commas
+
+# --- arbitrary-precision literals (REFERENCE.md) ---
+# Rendered as the PARSEABLE `0d…` form with the sign BEFORE the marker, so
+# the render round-trips as the same value and a BigInteger is never
+# mistaken for an Integer. core/ts had both TYPES and neither constructor
+# nor render arm, so every one of these printed as a bare number.
+bigint 0	0d0	zero keeps the marker
+bigint 123	0d123	positive
+bigint -789	-0d789	sign leads the marker, never 0d-789
+bigint 99999999999999999999	0d99999999999999999999	beyond int64 — exact, no float rounding
+bigdec 12.3	0d12.3	fractional
+bigdec -0.5	-0d0.5	negative fractional, sign still leads
+bigdec 100	0d100	whole-valued decimal keeps the marker
+bigdec 1e25	0d10000000000000000000000000	plain 'f' form at every magnitude — never scientific
+bigdec 0.0000001	0d0.0000001	below 1e-6, where JS String goes exponential — still plain here
+bigdec 1e21	0d1000000000000000000000	the exact magnitude at which JS String flips to an exponent
+
+# --- the collection barrier and typed containers survive canon ---
+# `end` is the word and `;` its synonym (REFERENCE.md:415), so canon of the
+# marker is `end` — rendering it empty loses the barrier and the source no
+# longer parses back the same. Typed containers keep their type tag
+# (REFERENCE.md:228); `deq` is specified to IGNORE that tag (:1224), which
+# is only meaningful because the tag is on the value.
+end	end	the collection barrier is a value with a source form
+typedlist Integer	[:Integer]	the tag survives an EMPTY typed list — [] would lose it
+typedlist Integer 1 2	[:Integer 1 2]	tag and elements together
+typedlist Foo 1	[:Foo 1]	an unresolved type name is still a bare Word here (ADR-012 rule 4)
+list 1 2	[1 2]	the untagged twin — distinguishable, as deq's carve-out requires
+typedmap String	{:String}	the tag survives an EMPTY typed map
+typedmap Integer a:1	{:Integer a:1}	tag and entries together
+typedmap Foo b:2	{:Foo b:2}	word-tagged twin of the typed-list row
+dispatchmod q	/q	the /q group modifier renders in source form, not as a word payload
+dispatchmod r	/r	and so does /r — the two engines rendered two different debug spellings here
+bigdec -0.50	-0d0.50	a negative fractional keeps BOTH its sign placement and its scale
+bigdec 0.00	0d0.00	a zero significand still carries its scale — not collapsed to 0d0
+bigdec 1e-400	0d0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001	far below binary64's range — exact, where a float underflows to zero
+bigdec 1e400	0d10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000	far above it — exact, where a float overflows to Infinity
+closeparen	)	a stray close paren has a source form — rendering it empty drops the token

@@ -1,0 +1,32 @@
+{
+  "name": "@boru-lang/basic",
+  "version": "0.1.0",
+  "description": "TypeScript port of the boru base language layer — the fundamental words and predefined content types. The TS twin of the basic/go module: a consumer of @boru-lang/core and nothing else, matching basic/go's ADR-013 dependency rule.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test --experimental-strip-types --no-warnings 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@boru-lang/core": "file:../../core/ts"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/node": "^24.7.0"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}

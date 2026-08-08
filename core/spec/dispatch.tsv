@@ -25,3 +25,55 @@ run nosuchword	ERROR:undefined_word	an unbound word is an error, not a value
 # --- parens group and evaluate first ---
 run ( addq 1 2 )	3	a paren group collapses to its result
 run addq ( addq 1 2 ) 4	7	a nested group supplies an argument
+run addq 1	ERROR:signature_error	arity: a forward word with one operand never fires
+run addq 1 'x'	ERROR:signature_error	type mismatch on the second slot
+run nosuchword	ERROR:undefined_word	an undefined word
+run addq (addq 1 2) 3	ERROR:signature_error	a nested paren group as the first operand
+run ( 1 2 addq )	3	stack form inside a group
+run addq 1 2 3	3 3	a trailing operand past the barrier stays residual
+run 1 nosuchword 2	ERROR:undefined_word	undefined word between literals
+
+# --- the dispatch shapes the step loop distinguishes ---
+run negq 5	-5	a one-slot forward word
+run negq negq 5	ERROR:signature_error	nested forward collection
+run pairq 7	7 7	a MULTI-return word lays both results in the residual
+run pairq 7 addq 1 2	7 7 3	multi-return residual followed by an unrelated call
+run 1 2 sumq	3	STACK form takes both operands off the stack
+run sumq	ERROR:signature_error	stack form with an empty stack
+run 1 sumq	ERROR:signature_error	stack form one operand short
+run boomq 1	ERROR:fixture_boom	a raising handler propagates its code
+run boomq 'x'	ERROR:fixture_boom	the Any slot accepts any concrete value, then raises
+run addq (negq 3) 4	ERROR:signature_error	a paren group as a forward operand
+run negq (addq 1 2)	ERROR:signature_error	a paren group as the only operand
+run 1 2 sumq 3 addq 4	3 7	stack form and forward form in one program
+run pairq (negq 2)	ERROR:signature_error	multi-return over a computed operand
+
+# --- full-stack dispatch ---
+# depthq is the fixture full-stack word: it receives the whole resolved
+# stack of the current PAREN SCOPE and returns its replacement. The scope
+# rule is the part worth pinning — a paren bounds what it can see.
+run depthq	0	an empty scope has depth 0
+run 1 depthq	1 1	the stack is not consumed, only extended
+run 1 2 3 depthq	1 2 3 3	three deep
+run 1 ( 2 depthq )	1 2 1	a paren BOUNDS the scope — the inner sees one, not two
+
+# --- the END marker cuts a forward collection short ----------------------
+# `;` is the punctuation spelling of `end` (REFERENCE.md:415); the corpus
+# uses the punctuation so a row can still name a WORD called end. A pending
+# forward word fires with whatever it has collected, which for these
+# fixtures is never enough — the value of the rows is that the marker
+# REACHES the word rather than being dropped, and that a bare `;` with no
+# pending marker is silently dropped instead of erroring.
+run ;	
+run 1 ;	1
+run addq 1 ;	ERROR:signature_error
+run addq ;	ERROR:signature_error
+run addq 1 2 ;	3
+run 1 ; 2	1 2
+run negq ;	ERROR:signature_error
+run pairq ;	ERROR:signature_error
+run ( addq 1 ; )	ERROR:signature_error
+run [ addq 1 ; ]	ERROR:signature_error
+run boomq ;	ERROR:signature_error
+run 1 2 sumq ;	3
+run depthq ;	0

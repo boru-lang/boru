@@ -1,0 +1,108 @@
+# Containers as DATA: what the step loop evaluates, and what it leaves
+# alone. The bracket forms are documented in core/spec/README.md — `[ … ]`
+# and `{ … }` are the PARSER's containers (Eval set), `[q … ]` and
+# `{q … }` the runtime's, and `p( … )` is a paren-EXPRESSION value rather
+# than the paren markers.
+#
+# The eval/no-eval split is the whole subject, and writing these rows found
+# two defects in core/ts. It descended into a map REGARDLESS of the Eval
+# flag, so a map a word handler returned had its values evaluated on one
+# side and not the other — `{q a: [ boomq 1 ] }` RAISED in TS where Go
+# returned the map untouched. And a map value that evaluated to NOTHING
+# kept its key as an empty list where Go drops the key entirely.
+#
+# expr	expected	note
+
+# --- the Eval flag decides, for lists and maps alike -----------------------
+# A container the PARSER built evaluates its contents once, at the end of
+# the run; one a word handler returned is data and stays verbatim. Quoting
+# the OUTER container stops the descent — the inner one is not reached, so
+# its own flag never gets a say.
+run [ addq 1 2 ]	[3]
+run [q addq 1 2 ]	[word(addq) 1 2]
+run { a: [ addq 1 2 ] }	{a:[3]}
+run {q a: [ addq 1 2 ] }	{a:[word(addq) 1 2]}
+run { a: [q addq 1 2 ] }	{a:[word(addq) 1 2]}
+run [q [ addq 1 2 ] ]	[[word(addq) 1 2]]
+run [ [q addq 1 2 ] ]	[[word(addq) 1 2]]
+run { a: {q b: [ addq 1 2 ] } }	{a:{b:[word(addq) 1 2]}}
+run [ {q a: [ addq 1 2 ] } ]	[{a:[word(addq) 1 2]}]
+
+
+# --- an error inside a container propagates — but only if reached ----------
+# The same program under the two flags: evaluated, the handler's code
+# reaches the caller; unevaluated, the words are inert data. This pair is
+# what caught the missing gate.
+run [ boomq 1 ]	ERROR:fixture_boom
+run { a: [ boomq 1 ] }	ERROR:fixture_boom
+run {q a: [ boomq 1 ] }	{a:[word(boomq) 1]}
+run [ nosuchword ]	ERROR:undefined_word
+run { a: nosuchword }	ERROR:undefined_word
+run [ addq 1 ]	ERROR:signature_error
+run { a: addq }	ERROR:signature_error
+
+
+# --- what a map VALUE may be, and how many residuals it leaves -------------
+# A list value stays a LIST of its residuals; a paren-expr or a bare word
+# COLLAPSES to a single residual, or to a list when it leaves several. Zero
+# residuals DROPS the key — `{a: ()}` is `{}`, not `{a:[]}`, which is the
+# second bug this file found.
+run { a: 1 }	{a:1}
+run { a: p( addq 1 2 ) }	{a:3}
+run { a: p( 1 2 ) }	{a:[1 2]}
+run { a: p( ) }	{}
+run { a: [ ] }	{a:[]}
+run { a: [ pairq 7 ] }	{a:[7 7]}
+run { a: [ pairq 1 ] }	{a:[1 1]}
+run { a: p( pairq 7 ) }	{a:[7 7]}
+run { a: p( p( addq 1 2 ) ) }	{a:3}
+run {q a: p( addq 1 2 ) }	{a:paren([word(addq) 1 2])}
+run { a: p( boomq 1 ) }	ERROR:fixture_boom
+run { a: p( nosuchword ) }	ERROR:undefined_word
+
+
+# --- nesting, and the residual layout around a container -------------------
+# A container is one value on the stack however deep it goes, and a
+# multi-return word inside one lays every result into the enclosing list.
+run [ [ addq 1 2 ] ]	[[3]]
+run { a: [ [ addq 1 2 ] ] }	{a:[[3]]}
+run { a: { b: [ addq 1 2 ] } }	{a:{b:[3]}}
+run { a: { b: 1 } }	{a:{b:1}}
+run [ { a: [ addq 1 2 ] } ]	[{a:[3]}]
+run [q { a: [ addq 1 2 ] } ]	[{a:[word(addq) 1 2]}]
+run [ 1 pairq 2 ]	[1 2 2]
+run [ 1 2 sumq ]	[3]
+run { a: [ 1 2 sumq ] }	{a:[3]}
+run [ p( addq 1 2 ) ]	[3]
+run [ p( ) ]	[]
+run [ depthq ]	[0]
+run 1 [ addq 2 3 ]	1 [5]
+run [ addq 2 3 ] 1	[5] 1
+run addq 1 2 { a: [ addq 3 4 ] }	3 {a:[7]}
+run addq 1 2 [ 3 ]	3 [3]
+
+
+# --- empty and scalar containers -------------------------------------------
+# Nothing to evaluate is not an error, and a scalar element passes through
+# whatever the flag says.
+run [ ]	[]
+run { }	{}
+run {q }	{}
+run {q a: 1 }	{a:1}
+run { a: 1 b: 2 }	{a:1 b:2}
+run { a: 1 b: [ addq 1 2 ] }	{a:1 b:[3]}
+run { a: 'x' }	{a:'x'}
+run { a: None }	{a:None}
+run { a: Integer }	{a:Integer}
+run [ Integer ]	[Integer]
+run { a: [ Integer ] }	{a:[Integer]}
+run [ { a: 1 } ]	[{a:1}]
+run [ 1 2 ]	[1 2]
+run [q 1 2 ]	[1 2]
+run [ [ 1 ] [ 2 ] ]	[[1] [2]]
+
+
+# --- the `list` kind carries the same structure notation -------------------
+# So a row can pin a nested value's RENDER without running it.
+list [ 1 2 ]	[[1 2]]
+list p( addq 1 2 )	[paren([word(addq) 1 2])]

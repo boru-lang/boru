@@ -101,6 +101,37 @@ func CanonValue(v Value) string {
 	switch {
 	case IsNone(v):
 		return "none"
+	case IsCloseParen(v):
+		// A STRAY `)` — one the parser could not pair, so it survives as a
+		// value rather than closing a group. Canon had no arm, so the
+		// payload-less fallthrough rendered it as the empty string and
+		// `1 )` canon'd to `1 `, dropping the token silently. Value.String
+		// has always rendered it `)`. Same defect the End marker had; an
+		// unmatched OPENING paren never reaches here, because that is a
+		// parse error rather than a value.
+		return ")"
+	case IsDispatchMod(v):
+		// The `/r` / `/q` group modifier the parser emits AFTER a paren or
+		// dotted-path group. Canon had no arm for it, so each engine fell
+		// through to a DIFFERENT debug spelling — Go to
+		// `word()({false true})` (the word arm reading a DispatchModInfo as
+		// a WordInfo) and TS to `word(undefined)`. Neither is source, and
+		// they disagreed, which is what the parity probe caught on `m.k/q`.
+		if info, ok := AsDispatchMod(v); ok {
+			if info.Ref {
+				return "/r"
+			}
+			return "/q"
+		}
+		return "/q" //covergate:allow IsDispatchMod is exactly `Parent == TDispatchMod`, and NewDispatchMod is the only constructor of that type — the payload is always a DispatchModInfo
+	case IsEnd(v):
+		// `end` is the WORD and `;` is its synonym (REFERENCE.md:415), so
+		// the canonical source for either is `end`. This arm was missing,
+		// and the payload-less fallthrough below rendered the marker as the
+		// empty string — canon of `1 ;` came out `1 ` and reparsed as a bare
+		// `1`, silently dropping the collection barrier. Value.String has
+		// always rendered it `end` (value.go); only canon disagreed.
+		return "end"
 	case v.Data == nil:
 		if t := TypeNodeOf(v); t != nil {
 			if name := TypeNameByID(t.ID); name != "" {
@@ -178,9 +209,18 @@ func CanonValue(v Value) string {
 		return "(flex {" + joinEntries(m, canonChild) + "})"
 	case v.Parent.ConformsTo(TList) && v.Data != nil:
 		lst, _ := AsList(v)
-		parts := make([]string, lst.Len())
+		parts := make([]string, 0, lst.Len()+1)
+		// A TYPED list keeps its element-type tag: `[:Integer 1 2]` is the
+		// source syntax (REFERENCE.md:228) and the tag is part of the value
+		// — `deq` ignoring it (REFERENCE.md:1224) is only meaningful because
+		// it is there. AsList returns the ELEMENTS alone, so canon used to
+		// render `[1 2]` and `[:Integer]` collapsed to `[]`: a canonical
+		// render that does not parse back as the same value.
+		if ct, ok := v.Data.(ChildTypeInfo); ok {
+			parts = append(parts, ":"+canonTypeTag(ct.Child))
+		}
 		for i := 0; i < lst.Len(); i++ {
-			parts[i] = canonChild(lst.Get(i))
+			parts = append(parts, canonChild(lst.Get(i)))
 		}
 		body := "[" + strings.Join(parts, " ") + "]"
 		if v.Quoted {
@@ -188,6 +228,20 @@ func CanonValue(v Value) string {
 		}
 		return body
 	case v.Parent.Equal(TMap) && v.Data != nil:
+		// A typed MAP keeps its value-type tag, for the same reason a typed
+		// list keeps its element tag. Canon was inconsistent in both
+		// directions here: a bare `{:String}` fell past the AsMap guard to
+		// Value.String and leaked the debug spelling `{:word(String)}`,
+		// while `{:Integer a:1}` reached joinEntries and lost the tag
+		// entirely as `{a:1}`.
+		if ct, ok := v.Data.(ChildTypeInfo); ok {
+			parts := make([]string, 0, len(ct.Entries)+1)
+			parts = append(parts, ":"+canonTypeTag(ct.Child))
+			for _, e := range ct.Entries {
+				parts = append(parts, e.Key+":"+canonChild(e.Value))
+			}
+			return "{" + strings.Join(parts, " ") + "}"
+		}
 		m, err := AsMap(v)
 		if err != nil || m == nil {
 			return v.String()
@@ -225,6 +279,19 @@ func canonChild(v Value) string {
 		return "(" + CanonValue(v) + ")"
 	}
 	return CanonValue(v)
+}
+
+// canonTypeTag renders a container's element-type tag in SOURCE form. The
+// parser is type-name-opaque (ADR-012 rule 4), so the tag on an unevaluated
+// literal is still a bare Word — `[:Integer]` holds word(Integer), not the
+// Integer type node — and rendering it through the generic value path would
+// leak the debug spelling `word(Integer)` into what is meant to be source.
+func canonTypeTag(v Value) string {
+	if IsWord(v) {
+		w, _ := AsWord(v)
+		return w.Name
+	}
+	return canonChild(v)
 }
 
 // canonReachToken renders one receiver/key token of a Reach as source:

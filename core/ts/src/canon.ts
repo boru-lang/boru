@@ -7,9 +7,10 @@
 // through the current TS engine (none, type literals, scalars, atoms,
 // lists, fn defs). Map / BigInteger / Reach / Flex / DepScalar branches
 // are added by their owning port increments.
-import { TAtom, TBoolean, TFloat, TInspect, TInteger, TList, TMap, TPathon, TString, TEmailon, TUrlon } from './type.ts'
+import { TAtom, TBoolean, TDispatchMod, TFloat, TInspect, TInteger, TList, TMap, TPathon, TString, TEmailon, TUrlon } from './type.ts'
+import { Decimal } from './decimal.ts'
 import { urlonHref, type UrlonInfo } from './value.ts'
-import type { FnDefInfo, XmlElement } from './value.ts'
+import type { DispatchModInfo, FnDefInfo, XmlElement } from './value.ts'
 import { ChildType, ErrorInfo, OptionsData, OrderedMap, Value, asReach, isReach } from './value.ts'
 
 // canonXml renders an XML element, normalising an empty element to the
@@ -141,6 +142,31 @@ function expandExponential(s: string): string {
   return (neg ? '-' : '') + out
 }
 
+/**
+ * formatBigInteger renders a BigInteger as the parseable literal `0d…`,
+ * sign BEFORE the marker — Go's FormatBigInteger (core/go/value.go).
+ * `-0d789`, not `0d-789`: the marker introduces the digits, so the sign
+ * has to lead or the literal does not parse back.
+ */
+export function formatBigInteger(n: bigint): string {
+  if (n < 0n) return '-0d' + (-n).toString()
+  return '0d' + n.toString()
+}
+
+/**
+ * formatBigDecimal renders a BigDecimal as the parseable literal `0d…`,
+ * mirroring Go's FormatBigDecimal — apd's plain 'f' form with the sign
+ * before the marker.
+ *
+ * Exact at every magnitude and scale since the payload became a Decimal
+ * (decimal.ts): `0d1e400`, `0d1e-400` and `0d0.30` all round-trip, where
+ * the previous binary64 payload rendered `0dInfinity`, `0d0` and `0d0.3`.
+ */
+export function formatBigDecimal(d: Decimal): string {
+  const s = d.toString()
+  return s.startsWith('-') ? '-0d' + s.slice(1) : '0d' + s
+}
+
 /** Canon renders a stack of values as canonical boru source. */
 export function canon(stack: Value[]): string {
   return stack.map(canonValue).join(' ')
@@ -153,6 +179,15 @@ export function canonValue(v: Value): string {
   if (v.isNone()) return 'none'
   if (v.data === null) {
     return v.vType.leaf()
+  }
+  // The `/r` / `/q` group modifier the parser emits AFTER a paren or
+  // dotted-path group. Canon had no arm for it, so each engine fell through
+  // to a DIFFERENT debug spelling — TS to `word(undefined)` (the word arm
+  // reading a DispatchModInfo as a WordInfo) and Go to
+  // `word()({false true})`. Neither is source, and they disagreed, which is
+  // what the parity probe caught on `m.k/q`.
+  if (v.vType.equal(TDispatchMod)) {
+    return (v.data as DispatchModInfo).ref ? '/r' : '/q'
   }
   // A caught-error VALUE (the do escape hatch) — mirrors Go's render.
   if (v.data instanceof ErrorInfo) {
@@ -188,7 +223,15 @@ export function canonValue(v: Value): string {
     const ct = v.data
     const open = v.isTypedMap() ? '{' : '['
     const close = v.isTypedMap() ? '}' : ']'
-    const parts = [`:${canonValue(ct.child)}`, ...ct.elements.map(canonValue)]
+    // A typed MAP carries its concrete pairs in `entries`, not `elements`,
+    // and canon rendered only the latter — so `{:Integer a:1}` came out
+    // `{:Integer}` with the entries silently gone. Both are rendered here,
+    // mirroring Value.toString and core/go/canon.go's ChildTypeInfo arm.
+    const parts = [
+      `:${canonTypeTag(ct.child)}`,
+      ...ct.elements.map(canonValue),
+      ...ct.entries.map((e) => `${e.key}:${canonChild(e.value)}`),
+    ]
     return `${open}${parts.join(' ')}${close}`
   }
   if (v.vType.matches(TList) && Array.isArray(v.data)) {
@@ -258,6 +301,17 @@ export function canonValue(v: Value): string {
 // key. Mirrors eng/go/canon.go::canonChild.
 function canonChild(v: Value): string {
   return v.isDisjunct() ? `(${canonValue(v)})` : canonValue(v)
+}
+
+// canonTypeTag renders a container's element-type tag in SOURCE form. The
+// parser is type-name-opaque (ADR-012 rule 4), so the tag on an unevaluated
+// literal is still a bare Word — `[:Integer]` holds word(Integer), not the
+// Integer type node — and rendering it through the generic value path leaks
+// the debug spelling `word(Integer)` into what is meant to be source.
+// Mirrors core/go/canon.go canonTypeTag.
+function canonTypeTag(v: Value): string {
+  if (v.isWord()) return v.asWord().name
+  return canonChild(v)
 }
 
 // canonFnDef renders a function value's discriminating canonical form.

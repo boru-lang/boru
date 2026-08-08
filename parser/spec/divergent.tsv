@@ -17,18 +17,30 @@
 # design/TS-PARITY-AUDIT.0.md, not adjudicated against REFERENCE.md. The `go`
 # column is the reference by convention, not by proof, and the rows marked
 # DATA are behavioural rather than cosmetic: one engine is wrong.
-0d123	0d123	123	big-decimal canon: go keeps the 0d prefix, ts drops it
-0D45_6	0d456	456	big-decimal canon: go keeps the 0d prefix, ts drops it
--0d789	-0d789	-789	big-decimal canon: go keeps the 0d prefix, ts drops it
-1 ;	1 	1 end	End marker canon: go renders empty, ts renders 'end'
-[:Integer]	[]	[:word(Integer)]	typed list canon: go drops the tag, ts keeps it
-[:Integer 1 2]	[1 2]	[:word(Integer) 1 2]	typed list canon: go drops the tag, ts keeps it
-[:Box<Integer>]	[]	[:sugar(angle Box [word(Integer)])]	typed list canon: go drops the tag, ts keeps the angle sugar
-0d1_2.3	0d12.3	12.3	big-decimal canon: go keeps the 0d prefix, ts drops it
-0d1e2	0d100	100	big-decimal canon: go keeps the 0d prefix, ts drops it
-0d1.5e2	0d150	150	big-decimal canon: go keeps the 0d prefix, ts drops it
-0d1_2e1_0	0d120000000000	120000000000	big-decimal canon: go keeps the 0d prefix, ts drops it
-1_	ERR [boru/syntax_error]: misplaced `_` in numeric literal: 1_	ERR [boru/syntax_error]: invalid numeric literal: 1_	error text differs for a trailing underscore
-0d99999999999999999999	0d99999999999999999999	99999999999999999999	big-decimal canon: go keeps the 0d prefix, ts drops it
-1e400	ERR [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity	inf	DATA: go raises float_overflow, ts returns inf - they disagree on validity
--1e400	ERR [boru/float_overflow]: floating-point literal out of range: -1e400 overflows to infinity	-inf	DATA: go raises float_overflow, ts returns inf - they disagree on validity
+[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]	[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]	ERR [boru/evaluation_limit]: source nesting exceeds the depth limit of 500 — lists, maps, and parentheses are nested too deeply	DATA: TS refuses at 501 where Go accepts to 10000 — the tabnas rule engine recurses per level and blows the JS call stack near 900, so the TS bound turns an uncontrolled RangeError into the promised evaluation_limit. Irreducible: raising it to Go(apos)s 10000 crashes (measured: 600 parses, 1000 overflows).
+
+# --- the TS rule-step cap: an error Go names and TS cannot ----------------
+# The tabnas TS rule engine bounds its main loop and, on reaching the
+# bound, simply STOPS: the trailing-token check then sees #ZZ, so nothing
+# is thrown and the partial root is returned. The Go engine instead names
+# the offending token. Every shape below leaves a group open with a
+# terminator that cannot close it, so the TS val rule's implicit-null
+# alternate matches the `]`, backtracks, and the enclosing elem re-pushes
+# until the bound.
+#
+# Until the step-cap guard in parse(), TS ACCEPTED all of these: `[Map<]`
+# parsed to an EMPTY value stream and `Map<]` to a bare `word(Map)`. The
+# guard turns that silent wrong answer into the right CODE (syntax_error
+# on both sides), so what is left here is error TEXT alone.
+#
+# Irreducible in this port: it is what the two ENGINES do, not what the
+# two boru ports do. Closing it means the TS engine reporting the token
+# it gave up on.
+[Map<]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+{a: Map<}	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+[(1]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+{a: (1}	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+[1 (2]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+Map<]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+Map<}	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.
+[a: Map<]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	ERR [boru/syntax_error]: the parser could not make progress here — a group is left open by a `]`, `}` or end of input that cannot close it	DATA: TS hits the rule-step cap and cannot name the token; same code, different text.

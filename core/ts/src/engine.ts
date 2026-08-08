@@ -407,6 +407,37 @@ export class Engine {
     name: string,
   ): void {
     this.autoEvalArgs(result.args, result.sig)
+
+    // FULL-STACK words (`depth`, `pick`, `roll`) take the whole resolved
+    // stack of the current paren scope and return its complete
+    // REPLACEMENT, rather than N args and their replacement. Mirrors the
+    // Go engine's FullStack path (core/go/engine.go).
+    //
+    // The scope is the nearest OPEN PAREN below the pointer, not the whole
+    // stack: `(1 2 depth)` must see two values, not whatever the enclosing
+    // program left underneath. The matched args are excluded — they sit
+    // between replaceFrom and the pointer and the handler receives them
+    // separately.
+    if (true === result.sig.fullStack) {
+      let base = 0
+      for (let i = this.pointer - 1; i >= 0; i--) {
+        if (isOpenParen(this.stack[i]!)) {
+          base = i + 1
+          break
+        }
+      }
+      const argStart = this.pointer - result.prefixCount
+      const scope = this.stack.slice(base, argStart)
+      const fsResult = result.sig.handler(result.args, null, scope, this.registry)
+      if (fsResult instanceof Promise) {
+        throw new BoruError('unsupported', `async handlers are not supported in the TS port`, name)
+      }
+      const fsOut = fsResult as Value[]
+      this.stack.splice(base, this.pointer + 1 + result.forwardCount - base, ...fsOut)
+      this.pointer = base
+      return
+    }
+
     const handlerResult = result.sig.handler(result.args, null, [], this.registry)
     if (handlerResult instanceof Promise) {
       throw new BoruError(
@@ -1508,9 +1539,27 @@ export class Engine {
    * parser's eval-map / eval-list data-context semantics.
    */
   private deepEvalData(v: Value): Value {
-    if (v.data instanceof OrderedMap && v.vType.equal(TMap)) {
-      const keys = v.asMap().keys()
-      const vals = keys.map((k) => this.evalMapValue(v.asMap().get(k)!))
+    // The MAP arm carries the same `eval && !quoted` gate as the list arm
+    // below, because Go's autoEvalStack applies it to both: only a
+    // container the PARSER built (Eval=true) auto-evaluates, and a value a
+    // word handler returned stays exactly as the handler left it. The gate
+    // was missing here, so a runtime-created map had its values evaluated
+    // in TS and not in Go — `{ a: [ addq 1 2 ] }` handed to the step loop
+    // as a non-eval map rendered `{a:[3]}` against Go's
+    // `{a:[word(addq) 1 2]}`, and `{ a: [ boomq 1 ] }` RAISED in TS where
+    // Go returned the map untouched. Pinned by core/spec/data.tsv.
+    if (v.data instanceof OrderedMap && v.vType.equal(TMap) && v.eval && !v.quoted) {
+      // A value that evaluated to NOTHING drops its key — see
+      // evalMapValue. Keys and values are filtered together so buildMap
+      // still sees two aligned arrays.
+      const keys: string[] = []
+      const vals: Value[] = []
+      for (const k of v.asMap().keys()) {
+        const ev = this.evalMapValue(v.asMap().get(k)!)
+        if (undefined === ev) continue
+        keys.push(k)
+        vals.push(ev)
+      }
       return this.buildMap(keys, vals)
     }
     if (v.vType.matches(TList) && Array.isArray(v.data) && v.eval && !v.quoted) {
@@ -1606,7 +1655,7 @@ export class Engine {
    * single residual (or a list); a def-bound word resolves; everything
    * else passes through.
    */
-  private evalMapValue(v: Value): Value {
+  private evalMapValue(v: Value): Value | undefined {
     if (v.data instanceof OrderedMap && v.vType.equal(TMap)) return this.deepEvalData(v)
     // An eval-list value evaluates to a LIST of its residuals (no
     // collapse). A paren-expr or a bare word collapses to a single
@@ -1621,6 +1670,11 @@ export class Engine {
     if (program === null) return v
     const sub = new Engine(this.registry).run([...program]).map((e) => this.deepEvalData(e))
     if (sub.length === 1) return sub[0]!
+    // ZERO residuals DROPS the key. Go's AutoEvalMap sets the key only in
+    // its `len == 1` and `len > 1` arms, so `{a: ()}` yields `{}` there;
+    // this port built an empty list and kept the key, giving `{a:[]}`.
+    // Pinned by core/spec/data.tsv.
+    if (0 === sub.length) return undefined
     return this.buildList(sub)
   }
 
