@@ -35,8 +35,8 @@ func TestDynApplyNameAt(t *testing.T) {
 		dynApplyNameAt(&compiler.Program{}, 0, 0).Name != "" {
 		t.Error("a nil program, the main code and an out-of-range unit name nothing")
 	}
-	p := &compiler.Program{Fns: []compiler.CompiledFn{{DynApplyName: map[int]compiler.DynFrameWord{
-		3: {Name: "g", Pos: core.SrcPos{Row: 1, Col: 37}},
+	p := &compiler.Program{Fns: []compiler.CompiledFn{{DynApplyName: map[int]compiler.DynApplyHead{
+		3: {Name: "g", Pos: core.SrcPos{Row: 1, Col: 37}, NWritten: 1},
 	}}}}
 	if w := dynApplyNameAt(p, 0, 3); w.Name != "g" || w.Pos.Col != 37 {
 		t.Errorf("the unit's table reads back by pc: %+v", w)

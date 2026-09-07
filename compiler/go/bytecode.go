@@ -1101,6 +1101,26 @@ type Program struct {
 type DynFrameWord struct {
 	Name string
 	Pos  core.SrcPos
+	// Read marks a region entry that arrived by a BARE READ of a binding,
+	// whatever its type — the syntactic fact Name does not carry, since Name
+	// is set only for the fn-admitting reads noteWordRead gates on.
+	//
+	// The no-match diagnostic needs it: the interpreter prints the tokens its
+	// forward window CONSUMED, and the window stops at the first word read
+	// (the pointer had already substituted it onto the value stack), so the
+	// tuple is the longest LEADING RUN of non-read arguments — `(g 5 y 6)`
+	// reports `[5]`, not `[5 6]`. Measured 2026-09-07; NUR122.
+	Read bool
+}
+
+// DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the
+// head of a paren-bounded trailing fn-value apply was read under, that READ's
+// position, and how many of the apply's arguments the interpreter's forward
+// window would have consumed (see DynFrameWord.Read for the rule).
+type DynApplyHead struct {
+	Name     string
+	Pos      core.SrcPos
+	NWritten int
 }
 
 type CompiledFn struct {
@@ -1237,7 +1257,7 @@ type CompiledFn struct {
 	//
 	// Nil for an apply whose head was not a bare read (an event-produced
 	// fn, a `/v` delivery) — the nameless diagnostic stays exactly as it was.
-	DynApplyName map[int]DynFrameWord
+	DynApplyName map[int]DynApplyHead
 	// RetReplay marks a body that ends in a whole-frame dynamic-apply replay
 	// (OpCallDynFrame): its residual count is RUNTIME-variable, so the RET
 	// contract switches discipline. A FOREIGN-registry fn (Reg set, a module-

@@ -135,51 +135,41 @@ func TestDynApplyHeadNameNamelessArm(t *testing.T) {
 	}
 }
 
-// TestDynApplyHeadNameWrittenTupleDeclines records the boundary this
-// increment does NOT close (measured 2026-09-06). The interpreter's no-match
-// prints the WRITTEN tuple — the tokens its forward window consumed — and a
-// WORD argument was already substituted onto the value stack by the pointer
-// before the head dispatched, so that tuple is EMPTY:
+// TestDynApplyHeadNameWrittenTuple is the row that was a DECLINE through two
+// increments and now reaches parity. The interpreter's no-match prints the
+// WRITTEN tuple — the tokens its forward window consumed — and a WORD
+// argument was already substituted onto the value stack by the pointer before
+// the head dispatched, so that tuple is EMPTY:
 //
 //	def app5 fn [[g:Function y:Integer][Integer][(g y)]]
 //	app5 (z:String => [z]) 7
-//	  interpreted  note: candidate `g (String)` takes 1 argument, but none were supplied
-//	  compiled     note: the argument was 7 (an Integer)
-//	               note: candidate `g (String)` — argument 1: expected String, got 7
+//	  both lanes  note: candidate `g (String)` takes 1 argument, but none were supplied
 //
-// Both lanes raise the same signature_error at the same place under the same
-// name; only the tuple the notes describe differs. The SUCCEEDING shape
-// agrees exactly (`app5 (z:Integer => [z mul 2]) 7` → 14 on both), so this is
-// a diagnostic residue, not a semantic one — and closing it needs the
-// recorder to record, per argument, whether the interpreter's window would
-// have WRITTEN it, which is a separate seam from the head's name.
-func TestDynApplyHeadNameWrittenTupleDeclines(t *testing.T) {
+// The compiled lane used to name the argument it applied. It now counts the
+// leading run of non-read arguments (DynApplyHead.NWritten) and hands only
+// that prefix to NoMatchDiag.
+func TestDynApplyHeadNameWrittenTuple(t *testing.T) {
 	const bad = `def app5 fn [[g:Function y:Integer][Integer][(g y)]]  app5 (z:String => [z]) 7`
-	_, compiled, errC, _, errI := runBothEngines(t, bad)
-	if !compiled || errC == nil || errI == nil {
-		t.Fatalf("compiled=%v errC=%v errI=%v, want both lanes raising", compiled, errC, errI)
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, bad)
+	if !compiled || errC == nil {
+		t.Fatalf("compiled=%v errC=%v, want a compiled program that raises", compiled, errC)
 	}
-	// The head name, position and taxonomy DO agree — that is this
-	// increment's contract, and it holds for the word-argument shape too.
-	for _, want := range []string{"cannot call `g`", "1:47"} {
-		if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
-			t.Errorf("both lanes should carry %q:\ncompiled=%s\ninterp=%s", want, errC, errI)
-		}
+	requireParity(t, bad, gotC, errC, gotI, errI)
+	// State the tuple explicitly, so a regression to "the argument was 7"
+	// fails here and not only through the parity comparison.
+	if !strings.Contains(errC.Error(), "none were supplied") {
+		t.Errorf("a WORD argument is not in the written tuple:\n%s", errC)
 	}
-	// The written tuple does not, and stays recorded until its own increment.
-	if !strings.Contains(errI.Error(), "none were supplied") {
-		t.Errorf("interpreter no longer prints the empty written tuple — re-measure this record:\n%s", errI)
-	}
-	if !strings.Contains(errC.Error(), "the argument was 7") {
-		t.Errorf("compiled lane no longer prints the applied tuple — re-measure this record:\n%s", errC)
+	if strings.Contains(errC.Error(), "the argument was 7") {
+		t.Errorf("the applied argument leaked back into the tuple:\n%s", errC)
 	}
 	// The same shape SUCCEEDS identically when the head matches.
 	good := `def app5 fn [[g:Function y:Integer][Integer][(g y)]]  app5 (z:Integer => [z mul 2]) 7`
-	gotC, ok, ec, gotI, ei := runBothEngines(t, good)
+	gc, ok, ec, gi, ei := runBothEngines(t, good)
 	if !ok {
 		t.Fatalf("%q: not compiled", good)
 	}
-	requireParity(t, good, gotC, ec, gotI, ei)
+	requireParity(t, good, gc, ec, gi, ei)
 }
 
 // TestWrittenTuplePrefixRule pins the CORRECTED statement of the boundary
@@ -216,48 +206,49 @@ func TestDynApplyHeadNameWrittenTupleDeclines(t *testing.T) {
 // a compiler-side one, which is why this increment records rather than fixes.
 func TestWrittenTuplePrefixRule(t *testing.T) {
 	const c3 = `def f fn [[g:Function y:Integer][Integer][(g %s)]]  f ([a:String b:String c:String] => [a]) 7`
-	rows := []struct{ args, wantInterp, note string }{
+	rows := []struct{ args, wantTuple, note string }{
 		{`5 6 y`, "the arguments were 5 (an Integer) and 6 (an Integer)", "prefix of two"},
 		{`5 y 6`, "the argument was 5 (an Integer)", "prefix of one — a filter would say two"},
 		{`y 5 6`, "takes 3 arguments, but none were supplied", "empty prefix"},
 	}
 	for _, c := range rows {
 		src := fmt.Sprintf(c3, c.args)
-		_, compiled, errC, _, errI := runBothEngines(t, src)
-		if !compiled || errC == nil || errI == nil {
-			t.Fatalf("(g %s): compiled=%v errC=%v errI=%v, want both lanes raising", c.args, compiled, errC, errI)
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if !compiled || errC == nil {
+			t.Fatalf("(g %s): compiled=%v errC=%v, want a compiled program that raises", c.args, compiled, errC)
 		}
-		if !strings.Contains(errI.Error(), c.wantInterp) {
-			t.Errorf("(g %s) %s: interpreter tuple moved — re-measure this record:\n%s", c.args, c.note, errI)
+		requireParity(t, src, gotC, errC, gotI, errI)
+		// The tuple itself, stated per row: parity alone would pass if BOTH
+		// lanes drifted together, and the prefix is the whole point.
+		if !strings.Contains(errC.Error(), c.wantTuple) {
+			t.Errorf("(g %s) %s: tuple is not the leading run:\n%s", c.args, c.note, errC)
 		}
-		// Both lanes still agree on the failure itself; only the tuple differs.
-		for _, want := range []string{"cannot call `g`", "signature_error"} {
-			if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
-				t.Errorf("(g %s): both lanes should carry %q:\ncompiled=%s\ninterp=%s", c.args, want, errC, errI)
-			}
-		}
-		// The compiled lane names every argument it applied, which is what
-		// the prefix rule has to replace.
-		if !strings.Contains(errC.Error(), "the arguments were") {
-			t.Errorf("(g %s): compiled lane no longer prints the full tuple — re-measure:\n%s", c.args, errC)
-		}
+	}
+	// The row that separates a PREFIX from a FILTER: the trailing literal 6
+	// must NOT appear, even though a per-argument filter would include it.
+	src := fmt.Sprintf(c3, `5 y 6`)
+	_, _, errC, _, _ := runBothEngines(t, src)
+	if strings.Contains(errC.Error(), "and 6 (an Integer)") {
+		t.Errorf("(g 5 y 6): the tuple is a prefix, not a filter — 6 is past the word:\n%s", errC)
 	}
 }
 
-// TestWrittenTupleConstFoldedLocalDeclines is (3) above on its own: the row
-// that rules out "operand kind decides". `def y 7  (g y)` folds the read to a
-// PUSH_CONST identical to a written literal's, and still diverges — so a fix
-// keyed on the lowered operand would answer this one wrong while looking
-// right on every literal row.
-func TestWrittenTupleConstFoldedLocalDeclines(t *testing.T) {
+// TestWrittenTupleConstFoldedLocal is (3) above on its own: the row that
+// rules out "operand kind decides". `def y 7  (g y)` folds the read to a
+// PUSH_CONST identical to a written literal's, so a fix keyed on the lowered
+// operand would answer this one wrong while looking right on every literal
+// row. The fix keys on the READ instead (fnUnitRec.localReads), and this row
+// is what proves it.
+func TestWrittenTupleConstFoldedLocal(t *testing.T) {
 	const folded = `def f fn [[g:Function][Integer][def y 7  (g y)]]  f (z:String => [z])`
 	const literal = `def f fn [[g:Function][Integer][(g 5)]]  f (z:String => [z])`
-	_, ok1, errC1, _, errI1 := runBothEngines(t, folded)
-	if !ok1 || errC1 == nil || errI1 == nil {
-		t.Fatalf("folded: compiled=%v errC=%v errI=%v", ok1, errC1, errI1)
+	gotC1, ok1, errC1, gotI1, errI1 := runBothEngines(t, folded)
+	if !ok1 || errC1 == nil {
+		t.Fatalf("folded: compiled=%v errC=%v", ok1, errC1)
 	}
-	if !strings.Contains(errI1.Error(), "none were supplied") {
-		t.Errorf("a const-folded body-local read is still a WORD to the interpreter — re-measure:\n%s", errI1)
+	requireParity(t, folded, gotC1, errC1, gotI1, errI1)
+	if !strings.Contains(errC1.Error(), "none were supplied") {
+		t.Errorf("a const-folded body-local read is still a WORD, so the tuple is empty:\n%s", errC1)
 	}
 	// Its literal twin, same lowered operand kind, DOES reach parity.
 	gotC, ok2, errC2, gotI, errI2 := runBothEngines(t, literal)

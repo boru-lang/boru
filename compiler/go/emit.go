@@ -205,7 +205,7 @@ type emitCall struct {
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)
 	dynApplyKeepQuote bool                  // the dynApply fn is EVENT-provenance (a direct call result, no read substitution): lower to OpCallDynTrailKeepQ, which preserves the runtime quote state (quoted stays data)
-	dynApplyName      DynFrameWord          // the BINDING name (and read position) the apply's head was read bare under, seated on the unit at the emitted pc (CompiledFn.DynApplyName); zero when the head was not a bare read
+	dynApplyName      DynApplyHead          // the BINDING name (and read position) the apply's head was read bare under, seated on the unit at the emitted pc (CompiledFn.DynApplyName); zero when the head was not a bare read
 	dynMixed          bool                  // forward-drift window (REFUSAL-CLOSURE §1): island the len(ops) laid-out window [residual(s), dynamic value, word const, forward literal] verbatim via OpCallDynamicMixed — the island's own dispatch performs the interpreter's forward collection over the LIVE top value
 	makeMap           bool                  // assemble len(ops) value operands into a map (OpMakeMap) with mapKeys
 	mapKeys           []string
@@ -5169,7 +5169,7 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	// The head's binding name for the lowered op's own diagnostics
 	// (CompiledFn.DynApplyName) — read BEFORE the pendingApply consume below,
 	// which is what tells a bare read apart from an `apply`-word arrival.
-	headName := es.dynApplyHeadName(es.openUnitRec(), fn)
+	headName := es.dynApplyHeadName(es.openUnitRec(), fn, args)
 	// The paren window consumed a bare read of this local (NUR123
 	// accounting): an accepted value-semantics lowering.
 	es.creditWordRead(fn.ID)
@@ -10759,25 +10759,67 @@ func (es *EmitState) openUnitRec() *fnUnitRec {
 // whole reason the pair has to ride in the bytecode. Zero when the head was
 // not a bare read (an event-produced fn, a `/v` delivery) — there the
 // interpreter has no binding name to print either.
-func (es *EmitState) dynApplyHeadName(rec *fnUnitRec, v core.Value) DynFrameWord {
+func (es *EmitState) dynApplyHeadName(rec *fnUnitRec, v core.Value, args []core.Value) DynApplyHead {
 	if name := es.wordReadName(rec, v); name != "" {
-		return DynFrameWord{Name: name, Pos: rec.wordReadPos[v.ID]}
+		return DynApplyHead{Name: name, Pos: rec.wordReadPos[v.ID], NWritten: writtenRun(rec, args)}
 	}
-	return DynFrameWord{}
+	return DynApplyHead{}
+}
+
+// bareRead reports whether v arrived by a BARE READ of a binding on this unit.
+//
+// NoteLocalRead records EVERY such read, whatever the value's type, which is
+// what makes this the SYNTACTIC test the written tuple needs: a body-local
+// bound to a literal folds its read to a const operand indistinguishable from
+// a written literal's, and only the read itself tells them apart (NUR122,
+// measured 2026-09-07). Deliberately NOT wordReadName, whose gate is
+// noteWordRead's fn-admitting one — that signal answers NUR123's "does this
+// read DISPATCH", a different question.
+func bareRead(rec *fnUnitRec, v core.Value) bool {
+	return rec != nil && v.ID != "" && len(rec.localReads[v.ID]) > 0
+}
+
+// writtenRun is how many of a dispatch's arguments the interpreter's forward
+// window CONSUMED as tokens: it walks them left to right and stops at the
+// first bare read, which the pointer had already substituted onto the value
+// stack. So the tuple its no-match prints is the longest LEADING RUN of
+// non-read arguments — `(g 5 y 6)` reports `[5]`, not `[5 6]`.
+func writtenRun(rec *fnUnitRec, args []core.Value) int {
+	for i, v := range args {
+		if bareRead(rec, v) {
+			return i
+		}
+	}
+	return len(args)
 }
 
 // dynFrameWordsFor is the replay's word table for a token region: index i
 // names the binding region entry i was read bare under ("" otherwise). Nil
 // when no entry is a word read — the replay then keeps value semantics.
 func (es *EmitState) dynFrameWordsFor(u *emitUnit, rec *fnUnitRec, window []core.Value) []DynFrameWord {
+	// The NIL contract is load-bearing and must not widen: callers read a nil
+	// table as "this window carries no word read" and arm the replay on it
+	// (noteWordReadReplay, replayValueApplicables). Read marks are diagnostic
+	// only, so they ride on a table that already exists for a NAME — allocating
+	// for a read alone armed replays that had no business arming, and refused
+	// three module rows that used to compile.
 	var names []DynFrameWord
 	for i, v := range window {
-		if name := es.wordReadName(rec, v); name != "" {
-			if names == nil {
-				names = make([]DynFrameWord, len(window))
-			}
-			names[i] = DynFrameWord{Name: name, Pos: rec.wordReadPos[v.ID]}
+		name := es.wordReadName(rec, v)
+		if name == "" {
+			continue
 		}
+		if names == nil {
+			names = make([]DynFrameWord, len(window))
+		}
+		names[i] = DynFrameWord{Name: name, Pos: rec.wordReadPos[v.ID]}
+	}
+	if names == nil {
+		return nil
+	}
+	// The table exists: mark every entry's read-ness for the no-match tuple.
+	for i, v := range window {
+		names[i].Read = bareRead(rec, v)
 	}
 	return names
 }

@@ -18,11 +18,24 @@ func dynFrameWordsAt(p *compiler.Program, unit, pc int) []compiler.DynFrameWord 
 // dynApplyNameAt is the head-binding name of the trailing fn-value apply at
 // pc in the code that holds it (CompiledFn.DynApplyName): only a fn unit
 // carries one — a main-code apply names no frame binding.
-func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynFrameWord {
+func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
 	if unit < 0 || p == nil || unit >= len(p.Fns) {
-		return compiler.DynFrameWord{}
+		return compiler.DynApplyHead{}
 	}
 	return p.Fns[unit].DynApplyName[pc]
+}
+
+// writtenRun is how many of a replayed dispatch's arguments the interpreter's
+// forward window consumed: the longest leading run whose region entries are
+// not bare reads. Entries beyond the table's length cannot have been marked,
+// so they count as written.
+func writtenRun(argWords []compiler.DynFrameWord, n int) int {
+	for i := 0; i < n; i++ {
+		if i < len(argWords) && argWords[i].Read {
+			return i
+		}
+	}
+	return n
 }
 
 // callDynFrameWords is the whole-frame replay for a token region carrying
@@ -105,7 +118,13 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	if len(installed) == 1 && words[0].Name != "" && len(prefix) == 0 && dynFrameSimpleWindow(region) {
 		if fd := reg.Lookup(words[0].Name); fd != nil && wordLeadNoMatch(lead, region[1:]) {
 			args := append([]core.Value(nil), region[1:]...)
-			return nil, true, core.NoMatchDiag(vc.r.Source, words[0].Name, fd, args, words[0].Pos, core.ReorderHintFor(words[0].Name, fd, args))
+			// Only the tokens the interpreter's forward window consumed reach
+			// its tuple: it stops at the first BARE READ, which the pointer
+			// had already substituted onto the value stack. words[i+1].Read
+			// marks arg i as such a read, so the tuple is the leading run —
+			// `(g 5 y 6)` reports `[5]`, not `[5 6]` (NUR122).
+			written := args[:writtenRun(words[1:], len(args))]
+			return nil, true, core.NoMatchDiag(vc.r.Source, words[0].Name, fd, written, words[0].Pos, core.ReorderHintFor(words[0].Name, fd, written))
 		}
 	}
 	results, err := runIslandResolved(reg, prefix, tokens)

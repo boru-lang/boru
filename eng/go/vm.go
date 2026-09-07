@@ -955,7 +955,7 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 // The *dynEnter return is the Apply kernel's outcome: non-nil means the callee
 // carried a compiled unit of THIS program and the run loop should enter it as a
 // frame (vm_dyn_apply.go), rather than the handler having islanded it.
-func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int, words []compiler.DynFrameWord, head compiler.DynFrameWord) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int, words []compiler.DynFrameWord, head compiler.DynApplyHead) ([]core.Value, *dynEnter, error) {
 	switch op {
 	case compiler.OpCallDynTrailTop:
 		return vc.callDynTrailTop(reg, arg, stack, curDebug, pc, head)
@@ -999,7 +999,7 @@ func (vc *vmContext) callDynamicOp(reg *core.Registry, op compiler.Opcode, arg i
 // for ANY arity (unlike OpCallDynamicTrailing's 1-arg rotation). The args slice is
 // the same stack-order window callDynamic's leading case feeds, so the closure /
 // island binding matches the proven leading path.
-func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int, head compiler.DynFrameWord) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int, head compiler.DynApplyHead) ([]core.Value, *dynEnter, error) {
 	r := vc.r
 	if len(stack) < n+1 {
 		return nil, nil, vmErrAt(curDebug, pc, "CALL_DYN_TRAIL_TOP underflow")
@@ -1092,7 +1092,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 // signatures to consult, so it keeps the data behaviour: MatchFnSig's nil is
 // "no opinion" there, and the length check below is what separates the two
 // readings of nil.
-func noMatchIfSigged(reg *core.Registry, fnVal core.Value, args []core.Value, curDebug []core.SrcPos, pc int, r *core.Registry, head compiler.DynFrameWord) error {
+func noMatchIfSigged(reg *core.Registry, fnVal core.Value, args []core.Value, curDebug []core.SrcPos, pc int, r *core.Registry, head compiler.DynApplyHead) error {
 	// Three ways a value has NO own signatures worth consulting here, all
 	// meaning the same thing — this guard has no opinion, leave the window to
 	// the paths below:
@@ -1124,7 +1124,13 @@ func noMatchIfSigged(reg *core.Registry, fnVal core.Value, args []core.Value, cu
 	// SLOT on this lane, and Registry.Lookup would find nothing.
 	if head.Name != "" {
 		view := installedSigView(fnDef)
-		return stampAt(core.NoMatchDiag(r.Source, head.Name, &view, args, head.Pos, core.ReorderHintFor(head.Name, &view, args)), curDebug, pc, r)
+		// The interpreter's tuple is the tokens its forward window CONSUMED,
+		// which stops at the first bare read — the recorder counted that
+		// leading run (DynApplyHead.NWritten). Passing every applied argument
+		// instead reported `the argument was 7` where the interpreter reports
+		// `takes 1 argument, but none were supplied` (NUR122).
+		written := args[:min(head.NWritten, len(args))]
+		return stampAt(core.NoMatchDiag(r.Source, head.Name, &view, written, head.Pos, core.ReorderHintFor(head.Name, &view, written)), curDebug, pc, r)
 	}
 	return stampAt(core.RuntimeNoMatch(reg, fnDef.Name, args), curDebug, pc, r)
 }

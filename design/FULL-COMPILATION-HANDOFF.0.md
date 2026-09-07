@@ -3478,6 +3478,48 @@ lang/go/dyn_apply_head_name_test.go, which fail if any of the three findings
 moves — including the interpreter side, so a change in its collection
 behaviour surfaces as a failing record rather than a silent drift.
 
+## The written tuple is the leading run (2026-09-07, the twenty-first increment, NUR122)
+
+The implementation half of the previous section's measurement, and it lands
+where that section said it would rather than where the section before it did.
+
+**The change.** `writtenRun` counts the leading arguments with no recorded bare
+read; the recorder seats that count on the trailing apply's site
+(`DynApplyHead.NWritten`) and marks each replay region entry
+(`DynFrameWord.Read`); the two VM diagnostics — `noMatchIfSigged` and
+`callDynFrameWords`' word-lead no-match — slice their arg window to it before
+handing it to `NoMatchDiag`. All eight witnesses reach parity: three
+`OpCallDynTrailTop` rows and five `OpCallDynFrame` rows, the multi-argument
+prefixes included.
+
+The signal is `fnUnitRec.localReads`, already populated ungated by
+`NoteLocalRead` for every bare read. `noteWordRead`'s fn-admitting gate is
+untouched: it answers NUR123's "does this read DISPATCH", which is a different
+question from "was there a read at all", and relaxing it would have moved the
+deopt machinery that reads it.
+
+**What the first attempt broke, and how it surfaced.** Marking read-ness by
+allocating the replay's word table whenever ANY entry was a bare read looked
+harmless and was not: a nil table from `dynFrameWordsFor` MEANS "this window
+carries no word read", and `noteWordReadReplay` / `replayValueApplicables` arm
+the replay on that. Widening it armed replays that had no business arming and
+turned three previously-compiling module rows into refusals
+(`TestFnUnitLoopApplyFlowCrossesIsland`, `TestFnUnitLoopApplyValueCalleeDefers`,
+`TestModuleReadNoRebindStillCompiles`). The marks now ride only on a table that
+already exists for a NAME, in a second pass, and the nil contract is documented
+at the site as load-bearing.
+
+That is the third time in this line a datum added "for diagnostics only" turned
+out to be read as a SIGNAL somewhere else. The pattern worth carrying: before
+widening when a structure is allocated, find who tests it for emptiness.
+
+**Pins**: the three decline tests flip to parity —
+`TestDynApplyHeadNameWrittenTuple`, `TestWrittenTuplePrefixRule`,
+`TestWrittenTupleConstFoldedLocal`. Each asserts the TUPLE as well as parity,
+because parity alone passes if both lanes drift together, and the prefix is the
+whole point; the prefix-vs-filter row additionally asserts that the trailing
+literal past the word does NOT appear.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

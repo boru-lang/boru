@@ -327,13 +327,13 @@ func TestDynApplyHeadNameSeat(t *testing.T) {
 		t.Error("a unit is open, so openUnitRec has a record")
 	}
 	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 37})
-	if w := es.dynApplyHeadName(rec, g); w.Name != "g" || w.Pos.Col != 37 {
+	if w := es.dynApplyHeadName(rec, g, nil); w.Name != "g" || w.Pos.Col != 37 {
 		t.Errorf("a bare read carries its name and the READ's position: %+v", w)
 	}
-	if w := es.dynApplyHeadName(rec, x); w.Name != "" {
+	if w := es.dynApplyHeadName(rec, x, nil); w.Name != "" {
 		t.Errorf("an un-noted head seats nothing: %+v", w)
 	}
-	if w := es.dynApplyHeadName(nil, g); w.Name != "" {
+	if w := es.dynApplyHeadName(nil, g, nil); w.Name != "" {
 		t.Errorf("no record, no name: %+v", w)
 	}
 
@@ -341,18 +341,18 @@ func TestDynApplyHeadNameSeat(t *testing.T) {
 	var cf CompiledFn
 	main := &lowerer{code: &cf.Code, debug: &cf.Debug}
 	main.emit(OpRet, 0, core.SrcPos{})
-	main.seatDynApplyName(DynFrameWord{Name: "g"})
+	main.seatDynApplyName(DynApplyHead{Name: "g"})
 	if cf.DynApplyName != nil {
 		t.Error("the main code names no frame binding")
 	}
 	unit := &lowerer{code: &cf.Code, debug: &cf.Debug, dynApplyName: &cf.DynApplyName}
-	unit.seatDynApplyName(DynFrameWord{})
+	unit.seatDynApplyName(DynApplyHead{})
 	if cf.DynApplyName != nil {
 		t.Error("no bare-read head, no table")
 	}
-	unit.seatDynApplyName(DynFrameWord{Name: "g", Pos: core.SrcPos{Row: 1, Col: 37}})
+	unit.seatDynApplyName(DynApplyHead{Name: "g", Pos: core.SrcPos{Row: 1, Col: 37}})
 	unit.emit(OpRet, 0, core.SrcPos{})
-	unit.seatDynApplyName(DynFrameWord{Name: "h"})
+	unit.seatDynApplyName(DynApplyHead{Name: "h"})
 	if len(cf.DynApplyName) != 2 || cf.DynApplyName[1].Name != "g" || cf.DynApplyName[1].Pos.Col != 37 || cf.DynApplyName[2].Name != "h" {
 		t.Errorf("each apply keys its own pc: %v", cf.DynApplyName)
 	}

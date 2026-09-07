@@ -411,7 +411,7 @@ type lowerer struct {
 	// (CompiledFn.DynApplyName), keyed by the target's own pc — see
 	// seatDynApplyName. Nil for the main code, whose applies name no frame
 	// binding.
-	dynApplyName *map[int]DynFrameWord
+	dynApplyName *map[int]DynApplyHead
 	sigIdx       map[*core.Signature]int
 	vm           []vmSlot
 	variadic     map[int]bool // loop seqs: N runtime values, not one
@@ -648,12 +648,12 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 // (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
 // point at the read the interpreter dispatches. An apply with no bare-read
 // head, and the main code (no frame to bind), record nothing.
-func (lw *lowerer) seatDynApplyName(w DynFrameWord) {
+func (lw *lowerer) seatDynApplyName(w DynApplyHead) {
 	if lw.dynApplyName == nil || w.Name == "" {
 		return
 	}
 	if *lw.dynApplyName == nil {
-		*lw.dynApplyName = map[int]DynFrameWord{}
+		*lw.dynApplyName = map[int]DynApplyHead{}
 	}
 	(*lw.dynApplyName)[len(*lw.code)] = w
 }
