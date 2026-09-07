@@ -261,15 +261,19 @@ func TestShuffleRestepTimingDeclines(t *testing.T) {
 		t.Errorf("the compiled body leaves the fn for drop to remove, so it answers a value: %v", errC)
 	}
 
-	// Axis 2: same body, payload the only difference.
-	gotC2, ok2, _, gotI2, _ := runBothEngines(t, mkc+`[(mk 3)] each [5 swap]`)
+	// Axis 2: same body, payload the only difference. Both sides are asserted
+	// by VALUE, not merely as "they differ": an inequality check would keep
+	// passing if this path regressed to an execution error, an empty result or
+	// some third wrong answer, and a measurement record that tolerates a new
+	// defect is not recording anything.
+	gotC2, ok2, errC2, gotI2, errI2 := runBothEngines(t, mkc+`[(mk 3)] each [5 swap]`)
 	if !ok2 {
 		t.Fatal("the closure row must still compile")
 	}
-	if fmt.Sprint(gotI2) != "[[15]]" {
-		t.Errorf("the interpreter applies the shuffled closure: %v", gotI2)
+	if errI2 != nil || fmt.Sprint(gotI2) != "[[15]]" {
+		t.Errorf("the interpreter applies the shuffled closure: %v/%v", gotI2, errI2)
 	}
-	if fmt.Sprint(gotC2) == fmt.Sprint(gotI2) {
-		t.Errorf("axis 2 closed without this record being updated — re-measure: %v", gotC2)
+	if errC2 != nil || fmt.Sprint(gotC2) != "[[fn (Integer)]]" {
+		t.Errorf("the compiled lane parks it, and that exact outcome is the record: %v/%v", gotC2, errC2)
 	}
 }

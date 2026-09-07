@@ -3612,8 +3612,11 @@ body ends [5]. The interpreter re-steps AT THE SHUFFLE; the compiled body at
 BODY END, if at all.
 
 **Two rows agree for the wrong reason.** `[g/v] each [5 swap]` and
-`[5 over]` pass on both lanes — only because nothing follows the shuffle, so
-body-end and shuffle-time coincide. They are trap rows. A family built from
+`[g/v] each [5 over]` pass on both lanes — only because nothing follows the
+shuffle, so body-end and shuffle-time coincide. They are trap rows. Write the
+`/v` out: the CLOSURE spellings of those same two bodies,
+`[(mk 3)] each [5 swap]` and `[(mk 3)] each [5 over]`, are Axis 2
+DIVERGENCES, so the body alone does not identify the row. A family built from
 them would report this fixed, and the divergence would survive under a green
 suite. This is the third time in four increments that the row which separates
 two readings turned out to be the one the obvious family omits: `(g 5 y 6)`
