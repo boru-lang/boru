@@ -196,12 +196,18 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 		}
 	}
 
-	// NEGATIVE — a LEXICALLY CAPTURING sink fn (an enclosing fn's param in the
-	// body) is not a bakeable const: the register dispatch refuses and the
-	// program falls back faithfully.
-	fnValueM2Refusal(t, "capturing sink fn stays refused",
+	// A LEXICALLY CAPTURING sink fn (an enclosing fn's param in the body) is
+	// not a bakeable const, and REFUSED until 2026-09-07 (the twenty-sixth
+	// increment): a lambda VALUE unit now takes the fn path's residual
+	// replay, so the capturing fn compiles as a closure unit and rides as an
+	// OpPushClosure operand — which a NON-strict store word invokes through
+	// the compiled runtime, as Patrun's stored closures already did (a strict
+	// handler slot, service/add, still refuses a capturing fn). Measured: the
+	// sink fires with the captured `p` on both lanes, in this run and in a
+	// later run of the same lane.
+	fnValueM2Native(t, "capturing sink fn compiles as a closure unit",
 		`import "boru:log" ; def f fn [[p:String] [List] [Log.register (fn [[rec:Any] [] [p print]]) tap/q info/q Log.sinks]] f "x"`,
-		"log-register")
+		"[[console tap]]")
 }
 
 // --- M2d — fn value as an INERT operand of `is` ---------------------------

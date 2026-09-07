@@ -67,6 +67,12 @@ var unflaggedPins = map[string]int{
 	// getStoreReturnsFn stays optimistic on a static miss by design. The
 	// Xml strict-miss row in the same batch IS flagged (getrXmlReturns).
 	"accessor.tsv": 2,
+	// bytecode-migrated.tsv: 0 → 1 on 2026-09-07 (the twenty-sixth
+	// increment's graduation of frontier-hof-audit.tsv's §9 mk0 row): a
+	// 0-arg apply of a 1-arg captured fn inside a returned lambda raises
+	// signature_error at RUNTIME, when the closure is applied — the checker
+	// sees a Function-typed capture and cannot know its arity statically.
+	"bytecode-migrated.tsv": 1,
 	// fnpred.tsv: ONE unflagged class, and every unflagged row is in it — a
 	// CONCRETE value failing a predicate (`def q:Even 5`, and the typed-param
 	// twin `f 5`). Running a user predicate over a literal is decidable in

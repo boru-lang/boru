@@ -1326,6 +1326,30 @@ type deoptPoint struct {
 	restep bool
 }
 
+// plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
+// body) whose params carry no value PATTERN. Such a unit is a fn in every
+// way that matters at its finish — its count contract is enforced at
+// invoke (checkClosureReturn raises the interpreter's own `expected N return
+// value(s)`), and a bare read of a captured fn is the word dispatch NUR123's
+// whole-frame replay seats — so it takes the fn path's residual replay
+// instead of the closure count refusal (the twenty-sixth increment: `( fn
+// [[x:Integer][Integer][g x]] )` over a captured g). A PATTERN param is
+// matched by the interpreter's frame binding at the apply, which the
+// closure apply ops do not yet enforce (`((mk 5) 1)` over `[[0][Integer]
+// [x]]` applied where the interpreter parks the pair), so a pattern lambda
+// keeps the count refusal that was guarding it.
+func (rec *fnUnitRec) plainLambda() bool {
+	if !rec.lambdaUnit {
+		return false
+	}
+	for _, p := range rec.paramPatterns {
+		if p != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // reStepNote is one NoteFnResultReStep on an event: the body position the
 // interpreter resumes at after re-stepping the event's results, and whether
 // a noted result is fn-TYPED (strict) — a gradual note only deopts, a strict
@@ -2765,6 +2789,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		return EmitOperand{}, false
 	}
 	inputs, paramNames := fnValueInputs(lam.Params)
+	ps := lamParamContract(lam)
 	r := es.reg
 	// PROBE in a throwaway emit state (mirrors recordClosureDispatch), so a body
 	// that refuses leaves THIS program untouched and the value stays unresolved.
@@ -2782,7 +2807,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, fd.Captured, ClosureInValue, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -2801,7 +2826,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, fd.Captured, ClosureInValue, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -2809,9 +2834,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// The returned lambda's declared param contract rides on its unit, so a
 	// runtime that dispatches the closure BY NAME (the word-read replay's
 	// closureAsWord bridge, NUR123) declares the interpreter's signature.
-	if ps := lamParamContract(lam); ps != nil {
-		es.SetUnitParamTypes(unit, ps.Types, ps.Patterns)
-	}
+	es.SetUnitParamTypes(unit, ps.Types, ps.Patterns)
 	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps}, true
 }
 
@@ -2845,7 +2868,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, fd.Captured, ClosureInValue, pos)
+	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		// Surface the probe's refusal for the -compile-report attribution
@@ -2860,7 +2883,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, fd.Captured, ClosureInValue, pos)
+	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, pos)
 	if !realOK || unit < 0 {
 		// Reachable: a body the probe pass accepted can still refuse in the
 		// real pass (the variation sweep produces such shapes — a splice-
@@ -2930,7 +2953,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, ClosureInValue, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
@@ -2939,7 +2962,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, ClosureInValue, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
 	}
@@ -3017,14 +3040,14 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, ClosureInValue, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
 	}
 	// Probe-terminal environment mode → real pass (see tryReturnedClosure).
 	es.dynEnv = es.dynEnv || probe.dynEnv
-	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, ClosureInValue, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, bodyList.Pos())
 	if !realOK || unit < 0 {
 		// Unlike compileStoredBody's spawn shape, the real pass CAN decline
 		// after a clean probe here: it records into the LIVE mid-recording
@@ -4803,7 +4826,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// count-agnostic) is NOT count-checked: its residual is taken as-is.
 			// An anonymous lambda is DECLARED here — its placeholder's count
 			// (check.LambdaCountContract) is the contract its RET enforces.
-			if dynTrail == 0 && rec.closure && len(rec.returns) > 0 && len(ops) != len(rec.returns) {
+			if dynTrail == 0 && rec.closure && !rec.plainLambda() && len(rec.returns) > 0 && len(ops) != len(rec.returns) {
 				es.MarkUncompilable("closure " + name + ": body value count differs from declared returns")
 				return
 			}
@@ -4859,7 +4882,14 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// is a CONCRETE const — not a carrier and not preceded by args — so it still
 			// compiles; only an unapplied dynamic apply refuses. (Lowering the trailing
 			// apply via OpCallDynamicTrailing in a closure body is the follow-on feature.)
-			if dynTrail == 0 && rec.closure && closureResidualHasUnappliedFn(bodyStk) {
+			// A plain lambda whose WHOLE residual is one `/v` read of a captured
+			// fn (`[g/v]`, the twenty-sixth increment) RETURNS that value as
+			// data on both lanes: the read delivers it quoted, the return
+			// strips the quote, and the caller decides whether to apply it —
+			// `((h 5) 2)` is 6, `(h 5) 2` the parked pair. Nothing is
+			// unapplied here.
+			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && closureResidualHasUnappliedFn(bodyStk) &&
+				!(rec.plainLambda() && len(bodyStk) == 1 && (bodyStk[0].Quoted || rec.valReads[bodyStk[0].ID] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
 			}
@@ -9860,8 +9890,22 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 			// (A lead a later dispatch collected past — `[g x add 1]`, whose
 			// replay would run over add's result, NUR121 — never reaches here:
 			// residualStands refused it while resolving the residual above.)
+			// The window holds exactly ONE applicable the re-step could
+			// apply — the lead — where a GRADUAL WORD-READ entry beside a
+			// FN-TYPED lead does not count (a gradual `x:Any` param beside
+			// a captured `g` in `[(g x)]`, the twenty-sixth increment): such
+			// an entry re-steps as the interpreter's own word dispatch,
+			// faithful whether it holds a fn or data. A second FN-TYPED
+			// entry still declines, word read or not — `f (g x y)`
+			// collapses to no event and its window holds both f and g,
+			// which the value replay flattens (the compiled lane raised
+			// `cannot call `f`` for the interpreter's 14 before this was
+			// measured) — and so does a gradual EVENT result beside the
+			// lead, whose runtime fn the replay would apply under value
+			// semantics. With no fn-typed value the count is the original
+			// one-applicable rule (replayLeadApplicables).
 			if w, ok := dynFrameWindow(u, rec, vals); ok && es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
-				replayApplicables(vals[len(vals)-w:]) == 1 {
+				replayLeadApplicables(vals[len(vals)-w:], es.dynFrameWordsFor(u, rec, vals[len(vals)-w:])) == 1 {
 				rec.dynFrameW = w
 				rec.retReplay = true
 				// A word-read lead in the window takes the interpreter's WORD
@@ -9983,7 +10027,7 @@ func (es *EmitState) creditWordRead(id string) {
 // none of the three: their count mismatch is the higher-order word's own
 // error and their reads are the enclosing frame's.
 func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []core.Value, ops []EmitOperand, dynTrail int) string {
-	if dynTrail != 0 || rec.closure {
+	if dynTrail != 0 || (rec.closure && !rec.plainLambda()) {
 		return ""
 	}
 	if len(rec.returns) > 0 && len(ops) != len(rec.returns) &&
@@ -11047,7 +11091,7 @@ func (es *EmitState) noteWordReadReplay(u *emitUnit, rec *fnUnitRec, vals []core
 }
 
 // replayValueApplicables counts the window values the replay re-steps under
-// VALUE semantics that could apply — replayApplicables minus the word-read
+// VALUE semantics that could apply — every applicable minus the word-read
 // entries, which re-step as WORDS through the interpreter's own dispatch
 // and need no one-applicable bound.
 func replayValueApplicables(window []core.Value, names []DynFrameWord) int {
@@ -11063,17 +11107,38 @@ func replayValueApplicables(window []core.Value, names []DynFrameWord) int {
 	return n
 }
 
-// replayApplicables counts the window values the whole-frame replay's
-// re-step could APPLY — a Function-typed value or a Dynamic (maybe-callable)
-// carrier. noteDynFrameReplay arms only when this is exactly 1.
-func replayApplicables(window []core.Value) int {
-	n := 0
-	for _, v := range window {
-		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
-			n++
+// replayLeadApplicables counts the window values that COMPETE for the
+// whole-frame replay's apply. Every applicable counts — a Function-typed
+// value or a Dynamic (maybe-callable) carrier — with ONE discount: beside a
+// FN-TYPED lead, a GRADUAL WORD-READ entry (Dynamic, not fn-typed, read bare
+// under a frame name) does not compete, because the replay re-steps it as
+// the interpreter's own word dispatch, faithful whether it holds a fn or
+// data (a gradual `x:Any` param beside a captured `g` in `[(g x)]`, the
+// twenty-sixth increment). With no fn-typed value in the window the rule is
+// the original one — exactly one applicable of any kind — so a gradual
+// body-local read alone (`def j (m get "f")  j 3`, NUR123) is still the
+// lead and two gradual reads still decline. noteDynFrameReplay arms only
+// when this is exactly 1: a second fn-typed value, word read or not
+// (`f (g x y)` collapses to no event and flattens), and a gradual EVENT
+// result beside a fn-typed lead (`(g (x get "k"))`, whose runtime fn the
+// value re-step would apply) both decline.
+func replayLeadApplicables(window []core.Value, names []DynFrameWord) int {
+	fnTyped, gradual, gradualReads := 0, 0, 0
+	for i, v := range window {
+		switch {
+		case v.Parent != nil && v.Parent.ConformsTo(core.TFunction):
+			fnTyped++
+		case !v.Dynamic:
+		case i < len(names) && names[i].Name != "":
+			gradualReads++
+		default:
+			gradual++
 		}
 	}
-	return n
+	if fnTyped > 0 {
+		return fnTyped + gradual
+	}
+	return gradual + gradualReads
 }
 
 // replayIsBodyTail reports whether the replay window is the body's LAST

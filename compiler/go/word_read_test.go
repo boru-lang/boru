@@ -357,3 +357,41 @@ func TestDynApplyHeadNameSeat(t *testing.T) {
 		t.Errorf("each apply keys its own pc: %v", cf.DynApplyName)
 	}
 }
+
+// TestReplayLeadApplicables pins the one-lead rule's count (the twenty-sixth
+// increment): a data value is nothing; a fn-typed word read is the lead; a
+// GRADUAL word read beside it is discounted (it re-steps as the
+// interpreter's own word dispatch) but is the lead when it stands alone (a
+// gradual body-local's read, NUR123); a second fn-typed value, word read or
+// not, and a gradual value that is NOT a word read (an event result) beside
+// the lead both count — `f (g x y)` and `(g (x get "k"))` decline on them —
+// and with no fn-typed value the count is the original one-applicable rule.
+func TestReplayLeadApplicables(t *testing.T) {
+	es, rec, g, x := wordReadUnit(t)
+	u := es.units[len(es.units)-1]
+	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 5})
+	es.NoteWordRead(x, "x", core.SrcPos{Row: 1, Col: 8})
+	one := core.NewInteger(1)
+	f := core.NewCarrier(core.TFunction)
+	e := core.NewDynamicCarrier(core.TAny)
+	for _, c := range []struct {
+		name   string
+		window []core.Value
+		want   int
+	}{
+		{"data alone", []core.Value{one}, 0},
+		{"a fn-typed word read is the lead", []core.Value{one, g}, 1},
+		{"a gradual word read beside it is discounted", []core.Value{x, g}, 1},
+		{"a gradual word read ALONE is the lead (a body-local's read, NUR123)", []core.Value{x, one}, 1},
+		{"two gradual word reads compete", []core.Value{x, x}, 2},
+		{"a second fn-typed word read competes", []core.Value{g, g}, 2},
+		{"a fn-typed value that is no word read competes", []core.Value{f, g}, 2},
+		{"a gradual event result beside the lead competes", []core.Value{e, g}, 2},
+		{"a gradual event result alone is the lead", []core.Value{e, one}, 1},
+		{"a gradual event result and a gradual read compete", []core.Value{e, x}, 2},
+	} {
+		if got := replayLeadApplicables(c.window, es.dynFrameWordsFor(u, rec, c.window)); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}

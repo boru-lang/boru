@@ -5070,7 +5070,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// for the same reason — see takeAppliedMark. The gate below reads the
 	// returned local, never the field, which by then is already cleared.
 	val, applied := e.takeAppliedMark(valIdx, val)
-	val, fnDef, ok := e.fnDefAtPointer(valIdx, val)
+	val, fnDef, ok := e.fnDefAtPointer(val)
 	if !ok {
 		e.Pointer++
 		return nil
@@ -5833,17 +5833,21 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	return nil
 }
 
-// fnDefAtPointer reads the FnDefInfo the value at valIdx dispatches as. A
-// compiled closure (ClosurePayload) is the FnDefInfo the interpreter would
+// fnDefAtPointer reads the FnDefInfo the value at the pointer dispatches as.
+// A compiled closure (ClosurePayload) is the FnDefInfo the interpreter would
 // have minted for the same source, and the VM piece bridges it to one
 // (CompiledRuntime.ClosureAsFnDef): a signature over the unit's declared
 // param contract, the closure applied through the registry's body-closure
-// invoker. The bridged value takes the closure's place on the tape at the
-// closure's position, so what stays data (a parked 0-arg lambda) and what
-// dispatches is decided by execFnDefLiteral's rules exactly as for the
-// interpreter's own value. Outside a VM run, or for a unit the bridge cannot
-// describe, the closure stays data (ok=false).
-func (e *Engine) fnDefAtPointer(valIdx int, val Value) (Value, FnDefInfo, bool) {
+// invoker, under the closure's own identity. The bridge stands in for THIS
+// dispatch only — what stays data (a parked 0-arg lambda, a no-match) and
+// what dispatches is decided by execFnDefLiteral's rules exactly as for the
+// interpreter's own value, but the TAPE keeps the closure itself: a park
+// leaves the payload where it was, never a handler bound to the running
+// VM's context (Codex P2 on PR #444 — the bridged value used to replace the
+// closure on the tape, so a parked copy could escape into a binding and
+// keep applying through a finished run's invoker). Outside a VM run, or for
+// a unit the bridge cannot describe, the closure stays data (ok=false).
+func (e *Engine) fnDefAtPointer(val Value) (Value, FnDefInfo, bool) {
 	if fnDef, ok := val.Data.(FnDefInfo); ok {
 		return val, fnDef, true
 	}
@@ -5852,7 +5856,6 @@ func (e *Engine) fnDefAtPointer(valIdx int, val Value) (Value, FnDefInfo, bool) 
 		return val, FnDefInfo{}, false
 	}
 	val = WithPos(bridged, val)
-	e.Tape.Set(valIdx, val)
 	fnDef, ok := val.Data.(FnDefInfo)
 	return val, fnDef, ok
 }

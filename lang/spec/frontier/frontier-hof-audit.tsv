@@ -71,7 +71,6 @@ def pitem s:String => [ if (eq 0 (size s)) [ {ok:false rest:s val:None} ] [ {ok:
 def fs [ (a:Integer => [add 1 a]) (a:Integer => [mul 2 a]) ] end ((fs get 1) 5)	10	functions in a list, retrieved and called
 def tbl {double:(a:Integer => [mul 2 a]) inc:(a:Integer => [add 1 a])} end def k 'double' end ((tbl get k) 5)	10	functions in a map, dynamic key dispatch
 def fs [ (a:Integer => [add 1 a]) (a:Integer => [mul 2 a]) ] end fold [apply] fs 5	12	pipeline over a list of functions
-def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)	11	a named compose returning a Function
 def f2 fn [[a:Integer b:Integer][Integer][a sub b]] end def g (f2/u) end (g 10 3)	-7	a usurp wrapper is storable and callable
 #
 # §7  the §5.4 application-context rule (audit §5.4; why Z diverges)
@@ -89,11 +88,13 @@ def n 1 end def mkc fn nn:Integer Function [(fn x:Integer Integer [add nn x])] e
 #     body may APPLY its captured Function — the fnval unit's own
 #     capture slot is DynApplyLeadEligible, so the apply-the-capture
 #     factory compiles natively. Repeated/multi-instance reads and the
-#     mismatched-arity spelling stay sound refusals (ledgered).
+#     mismatched-arity 0-arg spelling graduated 2026-09-07 (the
+#     twenty-sixth increment — the fnval unit models the raise; the row
+#     is in bytecode-migrated.tsv); the repeated reads stay a sound
+#     refusal (ledgered).
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [add 7 z])) end (h2 5)	12	the admission's witness: the returned lambda applies its captured g
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][add 1 (g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 4)	13	the applied capture's result feeds further computation
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)	15 30	repeated reads of the bound closure (refuses today; ledgered)
-def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	a 0-arg apply of a 1-arg capture raises in the lambda body
 #
 # §9b the §4.3 capture-reachability fallback (2026-08-21): a call of a
 #     def-bound factory closure whose unit carries construction-scope
@@ -123,17 +124,14 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #
 # §9d the GRADUAL inner parameter (2026-08-21): the same
 #     apply-the-capture factory as §9b/§9, but the inner lambda's
-#     parameter is Any rather than a concrete type. The window is
-#     otherwise identical and its lead is admitted — only the
-#     ARGUMENT gate refuses, because a gradual argument cannot be
-#     proven non-function and the interpreter RAISES on a
-#     function-valued one (its leading collection meets a barrier)
-#     where the trailing model applies. Refuses; ledgered. There is
-#     no runtime repair: the raise is a property of word dispatch,
-#     so an island over the resolved window leaves both values inert.
-#     This is the Church chain's actual blocker (§5.8 stage 1).
-def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the arrow-inner factory with a gradual inner parameter (refuses; ledgered)
-def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)	15	the verbose twin of the row above — the concrete-parameter spelling compiles (§9)
+#     parameter is Any rather than a concrete type. It REFUSED at the
+#     closure count check (the residual [g, x] against one declared
+#     return) until 2026-09-07, when the twenty-sixth increment let a
+#     lambda VALUE unit take the fn path's residual replay, whose
+#     applicable count is names-aware — a gradual `x` beside the
+#     captured `g` no longer competes for the apply. Both spellings
+#     GRADUATED to lang/spec/bytecode-migrated.tsv; the Church chain
+#     (§5.8) is measured again from there.
 #
 # §9e the curried CHAIN through def bindings (2026-08-21): a
 #     three-level factory whose intermediate results are each

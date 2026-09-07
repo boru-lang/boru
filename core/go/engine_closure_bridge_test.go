@@ -6,7 +6,8 @@ import "testing"
 // bridge (CompiledRuntime.ClosureAsFnDef, NUR124's payload axis): when
 // armed it answers a compiled closure with a Go-handled, ANONYMOUS
 // FnDefInfo over one Integer param that triples its argument — the shape
-// the VM piece builds — and otherwise declines.
+// the VM piece builds, under the closure's own identity — and otherwise
+// declines.
 type bridgeRuntime struct {
 	noCompiledRuntime
 	bridge bool
@@ -31,7 +32,8 @@ func (b *bridgeRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 		return []Value{NewInteger(n * 3)}, nil
 	})}
 	NormalizeSig(&sig)
-	return NewFunction(FnDefInfo{Signatures: []Signature{sig}, Anonymous: true}), true
+	cl, _ := v.Data.(ClosurePayload)
+	return NewFunctionIdentified(FnDefInfo{Signatures: []Signature{sig}, Anonymous: true}, cl.Ident), true
 }
 
 // TestClosureValueBridge pins the interpreter's side of the bridge: a
@@ -84,11 +86,24 @@ func TestClosureValueBridge(t *testing.T) {
 			t.Errorf("quoted: %v", out)
 		}
 	})
-	t.Run("a 0-arg anonymous closure nothing calls parks", func(t *testing.T) {
+	t.Run("a 0-arg anonymous closure nothing calls parks as the closure itself", func(t *testing.T) {
 		rt := &bridgeRuntime{bridge: true, params: 0}
 		out := run(rt, closure)
-		if len(out) != 2 || rt.calls != 0 || !isFnDefValue(out[1]) {
-			t.Errorf("parked as the bridged value: %v (calls %d)", out, rt.calls)
+		// The bridge stands in for the dispatch only: the tape keeps the
+		// payload, so no handler bound to a run's context escapes into
+		// the residual (Codex P2 on PR #444).
+		if len(out) != 2 || rt.calls != 0 || !IsCompiledClosureValue(out[1]) || isFnDefValue(out[1]) {
+			t.Errorf("parked as the closure, not the bridge: %v (calls %d)", out, rt.calls)
+		}
+	})
+	t.Run("a no-match parks as the closure itself too", func(t *testing.T) {
+		// A 2-arg closure over the one value beneath it: no signature
+		// matches, the anonymous value parks — and what parks is the
+		// payload, not the bridge.
+		rt := &bridgeRuntime{bridge: true, params: 2}
+		out := run(rt, closure)
+		if len(out) != 2 || rt.calls != 0 || !IsCompiledClosureValue(out[1]) {
+			t.Errorf("the closure parked over the 5, nothing applied: %v (calls %d)", out, rt.calls)
 		}
 	})
 }

@@ -71,8 +71,13 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
 		return v, false
 	}
+	// The bridged value lives for ONE dispatch: the interpreter keeps the
+	// closure itself on the tape (fnDefAtPointer) and uses the bridge only
+	// to decide and run that dispatch, so the run's invoker captured here
+	// never outlives the run — a parked closure escapes as the payload, not
+	// as a handler bound to this run's context (Codex P2 on PR #444).
 	invoke := r.Invoker
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
 		return invoke(r, v, args)
 	})
 	if !ok {

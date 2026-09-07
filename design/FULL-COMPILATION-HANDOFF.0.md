@@ -3839,6 +3839,142 @@ fold, the main program). The seam's arms are pinned in core
 `Any` result at the main program — all main-level or fold-path, none in a
 unit with a body. The next family in line is the handoff's frontier list.
 
+**Two review findings on the bridge, both real, both fixed the same day
+(Codex on PR #444).** The bridge minted a fresh `FnDefInfo` identity on
+every call, so two tape copies of ONE closure bridged into two functions:
+`[(mk 3)] each [dup eq]` answered `[false]` compiled for the interpreter's
+`[true]`. A closure now carries the identity its push minted
+(`ClosurePayload.Ident`, `core.NewFnIdentity`, one per construction as the
+interpreter mints one per `fn`), `eq` compares it (closure to closure, and
+closure to the bridged copy either way round), and the bridge's token
+carries it (`core.NewFunctionIdentified`); two constructions stay two
+functions (`[(mk 3) (mk 3)] fold [eq] 0` is false on both lanes). The
+identity is a process-wide SEQUENCE, not a heap token: the first cut
+allocated one per push and the compiled lane's alloc guard caught it the
+same hour (`do_body` 312 → 412 allocations for a hundred `do body`
+pushes, `each`/`fold`/`filter` one each) — a counter costs an atomic add,
+and the token a bridge needs is minted at the bridge, where an allocation
+is already the price of the dispatch. And the bridged
+value used to REPLACE the closure on the tape, so a copy that parked (a
+no-match, a 0-arg lambda) could escape into a binding as a Go-handled fn
+closing over the finished run's `Registry.Invoker` — a stale `vmContext`
+whose step counter every later application would keep consuming. The bridge
+now stands in for the one dispatch only: `fnDefAtPointer` hands
+`execFnDefLiteral` the bridged fn to decide and run that dispatch, and the
+tape keeps the payload, so a park leaves the closure itself (pinned at the
+seam: `engine_closure_bridge_test.go`'s park cases assert the payload, the
+identity in `fn_identity_test.go`, `closure_bridge_test.go` and
+`lang/go/closure_identity_test.go`).
+
+## The closure-capture family's three blockers were one gate, and the frame binding's name (2026-09-07, the twenty-sixth increment)
+
+With NUR124's two axes closed, the next family on the frontier list was the
+closure-capture one — the three MEASURED blockers the 2026-09-05 section
+names: (a) a bare-name apply of a captured Function with a forward arg
+(`[g x]`), (b) a `/v` read of a captured fn returned as data (`[g/v]`), and
+(c) an `Any`-typed inner param beside the capture (`[[x:Any][Any][(g x)]]`).
+The attempted twelfth increment had already found that (a) and (c) are ONE
+refusal — the closure COUNT check ("body value count differs from declared
+returns"), which fires at the unit's finish before the whole-frame replay a
+fn unit reaches. This increment takes the consequence.
+
+**What landed.** A lambda VALUE unit (`tryReturnedClosure`'s `fnval` body)
+takes the fn path's residual replay — `fnResidualReplayReason` — instead of
+the closure count refusal, gated by `fnUnitRec.plainLambda`: the unit is a
+lambda and no param carries a value PATTERN. Two facts make it a fn in
+every way that matters at its finish: its count contract is enforced at
+invoke (`checkClosureReturn` raises the interpreter's own `expected N return
+value(s)`), and a bare read of a captured fn is the word dispatch NUR123's
+replay seats (`OpCallDynFrame` re-steps the window under the binding's
+name). The replay's one-applicable rule on the count-MISMATCH path is now
+`replayLeadApplicables == 1`: beside a FN-TYPED lead, a GRADUAL WORD-READ
+entry — Dynamic, not fn-typed, read bare under a frame name — does not
+compete, because the replay re-steps it as the interpreter's own word
+dispatch, faithful whether it holds a fn or data; so a gradual `x` beside
+`g` no longer blocks the apply, and that is what closed (c). With no
+fn-typed value in the window the count is the original one-applicable rule,
+so a gradual body-local's read alone (`def j (m get "f")  j 3`, NUR123) is
+still the lead. The first two cuts of that rule were both wrong and the
+full lang suite caught each within the hour: the first discounted EVERY
+word-read entry, so `f (g x y)` (two fn-typed reads, a paren that collapses
+to no event) armed the replay, whose flat value re-step raised ``cannot
+call `f` `` for the interpreter's 14, and `g x def q 9 g q` re-armed across
+its bind; the second discounted a gradual read even when it was the ONLY
+applicable, and the NUR123 body-local rows refused. A second fn-typed
+value, word read or not, and a gradual EVENT result beside the lead
+(`(g (x get "k"))`, whose runtime fn the value re-step would apply) decline
+as before. For (b), a plain lambda whose whole residual is one `/v` read of
+a captured fn is exempt from the unapplied-fn refusal: the read delivers
+the value quoted, the return strips the quote, and the caller decides —
+`((h 5) 2)` is 6, `(h 5) 2` the parked pair.
+
+**The rename (b) needed.** `[g/v]` returned the captured fn as data and the
+lanes then RENDERED it differently: `fn g(Integer)` interpreted, `fn
+(Integer)` compiled. The interpreter's frame binding renames a fn value it
+binds (`installDef`: `fnDef.Name = name` for a Function-family body); the
+VM bound the caller's value verbatim. A plain fn body carried the same
+divergence on the default lane before this increment — `def f fn
+[[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3` rendered `fn
+(Integer) 3` for `fn g(Integer) 3`, a COMPILING row (NUR122's class). The
+VM now names a fn bound for a NAMED param at every frame entry
+(`nameFrameFns`: `bindUnitLocals`, CALL_USER, the tail call, OpCallUserPoly,
+the dyn-apply entry) — only an `FnDefInfo` of THIS registry, the payload the
+interpreter's rule names. A module wrapper (a foreign Registry) takes
+installDef's REBINDING path, which installs the inner native's OVERLOADS
+under the param's name; the VM does not mirror that, so the wrapper keeps
+its own name and signatures on the compiled lane — `(f MathUtil.sqrt/v)
+16.0` renders `fn sqrt(Number) 16.0` for the interpreter's `fn
+g(BigDecimal) or (BigInteger) or (Float) or (Integer) 16.0`, pinned open as
+measured (`TestClosureCaptureOpenShapes`); the wrapper still DISPATCHES
+(`(g 16.0)` is 4.0 on both lanes). A compiled closure keeps its render. One
+re-pin followed: `dyn_apply_head_name_test.go`'s nameless arm (`(g/v 5)`
+over a String lambda) now reads ``cannot call `g` `` — the nameless builder
+prints the applied fn's OWN name, which is the frame's now — where it read
+``cannot call `` `` before.
+
+**The gate the first cut needed.** Reordering the finish so a lambda unit
+reaches the replay made the PATTERN-param lambda `def mk fn
+[[x:Integer][Function][(fn [[0][Integer][x]])]]  ((mk 5) 1)` miscompile: the
+replay applied the closure where the interpreter, whose frame binding
+matches the pattern at the apply, parks the pair. The closure apply ops do
+not enforce a value pattern, so `plainLambda` declines one and the count
+refusal that was guarding it stays (`TestClosureCaptureSoundRefusals`); the
+patterns are seated on the record at the unit's OPEN (`compileClosureBody`
+takes `paramPatterns`), not only from the contract seated after the compile,
+because the finish reads them.
+
+**Measured.** Twelve closure-capture rows agree and compile
+(`TestClosureCaptureParity`): the bare-name apply and its no-match twin, a
+0-arg capture firing as the word, the gradual-param spelling with its two
+no-match twins (a String for `x`, a String lambda for `g`), the `/v` read
+rendering `fn g(Integer)` on both lanes, the plain-fn rename, a named fn
+taking the param's name, and a module wrapper dispatching through `(g
+16.0)`. Five neighbours are pinned as SOUND refusals: the returned `/v` fn
+applied downstream (`((h 5) 2)`, `(h 5) 2`, `def q (h 5)  q 2`), a gradual
+arg that turns out to be a fn (the interpreter's strict-barrier error), a
+gradual event argument, and the pattern lambda. One off-frontier negative
+graduated with the family: a CAPTURING sink fn handed to `Log.register`
+(`bytecode_fnvalue_m2_test.go`) compiles as a closure unit now and rides as
+a closure operand the non-strict store word invokes through the compiled
+runtime — the sink fires with its captured `p` on both lanes, in this run and
+a later one. The frontier ledger went 82 → 78: the §1.6 compose row,
+the §9 `mk0` 0-arg row (the fnval unit models the raise), and both §9d
+gradual-param spellings graduated to `bytecode-migrated.tsv`. NUR122's open
+list re-measured with the rename in place: `f ([] => [42]) 5` is still the
+POSITION-only row (interp 1:50, compiled 1:43); the fold twin NUR124
+recorded (`{a: h/v} get "a" drop 7`) now raises `call to 'h'` on both lanes
+with only its position differing (interp 1:75 at the read, compiled 1:100 at
+the call); and a DEF-bound rename (`def k g/v  k 2` → ``cannot call `k` ``)
+agrees because the compiled lane falls back there.
+
+**What the next author should not re-derive.** The count check and the
+replay are not two gates on one unit but two paths, and a lambda VALUE unit
+belongs on the fn path unless its params carry something the closure ops do
+not enforce; a pattern is the one such thing today. And a rename at frame
+entry is cheap but partial by design: the interpreter's rebinding path for a
+module wrapper installs OVERLOADS, and mirroring that is a registry-visible
+install, not a payload edit.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -3979,4 +4115,8 @@ position than the construct that produced the binding.
 | `compiler/go/restep_deopt_test.go` | the recorder's note on the producing event, the planner's placement and declines (a resume outside the body, a deferred residual literal), the lowering's op and prefix, the strict refusal, and the prefix on NUR123's statement points |
 | `eng/go/vm_deopt_test.go` (`TestReStepIfFnArms`) | the VM's re-step arm: plain results a no-op, a fn re-stepped as a token over the region and the prefix, the island's own error, the defensive arms |
 | `lang/go/restep_deopt_test.go` | the timing family's parity and lowering (the op follows the swap), the siblings the note leaves alone, the closure family's parity (`TestClosureValueReStepParity`), and the open shapes pinned as measured |
-| `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda stay data; the seam's declines and the Anonymous flag |
+| `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda / a no-match stay data — as the PAYLOAD, never the bridge; the seam's declines, the Anonymous flag, and the closure's identity riding on the bridge |
+| `core/go/fn_identity_test.go` / `lang/go/closure_identity_test.go` | the closure identity token: copies of one closure are one function (`dup eq` true on both lanes), constructions are distinct, a token-less payload is nothing, a bridged copy is eq to the closure either way round |
+| `compiler/go/plain_lambda_test.go` | `plainLambda`'s arms (a code body, a typed lambda, no contract, a pattern param) and that a code-body closure keeps its own count discipline |
+| `eng/go/frame_name_test.go` | `nameFrameFns`: a lambda bound for a named param takes the name; an unnamed slot, a value already so named, a module wrapper and a compiled closure are left alone; `bindUnitLocals` names through it |
+| `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the sound refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |

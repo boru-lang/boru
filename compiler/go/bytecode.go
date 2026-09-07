@@ -677,7 +677,7 @@ const (
 // it reads as whichever program is running, which is only ever right for a
 // value that is inspected rather than invoked.
 func NewClosure(prog *Program, unit int, captures []core.Value) core.Value {
-	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures}}
+	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()}}
 }
 
 // ClosureWantsKeyVal reports whether v is a compiled closure whose body expects

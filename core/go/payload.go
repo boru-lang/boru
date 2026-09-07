@@ -512,6 +512,14 @@ type ClosurePayload struct {
 	Unit     int
 	Captures []Value
 	InShape  ClosureInShape
+	// Ident is the closure's identity, minted once at OpPushClosure (one per
+	// construction, as the interpreter mints one per `fn`; a sequence, not
+	// an allocation) and copied with the value: `eq` compares it, and the
+	// FnDefInfo the VM bridges the closure to for the interpreter's
+	// dispatch carries it (NewFunctionIdentified), so two copies of one
+	// closure — bridged or not — are one function. Zero for a hand-built
+	// value: no identity.
+	Ident FnIdentity
 	// Render is the interpreter's formatFnDef string for the source fn this
 	// closure compiled from (CompiledFn.Render, copied at OpPushClosure): a
 	// closure VALUE then renders byte-identically to the interpreter's fn

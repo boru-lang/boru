@@ -523,8 +523,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	//     dispatch recovery for the same reason — the trap declines a
 	//     window naming a table-bound word, engine.go's
 	//     TryRecordUnmatchedDispatchTrap).
-	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`:                                                                           {why: "the `/v` read of def-bound computed `h` keeps its undefined_word diagnostic (the deliberate Stage 1 /v hold; audit §5.4's workaround row — its ((mk 1) 2) sibling compiles natively as the unledgered control)", failsWith: "check diagnostics"},
-	`def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)`: {why: "with the `h` read resolved (Stage 1), compose's own unit refuses: the returned closure captures f and g — audit §1.6's compose row", failsWith: "body result of unknown provenance"},
+	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`: {why: "the `/v` read of def-bound computed `h` keeps its undefined_word diagnostic (the deliberate Stage 1 /v hold; audit §5.4's workaround row — its ((mk 1) 2) sibling compiles natively as the unledgered control)", failsWith: "check diagnostics"},
 	hofPitem + `def manyloop fn [[a:Function s:String acc:List][Map][ def r (a s) if (r.ok) [ (manyloop a/v (r.rest) (push (r.val) acc)) ] [ {ok:true val:acc rest:s} ] ]] end def pmany fn a:Function Function [ ( fn s:String Map [ def z [] (manyloop a/v s z) ] ) ] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def digits (pmany digit/v) end (digits '123ab')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): still refused, still the same interpreted answer, but the refusal MOVED EARLIER. psat's inner `if` arm nets a Function-typed carrier LEADING further values, and resolveArm now declines that shape (residualLeadReStepped) instead of merging it as placed data — the arm body closes through a frame rewind, so the interpreter re-steps the lead into a call and the merge would have compiled the placed pair. The pmany trap decline below is still there; it is simply no longer the FIRST refusal. Original diagnosis, still accurate for that later gate: `digit/v` at pmany's Function slot is check-invisible (digit is table-bound), so the dispatch no-match declines the trap and refuses", failsWith: "fn psat: body result of unknown provenance"},
 	hofPalt + `(ab 'bzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
 	hofPalt + `(ab 'zzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
@@ -533,21 +532,13 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// The §9 Stage-2 refusal rows: the lead-apply admission's witnesses
 	// compile (unledgered), while these two spellings stay sound refusals.
 	`def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)`: {why: "repeated reads of the bound closure put a fn value before residual args (the make-adder's repeated-read shape; graduation = the multi-read closure lowering)", failsWith: "fn value precedes residual args"},
-	`def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)`:             {why: "a 0-arg apply of a 1-arg capture nets [g] and the interpreter raises inside the lambda; the fnval unit refuses instead of modeling the raise (sound: the fallback raises the identical error)", failsWith: "body result of unknown provenance"},
-	// §9d — the GRADUAL inner parameter. Identical to the §9/§9b
-	// factories except the inner lambda's parameter is Any: the lead is
-	// admitted, the ARGUMENT gate refuses. A gradual argument cannot be
-	// proven non-function, and the interpreter never APPLIES a
-	// function-valued one — its leading collection meets a barrier and
-	// raises — where the trailing model the window records would apply.
-	// Not repairable at run time: the raise is a property of word
-	// dispatch (an island over the resolved window leaves both values
-	// inert), and the two possible texts are selected by collection state
-	// the window does not carry. This is the Church chain's actual
-	// blocker (audit §5.8 stage 1); pinned in core by
-	// TestS5BParenLeadFnApplyIdxGradualArgDeclines.
-	`def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)`:                          {why: "audit §5.8/§9d: a gradual inner parameter cannot prove its argument non-function, so the lead window's argument gate refuses", failsWith: "body result of unknown provenance"},
-	`def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)`: {why: "audit §5.8/§9d: the verbose twin — the concrete-parameter spelling of this factory compiles (§9)", failsWith: "body result of unknown provenance"},
+	// §9d — the GRADUAL inner parameter (`x:Any` beside the captured
+	// `g`) GRADUATED 2026-09-07 (the twenty-sixth increment): a lambda
+	// VALUE unit takes the fn path's residual replay, whose applicable
+	// count is names-aware, so the gradual `x` no longer competes with `g`
+	// for the apply. Both spellings (the arrow-inner factory and its verbose
+	// twin) moved to lang/spec/bytecode-migrated.tsv with the §1.6 compose
+	// row and the §9 mk0 0-arg row (the fnval unit now models the raise).
 	// §9e — the curried CHAIN through def bindings. `def f2 (f1 2)` binds
 	// f2 to the very carrier f1 denotes (the analysis returns the callee
 	// unchanged), which compiled put both names on one slot and leaked the

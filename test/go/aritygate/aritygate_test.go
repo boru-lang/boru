@@ -86,7 +86,12 @@ var pinnedAritySites = map[string]int{
 	"check/go/carrier.go":        13,
 	"check/go/method_shape.go":   1,
 	"check/go/check_recovery.go": 1,
-	"eng/go/vm.go":               10,
+	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
+	// NAMED PARAM slots of a frame — which slots are params, so a fn value
+	// bound for one takes the binding's name as the interpreter's frame
+	// binding gives it (installDef). It reads WHERE the params sit, never
+	// what a function of a given arity may do; every arity takes the path.
+	"eng/go/vm.go": 11,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the

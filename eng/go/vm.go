@@ -356,7 +356,33 @@ func bindUnitLocals(fn *compiler.CompiledFn, args, captures []core.Value) []core
 			locals[slot] = cv
 		}
 	}
+	nameFrameFns(fn, locals)
 	return locals
+}
+
+// nameFrameFns names the fn VALUES a frame binds, as the interpreter's frame
+// binding does (installDef: `fnDef.Name = name` for a Function-family body):
+// a fn passed for a named param `g`, or captured as `g`, renders and
+// no-matches as `fn g(…)` / `cannot call `g“ on that lane. The VM bound the
+// caller's value verbatim, so `(f (z:Integer => [z])) 3` rendered `fn
+// (Integer) 3` for the interpreter's `fn g(Integer) 3` (NUR122's class, the
+// twenty-sixth increment). Only an FnDefInfo of THIS registry is renamed —
+// the payload the interpreter's rule names; a module wrapper (a foreign
+// Registry) takes installDef's rebinding path, which this does not mirror,
+// and a compiled closure keeps its render.
+func nameFrameFns(fn *compiler.CompiledFn, locals []core.Value) {
+	for i := 0; i < fn.NParams && i < len(locals) && i < len(fn.LocalNames); i++ {
+		name := fn.LocalNames[i]
+		if name == "" {
+			continue
+		}
+		fd, ok := locals[i].Data.(core.FnDefInfo)
+		if !ok || fd.Name == name || fd.Registry != nil {
+			continue
+		}
+		fd.Name = name
+		locals[i].Data = fd
+	}
 }
 
 // runVMEntry is the shared guarded prologue for every fresh VM run: it takes the
@@ -2195,7 +2221,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				copy(caps, stack[len(stack)-nc:])
 				stack = stack[:len(stack)-nc]
 			}
-			cl := core.ClosurePayload{Prog: p, Unit: int(in.Arg), Captures: caps, InShape: p.Fns[in.Arg].InShape, Render: p.Fns[in.Arg].Render}
+			cl := core.ClosurePayload{Prog: p, Unit: int(in.Arg), Captures: caps, InShape: p.Fns[in.Arg].InShape, Render: p.Fns[in.Arg].Render, Ident: core.NewFnIdentity()}
 			// The CALLBACK fn value's own declared return, keyed by THIS push's
 			// pc: the unit is shared across fn values with identical bodies and
 			// inputs, so the contract belongs to the value (see
@@ -2403,6 +2429,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
+				nameFrameFns(fn, ent.locals)
 				vc.pushFrameArgs(ent.locals, fn.NArgs)
 				locals = ent.locals
 				enterUnit(ent.unit)
@@ -2463,6 +2490,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
+			nameFrameFns(fn, nl)
 			vc.pushFrameArgs(nl, fn.NArgs)
 			locals = nl
 			enterUnit(unit)
@@ -2510,6 +2538,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if in.Op == compiler.OpCallUser {
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 				vc.frameDepth++ // balanced by the matching RET below
+				nameFrameFns(fn, nl)
 				vc.pushFrameArgs(nl, fn.NArgs)
 			} else {
 				// Tail call: REPLACE the frame — the language's
@@ -2528,6 +2557,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					loopBase = frames[len(frames)-1].loopBase
 				}
 				loops = loops[:loopBase]
+				nameFrameFns(fn, nl)
 				vc.swapTailArgs(frames, nl, fn.NArgs)
 			}
 			locals = nl

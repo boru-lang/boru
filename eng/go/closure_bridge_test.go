@@ -64,6 +64,11 @@ func TestClosureAsFnDefArms(t *testing.T) {
 	if n, _ := core.AsInteger(out[0]); n != 15 {
 		t.Errorf("15: %v", out)
 	}
+	// The bridge carries the closure's identity: eq to the closure and to a
+	// second bridge of it (one function, however many copies).
+	if again, _ := rt.ClosureAsFnDef(r, closure); !core.ExactEqual(fnv, closure) || !core.ExactEqual(fnv, again) {
+		t.Error("a bridged copy is the closure, and so is the next bridge")
+	}
 	// A named (non-lambda) unit bridges without the flag: a 0-arg one fires
 	// where the interpreter's named fn value fires.
 	prog.Fns[0].Lambda = false

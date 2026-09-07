@@ -187,7 +187,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 		return v, false
 	}
 	body := v
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
 	})
 	if !ok {
@@ -207,7 +207,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 // (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
 // at the pointer (ADR-016's gate), so the value-path bridge parks in the
 // same places the interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
 	if len(fn.Params) != fn.NArgs {
 		return core.Value{}, false
 	}
@@ -230,5 +230,10 @@ func closureFnDef(fn *compiler.CompiledFn, invoke func(args []core.Value) ([]cor
 		return invoke(append([]core.Value(nil), a...))
 	})}
 	core.NormalizeSig(&sig)
-	return core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}), true
+	// The closure's own identity token rides on the bridge, so a bridged
+	// copy is `eq` to the closure and to every other bridge of it — one
+	// function, as the interpreter's copies of the source lambda are
+	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
+	// [dup eq]` answered false for the interpreter's true).
+	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, ident), true
 }

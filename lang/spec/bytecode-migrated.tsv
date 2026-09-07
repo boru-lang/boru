@@ -99,3 +99,15 @@ def f fn [[a:Integer] [List] [ def l [a None]  l ]] (f 1)	[1 None]
 def f fn [[a:Integer] [Map] [ def m {x: a  k: Integer}  m ]] (f 2)	{x:2 k:Integer}
 def f fn [[a:Integer] [Map] [ {x: a  r: None} ]] (f 3)	{x:3 r:None}
 do [1 div 0] error [drop] end 2 add 3	5	§8.2(6) graduation: a PROVEN-raise do with a zero-netting handler records a 0-output call (review §9.13)
+#
+# closure-capture family GRADUATED 2026-09-07 (the twenty-sixth increment,
+# design/FULL-COMPILATION-HANDOFF.0.md): a lambda VALUE unit takes the fn
+# path's residual replay (fnUnitRec.plainLambda) instead of the closure
+# count refusal, the replay's applicable count is names-aware, and the VM
+# names a fn bound for a named param as the interpreter's frame binding
+# does (nameFrameFns). These were frontier-hof-audit.tsv rows 74, 96, 135
+# and 136, each a ledgered "body result of unknown provenance" refusal.
+def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)	11	the §1.6 compose row: a returned lambda applying two captured fns
+def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	the §9 0-arg apply of a 1-arg capture: the fnval unit models the raise
+def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the §9d arrow-inner factory with a gradual inner parameter
+def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)	15	the §9d verbose twin
