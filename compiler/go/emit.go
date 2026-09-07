@@ -804,6 +804,22 @@ type EmitState struct {
 	// bake ignores it.
 	storedFnProbeReason string
 	producedBy          map[string]producer // value ID → producing (event seq, result idx)
+	// appliedByWord holds the value IDs a trailing `apply` WORD dispatched,
+	// recorded PROGRAM-wide rather than per unit.
+	//
+	// The park rule (design/PAREN-RESTEP-RULE.0.md) says a user fn's returned
+	// closure is PARKED where it lands, so `5 (mk 3)` leaves `[5 fn]`. But
+	// `10 (mk2 5) apply` parks the same way and then APPLIES, because the
+	// trailing word dispatches the parked value on purpose — and both lower to
+	// the same OpCallDynamicTrailing shape, so trailingApply cannot tell them
+	// apart from the residual alone (NUR124).
+	//
+	// The unit-scoped pendingApply cannot supply this: it returns false
+	// outright when no fn unit is open, which is exactly the program
+	// residual's case. `apply` records as an IDENTITY call (args[0].ID ==
+	// outs[0].ID, the check engine re-stepping the fn concrete), and that ID
+	// is the one trailingApply meets, so the mark rides here instead.
+	appliedByWord map[string]bool
 	// trailingApplies maps a Function VALUE's ID → the arg count of a paren-bounded
 	// TRAILING fn-value apply (`(prev key comp)`), registered at the paren-collapse
 	// boundary (registerTrailingApply) where the paren-group size is known. The body
@@ -5954,6 +5970,7 @@ func (es *EmitState) RecordPoly(word string) {
 // the dispatch is a module inner native whose quoted operands are inert Atom
 // consts (the query DSL's table names).
 func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos, forceDynOut, quoteInertOK bool) {
+	es.noteAppliedByWord(word, args, outs)
 	if !es.Active() {
 		return
 	}
@@ -8941,6 +8958,15 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		core.IsFnValueResidual(arg) || core.IsFnTypedCarrier(arg) {
 		return residual, false
 	}
+	// The park rule, which every SIBLING arm of resolveDynamicApply already
+	// consults: a user fn's single returned closure is PARKED where it lands,
+	// so `5 (mk 3)` leaves `[5 fn (Integer)]` and this arm must not apply it.
+	// Unless a trailing `apply` WORD dispatched it on purpose — `10 (mk2 5)
+	// apply` parks identically and then applies — which is what appliedByWord
+	// separates and the residual shape cannot (NUR124).
+	if !es.appliedByWord[fnv.ID] && es.callResultPlaced(fnv) {
+		return residual, false
+	}
 	return []core.Value{fnv, arg}, true
 }
 
@@ -11297,6 +11323,24 @@ func (es *EmitState) placedNotReStepped(v core.Value) bool {
 // The arrival apply of a USER member (`m.p 5` over `{p: mk/v}`, recorded
 // as a dyn-method event) is a user call by another route, so its single
 // result parks too (`m.p 5 7` is `fn (Integer) 7`).
+// noteAppliedByWord marks the value a trailing `apply` WORD dispatched, so
+// trailingApply can tell a parked result a later word applies on purpose from
+// one nothing applies (EmitState.appliedByWord, NUR124). `apply` records as an
+// IDENTITY — the check engine returns the fn concrete and re-steps it — which
+// is both how the mark is recognised and why the ID survives to the residual.
+func (es *EmitState) noteAppliedByWord(word string, args, outs []core.Value) {
+	if es == nil || word != "apply" || len(args) == 0 || len(outs) != 1 {
+		return
+	}
+	if args[0].ID == "" || args[0].ID != outs[0].ID {
+		return
+	}
+	if es.appliedByWord == nil {
+		es.appliedByWord = map[string]bool{}
+	}
+	es.appliedByWord[outs[0].ID] = true
+}
+
 func (es *EmitState) callResultPlaced(v core.Value) bool {
 	return es.callResultPlacedIn(v, nil)
 }
