@@ -487,8 +487,19 @@ argument, and all eight witnesses below reach parity — the three
 over a computed one) and the five `OpCallDynFrame` rows (`(g 5 y)`, `(g y 6)`,
 `(g 5 6 y)`, `(g 5 y 6)`, `(g y 5 6)`).
 
-The signal is `fnUnitRec.localReads`, which `NoteLocalRead` already populated
-ungated for every bare read: `writtenRun` counts the leading arguments with no
+The signal is a READ of a binding on the unit, bare (`fnUnitRec.localReads`,
+which `NoteLocalRead` already populated ungated) or through a value reference
+(`valReads`). Both are SUBSTITUTIONS — the pointer replaces the token with the
+binding's value before the head dispatches — so neither reaches the written
+tuple: `def f fn [[g:Function y:Integer][Integer][(g y/v)]]` reports `takes 1
+argument, but none were supplied` exactly as the bare spelling does. The first
+cut consulted only the bare half and counted the `/v` one as written, a
+divergence that predates this work (identical on `f0d208c`) and that the fix
+would otherwise have carried forward unclosed; found by a review bot on #441,
+whose finding named the right incompleteness with the direction reversed.
+`(g y/v y)` and `(g y y/v)` are parity either way — the bare read of the same
+id stops the run regardless — so only the lone `(g y/v)` separates the two
+readings. The count itself: `writtenRun` counts the leading arguments with no
 recorded read, the recorder seats that count on the trailing apply's site
 (`DynApplyHead.NWritten`) and marks each replay region entry
 (`DynFrameWord.Read`), and the two VM diagnostics slice their arg window to it.

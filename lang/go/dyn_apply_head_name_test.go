@@ -257,3 +257,40 @@ func TestWrittenTupleConstFoldedLocal(t *testing.T) {
 	}
 	requireParity(t, literal, gotC, errC2, gotI, errI2)
 }
+
+// TestWrittenTupleValRefIsSubstituted pins the `/v` half of the substitution
+// rule (measured 2026-09-07, from a Codex review finding on #441 — the
+// finding was right that the ID-keyed predicate was incomplete, and had the
+// direction backwards).
+//
+// A value reference is a SUBSTITUTION exactly as a bare read is: the pointer
+// replaces the token with the binding's value before the head dispatches, so
+// the forward window consumed no token and the interpreter's tuple is empty.
+// Consulting only the bare half (localReads) counted it as WRITTEN, which is
+// a divergence that predates the leading-run work — the compiled lane named
+// the argument on `f0d208c` too — and which that work would have carried
+// forward unclosed.
+//
+// `(g y/v y)` and `(g y y/v)` were already parity by accident: the bare read
+// of the SAME id stopped the run at zero whatever the /v occurrence did. Only
+// the lone `(g y/v)` separates the two readings.
+func TestWrittenTupleValRefIsSubstituted(t *testing.T) {
+	rows := []struct{ src, note string }{
+		{`def f fn [[g:Function y:Integer][Integer][(g y/v)]]  f ([a:String] => [a]) 7`, "the lone /v — the decisive row"},
+		{`def f fn [[g:Function y:Integer][Integer][(g y/v y)]]  f ([a:String b:String] => [a]) 7`, "/v then bare"},
+		{`def f fn [[g:Function y:Integer][Integer][(g y y/v)]]  f ([a:String b:String] => [a]) 7`, "bare then /v"},
+	}
+	for _, c := range rows {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if !compiled || errC == nil {
+			t.Fatalf("%s: compiled=%v errC=%v, want a compiled program that raises", c.note, compiled, errC)
+		}
+		requireParity(t, c.src, gotC, errC, gotI, errI)
+		if !strings.Contains(errC.Error(), "none were supplied") {
+			t.Errorf("%s: a /v delivery is substituted, so the tuple is empty:\n%s", c.note, errC)
+		}
+		if strings.Contains(errC.Error(), "the argument was 7") {
+			t.Errorf("%s: the /v value leaked into the written tuple:\n%s", c.note, errC)
+		}
+	}
+}

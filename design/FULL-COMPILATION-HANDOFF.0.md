@@ -3513,9 +3513,33 @@ That is the third time in this line a datum added "for diagnostics only" turned
 out to be read as a SIGNAL somewhere else. The pattern worth carrying: before
 widening when a structure is allocated, find who tests it for emptiness.
 
+**A `/v` read is a substitution too** (found by a review bot on #441). The
+first cut consulted only `localReads`, so a value reference counted as
+WRITTEN: `(g y/v)` named the argument where the interpreter reports `takes 1
+argument, but none were supplied`. Pre-existing — identical on `f0d208c` — but
+this increment would have carried it forward unclosed, which is the point: a
+fix that closes eight witnesses can still be incomplete in a direction none of
+them probes. `readSubstituted` now consults `valReads` as well.
+
+Two things worth keeping from how it surfaced. The finding named the right
+incompleteness with the DIRECTION REVERSED — it argued the interpreter counts
+`/v` as written and that ID-aliasing makes the compiled lane under-count,
+where measurement shows the opposite: `/v` is not written, and the lane
+over-counted. Verifying rather than implementing from the description is what
+produced the correct fix. And the two mixed shapes `(g y/v y)` and
+`(g y y/v)` are parity under EITHER reading, because the bare read of the same
+id stops the run whatever the `/v` occurrence does; only the lone `(g y/v)`
+separates them. A family built from the mixed spellings alone would have
+confirmed a wrong rule.
+
+The ID-keyed lookup the finding worried about is sound here, and the record
+says why: a WRITTEN occurrence is a literal or a paren-computed event, each
+minted with its own fresh ID, so it never shares an ID with a binding read.
+
 **Pins**: the three decline tests flip to parity —
 `TestDynApplyHeadNameWrittenTuple`, `TestWrittenTuplePrefixRule`,
-`TestWrittenTupleConstFoldedLocal`. Each asserts the TUPLE as well as parity,
+`TestWrittenTupleConstFoldedLocal`, plus `TestWrittenTupleValRefIsSubstituted`
+for the `/v` half. Each asserts the TUPLE as well as parity,
 because parity alone passes if both lanes drift together, and the prefix is the
 whole point; the prefix-vs-filter row additionally asserts that the trailing
 literal past the word does NOT appear.

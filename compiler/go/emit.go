@@ -10766,17 +10766,34 @@ func (es *EmitState) dynApplyHeadName(rec *fnUnitRec, v core.Value, args []core.
 	return DynApplyHead{}
 }
 
-// bareRead reports whether v arrived by a BARE READ of a binding on this unit.
+// readSubstituted reports whether v arrived by a READ of a binding on this
+// unit — bare (`y`) or through a value reference (`y/v`).
 //
-// NoteLocalRead records EVERY such read, whatever the value's type, which is
-// what makes this the SYNTACTIC test the written tuple needs: a body-local
-// bound to a literal folds its read to a const operand indistinguishable from
-// a written literal's, and only the read itself tells them apart (NUR122,
-// measured 2026-09-07). Deliberately NOT wordReadName, whose gate is
-// noteWordRead's fn-admitting one — that signal answers NUR123's "does this
-// read DISPATCH", a different question.
-func bareRead(rec *fnUnitRec, v core.Value) bool {
-	return rec != nil && v.ID != "" && len(rec.localReads[v.ID]) > 0
+// Both are SUBSTITUTIONS: the pointer replaces the token with the binding's
+// value before the head dispatches, so the forward window consumed no token
+// for either and neither reaches the interpreter's written tuple. Measured
+// 2026-09-07 — `def f fn [[g:Function y:Integer][Integer][(g y/v)]]` reports
+// `takes 1 argument, but none were supplied`, exactly as the bare spelling
+// does. Consulting only the bare half over-counted the `/v` one as written.
+//
+// NoteLocalRead and NoteValRead record EVERY such read, whatever the value's
+// type, which is what makes this the SYNTACTIC test the written tuple needs: a
+// body-local bound to a literal folds its read to a const operand
+// indistinguishable from a written literal's, and only the read itself tells
+// them apart. Deliberately NOT wordReadName, whose gate is noteWordRead's
+// fn-admitting one — that signal answers NUR123's "does this read DISPATCH",
+// a different question.
+//
+// Both tables are keyed by value ID for the whole unit, so an ID read anywhere
+// in the unit reads as substituted everywhere in it. That is sound HERE
+// because the two classes never share an ID: a WRITTEN occurrence is a literal
+// or a paren-computed event, each minted with its own fresh ID, while every
+// occurrence that shares a binding's ID is by construction a read of it.
+func readSubstituted(rec *fnUnitRec, v core.Value) bool {
+	if rec == nil || v.ID == "" {
+		return false
+	}
+	return len(rec.localReads[v.ID]) > 0 || rec.valReads[v.ID] > 0
 }
 
 // writtenRun is how many of a dispatch's arguments the interpreter's forward
@@ -10786,7 +10803,7 @@ func bareRead(rec *fnUnitRec, v core.Value) bool {
 // non-read arguments — `(g 5 y 6)` reports `[5]`, not `[5 6]`.
 func writtenRun(rec *fnUnitRec, args []core.Value) int {
 	for i, v := range args {
-		if bareRead(rec, v) {
+		if readSubstituted(rec, v) {
 			return i
 		}
 	}
@@ -10819,7 +10836,7 @@ func (es *EmitState) dynFrameWordsFor(u *emitUnit, rec *fnUnitRec, window []core
 	}
 	// The table exists: mark every entry's read-ness for the no-match tuple.
 	for i, v := range window {
-		names[i].Read = bareRead(rec, v)
+		names[i].Read = readSubstituted(rec, v)
 	}
 	return names
 }
