@@ -577,10 +577,45 @@ site, so the refusal-site census does not rise), and the default lane answers
 are unchanged. Corpus differential and refusal ceiling both pass. Pinned by
 TestApplyWordClaimsParkedResult in lang/go/returned_closure_park_test.go.
 
-What is left of NUR124 is the SHUFFLE family, a different arm: `[(mk 3)] each
-[5 swap]` is `[15]` interpreted and `[fn (Integer)]` compiled — the compiled
-lane parks where the interpreter applies, the opposite direction from the row
-just fixed.
+What is left of NUR124 is the SHUFFLE family, and it is TWO defects rather than
+the one this record described (measured 2026-09-07, the twenty-third
+increment; every row pre-existing).
+
+**Axis 1 — TIMING, and it is not about the closure at all.** The record framed
+this family as a produced CLOSURE the compiled lane parks. But a plain
+`FnDefInfo` diverges too, as soon as anything follows the shuffle:
+
+```
+def g fn [[x:Integer][Integer][x mul 3]]  [g/v] each [5 swap drop]
+    interpreted  each_error: each: element 0: body produced no result
+    compiled     [5]
+```
+
+Trace it — `[g] 5 → [g,5] swap → [5,g]`. The interpreter applies g THERE,
+giving [15], and `drop` then empties the stack, which is the each_error. The
+compiled body leaves g in place, `drop` removes it, and the body ends [5]. So
+the interpreter re-steps a shuffled fn AT THE SHUFFLE and the compiled body at
+BODY END, if at all.
+
+`[g/v] each [5 swap]` and `[5 over]` PASS on both lanes — and they are trap
+rows, agreeing only because nothing follows the shuffle, so the two timings
+coincide. A family assembled from them would report this fixed.
+
+**Axis 2 — a compiled closure is not re-stepped even at body end.**
+`[(mk 3)] each [5 swap]` answers `[fn (Integer)]` where the FnDefInfo twin
+answers [15]: same body, and only the element's payload differs
+(`core.ClosurePayload` against `FnDefInfo`).
+
+**Where both come from.** `eachHandler` is the SAME handler on both lanes —
+the island runs the same `each` word token through the sub-engine and reaches
+the same `InvokeBody`. What differs is what it is handed: the compiled body
+arrives as a LIST VALUE whose elements happen to include Word values
+(`[5, word(swap)]`, probed), where the interpreter's body is a CODE block off
+the tape. Running the former is not stepping the latter, and that is what
+loses both the shuffle-time re-step and the ClosurePayload dispatch.
+
+`[(mk 3)] each [dup drop 5]` is the control: a body that never puts the fn on
+top agrees on both lanes.
 
 **The site was located, and one fix was tried and WITHDRAWN before it**
 (2026-09-06). The

@@ -209,3 +209,67 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 		requireParity(t, s, gc, ec, gi, ei)
 	}
 }
+
+// TestShuffleRestepTimingDeclines records NUR124's remaining half, measured
+// 2026-09-07 and pre-existing. It is TWO defects, not the one the record
+// described, and two of the obvious rows agree for the wrong reason.
+//
+// AXIS 1 — timing, and not about closures at all. A plain FnDefInfo diverges
+// as soon as anything follows the shuffle:
+//
+//	[g/v] each [5 swap drop]
+//	  interpreted  each_error: body produced no result
+//	  compiled     [5]
+//
+// `[g] 5 -> [g,5] swap -> [5,g]`: the interpreter applies g THERE, giving
+// [15], and drop empties the stack. The compiled body leaves g, drop removes
+// it, body ends [5]. So the interpreter re-steps AT THE SHUFFLE and the
+// compiled body at BODY END, if at all.
+//
+// AXIS 2 — a compiled closure is not re-stepped even at body end:
+// `[(mk 3)] each [5 swap]` answers [fn (Integer)] where the FnDefInfo twin
+// answers [15], same body, only the payload differing.
+//
+// The TRAP rows are pinned here deliberately. `[5 swap]` and `[5 over]` over
+// an FnDefInfo PASS, only because nothing follows the shuffle so the two
+// timings coincide. A family built from them would report this fixed.
+func TestShuffleRestepTimingDeclines(t *testing.T) {
+	const g = `def g fn [[x:Integer][Integer][x mul 3]]  `
+	const mkc = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  `
+
+	// The trap rows: they agree, and must keep agreeing — but agreeing here
+	// is not evidence the timing is right.
+	for _, src := range []string{g + `[g/v] each [5 swap]`, g + `[g/v] each [5 over]`, mkc + `[(mk 3)] each [dup drop 5]`} {
+		gc, ok, ec, gi, ei := runBothEngines(t, src)
+		if !ok {
+			t.Logf("%q: not compiled", src)
+			continue
+		}
+		requireParity(t, src, gc, ec, gi, ei)
+	}
+
+	// Axis 1: an FnDefInfo, with a token AFTER the shuffle. This is the row
+	// that separates shuffle-time from body-end re-stepping.
+	_, ok, errC, gotI, errI := runBothEngines(t, g+`[g/v] each [5 swap drop]`)
+	if !ok {
+		t.Fatal("the timing row must still compile — a refusal would hide the defect")
+	}
+	if errI == nil || !strings.Contains(errI.Error(), "body produced no result") {
+		t.Errorf("the interpreter applies AT the shuffle, so drop empties the body: %v/%v", gotI, errI)
+	}
+	if errC != nil {
+		t.Errorf("the compiled body leaves the fn for drop to remove, so it answers a value: %v", errC)
+	}
+
+	// Axis 2: same body, payload the only difference.
+	gotC2, ok2, _, gotI2, _ := runBothEngines(t, mkc+`[(mk 3)] each [5 swap]`)
+	if !ok2 {
+		t.Fatal("the closure row must still compile")
+	}
+	if fmt.Sprint(gotI2) != "[[15]]" {
+		t.Errorf("the interpreter applies the shuffled closure: %v", gotI2)
+	}
+	if fmt.Sprint(gotC2) == fmt.Sprint(gotI2) {
+		t.Errorf("axis 2 closed without this record being updated — re-measure: %v", gotC2)
+	}
+}
