@@ -346,10 +346,10 @@ func TestSeam7CallDynamicArms(t *testing.T) {
 
 func TestSeam7CallDynTrailTopArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, _, err := vc.callDynTrailTop(vc.r, 1, nil, seam7Dbg, 0, compiler.DynFrameWord{})
+	_, _, err := vc.callDynTrailTop(vc.r, 1, nil, seam7Dbg, 0, compiler.DynApplyHead{})
 	wantInternal(t, err, "CALL_DYN_TRAIL_TOP underflow")
 	// non-callable: [args, fn] left untouched.
-	got, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0, compiler.DynFrameWord{})
+	got, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0, compiler.DynApplyHead{})
 	if err != nil {
 		t.Fatalf("trail-top non-callable: %v", err)
 	}
@@ -537,7 +537,7 @@ func TestSeam7DelegationApplySuccess(t *testing.T) {
 	vc := seam7VC(r)
 	// callDynTrailTop / callDynApplyTop: fn ON TOP of its arg → [arg, fn].
 	trailTop := func(reg *core.Registry, n int, stack []core.Value, dbg []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
-		return vc.callDynTrailTop(reg, n, stack, dbg, pc, compiler.DynFrameWord{})
+		return vc.callDynTrailTop(reg, n, stack, dbg, pc, compiler.DynApplyHead{})
 	}
 	for _, apply := range []func(*core.Registry, int, []core.Value, []core.SrcPos, int) ([]core.Value, *dynEnter, error){trailTop, vc.callDynApplyTop} {
 		got, _, err := apply(vc.r, 1, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
@@ -570,7 +570,7 @@ func TestSeam7DelegationApplyError(t *testing.T) {
 	r, _, fail := seam7DelegReg(t)
 	vc := seam7VC(r)
 	// Each apply path must surface the inner handler's error (delegation err arm).
-	_, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0, compiler.DynFrameWord{})
+	_, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0, compiler.DynApplyHead{})
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
@@ -658,7 +658,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 		t.Fatal("user fail fn should NOT be a trivial delegation")
 	}
 	vc := seam7VC(r)
-	_, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0, compiler.DynFrameWord{})
+	_, _, err := vc.callDynTrailTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0, compiler.DynApplyHead{})
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
