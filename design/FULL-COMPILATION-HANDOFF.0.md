@@ -3587,6 +3587,66 @@ pass — the gate that defeated the previous attempt.
 opposite way — `[(mk 3)] each [5 swap]` is `[15]` interpreted and
 `[fn (Integer)]` compiled, the lane parking where the interpreter applies.
 
+## NUR124's shuffle family is two defects, and two rows agree for the wrong reason (2026-09-07, the twenty-third increment)
+
+A measurement increment. Nothing is fixed; what changes is the recorded shape
+of the remaining half, which the next attempt would have built on. Every row
+is pre-existing.
+
+**What the record said.** A produced CLOSURE put on top by a stack-shuffle
+word is re-stepped by the interpreter and parked by the compiled lane —
+one defect, about closures.
+
+**Axis 1 is not about closures.** A plain `FnDefInfo` diverges too, the moment
+anything follows the shuffle:
+
+```
+def g fn [[x:Integer][Integer][x mul 3]]  [g/v] each [5 swap drop]
+    interpreted  each_error: body produced no result
+    compiled     [5]
+```
+
+`[g] 5 → [g,5] swap → [5,g]`: the interpreter applies g THERE, giving [15],
+and `drop` empties the stack. The compiled body leaves g, `drop` removes it,
+body ends [5]. The interpreter re-steps AT THE SHUFFLE; the compiled body at
+BODY END, if at all.
+
+**Two rows agree for the wrong reason.** `[g/v] each [5 swap]` and
+`[g/v] each [5 over]` pass on both lanes — only because nothing follows the
+shuffle, so body-end and shuffle-time coincide. They are trap rows. Write the
+`/v` out: the CLOSURE spellings of those same two bodies,
+`[(mk 3)] each [5 swap]` and `[(mk 3)] each [5 over]`, are Axis 2
+DIVERGENCES, so the body alone does not identify the row. A family built from
+them would report this fixed, and the divergence would survive under a green
+suite. This is the third time in four increments that the row which separates
+two readings turned out to be the one the obvious family omits: `(g 5 y 6)`
+for the written-tuple prefix, the lone `(g y/v)` for substitution, and now
+`[5 swap drop]` for re-step timing.
+
+**Axis 2 is.** `[(mk 3)] each [5 swap]` answers `[fn (Integer)]` where the
+FnDefInfo twin answers [15] — same body, only the payload differs
+(`ClosurePayload` against `FnDefInfo`). So even at body end a compiled closure
+is not re-stepped.
+
+**Where both come from, probed rather than reasoned.** `eachHandler` is the
+SAME handler on both lanes: the island runs the same `each` word token through
+the sub-engine and reaches the same `InvokeBody`. The handler is not the
+divergence. What differs is what it is handed — the compiled body arrives as a
+LIST VALUE whose elements happen to include Words (`[5, word(swap)]`), where
+the interpreter's body is a CODE block off the tape.
+
+An earlier note in this session put that distinction at the ISLAND and
+concluded the record was wrong about the mechanism. Probing `runFallback`
+showed the island preloads the recorded span TOKENS and steps them, so the
+island was the wrong level; the body is the right one. The inference had been
+carried over from NUR122's written-tuple work by analogy rather than measured
+here — the same failure mode this document already records twice.
+
+**For the implementing increment**: fix Axis 1 first and RE-MEASURE Axis 2 —
+a shuffle-time re-step may subsume the closure case or may not, and assuming
+either way is how the trap rows win. `[dup drop 5]` is the control that must
+not move.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
