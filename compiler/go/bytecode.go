@@ -1137,6 +1137,12 @@ type CompiledFn struct {
 	// Render is the interpreter's formatFnDef string for a returned-closure
 	// unit (empty otherwise) — see ClosurePayload.Render.
 	Render string
+	// Lambda marks the fn-VALUE flavour of a closure unit (an anonymous
+	// `=>` / `fn` literal's body): the interpreter's FnDefInfo for it is
+	// Anonymous, which parks a 0-arg lambda VALUE nothing calls (ADR-016's
+	// gate), and the value-path bridge (CompiledRuntime.ClosureAsFnDef)
+	// carries the flag so a compiled closure parks in the same places.
+	Lambda bool
 	// NArgs is the fn's REAL argument count — the sig-matched args, excluding
 	// the trailing capture slots a user fn's call site pushes (NParams
 	// includes them; NCaptures stays 0 for user fns). The DynEnv args bracket
@@ -1285,13 +1291,23 @@ type CompiledFn struct {
 // < 0; the island's prefix drops that entry, the interpreter's frame never
 // held it) — the Body token index the interpreter resumes from (Token) and
 // the unit's RET (RetPC) the VM continues at with the island's residual.
+// A RE-STEP point (Results > 0, NUR124) tests the Results values on top
+// instead — a native call's results — and hands them to the island as its
+// first tokens, followed by the Body from Token: what the interpreter
+// splices back onto the tape and steps after that call. Prefix lists the
+// unit's unnamed param slots the interpreter's frame still holds on its
+// stack bottom at the point (a named param is a binding the island reads
+// through the dyn-scope env; an unnamed one is stack data this unit has
+// not pushed yet), seated beneath the frame region as the island's prefix.
 type DeoptSpec struct {
-	Name  string
-	Pos   core.SrcPos
-	Slot  int
-	Depth int
-	Token int
-	RetPC int
+	Name    string
+	Pos     core.SrcPos
+	Slot    int
+	Depth   int
+	Prefix  []int
+	Results int
+	Token   int
+	RetPC   int
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1334,10 +1350,10 @@ func (p *Program) StoredRefStampedCount() int {
 // Disassemble renders the program for golden tests and debugging.
 func (p *Program) Disassemble() string {
 	var sb strings.Builder
-	p.disasmUnit(&sb, p.Code)
+	p.disasmUnit(&sb, p.Code, nil)
 	for fi := range p.Fns {
 		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
-		p.disasmUnit(&sb, p.Fns[fi].Code)
+		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",
 		len(p.Consts), len(p.Types), len(p.Sigs), len(p.Fallbacks), len(p.Fns), p.MaxStack, p.NumLocals)
@@ -1356,7 +1372,7 @@ func (p *Program) Disassemble() string {
 	return sb.String()
 }
 
-func (p *Program) disasmUnit(sb *strings.Builder, code []Instr) {
+func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec) {
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
@@ -1420,7 +1436,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr) {
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
 		case OpDeoptIfFn:
-			fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
+			if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
+				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
+			} else {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
+			}
 		case OpBindResident:
 			rb := p.ResidentBinds[in.Arg]
 			arm := "install"

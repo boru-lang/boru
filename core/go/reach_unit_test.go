@@ -36,6 +36,8 @@ func (s *stubLensRuntime) InvokeCompiled(_ *Registry, _ *Signature, args []Value
 	return s.res, s.err, s.ran
 }
 
+func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) { return v, false }
+
 func withStubLensRuntime(t *testing.T, rt CompiledRuntime) {
 	t.Helper()
 	prev := InstallCompiledRuntime(rt)

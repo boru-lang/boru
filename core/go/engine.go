@@ -3294,6 +3294,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// dispatch reads its own position from, so without this every opcode
 		// downstream records 0:0 (NUR113).
 		stampCallResultPositions(results, pos)
+		e.noteFnResultReSteps(match.Sig, callEnd, results)
 		e.noteCollectionHazards(match.Sig, sortedIndices)
 		return e.spliceMatchResults(match, sortedIndices, n, results)
 	}
@@ -3949,6 +3950,13 @@ func (e *Engine) stepLiteral() error {
 		if val.Parent.Equal(TFunction) &&
 			val.Data != nil && !val.Quoted {
 			if _, ok := val.Data.(FnDefInfo); ok {
+				return e.execFnDefLiteral(valIdx)
+			}
+			// A compiled closure VALUE (an island's sub-engine re-stepping
+			// a shuffled `each` element, NUR124's payload axis) is the fn
+			// the interpreter would have minted here: execFnDefLiteral
+			// bridges it to a dispatchable FnDefInfo, or leaves it data.
+			if _, ok := val.Data.(ClosurePayload); ok {
 				return e.execFnDefLiteral(valIdx)
 			}
 		}
@@ -5062,7 +5070,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// for the same reason — see takeAppliedMark. The gate below reads the
 	// returned local, never the field, which by then is already cleared.
 	val, applied := e.takeAppliedMark(valIdx, val)
-	fnDef, ok := val.Data.(FnDefInfo)
+	val, fnDef, ok := e.fnDefAtPointer(valIdx, val)
 	if !ok {
 		e.Pointer++
 		return nil
@@ -5825,6 +5833,30 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	return nil
 }
 
+// fnDefAtPointer reads the FnDefInfo the value at valIdx dispatches as. A
+// compiled closure (ClosurePayload) is the FnDefInfo the interpreter would
+// have minted for the same source, and the VM piece bridges it to one
+// (CompiledRuntime.ClosureAsFnDef): a signature over the unit's declared
+// param contract, the closure applied through the registry's body-closure
+// invoker. The bridged value takes the closure's place on the tape at the
+// closure's position, so what stays data (a parked 0-arg lambda) and what
+// dispatches is decided by execFnDefLiteral's rules exactly as for the
+// interpreter's own value. Outside a VM run, or for a unit the bridge cannot
+// describe, the closure stays data (ok=false).
+func (e *Engine) fnDefAtPointer(valIdx int, val Value) (Value, FnDefInfo, bool) {
+	if fnDef, ok := val.Data.(FnDefInfo); ok {
+		return val, fnDef, true
+	}
+	bridged, ok := compiledRuntime.ClosureAsFnDef(e.Registry, val)
+	if !ok {
+		return val, FnDefInfo{}, false
+	}
+	val = WithPos(bridged, val)
+	e.Tape.Set(valIdx, val)
+	fnDef, ok := val.Data.(FnDefInfo)
+	return val, fnDef, ok
+}
+
 // compileFnDef produces the compiled-dispatch view of a constructed
 // Function value (an afn closure or a captured FnDef) whose Signatures are
 // still in authored form (named params + body, unresolved BarrierPos, no
@@ -5870,7 +5902,14 @@ func compileFnDef(r *Registry, fnDef FnDefInfo) *FnDefInfo {
 		compiled := sig
 		compiled.Params = append([]FnParam(nil), sig.Params...)
 		compiled.BarrierPos = barrier
-		if fnDef.Anonymous {
+		// An anonymous fn's authored sig carries its boru body and gets the
+		// body-runner attached here. A sig that already dispatches through a
+		// Go handler — the VM's bridge for a compiled closure VALUE
+		// (CompiledRuntime.ClosureAsFnDef), Anonymous so a 0-arg lambda parks
+		// as the interpreter's own does — keeps its handler: there is no body
+		// to run, and overwriting it ran an EMPTY frame that returned the
+		// argument itself.
+		if _, isGo := sig.Impl.(*GoImpl); fnDef.Anonymous && !isGo {
 			meta := &FnFrameMeta{
 				Name:         fnDef.Name,
 				HasGen:       fnDef.Gen != nil,
@@ -6477,6 +6516,84 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 // literal — design/FN-VALUE-OPEN-WORK.0.md §5.2.
 func fnValueDispatchesAtPointer(v Value) bool {
 	return v.Parent.Equal(TFunction) && isFnDefValue(v) && !v.Quoted
+}
+
+// FnValueDispatchesAtPointer is the main loop's own dispatch predicate, for
+// the VM's re-step deopt (NUR124): would v, back on the tape, dispatch when
+// stepped — an unquoted fn value (fnValueDispatchesAtPointer), or an unquoted
+// compiled closure, which execFnDefLiteral bridges to one
+// (CompiledRuntime.ClosureAsFnDef) and then treats the same way.
+func FnValueDispatchesAtPointer(v Value) bool {
+	if fnValueDispatchesAtPointer(v) {
+		return true
+	}
+	_, closure := v.Data.(ClosurePayload)
+	return closure && v.Parent.Equal(TFunction) && !v.Quoted
+}
+
+// noteFnResultReSteps is the check pass's RE-STEP note (NUR124). A native
+// word's results go back onto the tape at the call's position
+// (spliceMatchResults) and the main loop steps them, so an unquoted fn
+// value among them DISPATCHES where it lands — collecting forward over the
+// tokens written after the call, then from the stack beneath it
+// (execFnDefLiteral): `[g/v] each [5 swap 7]` is [21], and `[5 swap drop]`
+// applies g to 5 before drop runs. The pass cannot make that dispatch: a
+// fn-typed CARRIER has no signatures, so stepLiteral steps it past as
+// data, and a unit compiled from the model keeps the value inert where the
+// runtime applies it. The note hands the recorder each result the
+// interpreter would re-step and the token it resumes at, so the unit's
+// lowering can give exactly that re-step to the interpreter (a deopt over
+// the results) or decline.
+//
+// Not noted, each because the interpreter would not dispatch there either
+// or because another model owns the point: a concrete FnDefInfo result
+// (the pass dispatches it itself); a quoted value (data on both lanes); a
+// user fn's result (a sig with an fn frame — parked where it lands,
+// design/PAREN-RESTEP-RULE.0.md); a code-body word's results (a Callable
+// sig — `do`'s residual, `fold`'s accumulator: the body's own residual,
+// which the closure lowering models at the body's finish — its trailing
+// apply, the park rule, the residual-lead arms — and the pass's carrier
+// view of it is not the lowering's); results a pending forward is collecting
+// (the arrival rules own them); and results nothing plain follows — the
+// enclosing paren's close (the paren places them and the collapse
+// re-steps under the park rule), a dispatch modifier (`/v` leaves the
+// value inert), a frame or control marker, an already-placed value, or
+// the end of the tape (the residual arms own a trailing fn).
+func (e *Engine) noteFnResultReSteps(sig *Signature, callEnd int, results []Value) {
+	es := e.Registry.analysisRecorder()
+	if !es.Active() || sig == nil || sig.FnFrame() != nil || sig.Callable != nil || callEnd+1 >= e.Tape.Len() {
+		return
+	}
+	next := e.Tape.At(callEnd + 1)
+	if !plainReStepToken(next) || e.hasPendingForwardCollecting() {
+		return
+	}
+	for _, r := range results {
+		if r.Quoted || r.ID == "" || IsConcrete(r) {
+			continue
+		}
+		if IsFnTypedCarrier(r) || (r.Dynamic && SigTypeMatches(r, TFunction)) {
+			es.NoteFnResultReStep(r, next.Pos())
+		}
+	}
+}
+
+// plainReStepToken reports whether t is an ordinary, not-yet-stepped body
+// token the interpreter steps after a call's results — a word, a paren
+// group, a reach, a sugar marker, or a literal the source wrote — rather
+// than a structural marker, a dispatch modifier, or a value the pass has
+// already placed there (a carrier, or anything without a source position).
+func plainReStepToken(t Value) bool {
+	if t.Pos().Row == 0 || t.Carrier || t.Dynamic {
+		return false
+	}
+	if _, mod := AsDispatchMod(t); mod {
+		return false
+	}
+	if IsWord(t) || IsParenExpr(t) || isEvalReach(t) || IsSugar(t) {
+		return true
+	}
+	return IsRecordableLiteral(t)
 }
 
 // creditParenSurvivorSkips tells an installed RecorderSkipper how many of the

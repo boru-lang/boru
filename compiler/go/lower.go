@@ -466,6 +466,19 @@ type lowerer struct {
 	// deoptAtSlot holds the points tested where the read's value is pushed
 	// as an operand (deoptPoint.atPush), keyed by its frame slot.
 	deoptAtSlot map[int]deoptPoint
+	// deoptAfterSeq holds the RE-STEP points (deoptPoint.restep, NUR124),
+	// keyed by the event whose results they test; emitReStepAfter lowers
+	// each right after that event's op.
+	deoptAfterSeq map[int]deoptPoint
+	// unnamedParams are the unit's unnamed param slots (seatUnitDeopts):
+	// the interpreter's frame holds their values on its stack bottom, so a
+	// deopt island seats every one this unit has not pushed yet beneath
+	// its region (deoptPrefix). localPushed / localPushedNested record the
+	// slots PUSH_LOCAL has pushed so far, at the root and inside a nested
+	// fragment respectively.
+	unnamedParams     []int
+	localPushed       map[int]bool
+	localPushedNested map[int]bool
 	// binding marks a dyn-bind's own source re-push (lowerDynBind), which
 	// the deoptAtSlot hook must not take for the consumer's read.
 	binding bool
@@ -581,8 +594,10 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 			// compiled stack holds exactly what the interpreter's held at
 			// the read. Tested once, at the first push.
 			delete(lw.deoptAtSlot, op.idx)
-			*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Token: d.token, RetPC: -1})
-			lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+			if prefix, ok := lw.deoptPrefix(); ok {
+				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1})
+				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+			}
 		}
 		lw.emit(OpPushLocal, op.idx, pos)
 	case opType:
@@ -621,7 +636,11 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			kept = append(kept, d)
 			continue
 		}
-		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Token: d.token, RetPC: -1}
+		prefix, ok := lw.deoptPrefix()
+		if !ok {
+			continue
+		}
+		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1}
 		if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
@@ -643,6 +662,45 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 	lw.deopts = kept
 }
 
+// emitReStepAfter lowers a RE-STEP point (NUR124) as an OpDeoptIfFn over
+// the results the event just left on top of the simulated stack — the
+// values the interpreter would splice back onto the tape and step. A point
+// serves only at the unit's root with the event's results on top (a
+// promoted result lives in a slot; a variadic one has no static count).
+// A fn-TYPED note no point serves REFUSES: the pass is certain the runtime
+// value is a fn the interpreter dispatches here, and the unit would keep it
+// as data. A gradual note (the value is a fn only sometimes) with no point
+// keeps the optimistic model it always had.
+func (lw *lowerer) emitReStepAfter(ev *EmitEvent) string {
+	if lw.es == nil {
+		return ""
+	}
+	note, noted := lw.es.reStepNotes[ev.seq]
+	if !noted {
+		return ""
+	}
+	if d, planned := lw.deoptAfterSeq[ev.seq]; planned && lw.depth == 0 && lw.deoptTable != nil && !lw.es.eventInfo[ev.seq].variadicResult {
+		n := 0
+		for i := len(lw.vm) - 1; i >= 0 && lw.vm[i].seq == ev.seq; i-- {
+			n++
+		}
+		if prefix, ok := lw.deoptPrefix(); n > 0 && ok {
+			delete(lw.deoptAfterSeq, ev.seq)
+			*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Results: n, Token: d.token, RetPC: -1})
+			lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+			return ""
+		}
+	}
+	if note.strict {
+		word := "a call"
+		if ev.kind == evCall {
+			word = "`" + ev.call.word + "`"
+		}
+		return word + ": a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)"
+	}
+	return ""
+}
+
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
 // (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
@@ -659,9 +717,41 @@ func (lw *lowerer) seatDynApplyName(w DynApplyHead) {
 }
 
 func (lw *lowerer) emit(op Opcode, arg int, pos core.SrcPos) int {
+	if op == OpPushLocal && len(lw.unnamedParams) > 0 {
+		if lw.depth > 0 {
+			if lw.localPushedNested == nil {
+				lw.localPushedNested = map[int]bool{}
+			}
+			lw.localPushedNested[arg] = true
+		} else {
+			if lw.localPushed == nil {
+				lw.localPushed = map[int]bool{}
+			}
+			lw.localPushed[arg] = true
+		}
+	}
 	*lw.code = append(*lw.code, Instr{Op: op, Arg: int32(arg)})
 	*lw.debug = append(*lw.debug, pos)
 	return len(*lw.code) - 1
+}
+
+// deoptPrefix lists the unit's unnamed params the interpreter's frame still
+// holds on its stack bottom at a deopt point — the ones this unit's root
+// code has not pushed yet — so the island seats them beneath its region
+// (DeoptSpec.Prefix). An unnamed param pushed inside a nested fragment may
+// or may not have been consumed by the time the point runs, so a point
+// after such a push declines.
+func (lw *lowerer) deoptPrefix() ([]int, bool) {
+	var prefix []int
+	for _, s := range lw.unnamedParams {
+		if lw.localPushedNested[s] {
+			return nil, false
+		}
+		if !lw.localPushed[s] {
+			prefix = append(prefix, s)
+		}
+	}
+	return prefix, true
 }
 
 // lowerEvents lowers a trace. scopeFloor is the closed-fragment rule:
@@ -794,6 +884,9 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 			reason = "unknown event kind"
 		}
 		if reason != "" {
+			return reason
+		}
+		if reason := lw.emitReStepAfter(ev); reason != "" {
 			return reason
 		}
 		// A PROMOTED branch value-def (planValueDefLocals marked it, a multiply-read

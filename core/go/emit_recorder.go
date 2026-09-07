@@ -186,6 +186,13 @@ type EmitRecorder interface {
 	// lowered as an apply over the values after it.
 	NoteCollectionHazard(id string)
 	CollectionHazard(id string) bool
+	// NoteFnResultReStep marks a NATIVE dispatch's result v — a fn-typed
+	// or fn-admitting gradual carrier — that the interpreter re-steps into
+	// a dispatch attempt at the call's position, with a plain body token
+	// (resume) written after it, where the pass steps the carrier past as
+	// data (Engine.noteFnResultReSteps, NUR124). The recorder plans a
+	// re-step deopt over the call's results for it, or declines the unit.
+	NoteFnResultReStep(v Value, resume SrcPos)
 	// Stage-0b promotions (design/ENG-FOUR-PIECE.0.md): the probes that
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
@@ -382,6 +389,7 @@ func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}
 func (inactiveEmit) CollectionHazard(string) bool                           { return false }
+func (inactiveEmit) NoteFnResultReStep(Value, SrcPos)                       {}
 func (inactiveEmit) DynInputsProven(*Signature, []Value) bool               { return false }
 func (inactiveEmit) Materialise(v Value) (Value, bool)                      { return v, false }
 func (inactiveEmit) ZeroOutProduced(string) bool                            { return false }

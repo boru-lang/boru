@@ -55,6 +55,32 @@ func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, a
 	return nil, err, false
 }
 
+// ClosureAsFnDef is the VALUE-path twin of closureAsWord (NUR124's payload
+// axis): an island's sub-engine re-stepping a compiled closure it finds on
+// the tape — a shuffled `each` element, a native's fn result — asks for the
+// FnDefInfo the interpreter would have minted there. The running VM's
+// invoker (Registry.Invoker, the body-closure seam RunProgram installs)
+// hosts the apply, so a closure met outside any VM run stays data, as does
+// one whose program or unit the payload cannot name.
+func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Value, bool) {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || r == nil || r.Invoker == nil {
+		return v, false
+	}
+	prog, ok := cl.Prog.(*compiler.Program)
+	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return v, false
+	}
+	invoke := r.Invoker
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], func(args []core.Value) ([]core.Value, error) {
+		return invoke(r, v, args)
+	})
+	if !ok {
+		return v, false
+	}
+	return fnv, true
+}
+
 func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) {
 	// fd arrives with the stamp-event name applied by the caller; the
 	// ref lands on the shared *BoruImpl pointer (stampCompiledRef), so

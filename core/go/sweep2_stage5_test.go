@@ -232,6 +232,9 @@ func (sweepCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Va
 	return []Value{NewInteger(99)}, nil, true
 }
 func (sweepCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
+func (sweepCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
+	return v, false
+}
 
 func TestSweepInvokeBodyRouting(t *testing.T) {
 	// Invoker installed: the VM seam owns body execution.

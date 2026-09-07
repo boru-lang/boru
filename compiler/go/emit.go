@@ -874,6 +874,12 @@ type EmitState struct {
 	// collectionHazard marks fn-typed value IDs a later dispatch collected
 	// past while they sat unapplied (NoteCollectionHazard, NUR121).
 	collectionHazard map[string]bool
+	// reStepNotes marks the events whose results the check pass re-steps
+	// into a dispatch attempt (NoteFnResultReStep, NUR124), by producing
+	// seq: where the interpreter resumes after the results, and whether a
+	// noted result is fn-TYPED (the runtime value is certainly a fn) rather
+	// than a gradual maybe-fn.
+	reStepNotes map[int]reStepNote
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -1313,6 +1319,20 @@ type deoptPoint struct {
 	// runs before the first op of the statement (a forward consumer, a
 	// literal, a branch, a residual read an event follows).
 	atPush bool
+	// restep marks a RE-STEP point (NUR124): tested right after the event
+	// seq's op, over the results it left on top — the values the
+	// interpreter splices back onto the tape and steps; token is where the
+	// island resumes after them.
+	restep bool
+}
+
+// reStepNote is one NoteFnResultReStep on an event: the body position the
+// interpreter resumes at after re-stepping the event's results, and whether
+// a noted result is fn-TYPED (strict) — a gradual note only deopts, a strict
+// one refuses where no deopt serves it (emitReStepAfter).
+type reStepNote struct {
+	resume core.SrcPos
+	strict bool
 }
 
 // NewEmitState returns a fresh recording state.
@@ -7335,6 +7355,33 @@ func (es *EmitState) CollectionHazard(id string) bool {
 	return es != nil && es.collectionHazard[id]
 }
 
+// NoteFnResultReStep is the recorder side of the check pass's RE-STEP note
+// (Engine.noteFnResultReSteps, NUR124): a native dispatch's result v — a
+// fn-typed or fn-admitting gradual carrier — is re-stepped into a dispatch
+// attempt by the interpreter at the call's position, resuming at resume,
+// where the pass stepped it past as data. The note lands on the PRODUCING
+// event (the result's provenance), where planReStepDeopts reads it; a
+// result with no event (a fold, a const) has no op to test after and notes
+// nothing. A fn-TYPED result marks the note strict: the runtime value is
+// certainly a fn, so a unit no deopt serves must refuse rather than keep
+// the value as data.
+func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
+	if !es.Active() || v.ID == "" {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok {
+		return
+	}
+	if es.reStepNotes == nil {
+		es.reStepNotes = map[int]reStepNote{}
+	}
+	n := es.reStepNotes[pr.seq]
+	n.resume = resume
+	n.strict = n.strict || (core.IsFnTypedCarrier(v) && !v.Dynamic)
+	es.reStepNotes[pr.seq] = n
+}
+
 // hazardLead reports whether v is a marked lead the lowerings must decline:
 // marked, and EAGER — a lead the interpreter dispatches where it is read (a
 // param / capture word, a native word's fn result, an `args.N` read). A
@@ -8806,7 +8853,13 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// residual now re-pushes in source order; OpCallDynamicMixed islands the whole
 	// window verbatim. The promoted entry stays Dynamic in `residual`, so the
 	// in-order ops loop maps it to its local and the window lays out unchanged.
-	if _, ok := es.mixedDynamicApplyShape(residual); ok {
+	// A PARKED user-fn result (callResultPlaced) is placed data the
+	// interpreter never re-steps; the verbatim island steps it LIVE and
+	// applies it — `5 (mk 3) 7` answered `5 21` for the interpreter's `5 fn
+	// 7`, pre-existing for a named fn value and reachable for a closure once
+	// the sub-engine bridges those too (NUR124's payload axis) — so both
+	// window arms decline it and the shape refuses.
+	if i, ok := es.mixedDynamicApplyShape(residual); ok && !es.callResultPlaced(residual[i]) {
 		return residual, OpCallDynamicMixed, ""
 	}
 	// TRAILING window (Stage M2b): the single dynamic / fn value is LAST over
@@ -8819,7 +8872,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// stays put. The producing event was promoted to a frame local (Finalize's
 	// gate below), so the whole window re-pushes in source order. The 2-entry
 	// trailing shape stays with trailingApply above — landed and pinned.
-	if es.trailingWindowApplyShape(residual) {
+	if es.trailingWindowApplyShape(residual) && !es.callResultPlaced(residual[len(residual)-1]) {
 		return residual, OpCallDynamicMixed, ""
 	}
 	// Unhandled: a dynamic value mid-residual, a fn value preceding args, or an
@@ -9515,7 +9568,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// (added during loop lowering) stay anonymous.
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
-		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render}
+		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit}
 		if rec.reg != nil && rec.reg != es.progReg {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):
@@ -9955,7 +10008,25 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 	flw.deoptNames = rec.deoptNames
 	flw.deoptTable = &cf.Deopts
 	cf.Body = rec.body
+	// The interpreter's frame holds the unit's UNNAMED params on its stack
+	// bottom (named ones are bindings); an island resuming mid-body seats
+	// the ones this unit has not pushed yet beneath its region
+	// (lowerer.deoptPrefix).
+	for i := 0; i < rec.nParams && i < len(rec.locals); i++ {
+		if rec.locals[i] == "" {
+			flw.unnamedParams = append(flw.unnamedParams, i)
+		}
+	}
 	for _, d := range rec.deopts {
+		if d.restep {
+			// Tested right after the event's op, over the results it left
+			// (emitReStepAfter, NUR124).
+			if flw.deoptAfterSeq == nil {
+				flw.deoptAfterSeq = map[int]deoptPoint{}
+			}
+			flw.deoptAfterSeq[d.seq] = d
+			continue
+		}
 		if !d.atPush {
 			flw.deopts = append(flw.deopts, d)
 			continue
@@ -10005,7 +10076,10 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 // no effect of the statement runs twice (deoptPointFor). A start that is no
 // Body token, a unit with no body and a closure unit keep the slot push.
 func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
-	if len(rec.body) == 0 || len(rec.wordReadNames) == 0 {
+	if len(rec.body) > 0 {
+		es.planReStepDeopts(u, rec)
+	}
+	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
 		return
 	}
@@ -10084,6 +10158,46 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	u.deoptEnv = true
 	u.deoptNames = names
 	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+}
+
+// planReStepDeopts plans the unit's RE-STEP points (NUR124). A root event
+// whose results the check pass noted as re-stepped into a dispatch attempt
+// (NoteFnResultReStep — a native's fn-typed or fn-admitting result with a
+// plain body token written after it) gets a point right after it: the VM
+// tests the results the op left on top and, when one would dispatch at the
+// pointer, hands them as TAPE TOKENS followed by the body from the resume
+// token to the interpreter over the frame region beneath them — the
+// interpreter's own splice-and-step, so the fn collects forward over the
+// written tokens and then from the stack, exactly where it does on that
+// lane. A point declines when the resume position is no token of this body
+// (the call sits inside a nested form) or the compiled stack at the point
+// lacks an operand the interpreter's holds (deoptDeferred); a fn-TYPED
+// note no point serves refuses at the lowering (emitReStepAfter), a
+// gradual one keeps the model it always had.
+func (es *EmitState) planReStepDeopts(u *emitUnit, rec *fnUnitRec) {
+	if len(es.reStepNotes) == 0 {
+		return
+	}
+	events := rec.frag.events
+	for i := range events {
+		ev := &events[i]
+		note, noted := es.reStepNotes[ev.seq]
+		if !noted {
+			continue
+		}
+		tok := bodyTokenAt(rec.body, note.resume)
+		if tok < 0 {
+			continue
+		}
+		// The point's start is the RESUME token: everything the event's own
+		// window wrote (its forward args) has been consumed by it on both
+		// lanes, so the deferred-operand accounting runs from there.
+		d := deoptPoint{seq: ev.seq, slot: -1, pos: eventPos(*ev), start: note.resume, token: tok, restep: true}
+		if es.deoptDeferred(u, rec, &d, i) {
+			continue
+		}
+		rec.deopts = append(rec.deopts, d)
+	}
 }
 
 // lambdaNamesSelfBound reports whether a LAMBDA / stored-ref unit can serve
@@ -10530,7 +10644,9 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			}
 		}
 		for i := range events {
-			if later(i) || i == ci {
+			// A RE-STEP point sits AFTER its event, whose consumptions
+			// have happened on both lanes by then.
+			if later(i) || (i == ci && !d.restep) {
 				continue
 			}
 			forEachOperand(&events[i], count)
@@ -10606,6 +10722,11 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 				}
 			}
 		case opEvent:
+			// A RE-STEP point's own event just left its results on top:
+			// they are exactly what the island re-steps.
+			if d.restep && ci >= 0 && op.idx == events[ci].seq {
+				return false
+			}
 			for j := range events {
 				if events[j].seq != op.idx {
 					continue
@@ -10622,6 +10743,17 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		}
 		return false
 	}
+	return deoptAnyDeferred(events, rec, d, ci, later, deferred)
+}
+
+// deoptAnyDeferred walks the operands a deopt island takes over — every
+// later event's, the consumer's own, and the residual's inert ones, pushed
+// last of all — and reports the first one deferred. A point tested before
+// its consumer's first op (never at the read's push, where the stack is
+// exact, nor after the event a RE-STEP point follows, which has consumed
+// them) needs the consumer's own operands in hand too — the read's value
+// aside.
+func deoptAnyDeferred(events []EmitEvent, rec *fnUnitRec, d *deoptPoint, ci int, later func(int) bool, deferred func(EmitOperand) bool) bool {
 	for i := range events {
 		if !later(i) {
 			continue
@@ -10636,10 +10768,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			return true
 		}
 	}
-	// A point tested before its consumer's first op (never at the read's
-	// push, where the stack is exact) needs the consumer's own operands
-	// in hand too — the read's value aside.
-	if ci >= 0 && !d.atPush {
+	if ci >= 0 && !d.atPush && !d.restep {
 		unsafe := false
 		forEachOperand(&events[ci], func(op EmitOperand) {
 			if !((op.kind == opEvent && op.idx == d.seq) || (op.kind == opLocal && op.idx == d.slot)) && deferred(op) {
@@ -10650,7 +10779,6 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			return true
 		}
 	}
-	// The residual's own inert operands are pushed last of all.
 	for _, op := range rec.outOps {
 		if op.kind != opEvent && deferred(op) {
 			return true

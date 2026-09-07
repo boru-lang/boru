@@ -94,7 +94,7 @@ keep the two in sync in the same commit.
 | [NUR122](#nur122) | A bare-name dispatch of a fn-typed frame binding whose runtime value does not match is a NAMED no-match on the interpreter and something else on the compiled lane: `def f fn [[g:Function x:Integer][Integer][g x]]  f (z:String => [z]) 5` raises `signature_error: cannot call `g`` interpreted and `type_error: f: expected 1 return value(s), got 2 — [fn (String) 5]` compiled (the frame replay parks the value); the paren spelling `(g x)` raises the no-match with an EMPTY name (`cannot call `` `) at the body's position; a 0-arg `g` fires interpreted (`[42 5]`) and parks compiled (`[fn 5]`); and inside a RETURNED closure the same paren spelling over a captured NAMED fn names that fn instead of the param — `def app fn [[g:Function][Function][( fn [[x:Integer][Integer][(g x)]] )]]  def h (app add/v)  (h 5)` raises `cannot call `g`` at 1:64 interpreted and `cannot call `add`` at 1:80 compiled, both exit 1 (measured 2026-09-05 on main, a COMPILING row). Same shape family as NUR119: the compiled value has no binding name and no named-dispatch semantics RE-MEASURED 2026-09-06: the NUR123 deopt increments moved two of the three without this record being touched — `f (z:String => [z]) 5` now AGREES in message and position (`cannot call `g`` at 1:43), and `f ([] => [42]) 5` agrees in message (`[42 5]`, was `[fn 5]`) with only its POSITION still differing (interp 1:50, compiled 1:43); the returned-lambda `(g x)` row is unchanged. What remains is one position-only divergence plus the lambda-VALUE body's empty dispatch name. FIXED 2026-09-06 (the nineteenth increment) for the DISPATCH NAME and its position: the trailing apply's head carries the binding name and read position it was recorded under (`CompiledFn.DynApplyName`), so `(g 5)` raises `cannot call `g`` at the read on both lanes — message, code, caret, candidate notes and forward-args help alike — for a plain fn body, a lambda VALUE's body and a capture (`app add/v` named `add` at 1:80 and now names `g` at 1:64). What remains is the position-only row (`f ([] => [42]) 5`, interp 2:1 vs compiled 1:43) and the WRITTEN-TUPLE half already recorded below: a WORD argument is substituted onto the value stack before the head dispatches, so the interpreter's tuple is empty (`takes 1 argument, but none were supplied`) where the compiled lane names the applied value. FIXED 2026-09-07 (the twenty-first increment): both ops hand NoMatchDiag the leading run (fnUnitRec.localReads → DynApplyHead.NWritten and DynFrameWord.Read), and all eight witnesses reach parity. The rule the nineteenth increment recorded was wrong three ways — the tuple is a PREFIX not a filter (`(g 5 y 6)` writes `[5]`, not `[5 6]`), the gap spans OpCallDynFrame as well as the trailing apply (multi-arg applies lower there), and the discriminator is SYNTACTIC not an operand kind (a body-local bound to a literal folds to PUSH_CONST and is still not written) — so closing it needs the SYNTACTIC fact rather than the lowered operand — which `NoteLocalRead` already records ungated for every bare read (`rec.localReads`), so no kernel change and no relaxation of noteWordRead's fn gate. | measuring the closure-capture family's blocker (a), 2026-09-05 |
 | [NUR123](#nur123) | A BARE READ of a frame binding holding a fn is a WORD dispatch on the interpreter (stepWord routes a bound FnDefInfo through Registry.Lookup: a 0-arg fn fires, a no-match raises `cannot call `g``) and was a slot PUSH on the compiled lane: `def f fn [[g:Function][Any][g]]  f ([] => [42])` answered `fn` for 42, `def id fn [[x:Any][Any][x]]  id ([] => [42])` the same, `f (z:Integer => [z])` answered `fn (Integer)` for the interpreter's error — default lane, exit 0. Fixed for the fn-body residual (the replay re-steps the read as the word; fn-typed reads elsewhere refuse); FIXED for a gradual body-local's read (`def h fn [[m:Map][Any][def j (m get "f")  j]]  h {f: ([] => [42])}` is 42 on both lanes: its residual read seats the replay, and any other consumption — `j typeof`, `{a: j}`, `(j typeof)`, `(j) typeof`, `if true [j] [0]`, `for 1 [j typeof]`, `j (m get "g") add`, `j  def y 1`, `def k j`, `def k (j)` — deopts to the interpreter at its statement when the binding holds a fn; a point whose statement the compiled stack cannot match declines to the slot push: `5  j typeof` raises `[5 Function]` for the interpreter's `[5 Integer]`); FIXED inside a CODE BODY a native runs in the frame (`[1] each [j]` [42], `do [j]` 42 — the closure unit deopts on its capture slot and the enclosing unit binds the name); FIXED for a lambda VALUE's own body (2026-09-06, the fourteenth increment: `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any][j]] )]]  def q (h {f: ([] => [42])})  (q 7)` is 42 on both lanes where it answered `fn`, and the `j typeof` twin `Integer` where it answered `Function` — the escaping unit seats its body tokens and plans from its OWN frame, whose captures ride in slots for the whole apply; a read inside a BRANCH ARM of such a body still keeps its slot push); OPEN for the declined points and NUR119's render (a gradual PARAM's read refuses instead: the pass re-runs it under the argument's runtime type; re-measured 2026-09-05) | measuring the closure-capture family's blocker (a), 2026-09-05 |
 | [NUR126](#nur126) | RESOLVED (2026-09-05, the twelfth and thirteenth increments). A RETURNED lambda's captured COMPUTED value was baked as an unrelated CONSTANT: `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any][j]] )]]  def q (h {f: ([] => [42])})  (q 7)` answered `7` — the caller's own argument — for the interpreter's `42`, and the factory's bytecode DROPped the computed value and pushed `PUSH_CONST` over the producing event's SEQ read as a const index (the disassembler panics on it: index out of range). The promotion planner never counted a RESIDUAL closure's captures, so their producers got no frame slot. The thirteenth increment closed the nested-fragment half: a multi-value branch ARM's residual is now RECORDED whole (`captureArmResidual`), so the planner may walk into the arm and force-promote its residual events — which also fixed the arm's own count-only reconciliation (`if true [ def c (7777 add 1)  99 (each [ (r:Integer => [ r add c ]) apply ] [1 2]) ] [ 7 8 ]` answered `7778 [7778 7779]` for the interpreter's `99 [7779 7780]`). An arm whose residual LEADS with a parked Function still declines the capture (the auto-apply screen) — the corpus's two vault-tui sites | measuring the closure-capture family after the eleventh increment, 2026-09-05 |
-| [NUR124](#nur124) | TWO defects (re-measured 2026-09-07), not the one this row first described. TIMING, which is not about closures: the interpreter re-steps a shuffled fn AT the shuffle and the compiled body at BODY END if at all, so a plain FnDefInfo diverges as soon as anything follows the shuffle — `def g fn [[x:Integer][Integer][x mul 3]]  [g/v] each [5 swap drop]` raises each_error interpreted (g applies at the swap, leaving [15], which drop empties) and answers `[5]` compiled. PAYLOAD: a produced closure is not re-stepped even at body end. The original witness: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  [(mk 3)] each [5 swap]` is `[15]` interpreted and `[fn (Integer)]` compiled; `[5 over]` is `[45]` / `[fn (Integer)]`; `[5 swap drop]` raises each_error interpreted and answers `[5]` compiled; and the OPPOSITE direction, measured 2026-09-06 and pre-existing on `6f583f6`, where the compiled lane APPLIES where the interpreter parks — `5 (mk 3)` is `5 fn (Integer)` interpreted and `15` compiled, with the `(mk 3) 5` twin agreeing, which places the fault on the value's ARRIVAL above an existing residual — default lane, exit 0. The top-level spellings refuse ("function value reaches swap (Stage 3)"); inside a code body over a produced closure the shuffle fold compiles. A FIFTH witness (2026-09-06, likewise pre-existing) runs the same way through the QUOTE rather than the park rule — `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:String => [z])` parks `[fn g(String) 5]` interpreted and applies compiled, because callDynTrailTop strips the applied copy's quote to mirror a read-substituted arrival while a `/v` delivery hands the stored value over still quoted | measuring NUR123's closure bridge, 2026-09-05 |
+| [NUR124](#nur124) | TIMING axis FIXED 2026-09-07 (the twenty-fourth increment): a native word's fn-typed or fn-admitting result with a plain body token written after it is noted by the pass (`NoteFnResultReStep`), the unit plans a RE-STEP point right after the call, and the VM hands the results as TAPE TOKENS plus the rest of the body to the interpreter when one is a fn (`DEOPT_IF_FN` with `Results`, the unit's unpushed unnamed inputs seated beneath the region) — `[g/v] each [5 swap drop]`, `[5 swap drop 9 swap]`, `[5] each [m get "f" drop]`, `[5] each [{f: g/v} get "f" drop]` and the fn-body twin all agree; a fn-typed note no point serves REFUSES instead of miscompiling. PAYLOAD axis FIXED the same day (the twenty-fifth increment): the interpreter's value re-step bridges a compiled closure to a dispatchable fn (`CompiledRuntime.ClosureAsFnDef`, Anonymous as the source lambda so a 0-arg lambda VALUE still parks), the re-step deopt's test admits a closure, and — found by the bridge — the residual window islands (`OpCallDynamicMixed`) no longer re-step a PARKED user-fn result: `5 (mk 3) 7` and `1 2 (mk 3)` lay out as the parked data on both lanes, and their NAMED twins `5 (mkf 3) 7` / `1 2 (mkf 3)` (which answered `5 21` / `1 6` on main for the interpreter's parked pairs) with them. STILL OPEN: a static-index FOLD handing the fn-typed local itself to the re-step (`[5 h/v] get 1 drop 7` → 7, no event to test after), and a fn-typed value re-stepped at the MAIN program (`def m {f: g/v}  m get "f" drop 7` → 7; a gradual note with no unit body to resume into keeps the optimistic model). The earlier text of this row follows. TWO defects (re-measured 2026-09-07), not the one this row first described. TIMING, which is not about closures: the interpreter re-steps a shuffled fn AT the shuffle and the compiled body at BODY END if at all, so a plain FnDefInfo diverges as soon as anything follows the shuffle — `def g fn [[x:Integer][Integer][x mul 3]]  [g/v] each [5 swap drop]` raises each_error interpreted (g applies at the swap, leaving [15], which drop empties) and answers `[5]` compiled. PAYLOAD: a produced closure is not re-stepped even at body end. The original witness: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  [(mk 3)] each [5 swap]` is `[15]` interpreted and `[fn (Integer)]` compiled; `[5 over]` is `[45]` / `[fn (Integer)]`; `[5 swap drop]` raises each_error interpreted and answers `[5]` compiled; and the OPPOSITE direction, measured 2026-09-06 and pre-existing on `6f583f6`, where the compiled lane APPLIES where the interpreter parks — `5 (mk 3)` is `5 fn (Integer)` interpreted and `15` compiled, with the `(mk 3) 5` twin agreeing, which places the fault on the value's ARRIVAL above an existing residual — default lane, exit 0. The top-level spellings refuse ("function value reaches swap (Stage 3)"); inside a code body over a produced closure the shuffle fold compiles. A FIFTH witness (2026-09-06, likewise pre-existing) runs the same way through the QUOTE rather than the park rule — `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:String => [z])` parks `[fn g(String) 5]` interpreted and applies compiled, because callDynTrailTop strips the applied copy's quote to mirror a read-substituted arrival while a `/v` delivery hands the stored value over still quoted | measuring NUR123's closure bridge, 2026-09-05 |
 | [NUR119](#nur119) | A fn value read through a PARAM's `/v` renders under the PARAM's name on the interpreter and under its own name on the compiled lane: `def app fn [[g:Function][Function][g/v]]  (app (z:Integer => [mul 3 z]))` renders `fn g(Integer)` interpreted and `fn (Integer)` compiled, and `def sq (z:Integer => [mul z z])  … app sq/v` renders `fn g(Integer)` against `fn sq(Integer)`. Same value, one render — the interpreter's frame binding re-labels the fn under the name it is read through, and a compiled unit pushes the raw runtime value. Pre-existing for the paren-placed spelling; the bare and args-following spellings refuse (`unconsumed fn-value carrier in residual (closure render)`, callResultRenderKnown) rather than diverge | measured 2026-09-05 while fixing the returned-closure park |
 | [NUR118](#nur118) | A compiled fn's RETURN-CONTRACT error blames the body's first token where the interpreter blames the CALL SITE: `def f fn [[m:Map] [Integer] [m get "a"]]  f {a:"s"}` raises the same `type_error: f: return value 1: expected Integer, got ProperString` on both lanes, at `1:43` (the call) interpreted and `1:30` (the body) compiled. The compiled RET check is stamped with the unit's own position because one unit serves every call site (compiler StartFnCompile's fnPos) — a documented limitation that became reachable from a corpus-style row when the binding-sensitive unit memo let `def k 5  def f fn [[] [Integer] [k add 2]]  f  def k "x"  f` compile (Stage 4b); the row pins code and message and excludes the position | Stage 4b's cross-family rebind row, 2026-09-04 |
 | [NUR114](#nur114) | A compiled diagnostic's caret is always ONE character wide where the interpreter underlines the whole token: the compiler's debug table is `[]core.SrcPos` carrying only row and column, so `stampAt` has no token text to set `BoruError.Src` from and the renderer's `caretCount = len(sub)` falls to its minimum of 1. Found while closing NUR108 — the positions now match exactly and the underline still does not | closing NUR108, 2026-08-30 |
@@ -673,6 +673,96 @@ swap (Stage 3)"); the code-body spelling over a produced closure is the
 one that compiles. A module-scope named lambda (`[g/v] each [5 swap]`)
 agrees on both lanes (`[15]`) — the re-step rule is keyed on the value's
 origin, which is itself the ADR-016 hazard.
+
+**Axis 1 (TIMING) is FIXED** (2026-09-07, the twenty-fourth increment). The
+rule the interpreter applies is the one `spliceMatchResults` encodes: a
+native word's results go back onto the tape at the call's position and the
+main loop steps them, so an unquoted fn among them dispatches WHERE IT LANDS
+— collecting forward over the tokens written after the call, then from the
+stack beneath it (`[5 swap 7]` is 21, `[5 tuck]` is 15, `[5 swap drop]`
+applies g to 5 before drop runs). The check pass cannot make that dispatch: a
+fn-typed CARRIER has no signatures, so `stepLiteral` stepped it past as data,
+and the unit compiled from that model kept the value inert where the runtime
+applies it. Three pieces close it:
+
+- the pass NOTES each such result at the call (`Engine.noteFnResultReSteps` →
+  `EmitRecorder.NoteFnResultReStep`): a fn-typed or fn-admitting gradual
+  carrier, unquoted, not a user fn's (parked) result, not a code-body word's
+  (the body's own residual, which the closure lowering models — `do [mk 7]
+  add 1` keeps NUR121's refusal), not a result a pending forward collects,
+  and only when a PLAIN body token follows — the group's close, a `/v`
+  modifier, a marker, a placed value or the end of the tape leave the point to
+  the residual arms and the park rule, as before;
+- the recorder plans a RE-STEP point on the producing event (`planReStepDeopts`,
+  emitted by `emitReStepAfter` right after the event's op) when the resume
+  position is a token of the unit's body and the compiled stack at the point
+  holds what the interpreter's holds — the deferred-operand accounting of
+  NUR123's points, run from the RESUME token for a point that sits AFTER its
+  event; a fn-TYPED note no point serves REFUSES at the lowering (a lowerer
+  decline, not a new `MarkUncompilable` site), a gradual one keeps the model;
+- the VM re-steps: `DEOPT_IF_FN` with `Results` tests the results on top with
+  the main loop's own predicate (`core.FnValueDispatchesAtPointer`) and, on a
+  fn, runs the island over `[results…] ++ Body[Token:]` as TOKENS — a fn value
+  stepped at the pointer dispatches exactly as on the interpreter — above the
+  frame region, with the unit's UNPUSHED UNNAMED inputs seated beneath it
+  (`DeoptSpec.Prefix`): the interpreter's frame holds those on its stack
+  bottom, the compiled unit in slots, and the first island over `[5] each
+  [{f: g/v} get "f" drop]` ran `g drop` over an empty region and raised
+  `uncalled_function` for the interpreter's `each_error`. The prefix rides on
+  NUR123's points too.
+
+Measured: the eleven witnesses in `lang/go/restep_deopt_test.go` agree and
+compile; `[5 swap]`, `[5 swap 7]`, `[5 tuck]` and `[dup drop 5]` keep their
+answers (the residual arms own a trailing fn; the each islands stay islands);
+`[[g/v] get 0]` still dispatches the concrete element in the pass. Corpus
+differential, refusal ceiling, refusal-site census (93, unchanged) and the
+frontier ledger pass.
+
+**Axis 2 (the PAYLOAD) is FIXED** (2026-09-07, the twenty-fifth increment).
+`[(mk 3)] each [5 swap drop]` answered `[5]` compiled for the interpreter's
+`each_error`, `[5 swap]` `[fn (Integer)]` for `[15]`: a produced closure is a
+`ClosurePayload`, not an `FnDefInfo`, so wherever the interpreter met one —
+an `each` island's sub-engine re-stepping the shuffled element, or the
+compiled unit's re-step deopt testing swap's results — it stepped past what
+it would have dispatched. Three pieces, and a fourth the fix uncovered:
+
+- `execFnDefLiteral` asks the VM piece for the fn a closure stands in for
+  (`CompiledRuntime.ClosureAsFnDef`, the value-path twin of NUR123's
+  `closureAsWord`): one signature over the unit's declared param contract,
+  applied through the registry's body-closure invoker, ANONYMOUS as the
+  source lambda (`CompiledFn.Lambda`) so a 0-arg lambda VALUE nothing calls
+  parks exactly as the interpreter's does (`[(mk0)] each [dup drop]` is `[fn]`
+  on both lanes). The bridged value takes the closure's place on the tape.
+- `compileFnDef` keeps a Go handler on an anonymous fn: it attached the
+  boru body-runner to EVERY anonymous sig, and the bridge's empty body ran
+  an empty frame that returned the argument itself (`[15]` came back `[5]`).
+- The re-step deopt's runtime test (`core.FnValueDispatchesAtPointer`) admits
+  an unquoted closure, since the island it hands the results to now
+  dispatches one.
+- The bridge exposed a PRE-EXISTING miscompile of the residual WINDOW
+  islands: `OpCallDynamicMixed` re-steps its window verbatim, so a PARKED
+  user-fn result — placed data the interpreter never re-steps — was applied
+  live: `5 (mkf 3) 7` answered `5 21` and `1 2 (mkf 3)` `1 6` on main for
+  the interpreter's `5 fn g(Integer) 7` / `1 2 fn g(Integer)` (a NAMED fn
+  value; the closure twins agreed only because the sub-engine could not
+  dispatch a closure). Both window arms now decline a `callResultPlaced`
+  lead, and the residual lays the parked pair out as data on both lanes.
+
+**Still open in NUR124, each measured on this tree:**
+
+- **The FOLD.** `def f fn [[h:Function][Any][[5 h/v] get 1 drop 7]]  f g/v`
+  answers 7 for the interpreter's `uncalled_function`: `tryFoldStaticIndex`
+  hands the param's own carrier back as the fold's result, so there is no
+  event to test after and nothing is noted; the map twin `{a: h/v} get "a"
+  drop 7` (a poly `get`, an event) now raises — as `call to 'g'` where the
+  interpreter says `'h'`, the frame binding's rename (NUR122's class).
+- **The MAIN program.** `def m {f: g/v}  m get "f" drop 7` answers 7: the
+  main code seats no body to resume into, and the gradual note (the map's
+  value type is unknown) keeps the optimistic model, as NUR123's declined
+  points do; `[g/v] fold [5 swap drop] 0` answers `fn g(Integer) 0` for the
+  same reason one level up — the fold ISLAND's result is a strict `Any`
+  carrier the interpreter re-steps into `g 0`. A main-level re-step needs the
+  rest-of-program island the design's Stage 5 regions describe.
 
 ## NUR123 — a bare read of a fn-valued frame binding is a word dispatch the compiled lane never made {#nur123}
 

@@ -3647,6 +3647,198 @@ a shuffle-time re-step may subsume the closure case or may not, and assuming
 either way is how the trap rows win. `[dup drop 5]` is the control that must
 not move.
 
+## The re-step deopt: a native's fn result dispatches where it lands (2026-09-07, the twenty-fourth increment, NUR124)
+
+The twenty-third increment left Axis 1 as "fix first, then re-measure Axis
+2". This one fixes it, and the useful part is that the family turned out to
+be neither about shuffles nor about closures.
+
+**What the rule actually is.** `spliceMatchResults` puts a native word's
+results back onto the tape at the call's position and the main loop steps
+them; an unquoted fn among them dispatches WHERE IT LANDS, collecting forward
+over the tokens written after the call and then from the stack beneath it.
+Measured on the interpreter with the shape's siblings before touching the
+compiler (the rule this line pays for every time):
+
+```
+[g/v] each [5 swap 7]        [21]   g collects the written 7
+[g/v] each [5 tuck]          [15]   results [5 g 5]: g collects the 5 after it
+[g/v] each [5 6 rot]         [18]   nothing written: g takes the 6 beneath
+[g/v] each [5 swap drop]     each_error — g(5) = 15, then drop
+[5] each [{f: g/v} get "f" drop]     each_error — the same, from a map read
+def m {f: g/v}  m get "f" drop 7     uncalled_function — g finds no argument
+```
+
+So "the interpreter re-steps AT the shuffle" (the record's Axis 1) is one
+instance of "a native's fn-typed result is re-stepped into a dispatch". The
+shuffle words are only where NUR124 first met it; a poly `get`, a typed
+container read, any native returning a fn does the same.
+
+**Why the compiled lane disagreed only sometimes.** The agreeing rows
+(`[5 swap]`, `[5 swap 7]`, `[5 tuck]`) all compile the `each` as an ISLAND:
+the closure probe declines them because the fn survives to the body's
+residual (`closureResidualHasUnappliedFn`), and the island's interpreter
+answers. `[5 swap drop]` compiles to a real unit — the fn is consumed inside
+the body, so the residual guard sees nothing — and that unit's `CALL_NATIVE
+swap; CALL_NATIVE drop` is the miscompile. The check pass never modelled the
+dispatch because the element it stepped is a payload-less `Function`
+carrier: `execFnDefLiteral` has no signatures to match and steps it past.
+
+**What landed** (`core/go/engine.go`, `compiler/go/emit.go`, `lower.go`,
+`bytecode.go`, `eng/go/vm.go`):
+
+1. The pass NOTES the result at the call — `Engine.noteFnResultReSteps`,
+   `EmitRecorder.NoteFnResultReStep(v, resume)` — for a fn-typed or
+   fn-admitting gradual carrier, unquoted, when a PLAIN body token follows.
+   Every exclusion was measured against a row: a concrete `FnDefInfo` (the
+   pass dispatches it itself — `[[g/v] get 0]` compiles to `TAIL_CALL_USER
+   g`); a user fn's result (parked, PAREN-RESTEP-RULE); a CODE-BODY word's
+   results (`sig.Callable != nil` — `do [mk 7] add 1` would otherwise trade
+   NUR121's refusal for this one, and `do [mk 7] 8` would stop compiling: the
+   pass's carrier view of a body's residual is not the closure lowering's,
+   which applies the lead at the body's finish); a pending forward's
+   collection; and the non-plain followers — the group's close paren (the
+   park rule's), a `/v` modifier, a marker, an already-placed value, the end
+   of the tape (the residual arms').
+2. The recorder keys the note on the PRODUCING event (`es.producedBy`) and,
+   at the unit's finish, plans a RE-STEP point right after it
+   (`planReStepDeopts`, a `deoptPoint` with `restep`), reusing NUR123's
+   name-binding planning (`deoptDefsBindable`, `seedParentDeopt`,
+   `lambdaNamesSelfBound`) and its deferred-operand accounting — with two
+   corrections for a point that sits AFTER its event rather than before: the
+   accounting runs from the RESUME token (`d.start = note.resume`), the
+   event's own consumptions count as done, and its own results are exactly
+   what the island re-steps (not deferred). Both were found by the debug
+   print, not by reading: the first cut declined every point because the
+   consumer-operand check written for pre-event points asked for `swap`'s
+   already-consumed `5`.
+3. The lowerer emits `OpDeoptIfFn` right after the event's op
+   (`emitReStepAfter`) over the results on top of the sim, with
+   `DeoptSpec.Results` = their count and `DeoptSpec.Prefix` = the unit's
+   UNNAMED params it has not pushed yet. That prefix is the increment's
+   second finding: the interpreter's frame holds unnamed inputs on its stack
+   BOTTOM (named ones are bindings), the compiled unit holds them in slots
+   and pushes them at their consumer, so an island resuming mid-body ran `g
+   drop` over an empty region for `[5] each [{f: g/v} get "f" drop]` and
+   raised `uncalled_function` for the interpreter's `each_error`. The prefix
+   rides on NUR123's points too (`emitDeoptsBefore`, the atPush arm); a
+   param pushed inside a nested fragment declines the point. A fn-TYPED note
+   no point serves REFUSES through a lowerer decline — the refusal-site
+   census counts `MarkUncompilable` sites and stays at 93 — while a gradual
+   one keeps the model it always had.
+4. The VM (`reStepIfFn`) tests the results with the main loop's own
+   predicate (`core.FnValueDispatchesAtPointer`, exported for it) and, on a
+   fn, runs `runIslandResolved` over `prefix ++ region` with tokens
+   `[results…] ++ Body[Token:]`: a fn VALUE stepped at the pointer dispatches
+   as it does on the interpreter, forward collection included. The residual
+   replaces the frame region and the run loop continues at RET — NUR123's
+   discipline unchanged.
+
+**Measured.** Eleven witnesses agree and compile (`lang/go/restep_deopt_test.go`);
+the trap rows and the concrete-element row are unchanged; the corpus
+differential, the refusal ceiling and the frontier ledger pass. One golden
+moved by design: `TestShuffleRestepTimingDeclines`'s Axis-1 arm now asserts
+parity. `TestCancelTimeout` failed once under the parallel belt and passed
+three times alone — the timer class the process rules already name.
+
+**Three things this increment measured and did NOT fix**, each pinned as
+measured in `TestReStepDeoptOpenShapes` so the next author starts from the
+boundary:
+
+- **Axis 2 stands, and its site is now exact.** `[(mk 3)] each [5 swap
+  drop]` islands (the produced closure makes the list dynamic); the island's
+  sub-engine re-steps the element after `swap` exactly as the interpreter
+  would, and a `ClosurePayload` is not an `FnDefInfo`, so `execFnDefLiteral`
+  steps it past. `closureAsWord` (vm_dyn_words.go) bridges a closure to a
+  dispatchable `FnDefInfo` for the WORD path; the value path needs the same
+  bridge at `execFnDefLiteral` — or the island's registry to install it.
+- **A static-index FOLD.** `[5 h/v] get 1 drop 7` in a fn body:
+  `tryFoldStaticIndex` returns the param's own carrier as the result, so
+  there is no event and nothing is noted; the value re-stepped is a LOCAL's,
+  which is NUR123's atPush shape with a value re-step instead of a word
+  read. The map twin (`{a: h/v} get "a" drop 7`, a poly `get`) now deopts
+  and raises — naming `g` where the interpreter's frame binding renamed the
+  value `h` (NUR122's class).
+- **The MAIN program.** No unit body to resume into: a gradual note there
+  is dropped, as NUR123's declined points are (`def m {f: g/v}  m get "f"
+  drop 7` answers 7), and a strict one refuses. `[g/v] fold [5 swap drop]
+  0` is the same defect one level up — the fold ISLAND's strict `Any` result
+  is re-stepped by the interpreter into `g 0`, and the note's condition
+  (fn-typed or gradual) does not admit a strict `Any`; widening it to
+  "admits Function" would plan a test after every `Any`-returning native in
+  every unit, which wants the whole-corpus golden churn measured first.
+  A main-level re-step is the rest-of-program island Stage 5's regions
+  describe.
+
+Two rules this increment adds to the ones above: **a green sibling is not
+evidence the mechanism is right** — `[5 swap 7]` and `[5 tuck]` agreed
+through an island, and the increment that "fixed" them by compiling the
+unit would have broken them; and **a deopt planned before an event is not a
+deopt planned after it** — every accounting NUR123 wrote assumes the island
+starts before its consumer runs, and each of those assumptions had to be
+found and flipped for a point that starts after.
+
+## The closure value bridge: Axis 2, and a parked window the bridge exposed (2026-09-07, the twenty-fifth increment, NUR124)
+
+Re-measured after the re-step deopt, Axis 2 was exactly where the
+twenty-third increment left it: `[(mk 3)] each [5 swap]` answered `[fn
+(Integer)]` for `[15]`, and the site was now exact — a produced closure is a
+`ClosurePayload`, and `execFnDefLiteral` dispatches only an `FnDefInfo`.
+
+**What landed.** The interpreter asks the VM piece for the fn a closure
+stands in for: `CompiledRuntime.ClosureAsFnDef` (core's S4 seam, a third
+method beside `InvokeCompiled` / `StampDetached`; the core default declines
+with the value) builds — through the same `closureFnDef` builder NUR123's
+`closureAsWord` now shares — one signature over the unit's declared param
+contract whose handler applies the closure through `Registry.Invoker`, the
+body-closure seam the running VM installs; a closure met outside any VM run,
+or one whose program or unit the payload cannot name, stays data.
+`execFnDefLiteral` (`fnDefAtPointer`) puts the bridged value in the
+closure's place on the tape, so the dispatch rules below it — forward
+collection, the stack match, the ADR-016 park of a 0-arg anonymous value —
+decide exactly as for the interpreter's own fn. `CompiledFn.Lambda` carries
+the source lambda's anonymity to the bridge for that last rule; without it
+`[(mk0)] each [dup drop]` would fire the 0-arg closure where the interpreter
+parks `[fn]`.
+
+**Two things the first cut got wrong, both found by measuring, not
+reading.** `compileFnDef` attached the boru body-runner to EVERY anonymous
+sig, Go handler or not, so the bridge's empty body ran an empty frame that
+returned its argument: `[5 swap]` came back `[5]`, `[5 swap 7]` `[7]` — a
+plausible wrong value, not an error. It now keeps a `*GoImpl`. And the
+re-step deopt's runtime test was the interpreter's own predicate, which does
+not admit a closure — so `[(mk 3)] each [5 swap drop]` compiled to the unit
+with its DEOPT_IF_FN and never fired; `core.FnValueDispatchesAtPointer`
+admits an unquoted closure now that the island it hands the results to
+dispatches one.
+
+**The pre-existing miscompile the bridge exposed.**
+`TestApplyWordClaimsParkedResult` pinned `5 (mk 3) 7` and `1 2 (mk 3)` as
+agreeing; with the bridge they answered `5 21` and `1 6`. Their NAMED twins
+— `def mkf fn [[k:Integer][Function][g/v]]  5 (mkf 3) 7` — answered `5 21`
+on the ORIGINAL tree, measured on a build of the stashed main: the residual
+window islands (`OpCallDynamicMixed`, the `mixedDynamicApplyShape` and
+`trailingWindowApplyShape` arms) re-step their window verbatim, and a
+PARKED user-fn result — placed data the interpreter never re-steps
+(PAREN-RESTEP-RULE) — is applied live there. The closure twins agreed only
+because the sub-engine could not dispatch a closure. Both arms now decline a
+`callResultPlaced` lead; the residual then lays the parked pair out as plain
+data, and all four rows agree — natively, no island. The member-read shapes
+those arms exist for (`3 m.f 2`, `1 2 m.f`, family C's `m.p 5 m.p 7`) are
+unaffected: a member read is no call result.
+
+**Measured.** Eleven closure rows agree and compile
+(`TestClosureValueReStepParity`), the 0-arg controls among them;
+`TestShuffleRestepTimingDeclines`' Axis-2 arm asserts parity; the open
+shapes pinned by `TestReStepDeoptOpenShapes` are two now (the static-index
+fold, the main program). The seam's arms are pinned in core
+(`engine_closure_bridge_test.go`, a stub runtime) and eng
+(`closure_bridge_test.go`).
+
+**What remains of NUR124** is the two shapes above and the fold-island
+`Any` result at the main program — all main-level or fold-path, none in a
+unit with a body. The next family in line is the handoff's frontier list.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -3783,3 +3975,8 @@ position than the construct that produced the binding.
 | `check/go/narrow_passend_test.go` | the narrowing pop at pass end (popped on top, left alone when buried) and that `AnalyseLoopBody` ledgers its joined installs |
 | `lang/go/narrow_leak_test.go` | the user-visible half of the narrowing leak: a later `Run` reads the bound Lock, not the leaked carrier |
 | `eng/go/checkstate_lifecycle_test.go` | that every new `CheckState` field is classified reset-by-`Begin` or persistent |
+| `core/go/engine_restep_note_test.go` | the RE-STEP note's arms (NUR124): which native results the pass notes, at which token, and every exclusion — quoted, concrete, a user fn's, a code-body word's, a pending forward's, a non-plain follower |
+| `compiler/go/restep_deopt_test.go` | the recorder's note on the producing event, the planner's placement and declines (a resume outside the body, a deferred residual literal), the lowering's op and prefix, the strict refusal, and the prefix on NUR123's statement points |
+| `eng/go/vm_deopt_test.go` (`TestReStepIfFnArms`) | the VM's re-step arm: plain results a no-op, a fn re-stepped as a token over the region and the prefix, the island's own error, the defensive arms |
+| `lang/go/restep_deopt_test.go` | the timing family's parity and lowering (the op follows the swap), the siblings the note leaves alone, the closure family's parity (`TestClosureValueReStepParity`), and the open shapes pinned as measured |
+| `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda stay data; the seam's declines and the Anonymous flag |

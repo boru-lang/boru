@@ -1776,6 +1776,9 @@ func (vc *vmContext) bindDynScope(curReg *core.Registry, p *compiler.Program, ar
 // the run loop continues at the unit's RET (its RetReplay discipline).
 // Plain data costs the test and nothing else.
 func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	if spec.Results > 0 {
+		return vc.reStepIfFn(reg, fn, spec, frameBase, stack, locals, curDebug, pc)
+	}
 	var v core.Value
 	at := -1
 	if spec.Slot >= 0 {
@@ -1796,9 +1799,12 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 	if spec.Token < 0 || spec.Token >= len(fn.Body) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:]...)
+	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
+	if err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, false, err
+	}
 	if at >= 0 {
-		i := at - frameBase
+		i := at - frameBase + len(spec.Prefix)
 		prefix = append(prefix[:i], prefix[i+1:]...)
 	}
 	tokens := append([]core.Value(nil), fn.Body[spec.Token:]...)
@@ -1815,6 +1821,68 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 		return nil, false, err
 	}
 	return append(stack[:frameBase], results...), true, nil
+}
+
+// reStepIfFn executes a RE-STEP deopt (compiler.DeoptSpec.Results, NUR124).
+// The Results values on top are what a native call just left, and what the
+// interpreter would splice back onto the tape and step: an unquoted fn
+// among them dispatches where it lands, collecting forward over the tokens
+// written after the call and then from the stack beneath it. So when one
+// of them would dispatch at the pointer — the interpreter's own predicate,
+// core.FnValueDispatchesAtPointer — the island runs exactly that: the
+// results as its first TOKENS, the unit's body from the resume token after
+// them, over the frame region beneath the results as the resolved prefix;
+// the residual replaces the frame region and the run loop continues at the
+// unit's RET. Plain results cost the test and nothing else.
+func (vc *vmContext) reStepIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	top := len(stack) - spec.Results
+	if top < frameBase {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN underflow")
+	}
+	hot := false
+	for _, v := range stack[top:] {
+		if core.FnValueDispatchesAtPointer(v) {
+			hot = true
+			break
+		}
+	}
+	if !hot {
+		return stack, false, nil
+	}
+	if spec.Token < 0 || spec.Token > len(fn.Body) || spec.RetPC < 0 {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
+	}
+	prefix, err := deoptPrefix(spec, frameBase, top, stack, locals, curDebug, pc)
+	if err != nil {
+		return nil, false, err
+	}
+	tokens := append(append([]core.Value(nil), stack[top:]...), fn.Body[spec.Token:]...)
+	// The frame's def-cleanup duty, as deoptIfFn does it: a def the island
+	// makes tears down at its end.
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, tokens)
+	core.TruncateFrameDefs(reg, snapshot)
+	if err != nil {
+		return nil, false, stampAt(err, curDebug, pc, vc.r)
+	}
+	if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
+		return nil, false, err
+	}
+	return append(stack[:frameBase], results...), true, nil
+}
+
+// deoptPrefix builds a deopt island's resolved prefix — the interpreter's
+// frame at the point: the unnamed params the unit has not pushed yet
+// (spec.Prefix, the frame's stack bottom), then the frame region below top.
+func deoptPrefix(spec *compiler.DeoptSpec, frameBase, top int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	prefix := make([]core.Value, 0, len(spec.Prefix)+top-frameBase)
+	for _, s := range spec.Prefix {
+		if s < 0 || s >= len(locals) {
+			return nil, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad prefix slot")
+		}
+		prefix = append(prefix, locals[s])
+	}
+	return append(prefix, stack[frameBase:top]...), nil
 }
 
 // bindGlobal executes one OpBindGlobal — the cross-request persistence twin
