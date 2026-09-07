@@ -3544,6 +3544,49 @@ because parity alone passes if both lanes drift together, and the prefix is the
 whole point; the prefix-vs-filter row additionally asserts that the trailing
 literal past the word does NOT appear.
 
+## NUR124's discriminator: the apply word records as an identity (2026-09-07, the twenty-second increment)
+
+The eighteenth increment found the site, wrote the fix, and withdrew it. This
+one supplies the missing signal, and the useful part is where it was hiding.
+
+**The bind.** `5 (mk 3)` answered 15 compiled where the park rule leaves
+`[5 fn (Integer)]` — a silent wrong value on the default lane. Adding
+`callResultPlaced` to `trailingApply` fixes it, but refuses
+`10 (mk2 5) apply`, a corpus row that parks identically and then APPLIES
+because the trailing word dispatches the parked value on purpose. Both lower
+to the same `OpCallDynamicTrailing`, verified again here, so the residual
+shape cannot separate them.
+
+**Why the obvious signal was unavailable, and the record said so.**
+`pendingApply` is UNIT-scoped and returns false outright when no fn unit is
+open — exactly the program residual's case — so the previous increment
+recorded that the discriminator "has to be program-level provenance for the
+`apply` word", and stopped there rather than guessing.
+
+**Where it actually lives.** `apply` returns the fn concrete in check mode so
+the engine RE-STEPS it, and that re-step records through `RecordCall` as an
+IDENTITY: `word == "apply"`, `args[0].ID == outs[0].ID`. That ID is the one
+`trailingApply` later meets as `fnv`. So the provenance was already flowing
+through the recorder; nothing had to be threaded, only noticed and kept
+(`EmitState.appliedByWord`).
+
+Two probes got there, and the first was wrong in a way worth recording. The
+obvious hook is `recordCallElided`'s `apply` arm, which explicitly handles a
+concrete `FnDefInfo` — and it never fires for this row, because the value
+arrives as a carrier rather than an `FnDefInfo`. A probe at every `RecordCall`
+found the real one immediately. Reading the arm that mentions your case is not
+the same as measuring which arm runs.
+
+**Measured**: `10 (mk2 5) apply` still compiles to 11; `5 (mk 3)` refuses
+soundly through an EXISTING site (so the refusal-site census does not rise) and
+the default lane answers correctly on the interpreter; `(mk 3) 5`,
+`5 (mk 3) 7`, `1 2 (mk 3)` unchanged; corpus differential and refusal ceiling
+pass — the gate that defeated the previous attempt.
+
+**Still open in NUR124**: the SHUFFLE family, a different arm running the
+opposite way — `[(mk 3)] each [5 swap]` is `[15]` interpreted and
+`[fn (Integer)]` compiled, the lane parking where the interpreter applies.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

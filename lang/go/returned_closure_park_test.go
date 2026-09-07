@@ -141,3 +141,71 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyWordClaimsParkedResult pins NUR124's discriminator (measured
+// 2026-09-07, the twenty-second increment).
+//
+// `5 (mk 3)` answered 15 compiled where the park rule leaves
+// `[5 fn (Integer)]` — a silent wrong value on the DEFAULT lane, exit 0.
+// Every sibling arm of resolveDynamicApply already consulted the park rule;
+// trailingApply checked only the shape.
+//
+// It stayed open for two increments because the sound fix refused a corpus
+// row: `10 (mk2 5) apply` parks identically and then APPLIES, because the
+// trailing word dispatches the parked value on purpose — and both lower to
+// the same OpCallDynamicTrailing, so the residual cannot separate them. The
+// unit-scoped pendingApply cannot either: it returns false outright when no
+// fn unit is open, which is exactly the program residual's case.
+//
+// What can: `apply` records through RecordCall as an IDENTITY (args[0].ID ==
+// outs[0].ID — the check engine returns the fn concrete and re-steps it), and
+// that ID is the one trailingApply meets. EmitState.appliedByWord marks it
+// program-wide.
+func TestApplyWordClaimsParkedResult(t *testing.T) {
+	const mk = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  `
+	const mk2 = `def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]]  `
+
+	// The apply word claims the parked value: still compiles, still applies.
+	src := mk2 + `10 (mk2 5) apply`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled {
+		t.Error("`… apply` must keep compiling — the corpus row the previous attempt refused")
+	}
+	requireParity(t, src, gotC, errC, gotI, errI)
+	if fmt.Sprint(gotI) != "[11]" {
+		t.Errorf("the apply word applies the parked result: %v", gotI)
+	}
+
+	// Nothing claims it: the arm declines rather than applies. A refusal is
+	// the sound fallback — the default lane then answers on the interpreter.
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, cerr := a.CompileCheck(mk + `5 (mk 3)`)
+	if cerr != nil {
+		t.Fatalf("check: %v", cerr)
+	}
+	if prog != nil {
+		t.Error("an unclaimed parked result must not compile to an apply (it answered 15)")
+	}
+	if !strings.Contains(reason, "call result above a literal") {
+		t.Errorf("refusal = %q, want the existing residual-shape site", reason)
+	}
+	// And the value both lanes agree on is the PARKED pair.
+	d, _ := New()
+	gotI2, errI2 := d.RunInterp(mk + `5 (mk 3)`)
+	if errI2 != nil || fmt.Sprint(gotI2) != "[5 fn (Integer)]" {
+		t.Errorf("the park rule leaves both values: %v/%v", gotI2, errI2)
+	}
+
+	// Shapes the discriminator must leave alone, all previously passing.
+	for _, s := range []string{mk + `(mk 3) 5`, mk + `5 (mk 3) 7`, mk + `1 2 (mk 3)`} {
+		gc, ok, ec, gi, ei := runBothEngines(t, s)
+		if !ok {
+			t.Logf("%q: not compiled (refusal, not a divergence)", s)
+			continue
+		}
+		requireParity(t, s, gc, ec, gi, ei)
+	}
+}

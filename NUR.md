@@ -559,7 +559,31 @@ two diagnostics need. Pinned in lang/go/dyn_apply_head_name_test.go
 (TestWrittenTuplePrefixRule, TestWrittenTupleConstFoldedLocalDeclines), which
 fail if any of the three findings moves.
 
-**The site is located, and one fix was tried and WITHDRAWN** (2026-09-06). The
+**The trailing-apply half is FIXED** (2026-09-07, the twenty-second
+increment). The withdrawn fix below needed one signal, and the signal exists:
+`apply` records through `RecordCall` as an IDENTITY — the check engine returns
+the fn concrete and re-steps it, so `args[0].ID == outs[0].ID` — and that ID is
+exactly the one `trailingApply` meets as its `fnv`. `EmitState.appliedByWord`
+marks it PROGRAM-wide, which is what the unit-scoped `pendingApply`
+structurally could not (it returns false outright when no fn unit is open, the
+program residual's case). `trailingApply` now declines a parked result unless a
+trailing `apply` word claimed it.
+
+Measured: `10 (mk2 5) apply` — the corpus row the previous attempt refused —
+still compiles and answers 11; `5 (mk 3)` no longer answers 15 but REFUSES
+("residual shape beyond Stage 1 (call result above a literal)", an EXISTING
+site, so the refusal-site census does not rise), and the default lane answers
+`5 fn (Integer)` on the interpreter. `(mk 3) 5`, `5 (mk 3) 7` and `1 2 (mk 3)`
+are unchanged. Corpus differential and refusal ceiling both pass. Pinned by
+TestApplyWordClaimsParkedResult in lang/go/returned_closure_park_test.go.
+
+What is left of NUR124 is the SHUFFLE family, a different arm: `[(mk 3)] each
+[5 swap]` is `[15]` interpreted and `[fn (Integer)]` compiled — the compiled
+lane parks where the interpreter applies, the opposite direction from the row
+just fixed.
+
+**The site was located, and one fix was tried and WITHDRAWN before it**
+(2026-09-06). The
 boundary is exact: the residual must be exactly `[literal, 1-arg closure]` —
 `(mk 3) 5`, `5 (mk 3) 7` and `1 2 (mk 3)` all agree, and the rest of the family
 refuses. That is the shape `resolveDynamicApply`'s `trailingApply` helper
