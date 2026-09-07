@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -179,4 +180,89 @@ func TestDynApplyHeadNameWrittenTupleDeclines(t *testing.T) {
 		t.Fatalf("%q: not compiled", good)
 	}
 	requireParity(t, good, gotC, ec, gotI, ei)
+}
+
+// TestWrittenTuplePrefixRule pins the CORRECTED statement of the boundary
+// above (measured 2026-09-07, the twentieth increment). Everything here is
+// pre-existing — byte-identical on `120fb37`, before the head-name work —
+// and it overturns the rule the nineteenth increment recorded in three ways.
+//
+// (1) The tuple is a PREFIX, not a filter over argument kinds. Forward
+// collection walks the tokens after the head LEFT TO RIGHT and stops at the
+// first WORD read, which the pointer had already substituted onto the value
+// stack. Measured on the interpreter with a 3-param callee:
+//
+//	(g 5 6 y)  written [5 6]
+//	(g 5 y 6)  written [5]      <- decisive: a FILTER would say [5 6]
+//	(g y 5 6)  written []
+//
+// (2) The scope is TWO ops, not one. The multi-argument rows lower to
+// OpCallDynFrame, the whole-frame replay, whose diagnostic passes its whole
+// arg window to NoMatchDiag exactly as the trailing apply's did. The
+// one-argument family alone could not have shown either fact — a 1-arg
+// prefix and a 1-arg filter are the same function.
+//
+// (3) The discriminator is SYNTACTIC, not an operand kind. A body-local
+// bound to a literal lowers its read to PUSH_CONST — the same operand a
+// written literal produces — and is still NOT written, because the
+// interpreter saw a word:
+//
+//	def f fn [[g:Function][Integer][def y 7  (g y)]]   -> PUSH_CONST 7, written []
+//	def f fn [[g:Function][Integer][(g 5)]]            -> PUSH_CONST 5, written [5]
+//
+// So closing this needs a signal neither lane has today: the engine notes
+// only fn-admitting bare reads (noteWordRead's gate), while the tuple needs
+// EVERY bare read marked, whatever its type. That is a kernel-side seam, not
+// a compiler-side one, which is why this increment records rather than fixes.
+func TestWrittenTuplePrefixRule(t *testing.T) {
+	const c3 = `def f fn [[g:Function y:Integer][Integer][(g %s)]]  f ([a:String b:String c:String] => [a]) 7`
+	rows := []struct{ args, wantInterp, note string }{
+		{`5 6 y`, "the arguments were 5 (an Integer) and 6 (an Integer)", "prefix of two"},
+		{`5 y 6`, "the argument was 5 (an Integer)", "prefix of one — a filter would say two"},
+		{`y 5 6`, "takes 3 arguments, but none were supplied", "empty prefix"},
+	}
+	for _, c := range rows {
+		src := fmt.Sprintf(c3, c.args)
+		_, compiled, errC, _, errI := runBothEngines(t, src)
+		if !compiled || errC == nil || errI == nil {
+			t.Fatalf("(g %s): compiled=%v errC=%v errI=%v, want both lanes raising", c.args, compiled, errC, errI)
+		}
+		if !strings.Contains(errI.Error(), c.wantInterp) {
+			t.Errorf("(g %s) %s: interpreter tuple moved — re-measure this record:\n%s", c.args, c.note, errI)
+		}
+		// Both lanes still agree on the failure itself; only the tuple differs.
+		for _, want := range []string{"cannot call `g`", "signature_error"} {
+			if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
+				t.Errorf("(g %s): both lanes should carry %q:\ncompiled=%s\ninterp=%s", c.args, want, errC, errI)
+			}
+		}
+		// The compiled lane names every argument it applied, which is what
+		// the prefix rule has to replace.
+		if !strings.Contains(errC.Error(), "the arguments were") {
+			t.Errorf("(g %s): compiled lane no longer prints the full tuple — re-measure:\n%s", c.args, errC)
+		}
+	}
+}
+
+// TestWrittenTupleConstFoldedLocalDeclines is (3) above on its own: the row
+// that rules out "operand kind decides". `def y 7  (g y)` folds the read to a
+// PUSH_CONST identical to a written literal's, and still diverges — so a fix
+// keyed on the lowered operand would answer this one wrong while looking
+// right on every literal row.
+func TestWrittenTupleConstFoldedLocalDeclines(t *testing.T) {
+	const folded = `def f fn [[g:Function][Integer][def y 7  (g y)]]  f (z:String => [z])`
+	const literal = `def f fn [[g:Function][Integer][(g 5)]]  f (z:String => [z])`
+	_, ok1, errC1, _, errI1 := runBothEngines(t, folded)
+	if !ok1 || errC1 == nil || errI1 == nil {
+		t.Fatalf("folded: compiled=%v errC=%v errI=%v", ok1, errC1, errI1)
+	}
+	if !strings.Contains(errI1.Error(), "none were supplied") {
+		t.Errorf("a const-folded body-local read is still a WORD to the interpreter — re-measure:\n%s", errI1)
+	}
+	// Its literal twin, same lowered operand kind, DOES reach parity.
+	gotC, ok2, errC2, gotI, errI2 := runBothEngines(t, literal)
+	if !ok2 {
+		t.Fatalf("%q: not compiled", literal)
+	}
+	requireParity(t, literal, gotC, errC2, gotI, errI2)
 }
