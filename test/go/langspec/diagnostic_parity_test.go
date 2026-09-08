@@ -90,7 +90,7 @@ import (
 // nothing silently. The whole point of the row is that it now RAISES where it
 // used to answer 'str'. Its sibling, the conforming `okr` row, is clean on
 // both passes.
-const diagnosticParityCeiling = 320 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 0 (Stage 8)
+const diagnosticParityCeiling = 321 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 321 (+1 twenty-seventh-increment row, the graduated apply-over-a-gradual-lead negative twin, diverging: the plain check flags its runtime no-match at the call over the concrete rule map, the compiled unit's carrier analysis does not repeat it — the "lost under compilation" class) -> 0 (Stage 8)
 
 // armedOnlyCeiling is the sharpest of the three classes: rows the plain
 // check calls clean and the compile-armed pass finds fault with. It is the

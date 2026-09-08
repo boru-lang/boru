@@ -6906,6 +6906,24 @@ func fnValueHasZeroArgSig(v Value) bool {
 // model (method_shape.go — the 0-arg model applies even with an inert
 // window after the member). A sig-less or fallback-only value answers
 // false (nothing provable).
+// MarkApplied stamps `apply`'s one-shot application signal on a fn value
+// whose only signatures are 0-arg, and is the SINGLE source of that
+// decision: the apply word's runtime handler, its check-mode model and the
+// VM's apply-word op all call it, so no two engines can disagree about
+// which values the re-step's inert-lambda gate must yield for (ADR-016,
+// NUR077 §5 Hole 1). Anything else is returned untouched. See
+// FnDefInfo.Applied for why the gate needs telling, and execFnDefLiteral
+// for where the mark is consumed and cleared.
+func MarkApplied(v Value) Value {
+	fd, ok := v.Data.(FnDefInfo)
+	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
+		return v
+	}
+	fd.Applied = true
+	v.Data = fd
+	return v
+}
+
 func FnValueOnlyZeroArgSigs(fd FnDefInfo) bool {
 	real := false
 	for i := range fd.Signatures {
@@ -7957,6 +7975,22 @@ func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeI
 	return closeIdx
 }
 
+// parenTrailingFnApply classifies a paren whose LAST value is the fn a
+// paren-bounded apply applies to the values before it: a concrete or
+// fn-typed value that is not Dynamic, or a Dynamic value the recorder holds
+// a pending `apply`-word application for (`(x r apply)` over a gradual r —
+// the apply word owns the application, so the value is the lead, not the
+// leading-dynamic reorder hazard recordParenLeadingApply refuses).
+func parenTrailingFnApply(es EmitRecorder, last Value, count, lastIdx int) bool {
+	if count < 2 || lastIdx < 0 {
+		return false
+	}
+	if last.Dynamic {
+		return last.ID != "" && es.ApplyPending(last.ID)
+	}
+	return IsFnValueResidual(last)
+}
+
 // reStepped tells stepCloseParen whether the MAIN loop will re-encounter the
 // survivors at the pointer (true), or whether this collapse is happening off
 // the main loop on behalf of a pending forward collection (false), where the
@@ -8212,7 +8246,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			last = e.Tape.At(lastIdx)
 		}
 		switch {
-		case count >= 2 && lastIdx >= 0 && !last.Dynamic && IsFnValueResidual(last):
+		case parenTrailingFnApply(es, last, count, lastIdx):
 			// TRAILING fn-value apply (`(a b comp)`): record it as an EVENT producing
 			// ONE carrier and COLLAPSE the [args…, fn] tape residual to that carrier —
 			// exactly as the interpreter's paren auto-dispatch nets one result. The
@@ -8231,6 +8265,20 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 				}
 			}
 			out := NewCarrier(TAny)
+			// A lead the `apply` WORD owns — a gradual value, or a fn-typed
+			// carrier under the word (`(x f/v apply)`) — has no static
+			// return: its result is GRADUAL (Dynamic), the honest type, so a
+			// later dispatch over it matches gradually and records a runtime
+			// re-match instead of the checker's best-fit recovery (a strict
+			// Any there refused `x (x f/v apply) apply` as "unmatched
+			// dispatch recovered at apply", the twenty-seventh increment).
+			// A plain paren apply of a fn-typed carrier (`(1 2 c)`) keeps its
+			// strict Any: the comparator convention's consumers were built on
+			// it, and a gradual result there refused an each body's residual
+			// ("result above a literal") that compiles today.
+			if last.Dynamic || es.ApplyPending(last.ID) {
+				out.Dynamic = true
+			}
 			out.ID = GenerateID(IDPrefixForType(TAny))
 			out.pos = last.pos
 			// consumed counts from the TOP of the window (the values

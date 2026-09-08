@@ -34,7 +34,7 @@ func TestCollectionHazardNote(t *testing.T) {
 	if nilES.applyPending("x") || (&EmitState{}).applyPending("x") {
 		t.Error("no unit, no pending apply")
 	}
-	es.units[len(es.units)-1].pendingApply = append(es.units[len(es.units)-1].pendingApply, "x")
+	es.units[len(es.units)-1].pendingApply = append(es.units[len(es.units)-1].pendingApply, pendingApply{id: "x"})
 	if !es.applyPending("x") || es.applyPending("y") {
 		t.Error("a pending apply reads back exactly")
 	}

@@ -77,7 +77,7 @@ func TestRecordDynApplyPendingConsume(t *testing.T) {
 	es := NewEmitState()
 	fn := core.NewDynamicCarrier(core.TFunction)
 	seedProduced(es, fn, 1)
-	es.units[len(es.units)-1].pendingApply = []string{fn.ID}
+	es.units[len(es.units)-1].pendingApply = []pendingApply{{id: fn.ID}}
 	out := core.NewInteger(0)
 	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(10)}, fn, out, core.SrcPos{}); !ok {
 		t.Fatal("resolvable apply with pending entry should record")

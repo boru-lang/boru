@@ -704,7 +704,7 @@ func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	fnLast := core.NewDynamicCarrier(core.TFunction)
 	es.producedBy[fnHead.ID] = producer{seq: 1}
 	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []string{fnLast.ID}
+	u.pendingApply = []pendingApply{{id: fnLast.ID}}
 	// bodyStk[:last] carries a fn value, so the pending-apply argsOK scan trips.
 	finish([]core.Value{fnHead, fnLast})
 	if es.Compilable {

@@ -178,6 +178,14 @@ type EmitRecorder interface {
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
+	// ApplyPending reports whether the innermost open unit holds a PENDING
+	// `apply`-word application of the value id — a lead the apply word
+	// dispatched that the check engine could not re-step (a fn-typed
+	// carrier, or a gradual value that may be a fn at run time). The paren
+	// collapse asks it so a Dynamic last value the apply word owns records
+	// as the paren-bounded apply it is, rather than as a leading dynamic
+	// value (the twenty-seventh increment).
+	ApplyPending(id string) bool
 	NoteMemberFnRead(id string, member Value)
 	MemberFnRead(id string) bool
 	// NoteCollectionHazard marks the fn-typed value id as an UNAPPLIED lead
@@ -385,6 +393,7 @@ func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, Src
 }
 func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
+func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}

@@ -72,6 +72,9 @@ var unflaggedPins = map[string]int{
 	// 0-arg apply of a 1-arg captured fn inside a returned lambda raises
 	// signature_error at RUNTIME, when the closure is applied — the checker
 	// sees a Function-typed capture and cannot know its arity statically.
+	// (The twenty-seventh increment's graduated apply-over-a-gradual-lead
+	// negative twin is NOT among these: the plain check flags its no-match
+	// at the call over the concrete rule map.)
 	"bytecode-migrated.tsv": 1,
 	// fnpred.tsv: ONE unflagged class, and every unflagged row is in it — a
 	// CONCRETE value failing a predicate (`def q:Even 5`, and the typed-param

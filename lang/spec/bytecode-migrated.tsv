@@ -111,3 +111,14 @@ def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g
 def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	the §9 0-arg apply of a 1-arg capture: the fnval unit models the raise
 def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the §9d arrow-inner factory with a gradual inner parameter
 def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)	15	the §9d verbose twin
+#
+# apply over a GRADUAL lead GRADUATED 2026-09-07 (the twenty-seventh
+# increment): `apply` over a Dynamic value inside a fn unit records as an
+# apply event (OpCallDynApplyOne — one result or a defer), and a value that
+# is no fn at run time raises the interpreter's own apply no-match, natively
+# and byte for byte. This was frontier-hof-audit.tsv row 194, the negative
+# twin of the "apply over a dynamic lead" pair; its positive twin compiles
+# too but islands (the map-member lambda is not stamped) and stays in the
+# frontier corpus, ledgered as "islanded". The plain check flags this row's
+# no-match at the call over the concrete rule map (diagnostic_parity_test.go).
+def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} app 5 rules	ERROR:signature_error	its negative twin: a non-fn in the rule slot is apply's no-match on both lanes

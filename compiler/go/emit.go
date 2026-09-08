@@ -204,6 +204,7 @@ type emitCall struct {
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)
+	dynApplyOne       bool                  // the lead is GRADUAL (apply over a Dynamic value): lower to OpCallDynApplyOne, exactly one result or defer
 	dynApplyKeepQuote bool                  // the dynApply fn is EVENT-provenance (a direct call result, no read substitution): lower to OpCallDynTrailKeepQ, which preserves the runtime quote state (quoted stays data)
 	dynApplyName      DynApplyHead          // the BINDING name (and read position) the apply's head was read bare under, seated on the unit at the emitted pc (CompiledFn.DynApplyName); zero when the head was not a bare read
 	dynMixed          bool                  // forward-drift window (REFUSAL-CLOSURE §1): island the len(ops) laid-out window [residual(s), dynamic value, word const, forward literal] verbatim via OpCallDynamicMixed — the island's own dispatch performs the interpreter's forward collection over the LIVE top value
@@ -1104,7 +1105,16 @@ type emitUnit struct {
 	// against the preceding stack) or refuse, so an unconsumed pending apply
 	// can never silently compile the fn+args as unapplied data (Stage M2a,
 	// design/STAGE3-INLINING-DESIGN-ROUND.0.md).
-	pendingApply []string
+	pendingApply []pendingApply
+}
+
+// pendingApply is one `apply`-word application the unit's finish or a paren
+// collapse must lower: the applied value's id and the apply WORD's position,
+// which the lowered op carries so a runtime no-match raises where the
+// interpreter's `apply` dispatch does.
+type pendingApply struct {
+	id  string
+	pos core.SrcPos
 }
 
 // fnUnitRec is one compiled fn body awaiting (or holding) its
@@ -1195,6 +1205,9 @@ type fnUnitRec struct {
 	// instead of OpCallDynTrailTop (which leaves a Quoted fn as data, the
 	// paren semantics).
 	dynTrailApply bool
+	// dynTrailPos is the apply WORD's position for a dynTrailApply tail —
+	// the op is stamped there so a runtime no-match raises at the word.
+	dynTrailPos core.SrcPos
 	// dynFrameW > 0 marks a body whose residual carries an UNAPPLIED runtime fn
 	// value beyond the frame-bottom re-push window — the shape the interpreter
 	// resolves by execFnDefLiteral's runtime rule against the LIVE frame. The
@@ -4791,7 +4804,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// an apply the interpreter performed.
 			if pend := u.pendingApply; len(pend) > 0 {
 				if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
-					bodyStk[len(bodyStk)-1].ID == pend[0] {
+					bodyStk[len(bodyStk)-1].ID == pend[0].id {
 					argsOK := true
 					for _, v := range bodyStk[:len(bodyStk)-1] {
 						if core.IsFnValueResidual(v) {
@@ -4804,6 +4817,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 						// applyHandler unquotes: a /v-parked fn value still
 						// applies (OpCallDynApplyTop), unlike the paren case.
 						rec.dynTrailApply = true
+						rec.dynTrailPos = pend[0].pos
 					}
 				}
 				if dynTrail == 0 {
@@ -5229,7 +5243,28 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	if !es.Active() {
 		return 0, false
 	}
-	if !core.IsFnValueResidual(fn) { // fn must be a genuine fn-value residual
+	// A paren-bounded apply that ALSO dispatched through the `apply` word
+	// (`(v comp/v apply)`, `(x r apply)` over a gradual r) registered a
+	// pending unit apply before this event collapsed the tape: the event
+	// now owns the apply. Resolved FIRST because it changes three decisions
+	// below — a gradual lead is admitted only under the apply word, the
+	// word's unquote lets a `/v`-read lead apply, and the EVENT-lead arity
+	// gate may TRIM the window before the ops are laid out — and the pending
+	// entry is consumed once the event records.
+	applyIdx := -1
+	if len(es.units) > 0 {
+		u := es.units[len(es.units)-1]
+		for i, p := range u.pendingApply {
+			if p.id == fn.ID {
+				applyIdx = i
+				pos = p.pos // the op raises where the interpreter's `apply` does
+				break
+			}
+		}
+	}
+	// fn must be a genuine fn-value residual — or a gradual value the apply
+	// WORD applies, which is a fn or the word's own no-match at run time.
+	if !core.IsFnValueResidual(fn) && applyIdx < 0 {
 		return 0, false
 	}
 	// The head's binding name for the lowered op's own diagnostics
@@ -5245,7 +5280,7 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	// word substitution, mirroring the interpreter) applies. The VM op
 	// strips the STORED value's construction-time quote to mirror the read
 	// (callDynTrailTop), so an inline-quote must never record the apply.
-	if fn.Quoted {
+	if fn.Quoted && applyIdx < 0 {
 		return 0, false
 	}
 	// A lead a later dispatch collected past (NUR121): its argument is that
@@ -5268,24 +5303,6 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	fnOp, ok := es.resolveOperand(fn)
 	if !ok {
 		return 0, false
-	}
-	// A paren-bounded apply that ALSO dispatched through the `apply` word
-	// (`(v comp/v apply)`) registered a pending unit apply before this event
-	// collapsed the tape — the event now owns the apply, so consume the
-	// pending entry rather than leaving it to refuse the unit at finish, and
-	// lower with the apply word's UNQUOTE semantics (OpCallDynApplyTop).
-	// Resolved BEFORE the operand build because the EVENT-lead arity gate
-	// below may TRIM the window, and the trim has to happen before the ops
-	// are laid out.
-	applyIdx := -1
-	if len(es.units) > 0 {
-		u := es.units[len(es.units)-1]
-		for i, id := range u.pendingApply {
-			if id == fn.ID {
-				applyIdx = i
-				break
-			}
-		}
 	}
 	// WINDOW TRIM. The lowered apply consumes exactly as many window values as
 	// it is given operands, so that count must be the CALLEE'S OWN ARITY. When
@@ -5350,7 +5367,7 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 		unquote = true
 	}
 	es.SiteCounts[SiteMono]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: ops, nout: 1, pos: pos, dynApply: len(args), dynApplyUnquote: unquote, dynApplyKeepQuote: keepQuote, dynApplyName: headName}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: ops, nout: 1, pos: pos, dynApply: len(args), dynApplyUnquote: unquote, dynApplyKeepQuote: keepQuote, dynApplyName: headName, dynApplyOne: !core.IsFnValueResidual(fn)}})
 	es.setProduced(out, seq)
 	return len(args), true
 }
@@ -6025,7 +6042,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		return
 	}
 	es.noteFnRiskFields(word, args, outs)
-	if es.recordCallElided(word, sig, args, outs) {
+	if es.recordCallElided(word, sig, args, outs, pos) {
 		return
 	}
 	if es.recordShuffleElided(word, sig, args, outs) {
@@ -6107,7 +6124,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 // recordCallElided reports whether a dispatch is ELIDED — already recorded by a
 // structured hook, or a compile-time name resolution that produces nothing the
 // VM runs. The caller returns without recording when this is true.
-func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, outs []core.Value) bool {
+func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	// §8.2(3) poly-alias: the ReturnsFn recorded THIS dispatch as
 	// OpCallUserPoly, and the caller then rebuilt the out carriers (the
 	// gradual first-match-partition widening mints fresh IDs) — alias the
@@ -6170,7 +6187,22 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// single-consumer window.
 		if len(es.units) > 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) {
 			u := es.units[len(es.units)-1]
-			u.pendingApply = append(u.pendingApply, args[0].ID)
+			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			return true
+		}
+		// A GRADUAL lead (a Dynamic carrier — a `x:Any` param, a map get's
+		// result, a fn-typed carrier's own apply result) under the [Reach
+		// Any] overload — the one the check's gradual match takes whenever a
+		// second value is beneath the lead (CompareSignatures tries the
+		// longer overload first): the check consumed the lead and its
+		// receiver and modelled ONE gradual result (the declared Any rides
+		// gradual), so the dispatch records here as an apply EVENT over that
+		// one arg — the receiver — lowered to OpCallDynApplyOne, which
+		// commits exactly one result or defers (the twenty-seventh
+		// increment). A gradual lead ALONE on the stack matches [Function]
+		// instead and keeps the refusal below: nothing beneath it to apply
+		// to, no single-consumer window at the unit's finish either.
+		if es.recordGradualApplyEvent(sig, args, outs, pos) {
 			return true
 		}
 		// A DYNAMIC lead that is neither a concrete value nor a fn-typed
@@ -7439,11 +7471,50 @@ func (es *EmitState) applyPending(id string) bool {
 		return false
 	}
 	for _, p := range es.units[len(es.units)-1].pendingApply {
-		if p == id {
+		if p.id == id {
 			return true
 		}
 	}
 	return false
+}
+
+// ApplyPending is applyPending on the recorder seam (core's paren collapse
+// asks it for a Dynamic last value).
+func (es *EmitState) ApplyPending(id string) bool { return es.applyPending(id) }
+
+// recordGradualApplyEvent records `apply` over a GRADUAL lead that the check
+// matched against the [Reach Any] overload inside a unit: args[0] is the
+// Dynamic lead (a `x:Any` param, a map get's result, a fn-typed carrier's own
+// apply result), args[1] the one value beneath it the overload consumed, and
+// outs[0] the one gradual result the model committed. The event lays out
+// [receiver, lead] with the lead on top and lowers to OpCallDynApplyOne. It
+// declines — leaving the standing refusal — outside a unit (the program
+// residual has no single-consumer window), for a lead with no identity, for
+// a receiver that is itself a fn value (the interpreter's apply would meet
+// two applicables), and for operands the recorder cannot resolve.
+func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
+	if len(es.units) <= 1 || sig == nil || sig.FnFrame() != nil || sig.TotalArgs() != 2 ||
+		len(args) != 2 || len(outs) != 1 {
+		return false
+	}
+	lead := args[0]
+	if core.IsConcrete(lead) || !lead.Dynamic || lead.ID == "" || core.IsFnValueResidual(args[1]) {
+		return false
+	}
+	fnOp, ok := es.resolveOperand(lead)
+	if !ok {
+		return false
+	}
+	argOp, ok := es.resolveOperand(args[1])
+	if !ok {
+		return false
+	}
+	// The apply word consumed a bare read of the lead (NUR123 accounting).
+	es.creditWordRead(lead.ID)
+	es.SiteCounts[SiteMono]++
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{fnOp, argOp}, nout: 1, pos: pos, dynApply: 1, dynApplyUnquote: true, dynApplyOne: true}})
+	es.setProduced(outs[0], seq)
+	return true
 }
 
 // memberFnRead reports whether id was tagged by noteMemberFnRead.
@@ -9711,10 +9782,14 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// lowers through the EVENT route (lowerCall), which does seat it.
 			if rec.dynTrailArity > 0 {
 				op := OpCallDynTrailTop
+				pos := rec.pos
 				if rec.dynTrailApply {
 					op = OpCallDynApplyTop // the `apply` word's unquote-then-apply
+					if rec.dynTrailPos != (core.SrcPos{}) {
+						pos = rec.dynTrailPos
+					}
 				}
-				flw.emit(op, rec.dynTrailArity, rec.pos)
+				flw.emit(op, rec.dynTrailArity, pos)
 			}
 			// A whole-frame dynamic-apply replay: outOps seated the FULL residual
 			// (frame re-push prefix included); replay the top dynFrameW token-region

@@ -91,7 +91,14 @@ var pinnedAritySites = map[string]int{
 	// bound for one takes the binding's name as the interpreter's frame
 	// binding gives it (installDef). It reads WHERE the params sit, never
 	// what a function of a given arity may do; every arity takes the path.
-	"eng/go/vm.go": 11,
+	// 11 -> 12: callDynApply's `fn.NParams == n` picks the VM-native fast
+	// path for a compiled closure whose unit takes exactly the window's
+	// values; every other arity takes the interpreter's own apply re-step,
+	// which applies the closure by its signature like any fn value. A path
+	// choice between two implementations of ONE dispatch rule, never a
+	// behaviour a function of a given arity gets — the twenty-seventh
+	// increment (the same shape dynApplyEnter's drift check pins above).
+	"eng/go/vm.go": 12,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -133,7 +140,14 @@ var pinnedAritySites = map[string]int{
 	"compiler/go/compiler_dispatch_record.go": 2,
 
 	// ── Compiler: recording and lowering against declared signatures.
-	"compiler/go/emit.go":           3,
+	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]
+	// takes the lead alone, [Reach Any] the lead and a receiver — and the
+	// recorder reads WHICH the check matched (sig.TotalArgs of 2) to record
+	// a gradual-lead apply as the one-arg event (recordGradualApplyEvent).
+	// That reads the matched signature's shape, the argument rule's own
+	// output; a fn of any arity on top at run time takes the same op — the
+	// twenty-seventh increment.
+	"compiler/go/emit.go":           4,
 	"compiler/go/user_poly.go":      1,
 	"compiler/go/callable_words.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's

@@ -135,7 +135,7 @@ func TestWordReadReplayArms(t *testing.T) {
 	if es.wordReadName(rec, quoted) != "" {
 		t.Error("a quoted value is data")
 	}
-	u.pendingApply = append(u.pendingApply, x.ID)
+	u.pendingApply = append(u.pendingApply, pendingApply{id: x.ID})
 	if es.wordReadName(rec, x) != "" {
 		t.Error("an apply-pending id is the apply word's")
 	}
@@ -393,5 +393,65 @@ func TestReplayLeadApplicables(t *testing.T) {
 		if got := replayLeadApplicables(c.window, es.dynFrameWordsFor(u, rec, c.window)); got != c.want {
 			t.Errorf("%s: %d, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// TestRecordGradualApplyEventDeclines pins recordGradualApplyEvent's
+// declines (the twenty-seventh increment): outside a unit, a nil or
+// one-arg signature, a wrong arg or out count, a lead that is concrete, not
+// gradual or unidentified, a receiver that is itself a fn value, and an
+// operand the recorder cannot resolve. The positive arm is the lang rows'
+// (gradual_apply_test.go).
+func TestRecordGradualApplyEventDeclines(t *testing.T) {
+	es, _, g, x := wordReadUnit(t)
+	two := &core.Signature{Args: []*core.Type{core.TReach, core.TAny}}
+	oneArg := &core.Signature{Args: []*core.Type{core.TFunction}}
+	out := []core.Value{core.NewDynamicCarrier(core.TAny)}
+	unknown := core.NewDynamicCarrier(core.TAny)
+	unknown.ID = "nowhere"
+	pos := core.SrcPos{Row: 1, Col: 9}
+	if es.recordGradualApplyEvent(nil, []core.Value{x, g}, out, pos) {
+		t.Error("a nil signature declines")
+	}
+	if es.recordGradualApplyEvent(oneArg, []core.Value{x}, out, pos) {
+		t.Error("the one-arg overload is the pending apply's, not this event's")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{x}, out, pos) || es.recordGradualApplyEvent(two, []core.Value{x, g}, nil, pos) {
+		t.Error("a wrong arg or out count declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{core.NewInteger(1), g}, out, pos) {
+		t.Error("a concrete lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{g, x}, out, pos) {
+		t.Error("a fn-typed (not gradual) lead is the pending apply's")
+	}
+	noID := core.NewDynamicCarrier(core.TAny)
+	noID.ID = ""
+	if es.recordGradualApplyEvent(two, []core.Value{noID, g}, out, pos) {
+		t.Error("an unidentified lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{x, g}, out, pos) {
+		t.Error("a fn-value receiver declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{unknown, core.NewInteger(1)}, out, pos) {
+		t.Error("an unresolvable lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{x, unknown}, out, pos) {
+		t.Error("an unresolvable receiver declines")
+	}
+	// The positive arm: a gradual param lead over a literal receiver
+	// records the event, lowered to OpCallDynApplyOne.
+	before := len(es.frames[len(es.frames)-1])
+	if !es.recordGradualApplyEvent(two, []core.Value{x, core.NewInteger(1)}, out, pos) {
+		t.Fatal("a gradual lead over a resolvable receiver records")
+	}
+	evs := es.frames[len(es.frames)-1]
+	if len(evs) != before+1 || !evs[len(evs)-1].call.dynApplyOne || !evs[len(evs)-1].call.dynApplyUnquote || evs[len(evs)-1].call.pos != pos {
+		t.Errorf("the event carries the one-result and unquote flavours at the apply word's position: %+v", evs[len(evs)-1].call)
+	}
+	// Outside a unit nothing records.
+	top := NewEmitState()
+	if top.recordGradualApplyEvent(two, []core.Value{x, core.NewInteger(1)}, out, pos) {
+		t.Error("the main program has no single-consumer window")
 	}
 }

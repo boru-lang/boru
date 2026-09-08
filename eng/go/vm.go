@@ -996,6 +996,8 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 		return vc.callDynTrailTop(reg, arg, stack, curDebug, pc, head)
 	case compiler.OpCallDynApplyTop:
 		return vc.callDynApplyTop(reg, arg, stack, curDebug, pc)
+	case compiler.OpCallDynApplyOne:
+		return vc.callDynApply(reg, arg, stack, curDebug, pc, true)
 	case compiler.OpCallDynFrame:
 		return vc.callDynFrame(reg, arg, frameBase, stack, curDebug, pc, words)
 	case compiler.OpCallDynMethod:
@@ -1197,6 +1199,12 @@ func installedSigView(fnDef core.FnDefInfo) core.FnDefInfo {
 // non-FnDefInfo, non-closure payload raises applyHandler's own byte-identical
 // error — the same taxonomy the interpreter's dispatch of `apply` yields.
 func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	return vc.callDynApply(reg, n, stack, curDebug, pc, false)
+}
+
+// callDynApply is callDynApplyTop's shared body; one selects the EVENT form
+// (OpCallDynApplyOne): exactly one result or a defer.
+func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int, one bool) ([]core.Value, *dynEnter, error) {
 	r := vc.r
 	if len(stack) < n+1 {
 		return nil, nil, vmErrAt(curDebug, pc, "CALL_DYN_APPLY_TOP underflow")
@@ -1208,12 +1216,44 @@ func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Val
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
-		results, err := vc.invokeClosure(vc.r, fnVal, args)
+	// commit is the ONE-result discipline of the event form (OpCallDynApplyOne):
+	// the model committed exactly one result, so any other count defers the
+	// run to the interpreter rather than misaligning the frame's stack.
+	commit := func(results []core.Value, err error) ([]core.Value, *dynEnter, error) {
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, r)
 		}
+		if one && len(results) != 1 {
+			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-one", fmt.Sprintf("apply over a gradual lead netted %d value(s), not the one the model committed", len(results)))
+		}
 		return append(stack[:base], results...), nil, nil
+	}
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// A compiled closure of the window's own arity runs VM-native; any
+		// other arity takes the interpreter's apply re-step below, whose
+		// bridge (ClosureAsFnDef) under- or over-applies exactly as the
+		// interpreter's fn value does.
+		if fn, known := vc.closureUnit(cl); !known || fn.NParams == n {
+			return commit(vc.invokeClosure(vc.r, fnVal, args))
+		}
+		return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
+	}
+	if fnVal.Parent == nil || !fnVal.Parent.ConformsTo(core.TFunction) {
+		// A GRADUAL lead (the twenty-seventh increment) that is no fn at
+		// run time. A lens takes `apply`'s [Reach Any] overload on the
+		// interpreter — a receiver-rebinding get the VM does not model —
+		// so defer the run; anything else is the interpreter's own
+		// `apply` no-match over the same stack window (its stack-only match
+		// looked at the top two values), raised at the apply word's
+		// position, which this op carries.
+		if fnVal.Parent != nil && fnVal.Parent.Equal(core.TReach) {
+			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-top", "apply over a lens value: deferred to the interpreter")
+		}
+		written := []core.Value{fnVal}
+		if n > 0 {
+			written = append(written, args[0])
+		}
+		return nil, nil, stampAt(core.RuntimeNoMatch(reg, "apply", written), curDebug, pc, r)
 	}
 	fnDef, ok := fnVal.Data.(core.FnDefInfo)
 	if !ok {
@@ -1222,28 +1262,59 @@ func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Val
 		return nil, nil, stampAt(fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", fnVal.Data), curDebug, pc, r)
 	}
 	fnVal.Quoted = false // applyHandler: the parked value becomes a live call site
+	fnVal = core.MarkApplied(fnVal)
 	if vmNativeApplicable(vc.r, fnDef) {
 		if results, done, err := vc.tryNativeFnApply(fnVal, args); done {
-			if err != nil {
-				return nil, nil, stampAt(err, curDebug, pc, r)
-			}
-			return append(stack[:base], results...), nil, nil
+			return commit(results, err)
 		}
 	}
-	if ent := vc.dynApplyEnter(fnVal, args); ent != nil {
+	// The inline unit entry returns through its own RET, whose count the
+	// event form cannot check — so it is taken only for a unit declaring
+	// the one return the model committed.
+	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && (!one || len(vc.p.Fns[ent.unit].Returns) == 1) {
 		return stack[:base], ent, nil
 	}
-	island := make([]core.Value, 0, n+1)
-	island = append(island, fnVal)
-	island = append(island, args...)
-	results, err := vc.islandRun(reg, island)
+	return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
+}
+
+// applyReStep is the interpreter's applyHandler re-step, islanded: the args
+// are the resolved stack (deepest first) and the fn value is stepped over
+// them at the pointer, so the fn collects from the stack exactly as the
+// interpreter's apply word makes it — a 0-arg fn fires and leaves the stack
+// beneath it, a fn of a larger arity under-applies and parks, and a mismatch
+// raises the interpreter's own diagnostic. The earlier island stepped the
+// fn FIRST with the args as forward tokens, which put a 0-arg fn's result
+// beneath the args the interpreter leaves beneath it.
+func (vc *vmContext) applyReStep(reg *core.Registry, fnVal core.Value, args []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	inputs := make([]core.Value, len(args))
+	for i, a := range args {
+		inputs[len(args)-1-i] = a
+	}
+	if reg == nil {
+		reg = vc.r
+	}
+	results, err := runIslandResolved(reg, inputs, []core.Value{fnVal})
 	if err != nil {
-		return nil, nil, stampAt(err, curDebug, pc, r)
+		return nil, err
 	}
-	if err := vc.screenResults(results, "dynamic apply-top result at fn-value apply", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
-		return nil, nil, err
+	if err := vc.screenResults(results, "dynamic apply-top result at fn-value apply", curDebug, pc); err != nil { //covergate:allow tape-coupled results cannot leave a resolved island: its inputs are values and its one token a fn (§compiler)
+		return nil, err
 	}
-	return append(stack[:base], results...), nil, nil
+	return results, nil
+}
+
+// closureUnit resolves the CompiledFn a closure payload names — in the
+// running program or, for a closure minted elsewhere, its own (a hosted
+// foreign unit); known=false for a payload that names no unit.
+func (vc *vmContext) closureUnit(cl core.ClosurePayload) (*compiler.CompiledFn, bool) {
+	prog := vc.p
+	if fp, foreign := vc.closureProgram(cl); foreign {
+		prog = fp
+	}
+	if prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return nil, false
+	}
+	return &prog.Fns[cl.Unit], true
 }
 
 // callDynMethod is the GUARDED mid-stream shaped-instance-method apply
@@ -2398,7 +2469,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
-			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod:
+			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynApplyOne, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod:
 			// The fn-value-call boundary family: leading / trailing-1
 			// (callDynamic), interior-window (callDynamicMixed), fn-on-top
 			// (callDynTrailTop / callDynApplyTop) and the whole-frame replay

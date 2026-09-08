@@ -3975,6 +3975,126 @@ entry is cheap but partial by design: the interpreter's rebinding path for a
 module wrapper installs OVERLOADS, and mirroring that is a registry-visible
 install, not a payload edit.
 
+## `apply` over a gradual lead (2026-09-07, the twenty-seventh increment)
+
+With the closure-capture family moved, the §5.8 combinator rows were
+re-measured on both lanes, and the ten still refusing all blocked on ONE
+mechanism inside their returned lambdas, not on the lambdas themselves:
+`apply` over a value the check cannot type as a fn. Three spellings, one
+cause: `x (x f/v apply) apply` (the W combinator's body — a fn-typed
+carrier's own paren apply feeds a second `apply`), `nd (m get "inc") apply`
+(the ledger's "apply over a dynamic lead" pair, a rule fetched from a Map
+param), and the same inside a paren. Plain fn bodies with these shapes were
+the smallest witnesses, because a returned lambda's probe refusal surfaces
+only as the factory's "body result of unknown provenance".
+
+**Where it blocked, measured.** A fn-typed CARRIER's paren apply netted a
+STRICT `Any` carrier (`NewCarrier(TAny)` at the paren collapse), so a later
+`apply` over it matched no overload in check mode and took the checker's
+best-fit recovery — "unmatched dispatch recovered at apply" — a refusal.
+And a GRADUAL lead that does match matches `apply`'s [Reach Any] overload,
+not [Function]: CompareSignatures tries the longer overload first, and a
+Dynamic value is admitted to the Reach slot because the matcher cannot rule
+a lens out. The recorder's apply arm expected the [Function] match (the
+fn-typed carrier case) and refused the rest as "apply over a dynamic lead
+(overload unprovable)".
+
+**What landed.**
+
+- The paren collapse mints a GRADUAL result for a lead the apply WORD owns
+  — a gradual value, or a fn-typed carrier under the word, `(x f/v apply)`:
+  `last.Dynamic || es.ApplyPending(last.ID)` → `out.Dynamic`. The honest
+  type — a later dispatch over it matches gradually and records a runtime
+  re-match, as a map get's result already does. A plain paren apply of a
+  fn-typed carrier (`(1 2 c)`) keeps its strict `Any`: the first cut made
+  every carrier lead's result gradual and an each body's residual refused
+  ("result above a literal", `TestTrailingApplyQuoteDiscipline`) — the
+  comparator convention's consumers were built on the strict result.
+- `apply`'s [Reach Any] overload needed NO check-mode model: its declared
+  `Any` return already rides gradual (`declaredReturnCarriers`, "declared
+  Any riding dynamic"). A ReturnsFn returning a strict `Any` for a concrete
+  lens was tried first and refused `p (reach 0 [x (k)]) apply` — a
+  compiling row — because the strict result took the dispatch off the poly
+  path onto the generic record and its dynamic-lead refusal; the lang suite
+  caught it (`TestReachComputedSegmentLowers`) and the model came out.
+- The recorder records the Reach-matched dispatch over a gradual lead as an
+  apply EVENT (`recordGradualApplyEvent`): [receiver, lead] with the lead on
+  top, one result, the apply word's position, lowered to a new op
+  `OpCallDynApplyOne`. Inside a unit only — the program residual has no
+  single-consumer window, so the main program keeps its refusal — and never
+  for a concrete or unidentified lead, a fn-value receiver, or an operand the
+  recorder cannot place. A gradual lead ALONE on the stack matches
+  [Function] instead and keeps the standing refusal (nothing beneath it to
+  apply to, and no single-consumer window at the unit's finish) — a first
+  cut registered it as the fn-typed carrier's pending apply, dead code no
+  program reaches, which the merged coverage gate caught. The pending entry
+  now carries the apply WORD's position (`pendingApply{id, pos}`), which
+  both the tail lowering and the paren event stamp on the op, so a runtime
+  no-match raises where the interpreter's `apply` does.
+- `RecordDynApply` admits a lead that is not a fn-value residual when the
+  apply word holds it pending, and the paren classification asks the
+  recorder (`EmitRecorder.ApplyPending`, a new seam method) so a Dynamic last
+  value the apply word owns is the trailing apply, not the leading-dynamic
+  reorder hazard `recordParenLeadingApply` refuses; the apply word's unquote
+  lets a `/v`-read lead apply there too.
+- The VM's apply-word op applies a fn as the interpreter's `applyHandler`
+  re-step does (`applyReStep`): the args are the resolved STACK and the fn
+  is stepped over them, through `core.MarkApplied` (moved to core so the
+  runtime handler, the check model and the VM share the one decision), so a
+  0-arg fn fires and leaves the receiver beneath its result — the earlier
+  island stepped the fn first with the args as forward tokens, which put a
+  0-arg fn's result BENEATH the receiver ([42 4] for the interpreter's
+  [4 42]). The event form commits exactly ONE result: any other count (a
+  0-arg or 2-arg fn), a lens on top (the [Reach Any] overload's own get) and
+  a compiled closure of another arity DEFER the run to the interpreter; a
+  value that is no fn raises the interpreter's own `apply` no-match over the
+  same two stack values, byte for byte and at the same position (`w15 {f:
+  42} 4` → ``cannot call `apply` `` at 1:114 on both lanes, with the two
+  candidate notes).
+
+**Measured.** The W combinator's body as a fn (`x/v (x f/v apply) apply`)
+and the same in a paren answer 8 on both lanes, natively; the fetched-fn
+apply is 6 and its negative twin the identical no-match; the W combinator's
+RETURNED lambda compiles and, def-bound, applies (`def w4 (ww add2/v)  (w4
+4)` → 8 natively). The lens, the 0-arg fn and the 2-arg fn defer and answer
+through the fallback with the interpreter's exact value or error
+(`TestGradualApplyDefers`). The frontier ledger went 78 → 77: the "apply
+over a dynamic lead" pair's NEGATIVE twin graduated to
+`bytecode-migrated.tsv` (it raises the no-match natively; the plain check
+flags that no-match at the call over the concrete rule map where the
+compiled unit's carrier analysis does not, so the diagnostic-parity ceiling
+takes it, 320 → 321, the "lost under compilation" class), while the positive
+twin compiles but ISLANDS: the map-member lambda `rules.inc` is baked as a
+const with no compiled unit, so the apply word's re-step runs its body on
+the interpreter (`vm:island-resolved`) — the interp-entry census's debt,
+which graduating the row would have moved into the main corpus (the census
+caught it, 34 over its ceiling of 33). It stays ledgered as "islanded", and
+the frontier gate now detects a VM island through the interp-entry hook
+(the `vm:island` seams — a native handler's own interpretation stays the
+handler's, as for the census), not only an OpFallback span, so such a row
+is never reported as a stale entry to graduate. Graduation = stamping a fn VALUE on
+its first apply (`StampDetachedFn` from the op) so the unit enters
+VM-native. And TEN §5.8 rows moved their refusal: the combinator's returned
+lambda compiles now, so each refuses at the MAIN program's `apply` over the
+produced closure — the Stage-2 argument-slot refusal the staged B/K rows
+already hold, re-diagnosed in the ledger as such (the two `cand` rows did
+NOT move: their inner lambda applies a def-bound lambda read by `/v`,
+`cfalse/v (q/v p/v apply) apply`, the NUR101 def-read hold). That refusal —
+the apply WORD over a produced closure at the main program (`99 (kk 7)
+apply`, `4 (ww add2/v) apply`) — is now most of the §5.8 family's last
+blocker: twelve rows behind one gate (`argIsProducedClosure` at the
+top-level dispatch, plus the apply word's `len(units) > 1` hold), with the
+closure's arity known at record time (`producerReturnedClosureArity`).
+
+**What the next author should not re-derive.** Which `apply` overload the
+check picks for a gradual lead is decided by CompareSignatures' order, not
+by the value: the [Reach Any] match is the common case and the model the
+recorder must lower; the [Function] match is the lone-value case, which
+has nothing to lower. And the
+apply word's re-step is STACK-shaped: an island that steps the fn first over
+the args as forward tokens is a different dispatch, and a 0-arg fn is where
+it shows.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4117,6 +4237,11 @@ position than the construct that produced the binding.
 | `lang/go/restep_deopt_test.go` | the timing family's parity and lowering (the op follows the swap), the siblings the note leaves alone, the closure family's parity (`TestClosureValueReStepParity`), and the open shapes pinned as measured |
 | `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda / a no-match stay data — as the PAYLOAD, never the bridge; the seam's declines, the Anonymous flag, and the closure's identity riding on the bridge |
 | `core/go/fn_identity_test.go` / `lang/go/closure_identity_test.go` | the closure identity token: copies of one closure are one function (`dup eq` true on both lanes), constructions are distinct, a token-less payload is nothing, a bridged copy is eq to the closure either way round |
+| `lang/go/gradual_apply_test.go` | `apply` over a gradual lead inside a unit: the parity rows (the W combinator's body and returned lambda, the fetched-fn apply, the no-match twins byte for byte), the runtime states the op defers (a lens, a 0-arg fn, a 2-arg fn) and the sound refusals (the main-program apply over a produced closure, a two-return body) |
+| `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`) | `recordGradualApplyEvent`'s declines and its one positive arm (the event's flavour flags and position) |
+| `eng/go/vm_seam7_test.go` (`TestSeam7CallDynApplyOneArms`, `TestSeam7CallDynApplyTopArms`) | the apply-word op arm by arm: one result commits, a 0-arg fn fires above the receiver (the tail form) and defers (the event form), a lens defers, data raises the interpreter's own `apply` no-match, `closureUnit`'s declines, the re-step's island error |
+| `core/go/fn_identity_test.go` (`TestParenTrailingFnApply`) | the paren classification's trailing arm — a Dynamic last value is the lead exactly when the apply word holds it pending — and `MarkApplied`'s arms |
+| `core/go/engine_stage5b_test.go` (`TestS5BCloseParenPendingGradualLead`) | the paren collapse over a pending gradual lead records the trailing apply with a GRADUAL out and collapses the window; with nothing pending the same window is kept |
 | `compiler/go/plain_lambda_test.go` | `plainLambda`'s arms (a code body, a typed lambda, no contract, a pattern param) and that a code-body closure keeps its own count discipline |
 | `eng/go/frame_name_test.go` | `nameFrameFns`: a lambda bound for a named param takes the name; an unnamed slot, a value already so named, a module wrapper and a compiled closure are left alone; `bindUnitLocals` names through it |
 | `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the sound refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |

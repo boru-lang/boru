@@ -295,6 +295,17 @@ const (
 	// Function-typed carrier (StartFnCompile's pendingApply) and for the
 	// paren-bounded RecordDynApply event when the apply word drove it.
 	OpCallDynApplyTop
+	// OpCallDynApplyOne is OpCallDynApplyTop for an apply over a GRADUAL lead
+	// recorded as an EVENT (the twenty-seventh increment): the check matched
+	// `apply`'s [Reach Any] overload over a Dynamic value and modelled ONE
+	// result, so the op commits exactly one — a fn on top applies to the Arg
+	// args beneath it as the interpreter's applyHandler re-step does (the
+	// args as the stack, the fn stepped over them) and its result count is
+	// checked; any other count, a lens on top (the [Reach Any] overload's
+	// own dispatch) or a compiled closure of another arity DEFERS the run to
+	// the interpreter, and a value that is no fn raises the interpreter's
+	// own `apply` no-match at the apply word's position.
+	OpCallDynApplyOne
 	// OpCallDynTrailKeepQ is OpCallDynTrailTop for an EVENT-provenance fn (a
 	// direct call result — `(1 2 (mk))`): the value arrives WITHOUT the
 	// interpreter's read substitution, so its runtime quote state must
@@ -546,6 +557,7 @@ var opcodeNames = [...]string{
 	OpCallUserPoly:         "CALL_USER_POLY",
 	OpCallDynTrailTop:      "CALL_DYN_TRAIL_TOP",
 	OpCallDynApplyTop:      "CALL_DYN_APPLY_TOP",
+	OpCallDynApplyOne:      "CALL_DYN_APPLY_ONE",
 	OpCallDynTrailKeepQ:    "CALL_DYN_TRAIL_KEEPQ",
 	OpCallDynFrame:         "CALL_DYN_FRAME",
 	OpPushConstFresh:       "PUSH_CONST_FRESH",

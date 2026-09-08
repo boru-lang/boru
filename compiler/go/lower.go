@@ -2311,6 +2311,10 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		if c.dynApplyUnquote {
 			op = OpCallDynApplyTop
 		}
+		if c.dynApplyOne {
+			// A GRADUAL lead under the apply word: exactly one result or defer.
+			op = OpCallDynApplyOne
+		}
 		if c.dynApplyKeepQuote {
 			// An event-provenance fn: the runtime quote state survives
 			// (no read substitution to mirror) — see OpCallDynTrailKeepQ.
@@ -2320,7 +2324,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// `apply` word's flavour is excluded: applyHandler re-steps the fn
 		// against the whole preceding stack, a different dispatch whose
 		// diagnostics this pair does not describe.
-		if op != OpCallDynApplyTop {
+		if op != OpCallDynApplyTop && op != OpCallDynApplyOne {
 			lw.seatDynApplyName(c.dynApplyName)
 		}
 		lw.emit(op, c.dynApply, c.pos)

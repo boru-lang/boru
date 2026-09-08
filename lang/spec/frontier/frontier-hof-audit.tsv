@@ -190,8 +190,7 @@ def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end de
 #     Both compile guards (tryRecordPoly, recordCallElided) decline rather
 #     than record a wrong-arity poly window, so the row falls back
 #     faithfully. Graduation = an arity channel for a fetched-fn apply lead.
-def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — the interpreter oracle; the compile lane refuses (ledgered)
-def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} app 5 rules	ERROR:signature_error	…and its negative twin: a NON-fn in the rule slot makes apply refuse loudly (same lane story)
+def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — compiles since the twenty-seventh increment but ISLANDS (the map-member lambda is not stamped); ledgered as islanded
 #
 # §11 NUR087's branch-local spelling (2026-08-24). The def-split collapse
 #     now admits a DYNAMIC argument, so this CHECKS clean — the false

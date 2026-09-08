@@ -397,24 +397,13 @@ func applyReturns(args []Value, r *Registry) []Value {
 }
 
 // markApplied stamps `apply`'s one-shot application signal on a fn value
-// whose only signatures are 0-arg, and is the SINGLE source of that
-// decision: the runtime handler and the check-mode model both call it, so
-// the two engines cannot disagree about which values the re-step's
-// inert-lambda gate must yield for. That is the whole reason the mark is a
-// value stamp rather than a call — a handler runs only at runtime, and the
-// check pass would have had to guess. Anything else is returned untouched.
-//
-// See FnDefInfo.Applied (core/go/value.go) for why the gate needs telling,
-// and execFnDefLiteral for where the mark is consumed and cleared.
-func markApplied(v Value) Value {
-	fd, ok := v.Data.(FnDefInfo)
-	if !ok || !FnValueOnlyZeroArgSigs(fd) || !fd.Anonymous || fd.Macro {
-		return v
-	}
-	fd.Applied = true
-	v.Data = fd
-	return v
-}
+// whose only signatures are 0-arg. The decision lives in core.MarkApplied,
+// the SINGLE source the runtime handler, the check-mode model and the VM's
+// apply-word op share, so no two engines can disagree about which values
+// the re-step's inert-lambda gate must yield for. That is the whole reason
+// the mark is a value stamp rather than a call — a handler runs only at
+// runtime, and the check pass would have had to guess.
+func markApplied(v Value) Value { return core.MarkApplied(v) }
 
 func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	v := args[0]

@@ -100,6 +100,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive RecordInterp must decline")
 	}
 	e.RegisterTrailingApply("id", 1)
+	if e.ApplyPending("id") {
+		t.Fatal("inactive ApplyPending must be false")
+	}
 	e.NoteMemberFnRead("id", Value{})
 	if e.MemberFnRead("id") {
 		t.Fatal("inactive MemberFnRead must be false")
