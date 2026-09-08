@@ -52,17 +52,27 @@ func storeNameAt(p *compiler.Program, unit, pc int) (string, bool) {
 // here as the frame rename does), a non-closure, or a unit the render
 // bridge cannot describe is left alone.
 func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
+	return nameClosureValue(v, name)
+}
+
+// nameClosureValue is the rename itself, program-free: the payload names its
+// own program (OpPushClosure seats it), so a frame entry can rename a
+// closure bound for a named param through the same helper
+// (nameFrameFns — the interpreter's frame binding names a fn value bound
+// for a param exactly as installDef names a def, and a compiled closure
+// there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
+func nameClosureValue(v core.Value, name string) core.Value {
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || cl.RetName != "" {
 		return v
 	}
 	cl.RetName = name
-	if fn, known := vc.closureUnit(cl); known {
+	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
 		// The bridge's own signature, named — the render the interpreter's
 		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
 		// this value is only ever formatted.
-		if params, ok := closureSigParams(fn); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: fn.Lambda})
+		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: prog.Fns[cl.Unit].Lambda})
 		}
 	}
 	v.Data = cl

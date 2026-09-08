@@ -376,6 +376,13 @@ func nameFrameFns(fn *compiler.CompiledFn, locals []core.Value) {
 		if name == "" {
 			continue
 		}
+		if _, isClosure := locals[i].Data.(core.ClosurePayload); isClosure {
+			// A compiled closure bound for a named param takes the name the
+			// same way (the thirtieth increment): `(w (kk 7)) 4` rendered
+			// `fn (Any) 4` for the interpreter's `fn g(Any) 4`.
+			locals[i] = nameClosureValue(locals[i], name)
+			continue
+		}
 		fd, ok := locals[i].Data.(core.FnDefInfo)
 		if !ok || fd.Name == name || fd.Registry != nil {
 			continue

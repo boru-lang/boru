@@ -2500,9 +2500,26 @@ func FnAnalysisKey(scopeID uint64, name string, args []core.Value, captures []co
 	}
 	if len(body) > 0 {
 		sb.WriteByte('@')
-		sb.WriteString(strconv.Itoa(body[0].Pos().Row))
-		sb.WriteByte(':')
-		sb.WriteString(strconv.Itoa(body[0].Pos().Col))
+		pos := body[0].Pos()
+		if pos.Row == 0 && pos.Col == 0 {
+			// A body whose first token carries no position — a lambda body
+			// that is one `=>` group — identifies itself by its canonical
+			// text instead. Keyed on the (zero) position, two such lambdas
+			// of one shape shared one key, one summary and one compiled
+			// UNIT: cnot's inner `t:Any => [f:Any => …]` and cif's inner
+			// `t:Any => [e:Any => …]` (both a `p:Function` capture over
+			// `t:Any`) collided, and cif's returned closure ran cnot's body
+			// (`'F' ('T' (cif (cnot ctrue/v)) apply) apply` answered T for
+			// the interpreter's F — the thirtieth increment).
+			for _, v := range body {
+				sb.WriteString(core.CanonValue(v))
+				sb.WriteByte(' ')
+			}
+		} else {
+			sb.WriteString(strconv.Itoa(pos.Row))
+			sb.WriteByte(':')
+			sb.WriteString(strconv.Itoa(pos.Col))
+		}
 	}
 	return sb.String()
 }
@@ -2531,9 +2548,26 @@ func fnQuotaKey(scopeID uint64, name string, body []core.Value) string {
 	sb.WriteString(name)
 	if len(body) > 0 {
 		sb.WriteByte('@')
-		sb.WriteString(strconv.Itoa(body[0].Pos().Row))
-		sb.WriteByte(':')
-		sb.WriteString(strconv.Itoa(body[0].Pos().Col))
+		pos := body[0].Pos()
+		if pos.Row == 0 && pos.Col == 0 {
+			// A body whose first token carries no position — a lambda body
+			// that is one `=>` group — identifies itself by its canonical
+			// text instead. Keyed on the (zero) position, two such lambdas
+			// of one shape shared one key, one summary and one compiled
+			// UNIT: cnot's inner `t:Any => [f:Any => …]` and cif's inner
+			// `t:Any => [e:Any => …]` (both a `p:Function` capture over
+			// `t:Any`) collided, and cif's returned closure ran cnot's body
+			// (`'F' ('T' (cif (cnot ctrue/v)) apply) apply` answered T for
+			// the interpreter's F — the thirtieth increment).
+			for _, v := range body {
+				sb.WriteString(core.CanonValue(v))
+				sb.WriteByte(' ')
+			}
+		} else {
+			sb.WriteString(strconv.Itoa(pos.Row))
+			sb.WriteByte(':')
+			sb.WriteString(strconv.Itoa(pos.Col))
+		}
 	}
 	return sb.String()
 }

@@ -7144,7 +7144,17 @@ func (es *EmitState) residualReadStable(v core.Value) bool {
 // window (`1 99 (mk 7) apply` seated all three as data when this was
 // lifted for carriers too). The two-arg Reach overload keeps it as well: a
 // closure at its receiver slot is data the paren left unapplied.
-func (es *EmitState) argIsProducedClosure(word string, args []core.Value) bool {
+//
+// A slot DECLARED `Function` is the other exception (the thirtieth
+// increment): the word asked for a fn value there — a user fn's
+// `p:Function` param, which the interpreter's frame binding installs as
+// data (`cif (cnot ctrue/v)`) — so a produced closure at that slot is the
+// argument, not a stranded apply, and the call's operand carries the
+// payload. An `Any` slot keeps the refusal: `typeof (h 5)` is the paren
+// that failed to collapse, and its slot would swallow the FUNCTION. The
+// apply word's own Function slot is not this exception: apply APPLIES its
+// value, and the rules above are its whole account.
+func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args []core.Value) bool {
 	if !es.Active() {
 		return false
 	}
@@ -7154,7 +7164,7 @@ func (es *EmitState) argIsProducedClosure(word string, args []core.Value) bool {
 		}
 	}
 	for i := range args {
-		if !core.IsAppliableFn(args[i]) {
+		if !core.IsAppliableFn(args[i]) || (word != "apply" && slotDeclaresFunction(sig, i)) {
 			continue
 		}
 		if es.producerReturnedClosure(args[i].ID) {
@@ -7164,6 +7174,22 @@ func (es *EmitState) argIsProducedClosure(word string, args []core.Value) bool {
 		}
 	}
 	return false
+}
+
+// slotDeclaresFunction reports whether a signature's slot i is declared
+// exactly `Function` — a named param's type (Params) or a positional one
+// (Args); a nil signature or an untyped slot declares nothing.
+func slotDeclaresFunction(sig *core.Signature, i int) bool {
+	if sig == nil {
+		return false
+	}
+	var t *core.Type
+	if i < len(sig.Params) {
+		t = sig.Params[i].Type
+	} else if i < len(sig.Args) {
+		t = sig.Args[i]
+	}
+	return t != nil && t.Equal(core.TFunction)
 }
 
 func (es *EmitState) recordCodeBodyClosureRead(args []core.Value) bool {

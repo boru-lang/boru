@@ -152,7 +152,13 @@ var pinnedAritySites = map[string]int{
 	// That reads the matched signature's shape, the argument rule's own
 	// output; a fn of any arity on top at run time takes the same op — the
 	// twenty-seventh increment.
-	"compiler/go/emit.go":           4,
+	// 4 -> 6: slotDeclaresFunction reads whether a signature's slot i is
+	// DECLARED `Function` — two bounds checks on a signature INDEX
+	// (`i < len(sig.Params)`, `i < len(sig.Args)`) choosing which side of
+	// the signature holds the slot, not a decision about a function's
+	// shape; the declared slot type is the argument rule's own input —
+	// the thirtieth increment.
+	"compiler/go/emit.go":           6,
 	"compiler/go/user_poly.go":      1,
 	"compiler/go/callable_words.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's

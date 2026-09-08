@@ -11,7 +11,7 @@ import (
 // class): a fn VALUE bound for a NAMED param or capture takes the binding's
 // name, as the interpreter's frame binding gives it (installDef's
 // `fnDef.Name = name`); an unnamed slot, a non-fn value, a value already so
-// named, a module wrapper (a foreign Registry) and a compiled closure are
+// named and a module wrapper (a foreign Registry) are left alone; a compiled closure is named too (the thirtieth increment). The rest of this comment predates that:
 // left alone.
 func TestNameFrameFns(t *testing.T) {
 	r, err := core.NewRegistry()
@@ -37,8 +37,16 @@ func TestNameFrameFns(t *testing.T) {
 	if fd := locals[3].Data.(core.FnDefInfo); fd.Name != "sqrt" {
 		t.Errorf("a module wrapper keeps its name (installDef's rebinding path is not mirrored): %+v", fd)
 	}
-	if _, ok := locals[4].Data.(core.ClosurePayload); !ok {
-		t.Errorf("a compiled closure keeps its payload: %v", locals[4])
+	if cl, ok := locals[4].Data.(core.ClosurePayload); !ok || cl.RetName != "" {
+		t.Errorf("a compiled closure in a CAPTURE slot (past NParams) is left alone: %v", locals[4])
+	}
+	// A compiled closure bound for a named PARAM takes the name (the
+	// thirtieth increment), its payload kept — the render stays when the
+	// payload names no unit.
+	named2 := []core.Value{closure}
+	nameFrameFns(fn, named2)
+	if cl, ok := named2[0].Data.(core.ClosurePayload); !ok || cl.RetName != "g" || cl.Render != "" {
+		t.Errorf("a compiled closure bound for param g is named g: %v", named2[0])
 	}
 	// A slot past the frame, a data value: nothing to do, nothing to panic on.
 	short := []core.Value{core.NewInteger(1)}

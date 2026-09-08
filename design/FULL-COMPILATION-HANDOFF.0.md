@@ -4278,6 +4278,57 @@ on both lanes, byte for byte unbound and message-identical def-bound. Sound
 refusals pinned: a gradual param beneath the tail apply (the factory's
 "body result of unknown provenance").
 
+## A produced closure at a declared Function slot, and the memo key of a position-less lambda body (2026-09-08, the thirtieth increment)
+
+The two `cnot` rows refused at cif's `p:Function` ARGUMENT slot
+(`cif (cnot ctrue/v)`): `argIsProducedClosure`, the word-agnostic guard
+that reads a produced closure at a word's slot as a paren that failed to
+collapse, held it there. That reading protects `typeof (h 5)` — an `Any`
+slot would swallow the FUNCTION — but a slot DECLARED `Function` asked for a
+fn value: the interpreter's frame binding installs the closure as data.
+
+**What landed.**
+
+- `argIsProducedClosure` takes the matched signature and exempts a
+  produced closure at a slot declared exactly `Function` — a named param
+  (`Params[i].Type`) or a positional one (`Args[i]`) — for every word but
+  `apply`, whose own Function slot APPLIES its value and whose account the
+  twenty-eighth increment already gave (a fn-typed carrier there keeps the
+  refusal). The call's operand carries the payload; inside the callee the
+  param's apply ops take it as any fn value.
+- Lifting the hold exposed a LATENT miscompile in the fn-analysis memo:
+  `FnAnalysisKey` identified a body by its first token's position, and a
+  lambda body that is one `=>` group carries none — so cnot's inner
+  `t:Any => [f:Any => …]` and cif's inner `t:Any => [e:Any => …]`, both a
+  `p:Function` capture over `t:Any` under the synthetic `fnval$body` name,
+  shared one key, one FnSummaries entry and one compiled UNIT. cif's
+  returned closure ran cnot's body: `'F' ('T' (cif (cnot ctrue/v)) apply)
+  apply` answered T for the interpreter's F, and the shape with cif's body
+  changed to `[(t/v p/v apply)]` answered T for the interpreter's `fn
+  (Any)`. Such a body now keys on its canonical text (`core.CanonValue`
+  per token) where the position is zero. The main corpus never held two
+  such lambdas of one shape, which is why no gate had caught it; the
+  fn-quota key keys the same way and only groups budgets, so it stays.
+- A compiled closure bound for a NAMED param takes the param's name at
+  frame entry as a fn value does: `nameFrameFns` names a `ClosurePayload`
+  slot through `nameClosureValue`, the rename the twenty-ninth increment
+  built for def-bound closures (program-free now: the payload names its
+  own program), so `(w (kk 7)) 4` renders `fn g(Any) 4` on both lanes where
+  the compiled lane rendered `fn (Any) 4`. A capture slot is left alone,
+  as before.
+
+**Measured.** The two `cnot` rows graduated (ledger 67 → 65), agreeing
+byte for byte and VM-native; a produced closure at a plain fn's Function
+param applied in the body (7), paren-bounded, held as data (`typeof g/v`
+→ Function) and rendered agree. Sound refusals pinned: the `typeof (h 5)`
+Any slot and apply's Function slot over a fn-typed carrier.
+
+**What the next author should not re-derive.** A body's first token
+position is not an identity: the parser gives a `=>` group none, and every
+lambda whose body is one such group looks alike to a position key. Any
+memo that must tell two bodies apart needs the text (or the backing array,
+as `PendingClosureApply` uses) when the position is zero.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4439,3 +4490,6 @@ position than the construct that produced the binding.
 | `compiler/go/unit_tail_apply_test.go` | `UnitTailApply`: a nil recorder, a unit out of range, no tail apply, the window width |
 | `compiler/go/store_name_test.go` | `seatStoreName`: no recorder, no table, a slot no def named, the name at the store's pc |
 | `eng/go/store_name_test.go` | `storeNameAt` (the main code's and a unit's table, an empty name, an unseated pc, a unit beyond the program) and `nameStoredClosure` (a plain value, a named closure, a known unit's RetName and render, a unit beyond the program, a unit the bridge cannot describe) |
+| `lang/go/function_slot_test.go` | the Function-slot family's parity (both `cnot` rows, the cif7 twin that ran cnot's body, a produced closure at a plain fn's Function param applied, paren-bounded, held as data, and the frame render) and its sound refusals (an Any slot, apply's Function slot over a carrier) |
+| `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | a declared Function param and a positional Function slot are exempt; an Any slot, a nil signature and apply's own Function slot over a carrier keep the refusal |
+| `eng/go/frame_name_test.go` | a compiled closure bound for a named param is named (its render kept when the payload names no unit); a capture slot is left alone |

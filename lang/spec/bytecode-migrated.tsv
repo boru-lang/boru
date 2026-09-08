@@ -161,3 +161,15 @@ def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:I
 # call-site pair).
 def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply	14	B with inline-lambda args: runs to 14; the CHECK failure at this call site is NUR089
 def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end def d fn n:Integer Integer [mul n 2] end def e fn n:Integer Integer [add n 3] end 4 (e/v (bb d/v) apply) apply	14	the same B with named /v references checks clean — the call-site pair of NUR089
+#
+# a produced closure at a DECLARED Function slot GRADUATED 2026-09-08 (the
+# thirtieth increment): a closure a factory call returns, handed to a user
+# fn's `p:Function` param, is the call's argument (the interpreter's frame
+# binding installs it as data), so the argument-slot hold no longer refuses
+# it. Lifting the hold exposed a latent memo-key collision — a lambda body
+# that is one `=>` group carries no position, and two such lambdas of one
+# shape shared one compiled unit (cif's returned closure ran cnot's body,
+# T for F) — fixed by keying such a body on its canonical text. These were
+# frontier-hof-audit.tsv's two §2 `cnot` rows (Church not true / not false).
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot ctrue/v)) apply) apply	'F'	Church not true
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot cfalse/v)) apply) apply	'T'	Church not false
