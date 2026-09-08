@@ -2320,11 +2320,19 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// pc: the unit is shared across fn values with identical bodies and
 			// inputs, so the contract belongs to the value (see
 			// core.ClosurePayload.RetTypes).
+			v := core.Value{Parent: core.TFunction, Data: cl}
 			if spec, has := closureRetAt(p, curUnit, pc); has {
 				cl.RetTypes, cl.RetPatterns = spec.Types, spec.Patterns
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
+				v.Data = cl
+				if spec.DefName != "" {
+					// A `/v` read of a def-bound capturing literal: the
+					// value carries the def's name (the thirty-third
+					// increment), as the binding the interpreter reads does.
+					v = nameClosureValue(v, spec.DefName)
+				}
 			}
-			stack = append(stack, core.Value{Parent: core.TFunction, Data: cl})
+			stack = append(stack, v)
 		case compiler.OpPushType:
 			// Resolve the CANONICAL node at run time — never a pooled
 			// copy (eng/go/CLAUDE.md, Canonical *Type Pointers). Types

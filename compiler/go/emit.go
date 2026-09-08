@@ -892,6 +892,13 @@ type EmitState struct {
 	// def-bound produced fn value: data on both engines, never a paren
 	// that failed to collapse (argIsProducedClosure).
 	valReadIDs map[string]bool
+	// readOps holds the operand a `/v` read of a def-bound CAPTURING fn
+	// LITERAL resolves to (the thirty-third increment): the literal's
+	// closure unit pushed with its captures, built at the first read
+	// (tryReturnedClosure) and consulted by resolveOperand before any other
+	// resolution — the read's fresh ID has no producer, and the literal
+	// itself has no event.
+	readOps map[string]EmitOperand
 	// valBindEpoch counts every dyn-bind of a name this pass recorded, in
 	// any unit: a valBind made at an older count is stale — a def of the
 	// name in a CALLED fn's body replaces an overlapping outer fn binding
@@ -2442,6 +2449,11 @@ func (es *EmitState) producedInCurrentUnit(id string) bool {
 }
 
 func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
+	// A `/v` read of a def-bound capturing fn literal (readOps) is the
+	// literal's closure operand, before any other resolution.
+	if op, ok := es.readOps[v.ID]; ok {
+		return op, true
+	}
 	// A CAPTURE of the CURRENT unit overrides events-first: the captured value
 	// may carry a producedBy entry from the ENCLOSING unit (a computed
 	// `def a (h add 1)` snapshotted into a closure), but that event lives in the
@@ -10307,29 +10319,53 @@ type valBind struct {
 	gen   int64
 	top   string // the installed entry's ID (Defs.Top at the bind)
 	epoch int    // valBindEpoch[name] at the bind
+	// lit is the bound CAPTURING fn LITERAL (a `def kk (fn …)` inside a
+	// unit) when no event produced the value; capEpochs are its captures'
+	// bind epochs at the bind (a later rebind of a captured fn-local would
+	// make a read-site construction see the new value where the literal
+	// snapshotted the old); op caches the closure operand the first read
+	// built.
+	lit       core.Value
+	capEpochs map[string]int
+	op        *EmitOperand
 }
 
 // noteValBind records, on the binding unit, a dyn-bind whose value is a
 // fn value an event of this pass PRODUCED (a factory call's returned
-// lambda, an apply's closure): the one binding kind whose `/v` read
-// re-wraps the value under a fresh ID. Every bind of the name drops the
-// unit's entry first; one inside a branch or loop body leaves it dropped
-// (the analysis rolls the bind back, the run may not), and one whose
-// value is no produced fn value records nothing.
+// lambda, an apply's closure) or a capturing fn LITERAL: the binding kinds
+// whose `/v` read re-wraps the value under a fresh ID. Every bind of the
+// name drops the unit's entry first; a bind inside a branch or loop body
+// serves the reads of its own arm and no later one — the arm's rollback
+// moves the binding's generation and puts another entry (or none) on top,
+// which aliasValRead checks — and a bind of any other value records
+// nothing.
 func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 	delete(cur.valBinds, name)
-	if es.reg == nil || es.reg.Check.CondBodyDepth > 0 || v.Parent == nil || !v.Parent.ConformsTo(core.TFunction) {
+	if es.reg == nil || v.Parent == nil || !v.Parent.ConformsTo(core.TFunction) {
 		return
 	}
-	pr, ok := es.producedBy[v.ID]
-	if !ok {
+	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
+	if pr, ok := es.producedBy[v.ID]; ok {
+		b.pr = pr
+	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && (fd.Anonymous || fd.Name == "") && !v.Quoted {
+		// A capturing fn LITERAL bound by `def` (the thirty-third
+		// increment): no event, no const — its `/v` read builds the closure
+		// at the read site, so remember the literal and its captures'
+		// epochs.
+		b.lit = v
+		b.capEpochs = map[string]int{}
+		for _, cb := range fd.Captured {
+			b.capEpochs[cb.Name] = es.valBindEpoch[cb.Name]
+		}
+	} else {
 		return
 	}
 	top, _ := es.reg.Defs.Top(name)
+	b.top = top.ID
 	if cur.valBinds == nil {
 		cur.valBinds = map[string]valBind{}
 	}
-	cur.valBinds[name] = valBind{pr: pr, gen: es.reg.Defs.Gen(name), top: top.ID, epoch: es.valBindEpoch[name]}
+	cur.valBinds[name] = b
 }
 
 // aliasValRead traces a `/v` read's fresh ID to the bound value's producer
@@ -10355,7 +10391,39 @@ func (es *EmitState) aliasValRead(id, name string) {
 			return
 		}
 	}
-	es.producedBy[id] = b.pr
+	if b.lit.Data != nil {
+		// A capturing literal: every captured name must be unbound since
+		// the def (the literal snapshotted its captures), then the read is
+		// the literal's closure operand, built once and cached on the bind.
+		for cn, ep := range b.capEpochs {
+			if es.valBindEpoch[cn] != ep {
+				return
+			}
+		}
+		if b.op == nil {
+			op, ok := es.tryReturnedClosure(b.lit, b.lit.Pos())
+			if !ok {
+				return
+			}
+			// The value the interpreter reads is the binding's, named by
+			// the def (`fn kk(Integer)`): the push carries the def name and
+			// the VM names the closure as a store would.
+			spec := ClosureRetSpec{DefName: name}
+			if op.closureRet != nil {
+				spec = *op.closureRet
+				spec.DefName = name
+			}
+			op.closureRet = &spec
+			b.op = &op
+			cur.valBinds[name] = b
+		}
+		if es.readOps == nil {
+			es.readOps = map[string]EmitOperand{}
+		}
+		es.readOps[id] = *b.op
+	} else {
+		es.producedBy[id] = b.pr
+	}
 	if es.valReadIDs == nil {
 		es.valReadIDs = map[string]bool{}
 	}

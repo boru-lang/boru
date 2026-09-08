@@ -37,11 +37,13 @@ func TestNoteValBindArms(t *testing.T) {
 	if !ok || b.pr.seq != 3 || b.top != fn.ID || b.gen != es.reg.Defs.Gen("p") || b.epoch != 2 {
 		t.Fatalf("a produced fn value records its producer, the entry on top, the generation and the epoch: %+v", b)
 	}
-	// A bind inside a branch or loop body drops the entry for good.
+	// A bind inside a branch or loop body records like any other (the
+	// thirty-third increment): its arm's rollback moves the generation and
+	// the entry on top, which the read checks.
 	es.reg.Check.CondBodyDepth = 1
 	es.noteValBind(cur, "p", fn)
-	if _, ok := cur.valBinds["p"]; ok {
-		t.Fatal("a conditional bind drops the entry")
+	if _, ok := cur.valBinds["p"]; !ok {
+		t.Fatal("a conditional bind records")
 	}
 	es.reg.Check.CondBodyDepth = 0
 	// A later bind of the name to something else drops it too.
@@ -150,5 +152,85 @@ func TestArgIsProducedClosureSkipsValRead(t *testing.T) {
 	es.valReadIDs = map[string]bool{v.ID: true}
 	if es.argIsProducedClosure("typeof", sig, []core.Value{v}) || !es.Compilable {
 		t.Fatal("a `/v` read of a def-bound closure is data at the slot")
+	}
+}
+
+// TestNoteValBindLiteralArms pins the thirty-third increment's bind arm: a
+// def-bound CAPTURING fn literal (anonymous or nameless) records the
+// literal and its captures' epochs; a capture-free, named or quoted literal
+// records nothing.
+func TestNoteValBindLiteralArms(t *testing.T) {
+	es := NewEmitState()
+	es.reg = newTestRegistry(t)
+	cur := es.units[0]
+	cap := core.CapturedBinding{Name: "n", Value: core.NewCarrier(core.TInteger)}
+	es.valBindEpoch = map[string]int{"n": 3}
+	lit := core.NewFunction(core.FnDefInfo{Anonymous: true, Captured: []core.CapturedBinding{cap}})
+	lit.ID = "T_lit"
+	es.reg.Defs.Push("kk", lit)
+	es.noteValBind(cur, "kk", lit)
+	b, ok := cur.valBinds["kk"]
+	if !ok || b.lit.ID != "T_lit" || b.capEpochs["n"] != 3 || b.op != nil {
+		t.Fatalf("a capturing literal records the literal and its captures' epochs: %+v", b)
+	}
+	nameless := core.NewFunction(core.FnDefInfo{Name: "", Captured: []core.CapturedBinding{cap}})
+	nameless.ID = "T_nameless"
+	es.noteValBind(cur, "kk", nameless)
+	if b := cur.valBinds["kk"]; b.lit.ID != "T_nameless" {
+		t.Fatalf("a nameless verbose fn literal records too: %+v", b)
+	}
+	for _, v := range []core.Value{
+		core.NewFunction(core.FnDefInfo{Anonymous: true}),
+		core.NewFunction(core.FnDefInfo{Name: "sq", Captured: []core.CapturedBinding{cap}}),
+	} {
+		v.ID = "T_other"
+		es.noteValBind(cur, "kk", v)
+		if _, ok := cur.valBinds["kk"]; ok {
+			t.Errorf("a capture-free or named fn value records nothing: %v", v)
+		}
+	}
+	quoted := lit
+	quoted.Quoted = true
+	es.noteValBind(cur, "kk", quoted)
+	if _, ok := cur.valBinds["kk"]; ok {
+		t.Error("a quoted literal records nothing")
+	}
+}
+
+// TestAliasValReadLiteralArms pins the read side of the literal alias: a
+// moved capture epoch declines, a literal whose closure operand cannot be
+// built (an unresolvable capture) declines, and readOps is consulted by
+// resolveOperand before any other resolution.
+func TestAliasValReadLiteralArms(t *testing.T) {
+	es := NewEmitState()
+	es.reg = newTestRegistry(t)
+	cur := es.units[0]
+	capV := core.NewCarrier(core.TInteger)
+	capV.ID = "T_n"
+	lit := core.NewFunction(core.FnDefInfo{Anonymous: true, Captured: []core.CapturedBinding{{Name: "n", Value: capV}}})
+	lit.ID = "T_lit"
+	es.reg.Defs.Push("kk", lit)
+	es.valBindEpoch = map[string]int{"kk": 1, "n": 2}
+	es.noteValBind(cur, "kk", lit)
+	// The captured name rebound since the def: no alias.
+	es.valBindEpoch["n"] = 3
+	es.aliasValRead("r1", "kk")
+	if _, ok := es.readOps["r1"]; ok {
+		t.Fatal("a moved capture epoch declines")
+	}
+	es.valBindEpoch["n"] = 2
+	// The capture has no operand home here, so the closure cannot be
+	// built: no alias, nothing cached.
+	es.aliasValRead("r2", "kk")
+	if _, ok := es.readOps["r2"]; ok || cur.valBinds["kk"].op != nil {
+		t.Fatal("an unbuildable closure declines and caches nothing")
+	}
+	// readOps takes precedence in resolveOperand.
+	want := EmitOperand{kind: opClosure, closureUnit: 7}
+	es.readOps = map[string]EmitOperand{"r3": want}
+	v := core.NewInteger(1)
+	v.ID = "r3"
+	if op, ok := es.resolveOperand(v); !ok || op.closureUnit != 7 || op.kind != opClosure {
+		t.Fatalf("a read operand resolves first: %+v %v", op, ok)
 	}
 }

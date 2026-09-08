@@ -171,6 +171,11 @@ const (
 // what lets a conforming callback keep its compiled unit — the property that
 // sank the unit-side attempt.
 type ClosureRetSpec struct {
+	// DefName is the `def` name a `/v` read of a def-bound capturing fn
+	// literal carries (the thirty-third increment): the VM names the pushed
+	// closure under it, as the interpreter's binding names the value it
+	// reads (`fn kk(Integer)`). Empty for every other push.
+	DefName  string
 	Types    []*core.Type
 	Patterns []*core.Value
 	Decl     core.DeclSite

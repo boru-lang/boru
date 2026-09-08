@@ -4468,6 +4468,58 @@ hole for every read that owner's window consumes. The numeral rows' next
 gate is a bare fn-typed read with a FORWARD argument (`n f/v`), which the
 check models as data and the interpreter as a dispatch.
 
+## The `/v` read of a def-bound capturing fn literal (2026-09-08, the thirty-third increment)
+
+The two CPS rows (`factk`) refused "fn call operand of unknown provenance"
+at `(factk (sub 1 n) kk/v)`: `kk` is a fn-body-local `def` of a CAPTURING
+fn LITERAL (`def kk ( fn r:Integer Any [ … n … k/v apply ] )`), and its
+`/v` read is a fresh wrap of the binding (ResolveRef) with no producer —
+the thirty-first increment's alias traces a read to the bind-time
+PRODUCER, and a literal has no event. Called as a word (`(kk 3)`) the
+literal compiles as a unit with its captures passed at the call; as a
+VALUE it had no operand.
+
+**What landed.**
+
+- `noteValBind` records a def-bound capturing literal (anonymous or
+  nameless, unquoted) with its captures' bind epochs; `aliasValRead`
+  builds the literal's closure operand at the first read
+  (`tryReturnedClosure`: its unit pushed with the captures resolved in the
+  binding unit), caches it on the bind, and hands it to the read
+  (`readOps`), which `resolveOperand` consults before any other
+  resolution. The alias holds only while every captured name is unbound
+  since the def — the literal snapshotted its captures (NUR097), and a
+  read-site construction after `def n 7` would see the new value where the
+  interpreter's `kk` keeps 5.
+- The push carries the def name (`ClosureRetSpec.DefName`) and the VM names
+  the closure under it (`nameClosureValue`, as a store does), so a returned
+  read renders `fn kk(Integer)` on both lanes.
+- A bind inside a branch or loop body now records like any other: the
+  arm's rollback moves the binding's generation and the entry on top, which
+  the read checks, so the conditional-bind drop of the thirty-first
+  increment was redundant.
+
+**Measured.** The read handed to a Function param, the arrow spelling, an
+unrelated bind between, the closure handed through and applied at the
+main program, the value return and its render, the apply-word spelling and
+the top-level read agree byte for byte and VM-native. Sound refusals
+pinned with the interpreter's answers: a captured fn-local rebound between
+the def and the read, the literal redefined by another, the read inside a
+branch arm (the arm's gradual result — `residualLeadReStepped` — a
+separate hold), and the CPS row, whose refusal MOVED to the then-arm's
+pending apply over the `k:Function` param (`[ 1 k/v apply ]` is not the
+body tail): re-diagnosed in the ledger, no row graduated.
+
+**What the next author should not re-derive.** A capturing literal is a
+closure the interpreter constructs at the `def`; the compiled read
+constructs it at the read, which is the same closure exactly when no
+capture was rebound between — the per-name bind epoch is the guard, not
+the generation (a frame binding of a captured name bumps the generation
+too). The CPS rows' next gate is the branch ARM: a pending apply whose
+window is the whole arm residual, and the arm's gradual result at its
+lead, which the re-step hold refuses because a native word's fn result
+would dispatch where it lands.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4629,6 +4681,8 @@ position than the construct that produced the binding.
 | `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesCapturingRedefinitionInFnBody`) | installDef's fn-body arm: a capturing redefinition inside a fn body refuses; a capture-free literal there and a capturing value at the top level do not |
 | `lang/go/apply_data_receiver_test.go` | the thirty-second increment's parity (the native Church and/or rows, the U-combinator factorial, the numeral's `n/v` spelling), the two islanding Church rows pinned as islanded with parity, and its sound refusals with the interpreter's answers (the csucc row, its minimal shape, a fn value beneath a paren window with no apply word) |
 | `compiler/go/zz_triage_from_check_test.go` (`TestRecordDynApplyDeclines`), `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`, `TestFnResidualReplayReasonArms`) | a fn-valued window entry records under the apply word and declines without it; a fn-valued receiver records; the read accounting runs under a tail apply (an uncredited read refuses, a credited one passes) |
+| `lang/go/literal_read_test.go` | the thirty-third increment's parity (the read handed to a Function param, the arrow spelling, an unrelated bind between, the closure handed through, the value return and its render, the apply-word spelling, the top-level read) and its sound refusals with the interpreter's answers (a rebound capture, the literal redefined, the read in a branch arm, the CPS row) |
+| `compiler/go/val_read_alias_test.go` (`TestNoteValBindLiteralArms`, `TestAliasValReadLiteralArms`) | the bind arm (a capturing anonymous or nameless literal records with its captures' epochs; capture-free, named or quoted records nothing) and the read arm (a moved capture epoch declines, an unbuildable closure declines and caches nothing, `readOps` resolves first) |
 | `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
