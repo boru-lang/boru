@@ -2752,17 +2752,23 @@ func (e *Engine) stepWord(val Value) error {
 		if !e.Registry.analysisActive() {
 			return e.undefinedWordError(w.Name, val.Pos())
 		}
-		// A COMPILE pass first resolves a name def-bound to a
+		// An analysis pass first resolves a name def-bound to a
 		// Function-family CARRIER (a computed fn — installDef installs no
 		// Defs binding for those; core_helpers.go's fn arm) through the
 		// per-pass side table: the read substitutes the carrier exactly as
 		// a def-value read would, with the same use + NoteDefRead
 		// provenance, so `def h (mk 1)  (h 2)` feeds the carrier-lead
 		// apply machinery (IsFnTypedCarrier) instead of refusing the unit
-		// with a false undefined_word. Compile-pass-scoped: a PLAIN check
-		// constructs the concrete fn on this path (fn's handler runs in
-		// check), so its diagnostic surface never reaches here with a
-		// table entry — the gate keeps that contract explicit.
+		// with a false undefined_word. This used to be compile-pass-scoped
+		// on the premise that a PLAIN check never holds a table entry (a
+		// factory's `fn` handler runs in check and constructs the concrete
+		// fn). A native that RETURNS a fn carrier breaks that premise —
+		// `def k (FnUtil.const 7)  (k 99)` had `boru check` report
+		// undefined_word and unused_def on a correct program, and the
+		// check-accuracy and diagnostic-parity gates counted every such
+		// row the moment it left the frontier ledger (the thirty-fifth
+		// increment). Both passes now resolve the read; the recorder
+		// notes are no-ops on the plain check's inactive recorder.
 		// A NESTED BODY declines. Stage 1 substitutes the carrier for a
 		// read of the name, which is right where the read is an OPERAND
 		// and wrong inside a branch / loop / quotation body, where the
@@ -2775,17 +2781,19 @@ func (e *Engine) stepWord(val Value) error {
 		// operand contexts — where the graduations and §9b/§9c live —
 		// untouched. The list-member twin of this corruption is caught in
 		// the compiler (RecordMakeListInner).
-		if e.Registry.analysisCompiling() && e.Registry.Check.NestedBodyDepth == 0 {
+		if e.Registry.Check.NestedBodyDepth == 0 {
 			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
 				e.Registry.noteAnalysisUse(w.Name)
 				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
 				e.noteWordRead(cv, w.Name, val.Pos())
-				// Mark the pass: if it ends in a refusal anyway, the
+				// Mark a COMPILE pass: if it ends in a refusal anyway, the
 				// compile entry points keep the SILENT interpreter
 				// fallback this program class had before Stage 1 (the
 				// read used to raise the check-diagnostics sentinel).
-				e.Registry.Check.FnCarrierReadSubstituted = true
+				if e.Registry.analysisCompiling() {
+					e.Registry.Check.FnCarrierReadSubstituted = true
+				}
 				cv = WithPos(cv, val)
 				e.Tape.Set(e.Pointer, cv)
 				return e.stepLiteral()

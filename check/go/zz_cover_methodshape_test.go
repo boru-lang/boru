@@ -108,6 +108,7 @@ type zzmsRecorder struct {
 	dynOK        bool
 	dynCalls     []zzmsDynCall
 	members      map[string]core.Value
+	defReads     map[string]string
 }
 
 func newZZMSRecorder() *zzmsRecorder {
@@ -130,6 +131,10 @@ func (z *zzmsRecorder) RecordDynMethod(fn core.Value, args, outs []core.Value, w
 func (z *zzmsRecorder) MemberFnReadValue(id string) (core.Value, bool) {
 	v, ok := z.members[id]
 	return v, ok
+}
+func (z *zzmsRecorder) DefReadName(id string) (string, bool) {
+	n, ok := z.defReads[id]
+	return n, ok
 }
 
 // zzmsSeamRecordOutcome routes the S3 RecordOutcome slot to

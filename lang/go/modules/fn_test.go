@@ -339,3 +339,54 @@ func TestFnUtilConstIdentity(t *testing.T) {
 		t.Fatalf("const returned %v, want 'k'", got[0])
 	}
 }
+
+// ---- the check-mode shape claim (the thirty-fifth increment) ----
+
+func TestFnShapeReturnsClaims(t *testing.T) {
+	r := fnUtilReg(t)
+	defer r.Check.Begin()()
+	outs := fnShapeReturns(fnShapeConst(2))(nil, r)
+	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+		t.Fatalf("the result is one Function carrier, got %v", outs)
+	}
+	if n, ok := r.Check.FnShapeArity(outs[0].ID); !ok || n != 2 {
+		t.Errorf("a constant arity is claimed: %d/%v", n, ok)
+	}
+	outs = fnShapeReturns(fnShapeFromOperand(0))(nil, r)
+	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+		t.Fatalf("an unknown arity still mints the carrier, got %v", outs)
+	}
+	if _, ok := r.Check.FnShapeArity(outs[0].ID); ok {
+		t.Error("an unknown arity makes no claim")
+	}
+	outs = fnShapeReturns(fnShapeConst(1))(nil, nil)
+	if len(outs) != 1 || !core.IsFnTypedCarrier(outs[0]) {
+		t.Errorf("with no registry the carrier alone is minted, got %v", outs)
+	}
+}
+
+func TestFnShapeFromOperandArms(t *testing.T) {
+	two := fnTestFn(2, func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
+		return nil, nil
+	})
+	if n, ok := fnShapeFromOperand(-1)([]native.Value{two}); !ok || n != 1 {
+		t.Errorf("partial binds one slot: %d/%v, want 1", n, ok)
+	}
+	if n, ok := fnShapeFromOperand(0)([]native.Value{two}); !ok || n != 2 {
+		t.Errorf("memoize keeps the count: %d/%v, want 2", n, ok)
+	}
+	if _, ok := fnShapeFromOperand(0)(nil); ok {
+		t.Error("no operand, no claim")
+	}
+	if _, ok := fnShapeFromOperand(0)([]native.Value{native.NewInteger(1)}); ok {
+		t.Error("a non-fn operand makes no claim (the handler raises)")
+	}
+	if _, ok := fnShapeFromOperand(0)([]native.Value{native.NewCarrier(native.TFunction)}); ok {
+		t.Error("a computed-fn carrier operand has no signature to read")
+	}
+	sig := core.Signature{Params: []core.FnParam{{Type: native.TAny}}, BarrierPos: 1}
+	multi := native.NewFunction(native.FnDefInfo{Signatures: []core.Signature{sig, sig}})
+	if _, ok := fnShapeFromOperand(0)([]native.Value{multi}); ok {
+		t.Error("an overloaded operand has no one arity")
+	}
+}

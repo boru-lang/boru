@@ -573,35 +573,25 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f 1 end def f (mk 1) end undef f (f 2)`: {why: "audit §5.8/§9h: a computed fn shadowing a live binding — Defs and the carrier table disagree about the name", failsWith: "computed fn shadows a live binding"},
 
 	// ───────────────────────────────────────────────────────────────────
-	// frontier-fn-util.tsv — the boru:fn-util behaviour rows (audit §6.4
-	// shipped 2026-08-21). Until 2026-08-25 most rows refused at the Stage 3
-	// function-valued-operand gate, because the family declared no compile
-	// effect and the recorder therefore assumed the combinators re-step
-	// their fn operands on the tape. They do not — invokeFnUtil calls the
-	// stashed fn from a Go handler — so the family now declares
-	// CompileStoresFn and that wall is gone.
+	// frontier-fn-util.tsv — the boru:fn-util rows (audit §6.4 shipped
+	// 2026-08-21). The eight BEHAVIOUR rows (compose, pipe, const, flip,
+	// partial, on ×2, memoize) GRADUATED 2026-09-08 (the thirty-fifth
+	// increment — the def-bound computed-fn model): the producing word's
+	// check-mode ReturnsFn claims the wrapper's arity (CheckState.FnShapes),
+	// the check pass models the def-bound wrapper's WORD DISPATCH at the read
+	// over its arity of fixed tokens inside the statement (check's
+	// tryShapedFnReadArrival → OpCallDynMethod), and the VM applies the
+	// self-contained Go-impl wrapper on its OWN signatures. (The refusal's
+	// old note — "a lowered apply here returned 99 for 7" — was the VM
+	// resolving the wrapper's LABEL `const` through the live registry to the
+	// singleton-type maker; the island it blamed applies the value exactly
+	// as the interpreter does.) They live in lang/spec/module-fn.tsv now.
 	//
-	// What was BEHIND it is the same refusal the `const` row always had, and
-	// that row is the control: `_f_const` takes TAny, so the Stage 3 gate
-	// never applied to it, and it refused at the leading-apply classifier
-	// anyway — a def-bound computed fn with no statically-known closure
-	// shape (resolveDynamicApply; a lowered apply here returned 99 for 7).
-	// Every behaviour row now lands there, which is the §5.4 / NUR101
-	// family. Graduation = the def-bound computed-fn model, for all of them
-	// at once.
-	//
-	// The two curry-error rows COMPILED once the Stage 3 wall lifted — their
-	// shape checks run inside the native on an inert const operand — and
-	// moved to lang/spec/module-fn.tsv.
-	`import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.compose addone/v double/v) end (h 5)`: {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.pipe addone/v double/v) end (h 5)`:    {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def k (FnUtil.const 7) end (k 99)`:                                                                                                            {why: "Stage 1 guard: `k` is a read-substituted Go-impl fn value with no statically-known closure shape — the island apply is not provably the interpreter's word dispatch (a lowered apply here returned 99 for 7)", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def fs (FnUtil.flip sub2/v) end (fs 3 10)`:                                          {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)`:                         {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101), curried-chain variant. The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "computed fn whose apply the analysis dropped"},
-	`import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end (p 3)`:                                         {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 3 5)`: {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)`: {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
-	`import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)`:                                                                {why: "Stage 1: the def-bound computed fn (§5.4 / NUR101). The Stage 3 fn-operand wall in front of it lifted 2026-08-25 when the family declared CompileStoresFn", failsWith: "def-bound computed fn apply"},
+	// The curried-chain row stays: `def c10 (c 10)` binds the read model's
+	// one dynamic result, so `(c10 3)` is a dynamic lead with a paren-bounded
+	// argument the classifier refuses. Graduation = a fn-shaped result for
+	// the curry chain (the level's arity is one all the way down).
+	`import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)`: {why: "the def-bound computed fn's curried-chain variant: the read model nets one dynamic value for `(c 10)`, and the chain's second apply is a dynamic lead with a paren-bounded argument (the thirty-fifth increment)", failsWith: "bounded by a paren"},
 	`import "boru:fn-util"  FnUtil.flip 5`:  {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
 	`import "boru:fn-util"  FnUtil.curry 5`: {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
 

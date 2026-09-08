@@ -91,11 +91,12 @@ func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
 	}
 }
 
-// TestStepWordPlainCheckKeepsUndefinedDiag — without the Compiling flag the
-// substitution must not fire: a plain check pass keeps its diagnostic
-// surface (undefined_word + the Undefined placeholder) even for a name in
-// the side table.
-func TestStepWordPlainCheckKeepsUndefinedDiag(t *testing.T) {
+// TestStepWordPlainCheckSubstitutesCarrier — the substitution fires on a
+// PLAIN check too (the thirty-fifth increment): a name in the side table
+// reads as its fn carrier with no undefined_word, exactly as on a compile
+// pass — `boru check` used to flag `def k (FnUtil.const 7)  (k 99)` — while
+// the compile-only FnCarrierReadSubstituted mark stays clear.
+func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 	r := covRegistry(t, nil)
 	defer r.Check.Begin()()
 	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
@@ -105,11 +106,14 @@ func TestStepWordPlainCheckKeepsUndefinedDiag(t *testing.T) {
 	if err := e.stepWord(e.Tape.At(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
-		t.Errorf("plain check must keep the Undefined placeholder: %v", got)
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+		t.Errorf("plain check must read the bound fn carrier, got %v", got)
 	}
-	if len(r.Check.Diagnostics) != 1 {
-		t.Errorf("expected the one undefined_word diagnostic, got %v", r.Check.Diagnostics)
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("a resolved read reports nothing, got %v", r.Check.Diagnostics)
+	}
+	if r.Check.FnCarrierReadSubstituted {
+		t.Error("the silent-fallback mark is a compile pass's alone")
 	}
 }
 

@@ -50,6 +50,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if _, ok := e.MemberFnReadValue("id"); ok {
 		t.Fatal("inactive MemberFnReadValue must decline")
 	}
+	if _, ok := e.DefReadName("id"); ok {
+		t.Fatal("inactive DefReadName must decline")
+	}
 
 	// --- dispatch / value recording.
 	e.RecordCall("w", nil, nil, nil, SrcPos{}, false, false)

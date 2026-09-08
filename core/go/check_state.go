@@ -480,6 +480,20 @@ type CheckState struct {
 	// Begin, header-cloned by Clone (members are immutable values).
 	MethodShapes map[string]Value
 
+	// FnShapes maps a COMPUTED fn carrier's value ID to the ARITY (param
+	// count) of the fn value its producing word returns at run time — the
+	// wrapper a fn-util word builds (`(FnUtil.const 7)` is unary,
+	// `(FnUtil.on b u)` binary, `(FnUtil.partial f a)` one fewer than f).
+	// Written by the word's check-mode ReturnsFn via NoteFnShape when the
+	// arity is a statement of the word's own construction (a constant, or
+	// read off a CONCRETE operand's single signature); consumed by the
+	// compile pass's apply classifier (producerReturnedClosureArity), which
+	// otherwise knows a static arity only for a compiled factory's returned
+	// closure — a def-bound wrapper read (`def k (FnUtil.const 7)  (k 99)`)
+	// refused "closure shape unknown" for want of it. Per-pass state — reset
+	// by Begin, header-cloned by Clone.
+	FnShapes map[string]int
+
 	// PendingMethodApply threads ONE modelled shaped-method dispatch from
 	// tryShapedMethodDispatch into recordDispatchOutcome (set immediately
 	// before the model's carrierResults call, consumed by
@@ -895,6 +909,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.ContextTypes = cloneMap(c.ContextTypes)
 	cp.CtxShapes = cloneMap(c.CtxShapes)
 	cp.MethodShapes = cloneMap(c.MethodShapes)
+	cp.FnShapes = cloneMap(c.FnShapes)
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
 	if c.FnNameStack != nil {
@@ -964,6 +979,7 @@ func (c *CheckState) Begin() func() {
 	c.ContextTypes = nil
 	c.CtxShapes = nil
 	c.MethodShapes = nil
+	c.FnShapes = nil
 	c.PendingMethodApply = nil
 	c.InflightBails = 0
 	c.FnNameInflight = nil
@@ -1375,6 +1391,29 @@ func (c *CheckState) MethodShapeMember(id string) (Value, bool) {
 	}
 	m, ok := c.MethodShapes[id]
 	return m, ok
+}
+
+// NoteFnShape records the ARITY of the fn value a computed-fn carrier stands
+// for at run time (FnShapes). Only an active pass with an identified carrier
+// records, and a negative count — a handler that raises rather than build
+// the wrapper (`partial` over a 0-param fn) — is no claim.
+func (c *CheckState) NoteFnShape(out Value, nParams int) {
+	if !c.IsActive() || out.ID == "" || nParams < 0 {
+		return
+	}
+	if c.FnShapes == nil {
+		c.FnShapes = map[string]int{}
+	}
+	c.FnShapes[out.ID] = nParams
+}
+
+// FnShapeArity returns the arity claimed for a computed-fn carrier ID.
+func (c *CheckState) FnShapeArity(id string) (int, bool) {
+	if c == nil || id == "" || c.FnShapes == nil {
+		return 0, false
+	}
+	n, ok := c.FnShapes[id]
+	return n, ok
 }
 
 // ContextShape returns the abstract shape carrier for a LIVE context

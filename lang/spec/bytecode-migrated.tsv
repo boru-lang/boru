@@ -216,3 +216,22 @@ def fgen fn s:Function Function [ ( fn n:Integer Integer [ if (lte 1 n) [1] [ mu
 # frontier-hof-audit.tsv's two §3 rows (audit §1.3, continuation-passing style).
 def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 5 (v:Integer => [v]))	120	CPS factorial, identity continuation
 def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 10 (v:Integer => [add 0 v]))	3628800	CPS factorial, computing continuation
+#
+# the fn-util behaviour rows GRADUATED 2026-09-08 (the thirty-fifth increment):
+# the producing word's check-mode ReturnsFn claims the wrapper's arity
+# (CheckState.FnShapes), the check pass models the def-bound wrapper's WORD
+# DISPATCH at the read over its arity of fixed tokens inside the statement
+# (check's tryShapedFnReadArrival → OpCallDynMethod), and the VM applies the
+# self-contained Go-impl wrapper on its OWN signatures (never through the live
+# registry under its label — `const` is also the singleton-type maker, which is
+# how the event spelling `((FnUtil.const 7) 99)` compiled to 99 for 7). These
+# were frontier-fn-util.tsv's eight behaviour rows (audit §6.4).
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.compose addone/v double/v) end (h 5)	11
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.pipe addone/v double/v) end (h 5)	12
+import "boru:fn-util"  def k (FnUtil.const 7) end (k 99)	7
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def fs (FnUtil.flip sub2/v) end (fs 3 10)	7
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end (p 3)	7
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 3 5)	false
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)	true
+import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)	5
+import "boru:fn-util"  ((FnUtil.const 7) 99)	7

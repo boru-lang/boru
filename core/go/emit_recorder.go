@@ -245,6 +245,11 @@ type EmitRecorder interface {
 	RecordDefRebind(name string, v Value, pos SrcPos)
 	RecordDynBind(name string, v Value, pos SrcPos)
 	NoteDefRead(id, name string)
+	// DefReadName answers NoteDefRead: the binding NAME the check pass read a
+	// value under, for a value ID it recorded — the read model's key to the
+	// word the interpreter dispatches (check's tryShapedFnReadArrival).
+	// Inactive: no read.
+	DefReadName(id string) (string, bool)
 	// NoteLocalRead records a bare read of a frame binding at its read
 	// position (both substitution paths of stepWord) — a per-read deopt's
 	// deferred-operand accounting (compiler planDeopts, NUR123).
@@ -383,6 +388,7 @@ func (inactiveEmit) PopInlineCtxBoundary()   {}
 
 func (inactiveEmit) RecordDynBind(string, Value, SrcPos) {}
 func (inactiveEmit) NoteDefRead(string, string)          {}
+func (inactiveEmit) DefReadName(string) (string, bool)   { return "", false }
 func (inactiveEmit) NoteLocalRead(string, SrcPos)        {}
 func (inactiveEmit) NoteWordRead(Value, string, SrcPos)  {}
 func (inactiveEmit) NoteValRead(string, string)          {}

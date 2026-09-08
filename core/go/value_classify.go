@@ -759,6 +759,34 @@ func IsNativeWordFnDef(fd FnDefInfo) bool {
 	return true
 }
 
+// IsSelfContainedGoFnDef reports whether a Function VALUE is a SELF-CONTAINED
+// Go-implemented fn: anonymous, wrapping nothing, with at least one own
+// signature and every one of them a Go handler — the wrapper a fn-util word
+// PRODUCES (`(FnUtil.const 7)`, `(FnUtil.on gt2/v sq/v)`: goFnValue's
+// shape). Such a value dispatches on ITS OWN signatures, which is the
+// interpreter's rule for an anonymous value (execFnDefLiteral: a
+// self-contained Function value is a stable handle, compiled and dispatched
+// from its own sigs, never a fresh registry lookup).
+//
+// It is NOT IsNativeWordFnDef's parked-native class, though it passes that
+// predicate: a parked native resolves by NAME through the live registry, and
+// a self-contained value's Name is a LABEL that may coincide with a
+// registered word — fn-util's `const` wrapper shares its name with the
+// singleton-type maker — so resolving it there dispatches the wrong word.
+// Measured: `((FnUtil.const 7) 99)` compiled to 99 for the interpreter's 7
+// through exactly that lookup (eng's vmNativeApplicable / tryNativeFnApply).
+//
+// A modifier wrapper (usurp, `/u`, `/s`, `/f` — Wraps set, and usurp's
+// ArgsReversed mark) is excluded: its handler returns TOKENS for a tape,
+// and the VM re-dispatches what it wraps instead (UnwrapModifierChain). A
+// macro is data, applied only by name.
+func IsSelfContainedGoFnDef(fd FnDefInfo) bool {
+	if !fd.Anonymous || fd.Macro || fd.Wraps != nil || fd.ArgsReversed {
+		return false
+	}
+	return IsNativeWordFnDef(fd)
+}
+
 // RegisteredWordIsNative reports whether name's LIVE binding in r is native
 // through and through — it exists, and no overload carries a *BoruImpl body.
 //

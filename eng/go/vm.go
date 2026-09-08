@@ -1422,6 +1422,32 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
 		return stack[:base], ent, nil
 	}
+	// A MODIFIER WRAPPER resolves to what it wraps, exactly as callDynamic
+	// resolves one (the chain walk and the permutation are the same): a
+	// def-bound `FnUtil.flip` wrapper over a compiled user fn enters that
+	// fn's unit with the args reversed instead of islanding the wrapper's
+	// token re-dispatch. Both tiers retry against the unwrapped value under
+	// the same claim discipline as above.
+	if inner, reverse, wrapped := core.UnwrapModifierChain(fnVal); wrapped {
+		iargs := args
+		if reverse {
+			iargs = make([]core.Value, n)
+			for i := range args {
+				iargs[i] = args[n-1-i]
+			}
+		}
+		if ifd, isFn := inner.Data.(core.FnDefInfo); isFn && vmNativeApplicable(vc.r, ifd) {
+			if results, done, err := vc.tryNativeFnApply(inner, iargs); done {
+				if err != nil {
+					return nil, nil, stampAt(err, curDebug, pc, r)
+				}
+				return guard(results)
+			}
+		}
+		if ent := vc.dynApplyEnter(inner, iargs); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
+			return stack[:base], ent, nil
+		}
+	}
 	island := make([]core.Value, 0, n+1)
 	island = append(island, fnVal)
 	island = append(island, args...)
@@ -1669,6 +1695,18 @@ func vmNativeApplicable(r *core.Registry, fd core.FnDefInfo) bool {
 	if core.IsDelegationFnDef(fd) {
 		return true
 	}
+	// A SELF-CONTAINED Go-impl fn value (fn-util's produced wrappers) applies
+	// on its OWN signatures — the interpreter's anonymous-value rule. It is
+	// admitted HERE, ahead of the parked-native arm below: that arm resolves
+	// by NAME through the live registry, and such a value's Name is a label
+	// that may coincide with a registered word (`const`, the singleton-type
+	// maker), which is how `((FnUtil.const 7) 99)` compiled to 99 for the
+	// interpreter's 7. The def-read spelling's refusal blamed the island for
+	// that answer; the island in fact applies the value exactly as the
+	// interpreter does. tryNativeFnApply keys on the same predicate.
+	if core.IsSelfContainedGoFnDef(fd) {
+		return true
+	}
 	// tryNativeFnApply dispatches a parked native through the LIVE registry
 	// sigs, so admit one only while those sigs still describe this value. A
 	// modifier wrapper keeps the wrapped word's Name but rewrites its
@@ -1688,7 +1726,10 @@ func (vc *vmContext) tryNativeFnApply(fnVal core.Value, args []core.Value) ([]co
 		reg = vc.r
 	}
 	var sigs []core.Signature
-	if inner := reg.Lookup(fnDef.Name); inner != nil {
+	if core.IsSelfContainedGoFnDef(fnDef) {
+		// The stable handle: its own sigs, never its name (vmNativeApplicable).
+		sigs = fnDef.Signatures
+	} else if inner := reg.Lookup(fnDef.Name); inner != nil {
 		sigs = inner.Signatures
 	} else if len(fnDef.Signatures) > 0 {
 		sigs = fnDef.Signatures
@@ -1756,6 +1797,16 @@ func stampFnValuePos(err error, fnVal core.Value) error {
 	if ae, ok := err.(*core.BoruError); ok && ae.Row == 0 {
 		if p := fnVal.Pos(); p.Row != 0 {
 			ae.Row, ae.Col = p.Row, p.Col
+			// The token's text rides along too, as the interpreter's
+			// stampErrPos carries it: the caret's width is the token's. A
+			// handler error built with the WORD as its source text
+			// (`r.BoruError(code, detail, "FnUtil.compose")`) would otherwise
+			// underline fourteen characters where the interpreter, having
+			// dispatched the def-bound wrapper under its one-letter name,
+			// underlines one (the thirty-fifth increment).
+			if p.Src != "" {
+				ae.Src = p.Src
+			}
 		}
 	}
 	return err
@@ -2957,8 +3008,15 @@ func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
 		ae.Col = debug[pc].Col
 		// The token's own text too: the caret's width is the token's, and
 		// a return-count error the interpreter stamps at the `apply` word
-		// underlines all five characters (the twenty-ninth increment).
-		if ae.Src == "" {
+		// underlines all five characters (the twenty-ninth increment). The
+		// token's text REPLACES what the error was built with, as the
+		// interpreter's stampErrPos replaces it: a handler error carries
+		// its WORD as source text (`r.BoruError(code, detail,
+		// "FnUtil.compose")`), and where the dispatching token is not that
+		// word — a def-bound wrapper applied under its one-letter name — the
+		// interpreter underlines the token, not the word (the thirty-fifth
+		// increment).
+		if debug[pc].Src != "" {
 			ae.Src = debug[pc].Src
 		}
 	}

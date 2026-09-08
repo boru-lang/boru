@@ -385,6 +385,9 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 	if r.Check.Compiling || r.Check.Recorder().Active() {
 		return false
 	}
+	if tryShapedFnReadWindow(e, valIdx) {
+		return true
+	}
 	v := e.Tape.At(valIdx)
 	if !v.Dynamic || v.Quoted || !dynamicBoundConformsToFunction(v) {
 		return false
@@ -471,6 +474,9 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 	if !es.Active() || es.SuspendedNow() {
 		return false
 	}
+	if tryShapedFnReadArrival(e, valIdx, es) {
+		return true
+	}
 	v := e.Tape.At(valIdx)
 	if !v.Dynamic || v.Quoted || v.ID == "" {
 		return false
@@ -552,8 +558,132 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 // stays silent and the carrier keeps today's paths.
 func declineMemberFnArrival(es core.EmitRecorder, member core.Value) bool {
 	if core.FnValueZeroArg(member) {
-		es.MarkUncompilable(
-			"fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at " + fnDefName(member))
+		return refuseArrival(es,
+			"fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at "+fnDefName(member))
 	}
 	return false
+}
+
+// refuseArrival is the arrival models' shared guard-owned decline: the
+// landing refuses with the reason its model owns, and the model reports
+// "not consumed" so the engine steps on to the refusal's fallback.
+func refuseArrival(es core.EmitRecorder, reason string) bool {
+	es.MarkUncompilable(reason)
+	return false
+}
+
+// tryShapedFnReadArrival models the WORD DISPATCH of a def-bound computed fn
+// whose shape the producing word claimed (CheckState.FnShapes — the fn-util
+// wrappers: `def k (FnUtil.const 7)  (k 99)`, `def bigger (FnUtil.on gt2/v
+// sq/v)  (bigger 3 5)`). The check pass substitutes the bound CARRIER for
+// the read (stepWord's fn-carrier side table), and a carrier at the pointer
+// is data the pass steps past; the interpreter's `k` is a WORD whose bound
+// fn value collects its forward args the moment it is read — inside the
+// statement, up to its all-forward barrier (the wrapper's arity) — and
+// dispatches. The residual classifier used to lower the flattened
+// [carrier, args…] as a leading apply, and flattening loses the statement:
+// `bigger 3 ; 5` lowered as `bigger 3 5` (compiled false where the
+// interpreter raises "cannot call `bigger`"), and `(bigger 3 ; 5)` the same
+// inside a paren — the word dispatched at the `;`, before the collapse.
+//
+// So the model fires WHERE the interpreter dispatches — at the read — over
+// the same window the member-fn arrival model claims: the wrapper's whole
+// arity of evaluation-fixed tokens inside the statement, consumed into one
+// guarded OpCallDynMethod (RecordDynMethod: the runtime read supplies the
+// value, the VM applies a self-contained Go-impl wrapper natively on its
+// own signatures, and the result-count claim of one defers any wrapper
+// whose applied fn returns another count). The extra tokens of a longer
+// window stay on the tape, exactly as the interpreter leaves them
+// (`(k 1 2)` is `7 2`).
+//
+// Everything else REFUSES rather than declines: a window short of the
+// arity (the interpreter fills the rest from the stack, or raises), a
+// non-fixed token inside it (a word, a paren, a carrier — the interpreter
+// evaluates it under the pending collection), a read the recorder cannot
+// seat. A silent decline would hand the carrier back to the residual
+// classifier, and the classifier's flattened window is the miscompile
+// above; a claimed def-read lead is this model's alone.
+func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bool {
+	r := e.Registry
+	v := e.Tape.At(valIdx)
+	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(v) {
+		return false
+	}
+	name, read := es.DefReadName(v.ID)
+	if !read {
+		return false
+	}
+	n, claimed := r.Check.FnShapeArity(v.ID)
+	if !claimed {
+		return false
+	}
+	refuse := func(what string) bool {
+		return refuseArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
+	}
+	args, why := shapedFnReadWindow(e, valIdx, n)
+	if why != "" {
+		return refuse(why)
+	}
+	out := core.NewDynamicCarrier(core.TAny)
+	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
+		return refuse("an operand has no compiled home")
+	}
+	e.Tape.Splice(valIdx, 1+n, out)
+	return true
+}
+
+// shapedFnReadWindow scans the wrapper's arity of tokens after valIdx for the
+// two read models: every token evaluation-fixed and inside the statement. why
+// names the first failure, and is empty when the window is whole.
+func shapedFnReadWindow(e *core.Engine, valIdx, n int) (args []core.Value, why string) {
+	if valIdx+n >= e.Tape.Len() {
+		return nil, "the statement ends short of the wrapper's arity"
+	}
+	args = make([]core.Value, n)
+	for i := 1; i <= n; i++ {
+		tv := e.Tape.At(valIdx + i)
+		if statementWindowBoundary(tv) {
+			return nil, "the statement ends short of the wrapper's arity"
+		}
+		if !evalFixedWindowToken(tv) {
+			return nil, "an argument is not an evaluation-fixed value"
+		}
+		args[i-1] = tv
+		args[i-1].Eval = false
+		args[i-1].Undefined = false
+	}
+	return args, ""
+}
+
+// tryShapedFnReadWindow is the PLAIN-check half of the read model (the
+// compile pass's is tryShapedFnReadArrival, which records the apply): a
+// def-bound fn carrier with a claimed arity at the pointer, followed by its
+// arity of evaluation-fixed tokens inside the statement, is the interpreter's
+// word dispatch — the window collapses to one dynamic(Any), the same
+// optimistic collapse the dynamic fn-value window takes, so the check stack
+// carries the dispatch's one result rather than the carrier and its
+// arguments (the type-soundness ratchet saw `(bigger 3 5)` as [Function
+// Integer Integer] for the runtime's [Boolean]). A window the model cannot
+// claim is left as it is: a plain check has no refusal to make. The
+// def-bound test is the fn-carrier side table itself (CheckFnCarrierBoundName)
+// — a plain check has no live recorder to remember the read — so an EVENT
+// carrier (`((FnUtil.const 7) 99)`) is not in the table and keeps its shape.
+func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
+	r := e.Registry
+	v := e.Tape.At(valIdx)
+	if v.Quoted || v.Dynamic || v.ID == "" || !core.IsFnTypedCarrier(v) {
+		return false
+	}
+	if _, bound := core.CheckFnCarrierBoundName(r, v.ID); !bound {
+		return false
+	}
+	n, claimed := r.Check.FnShapeArity(v.ID)
+	if !claimed {
+		return false
+	}
+	if _, why := shapedFnReadWindow(e, valIdx, n); why != "" {
+		return false
+	}
+	e.Tape.Splice(valIdx, 1+n, core.NewDynamicCarrier(core.TAny))
+	return true
 }

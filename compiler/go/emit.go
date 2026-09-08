@@ -5294,7 +5294,10 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 // The arity claim is sound BY CONSTRUCTION, which is why trimming on it is
 // safe. producerReturnedClosureArity answers only when the producer is an
 // evCallUser whose unit has exactly ONE out-op and that op IS a closure unit,
-// so the runtime value is provably that one unit with that many params. The
+// so the runtime value is provably that one unit with that many params — or
+// when the producing word CLAIMED the arity of the wrapper it builds
+// (CheckState.FnShapes, the thirty-fifth increment: fn-util's `goFnValue(name,
+// n, …)` with n its own construction rule). The
 // shapes where a static arity could be wrong never reach the trim: a factory
 // whose branches return different arities refuses earlier ("if: then-branch
 // result of unknown provenance"), and an overloaded callee declines below.
@@ -7134,6 +7137,12 @@ func (es *EmitState) NoteDefRead(id, name string) {
 	}
 }
 
+// DefReadName answers NoteDefRead for the read model (core.EmitRecorder).
+func (es *EmitState) DefReadName(id string) (string, bool) {
+	name, ok := es.defReads[id]
+	return name, ok
+}
+
 // residualReadStable reports whether a def-read value's binding is UNCHANGED
 // since the read (same DefTable generation): the end-of-program
 // OpLookupDynScope re-push then resolves the same value the read saw. A
@@ -7989,7 +7998,19 @@ func isGetFamilyWord(w string) bool {
 // 1]` — the fold bakes the whole lambda as one value). Only the closure
 // arm existed, so every capture-free factory refused as "closure shape
 // unknown" though its arity is written on the const's own signature.
+//
+// A third source (the thirty-fifth increment): a computed-fn carrier NOTED
+// with its arity by the producing word's own check-mode ReturnsFn
+// (CheckState.FnShapes — the fn-util wrappers, `def k (FnUtil.const 7)`).
+// The word built the runtime value with exactly that many params, so the
+// claim is a statement of construction like the two arms below, and the
+// def-bound wrapper's apply classifies like a compiled factory's closure.
 func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
+	if es.reg != nil {
+		if n, ok := es.reg.Check.FnShapeArity(id); ok {
+			return n, true
+		}
+	}
 	op, ok := es.producerReturnedOutOp(id)
 	if !ok {
 		return 0, false
@@ -9134,15 +9155,21 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			}
 			// A READ-substituted lead (the fn-carrier side table: `def k
 			// (FnUtil.const 7)  (k 99)` — the read carries NoteDefRead
-			// provenance) is a WORD dispatch in the interpreter: the runtime
-			// binding always applies. OpCallDynamic's island instead runs
-			// anonymous-VALUE semantics, which leave a named Go-impl fn
-			// value as data (compiled [99] vs interp [7]). With no
-			// statically-known closure shape the two cannot be proven to
-			// agree — refuse; a compiled-factory producer (known arity)
-			// stays lowered, and an EVENT lead (no def-read — the
-			// `((FnUtil.const 7) 99)` spelling) keeps the island, which
-			// mirrors the interpreter's value semantics exactly.
+			// provenance) is a WORD dispatch in the interpreter, collecting
+			// its forward args inside the read's STATEMENT. With a claimed
+			// shape (CheckState.FnShapes — the producing word's own arity
+			// claim) that dispatch is modelled AT THE READ, over the
+			// statement window (check's tryShapedFnReadArrival), and never
+			// reaches this residual: the flattened residual cannot see a
+			// `;` (`bigger 3 ; 5` would lower as `bigger 3 5`). With no
+			// claim and no compiled-factory producer there is no shape to
+			// model by — refuse; the interpreter owns it. (This refusal's
+			// earlier note blamed OpCallDynamic's island for answering 99
+			// where the interpreter answers 7; the island applies the value
+			// exactly as the interpreter does, and the 99 was the VM
+			// resolving the wrapper's LABEL `const` through the live
+			// registry — eng's vmNativeApplicable, the thirty-fifth
+			// increment.)
 			if !known {
 				if _, read := es.defReads[residual[0].ID]; read {
 					return residual, 0, "def-bound computed fn apply (closure shape unknown — Stage 1)"

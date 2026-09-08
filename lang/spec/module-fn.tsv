@@ -5,18 +5,43 @@
 # The module ships the audit's §6.4 recommendation
 # (design/HIGHER-ORDER-FUNCTIONS.0.md): compose, pipe, curry, partial,
 # const, identity, flip, on, memoize. Only the rows that COMPILE live
-# here (the main corpus holds refusalCeiling = 0); the behaviour rows
-# def-bind a computed fn — "def-bound computed fn apply (closure shape
-# unknown — Stage 1)", the §5.4 / NUR101 family — so they live in
-# lang/spec/frontier/frontier-fn-util.tsv until that family graduates.
+# here (the main corpus holds refusalCeiling = 0). The behaviour rows
+# def-bind a computed fn — refused as "def-bound computed fn apply (closure
+# shape unknown — Stage 1)", the §5.4 / NUR101 family, until 2026-09-08
+# (the thirty-fifth increment, the def-bound computed-fn model): the
+# producing word claims the wrapper's arity in check mode, the check pass
+# models the bound wrapper's word dispatch at the read, and the VM applies
+# the wrapper on its own signatures. The curried-chain row still refuses
+# and stays in lang/spec/frontier/frontier-fn-util.tsv.
 import "boru:fn-util"  FnUtil.identity 42	42	identity returns its argument
 import "boru:fn-util"  FnUtil.identity 'v'	'v'	identity over a String
 #
 # The REFUSAL rows compile: curry's shape checks run inside the native,
 # on an operand the recorder now bakes as an inert const (the family's
 # CompileStoresFn declaration), so the compiled lane raises the same
-# type_error the interpreter does. The BEHAVIOUR rows still cannot —
-# they def-bind the computed fn, which is the second wall (§5.4 /
-# NUR101) — and stay in the frontier ledger.
+# type_error the interpreter does.
 import "boru:fn-util"  def f fn [a:Integer Integer [a] s:String String [s]] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must have exactly one signature, got 2 overloads	curry refuses a multi-overload function
 import "boru:fn-util"  def f fn x:Integer Integer [x] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must take at least 2 parameters, got 1	curry refuses a unary function
+#
+# The BEHAVIOUR rows (graduated 2026-09-08, the thirty-fifth increment): a
+# def-bound wrapper's read is its word dispatch, modelled at the read over
+# the wrapper's arity of fixed tokens inside the statement.
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.compose addone/v double/v) end (h 5)	11	compose applies g first: addone (double 5)
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.pipe addone/v double/v) end (h 5)	12	pipe applies f first: double (addone 5)
+import "boru:fn-util"  def k (FnUtil.const 7) end (k 99)	7	const ignores its argument
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def fs (FnUtil.flip sub2/v) end (fs 3 10)	7	flip reverses the signature order: sub2 10 3
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end (p 3)	7	partial binds signature slot 0
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 3 5)	false	on: gt2 (sq 3) (sq 5) — 9 > 25
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)	true	on: 25 > 9
+import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)	5	memoize: the first call computes
+#
+# The wrapper applied as a VALUE — the two-survivor paren re-steps it —
+# dispatches on its own signature: `const` here is the wrapper, never the
+# registered singleton-type maker (the compiled lane answered 99 before the
+# thirty-fifth increment).
+import "boru:fn-util"  ((FnUtil.const 7) 99)	7	an applied const wrapper is the wrapper, not the `const` word
+# The read consumes its arity inside its own statement; what follows the
+# `;` is the next statement's.
+import "boru:fn-util"  def k (FnUtil.const 7) end k 1 ; 3	7 3	the bare read applies over its statement's window
+# A 0-param wrapper applies on its bare read.
+import "boru:fn-util"  def f x:Integer => [add 1 x] end def p (FnUtil.partial f/v 10) end (p)	11	partial over a unary fn: the wrapper takes no argument

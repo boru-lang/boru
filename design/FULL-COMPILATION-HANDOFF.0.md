@@ -4561,6 +4561,91 @@ nothing outside it. The unit finish, the paren collapse and now the arm
 are the three places a pending apply is consumed; a fourth residual owner
 (a loop body, a `do` body) would need the same call at its own tail.
 
+## The def-bound computed fn: a claimed shape, the read as a dispatch, and a wrapper applied on its own signatures (2026-09-08, the thirty-fifth increment)
+
+The fn-util behaviour rows — `def k (FnUtil.const 7)  (k 99)`, `def h
+(FnUtil.compose addone/v double/v)  (h 5)`, flip, partial, `on`, memoize —
+refused "def-bound computed fn apply (closure shape unknown — Stage 1)":
+the check pass binds a computed fn as a Function CARRIER of no shape, the
+read substitutes that carrier, and the residual classifier had nothing to
+lower it by. The refusal's own note blamed the island ("a lowered apply
+here returned 99 for 7"); measured, the island applies the value exactly
+as the interpreter does, and the 99 was `tryNativeFnApply` resolving the
+wrapper's LABEL `const` through the live registry to the singleton-type
+maker — a pre-existing miscompile of the EVENT spelling
+`((FnUtil.const 7) 99)`, which compiled and answered 99.
+
+**What landed.**
+
+- `core.IsSelfContainedGoFnDef` and the VM's own-signature apply: an
+  anonymous fn value wrapping nothing whose own signatures are all Go
+  handlers (fn-util's `goFnValue` shape) is VM-native applicable on ITS OWN
+  signatures — the interpreter's rule for an anonymous value — admitted
+  ahead of the parked-native arm that resolves by name. `callDynMethod`
+  gained `callDynamic`'s modifier-chain retry, so a `flip` wrapper over a
+  compiled user fn enters that fn's unit with the args reversed instead of
+  islanding. Error anchoring mirrors `stampErrPos`: the dispatching token's
+  text replaces the word a handler named (`h`, one caret, not
+  `FnUtil.compose`).
+- `CheckState.FnShapes` (`NoteFnShape` / `FnShapeArity`): the arity a
+  producing word CLAIMS for its computed-fn carrier. fn-util's words gained
+  check-mode ReturnsFns that mint the Function carrier and claim the
+  wrapper's arity — a constant for const, compose, pipe, curry and `on`;
+  read off a concrete operand's single signature for flip, partial and
+  memoize; no claim for a computed or overloaded operand.
+  `producerReturnedClosureArity` consults the claim as its third source.
+- `check.tryShapedFnReadArrival`, chained into the member-fn arrival hook:
+  a def-read fn carrier with a claimed arity is the interpreter's WORD
+  dispatch, modelled at the read over the wrapper's arity of
+  evaluation-fixed tokens inside the statement — one guarded
+  `OpCallDynMethod` (`RecordDynMethod` under the def name; the extra
+  tokens of a longer window stay on the tape, `(k 1 2)` is `7 2`). Every
+  other window REFUSES rather than declines: the residual classifier's
+  flattened window loses the statement — `bigger 3 ; 5` lowered as
+  `bigger 3 5` (compiled false for the interpreter's signature_error), and
+  `(bigger 3 ; 5)` the same inside a paren, since the word dispatched at
+  the `;` before the collapse. Measured before the model landed, on the
+  claim alone.
+- `EmitRecorder.DefReadName`: the read model's key from a carrier id to the
+  word the interpreter dispatches.
+- The fn-carrier read substitution (stepWord) runs on EVERY analysis pass,
+  not only a compile pass. It was compile-scoped on the premise that a
+  plain check never holds a table entry (a factory's `fn` handler runs in
+  check and constructs the concrete fn); a native that RETURNS a fn
+  carrier breaks it — `boru check` reported undefined_word and unused_def
+  on `def k (FnUtil.const 7)  (k 99)`, and the check-accuracy and
+  diagnostic-parity gates counted every such row the moment it left the
+  frontier ledger (18 false positives, parity 339 over the 321 ceiling —
+  found by the langspec gate, not the probes). The plain check then held
+  the carrier and its arguments where the interpreter leaves one result —
+  the type-soundness ratchet saw `(bigger 3 5)` as [Function Integer
+  Integer] for the runtime's [Boolean] — so the read model has a
+  plain-check half (`tryShapedFnReadWindow`, chained into the dynamic
+  fn-value window): the same window collapses to one dynamic(Any), the
+  def-bound test being the fn-carrier side table itself, since a plain
+  check has no live recorder to remember the read.
+
+**Measured.** The eight fn-util behaviour rows graduated (ledger 59 → 51),
+all VM-native; the event spelling answers 7 on both lanes; `k 1 ; 3`,
+`3 (k 99) add`, a 0-param wrapper's bare read `(p)` and two reads of one
+wrapper agree; a wrapper whose applied fn returns two values raises the
+same type_error at the same caret. Sound refusals pinned with the
+interpreter's answers: the stack form `5 k`, a param read `(k x)` inside a
+fn body, a paren inside the window, `(k 1 2)` (the survivor inside the
+paren), an overloaded operand to flip (no claim), and the two statement-
+window rows. The curried-chain row stays ledgered under a new mode: the
+read model nets one dynamic value for `(c 10)`, so `(c10 3)` is a dynamic
+lead with a paren-bounded argument.
+
+**What the next author should not re-derive.** A def-bound computed fn's
+read is a dispatch, and the dispatch happens AT THE READ with the word's
+statement window — not at the residual, whose flattening cannot see a
+`;`. The residual classifier keeps the event-lead spellings (a paren
+re-step over two survivors), where the paren is the window. A claim is a
+statement of the producing word's construction, never an inference from
+the carrier; a word that cannot see its operand concretely claims
+nothing, and the classifier's refusal stands.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4739,3 +4824,10 @@ position than the construct that produced the binding.
 | `lang/go/function_slot_test.go` | the Function-slot family's parity (both `cnot` rows, the cif7 twin that ran cnot's body, a produced closure at a plain fn's Function param applied, paren-bounded, held as data, and the frame render) and its sound refusals (an Any slot, apply's Function slot over a carrier) |
 | `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | a declared Function param and a positional Function slot are exempt; an Any slot, a nil signature and apply's own Function slot over a carrier keep the refusal |
 | `eng/go/frame_name_test.go` | a compiled closure bound for a named param is named (its render kept when the payload names no unit); a capture slot is left alone |
+| `lang/go/def_computed_fn_test.go` | the thirty-fifth increment's parity (the eight fn-util rows, the event spelling, the bare read, a read with a following statement, the apply feeding a dispatch, two reads, a 0-param wrapper, the wrapper's own error at the read's caret) and its sound refusals with the interpreter's answers (the stack form, a param read in a fn body, a paren in the window, the survivor inside a paren, an overloaded flip operand, and the two statement-window rows whose interpreter answer is the signature_error) |
+| `check/go/fn_read_arrival_test.go` | `tryShapedFnReadArrival`: the consumed window (the def name, the read carrier, one dynamic result, the extra token left), the arity-0 read, every refusal with its reason (a window past the tape end, a statement end inside it, a word inside it, an operand with no compiled home), and the silent declines (quoted, no id, unread, unclaimed, not a fn carrier); `tryShapedFnReadWindow`, the plain-check half: the collapsed window and its declines (quoted, not def-bound, no claim, short, non-fixed, past the end) |
+| `core/go/fn_shape_test.go` | `IsSelfContainedGoFnDef`'s arms and `NoteFnShape` / `FnShapeArity` (inactive, no id, a negative count, the claim, a 0 claim, the clone, the reset) |
+| `eng/go/vm_self_contained_fn_test.go` | the own-signature apply under a registered word of the same label (leading, the method op, the declined arg count), `callDynMethod`'s modifier-chain retry (a flipped delegation and its error), and a handler error anchored on the value's token text |
+| `compiler/go/fn_shape_claim_test.go` | the claim as `producerReturnedClosureArity`'s third source (claimed, unclaimed, no registry) and `DefReadName` |
+| `core/go/check_fncarrier_test.go` (`TestStepWordPlainCheckSubstitutesCarrier`), `lang/go/def_computed_fn_test.go` (`TestDefComputedFnPlainCheckClean`) | the plain check reads a bound fn carrier with no undefined_word and no unused_def, and the silent-fallback mark stays a compile pass's |
+| `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |

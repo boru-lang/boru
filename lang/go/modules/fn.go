@@ -161,6 +161,53 @@ func goFnValue(name string, nParams int, h native.Handler) native.Value {
 	})
 }
 
+// fnShapeReturns builds the check-mode ReturnsFn of a wrapper-producing word.
+// The result is the Function carrier the declared Returns would mint, and —
+// when the wrapper's ARITY is a statement of the word's own construction
+// (arity answers true) — the carrier is noted with it
+// (CheckState.NoteFnShape), so the compile pass's apply classifier knows the
+// shape of a def-bound wrapper (`def k (FnUtil.const 7)  (k 99)`) the way it
+// knows a compiled factory's returned closure. A word whose arity depends on
+// an operand the pass cannot see concretely (a computed fn) makes no claim,
+// and the classifier's "closure shape unknown" refusal stands.
+func fnShapeReturns(arity func(args []native.Value) (int, bool)) native.ReturnsFunc {
+	return func(args []native.Value, r *native.Registry) []native.Value {
+		out := native.NewCarrier(native.TFunction)
+		if n, ok := arity(args); ok && r != nil {
+			r.Check.NoteFnShape(out, n)
+		}
+		return []native.Value{out}
+	}
+}
+
+// fnShapeConst claims a fixed arity: goFnValue(name, n, …) with n a constant.
+func fnShapeConst(n int) func([]native.Value) (int, bool) {
+	return func([]native.Value) (int, bool) { return n, true }
+}
+
+// fnShapeFromOperand claims the arity goFnValue takes from the operand fn's
+// ONE own signature, offset by delta (partial binds one slot: -1; memoize
+// keeps the count: 0; flip reverses a single signature in place: 0) —
+// exactly the count the handler reads (fnUtilSingleSig). Unknown for a
+// non-concrete operand (a computed fn carrier) and for an overloaded one:
+// the reshaping handlers raise there, and flip's wrapper has no one arity.
+func fnShapeFromOperand(delta int) func([]native.Value) (int, bool) {
+	return func(args []native.Value) (int, bool) {
+		if len(args) == 0 {
+			return 0, false
+		}
+		fd, ok := args[0].Data.(native.FnDefInfo)
+		if !ok {
+			return 0, false
+		}
+		own := fd.OwnSigs()
+		if len(own) != 1 {
+			return 0, false
+		}
+		return own[0].TotalArgs() + delta, true
+	}
+}
+
 // ---- The natives ----
 
 // COMPILE EFFECT (the fn-util family). Every word here takes its fn operand
@@ -186,13 +233,21 @@ func goFnValue(name string, nParams int, h native.Handler) native.Value {
 // stores its operand OPAQUELY — it never inspects the value, so a closure
 // round-trips through it untouched — and therefore declares no strict flag.
 //
-// This clears the FIRST of two walls in front of the fn-util rows. The second
-// is the def-bound computed-fn model (§5.4 / NUR101): with the declaration in
-// place every behaviour row refuses with "def-bound computed fn apply (closure
-// shape unknown — Stage 1)" instead. The `const` row is the control that this
-// second wall is not fn-util's doing — `_f_const` takes TAny, so the fn-operand
-// gate never applied to it, and it refused that way all along.
-// lang/spec/frontier/frontier-fn-util.tsv carries the ledger.
+// This cleared the FIRST of two walls in front of the fn-util rows. The second
+// was the def-bound computed-fn model (§5.4 / NUR101): with the declaration in
+// place every behaviour row refused with "def-bound computed fn apply (closure
+// shape unknown — Stage 1)" instead — the compile pass knew a def-bound
+// wrapper only as a Function carrier of no shape. The thirty-fifth increment
+// (2026-09-08) took that wall down from three sides: each wrapper-producing
+// word below declares a check-mode ReturnsFn (fnShapeReturns) that CLAIMS the
+// wrapper's arity on the carrier (CheckState.FnShapes), the check pass models
+// the def-bound wrapper's word dispatch at the read over that arity (check's
+// tryShapedFnReadArrival), and the VM applies a self-contained Go-impl value
+// on its OWN signatures (core.IsSelfContainedGoFnDef) — never through the
+// live registry under its label, which is how `((FnUtil.const 7) 99)` once
+// compiled to 99: `const` is also the singleton-type maker. The behaviour
+// rows live in lang/spec/module-fn.tsv; lang/spec/frontier/frontier-fn-util.tsv
+// keeps the curried chain.
 var fnUtilNatives = []native.NativeFunc{
 	// identity — the total identity, any kind (a Function value passes
 	// through inert; /v made the user-space spelling writable, this is
@@ -218,6 +273,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn,
 			Args:          []*native.Type{native.TAny},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 				x := args[0]
 				return []native.Value{goFnValue("const", 1,
@@ -236,6 +292,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction, native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.compose", r)
 				if err != nil {
@@ -265,6 +322,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction, native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.pipe", r)
 				if err != nil {
@@ -295,6 +353,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				if _, err := fnUtilSigArg(args[0], "FnUtil.flip", r); err != nil {
 					return nil, err
@@ -316,6 +375,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.curry", r)
 				if err != nil {
@@ -344,6 +404,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction, native.TAny},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(-1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.partial", r)
 				if err != nil {
@@ -380,6 +441,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction, native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeConst(2)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				b, err := fnUtilArg(args[0], "FnUtil.on", r)
 				if err != nil {
@@ -416,6 +478,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
+			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.memoize", r)
 				if err != nil {
