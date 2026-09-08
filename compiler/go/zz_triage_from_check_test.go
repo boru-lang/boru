@@ -280,6 +280,21 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	if _, ok := es.RecordDynApply([]core.Value{core.NewCarrier(core.TFunction)}, fn, core.NewInteger(0), core.SrcPos{}); ok {
 		t.Fatal("fn-valued arg should decline")
 	}
+	// Under the `apply` WORD (a pending entry for the lead) a fn-valued arg
+	// is DATA on the resolved stack (the thirty-second increment): recorded.
+	// (A fresh state: the decline above is the event-lead refusal, which
+	// marks the state uncompilable.)
+	esW := NewEmitState()
+	seedProduced(esW, fn, 1)
+	argFn := core.NewDynamicCarrier(core.TFunction)
+	seedProduced(esW, argFn, 2)
+	esW.units[len(esW.units)-1].pendingApply = append(esW.units[len(esW.units)-1].pendingApply, pendingApply{id: fn.ID})
+	if n, ok := esW.RecordDynApply([]core.Value{argFn}, fn, core.NewInteger(0), core.SrcPos{}); !ok || n != 1 || !esW.Compilable {
+		t.Fatal("a fn-valued arg beneath the apply word records")
+	}
+	if len(esW.units[len(esW.units)-1].pendingApply) != 0 {
+		t.Fatal("the pending entry is consumed")
+	}
 	// Fn resolves, an ARG is unresolvable → false.
 	//
 	// The callee here must have a PROVABLE arity. Since the window trim moved

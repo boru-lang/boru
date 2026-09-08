@@ -4852,7 +4852,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 				if a := es.TrailingApplyArity(top.ID); a > 0 && a == len(bodyStk)-1 {
 					argsOK := true
 					for _, v := range bodyStk[:len(bodyStk)-1] {
-						if core.IsFnValueResidual(v) { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+						if core.IsFnValueResidual(v) {
 							argsOK = false
 							break
 						}
@@ -5402,21 +5402,20 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 		es.MarkUncompilable(refuse)
 		return 0, false
 	}
-	// Under a produced-closure pending apply (recordCallElided's arm) the
-	// check engine's re-step has already MATCHED these args against the
-	// closure's own signature: a fn value among them is that closure's
-	// argument (`kk/v (ss kk/v) apply` binds kk to the g:Function param),
-	// data to the op exactly as to the interpreter. Every other window keeps
-	// declining a fn-valued arg: nothing has established it is not an
-	// applicable of its own.
-	closureArgsMatched := false
-	if applyIdx >= 0 {
-		_, closureArgsMatched = es.units[len(es.units)-1].pendingApply[applyIdx].fn.Data.(core.FnDefInfo)
-	}
+	// Under the `apply` WORD (a pending entry) every value beneath the lead
+	// is DATA: applyHandler re-steps the fn over the RESOLVED stack, where
+	// a fn value on the value stack never dispatches — the closure re-step
+	// matched it against the closure's own signature (`kk/v (ss kk/v)
+	// apply` binds kk to the g:Function param), and a fn-typed carrier
+	// lead's re-step binds it the same way (`(n/v f/v apply)` hands the
+	// numeral to f — the thirty-second increment). A paren window with no
+	// apply word keeps declining a fn-valued arg: inside the paren that
+	// value was a TOKEN the interpreter stepped, and nothing has established
+	// it is not an applicable of its own.
 	ops := make([]EmitOperand, 0, len(args)+1)
 	ops = append(ops, fnOp)
 	for i := len(args) - 1; i >= 0; i-- {
-		if core.IsFnValueResidual(args[i]) && !closureArgsMatched {
+		if core.IsFnValueResidual(args[i]) && applyIdx < 0 {
 			return 0, false
 		}
 		op, ok := es.resolveOperand(args[i])
@@ -7681,16 +7680,20 @@ func (es *EmitState) PendingClosureApply(body []core.Value) (core.Value, bool) {
 // outs[0] the one gradual result the model committed. The event lays out
 // [receiver, lead] with the lead on top and lowers to OpCallDynApplyOne. It
 // declines — leaving the standing refusal — outside a unit (the program
-// residual has no single-consumer window), for a lead with no identity, for
-// a receiver that is itself a fn value (the interpreter's apply would meet
-// two applicables), and for operands the recorder cannot resolve.
+// residual has no single-consumer window), for a lead with no identity, and
+// for operands the recorder cannot resolve. A receiver that is itself a fn
+// value is DATA under the apply word (the thirty-second increment): the
+// interpreter's applyHandler re-steps the lead over the RESOLVED stack,
+// where a fn value never dispatches, so `cfalse/v (q/v p/v apply) apply`
+// hands cfalse to the applied closure; a lead that is no fn at run time
+// meets the word's own no-match on the top value, exactly as the op does.
 func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	if len(es.units) <= 1 || sig == nil || sig.FnFrame() != nil || sig.TotalArgs() != 2 ||
 		len(args) != 2 || len(outs) != 1 {
 		return false
 	}
 	lead := args[0]
-	if core.IsConcrete(lead) || !lead.Dynamic || lead.ID == "" || core.IsFnValueResidual(args[1]) {
+	if core.IsConcrete(lead) || !lead.Dynamic || lead.ID == "" {
 		return false
 	}
 	fnOp, ok := es.resolveOperand(lead)
@@ -10391,15 +10394,25 @@ func (es *EmitState) creditWordRead(id string) {
 // none of the three: their count mismatch is the higher-order word's own
 // error and their reads are the enclosing frame's.
 func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []core.Value, ops []EmitOperand, dynTrail int) string {
-	if dynTrail != 0 || (rec.closure && !rec.plainLambda()) {
+	if rec.closure && !rec.plainLambda() {
 		return ""
 	}
-	if len(rec.returns) > 0 && len(ops) != len(rec.returns) &&
-		!es.noteDynFrameReplay(u, rec, vals, len(ops)-len(rec.returns)) {
-		return "unapplied fn-value in body residual (dynamic apply not compiled in a fn body)"
-	}
-	if rec.dynFrameW == 0 && len(rec.returns) > 0 && !es.noteWordReadReplay(u, rec, vals) {
-		return "bare read of a fn-valued binding is a word dispatch the frame replay cannot seat (NUR123)"
+	// A body-tail dynamic apply (dynTrail) owns the residual: the count and
+	// replay arms do not apply, but the READ accounting still does — a bare
+	// read consumed as a window ARGUMENT beneath the tail apply (`(x (n
+	// f/v apply) apply)`, the numeral's bare `n`) is a word dispatch the
+	// window lowered as data, and skipping the accounting here let it
+	// compile to `f` applied to `n` for the interpreter's `n` applied to
+	// `f` once the window admitted fn-valued args (the thirty-second
+	// increment).
+	if dynTrail == 0 {
+		if len(rec.returns) > 0 && len(ops) != len(rec.returns) &&
+			!es.noteDynFrameReplay(u, rec, vals, len(ops)-len(rec.returns)) {
+			return "unapplied fn-value in body residual (dynamic apply not compiled in a fn body)"
+		}
+		if rec.dynFrameW == 0 && len(rec.returns) > 0 && !es.noteWordReadReplay(u, rec, vals) {
+			return "bare read of a fn-valued binding is a word dispatch the frame replay cannot seat (NUR123)"
+		}
 	}
 	rec.outOpsVals = vals
 	return es.wordReadAccounting(rec)

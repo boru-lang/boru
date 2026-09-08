@@ -211,9 +211,12 @@ func TestLamParamContract(t *testing.T) {
 }
 
 // TestFnResidualReplayReasonArms pins the shared refusal site's three
-// verdicts: a closure unit and a trailing apply take none; a fn-typed
-// word read the window cannot seat (an event after the read) refuses with
-// the NUR123 reason; a seated read passes the accounting.
+// verdicts: a closure unit takes none; a trailing apply takes neither the
+// count nor the replay verdict but still the READ accounting (the
+// thirty-second increment: an uncredited bare read beneath the tail apply
+// refuses, a credited one passes); a fn-typed word read the window cannot
+// seat (an event after the read) refuses with the NUR123 reason; a seated
+// read passes the accounting.
 func TestFnResidualReplayReasonArms(t *testing.T) {
 	es, rec, g, _ := wordReadUnit(t)
 	u := es.units[len(es.units)-1]
@@ -221,9 +224,14 @@ func TestFnResidualReplayReasonArms(t *testing.T) {
 	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 5})
 	op, _ := es.resolveOperand(g)
 	ops := []EmitOperand{op}
-	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); r != "" {
-		t.Errorf("a trailing apply takes no verdict here: %q", r)
+	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); !strings.Contains(r, "NUR123") {
+		t.Errorf("a trailing apply still accounts for an uncredited bare read: %q", r)
 	}
+	es.creditWordRead(g.ID)
+	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); r != "" {
+		t.Errorf("a trailing apply over a credited read takes no verdict: %q", r)
+	}
+	delete(rec.wordReadCredit, g.ID)
 	rec.closure = true
 	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 0); r != "" {
 		t.Errorf("a closure unit takes no verdict here: %q", r)
@@ -430,9 +438,6 @@ func TestRecordGradualApplyEventDeclines(t *testing.T) {
 	if es.recordGradualApplyEvent(two, []core.Value{noID, g}, out, pos) {
 		t.Error("an unidentified lead declines")
 	}
-	if es.recordGradualApplyEvent(two, []core.Value{x, g}, out, pos) {
-		t.Error("a fn-value receiver declines")
-	}
 	if es.recordGradualApplyEvent(two, []core.Value{unknown, core.NewInteger(1)}, out, pos) {
 		t.Error("an unresolvable lead declines")
 	}
@@ -448,6 +453,11 @@ func TestRecordGradualApplyEventDeclines(t *testing.T) {
 	evs := es.frames[len(es.frames)-1]
 	if len(evs) != before+1 || !evs[len(evs)-1].call.dynApplyOne || !evs[len(evs)-1].call.dynApplyUnquote || evs[len(evs)-1].call.pos != pos {
 		t.Errorf("the event carries the one-result and unquote flavours at the apply word's position: %+v", evs[len(evs)-1].call)
+	}
+	// A fn-value receiver is DATA under the apply word (the thirty-second
+	// increment): recorded like any other.
+	if !es.recordGradualApplyEvent(two, []core.Value{x, g}, out, pos) {
+		t.Error("a fn-value receiver records")
 	}
 	// Outside a unit nothing records.
 	top := NewEmitState()

@@ -4352,7 +4352,7 @@ so the read's ID had no producer — and the def's own value (`def p (2
 
 - The unit finish's pending-apply arm takes every value beneath the
   pending fn as the window, fn-valued or not (the paren arm's fn-value
-  exclusion is unreachable and stays).
+  exclusion stays; unreachable until the thirty-second increment).
 - `NoteValRead` carries the binding NAME (a seam signature change). The
   binding unit remembers a dyn-bind of a PRODUCED fn value by name
   (`noteValBind`: the bind-time PRODUCER, the binding's generation, the
@@ -4407,6 +4407,66 @@ frame bindings also trip; the installed entry's identity is not one that
 survives a call whose body rebinds the name — hence both keys and the
 epoch. The interpreter's frame cleanup pops by depth growth, so a
 drop-then-push inside a frame is a permanent rebind.
+
+## A fn value beneath the apply word is data, and the read accounting under a tail apply (2026-09-08, the thirty-second increment)
+
+The four Church and/or rows (`cand`, `cor`) refused inside their inner
+lambda: `cfalse/v (q/v p/v apply) apply`. The paren-bounded pending apply
+over the fn-typed param `p` declined its window because the entry beneath
+(`q/v`, a fn-typed param) was a fn value ("nothing has established it is
+not an applicable of its own"), and the gradual-lead event of the outer
+apply declined its receiver (`cfalse/v`) for the same reason ("the
+interpreter's apply would meet two applicables"). Neither holds under the
+`apply` WORD: applyHandler re-steps the applied fn over the RESOLVED stack,
+where a fn value on the value stack never dispatches — only a tape token
+does — so every value beneath the lead is the callee's data, exactly as
+the op binds it. A paren window with no apply word keeps the decline: inside
+the paren that value was a token the interpreter stepped.
+
+**What landed.**
+
+- `RecordDynApply` admits a fn-valued window entry when a pending apply
+  (the apply word's) owns the event; `recordGradualApplyEvent` admits a
+  fn-valued receiver. The paren-without-apply window still declines.
+- The unit finish's PAREN arm (a paren-bounded trailing apply as the whole
+  residual, `TrailingApplyArity`) still excludes a fn-valued window entry
+  — the tokens inside a paren are stepped, so such a value may dispatch —
+  and the admitted windows made that exclusion reachable for the first
+  time: its `//covergate:allow` pragma is gone (the coverage gate reported
+  the guard covered).
+- Admitting the windows exposed a hole in the bare-read accounting
+  (NUR123): `fnResidualReplayReason` returned early for a unit ending in a
+  body-tail apply, skipping the READ accounting with the count and replay
+  arms, so a bare read of a fn-typed capture consumed as a window ARGUMENT
+  — the numeral's `n` in `(x (n f/v apply) apply)`, which the interpreter
+  DISPATCHES over `f/v` — lowered as data: the three csucc rows compiled to
+  `f` applied to `n` (`expected 1 return value(s), got 2 — [fn n(Function)
+  2]` for the interpreter's 3). The accounting now runs under a tail apply
+  too (the count and replay arms stay skipped there), and those rows refuse
+  soundly; their `n/v` spelling compiles.
+
+**Measured.** All four Church and/or rows compile and agree byte for
+byte; two run VM-native and graduated (T and T, F or F), and the frontier
+gate found the §4 U-combinator row graduated with them — its
+self-application `(s/v s/v apply)` is the same shape — so the ledger is
+64 → 61;
+and two still ISLAND — a def'd lambda's VALUE (the main program's
+`cfalse/v`, `ctrue/v` too in the or row) applied inside a unit through a
+carrier lead re-enters the interpreter, and the island's interpreter-minted
+result islands again; they stay ledgered as islanded. Not the inner
+lambda's captures (a capturing `cfalse` islands the same way); which
+arrival carries a unit the op can enter is the next diagnosis. The numeral
+rows are re-diagnosed to the bare-read class. Sound refusals pinned: the
+csucc row with the interpreter's 3, its minimal shape, and a fn value
+beneath a paren window with no apply word.
+
+**What the next author should not re-derive.** A value beneath the apply
+word is never an applicable: the word's re-step resolves the stack first.
+The bare-read accounting must run for every plain-lambda or user-fn unit,
+whatever owns its residual — an early return for one residual owner is a
+hole for every read that owner's window consumes. The numeral rows' next
+gate is a bare fn-typed read with a FORWARD argument (`n f/v`), which the
+check models as data and the interpreter as a dispatch.
 
 ## What the ledger excludes, and why each exclusion was measured
 
@@ -4567,6 +4627,8 @@ position than the construct that produced the binding.
 | `check/go/pending_closure_apply_test.go` (`TestRecordUserCallOrApplyPendingFirst`) | the record site's order: the pending route before the name fallback, the fallback when nothing is pending |
 | `core/go/engine_word_read_test.go` (`TestStepWordValNotesTheName`) | a `/v` read hands the recorder the binding's name beside the read's id |
 | `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesCapturingRedefinitionInFnBody`) | installDef's fn-body arm: a capturing redefinition inside a fn body refuses; a capture-free literal there and a capturing value at the top level do not |
+| `lang/go/apply_data_receiver_test.go` | the thirty-second increment's parity (the native Church and/or rows, the U-combinator factorial, the numeral's `n/v` spelling), the two islanding Church rows pinned as islanded with parity, and its sound refusals with the interpreter's answers (the csucc row, its minimal shape, a fn value beneath a paren window with no apply word) |
+| `compiler/go/zz_triage_from_check_test.go` (`TestRecordDynApplyDeclines`), `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`, `TestFnResidualReplayReasonArms`) | a fn-valued window entry records under the apply word and declines without it; a fn-valued receiver records; the read accounting runs under a tail apply (an uncredited read refuses, a credited one passes) |
 | `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |

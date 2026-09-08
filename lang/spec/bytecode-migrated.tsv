@@ -185,3 +185,23 @@ def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end
 # two §5.8 Church pair rows (first and second projection).
 def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def cfst p:Function => [(a:Any => [b:Any => [a/v]]) p/v apply] end def p (2 (cpair 1) apply) end (cfst p/v)	1	Church pair: first projection
 def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def csnd p:Function => [(a:Any => [b:Any => [b/v]]) p/v apply] end def p (2 (cpair 1) apply) end (csnd p/v)	2	Church pair: second projection
+#
+# the Church and/or rows GRADUATED 2026-09-08 (the thirty-second increment): a fn
+# VALUE beneath the `apply` word is data — applyHandler re-steps the applied fn
+# over the resolved stack, where a fn value never dispatches — so the paren-
+# bounded pending apply admits a fn-typed entry in its window (`(q/v p/v apply)`
+# hands q to p) and the gradual-lead event admits a fn-valued receiver
+# (`cfalse/v (…) apply` hands cfalse to the applied closure). These were
+# frontier-hof-audit.tsv's §2 rows Church and (T and T) and Church or (F or F);
+# their twins (T and F, T or F) compile and agree but still island — a def'd
+# lambda's value applied inside a unit through a carrier lead — and stay
+# ledgered as islanded.
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cand p:Function => [q:Function => [cfalse/v (q/v p/v apply) apply]] end 'F' ('T' (cif (ctrue/v (cand ctrue/v) apply)) apply) apply	'T'	Church and: T and T
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cor p:Function => [q:Function => [q/v (ctrue/v p/v apply) apply]] end 'F' ('T' (cif (cfalse/v (cor cfalse/v) apply)) apply) apply	'F'	Church or: F or F
+#
+# the U combinator GRADUATED 2026-09-08 (the thirty-second increment, found by
+# the frontier gate): `(s/v s/v apply)` puts a fn value beneath the apply word —
+# data on the resolved stack — so the self-application compiles; the factorial
+# agrees on both lanes and runs VM-native. This was frontier-hof-audit.tsv's §4
+# row (audit §1.4).
+def fgen fn s:Function Function [ ( fn n:Integer Integer [ if (lte 1 n) [1] [ mul n ((sub 1 n) (s/v s/v apply) apply) ] ] ) ] end def fact (fgen fgen/v) end (fact 5)	120	U-combinator factorial: self-application passed explicitly
