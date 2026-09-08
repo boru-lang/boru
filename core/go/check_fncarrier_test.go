@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -192,5 +193,35 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	}
 	if got := e.Tape.At(0); got.Undefined || !got.Carrier || !got.Parent.Equal(TWord) {
 		t.Errorf("word carrier not collected as data: %v", got)
+	}
+}
+
+// TestInstallDefRefusesCapturingRedefinitionInFnBody pins installDef's
+// fn-body arm (the thirty-first increment): a CAPTURING fn value — a
+// factory's returned closure — redefining an outer overloading def from
+// inside a fn body outlives the call on the interpreter (the drop-then-push
+// leaves the frame's def depth unchanged, so DefCleanup pops nothing) where
+// the compiled program keeps the outer bake, so the install refuses at the
+// conditional-redefinition site. A capture-free literal in a fn body and a
+// capturing value at the top level are not refused.
+func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
+	r := compileCheckRegistry(t)
+	es := newS5BEmit()
+	r.Check.Emit = es
+	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	capturing := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()},
+		Captured: []CapturedBinding{{Name: "k", Value: NewCarrier(TInteger)}}})
+	r.Check.FnBodyDepth = 1
+	installDef(r, "p", capturing, false)
+	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body by a capturing fn value") {
+		t.Errorf("a capturing redefinition inside a fn body refuses: %v", es.uncompilable)
+	}
+	es.uncompilable = nil
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	r.Check.FnBodyDepth = 0
+	installDef(r, "p", capturing, false)
+	if len(es.uncompilable) != 0 {
+		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not refused: %v", es.uncompilable)
 	}
 }

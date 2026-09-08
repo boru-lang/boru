@@ -888,6 +888,19 @@ type EmitState struct {
 	// to a token-re-running native must not READ one. See
 	// recordCodeBodyClosureRead.
 	dynBoundClosures map[string]bool
+	// valReadIDs holds the IDs of `/v` reads aliasValRead traced to a
+	// def-bound produced fn value: data on both engines, never a paren
+	// that failed to collapse (argIsProducedClosure).
+	valReadIDs map[string]bool
+	// valBindEpoch counts every dyn-bind of a name this pass recorded, in
+	// any unit: a valBind made at an older count is stale — a def of the
+	// name in a CALLED fn's body replaces an overlapping outer fn binding
+	// for good on the interpreter (drop-then-push, §6.5) where the
+	// analysis restores its snapshot after the call, so the entry on top
+	// again is no proof the run holds it (`def p (kk 7) end def g fn [[]
+	// [Integer] [def p (kk 9) 1 p/v apply]] end g 3 p/v apply` answered 10
+	// for the interpreter's 12 before this count).
+	valBindEpoch map[string]int
 	// defNameAt is the def name a produced fn value (a closure a unit
 	// returns, a fn-value apply's result) was bound under, keyed by its
 	// producing event slot — read by the lowering's promoted store to seat
@@ -1089,6 +1102,23 @@ type emitUnit struct {
 	// have no producing event, so they still const-fold; only computed /
 	// mutable enclosing bindings take this path.)
 	enclosingBindIDs map[string]bool
+	// valBinds is the unit's own dyn-binds of a PRODUCED fn value, by name:
+	// the bound value's PRODUCER at the bind, the binding's generation and
+	// the installed entry's identity. A `/v` read of the name is a fresh
+	// wrap of the binding (ResolveRef mints a new Value over the dispatch
+	// aggregate), so the read's ID carries no provenance of its own;
+	// NoteValRead aliases it to that producer while the binding is still
+	// the bind's — the generation unchanged, or the same entry on top again
+	// after a frame binding of the name pushed and popped (`(cfst p/v)`
+	// binds cfst's own `p` param). Any later bind of the name in this unit
+	// drops the entry, and a bind inside a branch or loop body drops it for
+	// good: the analysis rolls that bind back, so the entry on top after
+	// the arm is the OLD one where the run may hold the NEW (the thirty-
+	// first increment). The producer, not the value's ID: a memoised body
+	// returns ONE residual value for every call of one shape, so the ID's
+	// producer at read time is the LAST such call's (`def p (kk 7) end def
+	// q (kk 8) end 3 p/v apply` read q's closure for p).
+	valBinds map[string]valBind
 	// enclosingBindNames snapshots, at unit open, the NAMES of every def binding
 	// visible in the DefTable — the by-name twin of enclosingBindIDs. It exists
 	// for the one case IDs cannot cover: a DETACHED stamp (StampDetachedFn) forks
@@ -4841,23 +4871,21 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// (mid-body apply, double apply, apply into a branch join) REFUSES
 			// — never compiles the fn+args as unapplied data, and never drops
 			// an apply the interpreter performed.
+			// A fn VALUE beneath the pending apply is an ARGUMENT, not a
+			// second apply (the thirty-first increment): applyHandler
+			// re-steps the fn over the RESOLVED stack, where a parked lambda
+			// is data the callee's Function param binds (`cfst`'s
+			// `(a:Any => [b:Any => [a/v]]) p/v apply` hands the projection
+			// to the pair), and the op's window binds it the same way — so
+			// the window takes every value beneath, fn-valued or not.
 			if pend := u.pendingApply; len(pend) > 0 {
 				if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
 					bodyStk[len(bodyStk)-1].ID == pend[0].id {
-					argsOK := true
-					for _, v := range bodyStk[:len(bodyStk)-1] {
-						if core.IsFnValueResidual(v) {
-							argsOK = false
-							break
-						}
-					}
-					if argsOK {
-						dynTrail = len(bodyStk) - 1
-						// applyHandler unquotes: a /v-parked fn value still
-						// applies (OpCallDynApplyTop), unlike the paren case.
-						rec.dynTrailApply = true
-						rec.dynTrailPos = pend[0].pos
-					}
+					dynTrail = len(bodyStk) - 1
+					// applyHandler unquotes: a /v-parked fn value still
+					// applies (OpCallDynApplyTop), unlike the paren case.
+					rec.dynTrailApply = true
+					rec.dynTrailPos = pend[0].pos
 				}
 				if dynTrail == 0 {
 					es.MarkUncompilable("fn " + name + ": apply of a dynamic fn value not at the body tail (Stage 3)")
@@ -7167,6 +7195,12 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		if !core.IsAppliableFn(args[i]) || (word != "apply" && slotDeclaresFunction(sig, i)) {
 			continue
 		}
+		// A `/v` read of a def-bound closure (valReadIDs) is DATA on both
+		// engines — the interpreter never dispatches the value spelling —
+		// so no paren failed to collapse: the slot takes the value.
+		if es.valReadIDs[args[i].ID] {
+			continue
+		}
 		if es.producerReturnedClosure(args[i].ID) {
 			es.MarkUncompilable(
 				"computed closure at a word's argument slot (its apply did not collapse — Stage 2)")
@@ -7248,6 +7282,10 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if !es.Active() || name == "" || core.IsCapitalisedName(name) {
 		return
 	}
+	if es.valBindEpoch == nil {
+		es.valBindEpoch = map[string]int{}
+	}
+	es.valBindEpoch[name]++
 	if name[0] == '_' || name[0] == '$' {
 		// The historical skip for these names is a keep-installs-era economy:
 		// under the default regime the check pass's install IS the kept
@@ -7293,6 +7331,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	}
 	src, srcSeq := EmitOperand{}, -1
 	cur := es.units[len(es.units)-1]
+	es.noteValBind(cur, name, v)
 	if slot, ok := cur.localByID[v.ID]; ok && cur.capID[v.ID] {
 		// A CAPTURE of the CURRENT unit overrides events-first, mirroring
 		// resolveOperand's capID override (emit.go ~1241): the captured value
@@ -10244,8 +10283,12 @@ func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
 }
 
 // NoteValRead counts a `/v` read on the innermost open unit (EmitRecorder).
-func (es *EmitState) NoteValRead(id string) {
-	if !es.Active() || id == "" || len(es.openUnitRecs) == 0 {
+func (es *EmitState) NoteValRead(id, name string) {
+	if !es.Active() || id == "" {
+		return
+	}
+	es.aliasValRead(id, name)
+	if len(es.openUnitRecs) == 0 {
 		return
 	}
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
@@ -10253,6 +10296,67 @@ func (es *EmitState) NoteValRead(id string) {
 		rec.valReads = map[string]int{}
 	}
 	rec.valReads[id]++
+}
+
+// valBind is one unit-local dyn-bind of a produced fn value (emitUnit.valBinds).
+type valBind struct {
+	pr    producer
+	gen   int64
+	top   string // the installed entry's ID (Defs.Top at the bind)
+	epoch int    // valBindEpoch[name] at the bind
+}
+
+// noteValBind records, on the binding unit, a dyn-bind whose value is a
+// fn value an event of this pass PRODUCED (a factory call's returned
+// lambda, an apply's closure): the one binding kind whose `/v` read
+// re-wraps the value under a fresh ID. Every bind of the name drops the
+// unit's entry first; one inside a branch or loop body leaves it dropped
+// (the analysis rolls the bind back, the run may not), and one whose
+// value is no produced fn value records nothing.
+func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
+	delete(cur.valBinds, name)
+	if es.reg == nil || es.reg.Check.CondBodyDepth > 0 || v.Parent == nil || !v.Parent.ConformsTo(core.TFunction) {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok {
+		return
+	}
+	top, _ := es.reg.Defs.Top(name)
+	if cur.valBinds == nil {
+		cur.valBinds = map[string]valBind{}
+	}
+	cur.valBinds[name] = valBind{pr: pr, gen: es.reg.Defs.Gen(name), top: top.ID, epoch: es.valBindEpoch[name]}
+}
+
+// aliasValRead traces a `/v` read's fresh ID to the bound value's producer
+// when the read is in the binding unit and the binding is still the
+// bind's — no dyn-bind of the name recorded since, in any unit
+// (valBindEpoch), and its generation unchanged or the bind's entry on top
+// again after a frame binding of the name came and went — so the read
+// resolves like the bound value: `def p (kk 7) end (w p/v)` hands the
+// stored closure to w where the read used to refuse "fn call operand of
+// unknown provenance". The alias is remembered (valReadIDs) for the
+// argument-slot guard: the value spelling is data on both engines.
+func (es *EmitState) aliasValRead(id, name string) {
+	if name == "" || es.reg == nil || len(es.units) == 0 {
+		return
+	}
+	cur := es.units[len(es.units)-1]
+	b, ok := cur.valBinds[name]
+	if !ok || es.valBindEpoch[name] != b.epoch {
+		return
+	}
+	if es.reg.Defs.Gen(name) != b.gen {
+		if top, found := es.reg.Defs.Top(name); !found || top.ID == "" || top.ID != b.top {
+			return
+		}
+	}
+	es.producedBy[id] = b.pr
+	if es.valReadIDs == nil {
+		es.valReadIDs = map[string]bool{}
+	}
+	es.valReadIDs[id] = true
 }
 
 // creditWordRead records that a fn-value apply lowering consumed one bare

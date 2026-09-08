@@ -4329,6 +4329,85 @@ lambda whose body is one such group looks alike to a position key. Any
 memo that must tell two bodies apart needs the text (or the backing array,
 as `PendingClosureApply` uses) when the position is zero.
 
+## A lambda value beneath a unit's tail apply, and the `/v` read of a def-bound produced closure (2026-09-08, the thirty-first increment)
+
+The two Church pair rows stood behind two gates, one in the projection's
+unit and one at the main program.
+
+Inside `cfst` (`(a:Any => [b:Any => [a/v]]) p/v apply`) a lambda VALUE
+sat beneath the fn-typed param's pending tail apply, and the unit finish's
+whole-residual lowering declined a fn-valued window entry (`argsOK`). The
+reading was wrong for the `apply` word: applyHandler re-steps the fn over
+the RESOLVED stack, where a parked lambda is data the callee's Function
+param binds — the projection is the pair's argument, not a second apply —
+and `OpCallDynApplyTop`'s window binds it the same way.
+
+At the main program `(cfst p/v)` refused "fn call operand of unknown
+provenance": a `/v` read of a fn binding is a FRESH WRAP of the binding
+(`ResolveRef` mints a new Value over the dispatch aggregate on every read),
+so the read's ID had no producer — and the def's own value (`def p (2
+(cpair 1) apply)`) had been promoted to a store the read could not name.
+
+**What landed.**
+
+- The unit finish's pending-apply arm takes every value beneath the
+  pending fn as the window, fn-valued or not (the paren arm's fn-value
+  exclusion is unreachable and stays).
+- `NoteValRead` carries the binding NAME (a seam signature change). The
+  binding unit remembers a dyn-bind of a PRODUCED fn value by name
+  (`noteValBind`: the bind-time PRODUCER, the binding's generation, the
+  installed entry's identity and a per-name bind epoch), and a `/v` read
+  of the name is aliased to that producer (`aliasValRead`) while the
+  binding is still the bind's: no dyn-bind of the name recorded since, in
+  any unit, and the generation unchanged — or the bind's entry on top
+  again after a frame binding of the name came and went (`(cfst p/v)`
+  binds cfst's own `p` param). Any bind of the name in the unit drops the
+  entry; one inside a branch or loop body leaves it dropped. The aliased
+  read is data at an argument slot (`argIsProducedClosure` skips it:
+  `typeof p/v` is Function on both lanes).
+- Three faults the alias exposed, each measured before its fix. The
+  producer is taken at the BIND, not by the value's ID at the read: a
+  memoised body returns ONE residual value for every call of one shape,
+  so `def p (kk 7) end def q (kk 8) end 3 p/v apply 4 q/v apply` read q's
+  closure for p (`3 20` for `3 19`). The re-step of such a read takes the
+  pending closure apply BEFORE the name fallback (`recordUserCallOrApply`):
+  with the fallback first the pending entry was never consumed and
+  `3 p/v apply` refused at Finalize; the pending route also runs the
+  closure VM-native where the fallback's name lookup islands. And a
+  binding renames a NAMED closure too (`nameClosureValue`): `(w p/v)`
+  rendered `fn p(Integer)` for the interpreter's `fn f(Integer)`, since
+  installDef renames whatever it binds; the copy in the slot is renamed,
+  the stored value keeps its own name.
+- Found on the way, PRE-EXISTING on the default lane and now a sound
+  refusal at installDef's existing site: a fn body's def of a CAPTURING fn
+  value over an outer overloading def outlives the call on the
+  interpreter — the drop-then-push leaves the frame's def depth unchanged,
+  so DefCleanup pops nothing — where the analysis restores its snapshot
+  and the compiled program keeps the outer closure's bake: `def p (kk 7)
+  end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)` answered `1 10`
+  for the interpreter's `1 12`. A capture-free literal takes the compiled
+  bind twin and agrees, so only the capturing class refuses (a capturing
+  literal already refused at its reads). The bind epoch above is the same
+  hazard seen from the read side: the entry on top again after the call is
+  no proof the run holds it.
+
+**Measured.** The two Church pair rows graduated and the nested replacing def is pinned in the ledger with the interpreter's answer (ledger 65 → 64),
+agreeing byte for byte and VM-native, with two pairs read twice each and
+the plain-fn twin; the def-read family agrees on the apply word, a rebind,
+two closures of one source, the word and value spellings side by side, the
+data slot, the callee-side apply and the frame render. Sound refusals
+pinned: nothing beneath the read, a no-match beneath, a code body's read,
+a read in another unit, a conditional rebind, and the nested replacing def
+with the interpreter's answer.
+
+**What the next author should not re-derive.** A `/v` read of a fn
+binding never carries the binding's ID: trace it by NAME, and take the
+producer at the bind. A binding's generation is a rebind detector that
+frame bindings also trip; the installed entry's identity is not one that
+survives a call whose body rebinds the name — hence both keys and the
+epoch. The interpreter's frame cleanup pops by depth growth, so a
+drop-then-push inside a frame is a permanent rebind.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4482,6 +4561,13 @@ position than the construct that produced the binding.
 | `lang/go/produced_closure_apply_test.go` | the produced-closure apply family's parity AND that every row runs VM-native (the interp-entry hook sees no `vm:island` seam — the closure-arity fix) (K, W, C, I = S K K, Church true and false, the fetched-fn apply, two applies of one source, a token after the word, a deeper value, a paren, fn and lambda units, an inline fn literal) and its sound refusals (nothing beneath, a no-match beneath, the carrier lead, a produced closure over another, a two-arg closure over literals, the B row's two-value residual) |
 | `compiler/go/produced_closure_apply_test.go` | `PendingClosureApply` (match by the sig body's array, a carrier entry skipped, an equal body in another array, no unit, a nil recorder), `producedFnValue` (a unit's closure, a fn-value apply's result, a native result), Finalize's refusal of a leftover pending apply |
 | `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | apply's one-arg overload over a concrete closure is exempt from the argument-slot refusal; the two-arg overload and a fn-typed carrier keep it |
+| `lang/go/val_read_alias_test.go` | the thirty-first increment's parity (both Church pair rows, two pairs read twice each, the plain-fn and two-value twins, the def-read family on the apply word, a rebind, two closures of one source, both spellings, the data slot, the callee-side apply, the frame render) and its sound refusals (nothing beneath, a no-match beneath, a code body's read, a read in another unit, a conditional rebind, the nested replacing def with the interpreter's answer) |
+| `compiler/go/val_read_alias_test.go` | `noteValBind` (no registry, a non-fn or unproduced value, the recorded producer/entry/generation/epoch, the conditional and rebind drops), `aliasValRead` (no name, registry or unit; no entry; a moved epoch; the unmoved binding; the same entry on top again; another entry; the name unbound), `NoteValRead` with no fn unit open, and `argIsProducedClosure`'s value-read skip |
+| `compiler/go/zz_triage_split_check_test.go` (`TestStartFnCompileFinishPendingApply`) | a fn value beneath the pending apply is the window's argument; a mid-body pending apply still refuses |
+| `check/go/pending_closure_apply_test.go` (`TestRecordUserCallOrApplyPendingFirst`) | the record site's order: the pending route before the name fallback, the fallback when nothing is pending |
+| `core/go/engine_word_read_test.go` (`TestStepWordValNotesTheName`) | a `/v` read hands the recorder the binding's name beside the read's id |
+| `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesCapturingRedefinitionInFnBody`) | installDef's fn-body arm: a capturing redefinition inside a fn body refuses; a capture-free literal there and a capturing value at the top level do not |
+| `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
 | `eng/go/vm_apply_closure_arity_test.go` | the apply op's closure arm: a closure of another arity (param slots, not `NParams`) takes the re-step and parks; the event form defers the parked pair — no compiling program reaches the arm, so it is pinned at the seam |

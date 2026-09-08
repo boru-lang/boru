@@ -909,12 +909,17 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 	if len(args) > 0 {
 		pos = args[0].Pos()
 	}
-	if fresh, ok := recordFnValueApplyFallback(es, r, name, captures, args, outs, pos); ok {
+	// The pending closure apply first: a `/v` read of a def-bound produced
+	// closure (`3 p/v apply`, the thirty-first increment) is both a pending
+	// entry (its read resolves to the closure's producer) and a name the
+	// fallback could re-dispatch by; the pending route runs the closure
+	// VM-native where the fallback's name lookup islands.
+	if fresh, ok := recordPendingClosureApply(es, body, args, outs, pos); ok {
 		outs = append([]core.Value(nil), outs...)
 		outs[0] = fresh
 		return outs
 	}
-	if fresh, ok := recordPendingClosureApply(es, body, args, outs, pos); ok {
+	if fresh, ok := recordFnValueApplyFallback(es, r, name, captures, args, outs, pos); ok {
 		outs = append([]core.Value(nil), outs...)
 		outs[0] = fresh
 		return outs

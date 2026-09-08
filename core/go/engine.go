@@ -2370,7 +2370,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 	// question two ways.
 	e.noteBindingRead(w.Name, v)
 	if e.Registry.analysisActive() {
-		e.Registry.analysisRecorder().NoteValRead(v.ID)
+		e.Registry.analysisRecorder().NoteValRead(v.ID, w.Name)
 	}
 	v.pos = val.pos
 	// A reference denotes DATA. When a parked forward in this paren

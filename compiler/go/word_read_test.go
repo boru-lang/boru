@@ -29,7 +29,7 @@ func wordReadUnit(t *testing.T) (*EmitState, *fnUnitRec, core.Value, core.Value)
 func TestNoteWordReadArms(t *testing.T) {
 	es := NewEmitState()
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "g", core.SrcPos{})
-	es.NoteValRead("id")
+	es.NoteValRead("id", "n")
 	if len(es.fnRecs) != 0 {
 		t.Fatal("no open unit: nothing to record on")
 	}
@@ -37,7 +37,7 @@ func TestNoteWordReadArms(t *testing.T) {
 	es.NoteWordRead(core.Value{}, "g", core.SrcPos{})
 	es.NoteWordRead(g, "", core.SrcPos{})
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "other", core.SrcPos{})
-	es.NoteValRead("")
+	es.NoteValRead("", "n")
 	if rec.wordReadNames != nil || rec.valReads != nil {
 		t.Errorf("empty ids/names and a non-local value note nothing: %v %v", rec.wordReadNames, rec.valReads)
 	}
@@ -49,13 +49,13 @@ func TestNoteWordReadArms(t *testing.T) {
 	if rec.wordReadNames[x.ID] != "x" || rec.wordReadPos[g.ID].Col != 7 {
 		t.Errorf("both reads keep their name and position: %v %v", rec.wordReadNames, rec.wordReadPos)
 	}
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if rec.valReads[g.ID] != 1 {
 		t.Errorf("a /v read counts: %v", rec.valReads)
 	}
 	es.Compilable = false
 	es.NoteWordRead(g, "g", core.SrcPos{})
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if rec.wordReads[g.ID] != 1 || rec.valReads[g.ID] != 1 {
 		t.Error("an inactive state records nothing")
 	}
@@ -110,7 +110,7 @@ func TestWordReadAccounting(t *testing.T) {
 	if r := es.wordReadAccounting(rec); r != "" {
 		t.Errorf("a read seated in the replay window passes: %q", r)
 	}
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "read both bare and by /v") {
 		t.Errorf("a mixed read refuses: %q", r)
 	}
@@ -273,7 +273,7 @@ func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	if es.wordReadName(rec, j) != "j" {
 		t.Error("the produced value reads as its word")
 	}
-	es.NoteValRead(j.ID)
+	es.NoteValRead(j.ID, "n")
 	if es.wordReadName(rec, j) != "" {
 		t.Error("a binding read both bare and by /v is the accounting's, never a seat")
 	}

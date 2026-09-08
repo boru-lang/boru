@@ -13,3 +13,17 @@
 # the conditional binding compiles these rows, at which point the entries in
 # frontierCompileLedger delete and the rows move to the main corpus.
 def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1	101
+#
+# The FN-BODY twin (the thirty-first increment, 2026-09-08): a CAPTURING fn
+# value — a factory's returned closure — redefining an outer overloading def
+# from inside a fn body outlives the CALL on the interpreter: the same
+# drop-then-push leaves the frame's def depth unchanged, so the frame's
+# DefCleanup (which pops by depth growth) pops nothing and the replacement
+# stays bound after the call, where the analysis restores its snapshot and
+# the compiled program kept the outer closure's bake — `g (p 3)` answered
+# `1 10` compiled for the interpreter's `1 12`, on the default lane, before
+# the refusal (installDef's same site, FnBodyDepth-gated on a capturing
+# value: a capture-free literal takes the compiled bind twin and agrees).
+# Full graduation = a runtime binding for the closure's payload that the
+# outer read sees after the call.
+def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)	1 12	a fn body's def of a capturing fn value over an outer overloading def outlives the call

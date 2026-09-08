@@ -262,8 +262,11 @@ type EmitRecorder interface {
 	// NoteValRead records a `/v` read of a binding (stepWordVal): the value
 	// spelling, which the interpreter never dispatches. A binding read BOTH
 	// ways in one unit cannot be told apart in the residual (one value ID),
-	// so the compiler refuses the unit rather than guess (NUR123).
-	NoteValRead(id string)
+	// so the compiler refuses the unit rather than guess (NUR123). name is
+	// the binding read: a fn binding's read is a fresh wrap of the
+	// binding (ResolveRef), so the compiler traces it to the bound value
+	// by name (the thirty-first increment).
+	NoteValRead(id, name string)
 	// NoteFrozenRead's gen is the binding's DefTable generation
 	// (DefTable.Gen) at the read, taken by the caller from the registry the
 	// read resolved in. It is the staleness key of the binding-sensitive
@@ -372,7 +375,7 @@ func (inactiveEmit) RecordDynBind(string, Value, SrcPos) {}
 func (inactiveEmit) NoteDefRead(string, string)          {}
 func (inactiveEmit) NoteLocalRead(string, SrcPos)        {}
 func (inactiveEmit) NoteWordRead(Value, string, SrcPos)  {}
-func (inactiveEmit) NoteValRead(string)                  {}
+func (inactiveEmit) NoteValRead(string, string)          {}
 func (inactiveEmit) Sites() map[string]int               { return nil }
 
 func (inactiveEmit) RecordCall(string, *Signature, []Value, []Value, SrcPos, bool, bool) {}

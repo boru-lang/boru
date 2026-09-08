@@ -63,9 +63,15 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
 func nameClosureValue(v core.Value, name string) core.Value {
 	cl, ok := v.Data.(core.ClosurePayload)
-	if !ok || cl.RetName != "" {
+	if !ok || cl.RetName == name {
 		return v
 	}
+	// A binding renames whatever it binds, a named closure included —
+	// installDef sets the name unconditionally, so a def-bound closure
+	// handed to a Function param renders under the PARAM's name
+	// (`(w p/v)` reads `fn f(Integer)` on both engines; the thirty-first
+	// increment). The copy in this slot is renamed; the stored value keeps
+	// its own name, as the interpreter's binding copies do.
 	cl.RetName = name
 	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
 		// The bridge's own signature, named — the render the interpreter's

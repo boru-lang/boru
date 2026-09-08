@@ -48,6 +48,19 @@ func TestNameFrameFns(t *testing.T) {
 	if cl, ok := named2[0].Data.(core.ClosurePayload); !ok || cl.RetName != "g" || cl.Render != "" {
 		t.Errorf("a compiled closure bound for param g is named g: %v", named2[0])
 	}
+	// A closure ALREADY named — a def-bound closure handed to a Function
+	// param — takes the param's name too, as installDef renames whatever it
+	// binds (the thirty-first increment); one already so named is untouched.
+	prenamed := []core.Value{core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0, RetName: "p"})}
+	nameFrameFns(fn, prenamed)
+	if cl := prenamed[0].Data.(core.ClosurePayload); cl.RetName != "g" {
+		t.Errorf("a named closure bound for param g is renamed g: %v", prenamed[0])
+	}
+	same := []core.Value{core.NewValueRaw(core.TFunction, core.ClosurePayload{RetName: "g", Render: "kept"})}
+	nameFrameFns(fn, same)
+	if cl := same[0].Data.(core.ClosurePayload); cl.Render != "kept" {
+		t.Errorf("a closure already so named is untouched: %v", same[0])
+	}
 	// A slot past the frame, a data value: nothing to do, nothing to panic on.
 	short := []core.Value{core.NewInteger(1)}
 	nameFrameFns(fn, short)

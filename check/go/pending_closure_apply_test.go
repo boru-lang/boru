@@ -77,3 +77,42 @@ func TestRecordPendingClosureApplyArms(t *testing.T) {
 		t.Error("a fn-value out keeps its payload under a fresh id")
 	}
 }
+
+// fakeOrderRec is fakePendingRec with the name fallback's seam observable.
+type fakeOrderRec struct {
+	fakePendingRec
+	named bool
+}
+
+func (f *fakeOrderRec) RecordDynApplyName(string, []core.Value, core.Value, core.Value, core.SrcPos) bool {
+	f.named = true
+	return true
+}
+
+// TestRecordUserCallOrApplyPendingFirst pins the record site's order (the
+// thirty-first increment): a re-step dispatch that is both a pending
+// closure apply and a name the fallback could re-dispatch by (`3 p/v
+// apply` over a def-bound produced closure) takes the pending route, and
+// the name fallback only when no entry is pending.
+func TestRecordUserCallOrApplyPendingFirst(t *testing.T) {
+	r, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []core.Value{core.NewInteger(1)}
+	top := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: body}}}})
+	r.Defs.Push("p", top)
+	captures := []core.CapturedBinding{{Name: "k", Value: core.NewCarrier(core.TInteger)}}
+	args := []core.Value{core.NewInteger(3)}
+	outs := []core.Value{core.NewCarrier(core.TInteger)}
+	rec := &fakeOrderRec{fakePendingRec: fakePendingRec{EmitRecorder: core.TheInactiveEmit, fn: top, has: true, applyOK: true}}
+	got := recordUserCallOrApply(rec, r, "p", captures, body, 0, args, outs)
+	if rec.named || len(rec.window) != 1 || got[0].ID == outs[0].ID {
+		t.Errorf("the pending route runs first: named=%v window=%v", rec.named, rec.window)
+	}
+	rec.has, rec.window = false, nil
+	got = recordUserCallOrApply(rec, r, "p", captures, body, 0, args, outs)
+	if !rec.named || rec.window != nil || got[0].ID == outs[0].ID {
+		t.Errorf("with no pending entry the name fallback takes the dispatch: named=%v window=%v", rec.named, rec.window)
+	}
+}

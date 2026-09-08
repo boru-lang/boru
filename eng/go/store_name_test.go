@@ -44,10 +44,15 @@ func TestNameStoredClosure(t *testing.T) {
 	if v := vc.nameStoredClosure(core.NewInteger(5), "h"); !core.ValuesEqual(v, core.NewInteger(5)) {
 		t.Error("a plain value is not renamed")
 	}
-	// A closure already named keeps its first name.
+	// A closure already named takes the new binding's name, as installDef
+	// renames whatever it binds (the thirty-first increment); one already
+	// so named is untouched.
 	named := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, RetName: "g", Render: "fn g(Integer)"})
-	if v := vc.nameStoredClosure(named, "h"); v.Data.(core.ClosurePayload).RetName != "g" {
-		t.Error("the first name wins")
+	if got := vc.nameStoredClosure(named, "h").Data.(core.ClosurePayload); got.RetName != "h" || !strings.Contains(got.Render, "fn h(") {
+		t.Errorf("a binding renames a named closure: RetName=%q Render=%q", got.RetName, got.Render)
+	}
+	if v := vc.nameStoredClosure(named, "g"); v.Data.(core.ClosurePayload).Render != "fn g(Integer)" {
+		t.Error("the same name is a no-op")
 	}
 	// A closure over a known unit takes the name in RetName and Render.
 	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Render: "fn (Integer)"})

@@ -173,8 +173,25 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// and the program runs correctly (slow, not wrong). An
 				// UNCONDITIONAL redefinition (top level or inside `do`) is sound
 				// and keeps compiling: CondBodyDepth is 0 there.
+				//
+				// A redefinition inside a FN BODY by a CAPTURING fn value — a
+				// factory's returned closure (`def p (kk 9)` over an outer
+				// `def p (kk 7)`) — is the same divergence on the interpreter's
+				// own frame teardown: the drop-then-push leaves the frame's def
+				// depth unchanged, so DefCleanup pops nothing and the replacement
+				// OUTLIVES the call, where the analysis restores its snapshot and
+				// the compiled program keeps the outer closure's bake (`g (p 3)`
+				// answered 10 for the interpreter's 12 — the thirty-first
+				// increment). A capture-free literal takes the compiled twin and
+				// agrees; the closure's payload has no twin, so it refuses.
+				refusal := ""
 				if r.analysisInCondBody() {
-					r.analysisRecorder().MarkUncompilable("fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload")
+					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
+				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
+					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
+				}
+				if refusal != "" {
+					r.analysisRecorder().MarkUncompilable(refusal)
 				}
 				r.Defs.Set(name, filtered)
 				replaced = true

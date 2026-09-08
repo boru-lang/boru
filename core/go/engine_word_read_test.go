@@ -11,13 +11,38 @@ type wordReadEmit struct {
 	EmitRecorder
 	noted []string
 	vals  []string
+	// valNames are the binding names NoteValRead was handed, one per read.
+	valNames []string
 }
 
 func (w *wordReadEmit) Active() bool { return true }
 func (w *wordReadEmit) NoteWordRead(v Value, name string, _ SrcPos) {
 	w.noted = append(w.noted, name)
 }
-func (w *wordReadEmit) NoteValRead(id string) { w.vals = append(w.vals, id) }
+func (w *wordReadEmit) NoteValRead(id, name string) {
+	w.vals = append(w.vals, id)
+	w.valNames = append(w.valNames, name)
+}
+
+// TestStepWordValNotesTheName pins the seam's second argument (the
+// thirty-first increment): a `/v` read hands the recorder the BINDING
+// NAME beside the read's ID, since a fn binding's read is a fresh wrap of
+// the binding (ResolveRef) the recorder can only trace by name.
+func TestStepWordValNotesTheName(t *testing.T) {
+	es := &wordReadEmit{EmitRecorder: TheInactiveEmit}
+	r := compileCheckRegistry(t)
+	r.Check.Emit = es
+	fn := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{{Impl: &BoruImpl{Body: []Value{NewInteger(1)}}}}})
+	r.Defs.Push("p", fn)
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewWord("p")}, StackHeadroom)
+	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "p", ArgCount: -1, ForceVal: true}); err != nil {
+		t.Fatalf("/v step errored: %v", err)
+	}
+	if len(es.vals) != 1 || es.vals[0] == "" || len(es.valNames) != 1 || es.valNames[0] != "p" {
+		t.Errorf("a /v read notes its id and the binding's name: %v %v", es.vals, es.valNames)
+	}
+}
 
 // TestNoteWordReadClassifies pins the engine-side classification of a bare
 // read (NUR123): a fn-typed carrier and a gradual (Any, Dynamic) carrier are
