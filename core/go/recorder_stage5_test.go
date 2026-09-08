@@ -106,6 +106,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")
 	}
+	if got := e.ArmTailApply([]Value{NewInteger(1)}); len(got) != 1 {
+		t.Fatal("inactive ArmTailApply must pass the residual through")
+	}
 	if _, ok := e.UnitTailApply(0); ok {
 		t.Fatal("inactive UnitTailApply must miss")
 	}

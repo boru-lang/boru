@@ -4520,6 +4520,47 @@ window is the whole arm residual, and the arm's gradual result at its
 lead, which the re-step hold refuses because a native word's fn result
 would dispatch where it lands.
 
+## A pending apply at a branch arm's tail (2026-09-08, the thirty-fourth increment)
+
+With the fn-local literal's read resolved (the thirty-third increment),
+the two CPS rows refused "fn factk: apply of a dynamic fn value not at the
+body tail" at the then arm `[ 1 k/v apply ]`: the `k:Function` param's
+pending `apply`-word application sits at an ARM's tail, and the unit
+finish's pending-apply arm lowers a pending window only as the whole BODY
+residual.
+
+**What landed.**
+
+- `EmitRecorder.ArmTailApply` (a new seam method): the `if` word calls it
+  on each arm's analysed residual, after the body run and before the arm's
+  fragment is taken. An arm whose residual ends in a pending fn with at
+  least one value beneath it INSIDE the arm collapses to the one gradual
+  value the apply nets — `RecordDynApply` over that window, recorded into
+  the arm's still-open fragment, so the arm's lowering applies the fn
+  where the interpreter's applyHandler does, and the pending entry is
+  consumed. The window is the arm's own: the arm frame seals the
+  enclosing stack off on both lanes (the interpreter's arm is a frame
+  that closes like a paren), so a pending fn with nothing beneath it in
+  the arm passes through and keeps the unit finish's refusal — the
+  interpreter applies it over the arm's empty stack and parks it.
+- After the collapse the arm has ONE survivor, so `residualLeadReStepped`
+  (the NUR101 rewind hold over a fn-typed lead among two or more) does not
+  fire; the branch join types the arm gradual.
+
+**Measured.** The two CPS rows graduated (ledger 61 → 59): the
+continuation-passing factorial answers 120 and 3628800 on both lanes,
+VM-native, with the fn-local continuation `kk` handed through the
+recursive call as a closure value; a then-arm apply, both arms applying,
+and a two-value window inside the arm agree. Sound refusal pinned: a
+pending fn with nothing beneath it in the arm, with the interpreter's
+parked value.
+
+**What the next author should not re-derive.** A branch arm is a frame
+on both lanes: its residual is the window an apply inside it sees, and
+nothing outside it. The unit finish, the paren collapse and now the arm
+are the three places a pending apply is consumed; a fourth residual owner
+(a loop body, a `do` body) would need the same call at its own tail.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4683,6 +4724,9 @@ position than the construct that produced the binding.
 | `compiler/go/zz_triage_from_check_test.go` (`TestRecordDynApplyDeclines`), `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`, `TestFnResidualReplayReasonArms`) | a fn-valued window entry records under the apply word and declines without it; a fn-valued receiver records; the read accounting runs under a tail apply (an uncredited read refuses, a credited one passes) |
 | `lang/go/literal_read_test.go` | the thirty-third increment's parity (the read handed to a Function param, the arrow spelling, an unrelated bind between, the closure handed through, the value return and its render, the apply-word spelling, the top-level read) and its sound refusals with the interpreter's answers (a rebound capture, the literal redefined, the read in a branch arm, the CPS row) |
 | `compiler/go/val_read_alias_test.go` (`TestNoteValBindLiteralArms`, `TestAliasValReadLiteralArms`) | the bind arm (a capturing anonymous or nameless literal records with its captures' epochs; capture-free, named or quoted records nothing) and the read arm (a moved capture epoch declines, an unbuildable closure declines and caches nothing, `readOps` resolves first) |
+| `lang/go/arm_tail_apply_test.go` | the thirty-fourth increment's parity (both CPS rows, a then-arm apply, both arms applying, a two-value window inside the arm) and its sound refusal with the interpreter's answer (a pending fn with nothing beneath it in the arm) |
+| `compiler/go/arm_tail_apply_test.go` | `ArmTailApply`: an inactive state, a residual of one, a top that is no pending apply and a window the recorder declines pass through; a pending fn over the arm's window records the apply event at the apply's position, consumes the entry and nets one gradual value |
+| `core/go/recorder_stage5_test.go` | the inactive `ArmTailApply` passes the residual through |
 | `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |

@@ -10313,6 +10313,33 @@ func (es *EmitState) NoteValRead(id, name string) {
 	rec.valReads[id]++
 }
 
+// ArmTailApply is the branch-arm twin of the unit finish's pending-apply
+// arm (the thirty-fourth increment): an arm whose residual ends in a
+// PENDING `apply`-word fn (`[ 1 k/v apply ]`, the CPS rows' then arm) with
+// at least one value beneath it INSIDE the arm collapses to the one
+// gradual value the apply nets — RecordDynApply over that window, recorded
+// into the arm's still-open fragment, so the arm's lowering applies the fn
+// where the interpreter's applyHandler does. The window is the arm's own:
+// the arm frame seals the enclosing stack off on both lanes. A residual
+// that is no such shape (no pending fn on top, or nothing beneath it in the
+// arm — the interpreter would then apply over an empty stack and park)
+// passes through unchanged and keeps the unit finish's verdict.
+func (es *EmitState) ArmTailApply(stk []core.Value) []core.Value {
+	if !es.Active() || len(stk) < 2 || len(es.units) == 0 {
+		return stk
+	}
+	top := stk[len(stk)-1]
+	if !es.applyPending(top.ID) {
+		return stk
+	}
+	out := core.NewCarrier(core.TAny)
+	out.Dynamic = true
+	if _, ok := es.RecordDynApply(stk[:len(stk)-1], top, out, core.SrcPos{}); !ok {
+		return stk
+	}
+	return []core.Value{out}
+}
+
 // valBind is one unit-local dyn-bind of a produced fn value (emitUnit.valBinds).
 type valBind struct {
 	pr    producer

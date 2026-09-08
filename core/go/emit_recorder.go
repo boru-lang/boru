@@ -314,6 +314,16 @@ type EmitRecorder interface {
 	SetUnitDecl(unit int, decl DeclSite)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
+	// ArmTailApply collapses a branch ARM's residual whose top is a PENDING
+	// `apply`-word application (a fn-typed param applied inside the arm,
+	// `[ 1 k/v apply ]`) into the one gradual value the apply nets: the
+	// window is every value beneath the fn inside the arm (the arm frame
+	// seals the enclosing stack off, exactly as the interpreter's arm frame
+	// does), recorded as the apply event in the arm's fragment. Called by
+	// the `if` word after an arm body's analysis and before the fragment
+	// is taken; a residual that is no such shape comes back unchanged (the
+	// thirty-fourth increment).
+	ArmTailApply(stk []Value) []Value
 	// UnitTailApply reports the width n of the window a unit's finish lowered
 	// as the fn-value apply at its body tail — the top n residual values and
 	// the fn above them net ONE result at run time — so a call site's
@@ -458,6 +468,7 @@ func (inactiveEmit) SetUnitDecl(int, DeclSite)                {}
 func (inactiveEmit) UnitVariadic(int) bool                    { return false }
 func (inactiveEmit) UnitNetsZero(int) bool                    { return false }
 func (inactiveEmit) UnitTailApply(int) (int, bool)            { return 0, false }
+func (inactiveEmit) ArmTailApply(stk []Value) []Value         { return stk }
 
 // EmitCheckpoint is the opaque handle for a recording-pool snapshot: the
 // checker holds and returns it without any knowledge of the compiler's

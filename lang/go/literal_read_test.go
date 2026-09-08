@@ -16,8 +16,9 @@ import (
 // so the value renders as the interpreter's binding does (`fn kk(Integer)`).
 // The alias holds only while every captured name is unbound since the def
 // (the literal snapshotted its captures; a rebind of one would make the
-// read-site construction see the new value). This is the CPS rows' first
-// gate; their refusal moved to the then-arm apply.
+// read-site construction see the new value). This was the CPS rows' first
+// gate; the thirty-fourth increment's arm-tail apply took the second
+// (arm_tail_apply_test.go pins the rows).
 
 // TestLiteralReadParity pins the shapes that now COMPILE, agree on both
 // lanes and run VM-native.
@@ -63,9 +64,6 @@ func TestLiteralReadSoundRefusals(t *testing.T) {
 		// the read inside a branch arm: the arm's gradual result may be a fn
 		// the interpreter re-steps (residualLeadReStepped), a separate hold
 		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)`, "then-branch result of unknown provenance", "[15 0]"},
-		// the CPS row: the read resolves now, the then-arm's pending apply
-		// over the k:Function param is not the body tail
-		{`def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 5 (v:Integer => [v]))`, "not at the body tail", "[120]"},
 	}
 	for _, c := range rows {
 		a, err := New()

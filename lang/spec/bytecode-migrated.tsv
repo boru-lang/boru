@@ -205,3 +205,14 @@ def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end
 # agrees on both lanes and runs VM-native. This was frontier-hof-audit.tsv's §4
 # row (audit §1.4).
 def fgen fn s:Function Function [ ( fn n:Integer Integer [ if (lte 1 n) [1] [ mul n ((sub 1 n) (s/v s/v apply) apply) ] ] ) ] end def fact (fgen fgen/v) end (fact 5)	120	U-combinator factorial: self-application passed explicitly
+#
+# the CPS rows GRADUATED 2026-09-08 (the thirty-fourth increment): a pending
+# `apply`-word application at a branch ARM's tail (`[ 1 k/v apply ]`, a fn-typed
+# param applied inside the arm with its window inside the arm) collapses to the
+# one gradual value the apply nets, recorded as the apply event in the arm's
+# fragment (the arm frame seals the enclosing stack off on both lanes); the
+# thirty-third increment resolved the fn-local capturing literal's `/v` read
+# (`kk/v`) these rows hand to the recursive call. These were
+# frontier-hof-audit.tsv's two §3 rows (audit §1.3, continuation-passing style).
+def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 5 (v:Integer => [v]))	120	CPS factorial, identity continuation
+def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 10 (v:Integer => [add 0 v]))	3628800	CPS factorial, computing continuation
