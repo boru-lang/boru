@@ -59,12 +59,12 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 	}}})
 
 	// A plain value is never the shape.
-	if es.argIsProducedClosure([]core.Value{core.NewInteger(5)}) {
+	if es.argIsProducedClosure("w", []core.Value{core.NewInteger(5)}) {
 		t.Error("a non-fn argument must not refuse")
 	}
 	// An fn value the pass did NOT produce as a closure is left alone —
 	// a word with a genuine Function slot keeps working.
-	if es.argIsProducedClosure([]core.Value{fn}) {
+	if es.argIsProducedClosure("w", []core.Value{fn}) {
 		t.Error("an fn value with no produced-closure provenance must not refuse")
 	}
 	// The shape: the value came back from a user call whose unit returns
@@ -75,7 +75,27 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		&fnUnitRec{nParams: 1})
 	es.frames[0] = append(es.frames[0], EmitEvent{seq: 0, kind: evCallUser, uc: emitUserCall{unit: 0, nout: 1}})
 	es.producedBy[fn.ID] = producer{seq: 0}
-	if !es.argIsProducedClosure([]core.Value{core.NewInteger(1), fn}) {
+	// The `apply` word's one-arg overload over a CONCRETE closure value is
+	// the pending-apply path (the twenty-eighth increment), never this
+	// refusal; its two-arg Reach overload holds the closure as data and
+	// keeps it, and so does a fn-typed CARRIER the check cannot re-step.
+	if es.argIsProducedClosure("apply", []core.Value{fn}) {
+		t.Fatal("apply's one-arg overload over a produced closure must not refuse here")
+	}
+	if !es.Compilable {
+		t.Fatal("the apply exemption must leave the program compilable")
+	}
+	if !es.argIsProducedClosure("apply", []core.Value{core.NewInteger(1), fn}) {
+		t.Fatal("apply's two-arg overload over a produced closure must refuse")
+	}
+	es.Compilable, es.Reason = true, ""
+	carrier := core.NewCarrier(core.TFunction)
+	es.producedBy[carrier.ID] = producer{seq: 0}
+	if !es.argIsProducedClosure("apply", []core.Value{carrier}) {
+		t.Fatal("apply over a produced fn-typed carrier must keep the refusal")
+	}
+	es.Compilable, es.Reason = true, ""
+	if !es.argIsProducedClosure("w", []core.Value{core.NewInteger(1), fn}) {
 		t.Fatal("a produced compiled closure at an argument slot must refuse")
 	}
 	if es.Compilable || !strings.Contains(es.Reason, "argument slot") {

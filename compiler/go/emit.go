@@ -1115,6 +1115,11 @@ type emitUnit struct {
 type pendingApply struct {
 	id  string
 	pos core.SrcPos
+	// fn is the applied VALUE when it is a closure this pass produced
+	// (recordCallElided's produced-closure arm): the check pass's re-step
+	// dispatch asks for it by body (PendingClosureApply) to record the
+	// apply over the closure's producer operand. Zero for a carrier lead.
+	fn core.Value
 }
 
 // fnUnitRec is one compiled fn body awaiting (or holding) its
@@ -5335,10 +5340,21 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 		es.MarkUncompilable(refuse)
 		return 0, false
 	}
+	// Under a produced-closure pending apply (recordCallElided's arm) the
+	// check engine's re-step has already MATCHED these args against the
+	// closure's own signature: a fn value among them is that closure's
+	// argument (`kk/v (ss kk/v) apply` binds kk to the g:Function param),
+	// data to the op exactly as to the interpreter. Every other window keeps
+	// declining a fn-valued arg: nothing has established it is not an
+	// applicable of its own.
+	closureArgsMatched := false
+	if applyIdx >= 0 {
+		_, closureArgsMatched = es.units[len(es.units)-1].pendingApply[applyIdx].fn.Data.(core.FnDefInfo)
+	}
 	ops := make([]EmitOperand, 0, len(args)+1)
 	ops = append(ops, fnOp)
 	for i := len(args) - 1; i >= 0; i-- {
-		if core.IsFnValueResidual(args[i]) {
+		if core.IsFnValueResidual(args[i]) && !closureArgsMatched {
 			return 0, false
 		}
 		op, ok := es.resolveOperand(args[i])
@@ -6137,6 +6153,26 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		}
 		es.lastUserPoly = nil
 		return true
+	}
+	// `apply` over a closure this pass PRODUCED (an OpPushClosure out op —
+	// `99 (kk 7) apply`, the twenty-eighth increment): the word hands the
+	// value back and the check engine re-steps it over the values beneath,
+	// exactly as the interpreter's applyHandler does, so the dispatch to
+	// record is the RE-STEP's, not this one. Register the pending
+	// application on the open unit — the program unit included — under the
+	// value's own id: the re-step's anonymous dispatch records it as the
+	// fn-value apply over the closure's producer operand (check's
+	// recordPendingClosureApply → RecordDynApply, which consumes the entry),
+	// and an entry no dispatch consumed refuses at the unit's finish or at
+	// Finalize — never compiles the closure as unapplied data. Resolved
+	// BEFORE the registered-output arm below: apply's identity result
+	// carries the producer's id, which that arm would elide silently.
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && es.producedFnValue(args[0].ID) {
+		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
+			u := es.units[len(es.units)-1]
+			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
+			return true
+		}
 	}
 	// A dispatch whose output is already registered was recorded by a
 	// structured hook (RecordBranch owns the `if` dispatch; a user-fn
@@ -7060,9 +7096,28 @@ func (es *EmitState) residualReadStable(v core.Value) bool {
 // word's slot means the paren that should have APPLIED it did not collapse
 // into an apply, so the compiled program hands the word the FUNCTION where
 // the interpreter hands it the applied result.
-func (es *EmitState) argIsProducedClosure(args []core.Value) bool {
+//
+// The `apply` word's one-arg overload over a CONCRETE closure value is the
+// exception (the twenty-eighth increment): there the closure at the slot
+// is exactly what the word applies — applyHandler hands it back and the
+// check engine re-steps it over the values beneath, as the interpreter
+// does — so the dispatch is not a stranded apply but the apply itself.
+// recordCallElided registers it as a PENDING application the re-step's
+// dispatch records (check's recordPendingClosureApply) or the program's
+// finish refuses. A fn-typed CARRIER (a declared `[Function]` return) keeps
+// the refusal: the check engine cannot re-step a carrier, so at the program
+// level nothing models the apply — the residual has no single-consumer
+// window (`1 99 (mk 7) apply` seated all three as data when this was
+// lifted for carriers too). The two-arg Reach overload keeps it as well: a
+// closure at its receiver slot is data the paren left unapplied.
+func (es *EmitState) argIsProducedClosure(word string, args []core.Value) bool {
 	if !es.Active() {
 		return false
+	}
+	if word == "apply" && len(args) == 1 {
+		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
+			return false
+		}
 	}
 	for i := range args {
 		if !core.IsAppliableFn(args[i]) {
@@ -7482,6 +7537,34 @@ func (es *EmitState) applyPending(id string) bool {
 // asks it for a Dynamic last value).
 func (es *EmitState) ApplyPending(id string) bool { return es.applyPending(id) }
 
+// PendingClosureApply is the recorder seam the check pass's user-fn record
+// site asks when a fn VALUE's re-step dispatch reaches it with no name to
+// resolve the value through: the pending `apply`-word application of a
+// produced closure on the innermost open unit whose value carries `body` —
+// an own sig's body slice, matched by BACKING ARRAY (the dispatching
+// ReturnsFn and the applied value hold the same construction's sig; a
+// position would not do — a body whose one token is a `=>` group carries
+// none). The entry is consumed by the RecordDynApply the caller then
+// records, so a second closure of the same source applied later finds only
+// its own entry.
+func (es *EmitState) PendingClosureApply(body []core.Value) (core.Value, bool) {
+	if es == nil || len(es.units) == 0 || len(body) == 0 {
+		return core.Value{}, false
+	}
+	for _, p := range es.units[len(es.units)-1].pendingApply {
+		fd, isFn := p.fn.Data.(core.FnDefInfo)
+		if !isFn {
+			continue
+		}
+		for _, sig := range fd.OwnSigs() {
+			if b := sig.Body(); len(b) > 0 && &b[0] == &body[0] {
+				return p.fn, true
+			}
+		}
+	}
+	return core.Value{}, false
+}
+
 // recordGradualApplyEvent records `apply` over a GRADUAL lead that the check
 // matched against the [Reach Any] overload inside a unit: args[0] is the
 // Dynamic lead (a `x:Any` param, a map get's result, a fn-typed carrier's own
@@ -7852,6 +7935,21 @@ func (es *EmitState) producerReturnedOutOp(id string) (EmitOperand, bool) {
 		}
 	}
 	return EmitOperand{}, false
+}
+
+// producedFnValue reports whether id holds a fn value the compiled program
+// PRODUCES at run time — a closure a user call's unit returns
+// (producerReturnedClosure) or the result of a compiled fn-value apply
+// (a wordDynApply event: the staged combinators' `(x (bb f) apply) apply`,
+// whose inner apply nets the next closure). Either is a runtime fn value
+// the apply op applies from its producer operand — the `apply` word's
+// pending-application arm (recordCallElided) admits both.
+func (es *EmitState) producedFnValue(id string) bool {
+	if es.producerReturnedClosure(id) {
+		return true
+	}
+	w, ok := es.producerWord(id)
+	return ok && w == wordDynApply
 }
 
 // producerReturnedClosure reports whether id holds a compiled CLOSURE this
@@ -9446,12 +9544,29 @@ func (es *EmitState) truncateAtTrap() map[int]bool {
 	return exempt
 }
 
+// finalizeBlocked reports the reason Finalize cannot deliver a Program
+// before it lays anything out: the pass marked the program uncompilable, or
+// a pending `apply`-word application on the PROGRAM unit that no dispatch
+// consumed (recordCallElided's produced-closure arm) — the interpreter's
+// re-step found no matching arguments beneath the closure and left it as
+// data, a shape nothing here models, so the program refuses rather than
+// seat the closure unapplied. A fn unit's finish owns its own entries.
+func (es *EmitState) finalizeBlocked() (string, bool) {
+	if !es.Compilable {
+		return es.Reason, true
+	}
+	if len(es.units[0].pendingApply) > 0 {
+		return "apply of a produced closure the program never dispatched (no matching arguments beneath it)", true
+	}
+	return "", false
+}
+
 func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if es == nil {
 		return nil, "no emit state", false
 	}
-	if !es.Compilable {
-		return nil, es.Reason, false
+	if reason, blocked := es.finalizeBlocked(); blocked {
+		return nil, reason, false
 	}
 	twinExempt := es.truncateAtTrap()
 	if es.trapAt != 0 {

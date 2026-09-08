@@ -186,6 +186,14 @@ type EmitRecorder interface {
 	// as the paren-bounded apply it is, rather than as a leading dynamic
 	// value (the twenty-seventh increment).
 	ApplyPending(id string) bool
+	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
+	// application over a closure this pass PRODUCED whose body is `body`
+	// (matched by the body's first token position — one lambda source, one
+	// body), so the check pass's user-fn record site can record the value's
+	// re-step dispatch as the fn-value apply over the closure's producer
+	// operand where a unit call would refuse its construction-scope
+	// captures (the twenty-eighth increment).
+	PendingClosureApply(body []Value) (Value, bool)
 	NoteMemberFnRead(id string, member Value)
 	MemberFnRead(id string) bool
 	// NoteCollectionHazard marks the fn-typed value id as an UNAPPLIED lead
@@ -394,6 +402,7 @@ func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, Src
 func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
+func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}

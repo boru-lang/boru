@@ -72,13 +72,12 @@ func TestGradualApplyDefers(t *testing.T) {
 	}
 }
 
-// TestGradualApplySoundRefusals pins the neighbours that still REFUSE: the
-// apply word over a produced closure at the MAIN program (the program
-// residual has no single-consumer window), and a body declaring two
-// returns over the one-result model.
+// TestGradualApplySoundRefusals pins the neighbour that still REFUSES: a
+// body declaring two returns over the one-result model. (The apply word
+// over a produced closure at the MAIN program was pinned here as a refusal
+// until the twenty-eighth increment compiled it — produced_closure_apply_test.go.)
 func TestGradualApplySoundRefusals(t *testing.T) {
 	rows := []string{
-		`def ww f:Function => [x:Any => [x/v (x f/v apply) apply]] end ` + gaAdd2 + `4 (ww add2/v) apply`,
 		gaAdd2 + `def w fn [[m:Map x:Integer][Any Any][x (m get "f") apply]]  w {f: ([] => [42])} 4`,
 	}
 	for _, src := range rows {

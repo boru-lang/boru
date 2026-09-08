@@ -4074,7 +4074,10 @@ the frontier gate now detects a VM island through the interp-entry hook
 handler's, as for the census), not only an OpFallback span, so such a row
 is never reported as a stale entry to graduate. Graduation = stamping a fn VALUE on
 its first apply (`StampDetachedFn` from the op) so the unit enters
-VM-native. And TEN §5.8 rows moved their refusal: the combinator's returned
+VM-native. (Graduated in the twenty-eighth increment — and the diagnosis
+was wrong: the value WAS stamped; the apply op's event form declined the
+entry on the unit's own empty return contract instead of the applied
+value's.) And TEN §5.8 rows moved their refusal: the combinator's returned
 lambda compiles now, so each refuses at the MAIN program's `apply` over the
 produced closure — the Stage-2 argument-slot refusal the staged B/K rows
 already hold, re-diagnosed in the ledger as such (the two `cand` rows did
@@ -4094,6 +4097,119 @@ has nothing to lower. And the
 apply word's re-step is STACK-shaped: an island that steps the fn first over
 the args as forward tokens is a different dispatch, and a 0-arg fn is where
 it shows.
+
+## `apply` over a produced closure at the main program (2026-09-08, the twenty-eighth increment)
+
+The twenty-seventh increment left twelve §5.8 rows behind one gate: the
+main program's `apply` over a closure the pass PRODUCED — a factory call
+whose unit pushes a closure (`99 (kk 7) apply`, `4 (ww add2/v) apply`).
+The refusal was `argIsProducedClosure`, the word-agnostic guard that reads
+a produced closure at a word's argument slot as a paren that failed to
+collapse (`typeof (h 5)` taking the FUNCTION). Under `apply` that reading
+is wrong: the closure at the slot is exactly what the word applies.
+
+**Where it blocked, measured.** Two things had to hold at once. (1) apply's
+own dispatch: the guard fired before anything modelled the word. (2) The
+re-step: applyHandler hands the fn back and the engine steps it over the
+values beneath; in check mode that dispatch runs the value's ReturnsFn
+(`BuildFnBodyReturnsFn`, built at the lambda's construction with no name)
+and lands in `RecordUserCall`, which resolves the unit's captures at the
+call site — and a produced closure's captures are the factory body's own
+carriers, unreachable there ("capture x of  unreachable at a call site").
+The §4.3 fallback (`recordFnValueApplyFallback`) rescues a DEF-BOUND value
+through its name's def-site operand; a nameless value had no route. The
+same runtime value, though, is the closure PAYLOAD the producer event
+leaves on the VM stack, captures and all — the operand the fn-value apply
+(`RecordDynApply`) already lowers for the paren-bounded twin `(99 (kk 7))`.
+
+**What landed.**
+
+- `argIsProducedClosure` exempts the apply word's one-arg overload over a
+  CONCRETE closure value. A fn-typed CARRIER — a declared `[Function]`
+  return — keeps the refusal: the check engine cannot re-step a carrier, so
+  nothing models the apply at the program level, and lifted for carriers
+  too `1 99 (mk 7) apply` seated all three as data (measured). The two-arg
+  Reach overload keeps it as well: a closure at its receiver slot is data.
+- `recordCallElided` registers the apply as a PENDING application on the
+  open unit — the program unit included — under the value's id, carrying
+  the value (`pendingApply.fn`), resolved BEFORE the registered-output arm
+  that would otherwise elide apply's identity result silently.
+  `producedFnValue` admits a closure a unit returns
+  (`producerReturnedClosure`) and the result of a compiled fn-value apply
+  (the staged combinators' inner apply nets the next closure).
+- The re-step's record site (check's `recordUserCallOrApply`) asks the
+  recorder for the pending value by the sig BODY's backing array
+  (`EmitRecorder.PendingClosureApply`, a new seam method; a position would
+  not do — a body whose one token is a `=>` group carries none) and records
+  through `RecordDynApply` over it: the fn resolves to the closure's
+  producer operand, the window is the sig-ordered args reversed (sig[0] on
+  top), the out is FRESHENED as the §4.3 fallback freshens — the memoised
+  residual is shared across calls of one shape, and `99 (kk 7) apply 1 (kk
+  8) apply` is [99 8], not [8 8] — and a fn VALUE result keeps its payload
+  under a fresh id so the next `apply` over it records the same way. The
+  lowering is the apply word's unquoting op at the apply word's position
+  (`OpCallDynApplyTop`).
+- `RecordDynApply` admits a fn-valued ARG under a produced-closure pending
+  apply: the re-step matched those args against the closure's own
+  signature (`kk/v (ss kk/v) apply` binds kk to `g:Function`), so they are
+  data to the op exactly as to the interpreter; every other window keeps
+  declining a fn-valued arg.
+- `Finalize` refuses a pending application on the program unit that no
+  dispatch consumed — nothing beneath the closure, or values that match no
+  signature, where the interpreter leaves the fn as data (`(kk 7) apply`,
+  `"s" (kk 7) apply`); a fn unit's finish already owned its own entries.
+  No new `MarkUncompilable` site (the census stays at 93): Finalize returns
+  the reason.
+- A tape-side arm in `spliceAnonCheckResult` was written first and
+  measured unreachable — every lambda dispatch here runs its ReturnsFn, and
+  that path is the legacy stack-match fallback — and came out again.
+- The VM's apply-word op (`callDynApply`) ran a compiled closure VM-native
+  only when the unit's `NParams` equalled the window — and `NParams` counts
+  the trailing CAPTURE slots too, so every capturing closure took the
+  interpreter's re-step island instead (`vm:island-resolved`). The seven
+  graduated rows all islanded, and the interp-entry census caught it (40
+  over its ceiling of 33) where the value parity could not. The arity is
+  `NParams - NCaptures`; the increment-27 W-combinator rows, which had
+  islanded the same way since they landed, run native now too.
+- The same op's EVENT form entered a stamped fn-value unit only when the
+  UNIT declared the one return the model committed — and a stamped lambda
+  unit declares no returns of its own (`compileStoredFnUnit` passes none),
+  so every const lambda the apply word met, stamped and ready, islanded.
+  The reading was the wrong one: the contract the frame's RET enforces is
+  the APPLIED VALUE's (`applyRetContract`), which `dynMethodClaimOK`
+  already reads for the method op. Church false's inner lambda `f:Any =>
+  [f/v]` and the fetched-fn positive twin's `rules.inc` were STAMPED all
+  along (the disassembly shows their `storedfn$body` units); the
+  increment-27 diagnosis "never stamped" was wrong, and the entry gate
+  was the island.
+
+**Measured.** Eight rows graduated (ledger 77 → 69), every one VM-native
+with no interpreter entry: K (`99 (kk 7) apply` → 7), W, C, I = S K K (42
+and 'hello'), Church true and false, and the fetched-fn apply's positive
+twin (`app 5 rules` → 6), the twenty-seventh increment's "islanded" row.
+The interp-entry census holds at its ceiling of 33 rows with the two fixes
+in — its `vm:island-resolved` entries fell 24 → 8 across the corpus. `1 99 (kk 7)
+apply` is [1 7]; a token after the word binds as the re-step binds it (`99
+(kk 7) apply 5` → [99 7]); the shape compiles inside a fn unit and a lambda
+unit, and over an inline `fn` literal closure. Re-diagnosed: the two B rows
+— the x-level closure's call-site residual is TWO values (the gradual `(x
+g/v apply)` result and the fn-typed capture its tail `apply` consumes at
+the unit's finish), so the single-out record site declines and the unit
+call refuses the capture; the Church pair rows — the projection's body puts
+a lambda VALUE beneath a fn-typed param's pending apply, which the unit
+finish's whole-residual lowering declines; the `cnot` rows — `(cif (cnot
+ctrue/v))` hands a produced closure to a user fn's Function slot, the
+argument-slot family proper. Sound refusals pinned: no arguments beneath, a
+no-match beneath, the carrier lead, a produced closure over another (the
+second dispatches over the first before apply runs), a two-arg closure over
+two literals (the seating cannot reorder).
+
+**What the next author should not re-derive.** The check-mode dispatch of
+a nameless lambda value runs its sig's ReturnsFn and records at
+`RecordUserCall`, not at `spliceAnonCheckResult`. And a pending entry keyed
+by the value's id serves apply's own dispatch, but the re-step's record
+site sees only the body: match constructions by the sig body's array,
+never by position.
 
 ## What the ledger excludes, and why each exclusion was measured
 
@@ -4245,3 +4361,9 @@ position than the construct that produced the binding.
 | `compiler/go/plain_lambda_test.go` | `plainLambda`'s arms (a code body, a typed lambda, no contract, a pattern param) and that a code-body closure keeps its own count discipline |
 | `eng/go/frame_name_test.go` | `nameFrameFns`: a lambda bound for a named param takes the name; an unnamed slot, a value already so named, a module wrapper and a compiled closure are left alone; `bindUnitLocals` names through it |
 | `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the sound refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |
+| `lang/go/produced_closure_apply_test.go` | the produced-closure apply family's parity AND that every row runs VM-native (the interp-entry hook sees no `vm:island` seam — the closure-arity fix) (K, W, C, I = S K K, Church true and false, the fetched-fn apply, two applies of one source, a token after the word, a deeper value, a paren, fn and lambda units, an inline fn literal) and its sound refusals (nothing beneath, a no-match beneath, the carrier lead, a produced closure over another, a two-arg closure over literals, the B row's two-value residual) |
+| `compiler/go/produced_closure_apply_test.go` | `PendingClosureApply` (match by the sig body's array, a carrier entry skipped, an equal body in another array, no unit, a nil recorder), `producedFnValue` (a unit's closure, a fn-value apply's result, a native result), Finalize's refusal of a leftover pending apply |
+| `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | apply's one-arg overload over a concrete closure is exempt from the argument-slot refusal; the two-arg overload and a fn-typed carrier keep it |
+| `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
+| `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
+| `eng/go/vm_apply_closure_arity_test.go` | the apply op's closure arm: a closure of another arity (param slots, not `NParams`) takes the re-step and parks; the event form defers the parked pair — no compiling program reaches the arm, so it is pinned at the seam |

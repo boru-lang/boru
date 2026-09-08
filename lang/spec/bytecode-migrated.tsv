@@ -122,3 +122,31 @@ def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app
 # frontier corpus, ledgered as "islanded". The plain check flags this row's
 # no-match at the call over the concrete rule map (diagnostic_parity_test.go).
 def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} app 5 rules	ERROR:signature_error	its negative twin: a non-fn in the rule slot is apply's no-match on both lanes
+#
+# apply over a PRODUCED closure at the main program GRADUATED 2026-09-08
+# (the twenty-eighth increment): the `apply` word over a closure a factory
+# call's unit returns registers a PENDING application, the check engine's
+# re-step records it as the fn-value apply over the closure's producer
+# operand (OpCallDynApplyTop — the runtime payload carries the captures),
+# and a pending application no dispatch consumed refuses at Finalize. These
+# were frontier-hof-audit.tsv rows 29, 30, 33, 34, 35 and 43 (§1 the
+# classical bases I = S K K, C, K and W; §2 Church true), each ledgered as
+# "computed closure at a word's argument slot"; every one runs VM-native.
+def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 42 ii/v apply	42	I = S K K, derived: identity over an Integer (BROAD: application is explicit — a paren places, apply calls)
+def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 'hello' ii/v apply	'hello'	the derived identity is polymorphic (String)
+def cc f:Function => [x:Any => [y:Any => [x/v (y f/v apply) apply]]] end def add2 a:Integer => [b:Integer => [add a b]] end 10 (1 (cc add2/v) apply) apply	11	C flips the argument order
+def kk x:Any => [y:Any => [x/v]] end 99 (kk 7) apply	7	K drops its second argument
+def ww f:Function => [x:Any => [x/v (x f/v apply) apply]] end def add2 a:Integer => [b:Integer => [add a b]] end 4 (ww add2/v) apply	8	W duplicates its argument
+def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply	'T'	Church true selects the first branch
+#
+# the apply op's native entry under the APPLIED VALUE's contract, same
+# increment: the event form (OpCallDynApplyOne) entered a stamped fn-value
+# unit only when the UNIT declared the one return the model committed, and a
+# stamped lambda unit declares none of its own — so every const lambda the
+# apply word met, stamped and ready, ran on the interpreter island instead.
+# The entry now reads the applied value's contract (the one the frame's RET
+# enforces). Church FALSE (row 44) — its capture-free inner lambda is a
+# stamped const — and the fetched-fn apply's positive twin (row 187, the
+# twenty-seventh increment's "islanded" row) run native.
+def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply	'F'	Church false selects the second branch
+def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — compiles since the twenty-seventh increment but ISLANDS (the map-member lambda is not stamped); ledgered as islanded

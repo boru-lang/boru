@@ -98,7 +98,12 @@ var pinnedAritySites = map[string]int{
 	// choice between two implementations of ONE dispatch rule, never a
 	// behaviour a function of a given arity gets — the twenty-seventh
 	// increment (the same shape dynApplyEnter's drift check pins above).
-	"eng/go/vm.go": 12,
+	// 12 -> 11: that same test now reads `fn.NParams-fn.NCaptures == n` —
+	// the unit's PARAM slots alone, since NParams counts the trailing
+	// capture slots too and reading it whole sent every capturing closure
+	// to the island (the twenty-eighth increment). The census's pattern no
+	// longer sees the comparison; the site and its meaning are unchanged.
+	"eng/go/vm.go": 11,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the

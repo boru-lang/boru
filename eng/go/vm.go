@@ -1232,8 +1232,12 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		// A compiled closure of the window's own arity runs VM-native; any
 		// other arity takes the interpreter's apply re-step below, whose
 		// bridge (ClosureAsFnDef) under- or over-applies exactly as the
-		// interpreter's fn value does.
-		if fn, known := vc.closureUnit(cl); !known || fn.NParams == n {
+		// interpreter's fn value does. The arity is the unit's PARAM slots
+		// alone: NParams counts the trailing capture slots too, and reading
+		// it whole sent every capturing closure — `99 (kk 7) apply`, the
+		// twenty-eighth increment's whole family — to the island (the
+		// interp-entry census caught it, 40 over its ceiling of 33).
+		if fn, known := vc.closureUnit(cl); !known || fn.NParams-fn.NCaptures == n {
 			return commit(vc.invokeClosure(vc.r, fnVal, args))
 		}
 		return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
@@ -1269,9 +1273,14 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		}
 	}
 	// The inline unit entry returns through its own RET, whose count the
-	// event form cannot check — so it is taken only for a unit declaring
-	// the one return the model committed.
-	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && (!one || len(vc.p.Fns[ent.unit].Returns) == 1) {
+	// event form cannot check — so it is taken only under a contract
+	// promising the one return the model committed. The contract is the
+	// APPLIED VALUE's (applyRetContract, the frame's RET enforces it), never
+	// the entered unit's own: a stamped fn-value unit declares no returns of
+	// its own, and reading the unit sent every stamped lambda — `f:Any =>
+	// [f/v]` fetched from a map, Church false's inner lambda — to the island
+	// (the twenty-eighth increment; dynMethodClaimOK is the same reading).
+	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && (!one || dynMethodClaimOK(ent, 1)) {
 		return stack[:base], ent, nil
 	}
 	return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))

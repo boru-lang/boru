@@ -315,6 +315,10 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	}
 	declSite := s.Decl
 	bodyCopy := append([]core.Value(nil), s.Body()...)
+	// The sig's own body slice, uncopied: its backing array identifies THIS
+	// construction of the lambda to the recorder's pending-apply lookup
+	// (PendingClosureApply) — the applied value's sig holds the same array.
+	bodyRef := s.Body()
 	nameCopy := name
 	capturesCopy := fnDef.Captured
 	genSpec := fnDef.Gen
@@ -711,7 +715,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				out[i] = c
 			}
 			if fnUnit >= 0 {
-				out = recordUserCallOrApply(es, r, nameCopy, capturesCopy, fnUnit, args, out)
+				out = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, args, out)
 			} else if polyPlan != nil {
 				// Ambiguous multi-overload dispatch with every arm baked: record
 				// the runtime-re-matched poly call (OpCallUserPoly). Positions
@@ -784,7 +788,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
 		if fnUnit >= 0 {
-			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, fnUnit, args, stk)
+			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, args, stk)
 		}
 		return stk
 	}
@@ -841,7 +845,7 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 // record site: the §4.3 fn-value apply fallback where the call qualifies
 // (the outs slice is then COPIED with the freshened carrier in slot 0),
 // else the ordinary RecordUserCall. Returns the outs to hand downstream.
-func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, fnUnit int, args, outs []core.Value) []core.Value {
+func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, body []core.Value, fnUnit int, args, outs []core.Value) []core.Value {
 	pos := core.SrcPos{}
 	if len(args) > 0 {
 		pos = args[0].Pos()
@@ -851,9 +855,67 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		outs[0] = fresh
 		return outs
 	}
+	if fresh, ok := recordPendingClosureApply(es, body, args, outs, pos); ok {
+		outs = append([]core.Value(nil), outs...)
+		outs[0] = fresh
+		return outs
+	}
 	noteBakedCallTarget(es, r, name)
 	es.RecordUserCall(fnUnit, args, outs, pos)
 	return outs
+}
+
+// recordPendingClosureApply routes the re-step dispatch of a closure this
+// pass PRODUCED, handed back by the `apply` word (`99 (kk 7) apply` — the
+// twenty-eighth increment), through the fn-VALUE apply: the recorder holds
+// the applied value under a PENDING entry registered at apply's own
+// dispatch (PendingClosureApply, matched by the sig body's backing array —
+// the value's own sig, not a copy: a body whose only token is a `=>` group
+// carries no position to match by), and RecordDynApply
+// over that value resolves the fn to the closure's producer operand — the
+// runtime payload with the captures it carries — where RecordUserCall could
+// only refuse the construction-scope captures unreachable at this call
+// site. Single out, freshened as the §4.3 fallback freshens (the memoised
+// residual is shared across calls of one shape); a concrete out takes a
+// carrier of its type — the runtime value is the apply's, sound at the cost
+// of a fold — except a fn VALUE, which keeps its payload under a fresh id
+// (see below). The args arrive in signature order (sig[0] the stack top);
+// RecordDynApply takes the window deepest-first with sig[0] on top, so they
+// are reversed. A 0-arg closure declines (nothing beneath to lay out — the
+// entry stays for the finish to refuse), as does whatever RecordDynApply's
+// own guards decline.
+func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
+	if len(outs) != 1 || len(args) == 0 {
+		return core.Value{}, false
+	}
+	fn, ok := es.PendingClosureApply(body)
+	if !ok {
+		return core.Value{}, false
+	}
+	var fresh core.Value
+	if _, isFn := outs[0].Data.(core.FnDefInfo); isFn {
+		// A fn VALUE result (the next closure of a staged combinator) keeps
+		// its analysed payload under a fresh identity: a later `apply` over
+		// it re-steps the value and records through this same arm, resolving
+		// the fn to THIS apply's event.
+		fresh = outs[0]
+		fresh.ID = core.GenerateID(core.IDPrefixForType(core.TFunction))
+	} else {
+		parent := outs[0].Parent
+		if parent == nil {
+			parent = core.TAny
+		}
+		fresh = core.NewCarrier(parent)
+		fresh.Dynamic = outs[0].Dynamic
+	}
+	window := make([]core.Value, len(args))
+	for i, a := range args {
+		window[len(args)-1-i] = a
+	}
+	if _, ok := es.RecordDynApply(window, fn, fresh, pos); !ok {
+		return core.Value{}, false
+	}
+	return fresh, true
 }
 
 // recordFnValueApplyFallback routes a call whose compiled unit carries
