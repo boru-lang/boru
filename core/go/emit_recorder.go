@@ -311,6 +311,12 @@ type EmitRecorder interface {
 	SetUnitDecl(unit int, decl DeclSite)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
+	// UnitTailApply reports the width n of the window a unit's finish lowered
+	// as the fn-value apply at its body tail — the top n residual values and
+	// the fn above them net ONE result at run time — so a call site's
+	// analysed residual, which still holds the window, collapses the same
+	// way (check's collapseTailApply).
+	UnitTailApply(unit int) (int, bool)
 }
 
 // inactiveEmit is the no-op EmitRecorder a NON-compiling pass runs against:
@@ -448,6 +454,7 @@ func (inactiveEmit) SetUnitBody(int, []Value)                 {}
 func (inactiveEmit) SetUnitDecl(int, DeclSite)                {}
 func (inactiveEmit) UnitVariadic(int) bool                    { return false }
 func (inactiveEmit) UnitNetsZero(int) bool                    { return false }
+func (inactiveEmit) UnitTailApply(int) (int, bool)            { return 0, false }
 
 // EmitCheckpoint is the opaque handle for a recording-pool snapshot: the
 // checker holds and returns it without any knowledge of the compiler's

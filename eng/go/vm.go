@@ -2203,7 +2203,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// Ascription hygiene: a stored binding holds the REAL value
 			// (`def y (m as T)` — the interpreter's def strips at arg
 			// delivery; the compiled local store is that same boundary).
-			locals[in.Arg] = core.StripAscribed(stack[len(stack)-1])
+			stored := core.StripAscribed(stack[len(stack)-1])
+			// A produced fn value bound by `def` takes the def's name, as the
+			// interpreter's installDef renames it (StoreNames — the
+			// twenty-ninth increment).
+			if name, ok := storeNameAt(p, curUnit, pc); ok {
+				stored = vc.nameStoredClosure(stored, name)
+			}
+			locals[in.Arg] = stored
 			stack = stack[:len(stack)-1]
 		case compiler.OpDrop:
 			// Discard the top value — the computed else value on the taken
@@ -2933,6 +2940,12 @@ func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
 	if ae.Row == 0 {
 		ae.Row = debug[pc].Row
 		ae.Col = debug[pc].Col
+		// The token's own text too: the caret's width is the token's, and
+		// a return-count error the interpreter stamps at the `apply` word
+		// underlines all five characters (the twenty-ninth increment).
+		if ae.Src == "" {
+			ae.Src = debug[pc].Src
+		}
 	}
 	if r != nil && ae.FullSource == "" {
 		ae.FullSource = r.Source

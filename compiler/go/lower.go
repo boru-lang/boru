@@ -367,6 +367,25 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	return ""
 }
 
+// seatStoreName seats, on the promoted STORE_LOCAL about to be emitted, the
+// def name the stored slot's produced fn value was bound under
+// (EmitState.defNameAt — RecordDynBind's note), so the VM's store renames
+// the closure as the interpreter's installDef renames a fn value bound by
+// `def`. Nothing seated for a slot no def named, or a target with no table.
+func (lw *lowerer) seatStoreName(seq, idx int) {
+	if lw.es == nil || lw.storeNames == nil {
+		return
+	}
+	name, ok := lw.es.defNameAt[seqIdx{seq, idx}]
+	if !ok {
+		return
+	}
+	if *lw.storeNames == nil {
+		*lw.storeNames = map[int]string{}
+	}
+	(*lw.storeNames)[len(*lw.code)] = name
+}
+
 func (lw *lowerer) lowerStore(ev *EmitEvent) string {
 	st := ev.store
 	if st.src.kind == opEvent {
@@ -412,11 +431,15 @@ type lowerer struct {
 	// seatDynApplyName. Nil for the main code, whose applies name no frame
 	// binding.
 	dynApplyName *map[int]DynApplyHead
-	sigIdx       map[*core.Signature]int
-	vm           []vmSlot
-	variadic     map[int]bool // loop seqs: N runtime values, not one
-	promoted     map[int]int  // value-def locals: producing event seq → frame local slot
-	dead         map[int]bool // single-result value-defs referenced zero times: drop the result
+	// storeNames is the emission target's def-name table for promoted
+	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
+	// keyed by the target's own pc — see seatStoreName.
+	storeNames *map[int]string
+	sigIdx     map[*core.Signature]int
+	vm         []vmSlot
+	variadic   map[int]bool // loop seqs: N runtime values, not one
+	promoted   map[int]int  // value-def locals: producing event seq → frame local slot
+	dead       map[int]bool // single-result value-defs referenced zero times: drop the result
 	// bindConsumes marks DEAD producers whose result a root OpBindGlobal
 	// write-back consumes (Pop mode) instead of the producer-site dead-drop:
 	// the value stays live through the immediately-following evDynBind, which
@@ -2415,6 +2438,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
 		}
 		for i := c.nout - 1; i >= 0; i-- {
+			lw.seatStoreName(ev.seq, i)
 			lw.emit(OpStoreLocal, slot+i, c.pos)
 		}
 		lw.note()
@@ -2747,6 +2771,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	// out-of-order residual forced to a slot): store now, re-push per reference
 	// (references were rewritten to local operands). Mirrors lowerCall.
 	if slot, ok := lw.promoted[ev.seq]; ok {
+		lw.seatStoreName(ev.seq, 0)
 		lw.emit(OpStoreLocal, slot, uc.pos)
 		lw.note()
 		return ""
@@ -2816,6 +2841,7 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 	lw.vm = lw.vm[:len(lw.vm)-n]
 	// Promotion / dead-result / result-slot accounting mirrors lowerUserCall.
 	if slot, ok := lw.promoted[ev.seq]; ok {
+		lw.seatStoreName(ev.seq, 0)
 		lw.emit(OpStoreLocal, slot, uc.pos)
 		lw.note()
 		return ""

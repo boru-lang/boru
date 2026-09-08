@@ -888,6 +888,11 @@ type EmitState struct {
 	// to a token-re-running native must not READ one. See
 	// recordCodeBodyClosureRead.
 	dynBoundClosures map[string]bool
+	// defNameAt is the def name a produced fn value (a closure a unit
+	// returns, a fn-value apply's result) was bound under, keyed by its
+	// producing event slot — read by the lowering's promoted store to seat
+	// CompiledFn.StoreNames (RecordDynBind notes it).
+	defNameAt map[seqIdx]string
 	// rootComputedBindIDs holds the value IDs of TOP-LEVEL computed fn-value
 	// defs (`def op (Parse.parser g)` and the sibling mini/emit value forms)
 	// that installDef DECLINED to install in Defs (the compiled-closure
@@ -1107,6 +1112,9 @@ type emitUnit struct {
 	// design/STAGE3-INLINING-DESIGN-ROUND.0.md).
 	pendingApply []pendingApply
 }
+
+// seqIdx addresses one producing-event result slot (seq, out index).
+type seqIdx struct{ seq, idx int }
 
 // pendingApply is one `apply`-word application the unit's finish or a paren
 // collapse must lower: the applied value's id and the apply WORD's position,
@@ -1704,6 +1712,24 @@ func (es *EmitState) UnitVariadic(unit int) bool {
 // carry it, so the set keeps its refusal. A diverging trailing event never
 // returns at all, so its empty outOps qualify (the 0-out accounting is
 // never consulted on a raise/tail-out path).
+// UnitTailApply reports the width of the window the unit's finish lowered as
+// the fn-value apply at its body tail (dynTrailArity — the pending
+// apply-word form, OpCallDynApplyTop, or a trailing fn value's own): the top
+// n residual values and the fn above them net ONE result at run time. The
+// check pass's call-site residual still holds the window (`x f/v apply` over
+// a captured fn leaves [result, f] — the identity carrier the elided apply
+// returned), so it must collapse the same way or a call site records a
+// two-value dispatch over a one-value unit.
+func (es *EmitState) UnitTailApply(unit int) (int, bool) {
+	if es == nil || unit < 0 || unit >= len(es.fnRecs) {
+		return 0, false
+	}
+	if rec := es.fnRecs[unit]; rec.dynTrailArity > 0 {
+		return rec.dynTrailArity, true
+	}
+	return 0, false
+}
+
 func (es *EmitState) UnitNetsZero(unit int) bool {
 	if es == nil || unit < 0 || unit >= len(es.fnRecs) {
 		return false
@@ -2853,7 +2879,15 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// runtime that dispatches the closure BY NAME (the word-read replay's
 	// closureAsWord bridge, NUR123) declares the interpreter's signature.
 	es.SetUnitParamTypes(unit, ps.Types, ps.Patterns)
-	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps}, true
+	// The returned lambda's RETURN contract rides on the push (ClosureRet →
+	// ClosurePayload.RetTypes), so the VM's invoke enforces the lambda's
+	// count contract (LambdaCountContract) exactly as the interpreter's
+	// ReturnCheck does at every dispatch of the value: a body that
+	// under-applies at its tail (`[7 x f/v apply]` over a 1-arg f) nets two
+	// values, and the interpreter raises `expected 1 return value(s), got 2`
+	// where an uncontracted closure answered [7 8] (the twenty-ninth
+	// increment; latent before it, every such call site refused).
+	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: fnValueRetSpec(&fd, lam, pos)}, true
 }
 
 // compileStoredFnUnit compiles a CAPTURE-FREE store-fn handler body (the fn a
@@ -7221,6 +7255,16 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		}
 		es.dynBoundClosures[name] = true
 	}
+	// NOTE the def NAME of a produced fn value by its producing slot, so the
+	// lowering seats it on the value's promoted store (CompiledFn.StoreNames)
+	// and the VM renames the stored closure as installDef renames a fn value
+	// bound by `def` (the twenty-ninth increment).
+	if pr, ok := es.producedBy[v.ID]; ok && es.producedFnValue(v.ID) {
+		if es.defNameAt == nil {
+			es.defNameAt = map[seqIdx]string{}
+		}
+		es.defNameAt[seqIdx(pr)] = name
+	}
 	src, srcSeq := EmitOperand{}, -1
 	cur := es.units[len(es.units)-1]
 	if slot, ok := cur.localByID[v.ID]; ok && cur.capID[v.ID] {
@@ -9581,7 +9625,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		BindTwinEntries: append([]core.DefEntry(nil), es.bindTwinEntries...),
 		ReplayBase:      es.bindSnap,
 		ReplayReg:       es.progReg}
-	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -9804,7 +9848,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: collectResidentBindConsumes(rec.frag.events, rec.dead), isFnUnit: true}
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: collectResidentBindConsumes(rec.frag.events, rec.dead), isFnUnit: true}
 		seatUnitDeopts(flw, rec, &cf, diverged)
 		es.emitDynParamBinds(flw, rec)
 		// The apply-loop replay's unnamed-param re-pushes seat at UNIT START —

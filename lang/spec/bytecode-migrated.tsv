@@ -150,3 +150,14 @@ def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any =
 # twenty-seventh increment's "islanded" row) run native.
 def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply	'F'	Church false selects the second branch
 def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — compiles since the twenty-seventh increment but ISLANDS (the map-member lambda is not stamped); ledgered as islanded
+#
+# a unit's TAIL APPLY collapses into its call-site residual GRADUATED
+# 2026-09-08 (the twenty-ninth increment): a closure whose body ends in the
+# apply word over a fn-typed capture nets one value at run time, and the
+# check pass's call-site residual now collapses the window the same way
+# (EmitRecorder.UnitTailApply → collapseTailApply), so the produced-closure
+# apply records instead of refusing the capture. These were
+# frontier-hof-audit.tsv's two §1 B rows (audit §5.8 over B; the NUR089
+# call-site pair).
+def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply	14	B with inline-lambda args: runs to 14; the CHECK failure at this call site is NUR089
+def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end def d fn n:Integer Integer [mul n 2] end def e fn n:Integer Integer [add n 3] end 4 (e/v (bb d/v) apply) apply	14	the same B with named /v references checks clean — the call-site pair of NUR089

@@ -4211,6 +4211,73 @@ by the value's id serves apply's own dispatch, but the re-step's record
 site sees only the body: match constructions by the sig body's array,
 never by position.
 
+## A unit's tail apply collapses into its call-site residual, and a returned lambda's count contract (2026-09-08, the twenty-ninth increment)
+
+The twenty-eighth increment left the two B-combinator rows one step short:
+the main program's `apply` over the produced closure recorded, but the
+x-level closure's dispatch refused "capture f of  unreachable at a call
+site". Its body `[(x g/v apply) f/v apply]` ends in the apply word over a
+fn-typed CAPTURE, which the check engine elides — the identity result flows
+to the residual — so the call site's analysed residual held [result, f],
+TWO values, where the unit's finish had lowered the window as the
+whole-residual OpCallDynApplyTop and nets ONE. The single-out record site
+declined and the unit call refused the construction-scope capture.
+
+**What landed.**
+
+- `EmitRecorder.UnitTailApply` (a new seam method) reports the window width
+  a unit's finish lowered as the fn-value apply at its body tail
+  (`fnUnitRec.dynTrailArity`), and the check pass's user-fn ReturnsFn
+  collapses the call-site residual the same way (`collapseTailApply`): the
+  WHOLE residual must be the window — a lambda leaving a value beneath the
+  applied result is the interpreter's count error at the RET, which a
+  collapsed two-value residual would hide — and it becomes one GRADUAL
+  result.
+- The PLAIN check pass — no recorder, no unit to ask — models the same
+  elided tail apply as leaving the carrier, and the two graduated rows
+  tripped the type-soundness gate the moment they entered the main corpus:
+  the program's checked types were [Integer Function] for an actual
+  [Integer]. `collapseElidedTailApply` is the recorder-free twin: a body
+  whose last token is the `apply` word and whose residual ends in a
+  fn-typed carrier nets one value at run time (every other count is the
+  interpreter's own return error), so the residual collapses to one
+  gradual result — only where one value is the contract (a lambda, a
+  declared single return); a declared tuple keeps its residual, since the
+  applied fn may under-apply into exactly that count.
+- The collapse exposed a latent gap: a RETURNED lambda's closure carried no
+  return contract (`tryReturnedClosure`'s operand had no `closureRet`), so
+  `checkClosureReturn` never enforced the lambda's count contract, and a
+  body that under-applies at its tail (`[7 x f/v apply]` over a 1-arg f)
+  answered [7 8] where the interpreter raises `expected 1 return value(s),
+  got 2`. Latent because every such call site refused. The operand now
+  carries `fnValueRetSpec`'s contract, and the unbound form raises byte for
+  byte (`4 (bb2 …) apply` → `: expected 1 return value(s), got 2 — [7 8]`
+  at the apply word on both lanes).
+- The DEF-BOUND form (`def h (bb2 …)  (h 4)`) named the error `h:` on the
+  interpreter — installDef renames a fn value bound by `def` — and `:`
+  compiled: the stored payload had no name. The compiled lane now renames
+  where the interpreter does: `RecordDynBind` notes the def name by the
+  produced fn value's producing slot (`EmitState.defNameAt`), the lowerer
+  seats it on the value's promoted STORE_LOCAL (`Program.StoreNames` /
+  `CompiledFn.StoreNames`, keyed by pc — `seatStoreName`), and the VM's
+  store op renames the ClosurePayload it stores (`nameStoredClosure`:
+  `RetName` for its diagnostics, `Render` through the closure bridge for
+  its `fn h(Integer)` render; the first name wins, as the frame rename's
+  does). The message agrees; the POSITION does not (interp 1:100 at `h`,
+  compiled 1:102 at the argument — the call event's position is its first
+  operand's), NUR122's open position-only class, pinned as measured.
+- The compiled error's CARET was one character wide where the
+  interpreter underlines the whole `apply` token: `stampAt` copied the
+  debug entry's row and column but not its token text (`SrcPos.Src`). It
+  copies the text now when the error carries none.
+
+**Measured.** The two B rows graduated (ledger 69 → 67): 14 on both lanes,
+VM-native; `(h 4) add 1` over a closure whose tail applies its capture is 9;
+two calls give two results; the under-applying tail raises the count error
+on both lanes, byte for byte unbound and message-identical def-bound. Sound
+refusals pinned: a gradual param beneath the tail apply (the factory's
+"body result of unknown provenance").
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4367,3 +4434,8 @@ position than the construct that produced the binding.
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
 | `eng/go/vm_apply_closure_arity_test.go` | the apply op's closure arm: a closure of another arity (param slots, not `NParams`) takes the re-step and parks; the event form defers the parked pair — no compiling program reaches the arm, so it is pinned at the seam |
+| `lang/go/tail_apply_collapse_test.go` | the tail-apply collapse's parity (both B rows, a def-bound closure whose tail applies its capture, two calls), its sound refusal (a gradual param beneath the tail apply), and the returned lambda's count contract: the unbound under-applying tail byte for byte, the def-bound form message-identical with the position pinned open (NUR122) |
+| `check/go/tail_apply_collapse_test.go` | `collapseTailApply`'s arms (no tail apply, a residual shorter or wider than the window, a data top, the window to one gradual result, a fn value on top) and `collapseElidedTailApply`'s (a tuple contract, an empty body, a one-value residual, another last word, a data top, the collapse) |
+| `compiler/go/unit_tail_apply_test.go` | `UnitTailApply`: a nil recorder, a unit out of range, no tail apply, the window width |
+| `compiler/go/store_name_test.go` | `seatStoreName`: no recorder, no table, a slot no def named, the name at the store's pc |
+| `eng/go/store_name_test.go` | `storeNameAt` (the main code's and a unit's table, an empty name, an unseated pc, a unit beyond the program) and `nameStoredClosure` (a plain value, a named closure, a known unit's RetName and render, a unit beyond the program, a unit the bridge cannot describe) |

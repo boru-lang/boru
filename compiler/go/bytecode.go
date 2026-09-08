@@ -1030,6 +1030,9 @@ type Program struct {
 	// unit is SHARED across fn values with identical bodies and inputs — the
 	// contract is the value's, not the body's.
 	ClosureRet map[int]ClosureRetSpec
+	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
+	// there), keyed by the main code's own pc.
+	StoreNames map[int]string
 	TypedBinds []core.TypedBindSpec
 	// GlobalBinds backs OpBindGlobal: one entry per top-level computed `def`,
 	// naming the binding and the DEPTH its check-pass install recorded. The
@@ -1276,6 +1279,15 @@ type CompiledFn struct {
 	// Nil for an apply whose head was not a bare read (an event-produced
 	// fn, a `/v` delivery) — the nameless diagnostic stays exactly as it was.
 	DynApplyName map[int]DynApplyHead
+	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
+	// value under, keyed by the store's pc: the interpreter's installDef
+	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
+	// (mk 1)` renders `fn h(Integer)` and names h in the value's own
+	// diagnostics (`h: expected 1 return value(s), got 2`), where a
+	// compiled closure stored to its local kept the payload nameless. The
+	// VM's store op renames the ClosurePayload it stores (RetName, Render)
+	// exactly there. Nil when the unit binds no produced fn value.
+	StoreNames map[int]string
 	// RetReplay marks a body that ends in a whole-frame dynamic-apply replay
 	// (OpCallDynFrame): its residual count is RUNTIME-variable, so the RET
 	// contract switches discipline. A FOREIGN-registry fn (Reg set, a module-

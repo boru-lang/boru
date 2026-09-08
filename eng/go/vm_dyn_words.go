@@ -25,6 +25,50 @@ func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
 	return p.Fns[unit].DynApplyName[pc]
 }
 
+// storeNameAt is the def name seated on the promoted STORE_LOCAL at pc in the
+// code that holds it (Program.StoreNames for the main code, CompiledFn.StoreNames
+// for a unit), or "" — see the field.
+func storeNameAt(p *compiler.Program, unit, pc int) (string, bool) {
+	if p == nil {
+		return "", false
+	}
+	var tbl map[int]string
+	if unit < 0 {
+		tbl = p.StoreNames
+	} else if unit < len(p.Fns) {
+		tbl = p.Fns[unit].StoreNames
+	}
+	name, ok := tbl[pc]
+	return name, ok && name != ""
+}
+
+// nameStoredClosure is the compiled mirror of installDef's rename of a fn
+// value bound by `def` (`fnDef.Name = name`): a ClosurePayload stored under a
+// def takes the name in its own diagnostics (RetName — `h: expected 1 return
+// value(s), got 2`) and its render (`fn h(Integer)`), so a value read back or
+// raising later reads as the interpreter's. A payload already named (a
+// re-bind under a second name keeps the first, as installDef's own value
+// copy would not — measured shape: none in the corpus; the first name wins
+// here as the frame rename does), a non-closure, or a unit the render
+// bridge cannot describe is left alone.
+func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || cl.RetName != "" {
+		return v
+	}
+	cl.RetName = name
+	if fn, known := vc.closureUnit(cl); known {
+		// The bridge's own signature, named — the render the interpreter's
+		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
+		// this value is only ever formatted.
+		if params, ok := closureSigParams(fn); ok {
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: fn.Lambda})
+		}
+	}
+	v.Data = cl
+	return v
+}
+
 // writtenRun is how many of a replayed dispatch's arguments the interpreter's
 // forward window consumed: the longest leading run whose region entries are
 // not bare reads. Entries beyond the table's length cannot have been marked,
@@ -196,6 +240,28 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	return fnv, true
 }
 
+// closureSigParams is the bridge's param contract: the unit's DECLARED
+// params (CompiledFn.Params / ParamPatterns), one FnParam each, or false
+// for a unit that recorded no contract (a token body) — shared by the
+// handler-bearing bridge (closureFnDef) and the render-only rename
+// (nameStoredClosure), so the two describe one signature.
+func closureSigParams(fn *compiler.CompiledFn) ([]core.FnParam, bool) {
+	if len(fn.Params) != fn.NArgs {
+		return nil, false
+	}
+	params := make([]core.FnParam, len(fn.Params))
+	for i, t := range fn.Params {
+		if t == nil {
+			t = core.TAny
+		}
+		params[i] = core.FnParam{Type: t}
+		if i < len(fn.ParamPatterns) && fn.ParamPatterns[i] != nil {
+			params[i].Pattern = fn.ParamPatterns[i]
+		}
+	}
+	return params, true
+}
+
 // closureFnDef builds the FnDefInfo a compiled closure stands in for on the
 // interpreter: ONE handler-bearing signature over the unit's DECLARED param
 // contract (CompiledFn.Params / ParamPatterns, seated by lamParamContract
@@ -208,18 +274,9 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 // at the pointer (ADR-016's gate), so the value-path bridge parks in the
 // same places the interpreter's own value does.
 func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
-	if len(fn.Params) != fn.NArgs {
+	params, ok := closureSigParams(fn)
+	if !ok {
 		return core.Value{}, false
-	}
-	params := make([]core.FnParam, len(fn.Params))
-	for i, t := range fn.Params {
-		if t == nil {
-			t = core.TAny
-		}
-		params[i] = core.FnParam{Type: t}
-		if i < len(fn.ParamPatterns) && fn.ParamPatterns[i] != nil {
-			params[i].Pattern = fn.ParamPatterns[i]
-		}
 	}
 	// All-forward as the interpreter INSTALLS it: compileFnDef resolves a
 	// boru fn's BarrierAllForward to len(Params), which is what its no-match

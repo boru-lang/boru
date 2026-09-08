@@ -99,11 +99,6 @@ func TestProducedClosureApplySoundRefusals(t *testing.T) {
 		// argument-slot refusal — lifted, `1 99 (mk 7) apply` seated all
 		// three as data (measured)
 		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot", "1 106"},
-		// the x-level closure's call-site residual is two values (the
-		// gradual result and the fn-typed capture its tail apply consumes at
-		// the unit's finish): the record site declines and the unit call
-		// refuses the capture
-		{`def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply`, "unreachable at a call site", "14"},
 		// a produced closure applied over ANOTHER produced closure: the
 		// second dispatches over the first before apply runs
 		{pcaK + `(kk 7) (kk 8) apply`, "argument slot", "8"},

@@ -590,6 +590,8 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			}
 		}
 		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
+		stk = collapseTailApply(es, fnUnit, stk)
+		stk = collapseElidedTailApply(bodyCopy, stk, fnDef.Anonymous || len(declaredReturns) == 1)
 		for i := len(genNames) - 1; i >= 0; i-- {
 			r.Defs.Pop(genNames[i])
 		}
@@ -792,6 +794,63 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		}
 		return stk
 	}
+}
+
+// collapseTailApply mirrors, on the call site's analysed residual, the
+// fn-value apply a compiled unit's finish lowered at its body tail
+// (EmitRecorder.UnitTailApply): the check engine elides the apply word over
+// a fn-typed carrier and the identity result flows to the residual, so the
+// call site sees [args…, fn] where the unit nets ONE value. The WHOLE
+// residual must be the window — the finish lowers the apply word's form
+// only over the entire residual, and a lambda leaving a value beneath the
+// applied result (`[7 x f/v apply]`) is the interpreter's count error at
+// the RET, which a collapsed two-value residual would hide (measured: the
+// compiled unit answered [7 8] for the interpreter's "expected 1 return
+// value(s), got 2"). The window collapses to one GRADUAL result — the
+// apply's own type is unknown. Declines when the residual is not the
+// window (another shape, or a memoised residual of one).
+func collapseTailApply(es core.EmitRecorder, fnUnit int, stk []core.Value) []core.Value {
+	n, ok := es.UnitTailApply(fnUnit)
+	if !ok || len(stk) != n+1 {
+		return stk
+	}
+	top := stk[len(stk)-1]
+	if !core.IsFnTypedCarrier(top) && !core.IsFnValueResidual(top) {
+		return stk
+	}
+	out := core.NewCarrier(core.TAny)
+	out.Dynamic = true
+	return []core.Value{out}
+}
+
+// collapseElidedTailApply is collapseTailApply's twin for the PLAIN check
+// pass, which has no unit to ask: a body whose last token is the `apply`
+// word and whose analysed residual ends in a fn-typed CARRIER is the apply
+// the check engine could not re-step (applyReturns hands the carrier back
+// as the identity), and at run time it nets ONE value — the applied fn
+// consumes what it matches, and every other count is the interpreter's own
+// return error, which ends the run. So the residual collapses to one
+// gradual result, exactly as the compiled unit's call site does, and the
+// program's checked types stay sound over what actually runs (the
+// type-soundness gate caught the two B rows at [Integer Function] for an
+// actual [Integer]). Only where ONE value is the contract — a lambda's
+// count contract, a declared single return: a declared tuple keeps its
+// residual, since the applied fn may under-apply into exactly that count.
+// A residual the recorder already collapsed ends in a gradual carrier, not
+// a fn-typed one, and passes through.
+func collapseElidedTailApply(body, stk []core.Value, oneValued bool) []core.Value {
+	if !oneValued || len(body) == 0 || len(stk) < 2 {
+		return stk
+	}
+	if w, err := core.AsWord(body[len(body)-1]); err != nil || w.Name != "apply" {
+		return stk
+	}
+	if !core.IsFnTypedCarrier(stk[len(stk)-1]) {
+		return stk
+	}
+	out := core.NewCarrier(core.TAny)
+	out.Dynamic = true
+	return []core.Value{out}
 }
 
 // checkFnBodyAtConstruction runs a static body pass for each boru-bodied overload
