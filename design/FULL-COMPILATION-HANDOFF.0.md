@@ -4903,6 +4903,34 @@ the frontier gate asserts that — and the three INLINE nested-body
 spellings, which lower with no interpreter entry at all, stayed in the
 corpus. Both ratchets returned to their pins with no ceiling raised.
 
+**A third ratchet, and a pre-existing defect underneath it.** The
+diagnostic-parity gate then read 322 against a ceiling of 321 — but only in
+a FULL-PACKAGE run: alone it read exactly 321, twice, with identical row
+sets. The switch is one corpus row (`bytecode-migrated.tsv`'s
+`nd (m get "inc") apply` over a non-fn member) whose PLAIN check reports
+nothing the first time the process ever checks that fn definition and two
+errors every time after — measured directly, in a tenth of a second, with
+fresh `lang.New()` instances either side. It is keyed on the definition
+(name plus body: the same body under different names does not warm it), it
+survives a fresh registry, and merely RUNNING the program warms it too. It
+is not the ID sequence (reseeding does not change it) and not the
+per-registry analysis memo or quota. **It reproduces unchanged at the
+thirty-fifth increment**, so it is older than this batch: `boru check`'s
+verdict on one program depends on what the process did before it, which is
+the NUR103 class taken one step further — the verdict depends not only on
+who is asking but on when. It is recorded here rather than fixed: the
+mechanism is not yet located, and the gate that found it is the right place
+for it to keep failing until it is.
+
+What this batch actually added was ONE diverging row, and it was
+accidental: the branch-arm row graduated with the thirty-eighth increment
+wrote its condition as `def c (1 lt 2)`, which folds, so the else arm is
+statically unreachable and the plain check says so where the compiling pass
+does not. The row exists to pin a carrier-bound read inside a branch ARM,
+not to exercise a decidable condition, so its condition is now a flex-map
+read the checker cannot fold. Isolated parity returns to 320 — one below
+the ceiling, where the thirty-fifth increment left it.
+
 **The lesson, and the tool it earned.** A graduation is a claim about a row
 that three gates measure independently, and passing the one you happen to
 run is not passing them. The parity gate now names its diverged rows under

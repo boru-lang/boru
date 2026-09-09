@@ -257,6 +257,6 @@ def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][
 # body in a sub-engine — an interpreter entry the census counts — so they
 # stay in lang/spec/frontier/frontier-hof-audit.tsv until the body compiles
 # as a closure unit.
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def c (1 lt 2) end if c [(f 2)] [0]	3
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def c (flex {b:true}) end if (c get 'b') [(f 2)] [0]	3
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end for 2 [def q (f 2) q]	3 3
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'	4 4 'z'
