@@ -7399,7 +7399,17 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// compiled code (that is what §9b's factory family does) and NOT fine
 	// for an interpreter RE-RUN to reach. recordCodeBodyClosureRead below
 	// catches the latter at the word that re-runs tokens.
-	if es.producerReturnedClosure(v.ID) {
+	// Only a CONCRETE closure value is noted (the thirty-eighth increment):
+	// a name bound to a Function CARRIER — a typed factory's declared
+	// return, `def f (mk 1)` — is read through the fn-carrier side table
+	// inside a code body too, and the read models as the dispatch it is
+	// (`do [(f 2)]` compiles and agrees), where a concrete
+	// closure's read inside the body's unit resolves to the FnDefInfo
+	// itself, whose home is an event outside the unit: without the gate
+	// `do [(h 1)]` over a lambda factory's closure compiled and raised
+	// `undefined word: g` (the captured param) for the interpreter's 8,
+	// and `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`.
+	if es.producerReturnedClosure(v.ID) && core.IsConcrete(v) {
 		if es.dynBoundClosures == nil {
 			es.dynBoundClosures = map[string]bool{}
 		}

@@ -229,3 +229,32 @@ func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
 		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not refused: %v", es.uncompilable)
 	}
 }
+
+// TestStepWordNestedBodySubstitutesCarrier — the substitution fires inside
+// a NESTED body too (the thirty-eighth increment): a branch arm / loop body
+// / `do` body's read of a name in the side table reads as its fn carrier.
+// It used to decline at NestedBodyDepth > 0, which left `if c [(f 2)] [0]`
+// reporting a FALSE undefined_word on the plain check and `do [(f 2)]`
+// behind the check-diagnostics sentinel.
+func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
+	r := covRegistry(t, nil)
+	defer r.Check.Begin()()
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	r.Check.NestedBodyDepth = 1
+	defer func() { r.Check.NestedBodyDepth = 0 }()
+
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
+	if err := e.stepWord(e.Tape.At(0)); err != nil {
+		t.Fatalf("nested-body stepWord errored: %v", err)
+	}
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+		t.Errorf("a nested body must read the bound fn carrier, got %v", got)
+	}
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("no diagnostics expected, got %v", r.Check.Diagnostics)
+	}
+	if r.Check.FnCarrierReadSubstituted {
+		t.Error("a plain check must not set the compile-only mark")
+	}
+}

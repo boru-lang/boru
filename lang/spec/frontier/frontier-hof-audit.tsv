@@ -132,15 +132,14 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #
 # §9f code BODIES over def-bound computed fns (2026-08-21): three
 #     divergences found by a differential sweep, each a regression
-#     from this branch's own Stage 1 / Stage 2 admissions, each now
-#     a sound refusal. A code body is re-run by its native through
-#     the INTERPRETER, and neither admission survives that: the read
-#     substitution turns a body TOKEN into a value (so `each`'s body
-#     assembled as the data list [f, 5] and its input list vanished),
-#     and a compiled ClosurePayload is invokable only through the
-#     VM's re-entrant runner, never the interpreter. Ledgered.
+#     from this branch's own Stage 1 / Stage 2 admissions, each made
+#     a sound refusal. The `do [(f 2)]` row GRADUATED with the
+#     thirty-eighth increment (2026-09-09; lang/spec/bytecode-migrated.tsv):
+#     the fn-carrier substitution fires inside a nested body too and the
+#     read models as the dispatch it is. The concrete-closure row keeps
+#     the code-body gate (a lambda factory's closure read inside the
+#     body's unit resolves to the FnDefInfo itself). Ledgered.
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3] once; compiles and agrees now, the each body islands)
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; refuses now)
 def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; refuses now)
 #
 # §9g a computed closure at a WORD's argument slot (2026-08-21):

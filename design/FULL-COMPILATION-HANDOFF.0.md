@@ -4684,8 +4684,10 @@ VM-native; a three-level curry, a capturing closure read twice, a
 two-param closure's full window and a read whose window is its statement
 agree. The two flattened-window spellings refuse with the interpreter's
 signature_error; the survivor inside a paren refuses with its answer. The
-filter-body and each-body twins compile and agree but their bodies island,
-and stay ledgered as islanded. Three neighbours pinned as refusals by
+filter-body and each-body twins compile and agree but island, and stay
+ledgered as islanded (re-diagnosed with the thirty-eighth increment: in
+their forward form the read sits in the DATA list and the literal BODY
+nets several values — a multi-value HOF body, not a read). Three neighbours pinned as refusals by
 earlier increments compile and agree now and are re-pinned as parity: the
 returned fn placed beside a value (`(h 5) 2`), its def-bound read applied
 (`def q (h 5)  q 2`), and the two-factory row (`(q 7) (r 1)`). The bare
@@ -4780,6 +4782,82 @@ counted loop whose count is never reached, plus one fragment and one
 conditional exit; the exit is the `break` machinery, not a new frame.
 The order the two regions are analysed in is load-bearing for the
 carried slots and for nothing else.
+
+## The fn-carrier read inside a nested body, and the gate that was two gates (2026-09-09, the thirty-eighth increment)
+
+The thirty-fifth increment's substitution — a read of a name def-bound to
+a Function CARRIER resolves through the per-pass side table — declined
+inside ANY nested body (`NestedBodyDepth > 0`: a branch arm, a loop body,
+a `do` body) on the premise that such a body is re-run from its tokens,
+where the compiled body carries no binding for the name. The premise had
+a real failure behind it (`do [(f 2)]` once compiled to an island that
+raised `undefined word: f`), but the decline was the wrong instrument:
+it left `if c [(f 2)] [0]` and `for 2 [(f 2)]` reporting a FALSE
+undefined_word — an ERROR-severity diagnostic on a correct program, on
+the plain check — and `do [(f 2)]` behind the check-diagnostics sentinel.
+
+**What landed.**
+
+- The substitution fires inside a nested body too (`stepWord`, core).
+  The read then models as the dispatch it is where the body lowers
+  inline — a branch arm, a loop body, a while body — and a `do` body
+  reaches the dyn-body backstop (its closure probe still declines the
+  carrier's read: the probe carries no producer tables, so the operand
+  has no compiled home), where the sub-engine resolves the name through
+  the program's DynEnv twin to the runtime closure. All compile and
+  agree with no VM island.
+- The code-body gate (`recordCodeBodyClosureRead`) was two gates. It
+  keyed on `producerReturnedClosure` at the def, which is true for a
+  typed factory's CARRIER result (`def f (mk 1)`, a declared `Function`
+  return) and for a lambda factory's CONCRETE closure (`def h (mkg …)`)
+  alike. Measured with the gate removed: the carrier case compiles and
+  agrees (its read is the side-table substitution and the read model),
+  while the concrete case MISCOMPILES — `do [(h 1)]` compiled and raised
+  `undefined word: g` (the captured param) for the interpreter's 8, and
+  `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`: inside
+  the body's unit the read resolves to the FnDefInfo itself, whose home
+  is an event outside the unit. `RecordDynBind` now notes only a CONCRETE
+  produced closure for the gate; a carrier-bound name passes to the
+  closure path.
+
+**Measured.** The `do [(f 2)]` row graduates (ledger 43 → 42), moved to
+`lang/spec/bytecode-migrated.tsv` with four neighbours (two reads in one
+`do` body, a computed-condition branch arm, a loop body with a body-local
+def, a while body). The plain check is clean on every one. The
+concrete-closure rows keep the gate's refusal, the stack-form `each` and
+`filter` bodies keep "code-body word … (Stage 2)", a two-value arm keeps
+"then-branch result of unknown provenance".
+
+**Measured and NOT landed: the `/v` read of a carrier-bound name.**
+`stepWordVal` deliberately skips the side table (`TestStepWordValCarrier
+KeepsUndefinedDiag`), so `2 h/v apply` over a typed factory's carrier
+reports a false undefined_word AND a false unused_def on the plain check.
+Consulting the table there was tried: `typeof h/v` compiles and agrees,
+but the value read then hits the thirty-fifth increment's read model,
+which treats the carrier as a BARE read and refuses "the statement ends
+short of the wrapper's arity" — a misleading reason for a value read —
+and the remaining spellings re-diagnose without graduating (`2 h/v apply`
+is the apply-over-a-fn-typed-carrier refusal). The pmany/pseq rows were
+unaffected either way. Graduation needs the `/v` read to mint a fresh ID
+the alias (`aliasValRead`) seats, so the read model does not claim it;
+the strict-lane false positive is the reason to do it.
+
+**Found on the way, not fixed.** A produced closure whose body returns the
+wrong declared type raises type_error on both lanes, but the compiled
+report anchors on the fn literal with an empty name (`: return value 1:
+expected Integer, got ProperString @1:36 src="fn"`) where the interpreter
+anchors on the read (`f: … @1:93 src="f"`) — NUR122's position-and-name
+class, for `checkClosureReturn`.
+
+**What the next author should not re-derive.** The nested-body question
+is not "is the body re-run" but "what does the read resolve to": a
+carrier resolves through the side table on every pass and every depth,
+and only a concrete produced closure has a home the unit cannot reach.
+The next step for the code-body words is the closure PROBE: a fn unit
+lowers the same read as `LOOKUP_DYN_SCOPE` + `CALL_DYN_METHOD` (the
+dyn-scope rescue), and the probe declines it only because
+`forkForProbe` seeds no `producedBy` — `[1 2] each [(f 1)]` refuses
+"code-body word each (Stage 2)" on exactly that.
 
 ## What the ledger excludes, and why each exclusion was measured
 
@@ -4972,3 +5050,6 @@ position than the construct that produced the binding.
 | `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |
 | `lang/go/while_compile_test.go` | the thirty-seventh increment's parity (the falsy condition, `break`, the truthiness read, the flex counter, a two-arm if over the enclosing computation, a carried rebind read by the condition and after the loop, zero iterations, a computed condition over the carried slot, `break` and `continue` discarding the round, a `continue` and a `break` inside a branch arm, a fn-body while over a param, a fn body rebinding a module def, a nested while, two carried rebinds) and its sound refusals (the empty condition with the interpreter's runtime_error, a two-value condition, a multi-value body with a rebind) |
 | `compiler/go/while_record_test.go` | `RecordWhile`'s arms (inactive, a missing fragment, a condition netting zero or two values, a condition of unknown provenance, the recorded loop: the consts 0/1/MaxInt64, the condition fragment and its out, the scratch iterator) and the loop traversals visiting the condition (`childFragments`, `fragmentOuts`, `forEachFragmentOperand`, `fragmentResultSeqs`) |
+| `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the sound refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
+| `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
+| `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |

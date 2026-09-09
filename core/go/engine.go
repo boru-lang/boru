@@ -2769,35 +2769,34 @@ func (e *Engine) stepWord(val Value) error {
 		// row the moment it left the frontier ledger (the thirty-fifth
 		// increment). Both passes now resolve the read; the recorder
 		// notes are no-ops on the plain check's inactive recorder.
-		// A NESTED BODY declines. Stage 1 substitutes the carrier for a
-		// read of the name, which is right where the read is an OPERAND
-		// and wrong inside a branch / loop / quotation body, where the
-		// name is a body TOKEN whose binding the compiled body does not
-		// carry: `def f (mk 1)  do [(f 2)]` compiled to an island that
-		// raised `undefined word: f` where the interpreter answers 3.
-		// Declining restores this program class's pre-Stage-1 refusal
-		// (the read raises the check-diagnostics sentinel, so the
-		// interpreter fallback owns it, quietly) and leaves the proven
-		// operand contexts — where the graduations and §9b/§9c live —
-		// untouched. The list-member twin of this corruption is caught in
+		// A NESTED BODY substitutes too (the thirty-eighth increment). This
+		// used to decline at NestedBodyDepth > 0 on the premise that a
+		// branch / loop / quotation body is re-run from its TOKENS, where
+		// the compiled body carries no binding for the name: `def f (mk 1)
+		// do [(f 2)]` once compiled to an island that raised `undefined
+		// word: f`. That premise is gone — a code body compiles as a
+		// closure unit whose read is modelled as the dispatch it is, and a
+		// body a native re-runs through a sub-engine resolves the name
+		// through the program's DynEnv twin to a closure the invoker seam
+		// applies — while the decline left `if c [(f 2)] [0]` and `for 2
+		// [(f 2)]` reporting a FALSE undefined_word on the plain check.
+		// The list-member twin of the old corruption is still caught in
 		// the compiler (RecordMakeListInner).
-		if e.Registry.Check.NestedBodyDepth == 0 {
-			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
-				e.Registry.noteAnalysisUse(w.Name)
-				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
-				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
-				e.noteWordRead(cv, w.Name, val.Pos())
-				// Mark a COMPILE pass: if it ends in a refusal anyway, the
-				// compile entry points keep the SILENT interpreter
-				// fallback this program class had before Stage 1 (the
-				// read used to raise the check-diagnostics sentinel).
-				if e.Registry.analysisCompiling() {
-					e.Registry.Check.FnCarrierReadSubstituted = true
-				}
-				cv = WithPos(cv, val)
-				e.Tape.Set(e.Pointer, cv)
-				return e.stepLiteral()
+		if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
+			e.Registry.noteAnalysisUse(w.Name)
+			e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
+			e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
+			e.noteWordRead(cv, w.Name, val.Pos())
+			// Mark a COMPILE pass: if it ends in a refusal anyway, the
+			// compile entry points keep the SILENT interpreter
+			// fallback this program class had before Stage 1 (the
+			// read used to raise the check-diagnostics sentinel).
+			if e.Registry.analysisCompiling() {
+				e.Registry.Check.FnCarrierReadSubstituted = true
 			}
+			cv = WithPos(cv, val)
+			e.Tape.Set(e.Pointer, cv)
+			return e.stepLiteral()
 		}
 		e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 		v := NewAtom(w.Name)

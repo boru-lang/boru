@@ -125,3 +125,36 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		t.Errorf("the refusal must mark the program (compilable=%v reason=%q)", es.Compilable, es.Reason)
 	}
 }
+
+// TestRecordDynBindNotesOnlyConcreteClosures pins the thirty-eighth
+// increment's narrowing of the §9f gate: RecordDynBind notes a name for
+// recordCodeBodyClosureRead only when the produced closure is a CONCRETE
+// value. A Function CARRIER (a typed factory's declared return) is read
+// through the fn-carrier side table inside a code body and models as the
+// dispatch it is, so it is not noted.
+func TestRecordDynBindNotesOnlyConcreteClosures(t *testing.T) {
+	mk := func() (*EmitState, core.Value, core.Value) {
+		es := NewEmitState()
+		es.fnRecs = []*fnUnitRec{{nParams: 1, outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}}}
+		es.frames[0] = append(es.frames[0], EmitEvent{seq: 1, kind: evCallUser, uc: emitUserCall{unit: 0}})
+		carrier := core.NewCarrier(core.TFunction)
+		seedProduced(es, carrier, 1)
+		concrete := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
+			Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
+		}}})
+		seedProduced(es, concrete, 1)
+		return es, carrier, concrete
+	}
+	es, carrier, concrete := mk()
+	if !es.producerReturnedClosure(carrier.ID) || !es.producerReturnedClosure(concrete.ID) {
+		t.Fatal("fixture: both values must be produced closures")
+	}
+	es.RecordDynBind("f", carrier, core.SrcPos{})
+	if es.dynBoundClosures["f"] {
+		t.Error("a carrier-bound produced closure must not be noted for the code-body gate")
+	}
+	es.RecordDynBind("h", concrete, core.SrcPos{})
+	if !es.dynBoundClosures["h"] {
+		t.Error("a concrete produced closure must be noted for the code-body gate")
+	}
+}
