@@ -593,17 +593,15 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// ───────────────────────────────────────────────────────────────────
 	// frontier-while.tsv — the `while` word (closed audit §5.9's gap,
-	// 2026-08-21). Two refusal modes today, both sound: the recorder's
-	// code-body-word gate, and — where the recorder admits the call — a
-	// VM mid-run bail on the spliced mark/cond/move loop tokens, resolved
-	// by RunCompiled's whole-program interpreter re-run. Graduation = a
-	// WHILE_SETUP-style lowering (the for-loop FOR_SETUP precedent).
-	`while [false] ['x'] end 'done'`:   {why: "while (2026-08-21): the recorder admits the pure-literal regions, but the VM has no opcode for the spliced mark/cond/move loop tokens — it bails mid-run and RunCompiled re-runs on the interpreter (slow, not wrong)", failsWith: "did not run compiled"},
-	`while [true] [break] end 'ended'`: {why: "while (2026-08-21): the recorder's code-body-word gate refuses `while` — no loop lowering exists for a condition loop", failsWith: "code-body word while (Stage 2)"},
-	`def c (flex {n:0}) end while [(c get 'n') lt 3] [ (c get 'n') set 'n' ((c get 'n') add 1) c ]`:                                          {why: "while (2026-08-21): VM mid-run bail to the interpreter on the spliced loop tokens (the whole-program fallback)", failsWith: "did not run compiled"},
-	`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`: {why: "while (2026-08-21): the recorder's code-body-word gate refuses `while`", failsWith: "code-body word while (Stage 2)"},
-	`while [] [1]`:                      {why: "while (2026-08-21): the condition-produced-no-value error surfaces via the interpreter re-run after the VM bail", failsWith: "did not run compiled"},
-	`while ['ok'] [break] end 'truthy'`: {why: "while (2026-08-21): the recorder's code-body-word gate refuses `while`", failsWith: "code-body word while (Stage 2)"},
+	// 2026-08-21). Four rows GRADUATED with the thirty-seventh increment
+	// (2026-09-09): a while records on the counted loop's own frame
+	// (RecordWhile — an unbounded FOR_SETUP/FOR_NEXT, the condition
+	// fragment lowered at the head of every iteration, a falsy value
+	// exiting through FLOW_BREAK); they live in lang/spec/control.tsv §7.
+	// The two rows that remain refuse soundly, each under a gate that is
+	// not the loop's.
+	`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-seventh increment): the while itself lowers; the body's `if ((c get 'n') eq 2) [continue]` is a computed-condition no-else if whose one arm diverges, which the branch recorder refuses under `for` too (`if (n eq 2) [continue]` over a plain read compiles). Graduation = the diverging arm of a computed-condition no-else if", failsWith: "computed-branch non-eager arm diverges"},
+	`while [] [1]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-seventh increment): the lowering admits a condition netting exactly one value; an empty region nets none, so the recorder refuses where the interpreter raises its runtime_error. Graduation = a terminal trap for the statically-empty condition (RecordTrap, top level only)", failsWith: "condition nets 0 values, not one"},
 }
 
 type frontierEntryLS struct {

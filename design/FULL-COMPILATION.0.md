@@ -3030,6 +3030,10 @@ adopted declaration triple (§3.4): every signature declares, per operand,
   structured lowerings (`WHILE_SETUP`/`WHILE_NEXT` on the `FOR_SETUP`
   precedent: per-iteration condition fragment, accumulating body values on
   a mark region, break/continue as jumps, truthiness via the kernel rule).
+  **Landed 2026-09-09** (the thirty-seventh increment) with no new opcode:
+  `RecordWhile` records the loop on `FOR_SETUP`/`FOR_NEXT` over an
+  unbounded count and a scratch iterator; the condition fragment lowers at
+  the head of every iteration and a falsy value exits through `FLOW_BREAK`.
 - Any handler that genuinely re-steps its operand on the tape
   (`tapeBound: Yes` — today's honest `var`-class answer) must be
   **rewritten to a structured or unit-taking form**. That is a finite,
@@ -3708,7 +3712,7 @@ Statement by statement:
 | S2 | `compose` receives two fn *values* (`/v`), stores them, returns a composed fn value — invoked later from Go, never on the tape | **refuses**: `function-valued operand at FnUtil.compose (Stage 3)` — the missing `CompileStoresFn`-class declaration, the fn-util defect | declaration triple says `tapeBound: No` (§6.8, Stage 0); the composed value is data over two units — Factor's `composed` cell (§6.3, Stage 3) |
 | S3 | `serve-raw` stores the handler fn; the Go accept loop owns it | compiles; store-site callback stamping is shipped (`RuntimeStampingEnabled`) | unchanged, minus the `CallBoru` fallback arm |
 | S4 | the connection callback: a closure, invoked per connection **after the program ends** | compiles; `InvokeCallback` → `RunUnit` — this seam *is* the measured ~74× | unchanged; the busy-registry decline arm retires (§6.7) |
-| S5 | `while [cond] [body]`: per-iteration condition re-eval, body values accumulate, `break`/`continue` | **refuses**: `code-body word while (Stage 2)` — family H | structured `WHILE` lowering (§6.8, Stage 6) |
+| S5 | `while [cond] [body]`: per-iteration condition re-eval, body values accumulate, `break`/`continue` | **compiles** (the thirty-seventh increment, 2026-09-09: the condition loop on the counted loop's frame — `RecordWhile`, a per-iteration condition fragment, a falsy exit through `FLOW_BREAK`; was **refuses**: `code-body word while (Stage 2)` — family H) | structured `WHILE` lowering (§6.8, Stage 6) |
 | S6, S8 | socket words, typed operands | compile (T-lane `CALL_NATIVE` — the echo bench proves it) | unchanged |
 | S7 | `(handle line)`: a **name-read lead** — WORD dispatch; the live binding of `handle` applies, every request | **refuses**: `def-bound computed fn apply (closure shape unknown — Stage 1)` — the NUR101 wall; this is the Express-middleware idiom, 100% refused today | §6.4 Apply + §6.5 generic dispatch: live def-stack lookup, then unit entry — G-lane, cacheable (§7) — Stage 3/4 |
 | S9 (hot swap) | a reload re-runs `def handle (FnUtil.compose route2/v auth/v)`; the next request sees v2 because S7 re-resolves the name | rebind gates refuse or the program was interpreted anyway | bind twins + live lookup make it native; in-flight connections finish on the old unit (frame-boundary cutover, §4), the next S7 dispatch sees v2; staleness costs one memoised restamp per world (§6.7) |

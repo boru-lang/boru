@@ -83,6 +83,19 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	fn := lw.emit(OpForNext, 0, lp.pos)
 	endHoles := []int{}
 	lw.loops = append(lw.loops, loopCtx{nextPC: head, endHoles: &endHoles})
+	// A CONDITION loop (RecordWhile, `while [cond] [body]`): the condition's
+	// one value is tested at the head of every iteration — falsy jumps to the
+	// FLOW_BREAK placed past the back-edge, which pops the loop frame and
+	// trims the round as a `break` from a callee would. The count is
+	// unbounded, so FOR_NEXT's own exit is never taken.
+	condExit := -1
+	if lp.cond != nil {
+		if reason := lw.lowerFragment(lp.cond, &lp.condOut, false, lp.pos); reason != "" {
+			lw.loops = lw.loops[:len(lw.loops)-1]
+			return reason
+		}
+		condExit = lw.emit(OpJmpIfFalse, 0, lp.pos)
+	}
 	var out *EmitOperand
 	if lp.hasBodyOut {
 		out = &lp.bodyOut
@@ -95,6 +108,10 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 		return reason
 	}
 	lw.emit(OpJmp, head, lp.pos)
+	if condExit >= 0 {
+		(*lw.code)[condExit].Arg = int32(len(*lw.code))
+		lw.emit(OpFlowBreak, 0, lp.pos)
+	}
 	endPC := len(*lw.code)
 	(*lw.code)[fn].Arg = int32(endPC)
 	for _, h := range endHoles {
@@ -968,6 +985,7 @@ func forEachOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		visit(ev.loop.start)
 		visit(ev.loop.end)
 		visit(ev.loop.step)
+		visit(ev.loop.condOut)
 		visit(ev.loop.bodyOut)
 		for _, c := range ev.loop.carried {
 			visit(c.init)
@@ -1062,7 +1080,7 @@ func eachClosureCap(ev *EmitEvent, fn func(EmitOperand)) {
 	case evFallback:
 		scan(ev.fb.ins)
 	case evLoop:
-		scan([]EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step, ev.loop.bodyOut})
+		scan([]EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step, ev.loop.condOut, ev.loop.bodyOut})
 	case evBranch:
 		scan([]EmitOperand{ev.br.cond, ev.br.condOut, ev.br.thenOut, ev.br.elsOut, ev.br.thenVal, ev.br.elsVal})
 	}
@@ -1087,15 +1105,15 @@ func branchSingleValue(br *emitBranch) bool {
 }
 
 // childFragments returns the body fragments a branch / loop event owns — the
-// list-form condition, both `if` arms, and a loop body. Nil entries are kept so
-// callers iterate a fixed shape and skip them; a non-branch/loop event owns
-// none.
+// list-form condition, both `if` arms, a condition loop's condition and a
+// loop body. Nil entries are kept so callers iterate a fixed shape and skip
+// them; a non-branch/loop event owns none.
 func childFragments(ev *EmitEvent) []*EmitFragment {
 	switch ev.kind {
 	case evBranch:
 		return []*EmitFragment{ev.br.condFrag, ev.br.then, ev.br.els}
 	case evLoop:
-		return []*EmitFragment{ev.loop.body}
+		return []*EmitFragment{ev.loop.cond, ev.loop.body}
 	}
 	return nil
 }
@@ -1164,6 +1182,9 @@ func forEachFragmentOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		}
 	case evLoop:
 		if ev.loop != nil {
+			if ev.loop.cond != nil {
+				fn(ev.loop.condOut)
+			}
 			fn(ev.loop.bodyOut)
 		}
 	}
@@ -1361,7 +1382,7 @@ func collectPromotableEvents(events []EmitEvent) ([]*EmitEvent, map[int]bool, ma
 // fragmentOuts returns, per childFragments slot, the OUT operand that must be
 // present on that fragment's sim at its close (nil for a fragment with no
 // out). Order matches childFragments: [condFrag, then, els] for a branch,
-// [body] for a loop.
+// [cond, body] for a loop.
 func fragmentOuts(ev *EmitEvent) []*EmitOperand {
 	switch ev.kind {
 	case evBranch:
@@ -1382,10 +1403,17 @@ func fragmentOuts(ev *EmitEvent) []*EmitOperand {
 		// nets no value per iteration, so its recorded operand must not count
 		// as a fragment-out reference (it falsely promoted the body's last
 		// event in `for 3 [i add 10]`, shifting the for-loop golden).
-		if ev.loop == nil || !ev.loop.hasBodyOut {
+		if ev.loop == nil {
 			return nil
 		}
-		return []*EmitOperand{&ev.loop.bodyOut}
+		outs := make([]*EmitOperand, 2)
+		if ev.loop.cond != nil {
+			outs[0] = &ev.loop.condOut
+		}
+		if ev.loop.hasBodyOut {
+			outs[1] = &ev.loop.bodyOut
+		}
+		return outs
 	}
 	return nil
 }
@@ -1411,6 +1439,7 @@ func fragmentResultSeqs(allEvents []*EmitEvent) map[int]bool {
 			mark(ev.br.elsOut)
 			mark(ev.br.condOut)
 		case evLoop:
+			mark(ev.loop.condOut)
 			mark(ev.loop.bodyOut)
 		}
 	}

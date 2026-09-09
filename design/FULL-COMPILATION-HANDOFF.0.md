@@ -4700,6 +4700,87 @@ a wrapper and a closure alike. A chain compiles because the claim carries
 its result's shape and the read mints a carrier that carries the rest: no
 level is special.
 
+## The condition loop on the counted loop's frame (2026-09-09, the thirty-seventh increment)
+
+`while` was family H's one member: the recorder's code-body-word gate
+refused it, and where the recorder admitted the pure-literal regions the
+VM bailed mid-run on the spliced mark/cond/move tokens and RunCompiled
+re-ran the whole program on the interpreter. Six ledger rows and no
+lowering. The plan (FULL-COMPILATION.0.md §6.8) named `WHILE_SETUP` /
+`WHILE_NEXT` opcodes; none was needed.
+
+**The interpreter's semantics, measured before a line was lowered.** The
+condition region's LAST value decides and the extras are dropped; an
+empty region raises `runtime_error: while: condition produced no value`;
+`break` and `continue` discard the partial round's values; body values
+accumulate (a variadic result, as `for`'s); a def the body rebinds
+persists after the loop, and a zero-iteration loop leaves the pre-loop
+value.
+
+**What landed.**
+
+- A `while` records on the counted loop's OWN frame (`RecordWhile`, over
+  the `recordLoopEvent` record it now shares with `RecordLoop`):
+  `FOR_SETUP`/`FOR_NEXT` over the consts start 0, step 1, end MaxInt64
+  and a scratch iterator local no name reaches. The condition is a second
+  fragment on the loop event (`emitLoop.cond`/`condOut`), lowered at the
+  head of every iteration; a falsy value jumps (`JMP_IF_FALSE`) to a
+  `FLOW_BREAK` placed past the back-edge, which pops the loop frame and
+  trims the round exactly as a `break` from a callee does. Body
+  classification, the iterator slot, the event and its result marks are
+  `for`'s. The lowering admits a condition netting exactly one value and
+  refuses every other count — sound, since the interpreter's fallback
+  raises (empty) or drops (extra) where the lowered shape cannot.
+- The check-mode model (`whileReturnsFn`) analyses the BODY first and the
+  condition second. A def the body rebinds is registered loop-carried by
+  the body's analysis, and a condition analysed before it resolved its
+  read to the pre-loop value — the compiled loop never terminated. Both
+  analyses run to their fixed points over the joined bindings, so the
+  order changes no verdict. `EndLoopCarried` appends to the pending
+  carried inits rather than replacing them (each analysis closes a carried
+  scope).
+- Every loop-event traversal in the lowerer visits the condition beside the
+  body — `childFragments`/`fragmentOuts` are `[cond, body]`,
+  `forEachOperand`, `forEachFragmentOperand`, `eachClosureCap`,
+  `fragmentResultSeqs`, the dyn-bind scan and the memo walk. Without that
+  a condition reading an enclosing computation (`(c get 'n') lt 3`)
+  refused as "branch reads enclosing computation" and, once admitted, as
+  "result operand of get is not on top"; `for`'s body with the same read
+  compiled all along.
+
+**Measured.** Four of the six ledger rows graduate (ledger 47 → 43): the
+falsy condition, `break`, the truthiness read and the flex counter, all
+VM-native and moved to `lang/spec/control.tsv` §7 with nine neighbours
+(a carried rebind read by the condition and after the loop, zero
+iterations, `break` and `continue` discarding the round, a `continue`
+and a `break` inside a branch arm, a fn-body while over a param, a nested
+while). The two remaining rows are re-diagnosed, each under a gate that is
+not the loop's: the `continue` row's body holds `if ((c get 'n') eq 2)
+[continue]`, a computed-condition no-else if whose one arm diverges,
+which the branch recorder refuses under `for` too (`if (n eq 2)
+[continue]` over a plain read compiles); the empty condition refuses as
+"condition nets 0 values, not one" where a terminal trap (RecordTrap, top
+level only) would graduate it. A two-value condition and a multi-value
+body with a rebind (the pre-existing "dynamic-scope def of unpromoted
+computed value", `for`'s too) refuse soundly.
+
+**A pre-existing `for` divergence, recorded here, not fixed.** `def i 0
+for 3 [def i (i add 1)] i` answers 2 on the interpreter and 3 compiled;
+with `break` in the body, 0 against 1. The body's `def` of the ITERATOR's
+own name rebinds the iterator's binding in the interpreter and the loop's
+teardown leaves the outer `i` at the last iterator value, where the
+compiled loop treats the def as a loop-carried rebind of the outer def
+(`def n 0 for 3 [def n (n add 1)] n` is 3 on both). Not the while's shape
+— its iterator is a scratch slot. The next author should decide which
+answer is the language's before making the lanes agree: the
+interpreter's reads as a teardown artefact.
+
+**What the next author should not re-derive.** A condition loop is a
+counted loop whose count is never reached, plus one fragment and one
+conditional exit; the exit is the `break` machinery, not a new frame.
+The order the two regions are analysed in is load-bearing for the
+carried slots and for nothing else.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4889,3 +4970,5 @@ position than the construct that produced the binding.
 | `check/go/fn_read_arrival_test.go` (`TestShapedFnReadResultShape`) | a claim with a result shape makes the read's result a Function carrier carrying the next level, on both halves |
 | `lang/go/modules/fn_test.go` (`TestFnShapeFromOperandArms`) | curry's chain claim (three unary levels over three params, no claim over a unary fn or no operand) |
 | `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |
+| `lang/go/while_compile_test.go` | the thirty-seventh increment's parity (the falsy condition, `break`, the truthiness read, the flex counter, a two-arm if over the enclosing computation, a carried rebind read by the condition and after the loop, zero iterations, a computed condition over the carried slot, `break` and `continue` discarding the round, a `continue` and a `break` inside a branch arm, a fn-body while over a param, a fn body rebinding a module def, a nested while, two carried rebinds) and its sound refusals (the empty condition with the interpreter's runtime_error, a two-value condition, a multi-value body with a rebind) |
+| `compiler/go/while_record_test.go` | `RecordWhile`'s arms (inactive, a missing fragment, a condition netting zero or two values, a condition of unknown provenance, the recorded loop: the consts 0/1/MaxInt64, the condition fragment and its out, the scratch iterator) and the loop traversals visiting the condition (`childFragments`, `fragmentOuts`, `forEachFragmentOperand`, `fragmentResultSeqs`) |

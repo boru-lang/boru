@@ -1,4 +1,4 @@
-# boru Language Specification: Control flow (if do for guard)
+# boru Language Specification: Control flow (if do for while guard)
 # Format: input<TAB>expected<TAB>description
 #
 # Branch/body arguments are unevaluated code lists (NoEvalArgs): `if`
@@ -80,3 +80,27 @@ add 10 (if (1 eq 1) (add 1 2) (sub 9 4))	13	both-computed result consumed downst
 # fn's result as always).
 def n 0 if (n eq 0) [99] def sq fn [[x:Integer] [Integer] [mul x x]] sq 5	99 25	guard fires first, then the def-fn idiom proceeds
 def n 5 if (n eq 0) [99] def sq fn [[x:Integer] [Integer] [mul x x]] sq 5	25	false guard: definition and call unaffected
+#
+# §7  while cond body — repeat a body while the condition's LAST value is truthy
+# The condition region re-evaluates before every iteration and its last
+# value decides (a truthiness read, not Boolean-only); body values
+# accumulate onto the stack as for's do; break ends the loop with the
+# values collected so far and continue abandons the current round; a def
+# the body rebinds persists after the loop. Compiled on the counted
+# loop's frame since the thirty-seventh increment (2026-09-09): the
+# condition fragment lowers at the head of every iteration and a falsy
+# value exits through FLOW_BREAK. The first four rows were
+# lang/spec/frontier/frontier-while.tsv's.
+while [false] ['x'] end 'done'	'done'	a falsy condition runs the body zero times
+while [true] [break] end 'ended'	'ended'	break ends the loop with the values collected so far
+while ['ok'] [break] end 'truthy'	'truthy'	the condition is a truthiness read, not Boolean-only
+def c (flex {n:0}) end while [(c get 'n') lt 3] [ (c get 'n') set 'n' ((c get 'n') add 1) c ]	0 (flex {n:3}) 1 (flex {n:3}) 2 (flex {n:3})	the classic counter loop: three iterations accumulate
+def n 0 end while [n lt 3] [def n (n add 1) n] end 'z'	1 2 3 'z'	a def the body rebinds is read by the condition; body values accumulate
+def n 0 end while [n lt 3] [def n (n add 1)] end n	3	a carried rebind persists after the loop
+def n 5 end while [n lt 3] [def n (n add 1)] end n	5	zero iterations leave the pre-loop value
+while [true] [1 break] end 'x'	'x'	break discards the current round's values
+def n 0 end while [n lt 3] [def n (n add 1) 1 continue 2] end 'z'	'z'	continue discards the current round's values
+def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [continue] end n] end 'z'	1 3 'z'	a continue inside a branch arm skips that round's tail
+def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [break] end n] end 'z'	1 'z'	a break inside a branch arm ends the loop
+def f fn [[k:Integer][Integer][def n 0 while [n lt k] [def n (n add 1)] n]] end (f 4)	4	a while inside a fn body counts against a param
+def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'	'z'	a nested while's break ends only the inner loop

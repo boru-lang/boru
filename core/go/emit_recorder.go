@@ -295,6 +295,13 @@ type EmitRecorder interface {
 	TakeFragment() EmitFragmentRef
 	RecordBranch(b BranchRecord)
 	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID string, out Value, regionN int, pos SrcPos)
+	// RecordWhile is RecordLoop for a CONDITION loop (`while [cond] [body]`,
+	// the thirty-seventh increment): cond and body are the two captured
+	// fragments, condStk / bodyStk their analysed residuals, iterID the
+	// scratch iterator the lowering binds — a while runs on the counted
+	// loop's own frame with an unbounded count, its condition's one value
+	// deciding each iteration. Inactive: no-op.
+	RecordWhile(cond, body EmitFragmentRef, condStk, bodyStk []Value, iterID string, out Value, pos SrcPos)
 	ArmBranchCapture()
 	PeekCaptureArm() bool
 	ArmLoopCapture()
@@ -378,6 +385,8 @@ func (inactiveEmit) FnBodyGuard() func()                                    { re
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
 func (inactiveEmit) RecordBranch(BranchRecord)     {}
+func (inactiveEmit) RecordWhile(EmitFragmentRef, EmitFragmentRef, []Value, []Value, string, Value, SrcPos) {
+}
 func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, Value, int, SrcPos) {
 }
 

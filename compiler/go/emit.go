@@ -2,7 +2,9 @@ package compiler
 
 import (
 	"maps"
+	"math"
 	"sort"
+	"strconv"
 
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -324,11 +326,16 @@ func (br *emitBranch) elseArm() armKind {
 type emitLoop struct {
 	start, end, step EmitOperand // start/step are always consts in Stage 2
 	body             *EmitFragment
-	bodyOut          EmitOperand
-	hasBodyOut       bool // false: the body nets no value per iteration (or diverges)
-	multiOut         bool // the body nets >1 value per iteration (net drivers): residualN reconciliation
-	iterSlot         int
-	pos              core.SrcPos
+	// cond is a CONDITION loop's condition fragment (`while [cond] [body]`,
+	// RecordWhile): lowered at the head of every iteration to its one value,
+	// condOut, which a falsy test exits the loop on. nil for a counted loop.
+	cond       *EmitFragment
+	condOut    EmitOperand
+	bodyOut    EmitOperand
+	hasBodyOut bool // false: the body nets no value per iteration (or diverges)
+	multiOut   bool // the body nets >1 value per iteration (net drivers): residualN reconciliation
+	iterSlot   int
+	pos        core.SrcPos
 	// carried seeds the loop-carried def slots (a pre-loop `def` the body
 	// REBINDS, read on a later iteration or after the loop) with their
 	// pre-loop values — lowered right after FOR_SETUP, before the first
@@ -4213,14 +4220,17 @@ func (es *EmitState) BeginLoopCarried() {
 }
 
 // EndLoopCarried closes the innermost carried-def scope, exposing its slot
-// inits to the RecordLoop that follows the analysis.
+// inits to the RecordLoop / RecordWhile that follows the analysis. The inits
+// ACCUMULATE: a condition loop analyses its body and its condition as two
+// scopes before one record claims them (RecordWhile), and a record claims
+// and clears the pending inits up front, so nothing carries across loops.
 func (es *EmitState) EndLoopCarried() {
 	if es == nil || len(es.loopCarried) == 0 {
 		return
 	}
 	top := es.loopCarried[len(es.loopCarried)-1]
 	es.loopCarried = es.loopCarried[:len(es.loopCarried)-1]
-	es.pendingCarried = top.inits
+	es.pendingCarried = append(es.pendingCarried, top.inits...)
 }
 
 // NoteLoopCarried registers one loop-body REBIND of a pre-existing def as
@@ -5581,7 +5591,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 	carried := es.pendingCarried
 	es.pendingCarried = nil
 	if body == nil {
-		es.MarkUncompilable("for: body not captured")
+		es.recordLoopEvent("for", nil, nil, nil, iterID, out, 0, "body not captured")
 		return
 	}
 	startOp, ok1 := es.resolveOperand(start)
@@ -5601,6 +5611,56 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 		return
 	}
 	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, pos: pos, carried: carried}
+	es.recordLoopEvent("for", lp, body, bodyStk, iterID, out, regionN, "")
+}
+
+// RecordWhile records a CONDITION loop (`while [cond] [body]`, the
+// thirty-seventh increment) on the counted loop's own frame: the loop runs
+// FOR_SETUP / FOR_NEXT over an unbounded count (a scratch iterator, never
+// read), and every iteration lowers the condition fragment to its ONE value
+// and exits on a falsy one through a FLOW_BREAK — which pops the loop frame
+// and trims the round exactly as a `break` does. The interpreter reads the
+// condition region's LAST value and drops the rest, and raises on an empty
+// region; the lowered shape is a condition netting exactly one value, and
+// any other count refuses (the empty condition's runtime error keeps the
+// interpreter's fallback). Body classification, the iterator slot, the
+// event and its result marks are RecordLoop's (recordLoopEvent).
+func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk, bodyStk []core.Value, iterID string, out core.Value, pos core.SrcPos) {
+	cond, body := asFragment(condRef), asFragment(bodyRef)
+	if !es.Active() {
+		return
+	}
+	carried := es.pendingCarried
+	es.pendingCarried = nil
+	lp := &emitLoop{iterSlot: -1, pos: pos, carried: carried, cond: cond}
+	refusal := ""
+	if cond == nil || body == nil {
+		refusal = "body not captured"
+	} else if condStk = es.stripZeroOutPhantoms(condStk); len(condStk) != 1 {
+		refusal = "condition nets " + strconv.Itoa(len(condStk)) + " values, not one"
+	} else {
+		op, ok := es.resolveOperand(condStk[0])
+		if !es.residualStands("while: ", condStk[0], op, ok, cond, "condition") {
+			return
+		}
+		lp.condOut = op
+		lp.start, _ = es.resolveOperand(core.NewInteger(0))
+		lp.step, _ = es.resolveOperand(core.NewInteger(1))
+		lp.end, _ = es.resolveOperand(core.NewInteger(math.MaxInt64))
+	}
+	es.recordLoopEvent("while", lp, body, bodyStk, iterID, out, 0, refusal)
+}
+
+// recordLoopEvent is the loop RECORD shared by RecordLoop (`for`) and
+// RecordWhile: the body's per-iteration residual classification, the
+// iterator slot, the event and its result marks. A caller's own refusal
+// (refusal != "") is raised here under the loop's word, so the two loops
+// share one refusal site.
+func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragment, bodyStk []core.Value, iterID string, out core.Value, regionN int, refusal string) {
+	if refusal != "" {
+		es.MarkUncompilable(word + ": " + refusal)
+		return
+	}
 	// A body ending in a 0-output statement guard (`if c [def …] []` — the
 	// loop-carried conditional-rebind shape) leaves only the guard's phantom
 	// None; stripping it classifies the body as the SIDE-EFFECT (zeroOut)
@@ -5630,17 +5690,17 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 			// so a verbatim accumulation would diverge. Keep those refused.
 			for i := range bodyStk {
 				if core.SigTypeMatches(bodyStk[i], core.TFunction) {
-					es.MarkUncompilable("for: body nets multiple values per iteration")
+					es.MarkUncompilable(word + ": body nets multiple values per iteration")
 					return
 				}
 			}
 			bodyOut, ok := es.resolveOperand(bodyStk[len(bodyStk)-1])
-			if !es.residualStands("for: ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result") {
+			if !es.residualStands(word+": ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result") {
 				return
 			}
 			for i := range bodyStk[:len(bodyStk)-1] {
 				if op, okOp := es.resolveOperand(bodyStk[i]); okOp &&
-					!es.residualStands("for: ", bodyStk[i], op, true, body, "") {
+					!es.residualStands(word+": ", bodyStk[i], op, true, body, "") {
 					return
 				}
 			}
@@ -5664,7 +5724,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 			lp.bodyOut, lp.hasBodyOut, lp.multiOut = bodyOut, true, true
 		} else {
 			bodyOut, ok := es.resolveOperand(bodyStk[len(bodyStk)-1])
-			if !es.residualStands("for: ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result") {
+			if !es.residualStands(word+": ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result") {
 				return
 			}
 			lp.bodyOut, lp.hasBodyOut = bodyOut, true
@@ -5683,7 +5743,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 	}
 	slot, ok := es.units[len(es.units)-1].localByID[iterID]
 	if !ok {
-		es.MarkUncompilable("for: iterator slot not registered")
+		es.MarkUncompilable(word + ": iterator slot not registered")
 		return
 	}
 	lp.body, lp.iterSlot = body, slot
@@ -9622,7 +9682,7 @@ func eventsBindDynScope(events []EmitEvent, names map[string]bool) bool {
 					return true
 				}
 			case evLoop:
-				if frag(ev.loop.body) {
+				if frag(ev.loop.cond) || frag(ev.loop.body) {
 					return true
 				}
 			}

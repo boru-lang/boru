@@ -8,11 +8,9 @@
 # step budget meters every region, so a non-terminating condition trips
 # evaluation_limit instead of hanging (pinned in
 # core/go/while_test.go / lang/go/while_limit_test.go). The compile
-# lane refuses the word — the ledger pins the reason; the interpreter
-# is the oracle.
-while [false] ['x'] end 'done'	'done'	a falsy condition runs the body zero times
-while [true] [break] end 'ended'	'ended'	break ends the loop with the values collected so far
-def c (flex {n:0}) end while [(c get 'n') lt 3] [ (c get 'n') set 'n' ((c get 'n') add 1) c ]	0 (flex {n:3}) 1 (flex {n:3}) 2 (flex {n:3})	the classic counter loop: three iterations accumulate
+# lane lowers the word on the counted loop's frame since the
+# thirty-seventh increment (2026-09-09; the graduated rows live in
+# lang/spec/control.tsv §7). The two rows here still refuse — the
+# ledger pins each reason; the interpreter is the oracle.
 def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]	(flex {n:3}) 1 (flex {n:3}) 3	continue abandons the current body round
 while [] [1]	ERROR:while: condition produced no value	an empty condition region is a loud error
-while ['ok'] [break] end 'truthy'	'truthy'	the condition is a truthiness read, not Boolean-only

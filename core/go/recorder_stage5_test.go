@@ -172,6 +172,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.RecordBranch(BranchRecord{})
 	e.RecordLoop(Value{}, Value{}, Value{}, nil, nil, "iter", Value{}, 0, SrcPos{})
+	e.RecordWhile(nil, nil, nil, nil, "iter", Value{}, SrcPos{})
 	if e.RecordInterpXml(XmlTmpl{}, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordInterpXml must decline")
 	}
