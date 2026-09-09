@@ -250,11 +250,13 @@ def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][
 #
 # The thirty-eighth increment (2026-09-09): a read of a name def-bound to a
 # Function CARRIER (a typed factory's declared return) resolves through the
-# fn-carrier side table inside a NESTED body too — a `do` body, a branch
-# arm, a loop body — and models as the dispatch it is. The first row was
-# frontier-hof-audit.tsv's §9f `do` row.
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2) (f 3)] add	7
+# fn-carrier side table inside a NESTED body too — a branch arm, a loop
+# body, a while body — and models as the dispatch it is. These three lower
+# INLINE, with no interpreter entry. The `do` spellings compile and agree
+# too, but `do` reaches the dyn-body backstop, whose handler re-runs the
+# body in a sub-engine — an interpreter entry the census counts — so they
+# stay in lang/spec/frontier/frontier-hof-audit.tsv until the body compiles
+# as a closure unit.
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def c (1 lt 2) end if c [(f 2)] [0]	3
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end for 2 [def q (f 2) q]	3 3
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'	4 4 'z'

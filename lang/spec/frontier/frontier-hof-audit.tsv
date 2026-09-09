@@ -139,7 +139,14 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #     read models as the dispatch it is. The concrete-closure row keeps
 #     the code-body gate (a lambda factory's closure read inside the
 #     body's unit resolves to the FnDefInfo itself). Ledgered.
+#     The `do` row is UN-LEDGERED and stays here: it compiles and agrees
+#     (TestFrontierSpecCompiled asserts exactly that), but `do` reaches
+#     the dyn-body backstop, whose handler re-runs the body in a
+#     sub-engine — an interpreter entry the frontier gate's island check
+#     cannot see and the main corpus's interp-entry census would count.
+#     Graduation = the body compiling as a closure unit.
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3] once; compiles and agrees now, the each body islands)
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; compiles and agrees since the thirty-eighth increment, through the dyn-body backstop)
 def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; refuses now)
 #
 # §9g a computed closure at a WORD's argument slot (2026-08-21):

@@ -235,6 +235,18 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 			default:
 				lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
 			}
+			// BORU_LOG_PARITY_ROWS=1 names every diverged row and both
+			// passes' findings. The ceiling is a ratchet whose every past
+			// move was justified by naming the exact row that moved it, and
+			// re-deriving that row by hand across a 7,700-row corpus is the
+			// step this switch removes. Mirrors BORU_LOG_CENSUS_ROWS
+			// (interp_entry_census_test.go) and BORU_LOG_UNFLAGGED
+			// (check_accuracy_test.go).
+			if os.Getenv("BORU_LOG_PARITY_ROWS") != "" {
+				t.Logf("PARITY ROW %s:L%d plain=%s armed=%s: %s",
+					e.Name(), lineNum, strings.Join(p, "|"), strings.Join(c, "|"),
+					firstNRunes(input, 90))
+			}
 			shape := "plain=" + strings.Join(p, "|") + " armed=" + strings.Join(c, "|")
 			byShape[shape]++
 			if len(examples) < 5 {

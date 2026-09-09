@@ -94,8 +94,9 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	}
 	condStk := AnalyseLoopBody(r, args[0], nil, nil, false)
 	out := NewCarrier(TList)
+	var top Value
 	if len(stk) > 0 {
-		top := stk[len(stk)-1]
+		top = stk[len(stk)-1]
 		if IsDisjunct(top) {
 			out = NewCarrierTypedListValue(top)
 		} else {
@@ -112,5 +113,21 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	if len(stk) == 0 {
 		return []Value{}
 	}
-	return []Value{out}
+	// PLAIN CHECK: a while leaves 0-OR-MORE values of the body's residual
+	// type — its trip count is never static — so the honest residual is a
+	// VARIADIC SPREAD (SpreadPayload, the device a `[]`-declared recursive
+	// fn's leak and await's winner-takes-all already use), not the one
+	// typed-List carrier above. That carrier is the recording pass's
+	// stand-in for the loop EVENT's result, where it is never read as a
+	// type: the compile lane refuses every consumption of a loop result
+	// ("consumes loop results"), and the residual it feeds is the
+	// program's. On the plain-check surface nothing refuses, so the
+	// soundness oracle reads this stack directly — and a List where the
+	// runtime leaves N scalars is a false claim (measured: 5 violations
+	// the moment the while rows entered the main corpus, control.tsv §7).
+	elem := NewTypeLiteral(top.Parent)
+	if IsDisjunct(top) {
+		elem = top
+	}
+	return []Value{NewVariadicCarrier(elem)}
 }

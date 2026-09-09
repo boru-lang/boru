@@ -4820,13 +4820,18 @@ the plain check — and `do [(f 2)]` behind the check-diagnostics sentinel.
   produced closure for the gate; a carrier-bound name passes to the
   closure path.
 
-**Measured.** The `do [(f 2)]` row graduates (ledger 43 → 42), moved to
-`lang/spec/bytecode-migrated.tsv` with four neighbours (two reads in one
-`do` body, a computed-condition branch arm, a loop body with a body-local
-def, a while body). The plain check is clean on every one. The
-concrete-closure rows keep the gate's refusal, the stack-form `each` and
-`filter` bodies keep "code-body word … (Stage 2)", a two-value arm keeps
-"then-branch result of unknown provenance".
+**Measured.** The `do [(f 2)]` row leaves the ledger (43 → 42) and three
+INLINE neighbours graduate to `lang/spec/bytecode-migrated.tsv` — a
+computed-condition branch arm, a loop body with a body-local def, a while
+body — each lowering with no interpreter entry. The `do` spellings
+themselves stay in `frontier-hof-audit.tsv`, un-ledgered: they compile and
+agree, but `do` reaches the dyn-body backstop, whose handler re-runs the
+body in a sub-engine, and the batch gate's interp-entry census counts that
+where `frontierRowCompiles` cannot see it (the section below records what
+that cost). The plain check is clean on every one. The concrete-closure
+rows keep the gate's refusal, the stack-form `each` and `filter` bodies
+keep "code-body word … (Stage 2)", a two-value arm keeps "then-branch
+result of unknown provenance".
 
 **Measured and NOT landed: the `/v` read of a carrier-bound name.**
 `stepWordVal` deliberately skips the side table (`TestStepWordValCarrier
@@ -4858,6 +4863,53 @@ lowers the same read as `LOOKUP_DYN_SCOPE` + `CALL_DYN_METHOD` (the
 dyn-scope rescue), and the probe declines it only because
 `forkForProbe` seeds no `producedBy` — `[1 2] each [(f 1)]` refuses
 "code-body word each (Stage 2)" on exactly that.
+
+## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
+
+The thirty-seventh and thirty-eighth increments each graduated rows into the
+main corpus, and the batch gate answered with three red ratchets. Both
+causes were real, and neither was in the compiled code — the compiled and
+interpreted lanes agreed on every row throughout. What moved was what the
+corpus MEASURES.
+
+**A while's check-mode residual was a List where the runtime leaves N
+values.** `whileReturnsFn` modelled the loop's residual as one typed-List
+carrier, mirroring `for`'s non-static arm. For `for` that arm is
+unreachable in the corpus (a computed count refuses), so the claim was
+never measured; the moment the while rows entered `lang/spec/control.tsv`
+the type-soundness oracle read it and flagged 5 violations against a pin of
+0 — checked `[List, String]` where the runtime leaves `1 2 3 'z'`.
+
+The claim was false, not merely imprecise: a while's trip count is never
+static, so its residual is 0-or-more values of the body's type. That shape
+has a device already — the VARIADIC SPREAD carrier (`SpreadPayload`), which
+a `[]`-declared recursive fn's leak and `await`'s winner-takes-all use, and
+which the oracle absorbs count-wise while still checking every element's
+type. The plain check now returns it. The RECORDING pass keeps the
+typed-List carrier: there it is the loop EVENT's stand-in, never read as a
+type, because the compile lane refuses every consumption of a loop result
+("consumes loop results") — measured, both spellings, before the change.
+
+**A row that compiles is not a row that compiles NATIVELY.** The
+thirty-eighth increment graduated `do [(f 2)]` into the main corpus on the
+strength of `frontierRowCompiles`, which sees an `OpFallback` span and the
+VM's own island seams. It does not see a HANDLER re-running a body in a
+sub-engine, which is exactly what `do` does when its body reaches the
+dyn-body backstop: the interp-entry census caught it (35 against a ceiling
+of 33, both new rows named), and the diagnostic-parity count rose with it
+(322 against 321). The two `do` spellings went back to
+`frontier-hof-audit.tsv` — un-ledgered, since they DO compile and agree and
+the frontier gate asserts that — and the three INLINE nested-body
+spellings, which lower with no interpreter entry at all, stayed in the
+corpus. Both ratchets returned to their pins with no ceiling raised.
+
+**The lesson, and the tool it earned.** A graduation is a claim about a row
+that three gates measure independently, and passing the one you happen to
+run is not passing them. The parity gate now names its diverged rows under
+`BORU_LOG_PARITY_ROWS=1`, as the census and check-accuracy gates already
+did — its ceiling has only ever moved with the exact row named, and
+re-deriving that row by hand across 7,700 rows is the step that was
+missing.
 
 ## What the ledger excludes, and why each exclusion was measured
 

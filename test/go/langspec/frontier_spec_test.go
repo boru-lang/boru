@@ -547,10 +547,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// program refused); the def site now detects the dropped apply.
 	// §9f — code BODIES over def-bound computed fns. Three regressions found
 	// by a differential sweep, each made a sound refusal on 2026-08-21. The
-	// `do [(f 2)]` row GRADUATED with the thirty-eighth increment
+	// `do [(f 2)]` row left this ledger with the thirty-eighth increment
 	// (2026-09-09): the fn-carrier substitution fires inside a nested body
-	// too, and the read models as the dispatch it is (lang/spec/
-	// bytecode-migrated.tsv). The concrete-closure row keeps the code-body
+	// too, so the row COMPILES and agrees — but `do` reaches the dyn-body
+	// backstop, whose handler re-runs the body in a sub-engine, so it stays
+	// an un-ledgered frontier row rather than moving that interpreter entry
+	// into the main corpus's census. The INLINE nested-body spellings (a
+	// branch arm, a loop body, a while body) did graduate, to
+	// bytecode-migrated.tsv. The concrete-closure row keeps the code-body
 	// gate — a lambda factory's closure read inside the body's unit
 	// resolves to the FnDefInfo itself, whose home is outside the unit.
 	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2 3]` and `[(f 1)]` is the DATA — the read compiles as a typed list literal and the each islands on its three-value body (the interpreter keeps the top). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
