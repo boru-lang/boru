@@ -86,7 +86,30 @@ var strOptEnums = map[string][]string{
 	"scope": {"first", "all"},
 	"occ":   {"first", "last"},
 	"eol":   {"preserve", "lf", "crlf"},
+	// The five below were MISSING, and the silence they left is exactly the
+	// one this table was introduced to end (NUR127). Each is consumed by a
+	// switch with a quiet default, so an out-of-domain value did not fail —
+	// it picked an arm the caller did not ask for:
+	//   changecase {style:'typo'} -> 'hello'  (the `default: // "lower"` arm)
+	//   escape     {tgt:'typo'}   -> 'a\ b'   (the `default: // "sh"` arm)
+	//   escape     {quote:'typo'} -> unquoted (the switch has no default)
+	//   normalize  {form:'typo'}  -> unchanged (applyNorm's `default: return s`)
+	//   split      {norm:'typo'}  -> unnormalised (same applyNorm default)
+	// `quote` carries "none" because the corpus spells the no-quoting request
+	// that way (corpus-modules.tsv:121), so it is a member of the domain and
+	// not merely the absence of one.
+	"style": {"lower", "upper", "capitalize", "title", "sentence", "fold"},
+	"tgt":   {"sh", "bash", "sed", "awk", "grep"},
+	"quote": {"none", "single", "double"},
+	"form":  {"NFC", "NFD", "NFKC", "NFKD"},
+	"norm":  {"NFC", "NFD", "NFKC", "NFKD"},
 }
+
+// strOptEnumsFold names the enumerated keys whose value is upper-cased before
+// it is used, so their domain is checked case-INSENSITIVELY: `form:'nfc'` and
+// `form:'NFC'` are the same request and both must pass. Checking these
+// case-sensitively would refuse a spelling that has always worked.
+var strOptEnumsFold = map[string]bool{"form": true, "norm": true}
 
 func keySet(names ...string) map[string]bool {
 	s := make(map[string]bool, len(names))
@@ -121,8 +144,18 @@ func validateStrOpts(r *Registry, v Value, word string) error {
 			continue
 		}
 		val, _ := m.Get(k)
+		// `norm` doubles as a BOOLEAN switch — `norm:true` means NFC — so a
+		// boolean here is the other spelling of the option, not a member of
+		// the string domain. It is legal and there is nothing to check.
+		if k == "norm" && val.Parent.ConformsTo(TBoolean) {
+			continue
+		}
 		got := ValToString(val)
-		if !contains(legal, got) {
+		probe := got
+		if strOptEnumsFold[k] {
+			probe = strings.ToUpper(got)
+		}
+		if !contains(legal, probe) {
 			return r.BoruErrorHintAt("string_option_error",
 				word+": option "+quoteKey(k)+" got "+quoteKey(got), word,
 				quoteKey(k)+" must be one of: "+strings.Join(legal, ", "), v.Pos())

@@ -874,13 +874,22 @@ func TestStrOptsAcceptKnownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ word, key string }{
-		{"replace", "scope"}, {"pad", "trunc"}, {"concat", "sep"},
-		{"trim", "chars"}, {"escape", "quote"},
+	// Each row carries a value legal for ITS OWN key. This used to pass
+	// "all" for every one of them, which is meaningful only for `scope` —
+	// the others were accepted because their keys had no declared domain,
+	// so the row proved the key was honoured and nothing about the value.
+	// NUR127 declared `quote`'s domain and the row failed, correctly: "all"
+	// is not a quote style. A per-key value is what the test meant to say.
+	for _, c := range []struct{ word, key, val string }{
+		{"replace", "scope", "all"},
+		{"pad", "trunc", "true"},
+		{"concat", "sep", "-"},
+		{"trim", "chars", " "},
+		{"escape", "quote", "single"},
 	} {
-		v := covOpts(map[string]Value{c.key: NewString("all")})
+		v := covOpts(map[string]Value{c.key: NewString(c.val)})
 		if err := validateStrOpts(reg, v, c.word); err != nil {
-			t.Errorf("%s: option %q rejected: %v", c.word, c.key, err)
+			t.Errorf("%s: option %q=%q rejected: %v", c.word, c.key, c.val, err)
 		}
 	}
 	// A non-map (the no-options call) validates trivially.

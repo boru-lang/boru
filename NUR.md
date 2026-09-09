@@ -286,6 +286,109 @@ the fix is the maintainer's to direct.
 
 ---
 
+## NUR128 — a module fn's body gets no declaration-shaped analysis, so its dead branches are reported only when someone calls it {#nur128}
+
+**Status:** Pending. **Found:** 2026-09-09, designing the `unreachable_branch`
+attribution fix — every candidate that could distinguish "constant for this
+call" from "constant for this code" lost this same class, from opposite
+directions, which is what identified it as the shared cause rather than a
+quirk of one design.
+
+**Rule:** a fn body is analysed twice — once DECLARATION-shaped, with every
+param bound to a carrier (`checkFnBodyAtConstruction` →
+`ParamBodyCarrier`), and once per concrete CALL SHAPE. The generalized run is
+the one whose verdict holds for every caller, so it is the one entitled to
+report a property of the code.
+
+**Divergence.** A module fn never gets the generalized run.
+`checkFnBodyAtConstruction` bails on `!r.Check.IsActive()`, and a module
+sub-registry's check is INACTIVE by design: the body must execute for real so
+its exports get concrete names ("check mode is not propagated into a module
+body — carrier-stripping would destroy the concrete export names",
+`native_module_module.go`; `design/module-fn-checkstate-ownership.1.md` §3.2).
+So a module fn's body is only ever analysed under whatever call shapes a
+program happens to use. Measured on HEAD, the same fn either way:
+
+```
+def f fn [[n:Integer] [Integer] [if true [n] [0]]]              -> warns
+import module [def mf fn [[…][…][if true [n] [0]]] export …]   -> SILENT
+import module [ … same … ]  M.mf 4                             -> warns
+```
+
+The dead branch is identical in all three. Whether it is reported depends on
+where the fn is defined and, for a module fn, on whether anyone calls it.
+
+**What the attribution fix changed, and what it did not.** Suppressing
+`unreachable_branch` inside a call-specialised analysis (`CallShapeDepth`,
+2026-09-09) makes the module class consistently SILENT instead of
+call-dependent. That is a true positive lost — a genuinely dead branch in a
+CALLED module fn no longer warns — and it is recorded as the accepted cost of
+that fix rather than hidden by it. It does not create this non-uniformity; the
+generalized run was already missing, which is why the fix has nothing to fall
+back on there.
+
+**The recovery, and the trap in it.** Do NOT make the module sub-registry's
+check active at construction: that is the reason the export names are
+concrete, and it is a documented decision, not an oversight. The narrower
+shape is to run the construction-shaped analysis for a module's exported fns
+at EXPORT time, on the PARENT's CheckState — which also restores the warning
+for the defined-but-never-called module fn that HEAD already misses. That is
+its own increment with its own design question; it moves the parity ledger on
+its own and has nothing to do with attribution.
+
+## NUR127 — five enumerated string options had no declared domain, so a typo picked an arm silently {#nur127}
+
+**Status:** RESOLVED 2026-09-09. **Found:** 2026-09-09, in review of the
+coverage repair that followed the lazy-help change — the completeness loop
+of the new `TestStringOptionValueOutsideDomainIsRefused` derives its rows
+from `strOptEnums`, and a reviewer asked why four of the option keys it
+skipped were absent from that table.
+
+**Rule:** one option-validation mechanism. `strOptEnums`
+(`lang/go/native/native_string_helpers.go`) exists precisely so that an
+out-of-domain option VALUE fails as loudly as an unknown option KEY; its own
+comment states the bug it closed — "`scope:"bogus"` simply was not `all`, so
+it behaved as `first`".
+
+**Divergence.** The table declared six keys and omitted five that are
+consumed by exactly the same shape — a switch with a quiet default. Measured
+on the default lane, exit 0, every one of these silently picking an arm the
+caller did not ask for:
+
+```
+StringUtil.changecase 'hello' {style:'typo'}  ->  'hello'   (default: "lower")
+StringUtil.escape     'a b'   {tgt:'typo'}    ->  'a\ b'    (default: "sh")
+StringUtil.escape     'a b'   {quote:'typo'}  ->  'a\ b'    (switch has no default)
+StringUtil.normalize  'abc'   {form:'typo'}   ->  'abc'     (applyNorm's default)
+StringUtil.split ',' 'a,b'    {norm:'typo'}   ->  ['a' 'b'] (same applyNorm default)
+```
+
+while the SAME shape on a declared key refused correctly, which is what made
+the omission a non-uniformity rather than a missing feature:
+
+```
+StringUtil.trim '  x  ' {side:'bogus'}
+    error: [boru/string_option_error]: trim: option "side" got "bogus"
+```
+
+**Two details the fix had to carry, or it would have broken working
+programs.** `form` and `norm` are upper-cased before use
+(`strings.ToUpper`), so `form:'nfc'` has always worked and their domains are
+checked case-INSENSITIVELY (`strOptEnumsFold`). And `norm` doubles as a
+BOOLEAN switch — `norm:true` means NFC — so a boolean value is the other
+spelling of the option, not a member of the string domain, and is skipped.
+`quote` carries `"none"` because the corpus spells the no-quoting request
+that way (`corpus-modules.tsv:121`), so it is a member of the domain rather
+than the absence of one.
+
+**Why it stayed invisible.** No test asserted the refusal for these five,
+and the only thing exercising the validator's error arms at all was a side
+effect: the eager dynamic-help hook passed a sample map `{a:1,b:2}` to every
+string word at registration, which took the unknown-KEY arm and never the
+out-of-domain-VALUE arm. Making help generation lazy removed that side
+effect, the coverage gate noticed, and writing the real test is what
+surfaced the gap.
+
 ## NUR126 — a returned lambda's computed capture was baked as an unrelated constant {#nur126}
 
 **Status:** RESOLVED 2026-09-05 (the twelfth increment); the number stays

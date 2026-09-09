@@ -2913,6 +2913,10 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// (RescueForwardRefDiagnostics).
 	r.Check.FnBodyDepth++
 	defer func() { r.Check.FnBodyDepth-- }()
+	if callShapeSpecialised(args, captures) {
+		r.Check.CallShapeDepth++
+		defer func() { r.Check.CallShapeDepth-- }()
+	}
 	// A fn body is a speculative region too (it runs only if called): an
 	// `undef` of an enclosing binding inside it must not leak the deletion
 	// into the pass model (SpecUndefBlocked — the wrapped-undef FP class;
@@ -3113,4 +3117,27 @@ func resolveTypeNameArgs(args []core.Value) []core.Value {
 		return args
 	}
 	return out
+}
+
+// callShapeSpecialised reports whether this body analysis is a per-CALL-SHAPE
+// specialisation rather than a declaration-shaped (generalized) run. A
+// generalized run binds every parameter to a CARRIER (ParamBodyCarrier at
+// construction time, or the generic-fn carrier args), so nothing in the body
+// can constant-fold on an argument; a specialised run binds at least one
+// ACTUAL value verbatim (RunFnBodyOnce pushes args unstripped), so folds
+// inside the body describe that call and not the code. Captures count for the
+// same reason: FnAnalysisKey keys on them, so a closure specialised on a
+// concrete capture is re-analysed per capture shape.
+func callShapeSpecialised(args []core.Value, captures []core.CapturedBinding) bool {
+	for i := range args {
+		if core.IsConcrete(args[i]) {
+			return true
+		}
+	}
+	for i := range captures {
+		if core.IsConcrete(captures[i].Value) {
+			return true
+		}
+	}
+	return false
 }

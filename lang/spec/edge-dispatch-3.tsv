@@ -33,6 +33,14 @@ import "boru:string-util" StringUtil.replace 'a' 'b' 'aaa' {scope:nope/q}	ERROR:
 import "boru:string-util" StringUtil.replace 'a' 'b' 'aaa' {scop:all/q}	ERROR:string_option_error	a typo'd option KEY is rejected — matching emit's schema behaviour below, where it was already loud
 import "boru:string-util" StringUtil.changecase 'hello' {style:"upper"}	'HELLO'	changecase drives its style through the options map
 import "boru:string-util" StringUtil.changecase 'hello' {styl:"upper"}	ERROR:string_option_error	typo'd key is rejected — it used to lowercase silently, so the typo looked like it worked
+import "boru:string-util" StringUtil.changecase 'hello' {style:"typo"}	ERROR:string_option_error	NUR127: a typo'd style VALUE is rejected — it used to take the `default: // "lower"` arm and answer 'hello', a real answer to a question nobody asked
+import "boru:string-util" StringUtil.escape 'a b' {tgt:"fish"}	ERROR:string_option_error	NUR127: an unknown escape TARGET is rejected — it used to fall through to the sh default
+import "boru:string-util" StringUtil.escape 'a b' {quote:"backtick"}	ERROR:string_option_error	NUR127: an unknown quote style is rejected — the switch has no default, so it used to leave the result unquoted
+import "boru:string-util" StringUtil.escape 'a' {quote:'none'}	'a'	NUR127 negative: 'none' IS a member of the quote domain, not the absence of one — the corpus spells the no-quoting request this way
+import "boru:string-util" StringUtil.normalize 'abc' {form:"nfx"}	ERROR:string_option_error	NUR127: an unknown normalisation form is rejected — applyNorm's `default: return s` used to pass the input through unchanged
+import "boru:string-util" StringUtil.normalize 'abc' {form:'nfc'}	'abc'	NUR127 negative: form is upper-cased before use, so a lowercase spelling has always worked and the domain check is case-insensitive
+import "boru:string-util" StringUtil.split ',' 'a,b' {norm:"nfx"}	ERROR:string_option_error	NUR127: the shared `norm` key carries the same domain wherever it is honoured
+import "boru:string-util" StringUtil.split ',' 'a,b' {norm:true}	['a' 'b']	NUR127 negative: norm doubles as a Boolean switch (true means NFC), so a Boolean is the other spelling of the option and not a domain member
 import "boru:emitlang" emit json {prety:true} {a:1}	ERROR:uncalled_function	emit: an unknown option key (typo'd 'prety') no longer matches the schema — a loud rejection, not silent compact output
 import "boru:emitlang" emit json {pretty:1} {a:1}	ERROR:uncalled_function	emit: a non-Boolean 'pretty' value fails the schema's typed slot — rejected rather than ignored
 #

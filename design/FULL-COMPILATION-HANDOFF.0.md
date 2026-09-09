@@ -5234,6 +5234,83 @@ words only" restriction — a word registered BEFORE `MarkReady` has a
 build-time snapshot from `genhelp`, and generating for it on demand would be
 new behaviour, not a fix. `IsHelpWord` is what keeps that line.
 
+## The unreachable_branch attribution fix: a dead branch is a claim about the CODE (2026-09-09)
+
+The lazy-help change exposed a latent defect rather than causing one:
+`boru check utils/wc.boru` reported a FALSE `unreachable_branch`, and one `if`
+could draw two CONTRADICTORY warnings at a single position. The memo had been
+masking it by only ever analysing one call shape per (name, arg-type-names)
+key; it survives BOTH ways of removing that mask (isolation and laziness),
+which is what proved it latent.
+
+**The mechanism.** The check pass analyses a fn body at least twice: a
+DECLARATION-shaped run with carrier args (`checkFnBodyAtConstruction` →
+`ParamBodyCarrier`), and one run per concrete CALL SHAPE. When a call passes a
+concrete value the body's `if` folds for THAT call, and
+`EmitUnreachableBranch` reports it at `CurCallPos` — a position inside the
+SHARED body. A property of one call, reported where every caller sees it.
+
+**The fix is one counter.** `CheckState.CallShapeDepth` counts enclosing
+`AnalyseFnBody` frames entered with at least one `IsConcrete` argument or
+capture; `EmitUnreachableBranch` returns early while it is positive. The
+declaration-shaped run keeps it at 0 even at `FnBodyDepth > 0`, so it stays
+loud — and it is the run whose verdict holds for every caller. Three
+production files, +38/-15.
+
+`FnBodyDepth > 0` alone would NOT work, and this was measured, not assumed: a
+genuinely-written `if true` inside a body emits at `FnBodyDepth == 1`,
+byte-identical to the false positive. The narrower counter is the whole point.
+
+**Measured.** `utils/wc.boru` 1 -> 0 warnings. The three-line repro's
+contradictory pair 2 -> 0. Every true positive survives at exactly 1: a
+written `if true` at top level, in a body, in a body called under two shapes,
+in a fn never called; a body-local fold `("a" eq "b")`; the folded-paren
+golden `if (1 gt 0) [10] [20]`; lambdas, nested inner fns, generics, and
+self-/mutually-recursive fns. Four corpus rows stop being flagged, each proven
+a false positive BY EXECUTION — `repeat "a" 3` returns 3 through the `[0]`
+base case the checker called dead, `MR.fac 10 1` returns 3628800 through
+`[acc]`, and `MR.aev 8` returns true through `[true]`. Nothing anywhere gains
+a warning.
+
+**It also fixes a second, independent defect.** All three emit constructions
+now funnel through the one guarded helper, and none of them ever used
+`CheckAddUniqueDiagnostic` — so a written `if true` in a body called under two
+shapes used to emit the SAME warning three times (generalized run + two
+specialisations). It now emits once.
+
+**The accepted cost, and why it is acceptable.** A genuinely dead branch in a
+CALLED module fn no longer warns, because a module fn has no
+declaration-shaped run to fall back on — recorded as NUR128, with the reason
+(module registries run their body with check INACTIVE so exports get concrete
+names) and the trap in the obvious recovery. The class is already incoherent
+on HEAD: the same module fn, never called, reports nothing. The fix makes it
+consistently silent rather than call-dependent.
+
+**What the next author should not re-derive.** Three other designs were built
+and measured before this one was chosen, and each is a dead end worth not
+re-walking:
+
+- **A provenance bit on the value** (mark a constant whose concreteness came
+  from a param binding) is smaller still and keeps the module class — but it
+  provably silences a condition constant for EVERY call shape, including a
+  semantic tautology like `if (s eq s)`, whose else arm is unreachable for
+  every possible input. The design cannot express "constant regardless of the
+  param's value"; that is inherent, not a bug.
+- **Evidence intersection across shapes** (emit only where every analysis
+  agrees) loses no true positive in the plain pass, but silently loses a
+  literally-written `if true` in the ARMED pass, invisible to every gate
+  because no corpus row has that shape. It also installs a second diagnostics
+  channel that must mirror every lifecycle operation of the first — eight
+  `TruncateDiagnostics` pairings, none compiler-enforceable.
+- **Re-attributing the warning to the call site** does not fix the class at
+  all: the contradictory pair reproduces one hop of nesting up, and
+  `utils/wc.boru` still warns.
+
+Do not look for provenance ON the folded Boolean: it is `Pos=0:0` with no
+`dynFrom` at every emit site, byte-identical for a source-written `if true`
+and a fold over a bound param. The analysis CONTEXT is the only signal there
+is.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

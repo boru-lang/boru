@@ -628,13 +628,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		if !lit {
 			branch = "then"
 		}
-		r.Check.AddDiagnostic(CheckDiagnostic{
-			Code:   "unreachable_branch",
-			Detail: "if condition is a constant " + BoolWord(lit) + "; " + branch + "-branch is unreachable",
-			Word:   "if",
-			Row:    r.Check.CurCallPos.Row,
-			Col:    r.Check.CurCallPos.Col,
-		})
+		EmitUnreachableBranch(r, lit, branch)
 		var stk []Value
 		var defs map[string]Value
 		if lit {
@@ -848,6 +842,14 @@ func ReduceStaticIf(r *Registry, cond, thenArm Value, elseArm *Value) ([]Value, 
 // EmitUnreachableBranch records the constant-condition dead-branch warning
 // shared by the if2/if3 const paths.
 func EmitUnreachableBranch(r *Registry, lit bool, dead string) {
+	// A dead branch is a claim about the CODE; a body analysed with a
+	// concrete argument bound is a claim about ONE CALL. Suppress inside a
+	// call-shape specialisation — the declaration-shaped run of the same body
+	// (carrier args, CallShapeDepth == 0) is the one entitled to speak, and it
+	// is the run whose verdict holds for every caller.
+	if r.Check.CallShapeDepth > 0 {
+		return
+	}
 	r.Check.AddDiagnostic(CheckDiagnostic{
 		Code:   "unreachable_branch",
 		Detail: "if condition is a constant " + BoolWord(lit) + "; " + dead + "-branch is unreachable",
@@ -916,13 +918,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	if lit, ok := LiteralCondValue(args[0]); ok && !lit { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
-		r.Check.AddDiagnostic(CheckDiagnostic{
-			Code:   "unreachable_branch",
-			Detail: "if condition is a constant false; then-branch is unreachable",
-			Word:   "if",
-			Row:    r.Check.CurCallPos.Row,
-			Col:    r.Check.CurCallPos.Col,
-		})
+		EmitUnreachableBranch(r, false, "then")
 	}
 	condFrag, condStk := analyseCondFragment(r, args[0])
 	restore := ApplyGuardNarrowing(r, args[0])
