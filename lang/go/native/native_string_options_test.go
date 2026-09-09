@@ -1,6 +1,7 @@
 package native
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -207,11 +208,29 @@ func TestStringOptionUnknownKeyIsRefused(t *testing.T) {
 		}
 		// …and the hint has to say what WOULD have been accepted, or the
 		// error is a dead end for anyone who mistyped.
+		//
+		// Compare the WHOLE list, not a sample of it. An earlier version
+		// asserted only that the hint contained one honoured key and omitted
+		// one foreign one, which a regression that truncated `split`'s hint
+		// to "keepEmpty" would have passed while dropping cs, lim, mode,
+		// norm and trimParts. The hint IS the per-word key set rendered, so
+		// hold it to exactly that.
 		opts := soptHintOptions(be.Hint)
 		if len(opts) == 0 {
 			t.Errorf("%s: hint %q carries no known-options list", c.word, be.Hint)
 			continue
 		}
+		want := sortedKeys(strOptKeys[c.word])
+		if !slices.Equal(opts, want) {
+			t.Errorf("%s: hint lists %v, want exactly this word's key set %v",
+				c.word, opts, want)
+		}
+		// The two named columns stay as a readable statement of what the set
+		// comparison is protecting: the word's own key is in, another word's
+		// is out. They are redundant with the line above by construction,
+		// and that is the point — if sortedKeys or strOptKeys ever stopped
+		// being the hint's source, the equality check would follow the bug
+		// and these would not.
 		if !contains(opts, c.has) {
 			t.Errorf("%s: hint %q omits %q, an option the word honours",
 				c.word, be.Hint, c.has)
@@ -250,6 +269,17 @@ func TestStringOptionValueOutsideDomainIsRefused(t *testing.T) {
 		{"match", "cs", `match "b" "abc" {cs:"nope"}`},
 		{"match", "mode", `match "b" "abc" {mode:"regex"}`},
 		{"match", "scope", `match "b" "abc" {scope:"some"}`},
+		// The five domains NUR127 added. `norm` is shared by every word that
+		// takes it, so each gets its own row: a per-word key set means a
+		// domain can be enforced for one word and not another.
+		{"split", "norm", `split "," "a,b" {norm:"nfx"}`},
+		{"trim", "norm", `trim " x " {norm:"nfx"}`},
+		{"contains", "norm", `contains "a" "abc" {norm:"nfx"}`},
+		{"indexof", "norm", `indexof "b" "abc" {norm:"nfx"}`},
+		{"match", "norm", `match "b" "abc" {norm:"nfx"}`},
+		{"normalize", "form", `normalize "abc" {form:"nfx"}`},
+		{"escape", "tgt", `escape "a b" {tgt:"fish"}`},
+		{"escape", "quote", `escape "a b" {quote:"backtick"}`},
 	}
 	covered := map[string]bool{}
 	for _, c := range cases {
@@ -282,10 +312,19 @@ func TestStringOptionValueOutsideDomainIsRefused(t *testing.T) {
 	// simply is not tested. So derive the full (word, key) set the runtime
 	// can enforce and require the table to cover it.
 	//
-	// concat, repeat and escape appear nowhere above on purpose: none of
-	// their keys (sep / skipEmpty / skipNullish / quote / tgt) has an
-	// enumerated domain, so there is no out-of-domain value to refuse.
-	// Give `tgt` one and this loop fails until a row is written for it.
+	// concat and repeat appear nowhere above on purpose: neither of their
+	// keys (sep / skipEmpty / skipNullish) has an enumerated domain, so
+	// there is no out-of-domain value to refuse. Declare a domain for one
+	// and this loop fails until a row is written for it.
+	//
+	// That is not a hypothetical. An earlier draft of this comment said the
+	// same of `escape`'s quote and tgt — which read as "these keys have no
+	// domain" when the truth was "the validator does not KNOW their domain,
+	// and picks an arm silently when it is missed". Review caught it, the
+	// domains are declared (NUR127), and this loop demanded the two rows
+	// above the moment they were. A key absent from strOptEnums is a claim
+	// that the switch consuming it has no wrong answer — check that claim
+	// against the switch before trusting it.
 	for word, allowed := range strOptKeys {
 		if word == "replace" || word == "changecase" {
 			continue // validated at check time; pinned in edge-dispatch-3.tsv

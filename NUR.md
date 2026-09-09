@@ -286,6 +286,59 @@ the fix is the maintainer's to direct.
 
 ---
 
+## NUR127 — five enumerated string options had no declared domain, so a typo picked an arm silently {#nur127}
+
+**Status:** RESOLVED 2026-09-09. **Found:** 2026-09-09, in review of the
+coverage repair that followed the lazy-help change — the completeness loop
+of the new `TestStringOptionValueOutsideDomainIsRefused` derives its rows
+from `strOptEnums`, and a reviewer asked why four of the option keys it
+skipped were absent from that table.
+
+**Rule:** one option-validation mechanism. `strOptEnums`
+(`lang/go/native/native_string_helpers.go`) exists precisely so that an
+out-of-domain option VALUE fails as loudly as an unknown option KEY; its own
+comment states the bug it closed — "`scope:"bogus"` simply was not `all`, so
+it behaved as `first`".
+
+**Divergence.** The table declared six keys and omitted five that are
+consumed by exactly the same shape — a switch with a quiet default. Measured
+on the default lane, exit 0, every one of these silently picking an arm the
+caller did not ask for:
+
+```
+StringUtil.changecase 'hello' {style:'typo'}  ->  'hello'   (default: "lower")
+StringUtil.escape     'a b'   {tgt:'typo'}    ->  'a\ b'    (default: "sh")
+StringUtil.escape     'a b'   {quote:'typo'}  ->  'a\ b'    (switch has no default)
+StringUtil.normalize  'abc'   {form:'typo'}   ->  'abc'     (applyNorm's default)
+StringUtil.split ',' 'a,b'    {norm:'typo'}   ->  ['a' 'b'] (same applyNorm default)
+```
+
+while the SAME shape on a declared key refused correctly, which is what made
+the omission a non-uniformity rather than a missing feature:
+
+```
+StringUtil.trim '  x  ' {side:'bogus'}
+    error: [boru/string_option_error]: trim: option "side" got "bogus"
+```
+
+**Two details the fix had to carry, or it would have broken working
+programs.** `form` and `norm` are upper-cased before use
+(`strings.ToUpper`), so `form:'nfc'` has always worked and their domains are
+checked case-INSENSITIVELY (`strOptEnumsFold`). And `norm` doubles as a
+BOOLEAN switch — `norm:true` means NFC — so a boolean value is the other
+spelling of the option, not a member of the string domain, and is skipped.
+`quote` carries `"none"` because the corpus spells the no-quoting request
+that way (`corpus-modules.tsv:121`), so it is a member of the domain rather
+than the absence of one.
+
+**Why it stayed invisible.** No test asserted the refusal for these five,
+and the only thing exercising the validator's error arms at all was a side
+effect: the eager dynamic-help hook passed a sample map `{a:1,b:2}` to every
+string word at registration, which took the unknown-KEY arm and never the
+out-of-domain-VALUE arm. Making help generation lazy removed that side
+effect, the coverage gate noticed, and writing the real test is what
+surfaced the gap.
+
 ## NUR126 — a returned lambda's computed capture was baked as an unrelated constant {#nur126}
 
 **Status:** RESOLVED 2026-09-05 (the twelfth increment); the number stays

@@ -38,13 +38,52 @@ func TestCaptureArmResidualArms(t *testing.T) {
 		t.Error("a parked-fn arm must not capture (the auto-apply hazard)")
 	}
 
+	// An entry with no PROVENANCE — no producing event, no frame local, and
+	// nothing the const gate will bake — declines the WHOLE capture. A
+	// partial list is the dangerous outcome, not a harmless one: drop the
+	// decline and the loop appends a zero EmitOperand (const slot 0) in the
+	// unresolvable entry's place, and the list is then full-length, so
+	// armRepushableResidual accepts it and the re-push seats const 0 where
+	// the value belonged.
+	//
+	// The NON-FINAL position is the one that needs a test: RecordBranch's
+	// resolveArm resolves only the arm's LAST value, so every entry beneath
+	// it is first looked at here. The program shape is an unresolvable value
+	// under a resolvable one — e.g. `import "boru:type-util"
+	// if true [tpartial 7] [3 4]`, whose undefined word leaves a carrier with
+	// no producer under the trailing 7.
+	noProv := core.NewCarrier(core.TInteger)
+	for _, c := range []struct {
+		name string
+		stk  []core.Value
+	}{
+		{"unresolvable BELOW the arm result (resolveArm never looks here)",
+			[]core.Value{noProv, core.NewInteger(7)}},
+		{"unresolvable AS the arm result",
+			[]core.Value{core.NewInteger(7), noProv}},
+	} {
+		arm := &EmitFragment{}
+		es.captureArmResidual(arm, c.stk)
+		if arm.residualOps != nil {
+			t.Errorf("%s: captured %v, want the decline (residualOps stays nil)", c.name, arm.residualOps)
+		}
+	}
+
+	// A DYNAMIC Any entry declines too — but at the parked-fn screen ABOVE,
+	// not for want of provenance: Any conforms to Function, so a gradual
+	// value is treated as possibly-callable and carries the auto-apply hazard
+	// on its own. Pinned as its own case, with the screen it takes named, so
+	// the two declines are never read as one.
 	dyn := core.NewCarrier(core.TAny)
 	dyn.Dynamic = true
 	dyn.ID = ""
+	if !core.SigTypeMatches(dyn, core.TFunction) {
+		t.Error("a gradual Any entry must read as possibly-callable — the parked-fn screen is what refuses it")
+	}
 	dynArm := &EmitFragment{}
 	es.captureArmResidual(dynArm, []core.Value{core.NewInteger(1), dyn})
 	if dynArm.residualOps != nil {
-		t.Error("an unresolvable entry must not capture")
+		t.Error("a dynamic Any entry must not capture")
 	}
 
 	// An EVENT-produced entry is captured (the loop side's restriction lifted
