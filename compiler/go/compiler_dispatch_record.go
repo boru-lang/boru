@@ -71,7 +71,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 		// takes a fn value declares a Function slot and its argument is
 		// not one of these produced closures, so refuse here and let the
 		// interpreter fallback own the shape.
-		if rec.argIsProducedClosure(args) {
+		if rec.argIsProducedClosure(word, sig, args) {
 			return
 		}
 	}

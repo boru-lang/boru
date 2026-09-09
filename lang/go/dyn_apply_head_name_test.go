@@ -118,17 +118,22 @@ func TestDynApplyHeadNameUnnamed(t *testing.T) {
 // The interpreter leaves the /v-parked fn as DATA inside the paren; the VM's
 // callDynTrailTop strips the stored value's construction-time quote to mirror
 // a READ-substituted arrival and so applies it. That strip is deliberate and
-// documented at its site; what this row pins is only that the resulting
-// diagnostic stays NAMELESS, since `g/v` is a value delivery and not the word
-// dispatch the interpreter would name.
+// documented at its site; what this row pins is that the diagnostic comes
+// from the nameless builder — no head name is SEATED for a `/v` delivery,
+// which is a value delivery and not the word dispatch the interpreter would
+// name. The builder prints the applied fn's OWN name, and since the
+// twenty-sixth increment that name is the frame binding's (`nameFrameFns`:
+// the VM names a fn bound for a named param as the interpreter's frame
+// binding does), so the row reads `cannot call `g“ — through the value,
+// not through a seat — where it read `cannot call ``` before.
 func TestDynApplyHeadNameNamelessArm(t *testing.T) {
 	const src = `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:String => [z])`
 	_, compiled, errC, _, errI := runBothEngines(t, src)
 	if !compiled || errC == nil || errI == nil {
 		t.Fatalf("compiled=%v errC=%v errI=%v, want both lanes raising", compiled, errC, errI)
 	}
-	if !strings.Contains(errC.Error(), "cannot call ``") {
-		t.Errorf("a /v delivery is not a word read, so the no-match stays nameless:\n%s", errC)
+	if !strings.Contains(errC.Error(), "cannot call `g`") {
+		t.Errorf("the nameless builder prints the frame-named value:\n%s", errC)
 	}
 	if !strings.Contains(errI.Error(), "expected 1 return value(s), got 2") {
 		t.Errorf("the interpreter still PARKS the /v fn — re-measure this record:\n%s", errI)

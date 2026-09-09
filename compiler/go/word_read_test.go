@@ -29,7 +29,7 @@ func wordReadUnit(t *testing.T) (*EmitState, *fnUnitRec, core.Value, core.Value)
 func TestNoteWordReadArms(t *testing.T) {
 	es := NewEmitState()
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "g", core.SrcPos{})
-	es.NoteValRead("id")
+	es.NoteValRead("id", "n")
 	if len(es.fnRecs) != 0 {
 		t.Fatal("no open unit: nothing to record on")
 	}
@@ -37,7 +37,7 @@ func TestNoteWordReadArms(t *testing.T) {
 	es.NoteWordRead(core.Value{}, "g", core.SrcPos{})
 	es.NoteWordRead(g, "", core.SrcPos{})
 	es.NoteWordRead(core.NewCarrier(core.TFunction), "other", core.SrcPos{})
-	es.NoteValRead("")
+	es.NoteValRead("", "n")
 	if rec.wordReadNames != nil || rec.valReads != nil {
 		t.Errorf("empty ids/names and a non-local value note nothing: %v %v", rec.wordReadNames, rec.valReads)
 	}
@@ -49,13 +49,13 @@ func TestNoteWordReadArms(t *testing.T) {
 	if rec.wordReadNames[x.ID] != "x" || rec.wordReadPos[g.ID].Col != 7 {
 		t.Errorf("both reads keep their name and position: %v %v", rec.wordReadNames, rec.wordReadPos)
 	}
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if rec.valReads[g.ID] != 1 {
 		t.Errorf("a /v read counts: %v", rec.valReads)
 	}
 	es.Compilable = false
 	es.NoteWordRead(g, "g", core.SrcPos{})
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if rec.wordReads[g.ID] != 1 || rec.valReads[g.ID] != 1 {
 		t.Error("an inactive state records nothing")
 	}
@@ -110,7 +110,7 @@ func TestWordReadAccounting(t *testing.T) {
 	if r := es.wordReadAccounting(rec); r != "" {
 		t.Errorf("a read seated in the replay window passes: %q", r)
 	}
-	es.NoteValRead(g.ID)
+	es.NoteValRead(g.ID, "n")
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "read both bare and by /v") {
 		t.Errorf("a mixed read refuses: %q", r)
 	}
@@ -135,7 +135,7 @@ func TestWordReadReplayArms(t *testing.T) {
 	if es.wordReadName(rec, quoted) != "" {
 		t.Error("a quoted value is data")
 	}
-	u.pendingApply = append(u.pendingApply, x.ID)
+	u.pendingApply = append(u.pendingApply, pendingApply{id: x.ID})
 	if es.wordReadName(rec, x) != "" {
 		t.Error("an apply-pending id is the apply word's")
 	}
@@ -211,9 +211,12 @@ func TestLamParamContract(t *testing.T) {
 }
 
 // TestFnResidualReplayReasonArms pins the shared refusal site's three
-// verdicts: a closure unit and a trailing apply take none; a fn-typed
-// word read the window cannot seat (an event after the read) refuses with
-// the NUR123 reason; a seated read passes the accounting.
+// verdicts: a closure unit takes none; a trailing apply takes neither the
+// count nor the replay verdict but still the READ accounting (the
+// thirty-second increment: an uncredited bare read beneath the tail apply
+// refuses, a credited one passes); a fn-typed word read the window cannot
+// seat (an event after the read) refuses with the NUR123 reason; a seated
+// read passes the accounting.
 func TestFnResidualReplayReasonArms(t *testing.T) {
 	es, rec, g, _ := wordReadUnit(t)
 	u := es.units[len(es.units)-1]
@@ -221,9 +224,14 @@ func TestFnResidualReplayReasonArms(t *testing.T) {
 	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 5})
 	op, _ := es.resolveOperand(g)
 	ops := []EmitOperand{op}
-	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); r != "" {
-		t.Errorf("a trailing apply takes no verdict here: %q", r)
+	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); !strings.Contains(r, "NUR123") {
+		t.Errorf("a trailing apply still accounts for an uncredited bare read: %q", r)
 	}
+	es.creditWordRead(g.ID)
+	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 1); r != "" {
+		t.Errorf("a trailing apply over a credited read takes no verdict: %q", r)
+	}
+	delete(rec.wordReadCredit, g.ID)
 	rec.closure = true
 	if r := es.fnResidualReplayReason(u, rec, []core.Value{g}, ops, 0); r != "" {
 		t.Errorf("a closure unit takes no verdict here: %q", r)
@@ -273,7 +281,7 @@ func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	if es.wordReadName(rec, j) != "j" {
 		t.Error("the produced value reads as its word")
 	}
-	es.NoteValRead(j.ID)
+	es.NoteValRead(j.ID, "n")
 	if es.wordReadName(rec, j) != "" {
 		t.Error("a binding read both bare and by /v is the accounting's, never a seat")
 	}
@@ -355,5 +363,105 @@ func TestDynApplyHeadNameSeat(t *testing.T) {
 	unit.seatDynApplyName(DynApplyHead{Name: "h"})
 	if len(cf.DynApplyName) != 2 || cf.DynApplyName[1].Name != "g" || cf.DynApplyName[1].Pos.Col != 37 || cf.DynApplyName[2].Name != "h" {
 		t.Errorf("each apply keys its own pc: %v", cf.DynApplyName)
+	}
+}
+
+// TestReplayLeadApplicables pins the one-lead rule's count (the twenty-sixth
+// increment): a data value is nothing; a fn-typed word read is the lead; a
+// GRADUAL word read beside it is discounted (it re-steps as the
+// interpreter's own word dispatch) but is the lead when it stands alone (a
+// gradual body-local's read, NUR123); a second fn-typed value, word read or
+// not, and a gradual value that is NOT a word read (an event result) beside
+// the lead both count — `f (g x y)` and `(g (x get "k"))` decline on them —
+// and with no fn-typed value the count is the original one-applicable rule.
+func TestReplayLeadApplicables(t *testing.T) {
+	es, rec, g, x := wordReadUnit(t)
+	u := es.units[len(es.units)-1]
+	es.NoteWordRead(g, "g", core.SrcPos{Row: 1, Col: 5})
+	es.NoteWordRead(x, "x", core.SrcPos{Row: 1, Col: 8})
+	one := core.NewInteger(1)
+	f := core.NewCarrier(core.TFunction)
+	e := core.NewDynamicCarrier(core.TAny)
+	for _, c := range []struct {
+		name   string
+		window []core.Value
+		want   int
+	}{
+		{"data alone", []core.Value{one}, 0},
+		{"a fn-typed word read is the lead", []core.Value{one, g}, 1},
+		{"a gradual word read beside it is discounted", []core.Value{x, g}, 1},
+		{"a gradual word read ALONE is the lead (a body-local's read, NUR123)", []core.Value{x, one}, 1},
+		{"two gradual word reads compete", []core.Value{x, x}, 2},
+		{"a second fn-typed word read competes", []core.Value{g, g}, 2},
+		{"a fn-typed value that is no word read competes", []core.Value{f, g}, 2},
+		{"a gradual event result beside the lead competes", []core.Value{e, g}, 2},
+		{"a gradual event result alone is the lead", []core.Value{e, one}, 1},
+		{"a gradual event result and a gradual read compete", []core.Value{e, x}, 2},
+	} {
+		if got := replayLeadApplicables(c.window, es.dynFrameWordsFor(u, rec, c.window)); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// TestRecordGradualApplyEventDeclines pins recordGradualApplyEvent's
+// declines (the twenty-seventh increment): outside a unit, a nil or
+// one-arg signature, a wrong arg or out count, a lead that is concrete, not
+// gradual or unidentified, a receiver that is itself a fn value, and an
+// operand the recorder cannot resolve. The positive arm is the lang rows'
+// (gradual_apply_test.go).
+func TestRecordGradualApplyEventDeclines(t *testing.T) {
+	es, _, g, x := wordReadUnit(t)
+	two := &core.Signature{Args: []*core.Type{core.TReach, core.TAny}}
+	oneArg := &core.Signature{Args: []*core.Type{core.TFunction}}
+	out := []core.Value{core.NewDynamicCarrier(core.TAny)}
+	unknown := core.NewDynamicCarrier(core.TAny)
+	unknown.ID = "nowhere"
+	pos := core.SrcPos{Row: 1, Col: 9}
+	if es.recordGradualApplyEvent(nil, []core.Value{x, g}, out, pos) {
+		t.Error("a nil signature declines")
+	}
+	if es.recordGradualApplyEvent(oneArg, []core.Value{x}, out, pos) {
+		t.Error("the one-arg overload is the pending apply's, not this event's")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{x}, out, pos) || es.recordGradualApplyEvent(two, []core.Value{x, g}, nil, pos) {
+		t.Error("a wrong arg or out count declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{core.NewInteger(1), g}, out, pos) {
+		t.Error("a concrete lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{g, x}, out, pos) {
+		t.Error("a fn-typed (not gradual) lead is the pending apply's")
+	}
+	noID := core.NewDynamicCarrier(core.TAny)
+	noID.ID = ""
+	if es.recordGradualApplyEvent(two, []core.Value{noID, g}, out, pos) {
+		t.Error("an unidentified lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{unknown, core.NewInteger(1)}, out, pos) {
+		t.Error("an unresolvable lead declines")
+	}
+	if es.recordGradualApplyEvent(two, []core.Value{x, unknown}, out, pos) {
+		t.Error("an unresolvable receiver declines")
+	}
+	// The positive arm: a gradual param lead over a literal receiver
+	// records the event, lowered to OpCallDynApplyOne.
+	before := len(es.frames[len(es.frames)-1])
+	if !es.recordGradualApplyEvent(two, []core.Value{x, core.NewInteger(1)}, out, pos) {
+		t.Fatal("a gradual lead over a resolvable receiver records")
+	}
+	evs := es.frames[len(es.frames)-1]
+	if len(evs) != before+1 || !evs[len(evs)-1].call.dynApplyOne || !evs[len(evs)-1].call.dynApplyUnquote || evs[len(evs)-1].call.pos != pos {
+		t.Errorf("the event carries the one-result and unquote flavours at the apply word's position: %+v", evs[len(evs)-1].call)
+	}
+	// A fn-value receiver is DATA under the apply word (the thirty-second
+	// increment): recorded like any other.
+	if !es.recordGradualApplyEvent(two, []core.Value{x, g}, out, pos) {
+		t.Error("a fn-value receiver records")
+	}
+	// Outside a unit nothing records.
+	top := NewEmitState()
+	if top.recordGradualApplyEvent(two, []core.Value{x, core.NewInteger(1)}, out, pos) {
+		t.Error("the main program has no single-consumer window")
 	}
 }

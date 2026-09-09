@@ -26,35 +26,17 @@
 #
 # ─────────────────────────────────────────────────────────────────────
 # §1  the classical combinator bases (audit §1.1)
-def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 42 ii/v apply	42	I = S K K, derived: identity over an Integer (BROAD: application is explicit — a paren places, apply calls)
-def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 'hello' ii/v apply	'hello'	the derived identity is polymorphic (String)
-def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply	14	B with inline-lambda args: runs to 14; the CHECK failure at this call site is NUR089
-def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end def d fn n:Integer Integer [mul n 2] end def e fn n:Integer Integer [add n 3] end 4 (e/v (bb d/v) apply) apply	14	the same B with named /v references checks clean — the call-site pair of NUR089
-def cc f:Function => [x:Any => [y:Any => [x/v (y f/v apply) apply]]] end def add2 a:Integer => [b:Integer => [add a b]] end 10 (1 (cc add2/v) apply) apply	11	C flips the argument order
-def kk x:Any => [y:Any => [x/v]] end 99 (kk 7) apply	7	K drops its second argument
-def ww f:Function => [x:Any => [x/v (x f/v apply) apply]] end def add2 a:Integer => [b:Integer => [add a b]] end 4 (ww add2/v) apply	8	W duplicates its argument
 #
 # §2  Church encodings (audit §1.2)
 def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint c3/v)	3	Church numeral three decodes
 def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def cplus m:Function => [n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) (m f/v apply) apply]]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint (c3/v (cplus c2/v) apply))	5	Church addition: 2 + 3
 def czero f:Function => [x:Any => [x/v]] end def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def cmult m:Function => [n:Function => [f:Function => [(f/v n/v apply) m/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint (c3/v (cmult c2/v) apply))	6	Church multiplication: 2 * 3
-def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def cfst p:Function => [(a:Any => [b:Any => [a/v]]) p/v apply] end def p (2 (cpair 1) apply) end (cfst p/v)	1	Church pair: first projection
-def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def csnd p:Function => [(a:Any => [b:Any => [b/v]]) p/v apply] end def p (2 (cpair 1) apply) end (csnd p/v)	2	Church pair: second projection
-def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply	'T'	Church true selects the first branch
-def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply	'F'	Church false selects the second branch
-def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot ctrue/v)) apply) apply	'F'	Church not true
-def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot cfalse/v)) apply) apply	'T'	Church not false
 def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cand p:Function => [q:Function => [cfalse/v (q/v p/v apply) apply]] end 'F' ('T' (cif (cfalse/v (cand ctrue/v) apply)) apply) apply	'F'	Church and: T and F
-def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cand p:Function => [q:Function => [cfalse/v (q/v p/v apply) apply]] end 'F' ('T' (cif (ctrue/v (cand ctrue/v) apply)) apply) apply	'T'	Church and: T and T
 def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cor p:Function => [q:Function => [q/v (ctrue/v p/v apply) apply]] end 'F' ('T' (cif (cfalse/v (cor ctrue/v) apply)) apply) apply	'T'	Church or: T or F
-def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cor p:Function => [q:Function => [q/v (ctrue/v p/v apply) apply]] end 'F' ('T' (cif (cfalse/v (cor cfalse/v) apply)) apply) apply	'F'	Church or: F or F
 #
 # §3  continuation-passing style (audit §1.3)
-def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 5 (v:Integer => [v]))	120	CPS factorial, identity continuation
-def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 10 (v:Integer => [add 0 v]))	3628800	CPS factorial, computing continuation
 #
 # §4  anonymous recursion — the U combinator (audit §1.4)
-def fgen fn s:Function Function [ ( fn n:Integer Integer [ if (lte 1 n) [1] [ mul n ((sub 1 n) (s/v s/v apply) apply) ] ] ) ] end def fact (fgen fgen/v) end (fact 5)	120	U-combinator factorial: self-application passed explicitly
 #
 # §5  a real parser-combinator library (audit §1.5). All four rows draw the
 #     def-split shape NUR087 recorded (a def bound by a call through a
@@ -71,7 +53,6 @@ def pitem s:String => [ if (eq 0 (size s)) [ {ok:false rest:s val:None} ] [ {ok:
 def fs [ (a:Integer => [add 1 a]) (a:Integer => [mul 2 a]) ] end ((fs get 1) 5)	10	functions in a list, retrieved and called
 def tbl {double:(a:Integer => [mul 2 a]) inc:(a:Integer => [add 1 a])} end def k 'double' end ((tbl get k) 5)	10	functions in a map, dynamic key dispatch
 def fs [ (a:Integer => [add 1 a]) (a:Integer => [mul 2 a]) ] end fold [apply] fs 5	12	pipeline over a list of functions
-def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)	11	a named compose returning a Function
 def f2 fn [[a:Integer b:Integer][Integer][a sub b]] end def g (f2/u) end (g 10 3)	-7	a usurp wrapper is storable and callable
 #
 # §7  the §5.4 application-context rule (audit §5.4; why Z diverges)
@@ -89,11 +70,13 @@ def n 1 end def mkc fn nn:Integer Function [(fn x:Integer Integer [add nn x])] e
 #     body may APPLY its captured Function — the fnval unit's own
 #     capture slot is DynApplyLeadEligible, so the apply-the-capture
 #     factory compiles natively. Repeated/multi-instance reads and the
-#     mismatched-arity spelling stay sound refusals (ledgered).
+#     mismatched-arity 0-arg spelling graduated 2026-09-07 (the
+#     twenty-sixth increment — the fnval unit models the raise; the row
+#     is in bytecode-migrated.tsv); the repeated reads graduated
+#     2026-09-08 (the thirty-sixth increment — the read model over a
+#     def-bound closure; the row is in bytecode-migrated.tsv).
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [add 7 z])) end (h2 5)	12	the admission's witness: the returned lambda applies its captured g
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][add 1 (g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 4)	13	the applied capture's result feeds further computation
-def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)	15 30	repeated reads of the bound closure (refuses today; ledgered)
-def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	a 0-arg apply of a 1-arg capture raises in the lambda body
 #
 # §9b the §4.3 capture-reachability fallback (2026-08-21): a call of a
 #     def-bound factory closure whose unit carries construction-scope
@@ -123,17 +106,14 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #
 # §9d the GRADUAL inner parameter (2026-08-21): the same
 #     apply-the-capture factory as §9b/§9, but the inner lambda's
-#     parameter is Any rather than a concrete type. The window is
-#     otherwise identical and its lead is admitted — only the
-#     ARGUMENT gate refuses, because a gradual argument cannot be
-#     proven non-function and the interpreter RAISES on a
-#     function-valued one (its leading collection meets a barrier)
-#     where the trailing model applies. Refuses; ledgered. There is
-#     no runtime repair: the raise is a property of word dispatch,
-#     so an island over the resolved window leaves both values inert.
-#     This is the Church chain's actual blocker (§5.8 stage 1).
-def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the arrow-inner factory with a gradual inner parameter (refuses; ledgered)
-def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)	15	the verbose twin of the row above — the concrete-parameter spelling compiles (§9)
+#     parameter is Any rather than a concrete type. It REFUSED at the
+#     closure count check (the residual [g, x] against one declared
+#     return) until 2026-09-07, when the twenty-sixth increment let a
+#     lambda VALUE unit take the fn path's residual replay, whose
+#     applicable count is names-aware — a gradual `x` beside the
+#     captured `g` no longer competes for the apply. Both spellings
+#     GRADUATED to lang/spec/bytecode-migrated.tsv; the Church chain
+#     (§5.8) is measured again from there.
 #
 # §9e the curried CHAIN through def bindings (2026-08-21): a
 #     three-level factory whose intermediate results are each
@@ -144,20 +124,29 @@ def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app
 #     (`2 fn (Integer) 3` for the interpreter's `6`). A REGRESSION
 #     introduced by the Stage 1 read substitution: before it the
 #     read raised undefined_word and the program refused. Now the
-#     def site detects the dropped apply and refuses. Ledgered.
-def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][add a (add b c)]] )]] )]] end def f1 (mk2 1) end def f2 (f1 2) end (f2 3)	6	the three-level curried chain through def bindings (refuses; ledgered)
+#     def site detects the dropped apply and refuses. Graduated
+#     2026-09-08 (the thirty-sixth increment): the def of a produced
+#     closure claims its shape with the RESULT's shape, so `(f1 2)` is a
+#     shaped Function carrier and the chain compiles level by level
+#     (the row is in bytecode-migrated.tsv).
 #
 # §9f code BODIES over def-bound computed fns (2026-08-21): three
 #     divergences found by a differential sweep, each a regression
-#     from this branch's own Stage 1 / Stage 2 admissions, each now
-#     a sound refusal. A code body is re-run by its native through
-#     the INTERPRETER, and neither admission survives that: the read
-#     substitution turns a body TOKEN into a value (so `each`'s body
-#     assembled as the data list [f, 5] and its input list vanished),
-#     and a compiled ClosurePayload is invokable only through the
-#     VM's re-entrant runner, never the interpreter. Ledgered.
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3]; refuses now)
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; refuses now)
+#     from this branch's own Stage 1 / Stage 2 admissions, each made
+#     a sound refusal. The `do [(f 2)]` row GRADUATED with the
+#     thirty-eighth increment (2026-09-09; lang/spec/bytecode-migrated.tsv):
+#     the fn-carrier substitution fires inside a nested body too and the
+#     read models as the dispatch it is. The concrete-closure row keeps
+#     the code-body gate (a lambda factory's closure read inside the
+#     body's unit resolves to the FnDefInfo itself). Ledgered.
+#     The `do` row is UN-LEDGERED and stays here: it compiles and agrees
+#     (TestFrontierSpecCompiled asserts exactly that), but `do` reaches
+#     the dyn-body backstop, whose handler re-runs the body in a
+#     sub-engine — an interpreter entry the frontier gate's island check
+#     cannot see and the main corpus's interp-entry census would count.
+#     Graduation = the body compiling as a closure unit.
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3] once; compiles and agrees now, the each body islands)
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; compiles and agrees since the thirty-eighth increment, through the dyn-body backstop)
 def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; refuses now)
 #
 # §9g a computed closure at a WORD's argument slot (2026-08-21):
@@ -169,8 +158,12 @@ def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7
 #     and stranded the argument behind it. Unmasked by 3d914ad (the
 #     Stage 2 admission): before it these programs refused outright.
 #     24 of the 690 diverged, in exactly two contexts. Refuses now.
-def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)	Integer	a computed closure applied in a typeof operand (compiled gave the two values `Function 5`; refuses now)
-def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]	ERROR:filter_error	the same shape in a filter body (compiled raised `cannot order Function and Integer`; refuses now)
+#     The typeof row graduated 2026-09-08 (the thirty-sixth increment —
+#     the read model collapses the apply at the read, so typeof takes
+#     its result; the row is in bytecode-migrated.tsv); the filter row
+#     compiles and agrees but its filter body islands — ledgered as
+#     islanded.
+def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]	ERROR:filter_error	the same shape in a filter body (compiled raised `cannot order Function and Integer`; compiles and agrees now, the filter body islands)
 #
 # §9h the two binding stores (2026-08-21): both P1 findings of the
 #     PR #397 review. A computed fn is NOT installed in Defs — the
@@ -192,8 +185,6 @@ def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end de
 #     Both compile guards (tryRecordPoly, recordCallElided) decline rather
 #     than record a wrong-arity poly window, so the row falls back
 #     faithfully. Graduation = an arity channel for a fetched-fn apply lead.
-def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — the interpreter oracle; the compile lane refuses (ledgered)
-def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} app 5 rules	ERROR:signature_error	…and its negative twin: a NON-fn in the rule slot makes apply refuse loudly (same lane story)
 #
 # §11 NUR087's branch-local spelling (2026-08-24). The def-split collapse
 #     now admits a DYNAMIC argument, so this CHECKS clean — the false

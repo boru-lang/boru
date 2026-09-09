@@ -34,6 +34,9 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if e.Sites() != nil {
 		t.Fatal("inactive Sites should be nil")
 	}
+	if _, ok := e.DefReadName("id"); ok {
+		t.Fatal("inactive DefReadName should decline")
+	}
 	e.PushInlineCtxBoundary()
 	e.PopInlineCtxBoundary()
 	// Stage-0b promotions: the probes that replaced the concrete

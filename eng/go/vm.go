@@ -356,7 +356,40 @@ func bindUnitLocals(fn *compiler.CompiledFn, args, captures []core.Value) []core
 			locals[slot] = cv
 		}
 	}
+	nameFrameFns(fn, locals)
 	return locals
+}
+
+// nameFrameFns names the fn VALUES a frame binds, as the interpreter's frame
+// binding does (installDef: `fnDef.Name = name` for a Function-family body):
+// a fn passed for a named param `g`, or captured as `g`, renders and
+// no-matches as `fn g(…)` / `cannot call `g“ on that lane. The VM bound the
+// caller's value verbatim, so `(f (z:Integer => [z])) 3` rendered `fn
+// (Integer) 3` for the interpreter's `fn g(Integer) 3` (NUR122's class, the
+// twenty-sixth increment). Only an FnDefInfo of THIS registry is renamed —
+// the payload the interpreter's rule names; a module wrapper (a foreign
+// Registry) takes installDef's rebinding path, which this does not mirror,
+// and a compiled closure keeps its render.
+func nameFrameFns(fn *compiler.CompiledFn, locals []core.Value) {
+	for i := 0; i < fn.NParams && i < len(locals) && i < len(fn.LocalNames); i++ {
+		name := fn.LocalNames[i]
+		if name == "" {
+			continue
+		}
+		if _, isClosure := locals[i].Data.(core.ClosurePayload); isClosure {
+			// A compiled closure bound for a named param takes the name the
+			// same way (the thirtieth increment): `(w (kk 7)) 4` rendered
+			// `fn (Any) 4` for the interpreter's `fn g(Any) 4`.
+			locals[i] = nameClosureValue(locals[i], name)
+			continue
+		}
+		fd, ok := locals[i].Data.(core.FnDefInfo)
+		if !ok || fd.Name == name || fd.Registry != nil {
+			continue
+		}
+		fd.Name = name
+		locals[i].Data = fd
+	}
 }
 
 // runVMEntry is the shared guarded prologue for every fresh VM run: it takes the
@@ -970,6 +1003,8 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 		return vc.callDynTrailTop(reg, arg, stack, curDebug, pc, head)
 	case compiler.OpCallDynApplyTop:
 		return vc.callDynApplyTop(reg, arg, stack, curDebug, pc)
+	case compiler.OpCallDynApplyOne:
+		return vc.callDynApply(reg, arg, stack, curDebug, pc, true)
 	case compiler.OpCallDynFrame:
 		return vc.callDynFrame(reg, arg, frameBase, stack, curDebug, pc, words)
 	case compiler.OpCallDynMethod:
@@ -1171,6 +1206,12 @@ func installedSigView(fnDef core.FnDefInfo) core.FnDefInfo {
 // non-FnDefInfo, non-closure payload raises applyHandler's own byte-identical
 // error — the same taxonomy the interpreter's dispatch of `apply` yields.
 func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	return vc.callDynApply(reg, n, stack, curDebug, pc, false)
+}
+
+// callDynApply is callDynApplyTop's shared body; one selects the EVENT form
+// (OpCallDynApplyOne): exactly one result or a defer.
+func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value, curDebug []core.SrcPos, pc int, one bool) ([]core.Value, *dynEnter, error) {
 	r := vc.r
 	if len(stack) < n+1 {
 		return nil, nil, vmErrAt(curDebug, pc, "CALL_DYN_APPLY_TOP underflow")
@@ -1182,12 +1223,48 @@ func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Val
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
-		results, err := vc.invokeClosure(vc.r, fnVal, args)
+	// commit is the ONE-result discipline of the event form (OpCallDynApplyOne):
+	// the model committed exactly one result, so any other count defers the
+	// run to the interpreter rather than misaligning the frame's stack.
+	commit := func(results []core.Value, err error) ([]core.Value, *dynEnter, error) {
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, r)
 		}
+		if one && len(results) != 1 {
+			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-one", fmt.Sprintf("apply over a gradual lead netted %d value(s), not the one the model committed", len(results)))
+		}
 		return append(stack[:base], results...), nil, nil
+	}
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// A compiled closure of the window's own arity runs VM-native; any
+		// other arity takes the interpreter's apply re-step below, whose
+		// bridge (ClosureAsFnDef) under- or over-applies exactly as the
+		// interpreter's fn value does. The arity is the unit's PARAM slots
+		// alone: NParams counts the trailing capture slots too, and reading
+		// it whole sent every capturing closure — `99 (kk 7) apply`, the
+		// twenty-eighth increment's whole family — to the island (the
+		// interp-entry census caught it, 40 over its ceiling of 33).
+		if fn, known := vc.closureUnit(cl); !known || fn.NParams-fn.NCaptures == n {
+			return commit(vc.invokeClosure(vc.r, fnVal, args))
+		}
+		return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
+	}
+	if fnVal.Parent == nil || !fnVal.Parent.ConformsTo(core.TFunction) {
+		// A GRADUAL lead (the twenty-seventh increment) that is no fn at
+		// run time. A lens takes `apply`'s [Reach Any] overload on the
+		// interpreter — a receiver-rebinding get the VM does not model —
+		// so defer the run; anything else is the interpreter's own
+		// `apply` no-match over the same stack window (its stack-only match
+		// looked at the top two values), raised at the apply word's
+		// position, which this op carries.
+		if fnVal.Parent != nil && fnVal.Parent.Equal(core.TReach) {
+			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-top", "apply over a lens value: deferred to the interpreter")
+		}
+		written := []core.Value{fnVal}
+		if n > 0 {
+			written = append(written, args[0])
+		}
+		return nil, nil, stampAt(core.RuntimeNoMatch(reg, "apply", written), curDebug, pc, r)
 	}
 	fnDef, ok := fnVal.Data.(core.FnDefInfo)
 	if !ok {
@@ -1196,28 +1273,64 @@ func (vc *vmContext) callDynApplyTop(reg *core.Registry, n int, stack []core.Val
 		return nil, nil, stampAt(fmt.Errorf("apply: function value carries no FnDefInfo (got %T)", fnVal.Data), curDebug, pc, r)
 	}
 	fnVal.Quoted = false // applyHandler: the parked value becomes a live call site
+	fnVal = core.MarkApplied(fnVal)
 	if vmNativeApplicable(vc.r, fnDef) {
 		if results, done, err := vc.tryNativeFnApply(fnVal, args); done {
-			if err != nil {
-				return nil, nil, stampAt(err, curDebug, pc, r)
-			}
-			return append(stack[:base], results...), nil, nil
+			return commit(results, err)
 		}
 	}
-	if ent := vc.dynApplyEnter(fnVal, args); ent != nil {
+	// The inline unit entry returns through its own RET, whose count the
+	// event form cannot check — so it is taken only under a contract
+	// promising the one return the model committed. The contract is the
+	// APPLIED VALUE's (applyRetContract, the frame's RET enforces it), never
+	// the entered unit's own: a stamped fn-value unit declares no returns of
+	// its own, and reading the unit sent every stamped lambda — `f:Any =>
+	// [f/v]` fetched from a map, Church false's inner lambda — to the island
+	// (the twenty-eighth increment; dynMethodClaimOK is the same reading).
+	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && (!one || dynMethodClaimOK(ent, 1)) {
 		return stack[:base], ent, nil
 	}
-	island := make([]core.Value, 0, n+1)
-	island = append(island, fnVal)
-	island = append(island, args...)
-	results, err := vc.islandRun(reg, island)
+	return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
+}
+
+// applyReStep is the interpreter's applyHandler re-step, islanded: the args
+// are the resolved stack (deepest first) and the fn value is stepped over
+// them at the pointer, so the fn collects from the stack exactly as the
+// interpreter's apply word makes it — a 0-arg fn fires and leaves the stack
+// beneath it, a fn of a larger arity under-applies and parks, and a mismatch
+// raises the interpreter's own diagnostic. The earlier island stepped the
+// fn FIRST with the args as forward tokens, which put a 0-arg fn's result
+// beneath the args the interpreter leaves beneath it.
+func (vc *vmContext) applyReStep(reg *core.Registry, fnVal core.Value, args []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	inputs := make([]core.Value, len(args))
+	for i, a := range args {
+		inputs[len(args)-1-i] = a
+	}
+	if reg == nil {
+		reg = vc.r
+	}
+	results, err := runIslandResolved(reg, inputs, []core.Value{fnVal})
 	if err != nil {
-		return nil, nil, stampAt(err, curDebug, pc, r)
+		return nil, err
 	}
-	if err := vc.screenResults(results, "dynamic apply-top result at fn-value apply", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
-		return nil, nil, err
+	if err := vc.screenResults(results, "dynamic apply-top result at fn-value apply", curDebug, pc); err != nil { //covergate:allow tape-coupled results cannot leave a resolved island: its inputs are values and its one token a fn (§compiler)
+		return nil, err
 	}
-	return append(stack[:base], results...), nil, nil
+	return results, nil
+}
+
+// closureUnit resolves the CompiledFn a closure payload names — in the
+// running program or, for a closure minted elsewhere, its own (a hosted
+// foreign unit); known=false for a payload that names no unit.
+func (vc *vmContext) closureUnit(cl core.ClosurePayload) (*compiler.CompiledFn, bool) {
+	prog := vc.p
+	if fp, foreign := vc.closureProgram(cl); foreign {
+		prog = fp
+	}
+	if prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return nil, false
+	}
+	return &prog.Fns[cl.Unit], true
 }
 
 // callDynMethod is the GUARDED mid-stream shaped-instance-method apply
@@ -1308,6 +1421,32 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	// promise keeps the island and the guard closure's runtime count, unchanged.
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
 		return stack[:base], ent, nil
+	}
+	// A MODIFIER WRAPPER resolves to what it wraps, exactly as callDynamic
+	// resolves one (the chain walk and the permutation are the same): a
+	// def-bound `FnUtil.flip` wrapper over a compiled user fn enters that
+	// fn's unit with the args reversed instead of islanding the wrapper's
+	// token re-dispatch. Both tiers retry against the unwrapped value under
+	// the same claim discipline as above.
+	if inner, reverse, wrapped := core.UnwrapModifierChain(fnVal); wrapped {
+		iargs := args
+		if reverse {
+			iargs = make([]core.Value, n)
+			for i := range args {
+				iargs[i] = args[n-1-i]
+			}
+		}
+		if ifd, isFn := inner.Data.(core.FnDefInfo); isFn && vmNativeApplicable(vc.r, ifd) {
+			if results, done, err := vc.tryNativeFnApply(inner, iargs); done {
+				if err != nil {
+					return nil, nil, stampAt(err, curDebug, pc, r)
+				}
+				return guard(results)
+			}
+		}
+		if ent := vc.dynApplyEnter(inner, iargs); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
+			return stack[:base], ent, nil
+		}
 	}
 	island := make([]core.Value, 0, n+1)
 	island = append(island, fnVal)
@@ -1556,6 +1695,18 @@ func vmNativeApplicable(r *core.Registry, fd core.FnDefInfo) bool {
 	if core.IsDelegationFnDef(fd) {
 		return true
 	}
+	// A SELF-CONTAINED Go-impl fn value (fn-util's produced wrappers) applies
+	// on its OWN signatures — the interpreter's anonymous-value rule. It is
+	// admitted HERE, ahead of the parked-native arm below: that arm resolves
+	// by NAME through the live registry, and such a value's Name is a label
+	// that may coincide with a registered word (`const`, the singleton-type
+	// maker), which is how `((FnUtil.const 7) 99)` compiled to 99 for the
+	// interpreter's 7. The def-read spelling's refusal blamed the island for
+	// that answer; the island in fact applies the value exactly as the
+	// interpreter does. tryNativeFnApply keys on the same predicate.
+	if core.IsSelfContainedGoFnDef(fd) {
+		return true
+	}
 	// tryNativeFnApply dispatches a parked native through the LIVE registry
 	// sigs, so admit one only while those sigs still describe this value. A
 	// modifier wrapper keeps the wrapped word's Name but rewrites its
@@ -1575,7 +1726,10 @@ func (vc *vmContext) tryNativeFnApply(fnVal core.Value, args []core.Value) ([]co
 		reg = vc.r
 	}
 	var sigs []core.Signature
-	if inner := reg.Lookup(fnDef.Name); inner != nil {
+	if core.IsSelfContainedGoFnDef(fnDef) {
+		// The stable handle: its own sigs, never its name (vmNativeApplicable).
+		sigs = fnDef.Signatures
+	} else if inner := reg.Lookup(fnDef.Name); inner != nil {
 		sigs = inner.Signatures
 	} else if len(fnDef.Signatures) > 0 {
 		sigs = fnDef.Signatures
@@ -1643,6 +1797,16 @@ func stampFnValuePos(err error, fnVal core.Value) error {
 	if ae, ok := err.(*core.BoruError); ok && ae.Row == 0 {
 		if p := fnVal.Pos(); p.Row != 0 {
 			ae.Row, ae.Col = p.Row, p.Col
+			// The token's text rides along too, as the interpreter's
+			// stampErrPos carries it: the caret's width is the token's. A
+			// handler error built with the WORD as its source text
+			// (`r.BoruError(code, detail, "FnUtil.compose")`) would otherwise
+			// underline fourteen characters where the interpreter, having
+			// dispatched the def-bound wrapper under its one-letter name,
+			// underlines one (the thirty-fifth increment).
+			if p.Src != "" {
+				ae.Src = p.Src
+			}
 		}
 	}
 	return err
@@ -1776,6 +1940,9 @@ func (vc *vmContext) bindDynScope(curReg *core.Registry, p *compiler.Program, ar
 // the run loop continues at the unit's RET (its RetReplay discipline).
 // Plain data costs the test and nothing else.
 func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	if spec.Results > 0 {
+		return vc.reStepIfFn(reg, fn, spec, frameBase, stack, locals, curDebug, pc)
+	}
 	var v core.Value
 	at := -1
 	if spec.Slot >= 0 {
@@ -1796,9 +1963,12 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 	if spec.Token < 0 || spec.Token >= len(fn.Body) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:]...)
+	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
+	if err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, false, err
+	}
 	if at >= 0 {
-		i := at - frameBase
+		i := at - frameBase + len(spec.Prefix)
 		prefix = append(prefix[:i], prefix[i+1:]...)
 	}
 	tokens := append([]core.Value(nil), fn.Body[spec.Token:]...)
@@ -1815,6 +1985,68 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 		return nil, false, err
 	}
 	return append(stack[:frameBase], results...), true, nil
+}
+
+// reStepIfFn executes a RE-STEP deopt (compiler.DeoptSpec.Results, NUR124).
+// The Results values on top are what a native call just left, and what the
+// interpreter would splice back onto the tape and step: an unquoted fn
+// among them dispatches where it lands, collecting forward over the tokens
+// written after the call and then from the stack beneath it. So when one
+// of them would dispatch at the pointer — the interpreter's own predicate,
+// core.FnValueDispatchesAtPointer — the island runs exactly that: the
+// results as its first TOKENS, the unit's body from the resume token after
+// them, over the frame region beneath the results as the resolved prefix;
+// the residual replaces the frame region and the run loop continues at the
+// unit's RET. Plain results cost the test and nothing else.
+func (vc *vmContext) reStepIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	top := len(stack) - spec.Results
+	if top < frameBase {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN underflow")
+	}
+	hot := false
+	for _, v := range stack[top:] {
+		if core.FnValueDispatchesAtPointer(v) {
+			hot = true
+			break
+		}
+	}
+	if !hot {
+		return stack, false, nil
+	}
+	if spec.Token < 0 || spec.Token > len(fn.Body) || spec.RetPC < 0 {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
+	}
+	prefix, err := deoptPrefix(spec, frameBase, top, stack, locals, curDebug, pc)
+	if err != nil {
+		return nil, false, err
+	}
+	tokens := append(append([]core.Value(nil), stack[top:]...), fn.Body[spec.Token:]...)
+	// The frame's def-cleanup duty, as deoptIfFn does it: a def the island
+	// makes tears down at its end.
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, tokens)
+	core.TruncateFrameDefs(reg, snapshot)
+	if err != nil {
+		return nil, false, stampAt(err, curDebug, pc, vc.r)
+	}
+	if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
+		return nil, false, err
+	}
+	return append(stack[:frameBase], results...), true, nil
+}
+
+// deoptPrefix builds a deopt island's resolved prefix — the interpreter's
+// frame at the point: the unnamed params the unit has not pushed yet
+// (spec.Prefix, the frame's stack bottom), then the frame region below top.
+func deoptPrefix(spec *compiler.DeoptSpec, frameBase, top int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	prefix := make([]core.Value, 0, len(spec.Prefix)+top-frameBase)
+	for _, s := range spec.Prefix {
+		if s < 0 || s >= len(locals) {
+			return nil, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad prefix slot")
+		}
+		prefix = append(prefix, locals[s])
+	}
+	return append(prefix, stack[frameBase:top]...), nil
 }
 
 // bindGlobal executes one OpBindGlobal — the cross-request persistence twin
@@ -2029,7 +2261,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// Ascription hygiene: a stored binding holds the REAL value
 			// (`def y (m as T)` — the interpreter's def strips at arg
 			// delivery; the compiled local store is that same boundary).
-			locals[in.Arg] = core.StripAscribed(stack[len(stack)-1])
+			stored := core.StripAscribed(stack[len(stack)-1])
+			// A produced fn value bound by `def` takes the def's name, as the
+			// interpreter's installDef renames it (StoreNames — the
+			// twenty-ninth increment).
+			if name, ok := storeNameAt(p, curUnit, pc); ok {
+				stored = vc.nameStoredClosure(stored, name)
+			}
+			locals[in.Arg] = stored
 			stack = stack[:len(stack)-1]
 		case compiler.OpDrop:
 			// Discard the top value — the computed else value on the taken
@@ -2127,16 +2366,24 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				copy(caps, stack[len(stack)-nc:])
 				stack = stack[:len(stack)-nc]
 			}
-			cl := core.ClosurePayload{Prog: p, Unit: int(in.Arg), Captures: caps, InShape: p.Fns[in.Arg].InShape, Render: p.Fns[in.Arg].Render}
+			cl := core.ClosurePayload{Prog: p, Unit: int(in.Arg), Captures: caps, InShape: p.Fns[in.Arg].InShape, Render: p.Fns[in.Arg].Render, Ident: core.NewFnIdentity()}
 			// The CALLBACK fn value's own declared return, keyed by THIS push's
 			// pc: the unit is shared across fn values with identical bodies and
 			// inputs, so the contract belongs to the value (see
 			// core.ClosurePayload.RetTypes).
+			v := core.Value{Parent: core.TFunction, Data: cl}
 			if spec, has := closureRetAt(p, curUnit, pc); has {
 				cl.RetTypes, cl.RetPatterns = spec.Types, spec.Patterns
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
+				v.Data = cl
+				if spec.DefName != "" {
+					// A `/v` read of a def-bound capturing literal: the
+					// value carries the def's name (the thirty-third
+					// increment), as the binding the interpreter reads does.
+					v = nameClosureValue(v, spec.DefName)
+				}
 			}
-			stack = append(stack, core.Value{Parent: core.TFunction, Data: cl})
+			stack = append(stack, v)
 		case compiler.OpPushType:
 			// Resolve the CANONICAL node at run time — never a pooled
 			// copy (eng/go/CLAUDE.md, Canonical *Type Pointers). Types
@@ -2304,7 +2551,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
-			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod:
+			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynApplyOne, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod:
 			// The fn-value-call boundary family: leading / trailing-1
 			// (callDynamic), interior-window (callDynamicMixed), fn-on-top
 			// (callDynTrailTop / callDynApplyTop) and the whole-frame replay
@@ -2335,6 +2582,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
+				nameFrameFns(fn, ent.locals)
 				vc.pushFrameArgs(ent.locals, fn.NArgs)
 				locals = ent.locals
 				enterUnit(ent.unit)
@@ -2395,6 +2643,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
+			nameFrameFns(fn, nl)
 			vc.pushFrameArgs(nl, fn.NArgs)
 			locals = nl
 			enterUnit(unit)
@@ -2442,6 +2691,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if in.Op == compiler.OpCallUser {
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 				vc.frameDepth++ // balanced by the matching RET below
+				nameFrameFns(fn, nl)
 				vc.pushFrameArgs(nl, fn.NArgs)
 			} else {
 				// Tail call: REPLACE the frame — the language's
@@ -2460,6 +2710,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					loopBase = frames[len(frames)-1].loopBase
 				}
 				loops = loops[:loopBase]
+				nameFrameFns(fn, nl)
 				vc.swapTailArgs(frames, nl, fn.NArgs)
 			}
 			locals = nl
@@ -2755,6 +3006,19 @@ func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
 	if ae.Row == 0 {
 		ae.Row = debug[pc].Row
 		ae.Col = debug[pc].Col
+		// The token's own text too: the caret's width is the token's, and
+		// a return-count error the interpreter stamps at the `apply` word
+		// underlines all five characters (the twenty-ninth increment). The
+		// token's text REPLACES what the error was built with, as the
+		// interpreter's stampErrPos replaces it: a handler error carries
+		// its WORD as source text (`r.BoruError(code, detail,
+		// "FnUtil.compose")`), and where the dispatching token is not that
+		// word — a def-bound wrapper applied under its one-letter name — the
+		// interpreter underlines the token, not the word (the thirty-fifth
+		// increment).
+		if debug[pc].Src != "" {
+			ae.Src = debug[pc].Src
+		}
 	}
 	if r != nil && ae.FullSource == "" {
 		ae.FullSource = r.Source

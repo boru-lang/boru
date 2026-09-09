@@ -641,12 +641,14 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 			restoreThen := ApplyGuardNarrowing(r, args[0])
 			es.Recorder().ArmBranchCapture()
 			stk, defs = RunCarrierBodyWithDefs(r, args[1])
+			stk = es.Recorder().ArmTailApply(stk)
 			restoreThen()
 			InstallJoinedDefs(r, defs, nil)
 		} else {
 			restoreElse := ApplyComplementNarrowing(r, args[0])
 			es.Recorder().ArmBranchCapture()
 			stk, defs = RunCarrierBodyWithDefs(r, args[2])
+			stk = es.Recorder().ArmTailApply(stk)
 			restoreElse()
 			InstallJoinedDefs(r, nil, defs)
 		}
@@ -682,6 +684,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+		thenStk = es.Recorder().ArmTailApply(thenStk)
 		thenFrag = recorderState(es).TakeFragment()
 		restoreThen()
 	} else if body, ok := computedArmDoBody(r, args[1]); ok {
@@ -695,6 +698,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
+		thenStk = es.Recorder().ArmTailApply(thenStk)
 		thenFrag = recorderState(es).TakeFragment()
 		restoreThen()
 	} else {
@@ -716,6 +720,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
+		elseStk = es.Recorder().ArmTailApply(elseStk)
 		elseFrag = recorderState(es).TakeFragment()
 		restoreElse()
 	} else if body, ok := computedArmDoBody(r, args[2]); ok {
@@ -723,6 +728,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
+		elseStk = es.Recorder().ArmTailApply(elseStk)
 		elseFrag = recorderState(es).TakeFragment()
 		restoreElse()
 	} else {

@@ -249,23 +249,23 @@ func TestShuffleRestepTimingDeclines(t *testing.T) {
 	}
 
 	// Axis 1: an FnDefInfo, with a token AFTER the shuffle. This is the row
-	// that separates shuffle-time from body-end re-stepping.
-	_, ok, errC, gotI, errI := runBothEngines(t, g+`[g/v] each [5 swap drop]`)
+	// that separates shuffle-time from body-end re-stepping — FIXED (the
+	// twenty-fourth increment, restep_deopt_test.go): the compiled body
+	// re-steps swap's results through a RE-STEP deopt, so g applies at the
+	// shuffle and drop empties the body on both lanes.
+	gotC, ok, errC, gotI, errI := runBothEngines(t, g+`[g/v] each [5 swap drop]`)
 	if !ok {
 		t.Fatal("the timing row must still compile — a refusal would hide the defect")
 	}
 	if errI == nil || !strings.Contains(errI.Error(), "body produced no result") {
 		t.Errorf("the interpreter applies AT the shuffle, so drop empties the body: %v/%v", gotI, errI)
 	}
-	if errC != nil {
-		t.Errorf("the compiled body leaves the fn for drop to remove, so it answers a value: %v", errC)
-	}
+	requireParity(t, g+`[g/v] each [5 swap drop]`, gotC, errC, gotI, errI)
 
-	// Axis 2: same body, payload the only difference. Both sides are asserted
-	// by VALUE, not merely as "they differ": an inequality check would keep
-	// passing if this path regressed to an execution error, an empty result or
-	// some third wrong answer, and a measurement record that tolerates a new
-	// defect is not recording anything.
+	// Axis 2: same body, payload the only difference — FIXED (the
+	// twenty-fifth increment, TestClosureValueReStepParity): the island's
+	// sub-engine bridges the ClosurePayload to a dispatchable fn, so both
+	// lanes apply the shuffled closure. Asserted by VALUE on both sides.
 	gotC2, ok2, errC2, gotI2, errI2 := runBothEngines(t, mkc+`[(mk 3)] each [5 swap]`)
 	if !ok2 {
 		t.Fatal("the closure row must still compile")
@@ -273,7 +273,7 @@ func TestShuffleRestepTimingDeclines(t *testing.T) {
 	if errI2 != nil || fmt.Sprint(gotI2) != "[[15]]" {
 		t.Errorf("the interpreter applies the shuffled closure: %v/%v", gotI2, errI2)
 	}
-	if errC2 != nil || fmt.Sprint(gotC2) != "[[fn (Integer)]]" {
-		t.Errorf("the compiled lane parks it, and that exact outcome is the record: %v/%v", gotC2, errC2)
+	if errC2 != nil || fmt.Sprint(gotC2) != "[[15]]" {
+		t.Errorf("the compiled lane applies it too: %v/%v", gotC2, errC2)
 	}
 }

@@ -416,3 +416,29 @@ func TestRunPredicateArms(t *testing.T) {
 		t.Fatalf("a transforming body must return its output, got %v %v %v", out, matched, err)
 	}
 }
+
+// TestHelpWordRecord pins the register-time half of on-demand help
+// (NoteHelpWord / IsHelpWord): the hook RECORDS a name and nothing else, so a
+// registration — including the user's own `def f fn […]` mid-check — costs a
+// map insert rather than a synthetic example evaluation in the live registry.
+func TestHelpWordRecord(t *testing.T) {
+	// A nil receiver answers no rather than panicking: every describe site
+	// reaches IsHelpWord before it has established it has a registry.
+	if (*Registry)(nil).IsHelpWord("anything") {
+		t.Error("a nil registry must claim no help words")
+	}
+	r := &Registry{}
+	// The negative first: an unrecorded name is not eligible, so a word with a
+	// build-time example snapshot never re-evaluates it.
+	if r.IsHelpWord("never-registered") {
+		t.Error("an unrecorded name must not be eligible for example generation")
+	}
+	r.NoteHelpWord("post-ready")  // lazily creates the map
+	r.NoteHelpWord("post-ready2") // and reuses it
+	if !r.IsHelpWord("post-ready") || !r.IsHelpWord("post-ready2") {
+		t.Errorf("recorded names must be eligible, got %v", r.helpWords)
+	}
+	if r.IsHelpWord("still-not-registered") {
+		t.Error("recording one name must not make every name eligible")
+	}
+}

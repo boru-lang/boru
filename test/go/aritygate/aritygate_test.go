@@ -79,6 +79,11 @@ var pinnedAritySites = map[string]int{
 	"core/go/deadsig.go":      1,
 	"core/go/canon.go":        1,
 	"core/go/value.go":        1,
+	// NoteFnShape rejects a NEGATIVE claim (`FnShape.Arity < 0`) — a shape a
+	// producing word could not build (`partial` over a 0-param fn raises) —
+	// a validity guard on the claim itself, not a decision keyed on a
+	// function's parameter count (the thirty-fifth increment).
+	"core/go/check_state.go":  1,
 	"core/go/boru_error.go":   2,
 	"core/go/macro_expand.go": 1,
 
@@ -86,7 +91,24 @@ var pinnedAritySites = map[string]int{
 	"check/go/carrier.go":        13,
 	"check/go/method_shape.go":   1,
 	"check/go/check_recovery.go": 1,
-	"eng/go/vm.go":               10,
+	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
+	// NAMED PARAM slots of a frame — which slots are params, so a fn value
+	// bound for one takes the binding's name as the interpreter's frame
+	// binding gives it (installDef). It reads WHERE the params sit, never
+	// what a function of a given arity may do; every arity takes the path.
+	// 11 -> 12: callDynApply's `fn.NParams == n` picks the VM-native fast
+	// path for a compiled closure whose unit takes exactly the window's
+	// values; every other arity takes the interpreter's own apply re-step,
+	// which applies the closure by its signature like any fn value. A path
+	// choice between two implementations of ONE dispatch rule, never a
+	// behaviour a function of a given arity gets — the twenty-seventh
+	// increment (the same shape dynApplyEnter's drift check pins above).
+	// 12 -> 11: that same test now reads `fn.NParams-fn.NCaptures == n` —
+	// the unit's PARAM slots alone, since NParams counts the trailing
+	// capture slots too and reading it whole sent every capturing closure
+	// to the island (the twenty-eighth increment). The census's pattern no
+	// longer sees the comparison; the site and its meaning are unchanged.
+	"eng/go/vm.go": 11,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -128,7 +150,20 @@ var pinnedAritySites = map[string]int{
 	"compiler/go/compiler_dispatch_record.go": 2,
 
 	// ── Compiler: recording and lowering against declared signatures.
-	"compiler/go/emit.go":           3,
+	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]
+	// takes the lead alone, [Reach Any] the lead and a receiver — and the
+	// recorder reads WHICH the check matched (sig.TotalArgs of 2) to record
+	// a gradual-lead apply as the one-arg event (recordGradualApplyEvent).
+	// That reads the matched signature's shape, the argument rule's own
+	// output; a fn of any arity on top at run time takes the same op — the
+	// twenty-seventh increment.
+	// 4 -> 6: slotDeclaresFunction reads whether a signature's slot i is
+	// DECLARED `Function` — two bounds checks on a signature INDEX
+	// (`i < len(sig.Params)`, `i < len(sig.Args)`) choosing which side of
+	// the signature holds the slot, not a decision about a function's
+	// shape; the declared slot type is the argument rule's own input —
+	// the thirtieth increment.
+	"compiler/go/emit.go":           6,
 	"compiler/go/user_poly.go":      1,
 	"compiler/go/callable_words.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's

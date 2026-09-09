@@ -38,6 +38,11 @@ type s5bEmit struct {
 	dynApplies   int
 	trapErrs     []*BoruError
 	rematches    int
+	// pending is the one value id the stub reports as an `apply`-word
+	// application in flight (ApplyPending); lastOut is the out carrier the
+	// last RecordDynApply received.
+	pending string
+	lastOut Value
 }
 
 func newS5BEmit() *s5bEmit { return &s5bEmit{EmitRecorder: TheInactiveEmit, activeOn: true} }
@@ -49,8 +54,10 @@ func (s *s5bEmit) RecordDynMethod(fn Value, args, outs []Value, word string, pos
 	s.dynMethods++
 	return s.dynMethodOK
 }
+func (s *s5bEmit) ApplyPending(id string) bool { return id != "" && id == s.pending }
 func (s *s5bEmit) RecordDynApply(args []Value, fn, out Value, pos SrcPos) (int, bool) {
 	s.dynApplies++
+	s.lastOut = out
 	if s.dynApplyConsumed > 0 {
 		return s.dynApplyConsumed, s.dynApplyOK
 	}
@@ -701,6 +708,48 @@ func TestS5BCloseParenLeadingDynamicApply(t *testing.T) {
 	}
 	if e.Tape.Len() != 1 {
 		t.Errorf("dyn apply must collapse the window, tape len %d", e.Tape.Len())
+	}
+}
+
+func TestS5BCloseParenPendingGradualLead(t *testing.T) {
+	// A DYNAMIC last value the apply word holds pending (`(x r apply)` over
+	// a gradual r, the twenty-seventh increment) is the paren's TRAILING
+	// apply, recorded through RecordDynApply with a GRADUAL out carrier
+	// (the lead's result is unknown), and the window collapses to it.
+	r := covRegistry(t, nil)
+	es := newS5BEmit()
+	es.dynApplyOK = true
+	lead := NewCarrier(TAny)
+	lead.Dynamic = true
+	lead.ID = "lead-id"
+	es.pending = lead.ID
+	installS5BEmit(t, r, es)
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(7), lead, NewCloseParen()}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || !es.lastOut.Dynamic || !es.lastOut.Carrier {
+		t.Errorf("the pending gradual lead records a trailing apply with a gradual out: calls=%d out=%+v", es.dynApplies, es.lastOut)
+	}
+	if e.Tape.Len() != 1 {
+		t.Errorf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
+	}
+	// The same window with NOTHING pending is no trailing apply: a dynamic
+	// last value is not the fn it might be, and the leading value is data,
+	// so the paren just opens — no record, both values kept.
+	es2 := newS5BEmit()
+	es2.dynApplyOK = true
+	installS5BEmit(t, r, es2)
+	e2 := NewTop(r)
+	e2.Tape = NewTape([]Value{NewOpenParen(), NewInteger(7), lead, NewCloseParen()}, StackHeadroom)
+	e2.Pointer = 3
+	if err := e2.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es2.dynApplies != 0 || e2.Tape.Len() != 2 {
+		t.Errorf("no pending apply: no record, window kept: calls=%d len=%d", es2.dynApplies, e2.Tape.Len())
 	}
 }
 

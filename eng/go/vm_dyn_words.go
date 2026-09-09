@@ -25,6 +25,66 @@ func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
 	return p.Fns[unit].DynApplyName[pc]
 }
 
+// storeNameAt is the def name seated on the promoted STORE_LOCAL at pc in the
+// code that holds it (Program.StoreNames for the main code, CompiledFn.StoreNames
+// for a unit), or "" — see the field.
+func storeNameAt(p *compiler.Program, unit, pc int) (string, bool) {
+	if p == nil {
+		return "", false
+	}
+	var tbl map[int]string
+	if unit < 0 {
+		tbl = p.StoreNames
+	} else if unit < len(p.Fns) {
+		tbl = p.Fns[unit].StoreNames
+	}
+	name, ok := tbl[pc]
+	return name, ok && name != ""
+}
+
+// nameStoredClosure is the compiled mirror of installDef's rename of a fn
+// value bound by `def` (`fnDef.Name = name`): a ClosurePayload stored under a
+// def takes the name in its own diagnostics (RetName — `h: expected 1 return
+// value(s), got 2`) and its render (`fn h(Integer)`), so a value read back or
+// raising later reads as the interpreter's. A payload already named (a
+// re-bind under a second name keeps the first, as installDef's own value
+// copy would not — measured shape: none in the corpus; the first name wins
+// here as the frame rename does), a non-closure, or a unit the render
+// bridge cannot describe is left alone.
+func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
+	return nameClosureValue(v, name)
+}
+
+// nameClosureValue is the rename itself, program-free: the payload names its
+// own program (OpPushClosure seats it), so a frame entry can rename a
+// closure bound for a named param through the same helper
+// (nameFrameFns — the interpreter's frame binding names a fn value bound
+// for a param exactly as installDef names a def, and a compiled closure
+// there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
+func nameClosureValue(v core.Value, name string) core.Value {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || cl.RetName == name {
+		return v
+	}
+	// A binding renames whatever it binds, a named closure included —
+	// installDef sets the name unconditionally, so a def-bound closure
+	// handed to a Function param renders under the PARAM's name
+	// (`(w p/v)` reads `fn f(Integer)` on both engines; the thirty-first
+	// increment). The copy in this slot is renamed; the stored value keeps
+	// its own name, as the interpreter's binding copies do.
+	cl.RetName = name
+	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
+		// The bridge's own signature, named — the render the interpreter's
+		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
+		// this value is only ever formatted.
+		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: prog.Fns[cl.Unit].Lambda})
+		}
+	}
+	v.Data = cl
+	return v
+}
+
 // writtenRun is how many of a replayed dispatch's arguments the interpreter's
 // forward window consumed: the longest leading run whose region entries are
 // not bare reads. Entries beyond the table's length cannot have been marked,
@@ -186,14 +246,24 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	if cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
 		return v, false
 	}
-	fn := &prog.Fns[cl.Unit]
-	// The unit's DECLARED param contract (CompiledFn.Params / ParamPatterns,
-	// seated by lamParamContract for a lambda's unit) is the signature the
-	// interpreter's frame binding matches under — a `z:Integer` lambda handed
-	// a String no-matches there. A unit that recorded none (a token body)
-	// declines: guessing Any would apply where the interpreter refuses.
-	if len(fn.Params) != fn.NArgs {
+	body := v
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+		return vc.invokeClosureOn(reg, body, args)
+	})
+	if !ok {
 		return v, false
+	}
+	return fnv, true
+}
+
+// closureSigParams is the bridge's param contract: the unit's DECLARED
+// params (CompiledFn.Params / ParamPatterns), one FnParam each, or false
+// for a unit that recorded no contract (a token body) — shared by the
+// handler-bearing bridge (closureFnDef) and the render-only rename
+// (nameStoredClosure), so the two describe one signature.
+func closureSigParams(fn *compiler.CompiledFn) ([]core.FnParam, bool) {
+	if len(fn.Params) != fn.NArgs {
+		return nil, false
 	}
 	params := make([]core.FnParam, len(fn.Params))
 	for i, t := range fn.Params {
@@ -205,15 +275,38 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 			params[i].Pattern = fn.ParamPatterns[i]
 		}
 	}
-	body := v
+	return params, true
+}
+
+// closureFnDef builds the FnDefInfo a compiled closure stands in for on the
+// interpreter: ONE handler-bearing signature over the unit's DECLARED param
+// contract (CompiledFn.Params / ParamPatterns, seated by lamParamContract
+// for a lambda's unit) — the signature the interpreter's frame binding
+// matches under, so a `z:Integer` lambda handed a String no-matches there —
+// whose handler applies the closure through invoke. A unit that recorded no
+// contract (a token body) declines: guessing Any would apply where the
+// interpreter refuses. Anonymous mirrors the source fn's flag
+// (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
+// at the pointer (ADR-016's gate), so the value-path bridge parks in the
+// same places the interpreter's own value does.
+func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+	params, ok := closureSigParams(fn)
+	if !ok {
+		return core.Value{}, false
+	}
 	// All-forward as the interpreter INSTALLS it: compileFnDef resolves a
 	// boru fn's BarrierAllForward to len(Params), which is what its no-match
 	// diagnostic reads (HasForwardSigs — the "group the call in parens"
 	// suggestion); the bridge carries the same value so the two lanes'
 	// diagnostics agree line for line.
 	sig := core.Signature{Params: params, BarrierPos: len(params), Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-		return vc.invokeClosureOn(reg, body, append([]core.Value(nil), a...))
+		return invoke(append([]core.Value(nil), a...))
 	})}
 	core.NormalizeSig(&sig)
-	return core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{sig}}), true
+	// The closure's own identity token rides on the bridge, so a bridged
+	// copy is `eq` to the closure and to every other bridge of it — one
+	// function, as the interpreter's copies of the source lambda are
+	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
+	// [dup eq]` answered false for the interpreter's true).
+	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, ident), true
 }

@@ -99,3 +99,164 @@ def f fn [[a:Integer] [List] [ def l [a None]  l ]] (f 1)	[1 None]
 def f fn [[a:Integer] [Map] [ def m {x: a  k: Integer}  m ]] (f 2)	{x:2 k:Integer}
 def f fn [[a:Integer] [Map] [ {x: a  r: None} ]] (f 3)	{x:3 r:None}
 do [1 div 0] error [drop] end 2 add 3	5	§8.2(6) graduation: a PROVEN-raise do with a zero-netting handler records a 0-output call (review §9.13)
+#
+# closure-capture family GRADUATED 2026-09-07 (the twenty-sixth increment,
+# design/FULL-COMPILATION-HANDOFF.0.md): a lambda VALUE unit takes the fn
+# path's residual replay (fnUnitRec.plainLambda) instead of the closure
+# count refusal, the replay's applicable count is names-aware, and the VM
+# names a fn bound for a named param as the interpreter's frame binding
+# does (nameFrameFns). These were frontier-hof-audit.tsv rows 74, 96, 135
+# and 136, each a ledgered "body result of unknown provenance" refusal.
+def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)	11	the §1.6 compose row: a returned lambda applying two captured fns
+def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	the §9 0-arg apply of a 1-arg capture: the fnval unit models the raise
+def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the §9d arrow-inner factory with a gradual inner parameter
+def app fn [[g:Function][Function][( fn [[x:Any][Any][(g x)]] )]] end def h (app (z:Integer => [mul 3 z])) end (h 5)	15	the §9d verbose twin
+#
+# apply over a GRADUAL lead GRADUATED 2026-09-07 (the twenty-seventh
+# increment): `apply` over a Dynamic value inside a fn unit records as an
+# apply event (OpCallDynApplyOne — one result or a defer), and a value that
+# is no fn at run time raises the interpreter's own apply no-match, natively
+# and byte for byte. This was frontier-hof-audit.tsv row 194, the negative
+# twin of the "apply over a dynamic lead" pair; its positive twin compiles
+# too but islands (the map-member lambda is not stamped) and stays in the
+# frontier corpus, ledgered as "islanded". The plain check flags this row's
+# no-match at the call over the concrete rule map (diagnostic_parity_test.go).
+def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} app 5 rules	ERROR:signature_error	its negative twin: a non-fn in the rule slot is apply's no-match on both lanes
+#
+# apply over a PRODUCED closure at the main program GRADUATED 2026-09-08
+# (the twenty-eighth increment): the `apply` word over a closure a factory
+# call's unit returns registers a PENDING application, the check engine's
+# re-step records it as the fn-value apply over the closure's producer
+# operand (OpCallDynApplyTop — the runtime payload carries the captures),
+# and a pending application no dispatch consumed refuses at Finalize. These
+# were frontier-hof-audit.tsv rows 29, 30, 33, 34, 35 and 43 (§1 the
+# classical bases I = S K K, C, K and W; §2 Church true), each ledgered as
+# "computed closure at a word's argument slot"; every one runs VM-native.
+def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 42 ii/v apply	42	I = S K K, derived: identity over an Integer (BROAD: application is explicit — a paren places, apply calls)
+def kk x:Any => [y:Any => [x/v]] end def ss f:Function => [g:Function => [x:Any => [(x g/v apply) (x f/v apply) apply]]] end def ii (kk/v (ss kk/v) apply) end 'hello' ii/v apply	'hello'	the derived identity is polymorphic (String)
+def cc f:Function => [x:Any => [y:Any => [x/v (y f/v apply) apply]]] end def add2 a:Integer => [b:Integer => [add a b]] end 10 (1 (cc add2/v) apply) apply	11	C flips the argument order
+def kk x:Any => [y:Any => [x/v]] end 99 (kk 7) apply	7	K drops its second argument
+def ww f:Function => [x:Any => [x/v (x f/v apply) apply]] end def add2 a:Integer => [b:Integer => [add a b]] end 4 (ww add2/v) apply	8	W duplicates its argument
+def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply	'T'	Church true selects the first branch
+#
+# the apply op's native entry under the APPLIED VALUE's contract, same
+# increment: the event form (OpCallDynApplyOne) entered a stamped fn-value
+# unit only when the UNIT declared the one return the model committed, and a
+# stamped lambda unit declares none of its own — so every const lambda the
+# apply word met, stamped and ready, ran on the interpreter island instead.
+# The entry now reads the applied value's contract (the one the frame's RET
+# enforces). Church FALSE (row 44) — its capture-free inner lambda is a
+# stamped const — and the fetched-fn apply's positive twin (row 187, the
+# twenty-seventh increment's "islanded" row) run native.
+def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply	'F'	Church false selects the second branch
+def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules	6	a fn fetched from a Map param, applied explicitly — compiles since the twenty-seventh increment but ISLANDS (the map-member lambda is not stamped); ledgered as islanded
+#
+# a unit's TAIL APPLY collapses into its call-site residual GRADUATED
+# 2026-09-08 (the twenty-ninth increment): a closure whose body ends in the
+# apply word over a fn-typed capture nets one value at run time, and the
+# check pass's call-site residual now collapses the window the same way
+# (EmitRecorder.UnitTailApply → collapseTailApply), so the produced-closure
+# apply records instead of refusing the capture. These were
+# frontier-hof-audit.tsv's two §1 B rows (audit §5.8 over B; the NUR089
+# call-site pair).
+def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply	14	B with inline-lambda args: runs to 14; the CHECK failure at this call site is NUR089
+def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end def d fn n:Integer Integer [mul n 2] end def e fn n:Integer Integer [add n 3] end 4 (e/v (bb d/v) apply) apply	14	the same B with named /v references checks clean — the call-site pair of NUR089
+#
+# a produced closure at a DECLARED Function slot GRADUATED 2026-09-08 (the
+# thirtieth increment): a closure a factory call returns, handed to a user
+# fn's `p:Function` param, is the call's argument (the interpreter's frame
+# binding installs it as data), so the argument-slot hold no longer refuses
+# it. Lifting the hold exposed a latent memo-key collision — a lambda body
+# that is one `=>` group carries no position, and two such lambdas of one
+# shape shared one compiled unit (cif's returned closure ran cnot's body,
+# T for F) — fixed by keying such a body on its canonical text. These were
+# frontier-hof-audit.tsv's two §2 `cnot` rows (Church not true / not false).
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot ctrue/v)) apply) apply	'F'	Church not true
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cnot p:Function => [t:Any => [f:Any => [t/v (f/v p/v apply) apply]]] end 'F' ('T' (cif (cnot cfalse/v)) apply) apply	'T'	Church not false
+#
+# the Church pair rows GRADUATED 2026-09-08 (the thirty-first increment): inside
+# the projection's unit a lambda VALUE beneath the fn-typed param's pending
+# tail apply is the apply's ARGUMENT (applyHandler re-steps the fn over the
+# resolved stack, where a parked lambda is data the pair's Function param
+# binds), so the unit finish's whole-residual window takes it; and at the main
+# program the `/v` read of a def-bound produced closure — a fresh wrap of the
+# binding with no provenance of its own — is traced to the bind's producer by
+# name while the binding is still the bind's. These were frontier-hof-audit.tsv's
+# two §5.8 Church pair rows (first and second projection).
+def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def cfst p:Function => [(a:Any => [b:Any => [a/v]]) p/v apply] end def p (2 (cpair 1) apply) end (cfst p/v)	1	Church pair: first projection
+def cpair a:Any => [b:Any => [s:Function => [b/v (a/v s/v apply) apply]]] end def csnd p:Function => [(a:Any => [b:Any => [b/v]]) p/v apply] end def p (2 (cpair 1) apply) end (csnd p/v)	2	Church pair: second projection
+#
+# the Church and/or rows GRADUATED 2026-09-08 (the thirty-second increment): a fn
+# VALUE beneath the `apply` word is data — applyHandler re-steps the applied fn
+# over the resolved stack, where a fn value never dispatches — so the paren-
+# bounded pending apply admits a fn-typed entry in its window (`(q/v p/v apply)`
+# hands q to p) and the gradual-lead event admits a fn-valued receiver
+# (`cfalse/v (…) apply` hands cfalse to the applied closure). These were
+# frontier-hof-audit.tsv's §2 rows Church and (T and T) and Church or (F or F);
+# their twins (T and F, T or F) compile and agree but still island — a def'd
+# lambda's value applied inside a unit through a carrier lead — and stay
+# ledgered as islanded.
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cand p:Function => [q:Function => [cfalse/v (q/v p/v apply) apply]] end 'F' ('T' (cif (ctrue/v (cand ctrue/v) apply)) apply) apply	'T'	Church and: T and T
+def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end def cor p:Function => [q:Function => [q/v (ctrue/v p/v apply) apply]] end 'F' ('T' (cif (cfalse/v (cor cfalse/v) apply)) apply) apply	'F'	Church or: F or F
+#
+# the U combinator GRADUATED 2026-09-08 (the thirty-second increment, found by
+# the frontier gate): `(s/v s/v apply)` puts a fn value beneath the apply word —
+# data on the resolved stack — so the self-application compiles; the factorial
+# agrees on both lanes and runs VM-native. This was frontier-hof-audit.tsv's §4
+# row (audit §1.4).
+def fgen fn s:Function Function [ ( fn n:Integer Integer [ if (lte 1 n) [1] [ mul n ((sub 1 n) (s/v s/v apply) apply) ] ] ) ] end def fact (fgen fgen/v) end (fact 5)	120	U-combinator factorial: self-application passed explicitly
+#
+# the CPS rows GRADUATED 2026-09-08 (the thirty-fourth increment): a pending
+# `apply`-word application at a branch ARM's tail (`[ 1 k/v apply ]`, a fn-typed
+# param applied inside the arm with its window inside the arm) collapses to the
+# one gradual value the apply nets, recorded as the apply event in the arm's
+# fragment (the arm frame seals the enclosing stack off on both lanes); the
+# thirty-third increment resolved the fn-local capturing literal's `/v` read
+# (`kk/v`) these rows hand to the recursive call. These were
+# frontier-hof-audit.tsv's two §3 rows (audit §1.3, continuation-passing style).
+def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 5 (v:Integer => [v]))	120	CPS factorial, identity continuation
+def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end (factk 10 (v:Integer => [add 0 v]))	3628800	CPS factorial, computing continuation
+#
+# the fn-util behaviour rows GRADUATED 2026-09-08 (the thirty-fifth increment):
+# the producing word's check-mode ReturnsFn claims the wrapper's arity
+# (CheckState.FnShapes), the check pass models the def-bound wrapper's WORD
+# DISPATCH at the read over its arity of fixed tokens inside the statement
+# (check's tryShapedFnReadArrival → OpCallDynMethod), and the VM applies the
+# self-contained Go-impl wrapper on its OWN signatures (never through the live
+# registry under its label — `const` is also the singleton-type maker, which is
+# how the event spelling `((FnUtil.const 7) 99)` compiled to 99 for 7). These
+# were frontier-fn-util.tsv's eight behaviour rows (audit §6.4).
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.compose addone/v double/v) end (h 5)	11
+import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.pipe addone/v double/v) end (h 5)	12
+import "boru:fn-util"  def k (FnUtil.const 7) end (k 99)	7
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def fs (FnUtil.flip sub2/v) end (fs 3 10)	7
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end (p 3)	7
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 3 5)	false
+import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)	true
+import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)	5
+import "boru:fn-util"  ((FnUtil.const 7) 99)	7
+#
+# the def-bound closure rows GRADUATED 2026-09-08 (the thirty-sixth increment):
+# a def of a PRODUCED closure claims the shape its producer builds (the closure
+# unit's param count, its single closure out-op recursing for a factory of
+# factories), so the read model (check's tryShapedFnReadArrival) models the
+# word dispatch at the read — a typeof operand takes the apply's result, two
+# reads are two applies, and a curried chain's result is a shaped Function
+# carrier the next def binds. These were frontier-hof-audit.tsv's §9e/§9g rows
+# and the repeated-reads row.
+def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)	Integer
+def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)	15 30
+def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][add a (add b c)]] )]] )]] end def f1 (mk2 1) end def f2 (f1 2) end (f2 3)	6
+#
+# The thirty-eighth increment (2026-09-09): a read of a name def-bound to a
+# Function CARRIER (a typed factory's declared return) resolves through the
+# fn-carrier side table inside a NESTED body too — a branch arm, a loop
+# body, a while body — and models as the dispatch it is. These three lower
+# INLINE, with no interpreter entry. The `do` spellings compile and agree
+# too, but `do` reaches the dyn-body backstop, whose handler re-runs the
+# body in a sub-engine — an interpreter entry the census counts — so they
+# stay in lang/spec/frontier/frontier-hof-audit.tsv until the body compiles
+# as a closure unit.
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def c (flex {b:true}) end if (c get 'b') [(f 2)] [0]	3
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end for 2 [def q (f 2) q]	3 3
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'	4 4 'z'

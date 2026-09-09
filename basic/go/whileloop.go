@@ -59,21 +59,75 @@ func WhileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 // bindings exactly as a for body's do), then approximate the residual
 // the way for's non-static arm does: a typed-List carrier of the body's
 // residual top, or nothing for a zero-net body. A while loop's trip
-// count is NEVER static, so there is no zero-prune, no exact-count
-// spread, and no bytecode loop recording — the compile lane refuses the
-// word (the frontier ledger pins the reason) and the interpreter owns
-// it. Modelling here — instead of letting the analysis pass step the
-// spliced regions with carrier conditions — is what keeps a
-// carrier-conditioned `while` from looping the checker.
+// count is NEVER static, so there is no zero-prune and no exact-count
+// spread; the bytecode lowering (RecordWhile, the thirty-seventh
+// increment) runs the loop on the counted loop's frame over an
+// unbounded count, testing the condition fragment's one value at the
+// head of every iteration. Modelling here — instead of letting the
+// analysis pass step the spliced regions with carrier conditions — is
+// what keeps a carrier-conditioned `while` from looping the checker.
 func whileReturnsFn(args []Value, r *Registry) []Value {
-	AnalyseLoopBody(r, args[0], nil, nil, false)
+	// RECORDING (the thirty-seventh increment): the condition and the body
+	// are captured as two fragments — each analysis armed like `for`'s — and
+	// recorded through RecordWhile with a scratch iterator slot, since the
+	// lowering runs the loop on the counted loop's frame. The loop EVENT
+	// must then stay linked to the residual (`out` returned even for a
+	// zero-net body, which RecordWhile marks zeroOut), exactly as `for`'s
+	// model keeps its own.
+	// The BODY is analysed first, the condition second: a def the body
+	// REBINDS (`while [n lt 3] [def n (n add 1)]`) is registered
+	// loop-carried by the body's analysis (NoteLoopCarried), and only a
+	// condition analysed after it reads the carried slot — analysed first,
+	// its read resolved to the pre-loop value and the compiled loop never
+	// terminated. Both analyses run to their fixed points over the joined
+	// bindings, so the order changes no verdict.
+	es := r.Check.Recorder()
+	recording := es.Active()
+	if recording {
+		es.ArmLoopCapture()
+	}
 	stk := AnalyseLoopBody(r, args[1], nil, nil, false)
+	var bodyFrag EmitFragmentRef
+	if recording {
+		bodyFrag = es.TakeFragment()
+		es.ArmLoopCapture()
+	}
+	condStk := AnalyseLoopBody(r, args[0], nil, nil, false)
+	out := NewCarrier(TList)
+	var top Value
+	if len(stk) > 0 {
+		top = stk[len(stk)-1]
+		if IsDisjunct(top) {
+			out = NewCarrierTypedListValue(top)
+		} else {
+			out = NewCarrierTypedList(top.Parent)
+		}
+	}
+	if recording {
+		condFrag := es.TakeFragment()
+		iter := NewCarrier(TInteger)
+		es.RegisterLocal(iter.ID)
+		es.RecordWhile(condFrag, bodyFrag, condStk, stk, iter.ID, out, args[0].Pos())
+		return []Value{out}
+	}
 	if len(stk) == 0 {
 		return []Value{}
 	}
-	top := stk[len(stk)-1]
+	// PLAIN CHECK: a while leaves 0-OR-MORE values of the body's residual
+	// type — its trip count is never static — so the honest residual is a
+	// VARIADIC SPREAD (SpreadPayload, the device a `[]`-declared recursive
+	// fn's leak and await's winner-takes-all already use), not the one
+	// typed-List carrier above. That carrier is the recording pass's
+	// stand-in for the loop EVENT's result, where it is never read as a
+	// type: the compile lane refuses every consumption of a loop result
+	// ("consumes loop results"), and the residual it feeds is the
+	// program's. On the plain-check surface nothing refuses, so the
+	// soundness oracle reads this stack directly — and a List where the
+	// runtime leaves N scalars is a false claim (measured: 5 violations
+	// the moment the while rows entered the main corpus, control.tsv §7).
+	elem := NewTypeLiteral(top.Parent)
 	if IsDisjunct(top) {
-		return []Value{NewCarrierTypedListValue(top)}
+		elem = top
 	}
-	return []Value{NewCarrierTypedList(top.Parent)}
+	return []Value{NewVariadicCarrier(elem)}
 }

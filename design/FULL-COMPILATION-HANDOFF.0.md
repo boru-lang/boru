@@ -3647,6 +3647,1593 @@ a shuffle-time re-step may subsume the closure case or may not, and assuming
 either way is how the trap rows win. `[dup drop 5]` is the control that must
 not move.
 
+## The re-step deopt: a native's fn result dispatches where it lands (2026-09-07, the twenty-fourth increment, NUR124)
+
+The twenty-third increment left Axis 1 as "fix first, then re-measure Axis
+2". This one fixes it, and the useful part is that the family turned out to
+be neither about shuffles nor about closures.
+
+**What the rule actually is.** `spliceMatchResults` puts a native word's
+results back onto the tape at the call's position and the main loop steps
+them; an unquoted fn among them dispatches WHERE IT LANDS, collecting forward
+over the tokens written after the call and then from the stack beneath it.
+Measured on the interpreter with the shape's siblings before touching the
+compiler (the rule this line pays for every time):
+
+```
+[g/v] each [5 swap 7]        [21]   g collects the written 7
+[g/v] each [5 tuck]          [15]   results [5 g 5]: g collects the 5 after it
+[g/v] each [5 6 rot]         [18]   nothing written: g takes the 6 beneath
+[g/v] each [5 swap drop]     each_error — g(5) = 15, then drop
+[5] each [{f: g/v} get "f" drop]     each_error — the same, from a map read
+def m {f: g/v}  m get "f" drop 7     uncalled_function — g finds no argument
+```
+
+So "the interpreter re-steps AT the shuffle" (the record's Axis 1) is one
+instance of "a native's fn-typed result is re-stepped into a dispatch". The
+shuffle words are only where NUR124 first met it; a poly `get`, a typed
+container read, any native returning a fn does the same.
+
+**Why the compiled lane disagreed only sometimes.** The agreeing rows
+(`[5 swap]`, `[5 swap 7]`, `[5 tuck]`) all compile the `each` as an ISLAND:
+the closure probe declines them because the fn survives to the body's
+residual (`closureResidualHasUnappliedFn`), and the island's interpreter
+answers. `[5 swap drop]` compiles to a real unit — the fn is consumed inside
+the body, so the residual guard sees nothing — and that unit's `CALL_NATIVE
+swap; CALL_NATIVE drop` is the miscompile. The check pass never modelled the
+dispatch because the element it stepped is a payload-less `Function`
+carrier: `execFnDefLiteral` has no signatures to match and steps it past.
+
+**What landed** (`core/go/engine.go`, `compiler/go/emit.go`, `lower.go`,
+`bytecode.go`, `eng/go/vm.go`):
+
+1. The pass NOTES the result at the call — `Engine.noteFnResultReSteps`,
+   `EmitRecorder.NoteFnResultReStep(v, resume)` — for a fn-typed or
+   fn-admitting gradual carrier, unquoted, when a PLAIN body token follows.
+   Every exclusion was measured against a row: a concrete `FnDefInfo` (the
+   pass dispatches it itself — `[[g/v] get 0]` compiles to `TAIL_CALL_USER
+   g`); a user fn's result (parked, PAREN-RESTEP-RULE); a CODE-BODY word's
+   results (`sig.Callable != nil` — `do [mk 7] add 1` would otherwise trade
+   NUR121's refusal for this one, and `do [mk 7] 8` would stop compiling: the
+   pass's carrier view of a body's residual is not the closure lowering's,
+   which applies the lead at the body's finish); a pending forward's
+   collection; and the non-plain followers — the group's close paren (the
+   park rule's), a `/v` modifier, a marker, an already-placed value, the end
+   of the tape (the residual arms').
+2. The recorder keys the note on the PRODUCING event (`es.producedBy`) and,
+   at the unit's finish, plans a RE-STEP point right after it
+   (`planReStepDeopts`, a `deoptPoint` with `restep`), reusing NUR123's
+   name-binding planning (`deoptDefsBindable`, `seedParentDeopt`,
+   `lambdaNamesSelfBound`) and its deferred-operand accounting — with two
+   corrections for a point that sits AFTER its event rather than before: the
+   accounting runs from the RESUME token (`d.start = note.resume`), the
+   event's own consumptions count as done, and its own results are exactly
+   what the island re-steps (not deferred). Both were found by the debug
+   print, not by reading: the first cut declined every point because the
+   consumer-operand check written for pre-event points asked for `swap`'s
+   already-consumed `5`.
+3. The lowerer emits `OpDeoptIfFn` right after the event's op
+   (`emitReStepAfter`) over the results on top of the sim, with
+   `DeoptSpec.Results` = their count and `DeoptSpec.Prefix` = the unit's
+   UNNAMED params it has not pushed yet. That prefix is the increment's
+   second finding: the interpreter's frame holds unnamed inputs on its stack
+   BOTTOM (named ones are bindings), the compiled unit holds them in slots
+   and pushes them at their consumer, so an island resuming mid-body ran `g
+   drop` over an empty region for `[5] each [{f: g/v} get "f" drop]` and
+   raised `uncalled_function` for the interpreter's `each_error`. The prefix
+   rides on NUR123's points too (`emitDeoptsBefore`, the atPush arm); a
+   param pushed inside a nested fragment declines the point. A fn-TYPED note
+   no point serves REFUSES through a lowerer decline — the refusal-site
+   census counts `MarkUncompilable` sites and stays at 93 — while a gradual
+   one keeps the model it always had.
+4. The VM (`reStepIfFn`) tests the results with the main loop's own
+   predicate (`core.FnValueDispatchesAtPointer`, exported for it) and, on a
+   fn, runs `runIslandResolved` over `prefix ++ region` with tokens
+   `[results…] ++ Body[Token:]`: a fn VALUE stepped at the pointer dispatches
+   as it does on the interpreter, forward collection included. The residual
+   replaces the frame region and the run loop continues at RET — NUR123's
+   discipline unchanged.
+
+**Measured.** Eleven witnesses agree and compile (`lang/go/restep_deopt_test.go`);
+the trap rows and the concrete-element row are unchanged; the corpus
+differential, the refusal ceiling and the frontier ledger pass. One golden
+moved by design: `TestShuffleRestepTimingDeclines`'s Axis-1 arm now asserts
+parity. `TestCancelTimeout` failed once under the parallel belt and passed
+three times alone — the timer class the process rules already name.
+
+**Three things this increment measured and did NOT fix**, each pinned as
+measured in `TestReStepDeoptOpenShapes` so the next author starts from the
+boundary:
+
+- **Axis 2 stands, and its site is now exact.** `[(mk 3)] each [5 swap
+  drop]` islands (the produced closure makes the list dynamic); the island's
+  sub-engine re-steps the element after `swap` exactly as the interpreter
+  would, and a `ClosurePayload` is not an `FnDefInfo`, so `execFnDefLiteral`
+  steps it past. `closureAsWord` (vm_dyn_words.go) bridges a closure to a
+  dispatchable `FnDefInfo` for the WORD path; the value path needs the same
+  bridge at `execFnDefLiteral` — or the island's registry to install it.
+- **A static-index FOLD.** `[5 h/v] get 1 drop 7` in a fn body:
+  `tryFoldStaticIndex` returns the param's own carrier as the result, so
+  there is no event and nothing is noted; the value re-stepped is a LOCAL's,
+  which is NUR123's atPush shape with a value re-step instead of a word
+  read. The map twin (`{a: h/v} get "a" drop 7`, a poly `get`) now deopts
+  and raises — naming `g` where the interpreter's frame binding renamed the
+  value `h` (NUR122's class).
+- **The MAIN program.** No unit body to resume into: a gradual note there
+  is dropped, as NUR123's declined points are (`def m {f: g/v}  m get "f"
+  drop 7` answers 7), and a strict one refuses. `[g/v] fold [5 swap drop]
+  0` is the same defect one level up — the fold ISLAND's strict `Any` result
+  is re-stepped by the interpreter into `g 0`, and the note's condition
+  (fn-typed or gradual) does not admit a strict `Any`; widening it to
+  "admits Function" would plan a test after every `Any`-returning native in
+  every unit, which wants the whole-corpus golden churn measured first.
+  A main-level re-step is the rest-of-program island Stage 5's regions
+  describe.
+
+Two rules this increment adds to the ones above: **a green sibling is not
+evidence the mechanism is right** — `[5 swap 7]` and `[5 tuck]` agreed
+through an island, and the increment that "fixed" them by compiling the
+unit would have broken them; and **a deopt planned before an event is not a
+deopt planned after it** — every accounting NUR123 wrote assumes the island
+starts before its consumer runs, and each of those assumptions had to be
+found and flipped for a point that starts after.
+
+## The closure value bridge: Axis 2, and a parked window the bridge exposed (2026-09-07, the twenty-fifth increment, NUR124)
+
+Re-measured after the re-step deopt, Axis 2 was exactly where the
+twenty-third increment left it: `[(mk 3)] each [5 swap]` answered `[fn
+(Integer)]` for `[15]`, and the site was now exact — a produced closure is a
+`ClosurePayload`, and `execFnDefLiteral` dispatches only an `FnDefInfo`.
+
+**What landed.** The interpreter asks the VM piece for the fn a closure
+stands in for: `CompiledRuntime.ClosureAsFnDef` (core's S4 seam, a third
+method beside `InvokeCompiled` / `StampDetached`; the core default declines
+with the value) builds — through the same `closureFnDef` builder NUR123's
+`closureAsWord` now shares — one signature over the unit's declared param
+contract whose handler applies the closure through `Registry.Invoker`, the
+body-closure seam the running VM installs; a closure met outside any VM run,
+or one whose program or unit the payload cannot name, stays data.
+`execFnDefLiteral` (`fnDefAtPointer`) puts the bridged value in the
+closure's place on the tape, so the dispatch rules below it — forward
+collection, the stack match, the ADR-016 park of a 0-arg anonymous value —
+decide exactly as for the interpreter's own fn. `CompiledFn.Lambda` carries
+the source lambda's anonymity to the bridge for that last rule; without it
+`[(mk0)] each [dup drop]` would fire the 0-arg closure where the interpreter
+parks `[fn]`.
+
+**Two things the first cut got wrong, both found by measuring, not
+reading.** `compileFnDef` attached the boru body-runner to EVERY anonymous
+sig, Go handler or not, so the bridge's empty body ran an empty frame that
+returned its argument: `[5 swap]` came back `[5]`, `[5 swap 7]` `[7]` — a
+plausible wrong value, not an error. It now keeps a `*GoImpl`. And the
+re-step deopt's runtime test was the interpreter's own predicate, which does
+not admit a closure — so `[(mk 3)] each [5 swap drop]` compiled to the unit
+with its DEOPT_IF_FN and never fired; `core.FnValueDispatchesAtPointer`
+admits an unquoted closure now that the island it hands the results to
+dispatches one.
+
+**The pre-existing miscompile the bridge exposed.**
+`TestApplyWordClaimsParkedResult` pinned `5 (mk 3) 7` and `1 2 (mk 3)` as
+agreeing; with the bridge they answered `5 21` and `1 6`. Their NAMED twins
+— `def mkf fn [[k:Integer][Function][g/v]]  5 (mkf 3) 7` — answered `5 21`
+on the ORIGINAL tree, measured on a build of the stashed main: the residual
+window islands (`OpCallDynamicMixed`, the `mixedDynamicApplyShape` and
+`trailingWindowApplyShape` arms) re-step their window verbatim, and a
+PARKED user-fn result — placed data the interpreter never re-steps
+(PAREN-RESTEP-RULE) — is applied live there. The closure twins agreed only
+because the sub-engine could not dispatch a closure. Both arms now decline a
+`callResultPlaced` lead; the residual then lays the parked pair out as plain
+data, and all four rows agree — natively, no island. The member-read shapes
+those arms exist for (`3 m.f 2`, `1 2 m.f`, family C's `m.p 5 m.p 7`) are
+unaffected: a member read is no call result.
+
+**Measured.** Eleven closure rows agree and compile
+(`TestClosureValueReStepParity`), the 0-arg controls among them;
+`TestShuffleRestepTimingDeclines`' Axis-2 arm asserts parity; the open
+shapes pinned by `TestReStepDeoptOpenShapes` are two now (the static-index
+fold, the main program). The seam's arms are pinned in core
+(`engine_closure_bridge_test.go`, a stub runtime) and eng
+(`closure_bridge_test.go`).
+
+**What remains of NUR124** is the two shapes above and the fold-island
+`Any` result at the main program — all main-level or fold-path, none in a
+unit with a body. The next family in line is the handoff's frontier list.
+
+**Two review findings on the bridge, both real, both fixed the same day
+(Codex on PR #444).** The bridge minted a fresh `FnDefInfo` identity on
+every call, so two tape copies of ONE closure bridged into two functions:
+`[(mk 3)] each [dup eq]` answered `[false]` compiled for the interpreter's
+`[true]`. A closure now carries the identity its push minted
+(`ClosurePayload.Ident`, `core.NewFnIdentity`, one per construction as the
+interpreter mints one per `fn`), `eq` compares it (closure to closure, and
+closure to the bridged copy either way round), and the bridge's token
+carries it (`core.NewFunctionIdentified`); two constructions stay two
+functions (`[(mk 3) (mk 3)] fold [eq] 0` is false on both lanes). The
+identity is a process-wide SEQUENCE, not a heap token: the first cut
+allocated one per push and the compiled lane's alloc guard caught it the
+same hour (`do_body` 312 → 412 allocations for a hundred `do body`
+pushes, `each`/`fold`/`filter` one each) — a counter costs an atomic add,
+and the token a bridge needs is minted at the bridge, where an allocation
+is already the price of the dispatch. And the bridged
+value used to REPLACE the closure on the tape, so a copy that parked (a
+no-match, a 0-arg lambda) could escape into a binding as a Go-handled fn
+closing over the finished run's `Registry.Invoker` — a stale `vmContext`
+whose step counter every later application would keep consuming. The bridge
+now stands in for the one dispatch only: `fnDefAtPointer` hands
+`execFnDefLiteral` the bridged fn to decide and run that dispatch, and the
+tape keeps the payload, so a park leaves the closure itself (pinned at the
+seam: `engine_closure_bridge_test.go`'s park cases assert the payload, the
+identity in `fn_identity_test.go`, `closure_bridge_test.go` and
+`lang/go/closure_identity_test.go`).
+
+## The closure-capture family's three blockers were one gate, and the frame binding's name (2026-09-07, the twenty-sixth increment)
+
+With NUR124's two axes closed, the next family on the frontier list was the
+closure-capture one — the three MEASURED blockers the 2026-09-05 section
+names: (a) a bare-name apply of a captured Function with a forward arg
+(`[g x]`), (b) a `/v` read of a captured fn returned as data (`[g/v]`), and
+(c) an `Any`-typed inner param beside the capture (`[[x:Any][Any][(g x)]]`).
+The attempted twelfth increment had already found that (a) and (c) are ONE
+refusal — the closure COUNT check ("body value count differs from declared
+returns"), which fires at the unit's finish before the whole-frame replay a
+fn unit reaches. This increment takes the consequence.
+
+**What landed.** A lambda VALUE unit (`tryReturnedClosure`'s `fnval` body)
+takes the fn path's residual replay — `fnResidualReplayReason` — instead of
+the closure count refusal, gated by `fnUnitRec.plainLambda`: the unit is a
+lambda and no param carries a value PATTERN. Two facts make it a fn in
+every way that matters at its finish: its count contract is enforced at
+invoke (`checkClosureReturn` raises the interpreter's own `expected N return
+value(s)`), and a bare read of a captured fn is the word dispatch NUR123's
+replay seats (`OpCallDynFrame` re-steps the window under the binding's
+name). The replay's one-applicable rule on the count-MISMATCH path is now
+`replayLeadApplicables == 1`: beside a FN-TYPED lead, a GRADUAL WORD-READ
+entry — Dynamic, not fn-typed, read bare under a frame name — does not
+compete, because the replay re-steps it as the interpreter's own word
+dispatch, faithful whether it holds a fn or data; so a gradual `x` beside
+`g` no longer blocks the apply, and that is what closed (c). With no
+fn-typed value in the window the count is the original one-applicable rule,
+so a gradual body-local's read alone (`def j (m get "f")  j 3`, NUR123) is
+still the lead. The first two cuts of that rule were both wrong and the
+full lang suite caught each within the hour: the first discounted EVERY
+word-read entry, so `f (g x y)` (two fn-typed reads, a paren that collapses
+to no event) armed the replay, whose flat value re-step raised ``cannot
+call `f` `` for the interpreter's 14, and `g x def q 9 g q` re-armed across
+its bind; the second discounted a gradual read even when it was the ONLY
+applicable, and the NUR123 body-local rows refused. A second fn-typed
+value, word read or not, and a gradual EVENT result beside the lead
+(`(g (x get "k"))`, whose runtime fn the value re-step would apply) decline
+as before. For (b), a plain lambda whose whole residual is one `/v` read of
+a captured fn is exempt from the unapplied-fn refusal: the read delivers
+the value quoted, the return strips the quote, and the caller decides —
+`((h 5) 2)` is 6, `(h 5) 2` the parked pair.
+
+**The rename (b) needed.** `[g/v]` returned the captured fn as data and the
+lanes then RENDERED it differently: `fn g(Integer)` interpreted, `fn
+(Integer)` compiled. The interpreter's frame binding renames a fn value it
+binds (`installDef`: `fnDef.Name = name` for a Function-family body); the
+VM bound the caller's value verbatim. A plain fn body carried the same
+divergence on the default lane before this increment — `def f fn
+[[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3` rendered `fn
+(Integer) 3` for `fn g(Integer) 3`, a COMPILING row (NUR122's class). The
+VM now names a fn bound for a NAMED param at every frame entry
+(`nameFrameFns`: `bindUnitLocals`, CALL_USER, the tail call, OpCallUserPoly,
+the dyn-apply entry) — only an `FnDefInfo` of THIS registry, the payload the
+interpreter's rule names. A module wrapper (a foreign Registry) takes
+installDef's REBINDING path, which installs the inner native's OVERLOADS
+under the param's name; the VM does not mirror that, so the wrapper keeps
+its own name and signatures on the compiled lane — `(f MathUtil.sqrt/v)
+16.0` renders `fn sqrt(Number) 16.0` for the interpreter's `fn
+g(BigDecimal) or (BigInteger) or (Float) or (Integer) 16.0`, pinned open as
+measured (`TestClosureCaptureOpenShapes`); the wrapper still DISPATCHES
+(`(g 16.0)` is 4.0 on both lanes). A compiled closure keeps its render. One
+re-pin followed: `dyn_apply_head_name_test.go`'s nameless arm (`(g/v 5)`
+over a String lambda) now reads ``cannot call `g` `` — the nameless builder
+prints the applied fn's OWN name, which is the frame's now — where it read
+``cannot call `` `` before.
+
+**The gate the first cut needed.** Reordering the finish so a lambda unit
+reaches the replay made the PATTERN-param lambda `def mk fn
+[[x:Integer][Function][(fn [[0][Integer][x]])]]  ((mk 5) 1)` miscompile: the
+replay applied the closure where the interpreter, whose frame binding
+matches the pattern at the apply, parks the pair. The closure apply ops do
+not enforce a value pattern, so `plainLambda` declines one and the count
+refusal that was guarding it stays (`TestClosureCaptureSoundRefusals`); the
+patterns are seated on the record at the unit's OPEN (`compileClosureBody`
+takes `paramPatterns`), not only from the contract seated after the compile,
+because the finish reads them.
+
+**Measured.** Twelve closure-capture rows agree and compile
+(`TestClosureCaptureParity`): the bare-name apply and its no-match twin, a
+0-arg capture firing as the word, the gradual-param spelling with its two
+no-match twins (a String for `x`, a String lambda for `g`), the `/v` read
+rendering `fn g(Integer)` on both lanes, the plain-fn rename, a named fn
+taking the param's name, and a module wrapper dispatching through `(g
+16.0)`. Five neighbours are pinned as SOUND refusals: the returned `/v` fn
+applied downstream (`((h 5) 2)`, `(h 5) 2`, `def q (h 5)  q 2`), a gradual
+arg that turns out to be a fn (the interpreter's strict-barrier error), a
+gradual event argument, and the pattern lambda. One off-frontier negative
+graduated with the family: a CAPTURING sink fn handed to `Log.register`
+(`bytecode_fnvalue_m2_test.go`) compiles as a closure unit now and rides as
+a closure operand the non-strict store word invokes through the compiled
+runtime — the sink fires with its captured `p` on both lanes, in this run and
+a later one. The frontier ledger went 82 → 78: the §1.6 compose row,
+the §9 `mk0` 0-arg row (the fnval unit models the raise), and both §9d
+gradual-param spellings graduated to `bytecode-migrated.tsv`. NUR122's open
+list re-measured with the rename in place: `f ([] => [42]) 5` is still the
+POSITION-only row (interp 1:50, compiled 1:43); the fold twin NUR124
+recorded (`{a: h/v} get "a" drop 7`) now raises `call to 'h'` on both lanes
+with only its position differing (interp 1:75 at the read, compiled 1:100 at
+the call); and a DEF-bound rename (`def k g/v  k 2` → ``cannot call `k` ``)
+agrees because the compiled lane falls back there.
+
+**What the next author should not re-derive.** The count check and the
+replay are not two gates on one unit but two paths, and a lambda VALUE unit
+belongs on the fn path unless its params carry something the closure ops do
+not enforce; a pattern is the one such thing today. And a rename at frame
+entry is cheap but partial by design: the interpreter's rebinding path for a
+module wrapper installs OVERLOADS, and mirroring that is a registry-visible
+install, not a payload edit.
+
+## `apply` over a gradual lead (2026-09-07, the twenty-seventh increment)
+
+With the closure-capture family moved, the §5.8 combinator rows were
+re-measured on both lanes, and the ten still refusing all blocked on ONE
+mechanism inside their returned lambdas, not on the lambdas themselves:
+`apply` over a value the check cannot type as a fn. Three spellings, one
+cause: `x (x f/v apply) apply` (the W combinator's body — a fn-typed
+carrier's own paren apply feeds a second `apply`), `nd (m get "inc") apply`
+(the ledger's "apply over a dynamic lead" pair, a rule fetched from a Map
+param), and the same inside a paren. Plain fn bodies with these shapes were
+the smallest witnesses, because a returned lambda's probe refusal surfaces
+only as the factory's "body result of unknown provenance".
+
+**Where it blocked, measured.** A fn-typed CARRIER's paren apply netted a
+STRICT `Any` carrier (`NewCarrier(TAny)` at the paren collapse), so a later
+`apply` over it matched no overload in check mode and took the checker's
+best-fit recovery — "unmatched dispatch recovered at apply" — a refusal.
+And a GRADUAL lead that does match matches `apply`'s [Reach Any] overload,
+not [Function]: CompareSignatures tries the longer overload first, and a
+Dynamic value is admitted to the Reach slot because the matcher cannot rule
+a lens out. The recorder's apply arm expected the [Function] match (the
+fn-typed carrier case) and refused the rest as "apply over a dynamic lead
+(overload unprovable)".
+
+**What landed.**
+
+- The paren collapse mints a GRADUAL result for a lead the apply WORD owns
+  — a gradual value, or a fn-typed carrier under the word, `(x f/v apply)`:
+  `last.Dynamic || es.ApplyPending(last.ID)` → `out.Dynamic`. The honest
+  type — a later dispatch over it matches gradually and records a runtime
+  re-match, as a map get's result already does. A plain paren apply of a
+  fn-typed carrier (`(1 2 c)`) keeps its strict `Any`: the first cut made
+  every carrier lead's result gradual and an each body's residual refused
+  ("result above a literal", `TestTrailingApplyQuoteDiscipline`) — the
+  comparator convention's consumers were built on the strict result.
+- `apply`'s [Reach Any] overload needed NO check-mode model: its declared
+  `Any` return already rides gradual (`declaredReturnCarriers`, "declared
+  Any riding dynamic"). A ReturnsFn returning a strict `Any` for a concrete
+  lens was tried first and refused `p (reach 0 [x (k)]) apply` — a
+  compiling row — because the strict result took the dispatch off the poly
+  path onto the generic record and its dynamic-lead refusal; the lang suite
+  caught it (`TestReachComputedSegmentLowers`) and the model came out.
+- The recorder records the Reach-matched dispatch over a gradual lead as an
+  apply EVENT (`recordGradualApplyEvent`): [receiver, lead] with the lead on
+  top, one result, the apply word's position, lowered to a new op
+  `OpCallDynApplyOne`. Inside a unit only — the program residual has no
+  single-consumer window, so the main program keeps its refusal — and never
+  for a concrete or unidentified lead, a fn-value receiver, or an operand the
+  recorder cannot place. A gradual lead ALONE on the stack matches
+  [Function] instead and keeps the standing refusal (nothing beneath it to
+  apply to, and no single-consumer window at the unit's finish) — a first
+  cut registered it as the fn-typed carrier's pending apply, dead code no
+  program reaches, which the merged coverage gate caught. The pending entry
+  now carries the apply WORD's position (`pendingApply{id, pos}`), which
+  both the tail lowering and the paren event stamp on the op, so a runtime
+  no-match raises where the interpreter's `apply` does.
+- `RecordDynApply` admits a lead that is not a fn-value residual when the
+  apply word holds it pending, and the paren classification asks the
+  recorder (`EmitRecorder.ApplyPending`, a new seam method) so a Dynamic last
+  value the apply word owns is the trailing apply, not the leading-dynamic
+  reorder hazard `recordParenLeadingApply` refuses; the apply word's unquote
+  lets a `/v`-read lead apply there too.
+- The VM's apply-word op applies a fn as the interpreter's `applyHandler`
+  re-step does (`applyReStep`): the args are the resolved STACK and the fn
+  is stepped over them, through `core.MarkApplied` (moved to core so the
+  runtime handler, the check model and the VM share the one decision), so a
+  0-arg fn fires and leaves the receiver beneath its result — the earlier
+  island stepped the fn first with the args as forward tokens, which put a
+  0-arg fn's result BENEATH the receiver ([42 4] for the interpreter's
+  [4 42]). The event form commits exactly ONE result: any other count (a
+  0-arg or 2-arg fn), a lens on top (the [Reach Any] overload's own get) and
+  a compiled closure of another arity DEFER the run to the interpreter; a
+  value that is no fn raises the interpreter's own `apply` no-match over the
+  same two stack values, byte for byte and at the same position (`w15 {f:
+  42} 4` → ``cannot call `apply` `` at 1:114 on both lanes, with the two
+  candidate notes).
+
+**Measured.** The W combinator's body as a fn (`x/v (x f/v apply) apply`)
+and the same in a paren answer 8 on both lanes, natively; the fetched-fn
+apply is 6 and its negative twin the identical no-match; the W combinator's
+RETURNED lambda compiles and, def-bound, applies (`def w4 (ww add2/v)  (w4
+4)` → 8 natively). The lens, the 0-arg fn and the 2-arg fn defer and answer
+through the fallback with the interpreter's exact value or error
+(`TestGradualApplyDefers`). The frontier ledger went 78 → 77: the "apply
+over a dynamic lead" pair's NEGATIVE twin graduated to
+`bytecode-migrated.tsv` (it raises the no-match natively; the plain check
+flags that no-match at the call over the concrete rule map where the
+compiled unit's carrier analysis does not, so the diagnostic-parity ceiling
+takes it, 320 → 321, the "lost under compilation" class), while the positive
+twin compiles but ISLANDS: the map-member lambda `rules.inc` is baked as a
+const with no compiled unit, so the apply word's re-step runs its body on
+the interpreter (`vm:island-resolved`) — the interp-entry census's debt,
+which graduating the row would have moved into the main corpus (the census
+caught it, 34 over its ceiling of 33). It stays ledgered as "islanded", and
+the frontier gate now detects a VM island through the interp-entry hook
+(the `vm:island` seams — a native handler's own interpretation stays the
+handler's, as for the census), not only an OpFallback span, so such a row
+is never reported as a stale entry to graduate. Graduation = stamping a fn VALUE on
+its first apply (`StampDetachedFn` from the op) so the unit enters
+VM-native. (Graduated in the twenty-eighth increment — and the diagnosis
+was wrong: the value WAS stamped; the apply op's event form declined the
+entry on the unit's own empty return contract instead of the applied
+value's.) And TEN §5.8 rows moved their refusal: the combinator's returned
+lambda compiles now, so each refuses at the MAIN program's `apply` over the
+produced closure — the Stage-2 argument-slot refusal the staged B/K rows
+already hold, re-diagnosed in the ledger as such (the two `cand` rows did
+NOT move: their inner lambda applies a def-bound lambda read by `/v`,
+`cfalse/v (q/v p/v apply) apply`, the NUR101 def-read hold). That refusal —
+the apply WORD over a produced closure at the main program (`99 (kk 7)
+apply`, `4 (ww add2/v) apply`) — is now most of the §5.8 family's last
+blocker: twelve rows behind one gate (`argIsProducedClosure` at the
+top-level dispatch, plus the apply word's `len(units) > 1` hold), with the
+closure's arity known at record time (`producerReturnedClosureArity`).
+
+**What the next author should not re-derive.** Which `apply` overload the
+check picks for a gradual lead is decided by CompareSignatures' order, not
+by the value: the [Reach Any] match is the common case and the model the
+recorder must lower; the [Function] match is the lone-value case, which
+has nothing to lower. And the
+apply word's re-step is STACK-shaped: an island that steps the fn first over
+the args as forward tokens is a different dispatch, and a 0-arg fn is where
+it shows.
+
+## `apply` over a produced closure at the main program (2026-09-08, the twenty-eighth increment)
+
+The twenty-seventh increment left twelve §5.8 rows behind one gate: the
+main program's `apply` over a closure the pass PRODUCED — a factory call
+whose unit pushes a closure (`99 (kk 7) apply`, `4 (ww add2/v) apply`).
+The refusal was `argIsProducedClosure`, the word-agnostic guard that reads
+a produced closure at a word's argument slot as a paren that failed to
+collapse (`typeof (h 5)` taking the FUNCTION). Under `apply` that reading
+is wrong: the closure at the slot is exactly what the word applies.
+
+**Where it blocked, measured.** Two things had to hold at once. (1) apply's
+own dispatch: the guard fired before anything modelled the word. (2) The
+re-step: applyHandler hands the fn back and the engine steps it over the
+values beneath; in check mode that dispatch runs the value's ReturnsFn
+(`BuildFnBodyReturnsFn`, built at the lambda's construction with no name)
+and lands in `RecordUserCall`, which resolves the unit's captures at the
+call site — and a produced closure's captures are the factory body's own
+carriers, unreachable there ("capture x of  unreachable at a call site").
+The §4.3 fallback (`recordFnValueApplyFallback`) rescues a DEF-BOUND value
+through its name's def-site operand; a nameless value had no route. The
+same runtime value, though, is the closure PAYLOAD the producer event
+leaves on the VM stack, captures and all — the operand the fn-value apply
+(`RecordDynApply`) already lowers for the paren-bounded twin `(99 (kk 7))`.
+
+**What landed.**
+
+- `argIsProducedClosure` exempts the apply word's one-arg overload over a
+  CONCRETE closure value. A fn-typed CARRIER — a declared `[Function]`
+  return — keeps the refusal: the check engine cannot re-step a carrier, so
+  nothing models the apply at the program level, and lifted for carriers
+  too `1 99 (mk 7) apply` seated all three as data (measured). The two-arg
+  Reach overload keeps it as well: a closure at its receiver slot is data.
+- `recordCallElided` registers the apply as a PENDING application on the
+  open unit — the program unit included — under the value's id, carrying
+  the value (`pendingApply.fn`), resolved BEFORE the registered-output arm
+  that would otherwise elide apply's identity result silently.
+  `producedFnValue` admits a closure a unit returns
+  (`producerReturnedClosure`) and the result of a compiled fn-value apply
+  (the staged combinators' inner apply nets the next closure).
+- The re-step's record site (check's `recordUserCallOrApply`) asks the
+  recorder for the pending value by the sig BODY's backing array
+  (`EmitRecorder.PendingClosureApply`, a new seam method; a position would
+  not do — a body whose one token is a `=>` group carries none) and records
+  through `RecordDynApply` over it: the fn resolves to the closure's
+  producer operand, the window is the sig-ordered args reversed (sig[0] on
+  top), the out is FRESHENED as the §4.3 fallback freshens — the memoised
+  residual is shared across calls of one shape, and `99 (kk 7) apply 1 (kk
+  8) apply` is [99 8], not [8 8] — and a fn VALUE result keeps its payload
+  under a fresh id so the next `apply` over it records the same way. The
+  lowering is the apply word's unquoting op at the apply word's position
+  (`OpCallDynApplyTop`).
+- `RecordDynApply` admits a fn-valued ARG under a produced-closure pending
+  apply: the re-step matched those args against the closure's own
+  signature (`kk/v (ss kk/v) apply` binds kk to `g:Function`), so they are
+  data to the op exactly as to the interpreter; every other window keeps
+  declining a fn-valued arg.
+- `Finalize` refuses a pending application on the program unit that no
+  dispatch consumed — nothing beneath the closure, or values that match no
+  signature, where the interpreter leaves the fn as data (`(kk 7) apply`,
+  `"s" (kk 7) apply`); a fn unit's finish already owned its own entries.
+  No new `MarkUncompilable` site (the census stays at 93): Finalize returns
+  the reason.
+- A tape-side arm in `spliceAnonCheckResult` was written first and
+  measured unreachable — every lambda dispatch here runs its ReturnsFn, and
+  that path is the legacy stack-match fallback — and came out again.
+- The VM's apply-word op (`callDynApply`) ran a compiled closure VM-native
+  only when the unit's `NParams` equalled the window — and `NParams` counts
+  the trailing CAPTURE slots too, so every capturing closure took the
+  interpreter's re-step island instead (`vm:island-resolved`). The seven
+  graduated rows all islanded, and the interp-entry census caught it (40
+  over its ceiling of 33) where the value parity could not. The arity is
+  `NParams - NCaptures`; the increment-27 W-combinator rows, which had
+  islanded the same way since they landed, run native now too.
+- The same op's EVENT form entered a stamped fn-value unit only when the
+  UNIT declared the one return the model committed — and a stamped lambda
+  unit declares no returns of its own (`compileStoredFnUnit` passes none),
+  so every const lambda the apply word met, stamped and ready, islanded.
+  The reading was the wrong one: the contract the frame's RET enforces is
+  the APPLIED VALUE's (`applyRetContract`), which `dynMethodClaimOK`
+  already reads for the method op. Church false's inner lambda `f:Any =>
+  [f/v]` and the fetched-fn positive twin's `rules.inc` were STAMPED all
+  along (the disassembly shows their `storedfn$body` units); the
+  increment-27 diagnosis "never stamped" was wrong, and the entry gate
+  was the island.
+
+**Measured.** Eight rows graduated (ledger 77 → 69), every one VM-native
+with no interpreter entry: K (`99 (kk 7) apply` → 7), W, C, I = S K K (42
+and 'hello'), Church true and false, and the fetched-fn apply's positive
+twin (`app 5 rules` → 6), the twenty-seventh increment's "islanded" row.
+The interp-entry census holds at its ceiling of 33 rows with the two fixes
+in — its `vm:island-resolved` entries fell 24 → 8 across the corpus. `1 99 (kk 7)
+apply` is [1 7]; a token after the word binds as the re-step binds it (`99
+(kk 7) apply 5` → [99 7]); the shape compiles inside a fn unit and a lambda
+unit, and over an inline `fn` literal closure. Re-diagnosed: the two B rows
+— the x-level closure's call-site residual is TWO values (the gradual `(x
+g/v apply)` result and the fn-typed capture its tail `apply` consumes at
+the unit's finish), so the single-out record site declines and the unit
+call refuses the capture; the Church pair rows — the projection's body puts
+a lambda VALUE beneath a fn-typed param's pending apply, which the unit
+finish's whole-residual lowering declines; the `cnot` rows — `(cif (cnot
+ctrue/v))` hands a produced closure to a user fn's Function slot, the
+argument-slot family proper. Sound refusals pinned: no arguments beneath, a
+no-match beneath, the carrier lead, a produced closure over another (the
+second dispatches over the first before apply runs), a two-arg closure over
+two literals (the seating cannot reorder).
+
+**What the next author should not re-derive.** The check-mode dispatch of
+a nameless lambda value runs its sig's ReturnsFn and records at
+`RecordUserCall`, not at `spliceAnonCheckResult`. And a pending entry keyed
+by the value's id serves apply's own dispatch, but the re-step's record
+site sees only the body: match constructions by the sig body's array,
+never by position.
+
+## A unit's tail apply collapses into its call-site residual, and a returned lambda's count contract (2026-09-08, the twenty-ninth increment)
+
+The twenty-eighth increment left the two B-combinator rows one step short:
+the main program's `apply` over the produced closure recorded, but the
+x-level closure's dispatch refused "capture f of  unreachable at a call
+site". Its body `[(x g/v apply) f/v apply]` ends in the apply word over a
+fn-typed CAPTURE, which the check engine elides — the identity result flows
+to the residual — so the call site's analysed residual held [result, f],
+TWO values, where the unit's finish had lowered the window as the
+whole-residual OpCallDynApplyTop and nets ONE. The single-out record site
+declined and the unit call refused the construction-scope capture.
+
+**What landed.**
+
+- `EmitRecorder.UnitTailApply` (a new seam method) reports the window width
+  a unit's finish lowered as the fn-value apply at its body tail
+  (`fnUnitRec.dynTrailArity`), and the check pass's user-fn ReturnsFn
+  collapses the call-site residual the same way (`collapseTailApply`): the
+  WHOLE residual must be the window — a lambda leaving a value beneath the
+  applied result is the interpreter's count error at the RET, which a
+  collapsed two-value residual would hide — and it becomes one GRADUAL
+  result.
+- The PLAIN check pass — no recorder, no unit to ask — models the same
+  elided tail apply as leaving the carrier, and the two graduated rows
+  tripped the type-soundness gate the moment they entered the main corpus:
+  the program's checked types were [Integer Function] for an actual
+  [Integer]. `collapseElidedTailApply` is the recorder-free twin: a body
+  whose last token is the `apply` word and whose residual ends in a
+  fn-typed carrier nets one value at run time (every other count is the
+  interpreter's own return error), so the residual collapses to one
+  gradual result — only where one value is the contract (a lambda, a
+  declared single return); a declared tuple keeps its residual, since the
+  applied fn may under-apply into exactly that count.
+- The collapse exposed a latent gap: a RETURNED lambda's closure carried no
+  return contract (`tryReturnedClosure`'s operand had no `closureRet`), so
+  `checkClosureReturn` never enforced the lambda's count contract, and a
+  body that under-applies at its tail (`[7 x f/v apply]` over a 1-arg f)
+  answered [7 8] where the interpreter raises `expected 1 return value(s),
+  got 2`. Latent because every such call site refused. The operand now
+  carries `fnValueRetSpec`'s contract, and the unbound form raises byte for
+  byte (`4 (bb2 …) apply` → `: expected 1 return value(s), got 2 — [7 8]`
+  at the apply word on both lanes).
+- The DEF-BOUND form (`def h (bb2 …)  (h 4)`) named the error `h:` on the
+  interpreter — installDef renames a fn value bound by `def` — and `:`
+  compiled: the stored payload had no name. The compiled lane now renames
+  where the interpreter does: `RecordDynBind` notes the def name by the
+  produced fn value's producing slot (`EmitState.defNameAt`), the lowerer
+  seats it on the value's promoted STORE_LOCAL (`Program.StoreNames` /
+  `CompiledFn.StoreNames`, keyed by pc — `seatStoreName`), and the VM's
+  store op renames the ClosurePayload it stores (`nameStoredClosure`:
+  `RetName` for its diagnostics, `Render` through the closure bridge for
+  its `fn h(Integer)` render; the first name wins, as the frame rename's
+  does). The message agrees; the POSITION does not (interp 1:100 at `h`,
+  compiled 1:102 at the argument — the call event's position is its first
+  operand's), NUR122's open position-only class, pinned as measured.
+- The compiled error's CARET was one character wide where the
+  interpreter underlines the whole `apply` token: `stampAt` copied the
+  debug entry's row and column but not its token text (`SrcPos.Src`). It
+  copies the text now when the error carries none.
+
+**Measured.** The two B rows graduated (ledger 69 → 67): 14 on both lanes,
+VM-native; `(h 4) add 1` over a closure whose tail applies its capture is 9;
+two calls give two results; the under-applying tail raises the count error
+on both lanes, byte for byte unbound and message-identical def-bound. Sound
+refusals pinned: a gradual param beneath the tail apply (the factory's
+"body result of unknown provenance").
+
+## A produced closure at a declared Function slot, and the memo key of a position-less lambda body (2026-09-08, the thirtieth increment)
+
+The two `cnot` rows refused at cif's `p:Function` ARGUMENT slot
+(`cif (cnot ctrue/v)`): `argIsProducedClosure`, the word-agnostic guard
+that reads a produced closure at a word's slot as a paren that failed to
+collapse, held it there. That reading protects `typeof (h 5)` — an `Any`
+slot would swallow the FUNCTION — but a slot DECLARED `Function` asked for a
+fn value: the interpreter's frame binding installs the closure as data.
+
+**What landed.**
+
+- `argIsProducedClosure` takes the matched signature and exempts a
+  produced closure at a slot declared exactly `Function` — a named param
+  (`Params[i].Type`) or a positional one (`Args[i]`) — for every word but
+  `apply`, whose own Function slot APPLIES its value and whose account the
+  twenty-eighth increment already gave (a fn-typed carrier there keeps the
+  refusal). The call's operand carries the payload; inside the callee the
+  param's apply ops take it as any fn value.
+- Lifting the hold exposed a LATENT miscompile in the fn-analysis memo:
+  `FnAnalysisKey` identified a body by its first token's position, and a
+  lambda body that is one `=>` group carries none — so cnot's inner
+  `t:Any => [f:Any => …]` and cif's inner `t:Any => [e:Any => …]`, both a
+  `p:Function` capture over `t:Any` under the synthetic `fnval$body` name,
+  shared one key, one FnSummaries entry and one compiled UNIT. cif's
+  returned closure ran cnot's body: `'F' ('T' (cif (cnot ctrue/v)) apply)
+  apply` answered T for the interpreter's F, and the shape with cif's body
+  changed to `[(t/v p/v apply)]` answered T for the interpreter's `fn
+  (Any)`. Such a body now keys on its canonical text (`core.CanonValue`
+  per token) where the position is zero. The main corpus never held two
+  such lambdas of one shape, which is why no gate had caught it; the
+  fn-quota key keys the same way and only groups budgets, so it stays.
+- A compiled closure bound for a NAMED param takes the param's name at
+  frame entry as a fn value does: `nameFrameFns` names a `ClosurePayload`
+  slot through `nameClosureValue`, the rename the twenty-ninth increment
+  built for def-bound closures (program-free now: the payload names its
+  own program), so `(w (kk 7)) 4` renders `fn g(Any) 4` on both lanes where
+  the compiled lane rendered `fn (Any) 4`. A capture slot is left alone,
+  as before.
+
+**Measured.** The two `cnot` rows graduated (ledger 67 → 65), agreeing
+byte for byte and VM-native; a produced closure at a plain fn's Function
+param applied in the body (7), paren-bounded, held as data (`typeof g/v`
+→ Function) and rendered agree. Sound refusals pinned: the `typeof (h 5)`
+Any slot and apply's Function slot over a fn-typed carrier.
+
+**What the next author should not re-derive.** A body's first token
+position is not an identity: the parser gives a `=>` group none, and every
+lambda whose body is one such group looks alike to a position key. Any
+memo that must tell two bodies apart needs the text (or the backing array,
+as `PendingClosureApply` uses) when the position is zero.
+
+## A lambda value beneath a unit's tail apply, and the `/v` read of a def-bound produced closure (2026-09-08, the thirty-first increment)
+
+The two Church pair rows stood behind two gates, one in the projection's
+unit and one at the main program.
+
+Inside `cfst` (`(a:Any => [b:Any => [a/v]]) p/v apply`) a lambda VALUE
+sat beneath the fn-typed param's pending tail apply, and the unit finish's
+whole-residual lowering declined a fn-valued window entry (`argsOK`). The
+reading was wrong for the `apply` word: applyHandler re-steps the fn over
+the RESOLVED stack, where a parked lambda is data the callee's Function
+param binds — the projection is the pair's argument, not a second apply —
+and `OpCallDynApplyTop`'s window binds it the same way.
+
+At the main program `(cfst p/v)` refused "fn call operand of unknown
+provenance": a `/v` read of a fn binding is a FRESH WRAP of the binding
+(`ResolveRef` mints a new Value over the dispatch aggregate on every read),
+so the read's ID had no producer — and the def's own value (`def p (2
+(cpair 1) apply)`) had been promoted to a store the read could not name.
+
+**What landed.**
+
+- The unit finish's pending-apply arm takes every value beneath the
+  pending fn as the window, fn-valued or not (the paren arm's fn-value
+  exclusion stays; unreachable until the thirty-second increment).
+- `NoteValRead` carries the binding NAME (a seam signature change). The
+  binding unit remembers a dyn-bind of a PRODUCED fn value by name
+  (`noteValBind`: the bind-time PRODUCER, the binding's generation, the
+  installed entry's identity and a per-name bind epoch), and a `/v` read
+  of the name is aliased to that producer (`aliasValRead`) while the
+  binding is still the bind's: no dyn-bind of the name recorded since, in
+  any unit, and the generation unchanged — or the bind's entry on top
+  again after a frame binding of the name came and went (`(cfst p/v)`
+  binds cfst's own `p` param). Any bind of the name in the unit drops the
+  entry; one inside a branch or loop body leaves it dropped. The aliased
+  read is data at an argument slot (`argIsProducedClosure` skips it:
+  `typeof p/v` is Function on both lanes).
+- Three faults the alias exposed, each measured before its fix. The
+  producer is taken at the BIND, not by the value's ID at the read: a
+  memoised body returns ONE residual value for every call of one shape,
+  so `def p (kk 7) end def q (kk 8) end 3 p/v apply 4 q/v apply` read q's
+  closure for p (`3 20` for `3 19`). The re-step of such a read takes the
+  pending closure apply BEFORE the name fallback (`recordUserCallOrApply`):
+  with the fallback first the pending entry was never consumed and
+  `3 p/v apply` refused at Finalize; the pending route also runs the
+  closure VM-native where the fallback's name lookup islands. And a
+  binding renames a NAMED closure too (`nameClosureValue`): `(w p/v)`
+  rendered `fn p(Integer)` for the interpreter's `fn f(Integer)`, since
+  installDef renames whatever it binds; the copy in the slot is renamed,
+  the stored value keeps its own name.
+- Found on the way, PRE-EXISTING on the default lane and now a sound
+  refusal at installDef's existing site: a fn body's def of a CAPTURING fn
+  value over an outer overloading def outlives the call on the
+  interpreter — the drop-then-push leaves the frame's def depth unchanged,
+  so DefCleanup pops nothing — where the analysis restores its snapshot
+  and the compiled program keeps the outer closure's bake: `def p (kk 7)
+  end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)` answered `1 10`
+  for the interpreter's `1 12`. A capture-free literal takes the compiled
+  bind twin and agrees, so only the capturing class refuses (a capturing
+  literal already refused at its reads). The bind epoch above is the same
+  hazard seen from the read side: the entry on top again after the call is
+  no proof the run holds it.
+
+**Measured.** The two Church pair rows graduated and the nested replacing def is pinned in the ledger with the interpreter's answer (ledger 65 → 64),
+agreeing byte for byte and VM-native, with two pairs read twice each and
+the plain-fn twin; the def-read family agrees on the apply word, a rebind,
+two closures of one source, the word and value spellings side by side, the
+data slot, the callee-side apply and the frame render. Sound refusals
+pinned: nothing beneath the read, a no-match beneath, a code body's read,
+a read in another unit, a conditional rebind, and the nested replacing def
+with the interpreter's answer.
+
+**What the next author should not re-derive.** A `/v` read of a fn
+binding never carries the binding's ID: trace it by NAME, and take the
+producer at the bind. A binding's generation is a rebind detector that
+frame bindings also trip; the installed entry's identity is not one that
+survives a call whose body rebinds the name — hence both keys and the
+epoch. The interpreter's frame cleanup pops by depth growth, so a
+drop-then-push inside a frame is a permanent rebind.
+
+## A fn value beneath the apply word is data, and the read accounting under a tail apply (2026-09-08, the thirty-second increment)
+
+The four Church and/or rows (`cand`, `cor`) refused inside their inner
+lambda: `cfalse/v (q/v p/v apply) apply`. The paren-bounded pending apply
+over the fn-typed param `p` declined its window because the entry beneath
+(`q/v`, a fn-typed param) was a fn value ("nothing has established it is
+not an applicable of its own"), and the gradual-lead event of the outer
+apply declined its receiver (`cfalse/v`) for the same reason ("the
+interpreter's apply would meet two applicables"). Neither holds under the
+`apply` WORD: applyHandler re-steps the applied fn over the RESOLVED stack,
+where a fn value on the value stack never dispatches — only a tape token
+does — so every value beneath the lead is the callee's data, exactly as
+the op binds it. A paren window with no apply word keeps the decline: inside
+the paren that value was a token the interpreter stepped.
+
+**What landed.**
+
+- `RecordDynApply` admits a fn-valued window entry when a pending apply
+  (the apply word's) owns the event; `recordGradualApplyEvent` admits a
+  fn-valued receiver. The paren-without-apply window still declines.
+- The unit finish's PAREN arm (a paren-bounded trailing apply as the whole
+  residual, `TrailingApplyArity`) still excludes a fn-valued window entry
+  — the tokens inside a paren are stepped, so such a value may dispatch —
+  and the admitted windows made that exclusion reachable for the first
+  time: its `//covergate:allow` pragma is gone (the coverage gate reported
+  the guard covered).
+- Admitting the windows exposed a hole in the bare-read accounting
+  (NUR123): `fnResidualReplayReason` returned early for a unit ending in a
+  body-tail apply, skipping the READ accounting with the count and replay
+  arms, so a bare read of a fn-typed capture consumed as a window ARGUMENT
+  — the numeral's `n` in `(x (n f/v apply) apply)`, which the interpreter
+  DISPATCHES over `f/v` — lowered as data: the three csucc rows compiled to
+  `f` applied to `n` (`expected 1 return value(s), got 2 — [fn n(Function)
+  2]` for the interpreter's 3). The accounting now runs under a tail apply
+  too (the count and replay arms stay skipped there), and those rows refuse
+  soundly; their `n/v` spelling compiles.
+
+**Measured.** All four Church and/or rows compile and agree byte for
+byte; two run VM-native and graduated (T and T, F or F), and the frontier
+gate found the §4 U-combinator row graduated with them — its
+self-application `(s/v s/v apply)` is the same shape — so the ledger is
+64 → 61;
+and two still ISLAND — a def'd lambda's VALUE (the main program's
+`cfalse/v`, `ctrue/v` too in the or row) applied inside a unit through a
+carrier lead re-enters the interpreter, and the island's interpreter-minted
+result islands again; they stay ledgered as islanded. Not the inner
+lambda's captures (a capturing `cfalse` islands the same way); which
+arrival carries a unit the op can enter is the next diagnosis. The numeral
+rows are re-diagnosed to the bare-read class. Sound refusals pinned: the
+csucc row with the interpreter's 3, its minimal shape, and a fn value
+beneath a paren window with no apply word.
+
+**What the next author should not re-derive.** A value beneath the apply
+word is never an applicable: the word's re-step resolves the stack first.
+The bare-read accounting must run for every plain-lambda or user-fn unit,
+whatever owns its residual — an early return for one residual owner is a
+hole for every read that owner's window consumes. The numeral rows' next
+gate is a bare fn-typed read with a FORWARD argument (`n f/v`), which the
+check models as data and the interpreter as a dispatch.
+
+## The `/v` read of a def-bound capturing fn literal (2026-09-08, the thirty-third increment)
+
+The two CPS rows (`factk`) refused "fn call operand of unknown provenance"
+at `(factk (sub 1 n) kk/v)`: `kk` is a fn-body-local `def` of a CAPTURING
+fn LITERAL (`def kk ( fn r:Integer Any [ … n … k/v apply ] )`), and its
+`/v` read is a fresh wrap of the binding (ResolveRef) with no producer —
+the thirty-first increment's alias traces a read to the bind-time
+PRODUCER, and a literal has no event. Called as a word (`(kk 3)`) the
+literal compiles as a unit with its captures passed at the call; as a
+VALUE it had no operand.
+
+**What landed.**
+
+- `noteValBind` records a def-bound capturing literal (anonymous or
+  nameless, unquoted) with its captures' bind epochs; `aliasValRead`
+  builds the literal's closure operand at the first read
+  (`tryReturnedClosure`: its unit pushed with the captures resolved in the
+  binding unit), caches it on the bind, and hands it to the read
+  (`readOps`), which `resolveOperand` consults before any other
+  resolution. The alias holds only while every captured name is unbound
+  since the def — the literal snapshotted its captures (NUR097), and a
+  read-site construction after `def n 7` would see the new value where the
+  interpreter's `kk` keeps 5.
+- The push carries the def name (`ClosureRetSpec.DefName`) and the VM names
+  the closure under it (`nameClosureValue`, as a store does), so a returned
+  read renders `fn kk(Integer)` on both lanes.
+- A bind inside a branch or loop body now records like any other: the
+  arm's rollback moves the binding's generation and the entry on top, which
+  the read checks, so the conditional-bind drop of the thirty-first
+  increment was redundant.
+
+**Measured.** The read handed to a Function param, the arrow spelling, an
+unrelated bind between, the closure handed through and applied at the
+main program, the value return and its render, the apply-word spelling and
+the top-level read agree byte for byte and VM-native. Sound refusals
+pinned with the interpreter's answers: a captured fn-local rebound between
+the def and the read, the literal redefined by another, the read inside a
+branch arm (the arm's gradual result — `residualLeadReStepped` — a
+separate hold), and the CPS row, whose refusal MOVED to the then-arm's
+pending apply over the `k:Function` param (`[ 1 k/v apply ]` is not the
+body tail): re-diagnosed in the ledger, no row graduated.
+
+**What the next author should not re-derive.** A capturing literal is a
+closure the interpreter constructs at the `def`; the compiled read
+constructs it at the read, which is the same closure exactly when no
+capture was rebound between — the per-name bind epoch is the guard, not
+the generation (a frame binding of a captured name bumps the generation
+too). The CPS rows' next gate is the branch ARM: a pending apply whose
+window is the whole arm residual, and the arm's gradual result at its
+lead, which the re-step hold refuses because a native word's fn result
+would dispatch where it lands.
+
+## A pending apply at a branch arm's tail (2026-09-08, the thirty-fourth increment)
+
+With the fn-local literal's read resolved (the thirty-third increment),
+the two CPS rows refused "fn factk: apply of a dynamic fn value not at the
+body tail" at the then arm `[ 1 k/v apply ]`: the `k:Function` param's
+pending `apply`-word application sits at an ARM's tail, and the unit
+finish's pending-apply arm lowers a pending window only as the whole BODY
+residual.
+
+**What landed.**
+
+- `EmitRecorder.ArmTailApply` (a new seam method): the `if` word calls it
+  on each arm's analysed residual, after the body run and before the arm's
+  fragment is taken. An arm whose residual ends in a pending fn with at
+  least one value beneath it INSIDE the arm collapses to the one gradual
+  value the apply nets — `RecordDynApply` over that window, recorded into
+  the arm's still-open fragment, so the arm's lowering applies the fn
+  where the interpreter's applyHandler does, and the pending entry is
+  consumed. The window is the arm's own: the arm frame seals the
+  enclosing stack off on both lanes (the interpreter's arm is a frame
+  that closes like a paren), so a pending fn with nothing beneath it in
+  the arm passes through and keeps the unit finish's refusal — the
+  interpreter applies it over the arm's empty stack and parks it.
+- After the collapse the arm has ONE survivor, so `residualLeadReStepped`
+  (the NUR101 rewind hold over a fn-typed lead among two or more) does not
+  fire; the branch join types the arm gradual.
+
+**Measured.** The two CPS rows graduated (ledger 61 → 59): the
+continuation-passing factorial answers 120 and 3628800 on both lanes,
+VM-native, with the fn-local continuation `kk` handed through the
+recursive call as a closure value; a then-arm apply, both arms applying,
+and a two-value window inside the arm agree. Sound refusal pinned: a
+pending fn with nothing beneath it in the arm, with the interpreter's
+parked value.
+
+**What the next author should not re-derive.** A branch arm is a frame
+on both lanes: its residual is the window an apply inside it sees, and
+nothing outside it. The unit finish, the paren collapse and now the arm
+are the three places a pending apply is consumed; a fourth residual owner
+(a loop body, a `do` body) would need the same call at its own tail.
+
+## The def-bound computed fn: a claimed shape, the read as a dispatch, and a wrapper applied on its own signatures (2026-09-08, the thirty-fifth increment)
+
+The fn-util behaviour rows — `def k (FnUtil.const 7)  (k 99)`, `def h
+(FnUtil.compose addone/v double/v)  (h 5)`, flip, partial, `on`, memoize —
+refused "def-bound computed fn apply (closure shape unknown — Stage 1)":
+the check pass binds a computed fn as a Function CARRIER of no shape, the
+read substitutes that carrier, and the residual classifier had nothing to
+lower it by. The refusal's own note blamed the island ("a lowered apply
+here returned 99 for 7"); measured, the island applies the value exactly
+as the interpreter does, and the 99 was `tryNativeFnApply` resolving the
+wrapper's LABEL `const` through the live registry to the singleton-type
+maker — a pre-existing miscompile of the EVENT spelling
+`((FnUtil.const 7) 99)`, which compiled and answered 99.
+
+**What landed.**
+
+- `core.IsSelfContainedGoFnDef` and the VM's own-signature apply: an
+  anonymous fn value wrapping nothing whose own signatures are all Go
+  handlers (fn-util's `goFnValue` shape) is VM-native applicable on ITS OWN
+  signatures — the interpreter's rule for an anonymous value — admitted
+  ahead of the parked-native arm that resolves by name. `callDynMethod`
+  gained `callDynamic`'s modifier-chain retry, so a `flip` wrapper over a
+  compiled user fn enters that fn's unit with the args reversed instead of
+  islanding. Error anchoring mirrors `stampErrPos`: the dispatching token's
+  text replaces the word a handler named (`h`, one caret, not
+  `FnUtil.compose`).
+- `CheckState.FnShapes` (`NoteFnShape` / `FnShapeArity`): the arity a
+  producing word CLAIMS for its computed-fn carrier. fn-util's words gained
+  check-mode ReturnsFns that mint the Function carrier and claim the
+  wrapper's arity — a constant for const, compose, pipe, curry and `on`;
+  read off a concrete operand's single signature for flip, partial and
+  memoize; no claim for a computed or overloaded operand.
+  `producerReturnedClosureArity` consults the claim as its third source.
+- `check.tryShapedFnReadArrival`, chained into the member-fn arrival hook:
+  a def-read fn carrier with a claimed arity is the interpreter's WORD
+  dispatch, modelled at the read over the wrapper's arity of
+  evaluation-fixed tokens inside the statement — one guarded
+  `OpCallDynMethod` (`RecordDynMethod` under the def name; the extra
+  tokens of a longer window stay on the tape, `(k 1 2)` is `7 2`). Every
+  other window REFUSES rather than declines: the residual classifier's
+  flattened window loses the statement — `bigger 3 ; 5` lowered as
+  `bigger 3 5` (compiled false for the interpreter's signature_error), and
+  `(bigger 3 ; 5)` the same inside a paren, since the word dispatched at
+  the `;` before the collapse. Measured before the model landed, on the
+  claim alone.
+- `EmitRecorder.DefReadName`: the read model's key from a carrier id to the
+  word the interpreter dispatches.
+- The fn-carrier read substitution (stepWord) runs on EVERY analysis pass,
+  not only a compile pass. It was compile-scoped on the premise that a
+  plain check never holds a table entry (a factory's `fn` handler runs in
+  check and constructs the concrete fn); a native that RETURNS a fn
+  carrier breaks it — `boru check` reported undefined_word and unused_def
+  on `def k (FnUtil.const 7)  (k 99)`, and the check-accuracy and
+  diagnostic-parity gates counted every such row the moment it left the
+  frontier ledger (18 false positives, parity 339 over the 321 ceiling —
+  found by the langspec gate, not the probes). The plain check then held
+  the carrier and its arguments where the interpreter leaves one result —
+  the type-soundness ratchet saw `(bigger 3 5)` as [Function Integer
+  Integer] for the runtime's [Boolean] — so the read model has a
+  plain-check half (`tryShapedFnReadWindow`, chained into the dynamic
+  fn-value window): the same window collapses to one dynamic(Any), the
+  def-bound test being the fn-carrier side table itself, since a plain
+  check has no live recorder to remember the read.
+
+**Measured.** The eight fn-util behaviour rows graduated (ledger 59 → 51),
+all VM-native; the event spelling answers 7 on both lanes; `k 1 ; 3`,
+`3 (k 99) add`, a 0-param wrapper's bare read `(p)` and two reads of one
+wrapper agree; a wrapper whose applied fn returns two values raises the
+same type_error at the same caret. Sound refusals pinned with the
+interpreter's answers: the stack form `5 k`, a param read `(k x)` inside a
+fn body, a paren inside the window, `(k 1 2)` (the survivor inside the
+paren), an overloaded operand to flip (no claim), and the two statement-
+window rows. The curried-chain row stays ledgered under a new mode: the
+read model nets one dynamic value for `(c 10)`, so `(c10 3)` is a dynamic
+lead with a paren-bounded argument.
+
+**What the next author should not re-derive.** A def-bound computed fn's
+read is a dispatch, and the dispatch happens AT THE READ with the word's
+statement window — not at the residual, whose flattening cannot see a
+`;`. The residual classifier keeps the event-lead spellings (a paren
+re-step over two survivors), where the paren is the window. A claim is a
+statement of the producing word's construction, never an inference from
+the carrier; a word that cannot see its operand concretely claims
+nothing, and the classifier's refusal stands.
+
+## The read model over a def-bound produced closure, with the result shape (2026-09-08, the thirty-sixth increment)
+
+The thirty-fifth increment's read model keyed on a claim only fn-util's
+words wrote, so a def-bound PRODUCED closure — the factory pattern, `def h
+(mk (z:Integer => [add 7 z]))` — still reached the residual classifier,
+which had the closure's arity from its unit but not the statement: `h 2 ;
+3` over a two-param closure lowered as `h 2 3` (compiled 12 for the
+interpreter's signature_error), the same flattening the thirty-fifth
+increment closed for the wrappers. And the typeof, repeated-read and
+curried-chain rows stood behind three refusals that were one gap: the
+apply of a def-bound closure did not collapse at the read.
+
+**What landed.**
+
+- `CheckState.FnShape` carries a RESULT shape beside the arity: the shape of
+  the fn the wrapper returns when that is a claimed fn too (a curried
+  chain's next level, a factory's factory). fn-util's `curry` claims the
+  chain (one unary level per param, the last returning the value); every
+  other word's claim keeps a nil result.
+- The recorder claims a def-bound produced closure's shape at the def
+  (`noteClosureShapeBind`, from `RecordDynBind`): the closure unit's param
+  count, its own single closure out-op recursing for a factory of
+  factories (`closureOpShape`), or a const lambda's. A producing word's
+  own claim stands. `producerReturnedClosureArity` reads the same shape.
+- The read models' one result follows the claim (`shapedReadOut`): a
+  dynamic value, or — for a result shape — a Function carrier claimed with
+  it, so `def f2 (f1 2)` binds a shaped carrier through the fn-carrier side
+  table and `(f2 3)` models its own dispatch. The VM side is the
+  thirty-fifth increment's: `OpCallDynMethod` over a closure enters
+  `invokeClosure`, the chain's intermediate closure the one result.
+
+**Measured.** Four rows graduated (ledger 51 → 47): the typeof operand
+(`typeof (h 5)` is Integer), the repeated reads (`(h2 5) (h2 10)` is 15 30),
+the three-level `mk2` chain (6) and the fn-util curry chain (7), all
+VM-native; a three-level curry, a capturing closure read twice, a
+two-param closure's full window and a read whose window is its statement
+agree. The two flattened-window spellings refuse with the interpreter's
+signature_error; the survivor inside a paren refuses with its answer. The
+filter-body and each-body twins compile and agree but island, and stay
+ledgered as islanded (re-diagnosed with the thirty-eighth increment: in
+their forward form the read sits in the DATA list and the literal BODY
+nets several values — a multi-value HOF body, not a read). Three neighbours pinned as refusals by
+earlier increments compile and agree now and are re-pinned as parity: the
+returned fn placed beside a value (`(h 5) 2`), its def-bound read applied
+(`def q (h 5)  q 2`), and the two-factory row (`(q 7) (r 1)`). The bare
+0-arity read of a body-local closure (`def r (mk)  r`) needed the read
+model to CREDIT the read it dispatches (`RecordDynMethod` →
+`creditWordRead`), or the NUR123 accounting counted it lost.
+
+**What the next author should not re-derive.** A claim is written where
+the shape is KNOWN — the producing word's ReturnsFn, or the def of a
+produced closure — never inferred at the read; the read model then treats
+a wrapper and a closure alike. A chain compiles because the claim carries
+its result's shape and the read mints a carrier that carries the rest: no
+level is special.
+
+## The condition loop on the counted loop's frame (2026-09-09, the thirty-seventh increment)
+
+`while` was family H's one member: the recorder's code-body-word gate
+refused it, and where the recorder admitted the pure-literal regions the
+VM bailed mid-run on the spliced mark/cond/move tokens and RunCompiled
+re-ran the whole program on the interpreter. Six ledger rows and no
+lowering. The plan (FULL-COMPILATION.0.md §6.8) named `WHILE_SETUP` /
+`WHILE_NEXT` opcodes; none was needed.
+
+**The interpreter's semantics, measured before a line was lowered.** The
+condition region's LAST value decides and the extras are dropped; an
+empty region raises `runtime_error: while: condition produced no value`;
+`break` and `continue` discard the partial round's values; body values
+accumulate (a variadic result, as `for`'s); a def the body rebinds
+persists after the loop, and a zero-iteration loop leaves the pre-loop
+value.
+
+**What landed.**
+
+- A `while` records on the counted loop's OWN frame (`RecordWhile`, over
+  the `recordLoopEvent` record it now shares with `RecordLoop`):
+  `FOR_SETUP`/`FOR_NEXT` over the consts start 0, step 1, end MaxInt64
+  and a scratch iterator local no name reaches. The condition is a second
+  fragment on the loop event (`emitLoop.cond`/`condOut`), lowered at the
+  head of every iteration; a falsy value jumps (`JMP_IF_FALSE`) to a
+  `FLOW_BREAK` placed past the back-edge, which pops the loop frame and
+  trims the round exactly as a `break` from a callee does. Body
+  classification, the iterator slot, the event and its result marks are
+  `for`'s. The lowering admits a condition netting exactly one value and
+  refuses every other count — sound, since the interpreter's fallback
+  raises (empty) or drops (extra) where the lowered shape cannot.
+- The check-mode model (`whileReturnsFn`) analyses the BODY first and the
+  condition second. A def the body rebinds is registered loop-carried by
+  the body's analysis, and a condition analysed before it resolved its
+  read to the pre-loop value — the compiled loop never terminated. Both
+  analyses run to their fixed points over the joined bindings, so the
+  order changes no verdict. `EndLoopCarried` appends to the pending
+  carried inits rather than replacing them (each analysis closes a carried
+  scope).
+- Every loop-event traversal in the lowerer visits the condition beside the
+  body — `childFragments`/`fragmentOuts` are `[cond, body]`,
+  `forEachOperand`, `forEachFragmentOperand`, `eachClosureCap`,
+  `fragmentResultSeqs`, the dyn-bind scan and the memo walk. Without that
+  a condition reading an enclosing computation (`(c get 'n') lt 3`)
+  refused as "branch reads enclosing computation" and, once admitted, as
+  "result operand of get is not on top"; `for`'s body with the same read
+  compiled all along.
+
+**Measured.** Four of the six ledger rows graduate (ledger 47 → 43): the
+falsy condition, `break`, the truthiness read and the flex counter, all
+VM-native and moved to `lang/spec/control.tsv` §7 with nine neighbours
+(a carried rebind read by the condition and after the loop, zero
+iterations, `break` and `continue` discarding the round, a `continue`
+and a `break` inside a branch arm, a fn-body while over a param, a nested
+while). The two remaining rows are re-diagnosed, each under a gate that is
+not the loop's: the `continue` row's body holds `if ((c get 'n') eq 2)
+[continue]`, a computed-condition no-else if whose one arm diverges,
+which the branch recorder refuses under `for` too (`if (n eq 2)
+[continue]` over a plain read compiles); the empty condition refuses as
+"condition nets 0 values, not one" where a terminal trap (RecordTrap, top
+level only) would graduate it. A two-value condition and a multi-value
+body with a rebind (the pre-existing "dynamic-scope def of unpromoted
+computed value", `for`'s too) refuse soundly.
+
+**A pre-existing `for` divergence, recorded here, not fixed.** `def i 0
+for 3 [def i (i add 1)] i` answers 2 on the interpreter and 3 compiled;
+with `break` in the body, 0 against 1. The body's `def` of the ITERATOR's
+own name rebinds the iterator's binding in the interpreter and the loop's
+teardown leaves the outer `i` at the last iterator value, where the
+compiled loop treats the def as a loop-carried rebind of the outer def
+(`def n 0 for 3 [def n (n add 1)] n` is 3 on both). Not the while's shape
+— its iterator is a scratch slot. The next author should decide which
+answer is the language's before making the lanes agree: the
+interpreter's reads as a teardown artefact.
+
+**What the next author should not re-derive.** A condition loop is a
+counted loop whose count is never reached, plus one fragment and one
+conditional exit; the exit is the `break` machinery, not a new frame.
+The order the two regions are analysed in is load-bearing for the
+carried slots and for nothing else.
+
+## The fn-carrier read inside a nested body, and the gate that was two gates (2026-09-09, the thirty-eighth increment)
+
+The thirty-fifth increment's substitution — a read of a name def-bound to
+a Function CARRIER resolves through the per-pass side table — declined
+inside ANY nested body (`NestedBodyDepth > 0`: a branch arm, a loop body,
+a `do` body) on the premise that such a body is re-run from its tokens,
+where the compiled body carries no binding for the name. The premise had
+a real failure behind it (`do [(f 2)]` once compiled to an island that
+raised `undefined word: f`), but the decline was the wrong instrument:
+it left `if c [(f 2)] [0]` and `for 2 [(f 2)]` reporting a FALSE
+undefined_word — an ERROR-severity diagnostic on a correct program, on
+the plain check — and `do [(f 2)]` behind the check-diagnostics sentinel.
+
+**What landed.**
+
+- The substitution fires inside a nested body too (`stepWord`, core).
+  The read then models as the dispatch it is where the body lowers
+  inline — a branch arm, a loop body, a while body — and a `do` body
+  reaches the dyn-body backstop (its closure probe still declines the
+  carrier's read: the probe carries no producer tables, so the operand
+  has no compiled home), where the sub-engine resolves the name through
+  the program's DynEnv twin to the runtime closure. All compile and
+  agree with no VM island.
+- The code-body gate (`recordCodeBodyClosureRead`) was two gates. It
+  keyed on `producerReturnedClosure` at the def, which is true for a
+  typed factory's CARRIER result (`def f (mk 1)`, a declared `Function`
+  return) and for a lambda factory's CONCRETE closure (`def h (mkg …)`)
+  alike. Measured with the gate removed: the carrier case compiles and
+  agrees (its read is the side-table substitution and the read model),
+  while the concrete case MISCOMPILES — `do [(h 1)]` compiled and raised
+  `undefined word: g` (the captured param) for the interpreter's 8, and
+  `[1 2] each [p/v apply]` islanded to `[[1 2]]` for `[[8 9]]`: inside
+  the body's unit the read resolves to the FnDefInfo itself, whose home
+  is an event outside the unit. `RecordDynBind` now notes only a CONCRETE
+  produced closure for the gate; a carrier-bound name passes to the
+  closure path.
+
+**Measured.** The `do [(f 2)]` row leaves the ledger (43 → 42) and three
+INLINE neighbours graduate to `lang/spec/bytecode-migrated.tsv` — a
+computed-condition branch arm, a loop body with a body-local def, a while
+body — each lowering with no interpreter entry. The `do` spellings
+themselves stay in `frontier-hof-audit.tsv`, un-ledgered: they compile and
+agree, but `do` reaches the dyn-body backstop, whose handler re-runs the
+body in a sub-engine, and the batch gate's interp-entry census counts that
+where `frontierRowCompiles` cannot see it (the section below records what
+that cost). The plain check is clean on every one. The concrete-closure
+rows keep the gate's refusal, the stack-form `each` and `filter` bodies
+keep "code-body word … (Stage 2)", a two-value arm keeps "then-branch
+result of unknown provenance".
+
+**Measured and NOT landed: the `/v` read of a carrier-bound name.**
+`stepWordVal` deliberately skips the side table (`TestStepWordValCarrier
+KeepsUndefinedDiag`), so `2 h/v apply` over a typed factory's carrier
+reports a false undefined_word AND a false unused_def on the plain check.
+Consulting the table there was tried: `typeof h/v` compiles and agrees,
+but the value read then hits the thirty-fifth increment's read model,
+which treats the carrier as a BARE read and refuses "the statement ends
+short of the wrapper's arity" — a misleading reason for a value read —
+and the remaining spellings re-diagnose without graduating (`2 h/v apply`
+is the apply-over-a-fn-typed-carrier refusal). The pmany/pseq rows were
+unaffected either way. Graduation needs the `/v` read to mint a fresh ID
+the alias (`aliasValRead`) seats, so the read model does not claim it;
+the strict-lane false positive is the reason to do it.
+
+**Found on the way, not fixed.** A produced closure whose body returns the
+wrong declared type raises type_error on both lanes, but the compiled
+report anchors on the fn literal with an empty name (`: return value 1:
+expected Integer, got ProperString @1:36 src="fn"`) where the interpreter
+anchors on the read (`f: … @1:93 src="f"`) — NUR122's position-and-name
+class, for `checkClosureReturn`.
+
+**What the next author should not re-derive.** The nested-body question
+is not "is the body re-run" but "what does the read resolve to": a
+carrier resolves through the side table on every pass and every depth,
+and only a concrete produced closure has a home the unit cannot reach.
+The next step for the code-body words is the closure PROBE: a fn unit
+lowers the same read as `LOOKUP_DYN_SCOPE` + `CALL_DYN_METHOD` (the
+dyn-scope rescue), and the probe declines it only because
+`forkForProbe` seeds no `producedBy` — `[1 2] each [(f 1)]` refuses
+"code-body word each (Stage 2)" on exactly that.
+
+## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
+
+The thirty-seventh and thirty-eighth increments each graduated rows into the
+main corpus, and the batch gate answered with three red ratchets. Both
+causes were real, and neither was in the compiled code — the compiled and
+interpreted lanes agreed on every row throughout. What moved was what the
+corpus MEASURES.
+
+**A while's check-mode residual was a List where the runtime leaves N
+values.** `whileReturnsFn` modelled the loop's residual as one typed-List
+carrier, mirroring `for`'s non-static arm. For `for` that arm is
+unreachable in the corpus (a computed count refuses), so the claim was
+never measured; the moment the while rows entered `lang/spec/control.tsv`
+the type-soundness oracle read it and flagged 5 violations against a pin of
+0 — checked `[List, String]` where the runtime leaves `1 2 3 'z'`.
+
+The claim was false, not merely imprecise: a while's trip count is never
+static, so its residual is 0-or-more values of the body's type. That shape
+has a device already — the VARIADIC SPREAD carrier (`SpreadPayload`), which
+a `[]`-declared recursive fn's leak and `await`'s winner-takes-all use, and
+which the oracle absorbs count-wise while still checking every element's
+type. The plain check now returns it. The RECORDING pass keeps the
+typed-List carrier: there it is the loop EVENT's stand-in, never read as a
+type, because the compile lane refuses every consumption of a loop result
+("consumes loop results") — measured, both spellings, before the change.
+
+**A row that compiles is not a row that compiles NATIVELY.** The
+thirty-eighth increment graduated `do [(f 2)]` into the main corpus on the
+strength of `frontierRowCompiles`, which sees an `OpFallback` span and the
+VM's own island seams. It does not see a HANDLER re-running a body in a
+sub-engine, which is exactly what `do` does when its body reaches the
+dyn-body backstop: the interp-entry census caught it (35 against a ceiling
+of 33, both new rows named), and the diagnostic-parity count rose with it
+(322 against 321). The two `do` spellings went back to
+`frontier-hof-audit.tsv` — un-ledgered, since they DO compile and agree and
+the frontier gate asserts that — and the three INLINE nested-body
+spellings, which lower with no interpreter entry at all, stayed in the
+corpus. Both ratchets returned to their pins with no ceiling raised.
+
+**A third ratchet, and a pre-existing defect underneath it.** The
+diagnostic-parity gate then read 322 against a ceiling of 321 — but only in
+a FULL-PACKAGE run: alone it read exactly 321, twice, with identical row
+sets. The switch is one corpus row (`bytecode-migrated.tsv`'s
+`nd (m get "inc") apply` over a non-fn member) whose PLAIN check reports
+nothing the first time the process ever checks that fn definition and two
+errors every time after — measured directly, in a tenth of a second, with
+fresh `lang.New()` instances either side. It is keyed on the definition
+(name plus body: the same body under different names does not warm it), it
+survives a fresh registry, and merely RUNNING the program warms it too. It
+is not the ID sequence (reseeding does not change it) and not the
+per-registry analysis memo or quota. **It reproduces unchanged at the
+thirty-fifth increment**, so it is older than this batch: `boru check`'s
+verdict on one program depends on what the process did before it, which is
+the NUR103 class taken one step further — the verdict depends not only on
+who is asking but on when. **LOCATED 2026-09-09** — see the section below.
+
+What this batch actually added was ONE diverging row, and it was
+accidental: the branch-arm row graduated with the thirty-eighth increment
+wrote its condition as `def c (1 lt 2)`, which folds, so the else arm is
+statically unreachable and the plain check says so where the compiling pass
+does not. The row exists to pin a carrier-bound read inside a branch ARM,
+not to exercise a decidable condition, so its condition is now a flex-map
+read the checker cannot fold. Isolated parity returns to 320 — one below
+the ceiling, where the thirty-fifth increment left it.
+
+**The lesson, and the tool it earned.** A graduation is a claim about a row
+that three gates measure independently, and passing the one you happen to
+run is not passing them. The parity gate now names its diverged rows under
+`BORU_LOG_PARITY_ROWS=1`, as the census and check-accuracy gates already
+did — its ceiling has only ever moved with the exact row named, and
+re-deriving that row by hand across 7,700 rows is the step that was
+missing.
+
+## The help hook's seventh leak channel: why the FIRST check in a process is the wrong one (2026-09-09)
+
+The cold/warm defect above is a contaminated FIRST check, not a stricter
+later one, and the contamination comes from the documentation system.
+
+`lang.New` installs `EnableDynamicHelp`, which sets `Registry.OnRegisterHook`.
+`installFnDef` fires that hook on EVERY fn installation — including the
+user program's own `def app fn […]`, mid-check. The hook synthesises an
+example expression from the word's NAME and one SAMPLE VALUE per declared
+param type (`app 2 {a:1,b:2}` for `[[nd:Any m:Map]]`) and, the first time
+that expression string is seen IN THE PROCESS, EVALUATES it for real —
+a full `Engine.Run` in the very registry that is mid-`Check`. The gate is a
+package-level `dynamicExampleResults` map that is never cleared, which is
+exactly why the behaviour is once-per-process.
+
+`makeDynamicEval` knows this run must be hermetic and closes six leak
+channels, each documented in its header: the EmitState, the diagnostics,
+the def stack, the step budget, the filesystem and stdin. The fn-analysis
+memo is an unclosed SEVENTH. The synthetic run drives `AnalyseFnBody` over
+the user's real body and memoises the residual in `Check.FnSummaries`; and
+`FnAnalysisKey` renders arg TYPE NAMES only (`carrierTypeName`), so the
+example's literal `2` and the program's literal `5` build the same key. The
+program's own call then takes the memo HIT and is handed the EXAMPLE's
+residual instead of analysing its own concrete arguments — so `apply` is
+never dispatched against the concrete member and neither the `no_signature`
+nor the two-value `type_error` is produced. The synthetic run's own
+diagnostics are truncated on the way out, so the contamination is silent:
+it shows up only as a MISSING diagnostic on the real call.
+
+**The direction matters.** With the hook nil'd, the first check in a fresh
+process already reports both errors. WARM is the uncontaminated answer; the
+cold check is the wrong one, and every gate baselined on a first-check
+answer is baselined on pollution.
+
+**Measured, not argued.** The poisoned entry is directly observable: for
+`app 'x' rules` — whose only call site is `(ProperString, Map)` — a cold
+process holds an extra `#app#Integer,Map` summary that no part of the
+program could have written. Breaking the key collision that way removes the
+cold state entirely, with no warm process needed. Priming with the same
+name and signature but a COMPLETELY DIFFERENT body warms the row; priming
+with the same name and a different param type (a different rendered example
+string) does not — so the key is the rendered expression, not the name and
+not the body. Simulating the fix from the test side, by snapshotting and
+restoring the memo family around the hook, makes cold equal warm equal the
+no-hook control while `describe` still prints its generated example.
+`CompileCheck` is identical either way because `BeginCompilePass` nils
+`FnSummaries` before the compiling pass could consume the poison.
+
+**The cut is TWO TABLES, and the wider one is wrong.** The instinct is to
+restore the whole fn-analysis family — `FnInflight`, `FnNameInflight`,
+`FnBodyChecked` and `PendingFnBodies` alongside `FnSummaries` and
+`FnAnalysisCounts`. That was tried first and it REGRESSED four shapes that
+compile today to "body result of unknown provenance": the recursive closure
+of `bytecode_emit_test.go`'s capture-slot pin, the stored-sig poly of §6b,
+the CPS arm-tail apply, and an in-unit named callback. The reason is the
+same fact that makes the leak possible — the hook fires MID-INSTALL of the
+user's own fn, so the enclosing pass has analyses IN FLIGHT and QUEUED
+across it, and restoring those tables throws that queued work away; nothing
+then analyses the pending body. What LEAKS is the memo of FINISHED
+analyses; what must SURVIVE is the record of analyses still owed. Restore
+the first, never the second. The measurement is in the helper's own comment
+so a future widening has to argue with it.
+
+**Pinning a once-per-process defect has its own trap, and it was walked
+into.** The synthetic evaluation happens once per process per rendered
+example STRING, and that string is built from the fn's NAME and its PARAM
+TYPES. So a pin whose fixture reuses a name+signature another test in the
+same package also defines is VACUOUS in the suite that CI runs: whichever
+file sorts first spends the one evaluation, and the pin then measures the
+already-warm path and passes with the fix deleted. The first draft of
+`TestCheckVerdictIsHermeticAcrossProcessHistory` used `def app fn [[nd:Any
+m:Map] …]`, which `bytecode_edge_findings_test.go` (sorting earlier) also
+defines — it failed when run alone and passed in `go test .`. The rule is
+the same one the leak pin already stated for `dhleak`: give the fixture a
+name defined nowhere else. And the FEATURE guard has the mirror trap — the
+example EXPRESSION is rendered from the signature alone and prints whether
+or not anything was evaluated, so asserting it does not forbid the one wrong
+fix ("skip the evaluation instead of isolating it"). Only the result half,
+`;# 2` rather than the placeholder `;# ...`, comes from the synthetic run.
+Assert the line.
+
+**The frontier ledger does not move.** The wider cut also re-diagnosed
+`frontier-capture-namespace.tsv:15` — under it the row refused at its own
+residual rather than at the capture slot. The narrow cut does not: that row
+still refuses with `capture ParseLang of calc unreachable at a call site`,
+and the ledger entry stands unedited. A re-diagnosis measured against an
+abandoned fix is not a measurement.
+
+**What the next author should not re-derive.** The memo is deliberately
+keyed on types, not values; making it concreteness-aware would collapse its
+hit rate and change checking repo-wide. The local cut is isolation — the
+seventh channel closed like the other six — not a smarter key. And a
+per-registry `dynamicExampleResults` is strictly worse: it makes EVERY
+check behave like today's cold one, so the leak would mask the real
+diagnostic every time instead of once.
+
+## The memo outlives the pass too: a SECOND, hook-independent instance of the same class (2026-09-09, measured, NOT fixed)
+
+Closing the seventh channel makes one check hermetic against the help
+example. It does not make the memo pass-scoped, and there is a second way a
+check's verdict depends on history — reachable with the help hook disabled
+entirely, so it is not the leak above wearing a different hat.
+
+`CheckState.Begin()` resets every other member of the fn-analysis family —
+`FnAnalysisCounts`, `FnNameInflight`, `FnBodyChecked`, `PendingFnBodies`,
+`InflightBails` — and does NOT reset `FnSummaries`. Only `BeginCompilePass`
+nils it, and `SetStrictCheck` clears it by hand, its comment already
+conceding the point ("on a reused instance a bare Begin keeps them"). So the
+memo survives from one `Check` to the next on one registry. That matters
+because `FnAnalysisKey` identifies a body by its FIRST TOKEN'S row:col, not
+by its content: two different programs whose fn shares a name, arg type
+names, captures and body start position build the identical key, and the
+second check is handed the first's residual.
+
+Measured:
+
+    a := lang.New()
+    a.Check(`def zzff fn [[x:Integer] [Any] [x mul 2]]     zzff 2`)  // clean
+    a.Check(`def zzff fn [[x:Integer] [Any] [x mul {a:1}]] zzff 2`)  // → []
+
+A fresh instance checking the second program alone reports its
+`no_signature` (`mul` got `(Integer, Map)`). Both bodies start at 1:33 and
+both calls are `(Integer)`, so the keys collide and the failing dispatch is
+never attempted. The reverse order is safe — the memo caches the residual,
+not the diagnostics — so the failure is ONE-DIRECTIONAL, exactly as the help
+leak is: an error silently disappears, never a phantom appears.
+
+**Why it is recorded rather than fixed here.** Nothing shipped reaches it:
+every in-tree `Check` caller builds a fresh instance
+(`cmd/go/internal/lsp/diagnostics.go`, and `cmd/go/internal/check/check.go`
+inside its per-target loop). And the two candidate fixes are both changes to
+the memo's LIFETIME or its KEY, repo-wide: have `Begin()` nil `FnSummaries`
+as it nils `FnAnalysisCounts` (giving up cross-check memoisation, with its
+own gate to run), or make the key carry body CONTENT rather than body
+position (which is the same "make the key smarter" move the seventh-channel
+section argues against for the type-name half, and would want its own
+hit-rate measurement). Neither belongs bolted onto a leak fix. The shape an
+embedder would hit is an instance-caching LSP re-checking an edited buffer:
+it would stop reporting a type error the user had just introduced.
+
+## What closing the seventh channel cost, and what it exposed (2026-09-09, all three measured)
+
+Adversarial review of the fix found three things the fix itself does not
+say. All three are reproduced against built binaries — `boru-with` (the
+shipped cut) against `boru-without` (6007c2a) — not argued from the code.
+
+**1. The same leak is still open one caller over.** The defect's SHAPE is
+"an analysis whose diagnostics are truncated while its `FnSummaries` writes
+survive". `compiler/go/code_effect.go`'s `AnalyseCodeEffectCarrier` is a
+self-described DRY pass over a stored quoted code list: it snapshots
+`diagBase`, runs `core.RunCarrierBody`, and calls `TruncateDiagnostics` —
+with no `IsolateFnAnalysis`. So the dry run's summaries survive under the
+type-name key and the program's own call site takes the hit, exactly as it
+did through the help hook. Reachable from ordinary source:
+
+    def zk1 fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]]
+    def rules {inc: 42}
+    def ops [(quote [zk1 2 rules])]     # <- add these two lines and
+    def b (ops get 0)                   #    the no_signature disappears
+    zk1 5 rules
+
+Without the two middle lines the check reports both errors; with them the
+`no_signature: apply` is silently lost and the surviving `type_error`
+renders the DRY pass's operand `2` instead of the user's `5`. `boru-without`
+reports ZERO errors for the same program — both channels were leaking — so
+the shipped cut is a partial improvement, not a complete one.
+`IsolateFnAnalysis` is already the right primitive; it is simply not
+deferred at that site. Left for its own increment because it is a change to
+the compiler's check path and wants the full ratchet run, not a bolt-on.
+
+**2. It exposes a pre-existing `unreachable_branch` attribution defect, and
+that is a REGRESSION on a shipped file.** `boru check utils/wc.boru` goes
+from `0 warnings` to one FALSE `unreachable_branch` at 166:3. The warning is
+wrong: `wc-row` has two call sites, one passing the literal `"total"` (for
+which the then-branch is indeed dead) and one passing `(it.label)`, which is
+`""` whenever `acc.named` is false. The then-branch is reachable.
+
+The mechanism is not the leak fix. `EmitUnreachableBranch`
+(`basic/go/native_control.go`) reports at `CurCallPos` — a position INSIDE
+the shared fn body — while the constancy comes from THIS call's bound
+argument. It is a fact about one call site reported at a position both call
+sites share. Before the fix, the memo hit meant only one call shape was ever
+analysed, so only one such warning could ever be emitted, and the defect was
+masked. An honest analysis analyses both shapes, and both warnings survive
+`CheckAddUniqueDiagnostic` because it dedupes on code+detail+position and the
+details differ. The result is one `if` drawing two CONTRADICTORY warnings at
+one position — measured on a three-line program:
+
+    def zwr fn [[label:String] [String] [ if (label eq "") ["empty"] [label] ]]
+    def a (zwr "")
+    def b (zwr "total")
+
+    without: 1:39 constant true; else-branch is unreachable
+    with:    1:39 constant true; else-branch is unreachable
+             1:39 constant false; then-branch is unreachable
+
+No suite catches it: `utils/` is outside `make test`'s module fan-out, and
+`utils_e2e_test.go` runs the binaries rather than asserting check output.
+The principled repair is at the emitter — a constancy that comes from a
+bound param is a property of the CALL, not of the code, and must not be
+reported at the body's position — but distinguishing it from a genuine
+source literal (`if true [...] [...]` written in a body) is a diagnostics
+design question with corpus-wide reach and the check-accuracy gate to
+answer to. It is not a bolt-on to a leak fix. Also worth recording: the same
+honesty turned `kg/tests/resolution_test.boru` from silent to two TRUE
+errors (an undefined `KgSchema` the memo hit had been hiding), so the
+exposure cuts both ways.
+
+**3. `boru check` is materially slower, and the cost is NOT the clone.**
+Best-of-3 wall clock, same machine, byte-identical output:
+
+    kg/storage.boru        1.96s -> 3.82s  (+95%)
+    kg/validate.boru       0.78s -> 1.25s  (+61%)
+    lang/go/modules/sift.boru  2.35s -> 3.30s  (+41%)
+    aggregate over 31 corpus programs         +9.4%
+
+Several programs got FASTER (-16% to -33%) because an honest analysis
+short-circuits earlier, so it is a redistribution with a bad tail rather
+than a uniform tax. **Do not optimise `cloneMap`**: a control build that
+keeps both clones and makes the restore a no-op runs at the without-fix
+speed. The cost is the DISCARDED memo forcing re-analysis — `AnalyseFnBody`
+misses go 852 -> 1396 on kg/storage.boru. It is linear in (hook evaluations
+x per-example cascade), not quadratic: a synthetic deep call chain at
+N=25/50/100 shows identical miss counts on both builds. The honest way to
+buy it back is to stop doing the synthetic evaluation inside the user's pass
+at all, not to make the isolation cheaper.
+
+For the record, two things that are NOT problems, both measured. The
+`FnAnalysisCounts` refund cannot let a program exceed `FnAnalysisQuota`: the
+counter increments on the memo-MISS path only, so refunding the example's
+increments and re-consuming them on the program's own now-missing calls nets
+the same or lower. And nothing changes when help is disabled — the call sits
+inside `makeDynamicEval`'s returned closure, which a registry with no
+`OnRegisterHook` never reaches.
+
+## The root fix: help examples are generated ON DEMAND (2026-09-09)
+
+The isolation above closes the seventh channel. It does not answer the
+question the three costs were really asking, which is why a DOCUMENTATION
+feature was running inside a user's analysis pass at all.
+
+`EnableDynamicHelp` set `OnRegisterHook` to a function that built the word's
+`FuncInfo`, synthesised an example, and EVALUATED it — a full `Engine.Run` —
+at every fn registration. The hook fires from `installFnDef`, so the user's
+own `def f fn […]` triggered it mid-check. Nothing about that timing was
+needed: the only consumer of the result is `describe` (and LSP hover), and
+those run later, with a registry in hand.
+
+So the hook now RECORDS and nothing else — `Registry.NoteHelpWord`, one map
+insert — and every render site goes through one new function,
+`native.FormatWordHelp(r, info)`, which generates the example if the word was
+registered after startup and then renders. Seven `help.FormatDynamic` call
+sites across `lang/go/native/describe.go`, `cmd/go/internal/describe` and
+`cmd/go/internal/lsp/hover.go` route through it; there is now exactly one
+place where a synthetic evaluation can happen, and it is a place the user
+asked for output.
+
+**What it fixes, measured.**
+
+- The leak is gone at the source: nothing synthetic runs during a check, so
+  there is no `FnSummaries` write to isolate. `IsolateFnAnalysis` stays as
+  belt-and-braces — and it is now load-bearing for a DIFFERENT timing, since
+  the evaluation happens inside the user's RUN of `describe` and must not
+  disturb that run's def stack, budget, recording or diagnostics.
+- `boru check` gets dramatically faster, because the eager hook was paying
+  for every word's example on every run and the memo hit only ever hid part
+  of that cost. Best-of-2 over 30 corpus programs: **21.3s -> 5.7s, -73%**.
+  Per program: `lang/go/modules/cli.boru` 2.53s -> 0.13s (-95%),
+  `kg/storage.boru` 1.89s -> 0.24s (-87%), `kg/validate.boru` 0.78s -> 0.16s.
+  For comparison, the ISOLATION alone made these SLOWER (kg/storage 2.47s ->
+  4.09s), because it discarded the memo and forced re-analysis. Laziness
+  removes the work instead of redoing it.
+- `describe` is unchanged: `describe kk9` still prints
+  `kk9 2 {a:1,b:2}   ;# 2`, generated on demand.
+- Diagnostics are unchanged from the isolated build: 53 corpus programs
+  compared line for line, zero differences. Laziness and isolation reach the
+  same honest answer; only the cost differs.
+
+**What it does NOT fix, and this is the useful negative.** The false
+`unreachable_branch` on `utils/wc.boru` survives laziness exactly as it
+survived isolation — measured on both builds. That settles a question worth
+not re-deriving: the warning is not an artifact of HOW the leak was closed.
+It is a latent attribution defect (`EmitUnreachableBranch` reports at a
+position inside the shared fn body while the constancy comes from THIS call's
+bound argument) that the memo hit was masking by only ever analysing one call
+shape. ANY correct fix reveals it, so it is not avoidable by choosing a
+different one — it has to be fixed at the emitter, and that is its own piece
+of work with the check-accuracy gate to answer to.
+
+**What the next author should not re-derive.** The register-time hook was not
+load-bearing for anything. Its one implementation was help, its one consumer
+is `describe`, and moving the work to the consumer is strictly better on all
+three axes at once. The one thing recording still buys is the "post-ready
+words only" restriction — a word registered BEFORE `MarkReady` has a
+build-time snapshot from `genhelp`, and generating for it on demand would be
+new behaviour, not a fix. `IsHelpWord` is what keeps that line.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -3783,3 +5370,61 @@ position than the construct that produced the binding.
 | `check/go/narrow_passend_test.go` | the narrowing pop at pass end (popped on top, left alone when buried) and that `AnalyseLoopBody` ledgers its joined installs |
 | `lang/go/narrow_leak_test.go` | the user-visible half of the narrowing leak: a later `Run` reads the bound Lock, not the leaked carrier |
 | `eng/go/checkstate_lifecycle_test.go` | that every new `CheckState` field is classified reset-by-`Begin` or persistent |
+| `core/go/engine_restep_note_test.go` | the RE-STEP note's arms (NUR124): which native results the pass notes, at which token, and every exclusion — quoted, concrete, a user fn's, a code-body word's, a pending forward's, a non-plain follower |
+| `compiler/go/restep_deopt_test.go` | the recorder's note on the producing event, the planner's placement and declines (a resume outside the body, a deferred residual literal), the lowering's op and prefix, the strict refusal, and the prefix on NUR123's statement points |
+| `eng/go/vm_deopt_test.go` (`TestReStepIfFnArms`) | the VM's re-step arm: plain results a no-op, a fn re-stepped as a token over the region and the prefix, the island's own error, the defensive arms |
+| `lang/go/restep_deopt_test.go` | the timing family's parity and lowering (the op follows the swap), the siblings the note leaves alone, the closure family's parity (`TestClosureValueReStepParity`), and the open shapes pinned as measured |
+| `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda / a no-match stay data — as the PAYLOAD, never the bridge; the seam's declines, the Anonymous flag, and the closure's identity riding on the bridge |
+| `core/go/fn_identity_test.go` / `lang/go/closure_identity_test.go` | the closure identity token: copies of one closure are one function (`dup eq` true on both lanes), constructions are distinct, a token-less payload is nothing, a bridged copy is eq to the closure either way round |
+| `lang/go/gradual_apply_test.go` | `apply` over a gradual lead inside a unit: the parity rows (the W combinator's body and returned lambda, the fetched-fn apply, the no-match twins byte for byte), the runtime states the op defers (a lens, a 0-arg fn, a 2-arg fn) and the sound refusals (the main-program apply over a produced closure, a two-return body) |
+| `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`) | `recordGradualApplyEvent`'s declines and its one positive arm (the event's flavour flags and position) |
+| `eng/go/vm_seam7_test.go` (`TestSeam7CallDynApplyOneArms`, `TestSeam7CallDynApplyTopArms`) | the apply-word op arm by arm: one result commits, a 0-arg fn fires above the receiver (the tail form) and defers (the event form), a lens defers, data raises the interpreter's own `apply` no-match, `closureUnit`'s declines, the re-step's island error |
+| `core/go/fn_identity_test.go` (`TestParenTrailingFnApply`) | the paren classification's trailing arm — a Dynamic last value is the lead exactly when the apply word holds it pending — and `MarkApplied`'s arms |
+| `core/go/engine_stage5b_test.go` (`TestS5BCloseParenPendingGradualLead`) | the paren collapse over a pending gradual lead records the trailing apply with a GRADUAL out and collapses the window; with nothing pending the same window is kept |
+| `compiler/go/plain_lambda_test.go` | `plainLambda`'s arms (a code body, a typed lambda, no contract, a pattern param) and that a code-body closure keeps its own count discipline |
+| `eng/go/frame_name_test.go` | `nameFrameFns`: a lambda bound for a named param takes the name; an unnamed slot, a value already so named, a module wrapper and a compiled closure are left alone; `bindUnitLocals` names through it |
+| `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the sound refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |
+| `lang/go/produced_closure_apply_test.go` | the produced-closure apply family's parity AND that every row runs VM-native (the interp-entry hook sees no `vm:island` seam — the closure-arity fix) (K, W, C, I = S K K, Church true and false, the fetched-fn apply, two applies of one source, a token after the word, a deeper value, a paren, fn and lambda units, an inline fn literal) and its sound refusals (nothing beneath, a no-match beneath, the carrier lead, a produced closure over another, a two-arg closure over literals, the B row's two-value residual) |
+| `compiler/go/produced_closure_apply_test.go` | `PendingClosureApply` (match by the sig body's array, a carrier entry skipped, an equal body in another array, no unit, a nil recorder), `producedFnValue` (a unit's closure, a fn-value apply's result, a native result), Finalize's refusal of a leftover pending apply |
+| `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | apply's one-arg overload over a concrete closure is exempt from the argument-slot refusal; the two-arg overload and a fn-typed carrier keep it |
+| `lang/go/val_read_alias_test.go` | the thirty-first increment's parity (both Church pair rows, two pairs read twice each, the plain-fn and two-value twins, the def-read family on the apply word, a rebind, two closures of one source, both spellings, the data slot, the callee-side apply, the frame render) and its sound refusals (nothing beneath, a no-match beneath, a code body's read, a read in another unit, a conditional rebind, the nested replacing def with the interpreter's answer) |
+| `compiler/go/val_read_alias_test.go` | `noteValBind` (no registry, a non-fn or unproduced value, the recorded producer/entry/generation/epoch, the conditional and rebind drops), `aliasValRead` (no name, registry or unit; no entry; a moved epoch; the unmoved binding; the same entry on top again; another entry; the name unbound), `NoteValRead` with no fn unit open, and `argIsProducedClosure`'s value-read skip |
+| `compiler/go/zz_triage_split_check_test.go` (`TestStartFnCompileFinishPendingApply`) | a fn value beneath the pending apply is the window's argument; a mid-body pending apply still refuses |
+| `check/go/pending_closure_apply_test.go` (`TestRecordUserCallOrApplyPendingFirst`) | the record site's order: the pending route before the name fallback, the fallback when nothing is pending |
+| `core/go/engine_word_read_test.go` (`TestStepWordValNotesTheName`) | a `/v` read hands the recorder the binding's name beside the read's id |
+| `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesCapturingRedefinitionInFnBody`) | installDef's fn-body arm: a capturing redefinition inside a fn body refuses; a capture-free literal there and a capturing value at the top level do not |
+| `lang/go/apply_data_receiver_test.go` | the thirty-second increment's parity (the native Church and/or rows, the U-combinator factorial, the numeral's `n/v` spelling), the two islanding Church rows pinned as islanded with parity, and its sound refusals with the interpreter's answers (the csucc row, its minimal shape, a fn value beneath a paren window with no apply word) |
+| `compiler/go/zz_triage_from_check_test.go` (`TestRecordDynApplyDeclines`), `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`, `TestFnResidualReplayReasonArms`) | a fn-valued window entry records under the apply word and declines without it; a fn-valued receiver records; the read accounting runs under a tail apply (an uncredited read refuses, a credited one passes) |
+| `lang/go/literal_read_test.go` | the thirty-third increment's parity (the read handed to a Function param, the arrow spelling, an unrelated bind between, the closure handed through, the value return and its render, the apply-word spelling, the top-level read) and its sound refusals with the interpreter's answers (a rebound capture, the literal redefined, the read in a branch arm, the CPS row) |
+| `compiler/go/val_read_alias_test.go` (`TestNoteValBindLiteralArms`, `TestAliasValReadLiteralArms`) | the bind arm (a capturing anonymous or nameless literal records with its captures' epochs; capture-free, named or quoted records nothing) and the read arm (a moved capture epoch declines, an unbuildable closure declines and caches nothing, `readOps` resolves first) |
+| `lang/go/arm_tail_apply_test.go` | the thirty-fourth increment's parity (both CPS rows, a then-arm apply, both arms applying, a two-value window inside the arm) and its sound refusal with the interpreter's answer (a pending fn with nothing beneath it in the arm) |
+| `compiler/go/arm_tail_apply_test.go` | `ArmTailApply`: an inactive state, a residual of one, a top that is no pending apply and a window the recorder declines pass through; a pending fn over the arm's window records the apply event at the apply's position, consumes the entry and nets one gradual value |
+| `core/go/recorder_stage5_test.go` | the inactive `ArmTailApply` passes the residual through |
+| `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
+| `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
+| `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
+| `eng/go/vm_apply_closure_arity_test.go` | the apply op's closure arm: a closure of another arity (param slots, not `NParams`) takes the re-step and parks; the event form defers the parked pair — no compiling program reaches the arm, so it is pinned at the seam |
+| `lang/go/tail_apply_collapse_test.go` | the tail-apply collapse's parity (both B rows, a def-bound closure whose tail applies its capture, two calls), its sound refusal (a gradual param beneath the tail apply), and the returned lambda's count contract: the unbound under-applying tail byte for byte, the def-bound form message-identical with the position pinned open (NUR122) |
+| `check/go/tail_apply_collapse_test.go` | `collapseTailApply`'s arms (no tail apply, a residual shorter or wider than the window, a data top, the window to one gradual result, a fn value on top) and `collapseElidedTailApply`'s (a tuple contract, an empty body, a one-value residual, another last word, a data top, the collapse) |
+| `compiler/go/unit_tail_apply_test.go` | `UnitTailApply`: a nil recorder, a unit out of range, no tail apply, the window width |
+| `compiler/go/store_name_test.go` | `seatStoreName`: no recorder, no table, a slot no def named, the name at the store's pc |
+| `eng/go/store_name_test.go` | `storeNameAt` (the main code's and a unit's table, an empty name, an unseated pc, a unit beyond the program) and `nameStoredClosure` (a plain value, a named closure, a known unit's RetName and render, a unit beyond the program, a unit the bridge cannot describe) |
+| `lang/go/function_slot_test.go` | the Function-slot family's parity (both `cnot` rows, the cif7 twin that ran cnot's body, a produced closure at a plain fn's Function param applied, paren-bounded, held as data, and the frame render) and its sound refusals (an Any slot, apply's Function slot over a carrier) |
+| `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | a declared Function param and a positional Function slot are exempt; an Any slot, a nil signature and apply's own Function slot over a carrier keep the refusal |
+| `eng/go/frame_name_test.go` | a compiled closure bound for a named param is named (its render kept when the payload names no unit); a capture slot is left alone |
+| `lang/go/def_computed_fn_test.go` | the thirty-fifth increment's parity (the eight fn-util rows, the event spelling, the bare read, a read with a following statement, the apply feeding a dispatch, two reads, a 0-param wrapper, the wrapper's own error at the read's caret) and its sound refusals with the interpreter's answers (the stack form, a param read in a fn body, a paren in the window, the survivor inside a paren, an overloaded flip operand, and the two statement-window rows whose interpreter answer is the signature_error) |
+| `check/go/fn_read_arrival_test.go` | `tryShapedFnReadArrival`: the consumed window (the def name, the read carrier, one dynamic result, the extra token left), the arity-0 read, every refusal with its reason (a window past the tape end, a statement end inside it, a word inside it, an operand with no compiled home), and the silent declines (quoted, no id, unread, unclaimed, not a fn carrier); `tryShapedFnReadWindow`, the plain-check half: the collapsed window and its declines (quoted, not def-bound, no claim, short, non-fixed, past the end) |
+| `core/go/fn_shape_test.go` | `IsSelfContainedGoFnDef`'s arms and `NoteFnShape` / `FnShapeArity` (inactive, no id, a negative count, the claim, a 0 claim, the clone, the reset) |
+| `eng/go/vm_self_contained_fn_test.go` | the own-signature apply under a registered word of the same label (leading, the method op, the declined arg count), `callDynMethod`'s modifier-chain retry (a flipped delegation and its error), and a handler error anchored on the value's token text |
+| `compiler/go/fn_shape_claim_test.go` | the claim as `producerReturnedClosureArity`'s third source (claimed, unclaimed, no registry) and `DefReadName` |
+| `core/go/check_fncarrier_test.go` (`TestStepWordPlainCheckSubstitutesCarrier`), `lang/go/def_computed_fn_test.go` (`TestDefComputedFnPlainCheckClean`) | the plain check reads a bound fn carrier with no undefined_word and no unused_def, and the silent-fallback mark stays a compile pass's |
+| `lang/go/closure_read_model_test.go` | the thirty-sixth increment's parity (the typeof operand, the repeated reads, the `mk2` chain, the fn-util curry chain, three curry levels, the plain read, a read whose window is its statement, a two-param closure's window, a capturing closure read twice) and its sound refusals with the interpreter's answers (the survivor inside a paren, the two flattened-window spellings whose interpreter answer is the signature_error), and the filter-body twin pinned as islanded with parity |
+| `compiler/go/fn_shape_claim_test.go` (`TestClosureOpShapeArms`, `TestNoteClosureShapeBindArms`) | the closure shape (a factory of factories claims the chain, a two-value body has no result, a unit beyond the program, an event, the bounded recursion, a const lambda, a const beyond the table) and the claim at the def (no registry, a plain value, the unit's arity, a standing claim kept, an unproduced carrier) |
+| `check/go/fn_read_arrival_test.go` (`TestShapedFnReadResultShape`) | a claim with a result shape makes the read's result a Function carrier carrying the next level, on both halves |
+| `lang/go/modules/fn_test.go` (`TestFnShapeFromOperandArms`) | curry's chain claim (three unary levels over three params, no claim over a unary fn or no operand) |
+| `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |
+| `lang/go/while_compile_test.go` | the thirty-seventh increment's parity (the falsy condition, `break`, the truthiness read, the flex counter, a two-arm if over the enclosing computation, a carried rebind read by the condition and after the loop, zero iterations, a computed condition over the carried slot, `break` and `continue` discarding the round, a `continue` and a `break` inside a branch arm, a fn-body while over a param, a fn body rebinding a module def, a nested while, two carried rebinds) and its sound refusals (the empty condition with the interpreter's runtime_error, a two-value condition, a multi-value body with a rebind) |
+| `compiler/go/while_record_test.go` | `RecordWhile`'s arms (inactive, a missing fragment, a condition netting zero or two values, a condition of unknown provenance, the recorded loop: the consts 0/1/MaxInt64, the condition fragment and its out, the scratch iterator) and the loop traversals visiting the condition (`childFragments`, `fragmentOuts`, `forEachFragmentOperand`, `fragmentResultSeqs`) |
+| `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the sound refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
+| `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
+| `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |

@@ -193,6 +193,7 @@ func walkFrag(frag *EmitFragment, evFn func(*EmitEvent), opFn func(EmitOperand))
 			walkFrag(ev.br.els, evFn, opFn)
 		}
 		if ev.loop != nil {
+			walkFrag(ev.loop.cond, evFn, opFn)
 			walkFrag(ev.loop.body, evFn, opFn)
 		}
 	}

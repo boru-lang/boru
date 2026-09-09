@@ -26,6 +26,15 @@ type CompiledRuntime interface {
 	// (InstallType's runtime-stamping route). A decline is silent: the
 	// binding stays interpreter-dispatched.
 	StampDetached(r *Registry, fd FnDefInfo, pos SrcPos)
+	// ClosureAsFnDef bridges a compiled closure VALUE (a ClosurePayload the
+	// interpreter meets on the tape — an island's sub-engine re-stepping a
+	// shuffled `each` element, NUR124's payload axis) to the FnDefInfo the
+	// interpreter would have minted for the same source: one dispatchable
+	// signature over the unit's declared param contract, applying the
+	// closure through the registry's body-closure invoker. ok=false leaves
+	// the value as data — outside a VM run, or for a unit the bridge cannot
+	// describe.
+	ClosureAsFnDef(r *Registry, v Value) (fnv Value, ok bool)
 }
 
 // noCompiledRuntime is the interpreter-only default: every operation
@@ -37,6 +46,9 @@ func (noCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value
 	return nil, nil, false
 }
 func (noCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
+func (noCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
+	return v, false
+}
 
 var compiledRuntime CompiledRuntime = noCompiledRuntime{}
 

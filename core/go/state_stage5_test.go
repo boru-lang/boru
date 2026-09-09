@@ -297,3 +297,45 @@ func TestRescueForwardRefDiagnostics(t *testing.T) {
 		t.Fatalf("rescue must drop only the bound forward ref, got %+v", r.Check.Diagnostics)
 	}
 }
+
+// TestIsolateFnAnalysisArms pins the seventh leak channel's isolation (the
+// synthetic help-example evaluation runs a real AnalyseFnBody in the registry
+// that is mid-pass — see IsolateFnAnalysis): a nil receiver is a no-op, the
+// memo of FINISHED analyses is restored, and the record of analyses still
+// OWED is deliberately left alone, because the hook fires mid-install and the
+// enclosing pass has work in flight across it.
+func TestIsolateFnAnalysisArms(t *testing.T) {
+	(*CheckState)(nil).IsolateFnAnalysis()() // nil receiver: no-op
+
+	c := &CheckState{}
+	c.FnSummaries = map[string][]Value{"own": {NewInteger(1)}}
+	c.FnAnalysisCounts = map[string]int{"own": 1}
+	c.FnInflight = map[string]bool{"own": true}
+	c.PendingFnBodies = []PendingFnBody{{Fn: FnDefInfo{Name: "own"}}}
+
+	restore := c.IsolateFnAnalysis()
+	// The synthetic run's memo writes, which must be undone...
+	c.FnSummaries["leaked"] = []Value{NewInteger(2)}
+	c.FnAnalysisCounts["leaked"] = 9
+	// ...and the enclosing pass's own in-flight work, which must NOT be.
+	c.FnInflight["queued"] = true
+	c.PendingFnBodies = append(c.PendingFnBodies, PendingFnBody{Fn: FnDefInfo{Name: "queued"}})
+	restore()
+
+	if _, leaked := c.FnSummaries["leaked"]; leaked {
+		t.Error("FnSummaries kept the isolated region's write")
+	}
+	if _, leaked := c.FnAnalysisCounts["leaked"]; leaked {
+		t.Error("FnAnalysisCounts kept the isolated region's write")
+	}
+	// The negative that matters: restoring must not CLEAR the pass's own
+	// entries, nor drop work queued while the hook ran — dropping the pending
+	// body is what regressed four compiling shapes to "unknown provenance".
+	if len(c.FnSummaries["own"]) != 1 || c.FnAnalysisCounts["own"] != 1 {
+		t.Error("the restore dropped the pass's own memo entries")
+	}
+	if !c.FnInflight["queued"] || len(c.PendingFnBodies) != 2 {
+		t.Errorf("the restore discarded work the enclosing pass queued across the hook: inflight=%v pending=%d",
+			c.FnInflight, len(c.PendingFnBodies))
+	}
+}

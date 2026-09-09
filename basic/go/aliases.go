@@ -588,6 +588,7 @@ var (
 	NewTop                 = core.NewTop
 	NewType                = core.NewType
 	NewTypeLiteral         = core.NewTypeLiteral
+	NewVariadicCarrier     = core.NewVariadicCarrier
 	NewBoundedType         = core.NewBoundedType
 	NewBoundedTypeBody     = core.NewBoundedTypeBody
 	NewTypedList           = core.NewTypedList

@@ -937,7 +937,47 @@ type FnDefInfo struct {
 // gives every zero-sized allocation the same address (runtime.zerobase),
 // so `&fnIdent{}` would hand every function in the program one shared
 // token and make them all eq. A single byte forces distinct addresses.
-type fnIdent struct{ _ byte }
+type fnIdent struct {
+	// closure is the identity SEQUENCE of the compiled closure this token
+	// stands in for (NewFunctionIdentified): two tokens with the same
+	// non-zero sequence are one function, however many bridges minted
+	// them. Zero for an interpreter-minted fn, which identifies by ADDRESS.
+	closure uint64
+}
+
+// FnIdentity is a fn value's identity token handed out OPAQUELY, so a value
+// built outside core that stands in for one authored function can carry the
+// token that function's copies share: a compiled closure (ClosurePayload.Ident,
+// minted once at its push and copied with the value) and the FnDefInfo the VM
+// bridges it to for the interpreter's dispatch. `eq` then answers what the
+// interpreter answers for the source lambda — one function, however many
+// copies the tape holds, bridged or not. A zero FnIdentity is "none": a
+// hand-built payload has no identity and is eq to nothing, the honest answer
+// for a value with no fn behind it.
+//
+// The identity is a process-wide SEQUENCE number, not a heap token: a closure
+// is constructed on the VM's hot path (every `do body`, every element of an
+// `each`), and the compiled lane's allocation ceilings (lang/go's alloc guard)
+// hold one heap object per push against it — a counter costs an atomic add
+// and nothing else. The token a bridge needs is minted at the bridge, where
+// an allocation is already the price of the dispatch.
+type FnIdentity struct{ seq uint64 }
+
+var closureIdentSeq atomic.Uint64
+
+// NewFnIdentity mints a fresh identity — one per fn CONSTRUCTION, as
+// NewFunction mints one per authored function.
+func NewFnIdentity() FnIdentity { return FnIdentity{seq: closureIdentSeq.Add(1)} }
+
+// NewFunctionIdentified is NewFunction for a payload that stands in for a
+// function whose identity already exists (the closure bridge): the token it
+// mints carries id's sequence when id is one, else it is NewFunction's own.
+func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
+	if id.seq != 0 {
+		info.ident = &fnIdent{closure: id.seq}
+	}
+	return NewFunction(info)
+}
 
 // CapturedBinding is one lexically-captured name in a closure. The
 // list is sorted by Name for deterministic install order so that two

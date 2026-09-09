@@ -295,6 +295,17 @@ const (
 	// Function-typed carrier (StartFnCompile's pendingApply) and for the
 	// paren-bounded RecordDynApply event when the apply word drove it.
 	OpCallDynApplyTop
+	// OpCallDynApplyOne is OpCallDynApplyTop for an apply over a GRADUAL lead
+	// recorded as an EVENT (the twenty-seventh increment): the check matched
+	// `apply`'s [Reach Any] overload over a Dynamic value and modelled ONE
+	// result, so the op commits exactly one — a fn on top applies to the Arg
+	// args beneath it as the interpreter's applyHandler re-step does (the
+	// args as the stack, the fn stepped over them) and its result count is
+	// checked; any other count, a lens on top (the [Reach Any] overload's
+	// own dispatch) or a compiled closure of another arity DEFERS the run to
+	// the interpreter, and a value that is no fn raises the interpreter's
+	// own `apply` no-match at the apply word's position.
+	OpCallDynApplyOne
 	// OpCallDynTrailKeepQ is OpCallDynTrailTop for an EVENT-provenance fn (a
 	// direct call result — `(1 2 (mk))`): the value arrives WITHOUT the
 	// interpreter's read substitution, so its runtime quote state must
@@ -546,6 +557,7 @@ var opcodeNames = [...]string{
 	OpCallUserPoly:         "CALL_USER_POLY",
 	OpCallDynTrailTop:      "CALL_DYN_TRAIL_TOP",
 	OpCallDynApplyTop:      "CALL_DYN_APPLY_TOP",
+	OpCallDynApplyOne:      "CALL_DYN_APPLY_ONE",
 	OpCallDynTrailKeepQ:    "CALL_DYN_TRAIL_KEEPQ",
 	OpCallDynFrame:         "CALL_DYN_FRAME",
 	OpPushConstFresh:       "PUSH_CONST_FRESH",
@@ -677,7 +689,7 @@ const (
 // it reads as whichever program is running, which is only ever right for a
 // value that is inspected rather than invoked.
 func NewClosure(prog *Program, unit int, captures []core.Value) core.Value {
-	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures}}
+	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()}}
 }
 
 // ClosureWantsKeyVal reports whether v is a compiled closure whose body expects
@@ -1018,6 +1030,9 @@ type Program struct {
 	// unit is SHARED across fn values with identical bodies and inputs — the
 	// contract is the value's, not the body's.
 	ClosureRet map[int]ClosureRetSpec
+	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
+	// there), keyed by the main code's own pc.
+	StoreNames map[int]string
 	TypedBinds []core.TypedBindSpec
 	// GlobalBinds backs OpBindGlobal: one entry per top-level computed `def`,
 	// naming the binding and the DEPTH its check-pass install recorded. The
@@ -1137,6 +1152,12 @@ type CompiledFn struct {
 	// Render is the interpreter's formatFnDef string for a returned-closure
 	// unit (empty otherwise) — see ClosurePayload.Render.
 	Render string
+	// Lambda marks the fn-VALUE flavour of a closure unit (an anonymous
+	// `=>` / `fn` literal's body): the interpreter's FnDefInfo for it is
+	// Anonymous, which parks a 0-arg lambda VALUE nothing calls (ADR-016's
+	// gate), and the value-path bridge (CompiledRuntime.ClosureAsFnDef)
+	// carries the flag so a compiled closure parks in the same places.
+	Lambda bool
 	// NArgs is the fn's REAL argument count — the sig-matched args, excluding
 	// the trailing capture slots a user fn's call site pushes (NParams
 	// includes them; NCaptures stays 0 for user fns). The DynEnv args bracket
@@ -1258,6 +1279,15 @@ type CompiledFn struct {
 	// Nil for an apply whose head was not a bare read (an event-produced
 	// fn, a `/v` delivery) — the nameless diagnostic stays exactly as it was.
 	DynApplyName map[int]DynApplyHead
+	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
+	// value under, keyed by the store's pc: the interpreter's installDef
+	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
+	// (mk 1)` renders `fn h(Integer)` and names h in the value's own
+	// diagnostics (`h: expected 1 return value(s), got 2`), where a
+	// compiled closure stored to its local kept the payload nameless. The
+	// VM's store op renames the ClosurePayload it stores (RetName, Render)
+	// exactly there. Nil when the unit binds no produced fn value.
+	StoreNames map[int]string
 	// RetReplay marks a body that ends in a whole-frame dynamic-apply replay
 	// (OpCallDynFrame): its residual count is RUNTIME-variable, so the RET
 	// contract switches discipline. A FOREIGN-registry fn (Reg set, a module-
@@ -1285,13 +1315,23 @@ type CompiledFn struct {
 // < 0; the island's prefix drops that entry, the interpreter's frame never
 // held it) — the Body token index the interpreter resumes from (Token) and
 // the unit's RET (RetPC) the VM continues at with the island's residual.
+// A RE-STEP point (Results > 0, NUR124) tests the Results values on top
+// instead — a native call's results — and hands them to the island as its
+// first tokens, followed by the Body from Token: what the interpreter
+// splices back onto the tape and steps after that call. Prefix lists the
+// unit's unnamed param slots the interpreter's frame still holds on its
+// stack bottom at the point (a named param is a binding the island reads
+// through the dyn-scope env; an unnamed one is stack data this unit has
+// not pushed yet), seated beneath the frame region as the island's prefix.
 type DeoptSpec struct {
-	Name  string
-	Pos   core.SrcPos
-	Slot  int
-	Depth int
-	Token int
-	RetPC int
+	Name    string
+	Pos     core.SrcPos
+	Slot    int
+	Depth   int
+	Prefix  []int
+	Results int
+	Token   int
+	RetPC   int
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1334,10 +1374,10 @@ func (p *Program) StoredRefStampedCount() int {
 // Disassemble renders the program for golden tests and debugging.
 func (p *Program) Disassemble() string {
 	var sb strings.Builder
-	p.disasmUnit(&sb, p.Code)
+	p.disasmUnit(&sb, p.Code, nil)
 	for fi := range p.Fns {
 		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
-		p.disasmUnit(&sb, p.Fns[fi].Code)
+		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",
 		len(p.Consts), len(p.Types), len(p.Sigs), len(p.Fallbacks), len(p.Fns), p.MaxStack, p.NumLocals)
@@ -1356,7 +1396,7 @@ func (p *Program) Disassemble() string {
 	return sb.String()
 }
 
-func (p *Program) disasmUnit(sb *strings.Builder, code []Instr) {
+func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec) {
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
@@ -1420,7 +1460,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr) {
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
 		case OpDeoptIfFn:
-			fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
+			if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
+				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
+			} else {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
+			}
 		case OpBindResident:
 			rb := p.ResidentBinds[in.Arg]
 			arm := "install"

@@ -698,14 +698,27 @@ func TestStartFnCompileFinishDynTrail(t *testing.T) {
 
 func TestStartFnCompileFinishPendingApply(t *testing.T) {
 	es := NewEmitState()
-	_, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
+	unit, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
 	u := es.units[len(es.units)-1]
 	fnHead := core.NewDynamicCarrier(core.TFunction)
 	fnLast := core.NewDynamicCarrier(core.TFunction)
 	es.producedBy[fnHead.ID] = producer{seq: 1}
 	es.producedBy[fnLast.ID] = producer{seq: 2}
-	u.pendingApply = []string{fnLast.ID}
-	// bodyStk[:last] carries a fn value, so the pending-apply argsOK scan trips.
+	u.pendingApply = []pendingApply{{id: fnLast.ID, pos: core.SrcPos{Row: 1, Col: 9}}}
+	// bodyStk[:last] carries a fn VALUE: an argument of the pending apply
+	// (the thirty-first increment — `(a:Any => [b:Any => [a/v]]) p/v apply`
+	// hands the lambda to the pair), so the whole residual is the window.
+	finish([]core.Value{fnHead, fnLast})
+	if rec := es.fnRecs[unit]; !es.Compilable || rec.dynTrailArity != 1 || !rec.dynTrailApply || rec.dynTrailPos.Col != 9 {
+		t.Fatalf("a fn value beneath the pending apply is the window's argument: compilable=%v arity=%d apply=%v pos=%v", es.Compilable, rec.dynTrailArity, rec.dynTrailApply, rec.dynTrailPos)
+	}
+	// A MID-BODY pending apply (its fn not the residual's top) still refuses.
+	es = NewEmitState()
+	_, finish, _ = es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
+	u = es.units[len(es.units)-1]
+	es.producedBy[fnHead.ID] = producer{seq: 1}
+	es.producedBy[fnLast.ID] = producer{seq: 2}
+	u.pendingApply = []pendingApply{{id: fnHead.ID}}
 	finish([]core.Value{fnHead, fnLast})
 	if es.Compilable {
 		t.Fatal("a mid-body pending apply should refuse")

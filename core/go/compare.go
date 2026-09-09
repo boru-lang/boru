@@ -322,6 +322,16 @@ func ExactEqual(a, b Value) bool {
 	// pointer supplies. Before this, eq fell to the type-body arm below,
 	// which compares the payload STRUCT — including Name — so `def a (f/v)`
 	// and `def b (f/v)` were not eq though they name one function.
+	// A compiled closure (NUR124's payload axis) is a function too: it
+	// carries the identity token its push minted (ClosurePayload.Ident), and
+	// the FnDefInfo the VM bridges it to for the interpreter's dispatch
+	// carries the same one — so two copies of one closure, bridged or not,
+	// are one function, as the source lambda's copies are on the
+	// interpreter. A payload with no token (a hand-built value) has no
+	// identity and is eq to nothing.
+	if eq, handled := closureIdentityEqual(a, b); handled {
+		return eq
+	}
 	if af, aok := a.Data.(FnDefInfo); aok {
 		if bf, bok := b.Data.(FnDefInfo); bok {
 			return sameFnIdentity(af, bf)
@@ -1105,11 +1115,42 @@ func DeqHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 // i.e. a compile-time carrier or a probe with no fn value behind it — has
 // no identity, and answering true would make every one of them eq to every
 // other.
+// closureIdentityEqual is ExactEqual's arm for a pair with a compiled closure
+// on at least one side: handled reports that; eq is the identity comparison —
+// the closure's token against the other side's, which is another closure's
+// token or a bridged FnDefInfo's ident. A side that is neither (data, a type)
+// or a token-less closure never matches.
+func closureIdentityEqual(a, b Value) (eq, handled bool) {
+	as, aIs := closureIdentSeqOf(a)
+	bs, bIs := closureIdentSeqOf(b)
+	if !aIs && !bIs {
+		return false, false
+	}
+	return as != 0 && as == bs, true
+}
+
+// closureIdentSeqOf reads the closure identity sequence a value carries — a
+// closure's own, or the one a bridged FnDefInfo's token stands in for — and
+// whether v IS a closure. Zero: no closure identity.
+func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
+	switch d := v.Data.(type) {
+	case ClosurePayload:
+		return d.Ident.seq, true
+	case FnDefInfo:
+		if d.ident != nil {
+			return d.ident.closure, false
+		}
+	}
+	return 0, false
+}
+
 func sameFnIdentity(a, b FnDefInfo) bool {
 	if a.ident == nil || b.ident == nil {
 		return false
 	}
-	return a.ident == b.ident
+	// Two tokens minted for one compiled closure (two bridges of it) are one
+	// function: they share the closure's sequence.
+	return a.ident == b.ident || (a.ident.closure != 0 && a.ident.closure == b.ident.closure)
 }
 
 // fnStructurallyEqual reports whether two fn payloads have the same VALUE

@@ -16,7 +16,7 @@ func TestW9CompileClosureBodyInactive(t *testing.T) {
 	// A fresh registry has the inactive (no-op) recorder, so es is a typed-nil
 	// *EmitState and StartFnCompile declines.
 	unit, ok := compileClosureBody(r, "w", 1, false,
-		[]core.Value{core.NewWord("x")}, []core.Value{core.NewInteger(1)}, nil, nil, ClosureInValue, core.SrcPos{})
+		[]core.Value{core.NewWord("x")}, []core.Value{core.NewInteger(1)}, nil, nil, nil, ClosureInValue, core.SrcPos{})
 	if ok || unit != -1 {
 		t.Errorf("inactive recorder should decline: unit=%d ok=%v", unit, ok)
 	}

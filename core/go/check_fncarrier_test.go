@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -90,11 +91,12 @@ func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
 	}
 }
 
-// TestStepWordPlainCheckKeepsUndefinedDiag — without the Compiling flag the
-// substitution must not fire: a plain check pass keeps its diagnostic
-// surface (undefined_word + the Undefined placeholder) even for a name in
-// the side table.
-func TestStepWordPlainCheckKeepsUndefinedDiag(t *testing.T) {
+// TestStepWordPlainCheckSubstitutesCarrier — the substitution fires on a
+// PLAIN check too (the thirty-fifth increment): a name in the side table
+// reads as its fn carrier with no undefined_word, exactly as on a compile
+// pass — `boru check` used to flag `def k (FnUtil.const 7)  (k 99)` — while
+// the compile-only FnCarrierReadSubstituted mark stays clear.
+func TestStepWordPlainCheckSubstitutesCarrier(t *testing.T) {
 	r := covRegistry(t, nil)
 	defer r.Check.Begin()()
 	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
@@ -104,11 +106,14 @@ func TestStepWordPlainCheckKeepsUndefinedDiag(t *testing.T) {
 	if err := e.stepWord(e.Tape.At(0)); err != nil {
 		t.Fatalf("plain-check stepWord errored: %v", err)
 	}
-	if got := e.Tape.At(0); !got.Undefined {
-		t.Errorf("plain check must keep the Undefined placeholder: %v", got)
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+		t.Errorf("plain check must read the bound fn carrier, got %v", got)
 	}
-	if len(r.Check.Diagnostics) != 1 {
-		t.Errorf("expected the one undefined_word diagnostic, got %v", r.Check.Diagnostics)
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("a resolved read reports nothing, got %v", r.Check.Diagnostics)
+	}
+	if r.Check.FnCarrierReadSubstituted {
+		t.Error("the silent-fallback mark is a compile pass's alone")
 	}
 }
 
@@ -192,5 +197,64 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	}
 	if got := e.Tape.At(0); got.Undefined || !got.Carrier || !got.Parent.Equal(TWord) {
 		t.Errorf("word carrier not collected as data: %v", got)
+	}
+}
+
+// TestInstallDefRefusesCapturingRedefinitionInFnBody pins installDef's
+// fn-body arm (the thirty-first increment): a CAPTURING fn value — a
+// factory's returned closure — redefining an outer overloading def from
+// inside a fn body outlives the call on the interpreter (the drop-then-push
+// leaves the frame's def depth unchanged, so DefCleanup pops nothing) where
+// the compiled program keeps the outer bake, so the install refuses at the
+// conditional-redefinition site. A capture-free literal in a fn body and a
+// capturing value at the top level are not refused.
+func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
+	r := compileCheckRegistry(t)
+	es := newS5BEmit()
+	r.Check.Emit = es
+	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	capturing := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()},
+		Captured: []CapturedBinding{{Name: "k", Value: NewCarrier(TInteger)}}})
+	r.Check.FnBodyDepth = 1
+	installDef(r, "p", capturing, false)
+	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body by a capturing fn value") {
+		t.Errorf("a capturing redefinition inside a fn body refuses: %v", es.uncompilable)
+	}
+	es.uncompilable = nil
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	r.Check.FnBodyDepth = 0
+	installDef(r, "p", capturing, false)
+	if len(es.uncompilable) != 0 {
+		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not refused: %v", es.uncompilable)
+	}
+}
+
+// TestStepWordNestedBodySubstitutesCarrier — the substitution fires inside
+// a NESTED body too (the thirty-eighth increment): a branch arm / loop body
+// / `do` body's read of a name in the side table reads as its fn carrier.
+// It used to decline at NestedBodyDepth > 0, which left `if c [(f 2)] [0]`
+// reporting a FALSE undefined_word on the plain check and `do [(f 2)]`
+// behind the check-diagnostics sentinel.
+func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
+	r := covRegistry(t, nil)
+	defer r.Check.Begin()()
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	r.Check.NestedBodyDepth = 1
+	defer func() { r.Check.NestedBodyDepth = 0 }()
+
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewWord("h")}, StackHeadroom)
+	if err := e.stepWord(e.Tape.At(0)); err != nil {
+		t.Fatalf("nested-body stepWord errored: %v", err)
+	}
+	if got := e.Tape.At(0); got.Undefined || !IsFnTypedCarrier(got) {
+		t.Errorf("a nested body must read the bound fn carrier, got %v", got)
+	}
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("no diagnostics expected, got %v", r.Check.Diagnostics)
+	}
+	if r.Check.FnCarrierReadSubstituted {
+		t.Error("a plain check must not set the compile-only mark")
 	}
 }

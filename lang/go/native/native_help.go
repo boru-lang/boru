@@ -8,21 +8,38 @@ import (
 	"github.com/boru-lang/boru/lang/go/native/help"
 )
 
-// EnableDynamicHelp sets up the OnRegisterHook so that functions
-// registered after MarkReady() get their help examples computed
-// dynamically. Call this after initial setup and ParseFunc are ready.
+// EnableDynamicHelp sets up the OnRegisterHook so that functions registered
+// after MarkReady() can get their help examples computed from the live
+// engine. Call this after initial setup and ParseFunc are ready.
+//
+// The hook only RECORDS the name (core's NoteHelpWord, whose comment carries
+// the measurements). Generation happens in FormatWordHelp, when someone
+// actually describes the word — because this hook fires from installFnDef on
+// every fn installation, including the user's own `def f fn […]` mid-check,
+// and evaluating a synthesised example there put a documentation feature
+// inside a user's analysis pass.
 func EnableDynamicHelp(r *Registry) {
-	r.OnRegisterHook = func(name string) {
-		info := BuildFuncInfo(r, name)
-		if info == nil {
-			return
+	r.OnRegisterHook = r.NoteHelpWord
+}
+
+// FormatWordHelp renders one word's help, synthesising and evaluating its
+// examples FIRST if the word was registered after startup (so no build-time
+// snapshot exists for it) — the on-demand half of EnableDynamicHelp.
+//
+// Every `describe` / hover render site goes through here rather than calling
+// help.FormatDynamic directly, so there is one place where the synthetic
+// evaluation can happen and it is a place the user asked for output. The
+// evaluation is still fully hermetic (makeDynamicEval's seven channels): it
+// now runs inside the user's RUN rather than their CHECK, so it must not
+// disturb the def stack, the budget, the recording or the diagnostics of the
+// program that called `describe`.
+func FormatWordHelp(r *Registry, info help.FuncInfo) string {
+	if r.IsHelpWord(info.Name) {
+		if eval := makeDynamicEval(r); eval != nil {
+			help.GenerateDynamicExamples(info, eval)
 		}
-		eval := makeDynamicEval(r)
-		if eval == nil {
-			return
-		}
-		help.GenerateDynamicExamples(*info, eval)
 	}
+	return help.FormatDynamic(info)
 }
 
 // makeDynamicEval returns a function that parses and evaluates a boru
@@ -44,7 +61,7 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		// program, and MUST be fully hermetic — it fires from OnRegisterHook on
 		// EVERY fn registration, INCLUDING the program's own `def f fn […]` DURING
 		// compilation, so any trace it leaves contaminates that very program's
-		// compile. Six leak channels are closed:
+		// compile. Seven leak channels are closed:
 		//   1. EmitState (recording + interned consts + RememberOriginal) — swap in
 		//      a FRESH throwaway EmitState (IsolateEmit), not just Suspend: Suspend
 		//      keeps the SAME EmitState, so the example's consts (e.g. a generated
@@ -72,10 +89,22 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		//      precomputed results agree.
 		//   6. Input — an example of a reading word (stdin) must consume an
 		//      empty hermetic reader, never the process's stdin.
+		//   7. The fn-body ANALYSIS MEMO family (IsolateFnAnalysis) — the
+		//      example's own AnalyseFnBody of the user's real body is
+		//      memoised under a key that renders arg TYPE NAMES only, so the
+		//      program's own call site took the memo HIT and was handed the
+		//      EXAMPLE's residual instead of analysing its concrete args. The
+		//      dispatch that should have failed was never attempted, and
+		//      channel 2 ate the evidence: `def app fn [[nd:Any m:Map] [Any]
+		//      [nd (m get "inc") apply]]  def rules {inc: 42}  app 5 rules`
+		//      reported NOTHING on the FIRST check in a process (the example
+		//      is evaluated once per process — help's own result memo is
+		//      package-level) and its two real errors on every later one.
 		// Real construction-time body checking is a first-class pass
 		// (checkFnBodyAtConstruction), so suppressing the eval's diagnostics is sound.
 		defer r.Check.IsolateEmit()()
 		defer r.Check.IsolateBudget()()
+		defer r.Check.IsolateFnAnalysis()()
 		diagBase := len(r.Check.Diagnostics)
 		defer r.Check.TruncateDiagnostics(diagBase)
 		// A CONTENT-preserving snapshot (SnapshotEntries), not the depth-based

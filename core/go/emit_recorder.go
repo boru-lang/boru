@@ -178,6 +178,22 @@ type EmitRecorder interface {
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
+	// ApplyPending reports whether the innermost open unit holds a PENDING
+	// `apply`-word application of the value id — a lead the apply word
+	// dispatched that the check engine could not re-step (a fn-typed
+	// carrier, or a gradual value that may be a fn at run time). The paren
+	// collapse asks it so a Dynamic last value the apply word owns records
+	// as the paren-bounded apply it is, rather than as a leading dynamic
+	// value (the twenty-seventh increment).
+	ApplyPending(id string) bool
+	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
+	// application over a closure this pass PRODUCED whose body is `body`
+	// (matched by the body's first token position — one lambda source, one
+	// body), so the check pass's user-fn record site can record the value's
+	// re-step dispatch as the fn-value apply over the closure's producer
+	// operand where a unit call would refuse its construction-scope
+	// captures (the twenty-eighth increment).
+	PendingClosureApply(body []Value) (Value, bool)
 	NoteMemberFnRead(id string, member Value)
 	MemberFnRead(id string) bool
 	// NoteCollectionHazard marks the fn-typed value id as an UNAPPLIED lead
@@ -186,6 +202,13 @@ type EmitRecorder interface {
 	// lowered as an apply over the values after it.
 	NoteCollectionHazard(id string)
 	CollectionHazard(id string) bool
+	// NoteFnResultReStep marks a NATIVE dispatch's result v — a fn-typed
+	// or fn-admitting gradual carrier — that the interpreter re-steps into
+	// a dispatch attempt at the call's position, with a plain body token
+	// (resume) written after it, where the pass steps the carrier past as
+	// data (Engine.noteFnResultReSteps, NUR124). The recorder plans a
+	// re-step deopt over the call's results for it, or declines the unit.
+	NoteFnResultReStep(v Value, resume SrcPos)
 	// Stage-0b promotions (design/ENG-FOUR-PIECE.0.md): the probes that
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
@@ -222,6 +245,11 @@ type EmitRecorder interface {
 	RecordDefRebind(name string, v Value, pos SrcPos)
 	RecordDynBind(name string, v Value, pos SrcPos)
 	NoteDefRead(id, name string)
+	// DefReadName answers NoteDefRead: the binding NAME the check pass read a
+	// value under, for a value ID it recorded — the read model's key to the
+	// word the interpreter dispatches (check's tryShapedFnReadArrival).
+	// Inactive: no read.
+	DefReadName(id string) (string, bool)
 	// NoteLocalRead records a bare read of a frame binding at its read
 	// position (both substitution paths of stepWord) — a per-read deopt's
 	// deferred-operand accounting (compiler planDeopts, NUR123).
@@ -239,8 +267,11 @@ type EmitRecorder interface {
 	// NoteValRead records a `/v` read of a binding (stepWordVal): the value
 	// spelling, which the interpreter never dispatches. A binding read BOTH
 	// ways in one unit cannot be told apart in the residual (one value ID),
-	// so the compiler refuses the unit rather than guess (NUR123).
-	NoteValRead(id string)
+	// so the compiler refuses the unit rather than guess (NUR123). name is
+	// the binding read: a fn binding's read is a fresh wrap of the
+	// binding (ResolveRef), so the compiler traces it to the bound value
+	// by name (the thirty-first increment).
+	NoteValRead(id, name string)
 	// NoteFrozenRead's gen is the binding's DefTable generation
 	// (DefTable.Gen) at the read, taken by the caller from the registry the
 	// read resolved in. It is the staleness key of the binding-sensitive
@@ -264,6 +295,13 @@ type EmitRecorder interface {
 	TakeFragment() EmitFragmentRef
 	RecordBranch(b BranchRecord)
 	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID string, out Value, regionN int, pos SrcPos)
+	// RecordWhile is RecordLoop for a CONDITION loop (`while [cond] [body]`,
+	// the thirty-seventh increment): cond and body are the two captured
+	// fragments, condStk / bodyStk their analysed residuals, iterID the
+	// scratch iterator the lowering binds — a while runs on the counted
+	// loop's own frame with an unbounded count, its condition's one value
+	// deciding each iteration. Inactive: no-op.
+	RecordWhile(cond, body EmitFragmentRef, condStk, bodyStk []Value, iterID string, out Value, pos SrcPos)
 	ArmBranchCapture()
 	PeekCaptureArm() bool
 	ArmLoopCapture()
@@ -288,6 +326,22 @@ type EmitRecorder interface {
 	SetUnitDecl(unit int, decl DeclSite)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
+	// ArmTailApply collapses a branch ARM's residual whose top is a PENDING
+	// `apply`-word application (a fn-typed param applied inside the arm,
+	// `[ 1 k/v apply ]`) into the one gradual value the apply nets: the
+	// window is every value beneath the fn inside the arm (the arm frame
+	// seals the enclosing stack off, exactly as the interpreter's arm frame
+	// does), recorded as the apply event in the arm's fragment. Called by
+	// the `if` word after an arm body's analysis and before the fragment
+	// is taken; a residual that is no such shape comes back unchanged (the
+	// thirty-fourth increment).
+	ArmTailApply(stk []Value) []Value
+	// UnitTailApply reports the width n of the window a unit's finish lowered
+	// as the fn-value apply at its body tail — the top n residual values and
+	// the fn above them net ONE result at run time — so a call site's
+	// analysed residual, which still holds the window, collapses the same
+	// way (check's collapseTailApply).
+	UnitTailApply(unit int) (int, bool)
 }
 
 // inactiveEmit is the no-op EmitRecorder a NON-compiling pass runs against:
@@ -331,6 +385,8 @@ func (inactiveEmit) FnBodyGuard() func()                                    { re
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
 func (inactiveEmit) RecordBranch(BranchRecord)     {}
+func (inactiveEmit) RecordWhile(EmitFragmentRef, EmitFragmentRef, []Value, []Value, string, Value, SrcPos) {
+}
 func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, Value, int, SrcPos) {
 }
 
@@ -341,9 +397,10 @@ func (inactiveEmit) PopInlineCtxBoundary()   {}
 
 func (inactiveEmit) RecordDynBind(string, Value, SrcPos) {}
 func (inactiveEmit) NoteDefRead(string, string)          {}
+func (inactiveEmit) DefReadName(string) (string, bool)   { return "", false }
 func (inactiveEmit) NoteLocalRead(string, SrcPos)        {}
 func (inactiveEmit) NoteWordRead(Value, string, SrcPos)  {}
-func (inactiveEmit) NoteValRead(string)                  {}
+func (inactiveEmit) NoteValRead(string, string)          {}
 func (inactiveEmit) Sites() map[string]int               { return nil }
 
 func (inactiveEmit) RecordCall(string, *Signature, []Value, []Value, SrcPos, bool, bool) {}
@@ -378,10 +435,13 @@ func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, Src
 }
 func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
+func (inactiveEmit) ApplyPending(string) bool                               { return false }
+func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}
 func (inactiveEmit) CollectionHazard(string) bool                           { return false }
+func (inactiveEmit) NoteFnResultReStep(Value, SrcPos)                       {}
 func (inactiveEmit) DynInputsProven(*Signature, []Value) bool               { return false }
 func (inactiveEmit) Materialise(v Value) (Value, bool)                      { return v, false }
 func (inactiveEmit) ZeroOutProduced(string) bool                            { return false }
@@ -422,6 +482,8 @@ func (inactiveEmit) SetUnitBody(int, []Value)                 {}
 func (inactiveEmit) SetUnitDecl(int, DeclSite)                {}
 func (inactiveEmit) UnitVariadic(int) bool                    { return false }
 func (inactiveEmit) UnitNetsZero(int) bool                    { return false }
+func (inactiveEmit) UnitTailApply(int) (int, bool)            { return 0, false }
+func (inactiveEmit) ArmTailApply(stk []Value) []Value         { return stk }
 
 // EmitCheckpoint is the opaque handle for a recording-pool snapshot: the
 // checker holds and returns it without any knowledge of the compiler's

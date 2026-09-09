@@ -50,6 +50,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if _, ok := e.MemberFnReadValue("id"); ok {
 		t.Fatal("inactive MemberFnReadValue must decline")
 	}
+	if _, ok := e.DefReadName("id"); ok {
+		t.Fatal("inactive DefReadName must decline")
+	}
 
 	// --- dispatch / value recording.
 	e.RecordCall("w", nil, nil, nil, SrcPos{}, false, false)
@@ -100,6 +103,18 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive RecordInterp must decline")
 	}
 	e.RegisterTrailingApply("id", 1)
+	if e.ApplyPending("id") {
+		t.Fatal("inactive ApplyPending must be false")
+	}
+	if _, ok := e.PendingClosureApply(nil); ok {
+		t.Fatal("inactive PendingClosureApply must miss")
+	}
+	if got := e.ArmTailApply([]Value{NewInteger(1)}); len(got) != 1 {
+		t.Fatal("inactive ArmTailApply must pass the residual through")
+	}
+	if _, ok := e.UnitTailApply(0); ok {
+		t.Fatal("inactive UnitTailApply must miss")
+	}
 	e.NoteMemberFnRead("id", Value{})
 	if e.MemberFnRead("id") {
 		t.Fatal("inactive MemberFnRead must be false")
@@ -125,7 +140,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.RecordDynBind("n", Value{}, SrcPos{})
 	e.NoteDefRead("id", "n")
 	e.NoteWordRead(Value{}, "n", SrcPos{})
-	e.NoteValRead("id")
+	e.NoteValRead("id", "n")
 	e.NoteFrozenRead("n", FrozenBakeValue, 0)
 	e.NotifyNameRebound("n")
 	if got := e.RegisterLocal("id"); got != -1 {
@@ -157,6 +172,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.RecordBranch(BranchRecord{})
 	e.RecordLoop(Value{}, Value{}, Value{}, nil, nil, "iter", Value{}, 0, SrcPos{})
+	e.RecordWhile(nil, nil, nil, nil, "iter", Value{}, SrcPos{})
 	if e.RecordInterpXml(XmlTmpl{}, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordInterpXml must decline")
 	}

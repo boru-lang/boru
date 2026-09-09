@@ -33,7 +33,7 @@ import (
 // `([p] => …)`) binds the body's `p` to that input carrier in AnalyseFnBody;
 // an empty name (the token-quotation form, `[body]`) leaves the input on the
 // stack for the body to consume positionally. nil means all-unnamed.
-func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, captures []core.CapturedBinding, shape core.ClosureInShape, pos core.SrcPos) (int, bool) {
+func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, pos core.SrcPos) (int, bool) {
 	// Closure compilation is emit-cluster machinery: it writes recording
 	// internals (fnRecs), so it needs the CONCRETE EmitState. A pass without
 	// one (the inactive recorder) declines exactly as the nil field did —
@@ -69,6 +69,13 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	es.fnRecs[unit].inShape = shape
 	es.fnRecs[unit].closure = true
 	es.fnRecs[unit].lambdaUnit = word == "fnval"
+	// A lambda VALUE's declared param PATTERNS ride on the record from the
+	// open, not only from the contract seated after the compile
+	// (SetUnitParamTypes): the unit's finish reads them to decide whether
+	// the lambda may take the fn path's residual replay (plainLambda).
+	if paramPatterns != nil {
+		es.fnRecs[unit].paramPatterns = paramPatterns
+	}
 	// The two stored-ref compile paths use these eng-internal synthetic
 	// names; their rebind safety is the per-ref poisoning, so the frozen-
 	// read discipline skips them (see fnUnitRec.storedRefUnit).
@@ -456,6 +463,14 @@ type ClosureParamSpec struct {
 	Patterns []*core.Value
 }
 
+// paramSpecPatterns is a nil-safe read of a contract's patterns.
+func paramSpecPatterns(ps *ClosureParamSpec) []*core.Value {
+	if ps == nil {
+		return nil
+	}
+	return ps.Patterns
+}
+
 // foreignFnHome reports whether fd is a fn VALUE that was DEFINED in another
 // module — its `Registry` is set and is not the registry being compiled.
 //
@@ -727,7 +742,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 			return -1, false
 		}
 		defer env.exit(r, prev)
-		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, caps, shape, pos)
+		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, pos)
 	}
 	probe := real.forkForProbe()
 	r.Check.Emit = probe

@@ -93,14 +93,14 @@ func describeName(w io.Writer, name string) int {
 
 	// A registered word (or simple def) renders from live signature data.
 	if info := native.BuildFuncInfo(reg, name); info != nil {
-		fmt.Fprint(w, helppkg.FormatDynamic(*info))
+		fmt.Fprint(w, native.FormatWordHelp(reg, *info))
 		return 0
 	}
 
 	// A dotted name (ArrayUtil.indices) names a single module export.
 	if strings.Contains(name, ".") {
 		if info := qualifiedExportInfo(reg, name); info != nil {
-			fmt.Fprint(w, helppkg.FormatDynamic(*info))
+			fmt.Fprint(w, native.FormatWordHelp(reg, *info))
 			return 0
 		}
 	}
@@ -154,7 +154,7 @@ func describeModulePath(w io.Writer, name string) int {
 	}
 
 	if info := exportInfoFromDesc(desc, word); info != nil {
-		fmt.Fprint(w, helppkg.FormatDynamic(*info))
+		fmt.Fprint(w, native.FormatWordHelp(reg, *info))
 		return 0
 	}
 

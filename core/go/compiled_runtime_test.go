@@ -13,6 +13,10 @@ func TestNoCompiledRuntimeDeclines(t *testing.T) {
 		t.Fatalf("no-op InvokeCompiled = %v %v %v", res, err, ran)
 	}
 	compiledRuntime.StampDetached(nil, FnDefInfo{}, SrcPos{})
+	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	if fnv, ok := compiledRuntime.ClosureAsFnDef(nil, closure); ok || !fnv.Parent.Equal(TFunction) {
+		t.Fatalf("no-op ClosureAsFnDef must decline with the value: %v %v", fnv, ok)
+	}
 
 	// A callback dispatch under the declined runtime takes CallBoru —
 	// the standalone-core semantics.

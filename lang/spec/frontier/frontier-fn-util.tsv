@@ -1,41 +1,32 @@
 # boru Language Specification: boru:fn-util behaviour rows (frontier)
 # Format: input<TAB>expected<TAB>description
 #
-# TWO refusals live here, and they are different.
-#
-# THE BEHAVIOUR ROWS def-bind a fn computed by a FnUtil word, and the
-# compiled lane refuses that shape:
+# The eight BEHAVIOUR rows that lived here — compose, pipe, const, flip,
+# partial, on (twice), memoize — GRADUATED 2026-09-08 (the thirty-fifth
+# increment, the def-bound computed-fn model) and moved to
+# lang/spec/module-fn.tsv. They refused as
 #
 #     def-bound computed fn apply (closure shape unknown — Stage 1)
 #
-# — the §5.4 / NUR101 family, shared with the U-combinator and compose rows
-# in frontier-hof-audit.tsv. Nothing about it is fn-util-specific: the
-# `const` row proves it, refusing identically even though `_f_const` takes
-# TAny and so was never subject to the fn-operand gate. Graduation = the
-# def-bound computed-fn model.
+# — the §5.4 / NUR101 family: a def-bound fn value the compile pass knew
+# only as a Function carrier of no shape. Now the producing word's
+# check-mode ReturnsFn claims the wrapper's arity, the check pass models
+# the bound wrapper's WORD DISPATCH at the read (its arity of fixed tokens
+# inside the statement), and the VM applies the wrapper on its own
+# signatures. The refusal's note that "a lowered apply here returned 99 for
+# 7" was the VM resolving the wrapper's label `const` through the live
+# registry to the singleton-type maker — not the island it blamed.
 #
-# (Until 2026-08-25 these rows refused EARLIER, with "function-valued operand
-# at <word> (Stage 3)" — the recorder's default assumption that a fn-valued
-# operand means the handler re-steps it on the tape. fn-util does not: it
-# stashes the fn and invokes it from a Go handler. Declaring that
-# (CompileStoresFn, see lang/go/modules/fn.go) removed the first wall and
-# left the real one visible. The two `curry` REFUSAL rows compiled once it
-# lifted and now live in lang/spec/module-fn.tsv.)
+# The CURRIED CHAIN followed 2026-09-08 (the thirty-sixth increment): the
+# claim carries the RESULT's shape — every curry level returns a unary
+# level — so `(c 10)` is a shaped Function carrier, `def c10` binds it, and
+# `(c10 3)` models its own dispatch; the row is in lang/spec/module-fn.tsv.
 #
-# THE LAST TWO ROWS are not that family at all: `FnUtil.flip 5` is refused
+# THE TWO ROWS LEFT are not that family at all: `FnUtil.flip 5` is refused
 # by the strict-lane CHECK, as [uncalled_function] "call to 'flip' matched
 # no signature", before compilation is reached. Graduation = the check
 # admitting a dispatch whose failure is the program's specified result.
 #
 # The interpreter is the oracle that the vocabulary WORKS.
-import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.compose addone/v double/v) end (h 5)	11	compose applies g first: addone (double 5)
-import "boru:fn-util"  def addone x:Integer => [add 1 x] end def double x:Integer => [mul 2 x] end def h (FnUtil.pipe addone/v double/v) end (h 5)	12	pipe applies f first: double (addone 5)
-import "boru:fn-util"  def k (FnUtil.const 7) end (k 99)	7	const ignores its argument
-import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def fs (FnUtil.flip sub2/v) end (fs 3 10)	7	flip reverses the signature order: sub2 10 3
-import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)	7	curry: one argument at a time
-import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end (p 3)	7	partial binds signature slot 0
-import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 3 5)	false	on: gt2 (sq 3) (sq 5) — 9 > 25
-import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)	true	on: 25 > 9
-import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)	5	memoize: the first call computes
 import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip refuses a non-function operand at dispatch
 import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry refuses a non-function operand at dispatch

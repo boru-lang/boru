@@ -2,6 +2,7 @@ package eng
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -362,8 +363,16 @@ func TestSeam7CallDynApplyTopArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
 	_, _, err := vc.callDynApplyTop(vc.r, 1, nil, seam7Dbg, 0)
 	wantInternal(t, err, "CALL_DYN_APPLY_TOP underflow")
-	// A non-FnDefInfo, non-closure value raises applyHandler's own error.
+	// A value that is no fn at all raises the interpreter's own `apply`
+	// no-match over the top two stack values (the twenty-seventh increment:
+	// a gradual lead can be data at run time); a Function-typed value with
+	// a payload that is neither an FnDefInfo nor a closure raises
+	// applyHandler's own error.
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
+	wantErr(t, err, "cannot call `apply`")
+	wantErr(t, err, "the arguments were 9 (an Integer) and 5 (an Integer)")
+	odd := core.Value{Parent: core.TFunction, Data: core.IntPayload{N: 1}}
+	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), odd}, seam7Dbg, 0)
 	wantErr(t, err, "carries no FnDefInfo")
 }
 
@@ -748,4 +757,76 @@ func TestSeam7CallNativeHandlerTokenScreened(t *testing.T) {
 	}
 	_, err := RunProgram(p, r)
 	wantInternal(t, err, "tape-coupled handler result at cretword")
+}
+
+// TestSeam7CallDynApplyOneArms pins the EVENT form of the apply-word op
+// (OpCallDynApplyOne, the twenty-seventh increment) arm by arm: a fn of
+// the window's arity commits its one result; a 0-arg anonymous fn is
+// MARKED applied and fires, and the extra value it leaves beside the
+// receiver DEFERS the run (the model committed one result); a lens on top
+// defers; a compiled closure of another arity takes the interpreter's apply
+// re-step, and one whose payload names no unit is invoked as it is.
+func TestSeam7CallDynApplyOneArms(t *testing.T) {
+	r := seam7Reg(t)
+	vc := seam7VC(r)
+	one := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
+		Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1,
+		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			n, _ := core.AsInteger(a[0])
+			return []core.Value{core.NewInteger(n * 3)}, nil
+		}),
+	}}})
+	core.NormalizeSig(&one.Data.(core.FnDefInfo).Signatures[0])
+	got, ent, err := vc.callDynApply(r, 1, []core.Value{core.NewInteger(5), one}, seam7Dbg, 0, true)
+	if err != nil || ent != nil || len(got) != 1 {
+		t.Fatalf("a 1-arg fn over its one arg commits one result: %v %v %v", got, ent, err)
+	}
+	if n, _ := core.AsInteger(got[0]); n != 15 {
+		t.Errorf("15: %v", got)
+	}
+	zero := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
+		BarrierPos: 0,
+		Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return []core.Value{core.NewInteger(42)}, nil
+		}),
+	}}})
+	core.NormalizeSig(&zero.Data.(core.FnDefInfo).Signatures[0])
+	// The tail form (one=false) keeps whatever the re-step leaves: the 0-arg
+	// fn fires and its result lands ABOVE the untouched receiver, exactly
+	// the interpreter's [4 42].
+	got, _, err = vc.callDynApply(r, 1, []core.Value{core.NewInteger(4), zero}, seam7Dbg, 0, false)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("the tail form keeps the re-step's residual: %v %v", got, err)
+	}
+	if a, _ := core.AsInteger(got[0]); a != 4 {
+		t.Errorf("the receiver stays beneath the 0-arg fn's result: %v", got)
+	}
+	if b, _ := core.AsInteger(got[1]); b != 42 {
+		t.Errorf("the 0-arg fn fired (MarkApplied): %v", got)
+	}
+	// The event form defers the same state.
+	_, _, err = vc.callDynApply(r, 1, []core.Value{core.NewInteger(4), zero}, seam7Dbg, 0, true)
+	wantInternal(t, err, "netted 2 value(s)")
+	// A lens on top defers.
+	_, _, err = vc.callDynApply(r, 1, []core.Value{core.NewInteger(4), core.NewValueRaw(core.TReach, core.NonePayload{})}, seam7Dbg, 0, true)
+	wantInternal(t, err, "apply over a lens value")
+	// closureUnit: a payload naming no program or a unit beyond it names no
+	// unit (such a closure is invoked as it is, and the invoker answers).
+	if _, known := vc.closureUnit(core.ClosurePayload{Prog: nil, Unit: 0}); known {
+		t.Error("no program: no unit")
+	}
+	if _, known := vc.closureUnit(core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0}); known {
+		t.Error("a unit beyond the program: no unit")
+	}
+	// The resolved re-step surfaces the island's own error.
+	bad := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
+		Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1,
+		Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return nil, fmt.Errorf("boom")
+		}),
+	}}})
+	core.NormalizeSig(&bad.Data.(core.FnDefInfo).Signatures[0])
+	if _, err := vc.applyReStep(nil, bad, []core.Value{core.NewInteger(1)}, seam7Dbg, 0); err == nil {
+		t.Error("the island's error rides out of the re-step")
+	}
 }

@@ -145,6 +145,7 @@ type Registry struct {
 	errs           []error           // registration errors accumulated during setup
 	ready          bool              // true after initial setup; triggers dynamic help generation
 	OnRegisterHook func(name string) // called when a function is registered after startup
+	helpWords      map[string]bool   // names noted by OnRegisterHook as eligible for ON-DEMAND help example generation
 	builtinWords   map[string]bool   // names registered via Register (natives + host words); user def/undef must not shadow these
 
 	// Check holds all static type-checking state, bundled together
@@ -856,9 +857,38 @@ func (r *Registry) SetParseFunc(fn func(string) ([]Value, error)) {
 }
 
 // MarkReady signals that initial setup is complete. Subsequent Register
-// calls will trigger dynamic help example generation via OnRegisterHook.
+// calls are NOTED via OnRegisterHook as eligible for help example
+// generation, which happens on demand when the word is described.
 func (r *Registry) MarkReady() {
 	r.ready = true
+}
+
+// NoteHelpWord records that name was registered after startup, so a later
+// `describe` of it may synthesise and evaluate an example. This is the whole
+// of what the register-time hook does: RECORDING, never evaluating.
+//
+// It used to evaluate. The hook fires from installFnDef on EVERY fn
+// installation — including the user program's own `def f fn […]` DURING their
+// check — and the old hook ran the synthesised example FOR REAL in the
+// registry that was mid-pass. That was a documentation feature reaching into
+// a user's analysis, and it cost three separate things: a silent
+// contamination of the fn-analysis memo (the first check in a process lost
+// diagnostics the later ones reported), an exposure of a latent
+// unreachable_branch attribution bug once the contamination was isolated, and
+// up to 2x on `boru check` for byte-identical output. Recording the name and
+// generating when someone actually asks removes all three at once, because
+// nothing synthetic runs during a check at all.
+func (r *Registry) NoteHelpWord(name string) {
+	if r.helpWords == nil {
+		r.helpWords = map[string]bool{}
+	}
+	r.helpWords[name] = true
+}
+
+// IsHelpWord reports whether name was noted by NoteHelpWord — i.e. whether it
+// was registered after startup and so has no build-time example snapshot.
+func (r *Registry) IsHelpWord(name string) bool {
+	return r != nil && r.helpWords[name]
 }
 
 // PushFnBaseline records a def-depth snapshot as the entry point of a
