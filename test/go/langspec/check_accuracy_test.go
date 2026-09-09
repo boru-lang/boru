@@ -119,7 +119,15 @@ var unflaggedPins = map[string]int{
 	// They are RUNTIME rejections — the option map is a plain Map at a Map
 	// slot, so the checker cannot see the key set statically — hence
 	// unflagged rather than a checker regression.
-	"edge-dispatch-3.tsv": 6,
+	//
+	// 6 -> 11: NUR127 declared the five enumerated option domains that had
+	// none (style, tgt, quote, form, norm), so a mistyped VALUE for those
+	// keys is refused instead of silently taking a switch's default arm.
+	// The five new rows are the same shape as the three above and unflagged
+	// for the same reason — the key set and its domains live in the handler,
+	// not in the Map's type — so this is corpus growth, not lost checker
+	// coverage. The false-positive count is unmoved at 0.
+	"edge-dispatch-3.tsv": 11,
 	"edge-errors-1.tsv":   3,
 	"edge-errors-2.tsv":   1,
 	"edge-forward-1.tsv":  1,

@@ -47,7 +47,14 @@ func refusalSites(t *testing.T) (map[string]int, int) {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "node_modules", "vendor", "bin":
+			// `.claude` holds agent scratch space, and in particular the git
+			// WORKTREES an isolated agent runs in — each a full copy of this
+			// repo. Walking one counts every MarkUncompilable site again, per
+			// worktree: measured, three of them turned a true census of 93
+			// into 372 and failed this gate on work that added no refusal at
+			// all. The directory is gitignored; the walk is over the
+			// filesystem, so it has to skip it explicitly.
+			case ".git", ".claude", "node_modules", "vendor", "bin":
 				return filepath.SkipDir
 			}
 			return nil
