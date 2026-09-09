@@ -44,7 +44,7 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		// program, and MUST be fully hermetic — it fires from OnRegisterHook on
 		// EVERY fn registration, INCLUDING the program's own `def f fn […]` DURING
 		// compilation, so any trace it leaves contaminates that very program's
-		// compile. Six leak channels are closed:
+		// compile. Seven leak channels are closed:
 		//   1. EmitState (recording + interned consts + RememberOriginal) — swap in
 		//      a FRESH throwaway EmitState (IsolateEmit), not just Suspend: Suspend
 		//      keeps the SAME EmitState, so the example's consts (e.g. a generated
@@ -72,10 +72,22 @@ func makeDynamicEval(r *Registry) func(string) (string, error) {
 		//      precomputed results agree.
 		//   6. Input — an example of a reading word (stdin) must consume an
 		//      empty hermetic reader, never the process's stdin.
+		//   7. The fn-body ANALYSIS MEMO family (IsolateFnAnalysis) — the
+		//      example's own AnalyseFnBody of the user's real body is
+		//      memoised under a key that renders arg TYPE NAMES only, so the
+		//      program's own call site took the memo HIT and was handed the
+		//      EXAMPLE's residual instead of analysing its concrete args. The
+		//      dispatch that should have failed was never attempted, and
+		//      channel 2 ate the evidence: `def app fn [[nd:Any m:Map] [Any]
+		//      [nd (m get "inc") apply]]  def rules {inc: 42}  app 5 rules`
+		//      reported NOTHING on the FIRST check in a process (the example
+		//      is evaluated once per process — help's own result memo is
+		//      package-level) and its two real errors on every later one.
 		// Real construction-time body checking is a first-class pass
 		// (checkFnBodyAtConstruction), so suppressing the eval's diagnostics is sound.
 		defer r.Check.IsolateEmit()()
 		defer r.Check.IsolateBudget()()
+		defer r.Check.IsolateFnAnalysis()()
 		diagBase := len(r.Check.Diagnostics)
 		defer r.Check.TruncateDiagnostics(diagBase)
 		// A CONTENT-preserving snapshot (SnapshotEntries), not the depth-based

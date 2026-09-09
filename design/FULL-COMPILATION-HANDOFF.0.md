@@ -4918,9 +4918,7 @@ per-registry analysis memo or quota. **It reproduces unchanged at the
 thirty-fifth increment**, so it is older than this batch: `boru check`'s
 verdict on one program depends on what the process did before it, which is
 the NUR103 class taken one step further — the verdict depends not only on
-who is asking but on when. It is recorded here rather than fixed: the
-mechanism is not yet located, and the gate that found it is the right place
-for it to keep failing until it is.
+who is asking but on when. **LOCATED 2026-09-09** — see the section below.
 
 What this batch actually added was ONE diverging row, and it was
 accidental: the branch-arm row graduated with the thirty-eighth increment
@@ -4938,6 +4936,146 @@ run is not passing them. The parity gate now names its diverged rows under
 did — its ceiling has only ever moved with the exact row named, and
 re-deriving that row by hand across 7,700 rows is the step that was
 missing.
+
+## The help hook's seventh leak channel: why the FIRST check in a process is the wrong one (2026-09-09)
+
+The cold/warm defect above is a contaminated FIRST check, not a stricter
+later one, and the contamination comes from the documentation system.
+
+`lang.New` installs `EnableDynamicHelp`, which sets `Registry.OnRegisterHook`.
+`installFnDef` fires that hook on EVERY fn installation — including the
+user program's own `def app fn […]`, mid-check. The hook synthesises an
+example expression from the word's NAME and one SAMPLE VALUE per declared
+param type (`app 2 {a:1,b:2}` for `[[nd:Any m:Map]]`) and, the first time
+that expression string is seen IN THE PROCESS, EVALUATES it for real —
+a full `Engine.Run` in the very registry that is mid-`Check`. The gate is a
+package-level `dynamicExampleResults` map that is never cleared, which is
+exactly why the behaviour is once-per-process.
+
+`makeDynamicEval` knows this run must be hermetic and closes six leak
+channels, each documented in its header: the EmitState, the diagnostics,
+the def stack, the step budget, the filesystem and stdin. The fn-analysis
+memo is an unclosed SEVENTH. The synthetic run drives `AnalyseFnBody` over
+the user's real body and memoises the residual in `Check.FnSummaries`; and
+`FnAnalysisKey` renders arg TYPE NAMES only (`carrierTypeName`), so the
+example's literal `2` and the program's literal `5` build the same key. The
+program's own call then takes the memo HIT and is handed the EXAMPLE's
+residual instead of analysing its own concrete arguments — so `apply` is
+never dispatched against the concrete member and neither the `no_signature`
+nor the two-value `type_error` is produced. The synthetic run's own
+diagnostics are truncated on the way out, so the contamination is silent:
+it shows up only as a MISSING diagnostic on the real call.
+
+**The direction matters.** With the hook nil'd, the first check in a fresh
+process already reports both errors. WARM is the uncontaminated answer; the
+cold check is the wrong one, and every gate baselined on a first-check
+answer is baselined on pollution.
+
+**Measured, not argued.** The poisoned entry is directly observable: for
+`app 'x' rules` — whose only call site is `(ProperString, Map)` — a cold
+process holds an extra `#app#Integer,Map` summary that no part of the
+program could have written. Breaking the key collision that way removes the
+cold state entirely, with no warm process needed. Priming with the same
+name and signature but a COMPLETELY DIFFERENT body warms the row; priming
+with the same name and a different param type (a different rendered example
+string) does not — so the key is the rendered expression, not the name and
+not the body. Simulating the fix from the test side, by snapshotting and
+restoring the memo family around the hook, makes cold equal warm equal the
+no-hook control while `describe` still prints its generated example.
+`CompileCheck` is identical either way because `BeginCompilePass` nils
+`FnSummaries` before the compiling pass could consume the poison.
+
+**The cut is TWO TABLES, and the wider one is wrong.** The instinct is to
+restore the whole fn-analysis family — `FnInflight`, `FnNameInflight`,
+`FnBodyChecked` and `PendingFnBodies` alongside `FnSummaries` and
+`FnAnalysisCounts`. That was tried first and it REGRESSED four shapes that
+compile today to "body result of unknown provenance": the recursive closure
+of `bytecode_emit_test.go`'s capture-slot pin, the stored-sig poly of §6b,
+the CPS arm-tail apply, and an in-unit named callback. The reason is the
+same fact that makes the leak possible — the hook fires MID-INSTALL of the
+user's own fn, so the enclosing pass has analyses IN FLIGHT and QUEUED
+across it, and restoring those tables throws that queued work away; nothing
+then analyses the pending body. What LEAKS is the memo of FINISHED
+analyses; what must SURVIVE is the record of analyses still owed. Restore
+the first, never the second. The measurement is in the helper's own comment
+so a future widening has to argue with it.
+
+**Pinning a once-per-process defect has its own trap, and it was walked
+into.** The synthetic evaluation happens once per process per rendered
+example STRING, and that string is built from the fn's NAME and its PARAM
+TYPES. So a pin whose fixture reuses a name+signature another test in the
+same package also defines is VACUOUS in the suite that CI runs: whichever
+file sorts first spends the one evaluation, and the pin then measures the
+already-warm path and passes with the fix deleted. The first draft of
+`TestCheckVerdictIsHermeticAcrossProcessHistory` used `def app fn [[nd:Any
+m:Map] …]`, which `bytecode_edge_findings_test.go` (sorting earlier) also
+defines — it failed when run alone and passed in `go test .`. The rule is
+the same one the leak pin already stated for `dhleak`: give the fixture a
+name defined nowhere else. And the FEATURE guard has the mirror trap — the
+example EXPRESSION is rendered from the signature alone and prints whether
+or not anything was evaluated, so asserting it does not forbid the one wrong
+fix ("skip the evaluation instead of isolating it"). Only the result half,
+`;# 2` rather than the placeholder `;# ...`, comes from the synthetic run.
+Assert the line.
+
+**The frontier ledger does not move.** The wider cut also re-diagnosed
+`frontier-capture-namespace.tsv:15` — under it the row refused at its own
+residual rather than at the capture slot. The narrow cut does not: that row
+still refuses with `capture ParseLang of calc unreachable at a call site`,
+and the ledger entry stands unedited. A re-diagnosis measured against an
+abandoned fix is not a measurement.
+
+**What the next author should not re-derive.** The memo is deliberately
+keyed on types, not values; making it concreteness-aware would collapse its
+hit rate and change checking repo-wide. The local cut is isolation — the
+seventh channel closed like the other six — not a smarter key. And a
+per-registry `dynamicExampleResults` is strictly worse: it makes EVERY
+check behave like today's cold one, so the leak would mask the real
+diagnostic every time instead of once.
+
+## The memo outlives the pass too: a SECOND, hook-independent instance of the same class (2026-09-09, measured, NOT fixed)
+
+Closing the seventh channel makes one check hermetic against the help
+example. It does not make the memo pass-scoped, and there is a second way a
+check's verdict depends on history — reachable with the help hook disabled
+entirely, so it is not the leak above wearing a different hat.
+
+`CheckState.Begin()` resets every other member of the fn-analysis family —
+`FnAnalysisCounts`, `FnNameInflight`, `FnBodyChecked`, `PendingFnBodies`,
+`InflightBails` — and does NOT reset `FnSummaries`. Only `BeginCompilePass`
+nils it, and `SetStrictCheck` clears it by hand, its comment already
+conceding the point ("on a reused instance a bare Begin keeps them"). So the
+memo survives from one `Check` to the next on one registry. That matters
+because `FnAnalysisKey` identifies a body by its FIRST TOKEN'S row:col, not
+by its content: two different programs whose fn shares a name, arg type
+names, captures and body start position build the identical key, and the
+second check is handed the first's residual.
+
+Measured:
+
+    a := lang.New()
+    a.Check(`def zzff fn [[x:Integer] [Any] [x mul 2]]     zzff 2`)  // clean
+    a.Check(`def zzff fn [[x:Integer] [Any] [x mul {a:1}]] zzff 2`)  // → []
+
+A fresh instance checking the second program alone reports its
+`no_signature` (`mul` got `(Integer, Map)`). Both bodies start at 1:33 and
+both calls are `(Integer)`, so the keys collide and the failing dispatch is
+never attempted. The reverse order is safe — the memo caches the residual,
+not the diagnostics — so the failure is ONE-DIRECTIONAL, exactly as the help
+leak is: an error silently disappears, never a phantom appears.
+
+**Why it is recorded rather than fixed here.** Nothing shipped reaches it:
+every in-tree `Check` caller builds a fresh instance
+(`cmd/go/internal/lsp/diagnostics.go`, and `cmd/go/internal/check/check.go`
+inside its per-target loop). And the two candidate fixes are both changes to
+the memo's LIFETIME or its KEY, repo-wide: have `Begin()` nil `FnSummaries`
+as it nils `FnAnalysisCounts` (giving up cross-check memoisation, with its
+own gate to run), or make the key carry body CONTENT rather than body
+position (which is the same "make the key smarter" move the seventh-channel
+section argues against for the type-name half, and would want its own
+hit-rate measurement). Neither belongs bolted onto a leak fix. The shape an
+embedder would hit is an instance-caching LSP re-checking an edited buffer:
+it would stop reporting a type error the user had just introduced.
 
 ## What the ledger excludes, and why each exclusion was measured
 

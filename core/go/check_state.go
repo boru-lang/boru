@@ -1150,6 +1150,88 @@ func (c *CheckState) IsolateBudget() func() {
 	}
 }
 
+// IsolateFnAnalysis snapshots the fn-body ANALYSIS MEMO family and returns a
+// restore func — the seventh leak channel of the synthetic help-example
+// evaluation (lang/go/native/native_help.go's makeDynamicEval, whose header
+// enumerates all seven).
+//
+// WHY THIS IS A LEAK AT ALL. The help hook fires from installFnDef on EVERY fn
+// installation, including the user program's own `def f fn […]` DURING their
+// check, and it EVALUATES a synthesized example — a real Engine.Run in the very
+// registry that is mid-pass. That run drives AnalyseFnBody over the user's real
+// body and memoises the residual here. FnAnalysisKey renders arg TYPE NAMES
+// only (carrierTypeName), so the example's stand-in argument and the program's
+// own argument of the same type build the IDENTICAL key: the program's real
+// call site then takes the memo HIT and is handed the EXAMPLE's residual
+// instead of analysing its own concrete arguments. The synthetic run's own
+// diagnostics are truncated on the way out, so the contamination is SILENT —
+// it surfaces only as a diagnostic the real call should have produced and did
+// not.
+//
+// Measured: `def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]]
+// def rules {inc: 42} app 5 rules` reported NOTHING on the first check in a
+// process and two errors on every later one, because the example expression
+// (`app 2 {a:1,b:2}`) is evaluated once per process — the help layer's own
+// memo of example results is package-level. The FIRST check was the polluted
+// one; with the hook disabled, both report the two errors.
+//
+// The memo is deliberately keyed on TYPES, not values, and making it
+// concreteness-aware would collapse its hit rate and change checking
+// repo-wide. Isolation is the local cut; a smarter key is not.
+//
+// WHY ONLY THESE TWO TABLES, measured. The obvious instinct is to restore the
+// whole fn-analysis family — FnInflight, FnNameInflight, FnBodyChecked and
+// PendingFnBodies alongside these. That is WRONG, and the tests say so: the
+// hook fires MID-INSTALL of the user's own fn, so the enclosing pass has work
+// in flight and queued across it, and restoring those tables DISCARDS it. Four
+// shapes that compile today regressed to "body result of unknown provenance"
+// (the recursive closure of bytecode_emit_test.go's capture-slot pin, the
+// stored-sig poly of §6b, the CPS arm-tail apply, and an in-unit named
+// callback) — the pass's own pending body had been dropped, so nothing
+// analysed it. What LEAKS is the memo of finished analyses; what must survive
+// is the record of analyses still owed. Restore the first, never the second.
+//
+// WHAT THIS DOES NOT CLOSE, each measured rather than assumed:
+//
+//   - The clone is SHALLOW, so the restore undoes adds and replacements but
+//     not a write into an existing entry's backing array. Nothing does that
+//     today — every write site assigns a fresh slice under the key — but it
+//     is a convention, not an invariant the code enforces: a memo hit hands
+//     the stored []Value back verbatim as a dispatch's outs, and the recorder
+//     re-stamps an out's ID IN PLACE on an ID collision. A probe over the
+//     in-tree corpus found zero such mutations. If one ever appears, deep-copy
+//     the entries here rather than relaxing the assumption at those sites.
+//   - PendingFnBodies is deliberately left alone (above), and the queue is
+//     drained AFTER the hook's TruncateDiagnostics has run. A body the
+//     synthetic example constructs and the real pass does not would therefore
+//     be analysed with no truncation in front of it. FnBodyChecked's SrcPos
+//     dedup is what keeps this benign on the corpus; it is not a proof.
+//   - The table is not PASS-scoped, and that is a SEPARATE, hook-independent
+//     defect: Begin() resets every other member of this family and not
+//     FnSummaries, while FnAnalysisKey identifies a body by its first token's
+//     row:col rather than by its content. So two different programs checked on
+//     ONE reused registry can collide. Measured, and it reproduces with the
+//     help hook disabled: `def zzff fn [[x:Integer] [Any] [x mul 2]] zzff 2`
+//     followed by `def zzff fn [[x:Integer] [Any] [x mul {a:1}]] zzff 2`
+//     reports NOTHING for the second, where a fresh instance reports its
+//     no_signature. Same class and same direction as the leak above — a
+//     diagnostic that should appear does not — but no isolation here can
+//     reach it: it wants either Begin() nilling this table or a key that
+//     carries body CONTENT. Nothing shipped hits it (every in-tree Check
+//     caller builds a fresh instance). Recorded in the handoff, not fixed
+//     here: it is a change to the memo's lifetime, with its own gate.
+func (c *CheckState) IsolateFnAnalysis() func() {
+	if c == nil {
+		return func() {}
+	}
+	savedSummaries := cloneMap(c.FnSummaries)
+	savedCounts := cloneMap(c.FnAnalysisCounts)
+	return func() {
+		c.FnSummaries = savedSummaries
+		c.FnAnalysisCounts = savedCounts
+	}
+}
+
 // RecordDef remembers a name the user bound during a check run so
 // end-of-run analysis can flag defs that were never referenced. Names
 // starting with "_" (engine internals) are ignored.
