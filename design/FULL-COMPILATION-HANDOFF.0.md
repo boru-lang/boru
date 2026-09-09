@@ -5077,6 +5077,101 @@ hit-rate measurement). Neither belongs bolted onto a leak fix. The shape an
 embedder would hit is an instance-caching LSP re-checking an edited buffer:
 it would stop reporting a type error the user had just introduced.
 
+## What closing the seventh channel cost, and what it exposed (2026-09-09, all three measured)
+
+Adversarial review of the fix found three things the fix itself does not
+say. All three are reproduced against built binaries — `boru-with` (the
+shipped cut) against `boru-without` (6007c2a) — not argued from the code.
+
+**1. The same leak is still open one caller over.** The defect's SHAPE is
+"an analysis whose diagnostics are truncated while its `FnSummaries` writes
+survive". `compiler/go/code_effect.go`'s `AnalyseCodeEffectCarrier` is a
+self-described DRY pass over a stored quoted code list: it snapshots
+`diagBase`, runs `core.RunCarrierBody`, and calls `TruncateDiagnostics` —
+with no `IsolateFnAnalysis`. So the dry run's summaries survive under the
+type-name key and the program's own call site takes the hit, exactly as it
+did through the help hook. Reachable from ordinary source:
+
+    def zk1 fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]]
+    def rules {inc: 42}
+    def ops [(quote [zk1 2 rules])]     # <- add these two lines and
+    def b (ops get 0)                   #    the no_signature disappears
+    zk1 5 rules
+
+Without the two middle lines the check reports both errors; with them the
+`no_signature: apply` is silently lost and the surviving `type_error`
+renders the DRY pass's operand `2` instead of the user's `5`. `boru-without`
+reports ZERO errors for the same program — both channels were leaking — so
+the shipped cut is a partial improvement, not a complete one.
+`IsolateFnAnalysis` is already the right primitive; it is simply not
+deferred at that site. Left for its own increment because it is a change to
+the compiler's check path and wants the full ratchet run, not a bolt-on.
+
+**2. It exposes a pre-existing `unreachable_branch` attribution defect, and
+that is a REGRESSION on a shipped file.** `boru check utils/wc.boru` goes
+from `0 warnings` to one FALSE `unreachable_branch` at 166:3. The warning is
+wrong: `wc-row` has two call sites, one passing the literal `"total"` (for
+which the then-branch is indeed dead) and one passing `(it.label)`, which is
+`""` whenever `acc.named` is false. The then-branch is reachable.
+
+The mechanism is not the leak fix. `EmitUnreachableBranch`
+(`basic/go/native_control.go`) reports at `CurCallPos` — a position INSIDE
+the shared fn body — while the constancy comes from THIS call's bound
+argument. It is a fact about one call site reported at a position both call
+sites share. Before the fix, the memo hit meant only one call shape was ever
+analysed, so only one such warning could ever be emitted, and the defect was
+masked. An honest analysis analyses both shapes, and both warnings survive
+`CheckAddUniqueDiagnostic` because it dedupes on code+detail+position and the
+details differ. The result is one `if` drawing two CONTRADICTORY warnings at
+one position — measured on a three-line program:
+
+    def zwr fn [[label:String] [String] [ if (label eq "") ["empty"] [label] ]]
+    def a (zwr "")
+    def b (zwr "total")
+
+    without: 1:39 constant true; else-branch is unreachable
+    with:    1:39 constant true; else-branch is unreachable
+             1:39 constant false; then-branch is unreachable
+
+No suite catches it: `utils/` is outside `make test`'s module fan-out, and
+`utils_e2e_test.go` runs the binaries rather than asserting check output.
+The principled repair is at the emitter — a constancy that comes from a
+bound param is a property of the CALL, not of the code, and must not be
+reported at the body's position — but distinguishing it from a genuine
+source literal (`if true [...] [...]` written in a body) is a diagnostics
+design question with corpus-wide reach and the check-accuracy gate to
+answer to. It is not a bolt-on to a leak fix. Also worth recording: the same
+honesty turned `kg/tests/resolution_test.boru` from silent to two TRUE
+errors (an undefined `KgSchema` the memo hit had been hiding), so the
+exposure cuts both ways.
+
+**3. `boru check` is materially slower, and the cost is NOT the clone.**
+Best-of-3 wall clock, same machine, byte-identical output:
+
+    kg/storage.boru        1.96s -> 3.82s  (+95%)
+    kg/validate.boru       0.78s -> 1.25s  (+61%)
+    lang/go/modules/sift.boru  2.35s -> 3.30s  (+41%)
+    aggregate over 31 corpus programs         +9.4%
+
+Several programs got FASTER (-16% to -33%) because an honest analysis
+short-circuits earlier, so it is a redistribution with a bad tail rather
+than a uniform tax. **Do not optimise `cloneMap`**: a control build that
+keeps both clones and makes the restore a no-op runs at the without-fix
+speed. The cost is the DISCARDED memo forcing re-analysis — `AnalyseFnBody`
+misses go 852 -> 1396 on kg/storage.boru. It is linear in (hook evaluations
+x per-example cascade), not quadratic: a synthetic deep call chain at
+N=25/50/100 shows identical miss counts on both builds. The honest way to
+buy it back is to stop doing the synthetic evaluation inside the user's pass
+at all, not to make the isolation cheaper.
+
+For the record, two things that are NOT problems, both measured. The
+`FnAnalysisCounts` refund cannot let a program exceed `FnAnalysisQuota`: the
+counter increments on the memo-MISS path only, so refunding the example's
+increments and re-consuming them on the program's own now-missing calls nets
+the same or lower. And nothing changes when help is disabled — the call sits
+inside `makeDynamicEval`'s returned closure, which a registry with no
+`OnRegisterHook` never reaches.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
