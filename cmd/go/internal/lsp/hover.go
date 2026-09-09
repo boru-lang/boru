@@ -22,7 +22,7 @@ func (s *server) buildHover(src string, pos Position) *Hover {
 	var body string
 	if reg := s.ensureRegistry(); reg != nil {
 		if info := native.BuildFuncInfo(reg, word); info != nil {
-			body = helppkg.FormatDynamic(*info)
+			body = native.FormatWordHelp(reg, *info)
 		}
 	}
 	if body == "" {

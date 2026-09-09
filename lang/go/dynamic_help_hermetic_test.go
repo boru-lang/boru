@@ -6,28 +6,38 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/boru-lang/boru/lang/go/native"
+	"github.com/boru-lang/boru/lang/go/native/help"
 )
 
-// dynamic_help_hermetic_test.go pins the seventh leak channel of the synthetic
-// help-example evaluation (native_help.go's makeDynamicEval, whose header
-// enumerates all seven): the fn-body ANALYSIS MEMO family, isolated by
-// core's IsolateFnAnalysis.
+// dynamic_help_hermetic_test.go pins the invariant that a check's verdict may
+// not depend on what the process did before it, and the mechanism that now
+// makes it hold: the synthetic help example is generated ON DEMAND, when a
+// word is described, not when it is registered.
 //
-// The hook fires from installFnDef on EVERY fn installation — including the
-// user program's own `def f fn […]`, DURING their check — and evaluates a
-// synthesized example for real, in the registry that is mid-pass. That run
-// analyses the user's own body and memoises the residual under a key that
+// It used to be generated at registration. The OnRegisterHook fires from
+// installFnDef on EVERY fn installation — including the user program's own
+// `def f fn […]`, DURING their check — and the old hook EVALUATED the
+// synthesised example for real, in the registry that was mid-pass. That run
+// analysed the user's own body and memoised the residual under a key that
 // renders arg TYPE NAMES only, so the example's stand-in argument and the
-// program's own argument of the same type collide: the real call site took the
+// program's argument of the same type collided: the real call site took the
 // memo HIT and was handed the EXAMPLE's residual instead of analysing its own
 // concrete arguments. The dispatch that should have failed was never
-// attempted, and channel 2 (TruncateDiagnostics) ate the evidence, so the
+// attempted, and the diagnostics-truncation channel ate the evidence, so the
 // contamination was SILENT — visible only as a diagnostic that did not appear.
 //
-// The example is evaluated ONCE PER PROCESS (help's own result memo is
+// The example was evaluated ONCE PER PROCESS (help's own result memo is
 // package-level), so the FIRST check in a process was the polluted one and
-// every later check was right. That is what these tests state: a check's
-// verdict may not depend on what the process did before it.
+// every later check was right. That is what these tests state.
+//
+// Two mechanisms now hold the line, and the ORDER matters if one is ever
+// changed. Laziness is the fix: nothing synthetic runs during a check at all,
+// which also took `boru check kg/storage.boru` from 2.47s to 0.26s.
+// IsolateFnAnalysis (core, the seventh of makeDynamicEval's hermetic channels)
+// is belt-and-braces behind it, and it is what protects the user's RUN now
+// that the evaluation happens inside the `describe` they called.
 
 // dhRow is the measured shape. `(m get "inc")` is 42 at run time, so `apply`
 // over it cannot match, and the fn's declared single return cannot hold the
@@ -162,5 +172,47 @@ func TestDynamicHelpStillGeneratesExamples(t *testing.T) {
 	// same expression with the placeholder result.
 	if strings.Contains(got, ";# ...") {
 		t.Errorf("the example's result is the placeholder — the evaluation was skipped, not isolated:\n%s", got)
+	}
+}
+
+// TestCheckEvaluatesNoHelpExample is the LAZINESS pin, and the one that fails
+// if a future change moves generation back to registration time. It does not
+// go through the leak: it asks the help layer directly whether the example was
+// evaluated.
+//
+// The rendered example carries its result after a `;#`. Where nothing has
+// evaluated it, `evalExample` falls through to the static snapshot and then to
+// computeExampleResult, whose answer for this shape is the placeholder `...`.
+// So `;# ...` means "not evaluated" and `;# 2` means "evaluated" — a direct
+// read of the thing under test, with no dependence on process history.
+//
+// The fn's name is unique to this test for the same reason the others' are:
+// the generation is memoised once per process per rendered example STRING, and
+// the name is part of that string.
+func TestCheckEvaluatesNoHelpExample(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const src = `def zlazy9 fn [[nd:Any m:Map] [Any] [nd]] zlazy9 5 {a:1}`
+	if _, cerr := a.Check(src); cerr != nil {
+		t.Fatalf("check: %v", cerr)
+	}
+	reg := a.NativeRegistry()
+	info := native.BuildFuncInfo(reg, "zlazy9")
+	if info == nil {
+		t.Fatal("the checked program's own fn must be describable")
+	}
+	// The registration DID record the word — recording is the hook's whole job.
+	if !reg.IsHelpWord("zlazy9") {
+		t.Error("a fn installed after startup must be recorded as help-eligible")
+	}
+	// …and the check evaluated nothing for it.
+	if got := help.FormatDynamic(*info); !strings.Contains(got, ";# ...") {
+		t.Errorf("a check must not evaluate the word's help example:\n%s", got)
+	}
+	// Describing it does evaluate, on demand.
+	if got := native.FormatWordHelp(reg, *info); !strings.Contains(got, ";# 2") {
+		t.Errorf("describing the word must generate its example on demand:\n%s", got)
 	}
 }

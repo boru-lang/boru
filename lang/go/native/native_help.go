@@ -8,21 +8,38 @@ import (
 	"github.com/boru-lang/boru/lang/go/native/help"
 )
 
-// EnableDynamicHelp sets up the OnRegisterHook so that functions
-// registered after MarkReady() get their help examples computed
-// dynamically. Call this after initial setup and ParseFunc are ready.
+// EnableDynamicHelp sets up the OnRegisterHook so that functions registered
+// after MarkReady() can get their help examples computed from the live
+// engine. Call this after initial setup and ParseFunc are ready.
+//
+// The hook only RECORDS the name (core's NoteHelpWord, whose comment carries
+// the measurements). Generation happens in FormatWordHelp, when someone
+// actually describes the word — because this hook fires from installFnDef on
+// every fn installation, including the user's own `def f fn […]` mid-check,
+// and evaluating a synthesised example there put a documentation feature
+// inside a user's analysis pass.
 func EnableDynamicHelp(r *Registry) {
-	r.OnRegisterHook = func(name string) {
-		info := BuildFuncInfo(r, name)
-		if info == nil {
-			return
+	r.OnRegisterHook = r.NoteHelpWord
+}
+
+// FormatWordHelp renders one word's help, synthesising and evaluating its
+// examples FIRST if the word was registered after startup (so no build-time
+// snapshot exists for it) — the on-demand half of EnableDynamicHelp.
+//
+// Every `describe` / hover render site goes through here rather than calling
+// help.FormatDynamic directly, so there is one place where the synthetic
+// evaluation can happen and it is a place the user asked for output. The
+// evaluation is still fully hermetic (makeDynamicEval's seven channels): it
+// now runs inside the user's RUN rather than their CHECK, so it must not
+// disturb the def stack, the budget, the recording or the diagnostics of the
+// program that called `describe`.
+func FormatWordHelp(r *Registry, info help.FuncInfo) string {
+	if r.IsHelpWord(info.Name) {
+		if eval := makeDynamicEval(r); eval != nil {
+			help.GenerateDynamicExamples(info, eval)
 		}
-		eval := makeDynamicEval(r)
-		if eval == nil {
-			return
-		}
-		help.GenerateDynamicExamples(*info, eval)
 	}
+	return help.FormatDynamic(info)
 }
 
 // makeDynamicEval returns a function that parses and evaluates a boru

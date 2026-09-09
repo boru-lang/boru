@@ -65,7 +65,7 @@ func DescribeName(r *Registry, w io.Writer, name string) {
 		// A dotted name (TypeUtil.tpartial) names an export of an *imported*
 		// module — resolve it from the namespace binding import installed.
 		if info := BuildQualifiedFuncInfo(r, name); info != nil {
-			fmt.Fprint(w, help.FormatDynamic(*info))
+			fmt.Fprint(w, FormatWordHelp(r, *info))
 			return
 		}
 		// A name bound to a class/object or surface type is not a word; show
@@ -87,7 +87,7 @@ func DescribeName(r *Registry, w io.Writer, name string) {
 		}
 		// A registered word renders from live signature data.
 		if info := BuildFuncInfo(r, name); info != nil {
-			fmt.Fprint(w, help.FormatDynamic(*info))
+			fmt.Fprint(w, FormatWordHelp(r, *info))
 			return
 		}
 	}
@@ -144,7 +144,7 @@ func describeModulePathTo(r *Registry, w io.Writer, name string) {
 	}
 
 	if info := exportInfoFromDesc(desc, word); info != nil {
-		fmt.Fprint(w, help.FormatDynamic(*info))
+		fmt.Fprint(w, FormatWordHelp(r, *info))
 		return
 	}
 

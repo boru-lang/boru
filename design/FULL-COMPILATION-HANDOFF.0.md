@@ -5172,6 +5172,68 @@ the same or lower. And nothing changes when help is disabled — the call sits
 inside `makeDynamicEval`'s returned closure, which a registry with no
 `OnRegisterHook` never reaches.
 
+## The root fix: help examples are generated ON DEMAND (2026-09-09)
+
+The isolation above closes the seventh channel. It does not answer the
+question the three costs were really asking, which is why a DOCUMENTATION
+feature was running inside a user's analysis pass at all.
+
+`EnableDynamicHelp` set `OnRegisterHook` to a function that built the word's
+`FuncInfo`, synthesised an example, and EVALUATED it — a full `Engine.Run` —
+at every fn registration. The hook fires from `installFnDef`, so the user's
+own `def f fn […]` triggered it mid-check. Nothing about that timing was
+needed: the only consumer of the result is `describe` (and LSP hover), and
+those run later, with a registry in hand.
+
+So the hook now RECORDS and nothing else — `Registry.NoteHelpWord`, one map
+insert — and every render site goes through one new function,
+`native.FormatWordHelp(r, info)`, which generates the example if the word was
+registered after startup and then renders. Seven `help.FormatDynamic` call
+sites across `lang/go/native/describe.go`, `cmd/go/internal/describe` and
+`cmd/go/internal/lsp/hover.go` route through it; there is now exactly one
+place where a synthetic evaluation can happen, and it is a place the user
+asked for output.
+
+**What it fixes, measured.**
+
+- The leak is gone at the source: nothing synthetic runs during a check, so
+  there is no `FnSummaries` write to isolate. `IsolateFnAnalysis` stays as
+  belt-and-braces — and it is now load-bearing for a DIFFERENT timing, since
+  the evaluation happens inside the user's RUN of `describe` and must not
+  disturb that run's def stack, budget, recording or diagnostics.
+- `boru check` gets dramatically faster, because the eager hook was paying
+  for every word's example on every run and the memo hit only ever hid part
+  of that cost. Best-of-2 over 30 corpus programs: **21.3s -> 5.7s, -73%**.
+  Per program: `lang/go/modules/cli.boru` 2.53s -> 0.13s (-95%),
+  `kg/storage.boru` 1.89s -> 0.24s (-87%), `kg/validate.boru` 0.78s -> 0.16s.
+  For comparison, the ISOLATION alone made these SLOWER (kg/storage 2.47s ->
+  4.09s), because it discarded the memo and forced re-analysis. Laziness
+  removes the work instead of redoing it.
+- `describe` is unchanged: `describe kk9` still prints
+  `kk9 2 {a:1,b:2}   ;# 2`, generated on demand.
+- Diagnostics are unchanged from the isolated build: 53 corpus programs
+  compared line for line, zero differences. Laziness and isolation reach the
+  same honest answer; only the cost differs.
+
+**What it does NOT fix, and this is the useful negative.** The false
+`unreachable_branch` on `utils/wc.boru` survives laziness exactly as it
+survived isolation — measured on both builds. That settles a question worth
+not re-deriving: the warning is not an artifact of HOW the leak was closed.
+It is a latent attribution defect (`EmitUnreachableBranch` reports at a
+position inside the shared fn body while the constancy comes from THIS call's
+bound argument) that the memo hit was masking by only ever analysing one call
+shape. ANY correct fix reveals it, so it is not avoidable by choosing a
+different one — it has to be fixed at the emitter, and that is its own piece
+of work with the check-accuracy gate to answer to.
+
+**What the next author should not re-derive.** The register-time hook was not
+load-bearing for anything. Its one implementation was help, its one consumer
+is `describe`, and moving the work to the consumer is strictly better on all
+three axes at once. The one thing recording still buys is the "post-ready
+words only" restriction — a word registered BEFORE `MarkReady` has a
+build-time snapshot from `genhelp`, and generating for it on demand would be
+new behaviour, not a fix. `IsHelpWord` is what keeps that line.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
