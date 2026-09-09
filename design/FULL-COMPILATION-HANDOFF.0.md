@@ -4646,6 +4646,60 @@ statement of the producing word's construction, never an inference from
 the carrier; a word that cannot see its operand concretely claims
 nothing, and the classifier's refusal stands.
 
+## The read model over a def-bound produced closure, with the result shape (2026-09-08, the thirty-sixth increment)
+
+The thirty-fifth increment's read model keyed on a claim only fn-util's
+words wrote, so a def-bound PRODUCED closure — the factory pattern, `def h
+(mk (z:Integer => [add 7 z]))` — still reached the residual classifier,
+which had the closure's arity from its unit but not the statement: `h 2 ;
+3` over a two-param closure lowered as `h 2 3` (compiled 12 for the
+interpreter's signature_error), the same flattening the thirty-fifth
+increment closed for the wrappers. And the typeof, repeated-read and
+curried-chain rows stood behind three refusals that were one gap: the
+apply of a def-bound closure did not collapse at the read.
+
+**What landed.**
+
+- `CheckState.FnShape` carries a RESULT shape beside the arity: the shape of
+  the fn the wrapper returns when that is a claimed fn too (a curried
+  chain's next level, a factory's factory). fn-util's `curry` claims the
+  chain (one unary level per param, the last returning the value); every
+  other word's claim keeps a nil result.
+- The recorder claims a def-bound produced closure's shape at the def
+  (`noteClosureShapeBind`, from `RecordDynBind`): the closure unit's param
+  count, its own single closure out-op recursing for a factory of
+  factories (`closureOpShape`), or a const lambda's. A producing word's
+  own claim stands. `producerReturnedClosureArity` reads the same shape.
+- The read models' one result follows the claim (`shapedReadOut`): a
+  dynamic value, or — for a result shape — a Function carrier claimed with
+  it, so `def f2 (f1 2)` binds a shaped carrier through the fn-carrier side
+  table and `(f2 3)` models its own dispatch. The VM side is the
+  thirty-fifth increment's: `OpCallDynMethod` over a closure enters
+  `invokeClosure`, the chain's intermediate closure the one result.
+
+**Measured.** Four rows graduated (ledger 51 → 47): the typeof operand
+(`typeof (h 5)` is Integer), the repeated reads (`(h2 5) (h2 10)` is 15 30),
+the three-level `mk2` chain (6) and the fn-util curry chain (7), all
+VM-native; a three-level curry, a capturing closure read twice, a
+two-param closure's full window and a read whose window is its statement
+agree. The two flattened-window spellings refuse with the interpreter's
+signature_error; the survivor inside a paren refuses with its answer. The
+filter-body and each-body twins compile and agree but their bodies island,
+and stay ledgered as islanded. Three neighbours pinned as refusals by
+earlier increments compile and agree now and are re-pinned as parity: the
+returned fn placed beside a value (`(h 5) 2`), its def-bound read applied
+(`def q (h 5)  q 2`), and the two-factory row (`(q 7) (r 1)`). The bare
+0-arity read of a body-local closure (`def r (mk)  r`) needed the read
+model to CREDIT the read it dispatches (`RecordDynMethod` →
+`creditWordRead`), or the NUR123 accounting counted it lost.
+
+**What the next author should not re-derive.** A claim is written where
+the shape is KNOWN — the producing word's ReturnsFn, or the def of a
+produced closure — never inferred at the read; the read model then treats
+a wrapper and a closure alike. A chain compiles because the claim carries
+its result's shape and the read mints a carrier that carries the rest: no
+level is special.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -4830,4 +4884,8 @@ position than the construct that produced the binding.
 | `eng/go/vm_self_contained_fn_test.go` | the own-signature apply under a registered word of the same label (leading, the method op, the declined arg count), `callDynMethod`'s modifier-chain retry (a flipped delegation and its error), and a handler error anchored on the value's token text |
 | `compiler/go/fn_shape_claim_test.go` | the claim as `producerReturnedClosureArity`'s third source (claimed, unclaimed, no registry) and `DefReadName` |
 | `core/go/check_fncarrier_test.go` (`TestStepWordPlainCheckSubstitutesCarrier`), `lang/go/def_computed_fn_test.go` (`TestDefComputedFnPlainCheckClean`) | the plain check reads a bound fn carrier with no undefined_word and no unused_def, and the silent-fallback mark stays a compile pass's |
+| `lang/go/closure_read_model_test.go` | the thirty-sixth increment's parity (the typeof operand, the repeated reads, the `mk2` chain, the fn-util curry chain, three curry levels, the plain read, a read whose window is its statement, a two-param closure's window, a capturing closure read twice) and its sound refusals with the interpreter's answers (the survivor inside a paren, the two flattened-window spellings whose interpreter answer is the signature_error), and the filter-body twin pinned as islanded with parity |
+| `compiler/go/fn_shape_claim_test.go` (`TestClosureOpShapeArms`, `TestNoteClosureShapeBindArms`) | the closure shape (a factory of factories claims the chain, a two-value body has no result, a unit beyond the program, an event, the bounded recursion, a const lambda, a const beyond the table) and the claim at the def (no registry, a plain value, the unit's arity, a standing claim kept, an unproduced carrier) |
+| `check/go/fn_read_arrival_test.go` (`TestShapedFnReadResultShape`) | a claim with a result shape makes the read's result a Function carrier carrying the next level, on both halves |
+| `lang/go/modules/fn_test.go` (`TestFnShapeFromOperandArms`) | curry's chain claim (three unary levels over three params, no claim over a unary fn or no operand) |
 | `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |

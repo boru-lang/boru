@@ -79,6 +79,11 @@ var pinnedAritySites = map[string]int{
 	"core/go/deadsig.go":      1,
 	"core/go/canon.go":        1,
 	"core/go/value.go":        1,
+	// NoteFnShape rejects a NEGATIVE claim (`FnShape.Arity < 0`) — a shape a
+	// producing word could not build (`partial` over a 0-param fn raises) —
+	// a validity guard on the claim itself, not a decision keyed on a
+	// function's parameter count (the thirty-fifth increment).
+	"core/go/check_state.go":  1,
 	"core/go/boru_error.go":   2,
 	"core/go/macro_expand.go": 1,
 

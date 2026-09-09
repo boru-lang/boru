@@ -531,7 +531,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// The §9 Stage-2 refusal rows: the lead-apply admission's witnesses
 	// compile (unledgered), while these two spellings stay sound refusals.
-	`def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)`: {why: "repeated reads of the bound closure put a fn value before residual args (the make-adder's repeated-read shape; graduation = the multi-read closure lowering)", failsWith: "fn value precedes residual args"},
 	// §9d — the GRADUAL inner parameter (`x:Any` beside the captured
 	// `g`) GRADUATED 2026-09-07 (the twenty-sixth increment): a lambda
 	// VALUE unit takes the fn path's residual replay, whose applicable
@@ -546,14 +545,13 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// interpreter's `6`. A regression the Stage 1 read substitution
 	// introduced (before it, the read raised undefined_word and the
 	// program refused); the def site now detects the dropped apply.
-	`def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][add a (add b c)]] )]] )]] end def f1 (mk2 1) end def f2 (f1 2) end (f2 3)`: {why: "audit §5.8/§9e: a def-bound curried chain whose intermediate apply the analysis drops", failsWith: "apply the analysis dropped"},
 	// §9f — code BODIES over def-bound computed fns. A code body is re-run
 	// by its native through the INTERPRETER, and neither of this branch's
 	// admissions survives that: the read substitution turns a body TOKEN
 	// into a value, and a compiled ClosurePayload is invokable only through
 	// the VM's re-entrant runner. All three were regressions found by a
 	// differential sweep and are now sound refusals.
-	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "audit §5.8/§9f: an each body reading a def-bound computed fn — the substitution assembled the body as a data list", failsWith: "computed fn read inside an unevaluated body"},
+	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "audit §5.8/§9f: an each body reading a def-bound computed fn — compiles and agrees since the thirty-sixth increment (the def claims the closure's shape), but the each body islands", failsWith: "islanded"},
 	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]`:           {why: "audit §5.8/§9f: a do body reading a def-bound computed fn — the substitution declines in a nested body, restoring the pre-Stage-1 refusal", failsWith: "check diagnostics"},
 	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`:                {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
 	// §9g — a computed closure at a WORD's argument slot. Found by a
@@ -563,8 +561,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// closure; the compiled model could leave the paren uncollapsed, so an
 	// Any-typed slot swallowed the FUNCTION and stranded the argument.
 	// Unmasked by 3d914ad — before the Stage 2 admission these refused.
-	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)`:              {why: "audit §5.8/§9g: a computed closure in a typeof operand — the apply did not collapse, so typeof took the Function", failsWith: "computed closure at a word's argument slot"},
-	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]`: {why: "audit §5.8/§9g: the same shape inside a filter body", failsWith: "computed closure at a word's argument slot"},
+	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]`: {why: "audit §5.8/§9g: the same shape inside a filter body — compiles and agrees since the thirty-sixth increment (the read model over a def-bound closure), but the filter body islands", failsWith: "islanded"},
 	// §9h — the two binding stores (both P1 findings of the #397 review). A
 	// computed fn is not installed in Defs, so it lives only in the carrier
 	// table and the stores can disagree. Shadowing a live binding leaves the
@@ -587,11 +584,10 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// singleton-type maker; the island it blamed applies the value exactly
 	// as the interpreter does.) They live in lang/spec/module-fn.tsv now.
 	//
-	// The curried-chain row stays: `def c10 (c 10)` binds the read model's
-	// one dynamic result, so `(c10 3)` is a dynamic lead with a paren-bounded
-	// argument the classifier refuses. Graduation = a fn-shaped result for
-	// the curry chain (the level's arity is one all the way down).
-	`import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)`: {why: "the def-bound computed fn's curried-chain variant: the read model nets one dynamic value for `(c 10)`, and the chain's second apply is a dynamic lead with a paren-bounded argument (the thirty-fifth increment)", failsWith: "bounded by a paren"},
+	// The curried-chain row graduated with the thirty-sixth increment: the
+	// claim carries the RESULT's shape (each curry level returns a unary
+	// level), so the read's result is a shaped Function carrier and the
+	// chain compiles level by level. Only the two strict-check rows remain.
 	`import "boru:fn-util"  FnUtil.flip 5`:  {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
 	`import "boru:fn-util"  FnUtil.curry 5`: {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
 

@@ -170,41 +170,68 @@ func goFnValue(name string, nParams int, h native.Handler) native.Value {
 // knows a compiled factory's returned closure. A word whose arity depends on
 // an operand the pass cannot see concretely (a computed fn) makes no claim,
 // and the classifier's "closure shape unknown" refusal stands.
-func fnShapeReturns(arity func(args []native.Value) (int, bool)) native.ReturnsFunc {
+func fnShapeReturns(shape func(args []native.Value) (core.FnShape, bool)) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		out := native.NewCarrier(native.TFunction)
-		if n, ok := arity(args); ok && r != nil {
-			r.Check.NoteFnShape(out, n)
+		if s, ok := shape(args); ok && r != nil {
+			r.Check.NoteFnShape(out, s)
 		}
 		return []native.Value{out}
 	}
 }
 
 // fnShapeConst claims a fixed arity: goFnValue(name, n, …) with n a constant.
-func fnShapeConst(n int) func([]native.Value) (int, bool) {
-	return func([]native.Value) (int, bool) { return n, true }
+func fnShapeConst(n int) func([]native.Value) (core.FnShape, bool) {
+	return func([]native.Value) (core.FnShape, bool) { return core.FnShape{Arity: n}, true }
 }
 
-// fnShapeFromOperand claims the arity goFnValue takes from the operand fn's
-// ONE own signature, offset by delta (partial binds one slot: -1; memoize
-// keeps the count: 0; flip reverses a single signature in place: 0) —
-// exactly the count the handler reads (fnUtilSingleSig). Unknown for a
-// non-concrete operand (a computed fn carrier) and for an overloaded one:
-// the reshaping handlers raise there, and flip's wrapper has no one arity.
-func fnShapeFromOperand(delta int) func([]native.Value) (int, bool) {
-	return func(args []native.Value) (int, bool) {
-		if len(args) == 0 {
-			return 0, false
-		}
-		fd, ok := args[0].Data.(native.FnDefInfo)
+// fnOperandArity reads the operand fn's ONE own signature's param count —
+// exactly the count the reshaping handlers read (fnUtilSingleSig). Unknown
+// for a non-concrete operand (a computed fn carrier) and for an overloaded
+// one: the handlers raise there, and flip's wrapper has no one arity.
+func fnOperandArity(args []native.Value) (int, bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+	fd, ok := args[0].Data.(native.FnDefInfo)
+	if !ok {
+		return 0, false
+	}
+	own := fd.OwnSigs()
+	if len(own) != 1 {
+		return 0, false
+	}
+	return own[0].TotalArgs(), true
+}
+
+// fnShapeFromOperand claims the arity goFnValue takes from the operand's
+// signature, offset by delta (partial binds one slot: -1; memoize keeps the
+// count: 0; flip reverses a single signature in place: 0).
+func fnShapeFromOperand(delta int) func([]native.Value) (core.FnShape, bool) {
+	return func(args []native.Value) (core.FnShape, bool) {
+		n, ok := fnOperandArity(args)
 		if !ok {
-			return 0, false
+			return core.FnShape{}, false
 		}
-		own := fd.OwnSigs()
-		if len(own) != 1 {
-			return 0, false
+		return core.FnShape{Arity: n + delta}, true
+	}
+}
+
+// fnShapeCurry claims the curry chain: over an n-param fn (n >= 2, or the
+// handler raises) every level is unary and returns the next level, the last
+// returning the value — curryLevel's own construction, level by level.
+func fnShapeCurry() func([]native.Value) (core.FnShape, bool) {
+	return func(args []native.Value) (core.FnShape, bool) {
+		n, ok := fnOperandArity(args)
+		if !ok || n < 2 {
+			return core.FnShape{}, false
 		}
-		return own[0].TotalArgs() + delta, true
+		s := core.FnShape{Arity: 1}
+		for i := 1; i < n; i++ {
+			next := s
+			s = core.FnShape{Arity: 1, Result: &next}
+		}
+		return s, true
 	}
 }
 
@@ -375,7 +402,7 @@ var fnUtilNatives = []native.NativeFunc{
 			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
 			Args:          []*native.Type{native.TFunction},
 			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			ReturnsFn:     fnShapeReturns(fnShapeCurry()),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.curry", r)
 				if err != nil {

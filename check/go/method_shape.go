@@ -624,7 +624,7 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	if why != "" {
 		return refuse(why)
 	}
-	out := core.NewDynamicCarrier(core.TAny)
+	out := shapedReadOut(r, v.ID)
 	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
 		return refuse("an operand has no compiled home")
 	}
@@ -684,6 +684,21 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	if _, why := shapedFnReadWindow(e, valIdx, n); why != "" {
 		return false
 	}
-	e.Tape.Splice(valIdx, 1+n, core.NewDynamicCarrier(core.TAny))
+	e.Tape.Splice(valIdx, 1+n, shapedReadOut(r, v.ID))
 	return true
+}
+
+// shapedReadOut mints the read models' one result for the carrier id's
+// claim: a dynamic value, or — when the claim says the wrapper RETURNS a
+// claimed fn (a curried chain's next level, a factory's factory) — a
+// Function carrier claimed with that result shape, so a def of it binds a
+// shaped carrier and the next read models its own dispatch the same way
+// (`def c10 (c 10)  (c10 3)`, `def f2 (f1 2)  (f2 3)`).
+func shapedReadOut(r *core.Registry, id string) core.Value {
+	if s, ok := r.Check.FnShapeOf(id); ok && s.Result != nil {
+		out := core.NewCarrier(core.TFunction)
+		r.Check.NoteFnShape(out, *s.Result)
+		return out
+	}
+	return core.NewDynamicCarrier(core.TAny)
 }

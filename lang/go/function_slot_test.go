@@ -59,8 +59,8 @@ func TestFunctionSlotParity(t *testing.T) {
 // TestFunctionSlotSoundRefusals pins the neighbours that still REFUSE.
 func TestFunctionSlotSoundRefusals(t *testing.T) {
 	rows := []struct{ src, reason string }{
-		// an Any slot: the paren that failed to collapse
-		{`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)`, "argument slot"},
+		// (the Any-slot row, `typeof (h 5)`, graduated with the thirty-sixth
+		// increment — closure_read_model_test.go)
 		// apply's own Function slot over a fn-typed CARRIER lead
 		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot"},
 	}

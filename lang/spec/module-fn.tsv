@@ -45,3 +45,9 @@ import "boru:fn-util"  ((FnUtil.const 7) 99)	7	an applied const wrapper is the w
 import "boru:fn-util"  def k (FnUtil.const 7) end k 1 ; 3	7 3	the bare read applies over its statement's window
 # A 0-param wrapper applies on its bare read.
 import "boru:fn-util"  def f x:Integer => [add 1 x] end def p (FnUtil.partial f/v 10) end (p)	11	partial over a unary fn: the wrapper takes no argument
+#
+# The curried chain (graduated 2026-09-08, the thirty-sixth increment): the
+# claim carries the RESULT's shape, every level a unary wrapper returning the
+# next, so each def-bound level models its own dispatch.
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)	7	curry: one argument at a time
+import "boru:fn-util"  def sub3 fn [[a:Integer b:Integer c:Integer][Integer][a sub (b sub c)]] end def c (FnUtil.curry sub3/v) end def c1 (c 10) end def c2 (c1 3) end (c2 1)	8	curry: three levels

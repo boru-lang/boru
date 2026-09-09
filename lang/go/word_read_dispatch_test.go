@@ -424,7 +424,6 @@ func TestLambdaValueBodyDeoptRefusals(t *testing.T) {
 	const hf = `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any]`
 	refuse := []struct{ src, reason string }{
 		{hf + `[{a: j}]] )]]  def q (h {f: ([] => [42])})  (q 7)`, "body result of unknown provenance"},
-		{hf + `[j]] )]]  def q (h {f: ([] => [42])})  def r (h {f: 5})  (q 7) (r 1)`, "fn value precedes residual args"},
 	}
 	for _, c := range refuse {
 		a, err := New()
@@ -443,4 +442,13 @@ func TestLambdaValueBodyDeoptRefusals(t *testing.T) {
 			t.Errorf("%q: refusal = %q, want %q", c.src, reason, c.reason)
 		}
 	}
+	// The two-factory row refused "fn value precedes residual args" until the
+	// thirty-sixth increment: the def of a produced closure claims its
+	// shape, so each read models its own dispatch and the row compiles.
+	src := hf + `[j]] )]]  def q (h {f: ([] => [42])})  def r (h {f: 5})  (q 7) (r 1)`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled {
+		t.Fatalf("%q: must compile now; err=%v", src, errC)
+	}
+	requireParity(t, src, gotC, errC, gotI, errI)
 }

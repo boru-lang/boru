@@ -62,22 +62,25 @@ func TestNoteFnShapeArms(t *testing.T) {
 	r := newTestRegistry(t)
 	out := NewCarrier(TFunction)
 	// Inactive: no claim is recorded.
-	r.Check.NoteFnShape(out, 1)
+	r.Check.NoteFnShape(out, FnShape{Arity: 1})
 	if r.Check.FnShapes != nil {
 		t.Fatal("an inactive check must not record a fn shape")
 	}
 	done := r.Check.Begin()
-	r.Check.NoteFnShape(Value{}, 1) // no identity to key on
-	r.Check.NoteFnShape(out, -1)    // a handler that raises instead of building the wrapper
+	r.Check.NoteFnShape(Value{}, FnShape{Arity: 1}) // no identity to key on
+	r.Check.NoteFnShape(out, FnShape{Arity: -1})    // a handler that raises instead of building the wrapper
 	if r.Check.FnShapes != nil {
 		t.Fatal("an unidentified carrier and a negative count are no claim")
 	}
-	r.Check.NoteFnShape(out, 2)
+	r.Check.NoteFnShape(out, FnShape{Arity: 2, Result: &FnShape{Arity: 1}})
 	if n, ok := r.Check.FnShapeArity(out.ID); !ok || n != 2 {
 		t.Errorf("claim = %d/%v, want 2", n, ok)
 	}
+	if s, ok := r.Check.FnShapeOf(out.ID); !ok || s.Result == nil || s.Result.Arity != 1 {
+		t.Errorf("the result shape rides with the claim, got %+v/%v", s, ok)
+	}
 	zero := NewCarrier(TFunction)
-	r.Check.NoteFnShape(zero, 0)
+	r.Check.NoteFnShape(zero, FnShape{})
 	if n, ok := r.Check.FnShapeArity(zero.ID); !ok || n != 0 {
 		t.Errorf("a 0-param wrapper is a claim: %d/%v", n, ok)
 	}

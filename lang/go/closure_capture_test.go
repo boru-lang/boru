@@ -46,6 +46,12 @@ func TestClosureCaptureParity(t *testing.T) {
 		{ccApp + `[[x:Integer][Integer][(g x)]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "15"},
 		// (b) the `/v` read returns the captured fn as DATA, named by its frame
 		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "fn g(Integer) — the frame's name on both lanes"},
+		// the thirty-sixth increment: the def of the produced closure claims
+		// its shape, so the read models its dispatch at the read — the
+		// returned fn is placed by the paren with the 2 beside it, and a
+		// def-bound read of it applies
+		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5) 2`, "fn g(Integer) 2 — was refused (the downstream apply)"},
+		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  def q (h 5)  q 2`, "6 — was refused (the downstream apply)"},
 		// the rename on a plain fn body: the paren shape that diverged before
 		{`def f fn [[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3`, "fn g(Integer) 3 — was fn (Integer) 3"},
 		{`def g fn [[x:Integer][Integer][x mul 3]]  def f fn [[h:Function][Function][h/v]]  (f g/v) 3`, "fn h(Integer) 3 — a named fn takes the param's name"},
@@ -76,8 +82,6 @@ func TestClosureCaptureParity(t *testing.T) {
 func TestClosureCaptureSoundRefusals(t *testing.T) {
 	rows := []string{
 		ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  ((h 5) 2)`,
-		ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5) 2`,
-		ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  def q (h 5)  q 2`,
 		ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:Any => [z]))  (h ([] => [42]))`,
 		// a gradual EVENT result as the argument: not a word read, so it
 		// competes for the apply (replayLeadApplicables) and the unit declines

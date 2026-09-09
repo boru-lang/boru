@@ -6927,6 +6927,11 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		}
 		ops = append(ops, op)
 	}
+	// A def-read fn carrier the read model dispatches here (a bare word the
+	// interpreter dispatches — `def r (mk)  r`) is consumed by an accepted
+	// lowering: credit the read so the NUR123 accounting does not count it
+	// as a read lost where the interpreter dispatches it.
+	es.creditWordRead(fn.ID)
 	es.SiteCounts[SiteDynamic]++
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
@@ -7306,6 +7311,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.valBindEpoch = map[string]int{}
 	}
 	es.valBindEpoch[name]++
+	es.noteClosureShapeBind(v)
 	if name[0] == '_' || name[0] == '$' {
 		// The historical skip for these names is a keep-installs-era economy:
 		// under the default regime the check pass's install IS the kept
@@ -8011,21 +8017,67 @@ func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
 			return n, true
 		}
 	}
+	s, ok := es.producerReturnedClosureShape(id)
+	return s.Arity, ok
+}
+
+// producerReturnedClosureShape is the SHAPE of the fn value a producer's
+// returned out-op builds (closureOpShape), for the claim a def of it writes.
+func (es *EmitState) producerReturnedClosureShape(id string) (core.FnShape, bool) {
 	op, ok := es.producerReturnedOutOp(id)
 	if !ok {
-		return 0, false
+		return core.FnShape{}, false
+	}
+	return es.closureOpShape(op, 0)
+}
+
+// closureOpShape is the shape of the fn value an out-op PRODUCES: a closure
+// unit's param count, its RESULT recursing through the unit's own single
+// out-op when that is a closure too (a factory of factories claims the whole
+// chain: `mk2`'s `(f1 2)` returns the next level), or a const lambda's param
+// count. depth bounds the recursion — a chain deeper than any program writes
+// is a construction fault, not a shape.
+func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bool) {
+	if depth > 8 {
+		return core.FnShape{}, false
 	}
 	switch op.kind {
 	case opClosure:
 		cu := op.closureUnit
 		if cu < 0 || cu >= len(es.fnRecs) {
-			return 0, false
+			return core.FnShape{}, false
 		}
-		return es.fnRecs[cu].nParams, true
+		s := core.FnShape{Arity: es.fnRecs[cu].nParams}
+		if outs := es.fnRecs[cu].outOps; len(outs) == 1 {
+			if r, ok := es.closureOpShape(outs[0], depth+1); ok {
+				s.Result = &r
+			}
+		}
+		return s, true
 	case opConst:
-		return constLambdaArity(es.consts, op.idx)
+		n, ok := constLambdaArity(es.consts, op.idx)
+		return core.FnShape{Arity: n}, ok
 	}
-	return 0, false
+	return core.FnShape{}, false
+}
+
+// noteClosureShapeBind claims, at a def of a PRODUCED closure, the shape its
+// producer builds (the thirty-sixth increment): the read model then owns the
+// def-bound closure's word dispatch exactly as it owns a fn-util wrapper's
+// (check's tryShapedFnReadArrival) — the residual classifier's flattened
+// window lost the statement for these too (`h 2 ; 3` over a two-param
+// closure lowered as `h 2 3`, compiled 12 for the interpreter's
+// signature_error). A producing word's own claim stands.
+func (es *EmitState) noteClosureShapeBind(v core.Value) {
+	if es.reg == nil || v.ID == "" || !core.IsFnTypedCarrier(v) {
+		return
+	}
+	if _, claimed := es.reg.Check.FnShapeOf(v.ID); claimed {
+		return
+	}
+	if s, ok := es.producerReturnedClosureShape(v.ID); ok {
+		es.reg.Check.NoteFnShape(v, s)
+	}
 }
 
 // appendResidualSeqs collects the producing-event seqs a residual's

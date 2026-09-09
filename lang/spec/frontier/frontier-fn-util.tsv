@@ -17,19 +17,16 @@
 # 7" was the VM resolving the wrapper's label `const` through the live
 # registry to the singleton-type maker — not the island it blamed.
 #
-# TWO refusals remain, and they are different.
+# The CURRIED CHAIN followed 2026-09-08 (the thirty-sixth increment): the
+# claim carries the RESULT's shape — every curry level returns a unary
+# level — so `(c 10)` is a shaped Function carrier, `def c10` binds it, and
+# `(c10 3)` models its own dispatch; the row is in lang/spec/module-fn.tsv.
 #
-# The CURRIED CHAIN: `def c10 (c 10)` binds the read model's one dynamic
-# result, so `(c10 3)` is a dynamic lead with a paren-bounded argument, which
-# the classifier refuses. Graduation = a fn-shaped result for the chain (the
-# level's arity is one all the way down).
-#
-# THE LAST TWO ROWS are not that family at all: `FnUtil.flip 5` is refused
+# THE TWO ROWS LEFT are not that family at all: `FnUtil.flip 5` is refused
 # by the strict-lane CHECK, as [uncalled_function] "call to 'flip' matched
 # no signature", before compilation is reached. Graduation = the check
 # admitting a dispatch whose failure is the program's specified result.
 #
 # The interpreter is the oracle that the vocabulary WORKS.
-import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)	7	curry: one argument at a time
 import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip refuses a non-function operand at dispatch
 import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry refuses a non-function operand at dispatch

@@ -72,11 +72,11 @@ def n 1 end def mkc fn nn:Integer Function [(fn x:Integer Integer [add nn x])] e
 #     factory compiles natively. Repeated/multi-instance reads and the
 #     mismatched-arity 0-arg spelling graduated 2026-09-07 (the
 #     twenty-sixth increment — the fnval unit models the raise; the row
-#     is in bytecode-migrated.tsv); the repeated reads stay a sound
-#     refusal (ledgered).
+#     is in bytecode-migrated.tsv); the repeated reads graduated
+#     2026-09-08 (the thirty-sixth increment — the read model over a
+#     def-bound closure; the row is in bytecode-migrated.tsv).
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [add 7 z])) end (h2 5)	12	the admission's witness: the returned lambda applies its captured g
 def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][add 1 (g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 4)	13	the applied capture's result feeds further computation
-def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)	15 30	repeated reads of the bound closure (refuses today; ledgered)
 #
 # §9b the §4.3 capture-reachability fallback (2026-08-21): a call of a
 #     def-bound factory closure whose unit carries construction-scope
@@ -124,8 +124,11 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #     (`2 fn (Integer) 3` for the interpreter's `6`). A REGRESSION
 #     introduced by the Stage 1 read substitution: before it the
 #     read raised undefined_word and the program refused. Now the
-#     def site detects the dropped apply and refuses. Ledgered.
-def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][add a (add b c)]] )]] )]] end def f1 (mk2 1) end def f2 (f1 2) end (f2 3)	6	the three-level curried chain through def bindings (refuses; ledgered)
+#     def site detects the dropped apply and refuses. Graduated
+#     2026-09-08 (the thirty-sixth increment): the def of a produced
+#     closure claims its shape with the RESULT's shape, so `(f1 2)` is a
+#     shaped Function carrier and the chain compiles level by level
+#     (the row is in bytecode-migrated.tsv).
 #
 # §9f code BODIES over def-bound computed fns (2026-08-21): three
 #     divergences found by a differential sweep, each a regression
@@ -136,7 +139,7 @@ def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][
 #     assembled as the data list [f, 5] and its input list vanished),
 #     and a compiled ClosurePayload is invokable only through the
 #     VM's re-entrant runner, never the interpreter. Ledgered.
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3]; refuses now)
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3] once; compiles and agrees now, the each body islands)
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; refuses now)
 def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; refuses now)
 #
@@ -149,8 +152,12 @@ def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7
 #     and stranded the argument behind it. Unmasked by 3d914ad (the
 #     Stage 2 admission): before it these programs refused outright.
 #     24 of the 690 diverged, in exactly two contexts. Refuses now.
-def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)	Integer	a computed closure applied in a typeof operand (compiled gave the two values `Function 5`; refuses now)
-def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]	ERROR:filter_error	the same shape in a filter body (compiled raised `cannot order Function and Integer`; refuses now)
+#     The typeof row graduated 2026-09-08 (the thirty-sixth increment —
+#     the read model collapses the apply at the read, so typeof takes
+#     its result; the row is in bytecode-migrated.tsv); the filter row
+#     compiles and agrees but its filter body islands — ledgered as
+#     islanded.
+def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]	ERROR:filter_error	the same shape in a filter body (compiled raised `cannot order Function and Integer`; compiles and agrees now, the filter body islands)
 #
 # §9h the two binding stores (2026-08-21): both P1 findings of the
 #     PR #397 review. A computed fn is NOT installed in Defs — the

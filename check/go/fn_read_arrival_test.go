@@ -26,7 +26,7 @@ func fraFix(t *testing.T, arity int) (*core.Registry, *zzmsRecorder, core.Value,
 	r.Check.Emit = rec
 	carrier := core.NewCarrier(core.TFunction)
 	rec.defReads = map[string]string{carrier.ID: "k"}
-	r.Check.NoteFnShape(carrier, arity)
+	r.Check.NoteFnShape(carrier, core.FnShape{Arity: arity})
 	return r, rec, carrier, done
 }
 
@@ -128,12 +128,12 @@ func TestShapedFnReadArrivalDeclines(t *testing.T) {
 	noID := carrier
 	noID.ID = ""
 	unread := core.NewCarrier(core.TFunction) // claimed, but no read noted
-	r.Check.NoteFnShape(unread, 1)
+	r.Check.NoteFnShape(unread, core.FnShape{Arity: 1})
 	unclaimed := core.NewCarrier(core.TFunction) // read, but no claim
 	rec.defReads[unclaimed.ID] = "u"
 	notFn := core.NewCarrier(core.TInteger) // read and claimed, not a fn carrier
 	rec.defReads[notFn.ID] = "n"
-	r.Check.NoteFnShape(notFn, 1)
+	r.Check.NoteFnShape(notFn, core.FnShape{Arity: 1})
 	for _, v := range []core.Value{quoted, noID, unread, unclaimed, notFn} {
 		tape := []core.Value{v, core.NewInteger(99), core.NewEnd()}
 		e := zzmsEngine(r, tape)
@@ -156,7 +156,7 @@ func frwFix(t *testing.T, arity int) (*core.Registry, core.Value, func()) {
 	done := r.Check.Begin()
 	carrier := core.NewCarrier(core.TFunction)
 	core.NoteCheckFnCarrierBind(r, "k", carrier)
-	r.Check.NoteFnShape(carrier, arity)
+	r.Check.NoteFnShape(carrier, core.FnShape{Arity: arity})
 	return r, carrier, done
 }
 
@@ -184,7 +184,7 @@ func TestShapedFnReadWindowPlainCheckDeclines(t *testing.T) {
 	quoted := carrier
 	quoted.Quoted = true
 	unbound := core.NewCarrier(core.TFunction) // claimed, but not in the side table
-	r.Check.NoteFnShape(unbound, 1)
+	r.Check.NoteFnShape(unbound, core.FnShape{Arity: 1})
 	unclaimed := core.NewCarrier(core.TFunction) // bound, no claim
 	core.NoteCheckFnCarrierBind(r, "u", unclaimed)
 	cases := map[string][]core.Value{
@@ -200,5 +200,44 @@ func TestShapedFnReadWindowPlainCheckDeclines(t *testing.T) {
 		if tryDynamicFnValueDispatch(e, 0) || e.Tape.Len() != len(tape) {
 			t.Errorf("%s: the plain check must leave the tape as it is", name)
 		}
+	}
+}
+
+// ─── the result shape ────────────────────────────────────────────────
+
+// A claim whose RESULT is a claimed fn (a curried chain's level) makes the
+// read's one result a Function carrier carrying that shape, on both halves;
+// a claim with no result shape makes it a dynamic value.
+func TestShapedFnReadResultShape(t *testing.T) {
+	// the compile-pass half
+	r, rec, carrier, done := fraFix(t, 1)
+	r.Check.NoteFnShape(carrier, core.FnShape{Arity: 1, Result: &core.FnShape{Arity: 2}})
+	e := zzmsEngine(r, []core.Value{carrier, core.NewInteger(10), core.NewEnd()})
+	if !tryMemberFnArrivalDispatch(e, 0) {
+		t.Fatal("the read model consumes the window")
+	}
+	out := rec.dynCalls[0].outs[0]
+	if !core.IsFnTypedCarrier(out) || out.Dynamic {
+		t.Fatalf("the result of a chain level is a Function carrier, got %v", out)
+	}
+	if n, ok := r.Check.FnShapeArity(out.ID); !ok || n != 2 {
+		t.Errorf("the result carries the next level's claim, got %d/%v", n, ok)
+	}
+	if got := e.Tape.At(0); got.ID != out.ID {
+		t.Error("the spliced value is the recorded out")
+	}
+	done()
+	// the plain-check half
+	r2, c2, done2 := frwFix(t, 1)
+	defer done2()
+	r2.Check.NoteFnShape(c2, core.FnShape{Arity: 1, Result: &core.FnShape{Arity: 1}})
+	e2 := zzmsEngine(r2, []core.Value{c2, core.NewInteger(10), core.NewEnd()})
+	if !tryDynamicFnValueDispatch(e2, 0) {
+		t.Fatal("the plain check collapses the window")
+	}
+	if got := e2.Tape.At(0); !core.IsFnTypedCarrier(got) || got.Dynamic {
+		t.Errorf("the plain check's result of a chain level is a Function carrier, got %v", got)
+	} else if n, ok := r2.Check.FnShapeArity(got.ID); !ok || n != 1 {
+		t.Errorf("the plain check's result carries the next level's claim, got %d/%v", n, ok)
 	}
 }

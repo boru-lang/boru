@@ -235,3 +235,15 @@ import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer 
 import "boru:fn-util"  def sq x:Integer => [mul x x] end def gt2 fn [[a:Integer b:Integer][Boolean][a gt b]] end def bigger (FnUtil.on gt2/v sq/v) end (bigger 5 3)	true
 import "boru:fn-util"  def f fn x:Integer Integer [add 1 x] end def m (FnUtil.memoize f/v) end (m 4)	5
 import "boru:fn-util"  ((FnUtil.const 7) 99)	7
+#
+# the def-bound closure rows GRADUATED 2026-09-08 (the thirty-sixth increment):
+# a def of a PRODUCED closure claims the shape its producer builds (the closure
+# unit's param count, its single closure out-op recursing for a factory of
+# factories), so the read model (check's tryShapedFnReadArrival) models the
+# word dispatch at the read — a typeof operand takes the apply's result, two
+# reads are two applies, and a curried chain's result is a shaped Function
+# carrier the next def binds. These were frontier-hof-audit.tsv's §9e/§9g rows
+# and the repeated-reads row.
+def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end typeof (h 5)	Integer
+def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h2 (mkc2 (z:Integer => [mul 3 z])) end (h2 5) (h2 10)	15 30
+def mk2 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][add a (add b c)]] )]] )]] end def f1 (mk2 1) end def f2 (f1 2) end (f2 3)	6

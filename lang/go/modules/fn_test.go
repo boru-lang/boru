@@ -369,11 +369,28 @@ func TestFnShapeFromOperandArms(t *testing.T) {
 	two := fnTestFn(2, func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 		return nil, nil
 	})
-	if n, ok := fnShapeFromOperand(-1)([]native.Value{two}); !ok || n != 1 {
-		t.Errorf("partial binds one slot: %d/%v, want 1", n, ok)
+	if s, ok := fnShapeFromOperand(-1)([]native.Value{two}); !ok || s.Arity != 1 || s.Result != nil {
+		t.Errorf("partial binds one slot: %+v/%v, want arity 1", s, ok)
 	}
-	if n, ok := fnShapeFromOperand(0)([]native.Value{two}); !ok || n != 2 {
-		t.Errorf("memoize keeps the count: %d/%v, want 2", n, ok)
+	if s, ok := fnShapeFromOperand(0)([]native.Value{two}); !ok || s.Arity != 2 {
+		t.Errorf("memoize keeps the count: %+v/%v, want arity 2", s, ok)
+	}
+	// curry: a chain of unary levels, one per param, the last returning the value.
+	three := fnTestFn(3, func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
+		return nil, nil
+	})
+	s, ok := fnShapeCurry()([]native.Value{three})
+	if !ok || s.Arity != 1 || s.Result == nil || s.Result.Arity != 1 || s.Result.Result == nil || s.Result.Result.Arity != 1 || s.Result.Result.Result != nil {
+		t.Errorf("curry over three params claims three unary levels, got %+v/%v", s, ok)
+	}
+	one := fnTestFn(1, func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
+		return nil, nil
+	})
+	if _, ok := fnShapeCurry()([]native.Value{one}); ok {
+		t.Error("curry over a unary fn raises — no claim")
+	}
+	if _, ok := fnShapeCurry()(nil); ok {
+		t.Error("no operand, no curry claim")
 	}
 	if _, ok := fnShapeFromOperand(0)(nil); ok {
 		t.Error("no operand, no claim")
