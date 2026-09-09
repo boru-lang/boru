@@ -523,6 +523,16 @@ type CheckState struct {
 	// the name has a binding by then (RescueForwardRefDiagnostics).
 	FnBodyDepth int
 
+	// CallShapeDepth counts the enclosing AnalyseFnBody frames that were
+	// SPECIALISED to a concrete call shape (at least one argument or
+	// capture satisfying IsConcrete). It is the "this analysis describes
+	// ONE CALL, not the code" indicator: a finding about the shared body
+	// that could be falsified by another caller must not be emitted while
+	// it is positive. Pushed/popped in lockstep with FnBodyDepth, but
+	// strictly narrower — a declaration-shaped (carrier-args) body run
+	// keeps it at 0 even at FnBodyDepth > 0.
+	CallShapeDepth int
+
 	// ArgsFrameUnnamed reports whether the fn body CURRENTLY under analysis
 	// (the one whose args projection is on top of r.Args) has at least one
 	// UNNAMED (stack-flowing) parameter. Set and save/restored by
@@ -991,6 +1001,7 @@ func (c *CheckState) Begin() func() {
 	c.Emit = TheInactiveEmit
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
+	c.CallShapeDepth = 0
 	c.CaughtBodyDepth = 0
 	c.NestedBodyDepth = 0
 	c.CondBodyDepth = 0

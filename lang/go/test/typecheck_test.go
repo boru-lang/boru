@@ -1949,3 +1949,58 @@ func TestDynamicScopeUndefinedRescue(t *testing.T) {
 		t.Errorf("genuinely-undefined name must stay flagged: %v", diagCodes(res))
 	}
 }
+
+// countUnreachableBranch returns how many unreachable_branch warnings a
+// program's check produced.
+func countUnreachableBranch(t *testing.T, src string) int {
+	t.Helper()
+	a, err := lang.New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	seedBoru(a)
+	res, err := a.Check(src)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	n := 0
+	for _, d := range res.Diagnostics {
+		if d.Code == "unreachable_branch" {
+			n++
+		}
+	}
+	return n
+}
+
+// TestUnreachableBranchIsNotPerCallShape pins the attribution contract: a
+// constant-condition dead branch is a claim about the CODE, so a constancy
+// that holds only because ONE caller passed a concrete value must not be
+// reported at the shared body position. `zwr ""` folds the condition true and
+// `zwr "total"` folds it false — two contradictory warnings at one position on
+// the unfixed checker (utils/wc.boru:166 is the same defect in the wild).
+func TestUnreachableBranchIsNotPerCallShape(t *testing.T) {
+	const src = `def zwr fn [[label:String] [String] [ if (label eq "") ["empty"] [label] ]] ` +
+		`def a (zwr "") def b (zwr "total") a`
+	if n := countUnreachableBranch(t, src); n != 0 {
+		t.Errorf("per-call-shape fold must not warn on the shared body, got %d warnings", n)
+	}
+}
+
+// TestUnreachableBranchSurvivesCallShapes is the positive twin: a condition
+// that is constant for EVERY call shape is a real dead branch and still warns
+// exactly once, no matter how many concrete shapes the body is analysed under.
+// The two call literals have DISTINCT lattice types (EmptyString vs
+// ProperString), so FnAnalysisKey does not collapse them and the body really is
+// analysed three times — the declaration-shaped run plus two specialisations.
+func TestUnreachableBranchSurvivesCallShapes(t *testing.T) {
+	for name, src := range map[string]string{
+		"written literal": `def z fn [[s:String] [String] [ if true [s] ["x"] ]] ` +
+			`def a (z "") def b (z "total") a`,
+		"body-local fold": `def g fn [[s:String] [String] [ if ("a" eq "b") ["e"] [s] ]] ` +
+			`def a (g "") def b (g "total") a`,
+	} {
+		if n := countUnreachableBranch(t, src); n != 1 {
+			t.Errorf("%s: want exactly 1 unreachable_branch, got %d", name, n)
+		}
+	}
+}

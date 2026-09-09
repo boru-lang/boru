@@ -286,6 +286,56 @@ the fix is the maintainer's to direct.
 
 ---
 
+## NUR128 — a module fn's body gets no declaration-shaped analysis, so its dead branches are reported only when someone calls it {#nur128}
+
+**Status:** Pending. **Found:** 2026-09-09, designing the `unreachable_branch`
+attribution fix — every candidate that could distinguish "constant for this
+call" from "constant for this code" lost this same class, from opposite
+directions, which is what identified it as the shared cause rather than a
+quirk of one design.
+
+**Rule:** a fn body is analysed twice — once DECLARATION-shaped, with every
+param bound to a carrier (`checkFnBodyAtConstruction` →
+`ParamBodyCarrier`), and once per concrete CALL SHAPE. The generalized run is
+the one whose verdict holds for every caller, so it is the one entitled to
+report a property of the code.
+
+**Divergence.** A module fn never gets the generalized run.
+`checkFnBodyAtConstruction` bails on `!r.Check.IsActive()`, and a module
+sub-registry's check is INACTIVE by design: the body must execute for real so
+its exports get concrete names ("check mode is not propagated into a module
+body — carrier-stripping would destroy the concrete export names",
+`native_module_module.go`; `design/module-fn-checkstate-ownership.1.md` §3.2).
+So a module fn's body is only ever analysed under whatever call shapes a
+program happens to use. Measured on HEAD, the same fn either way:
+
+```
+def f fn [[n:Integer] [Integer] [if true [n] [0]]]              -> warns
+import module [def mf fn [[…][…][if true [n] [0]]] export …]   -> SILENT
+import module [ … same … ]  M.mf 4                             -> warns
+```
+
+The dead branch is identical in all three. Whether it is reported depends on
+where the fn is defined and, for a module fn, on whether anyone calls it.
+
+**What the attribution fix changed, and what it did not.** Suppressing
+`unreachable_branch` inside a call-specialised analysis (`CallShapeDepth`,
+2026-09-09) makes the module class consistently SILENT instead of
+call-dependent. That is a true positive lost — a genuinely dead branch in a
+CALLED module fn no longer warns — and it is recorded as the accepted cost of
+that fix rather than hidden by it. It does not create this non-uniformity; the
+generalized run was already missing, which is why the fix has nothing to fall
+back on there.
+
+**The recovery, and the trap in it.** Do NOT make the module sub-registry's
+check active at construction: that is the reason the export names are
+concrete, and it is a documented decision, not an oversight. The narrower
+shape is to run the construction-shaped analysis for a module's exported fns
+at EXPORT time, on the PARENT's CheckState — which also restores the warning
+for the defined-but-never-called module fn that HEAD already misses. That is
+its own increment with its own design question; it moves the parity ledger on
+its own and has nothing to do with attribution.
+
 ## NUR127 — five enumerated string options had no declared domain, so a typo picked an arm silently {#nur127}
 
 **Status:** RESOLVED 2026-09-09. **Found:** 2026-09-09, in review of the

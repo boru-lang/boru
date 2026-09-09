@@ -24,7 +24,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"FnBinders": true, "FnCallGraph": true, "ContextTypes": true, "CtxShapes": true,
 		"MethodShapes": true, "PendingMethodApply": true, "FnShapes": true,
 		"InflightBails": true, "FnNameInflight": true, "SuppressBodyErrors": true,
-		"FnAnalysisCounts": true, "FnBodyDepth": true,
+		"FnAnalysisCounts": true, "FnBodyDepth": true, "CallShapeDepth": true,
 		"FnBodyChecked":   true,
 		"PendingFnBodies": true,
 		"CaughtBodyDepth": true, "NestedBodyDepth": true, "CondBodyDepth": true,
