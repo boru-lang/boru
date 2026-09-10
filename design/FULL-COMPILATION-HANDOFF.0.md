@@ -6304,6 +6304,23 @@ position than the construct that produced the binding.
   commits because core/go's own suite reaches `NoteBindTransition` only
   with check mode off, so every statement past its first guard was
   unreachable from that suite alone.
+- **The pre-commit checklist is NOT what CI runs, and the gap is where two
+  red builds in one batch came from (2026-09-10).** `make fmt && make vet &&
+  make lint && make test && make cover-gate` misses six CI steps, each of
+  which has failed at least once: `make -C kg verify`, `make -C lang/go
+  lint-assertions`, `make parser-parity`, `make cover-gate-core` (the rule
+  above — it was already written here and skipped anyway), the bytecode RACE
+  gates, and the `borudebug` args-aliasing gates. Run them, or read
+  `.github/workflows/ci.yml` before a push and run whatever it lists.
+- **`make test` and `TestFrontier` cannot see a corpus-wide ceiling.** The
+  module suites and the frontier ledger were green before increments 46-48
+  were pushed, and `test/go/langspec` was red on four counts: a refusal in a
+  corpus whose refusal ceiling is 0, two rows carrying an OpFallback island
+  in one whose island ceiling is 0, three more carrying a `CallBoru` inside
+  a handler that only the interp-entry census counts, and a diagnostic-parity
+  ratchet. Every one of those lives in that one package, and only the FULL
+  package run reaches them — `-run TestFrontier` does not. A batch that adds
+  or moves a spec row is not gated until `test/go/langspec` has run whole.
 
 ## Constraints still in force
 
