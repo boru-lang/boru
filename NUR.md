@@ -286,6 +286,56 @@ the fix is the maintainer's to direct.
 
 ---
 
+## NUR129 — a value-producing loop's region can carry a CALLABLE, and only the interpreter re-steps it {#nur129}
+
+**Status:** Pending. **Found:** 2026-09-10, verifying a review finding against
+the region increments (NUR067). The finding was about `await`'s winner
+residual; measuring it turned up the same divergence, older and unguarded, in
+the loop the region representation was borrowed from.
+
+**Rule:** a Function value that ARRIVES on the stack is re-stepped — it
+dispatches over what is beneath it — and both lanes must agree on that. It is
+the rule NUR124 and `OpDeoptIfFn` exist for ("a native's fn result dispatches
+where it lands").
+
+**Divergence.** A value-producing loop's region has no per-value seat, so
+nothing in the compiled lane re-steps a Function the body leaves. Measured on
+`0e0ad83`, before the region increments, so this is not theirs:
+
+```
+def g fn [[x:Integer] [Integer] [x add 1]]  for 2 [g/v]
+  compiled     [fn g(Integer) fn g(Integer)]
+  interpreted  ERROR uncalled_function: call to 'g' matched no signature
+```
+
+The compiled lane answers where the interpreter raises. `lowerLoop` marks the
+region `lw.variadic` and the program residual absorbs it; the values are
+appended as data and nothing asks whether one of them is callable.
+
+**Not fixed here, and the reason is measurement, not appetite.** The
+predicate that would refuse it — `regionValsMayBeCallable`, added for the
+region CONSUMERS in the same change — reads a DYNAMIC residual as
+possibly-callable, because the model does not bound it. Applied at
+`RecordLoop` it would refuse every loop whose body residual is dynamic
+(`for 3 [(f i)]` and its whole family), which is a large class of programs
+that compile correctly today. Refusing them to close this would trade a rare
+wrong answer for a common lost compile, and the register should not make that
+call quietly.
+
+**What the fix needs.** Either a PRECISE callable test the model can support
+(a dynamic residual that provably excludes Function — the `sigTypeMatches`
+not-disjoint rule the residual lowering already uses for the same question),
+or the re-step itself: `OpDeoptIfFn` over a region, which is the general
+answer and the one `design/FULL-COMPILATION.0.md` §6.6 points at.
+
+**Guarded where it was reachable.** The two region CONSUMERS added alongside
+this record (`OpSeatBelowMark`, `OpMakeListToMark`) and `await`'s region
+recording all decline a region that may carry a callable, so
+`5 for 1 [g/v]`, `[(for 2 [g/v])]` and `await {mode:'first'} [[5 g/v]]` refuse
+rather than diverge. Only the bare loop residual above is open.
+
+---
+
 ## NUR128 — a module fn's body gets no declaration-shaped analysis, so its dead branches are reported only when someone calls it {#nur128}
 
 **Status:** Pending. **Found:** 2026-09-09, designing the `unreachable_branch`

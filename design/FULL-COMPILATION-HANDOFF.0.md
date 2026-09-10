@@ -5054,6 +5054,71 @@ thirty-ninth increment found: **a value-producing loop's region was already
 count-agnostic.** Before building a representation, check whether the one you
 need is already carrying a different client.
 
+## A CALLABLE in the region: the review finding, and the older defect behind it (2026-09-10, NUR067 / NUR129)
+
+A P1 review finding on the region PR, and it is correct. The row:
+
+```
+def g fn [[x:Integer] [Integer] [x add 1]]  await {mode:'first'} [[5 g/v]]
+  interpreted  [6]      — the winner's residual [5, g/v] is spliced back onto
+                          the tape and RE-STEPPED, so g/v dispatches over 5
+  compiled     [5 fn]   — OpCallNative appends the handler's results as data
+```
+
+The rule it violates is NUR124's: a Function that ARRIVES on the stack
+dispatches over what is beneath it. A region carries no per-value seat, so
+nothing in the compiled lane re-steps one.
+
+**Measured before deciding, and the measurement changed the answer.** The
+same probe run on `0e0ad83` — before any of the three increments — says:
+
+| row | on 0e0ad83 | on the branch |
+|---|---|---|
+| `for 2 [g/v]` | compiles, `[fn fn]` vs the interpreter's `uncalled_function` | unchanged |
+| `5 for 1 [g/v]` | REFUSED ("above a literal") | compiled, `[5 fn]` vs `[6]` |
+| `[(for 2 [g/v])]` | REFUSED ("consumes loop results") | compiled, `[[fn fn]]` vs an error |
+| `await {mode:'first'} [[5 g/v]]` | REFUSED (NUR067) | compiled, `[5 fn]` vs `[6]` |
+
+So the divergence is OLDER than the region work and lives in the bare loop
+residual; the increments extended it into three shapes that used to refuse.
+That split decided the fix: close the three the increments opened, record the
+one they did not.
+
+**The guard.** `regionValsMayBeCallable` answers, of the values a region's run
+is modelled to leave, whether any could be callable — a fn value, a
+Function-typed carrier, or a DYNAMIC one, whose runtime type the model does
+not bound. It seats in two places:
+
+- `RecordLoop` marks `eventFlags.regionMayBeFn` from the body residual, and
+  `singleSlotRegion` refuses such a region — so BOTH consumers decline it
+  through one test rather than repeating it.
+- The await side cannot use the modelled element (`Any`, deliberately — the
+  branches are unevaluated code bodies). It uses the COMPILED BRANCH UNITS
+  instead: `compileStoredBody` inspects each unit's `outOpsVals`, and a
+  non-empty element that did not compile counts as unknown-and-therefore-
+  unsafe. `RecordCall` then refuses the dispatch rather than recording a
+  region. Every graduated row still compiles, because their branch residuals
+  are concrete.
+
+**What it costs, stated rather than discovered.** The dynamic arm is wide on
+purpose, so the two consumers decline regions the model merely cannot vouch
+for — `99 for 3 [(f i)]` and its family — not only ones that carry a fn.
+Those never compiled before this batch, so nothing regresses; the narrowing
+(a dynamic residual that provably excludes Function, the not-disjoint rule the
+residual lowering already uses for the same question) is the follow-up.
+
+**The bare loop residual is NUR129, not fixed.** Applying the same predicate
+at `RecordLoop` would refuse every loop whose body residual is dynamic, which
+is a large class of programs that compile CORRECTLY today. Trading a rare
+wrong answer for a common lost compile is not a call to make quietly, so it
+is recorded with the measurement and what a real fix needs.
+
+**What the next author should not re-derive.** The finding named await; the
+defect is the region's, and both producers have it. Measure a review finding
+against the MERGE BASE before scoping the fix — here that is the whole
+difference between "the increments introduced a divergence" (three shapes,
+closed) and "the increments extended one" (a fourth, older, recorded).
+
 ## What the batch gate caught: three gates the region rows moved (2026-09-10, repairs to the thirty-ninth-to-forty-first increments)
 
 The three region increments each passed their own tests and their own corpus
