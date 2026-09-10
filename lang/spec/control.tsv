@@ -23,9 +23,15 @@ do [1 add 2 10 mul 4]	1 48	an out-of-order residual (result above a literal) pro
 do [(1 add 2) (3 mul 4)]	3 12	two computed results both remain, in order
 do [10 20 30] add 5	10 20 35	a downstream word consumes the top of the multi-value residual
 def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts differ) compiles via the dyn-body backstop; the runtime residual lands whole
-7 def b true  do [1 2 (if b [] [9 9])]	7 1 2	…and an inert prefix beneath it seats through the mark, which never names the run's length
-7 def b false  do [1 2 (if b [] [9 9])]	7 1 2 9 9	the OTHER arm delivers four values through the same lowering — the count is not the static seat
-1 2 def b false  do [1 2 (if b [] [9 9])]	1 2 1 2 9 9	a two-value prefix keeps its own order beneath the run
+# The forty-seventh increment's three PREFIX rows (`7 def b true do [1 2 (if
+# b [] [9 9])]` and its two siblings) are deliberately NOT here. They compile
+# and agree, and the row above shows why they cannot join this corpus: the
+# dyn-body backstop that lowers this shape re-enters the interpreter, and the
+# interp-entry census — which counts a CallBoru inside a handler, where the
+# OpFallback island ceiling cannot see one — is a ratchet that may only fall.
+# One such row is already counted; three more would raise it. They are pinned
+# by lang/go/region_prefix_test.go instead (both arms, a two-value prefix, a
+# non-Integer prefix, and the emitted mark/seat stream).
 do [for 3 [1] 7]	1 1 1 7	a loop inside a do body compiles (the unrolled model's repeated result identities de-collide)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket

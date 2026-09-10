@@ -173,6 +173,24 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	if IsDisjunct(top) {
 		elem = top
 	}
+	// A body that nets MORE THAN ONE value per round leaves one of EACH on
+	// every trip, interleaved: `while […] [ set 'n' (…) c end … (c get 'n')
+	// ]` leaves FlexMap, Integer, FlexMap, Integer. The spread carries ONE
+	// element type and it has to cover all of them, so a body whose residual
+	// is not of a single type widens to Any.
+	//
+	// Taking stk's LAST value alone was a false claim about the other N-1,
+	// and it went unmeasured because it happened to hold wherever that last
+	// value was a dynamic carrier — which covers anything, and is what
+	// control.tsv §7's counter loop leaves. The row that exposed it is the
+	// one the fifty-first increment graduated, whose last value is a
+	// concrete Integer over a body that also leaves the flex container.
+	for _, v := range stk {
+		if v.Parent != top.Parent {
+			elem = NewTypeLiteral(TAny)
+			break
+		}
+	}
 	return []Value{NewVariadicCarrier(elem)}
 }
 
