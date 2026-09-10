@@ -5370,6 +5370,111 @@ three minutes — is what separated "my increment introduced this" from "my
 increment is next to this", and the fix is different in each case: the first
 would have been a revert, the second is two guards and a record.
 
+## A deferred expression is an argument against the TRAP, not against the REMATCH (2026-09-10, the forty-sixth increment)
+
+`p apply $.name` and `[10 20 30] apply $.1` refused the whole program with
+"unmatched dispatch recovered at apply". Both raise `signature_error` on the
+interpreter — `apply` is stack-only in both overloads (NUR098), so a forward
+lens never matches — and a spec ERROR row should still yield a Program that
+raises the same taxonomy at the same point.
+
+`TryRecordUnmatchedDispatchTrap` declined them, on a stated and sound reason:
+their window holds a REACH, and a deferred expression EXPANDS at dispatch
+time, so a static trap baked over the unexpanded token could describe a value
+the runtime never sees (`flex.tsv` L88/L95 — a reach over a mutated flex cell
+resolves at run time where the static match saw the raw Reach).
+
+**Read the reason against the instrument.** That argument is entirely about
+the TRAP, which bakes a static error. The RUNTIME REMATCH reads no static tag
+at all: it re-runs the match at run time over the values the interpreter's own
+dispatch examines, which are the EXPANDED ones. So the same fact that
+disqualifies the trap is what qualifies the rematch. The decline was one
+`return false` too early — it short-circuited both.
+
+The change is one line of classification: a deferred token sets
+`needsRematch` instead of returning false. The flex witnesses take the
+DEFERRING arm and keep their answers; the two ledger rows take the RAISING
+one and are byte-identical to the interpreter, caret and candidate notes
+included.
+
+**What it does not cross, and why that line is structural.** A window whose
+operands are in the wrong ORDER carries sigError's reorder hint ("did you
+swap the arguments?"), which is derived from TAPE STATE the runtime rebuild
+has no access to — the rematch already declines on exactly that. So
+`$.1 [10 20 30] apply` keeps its refusal, and it is now the fallback-isolation
+suite's refusing tail. That suite's tail has been re-chosen four times as the
+subset widened; this is the first time it was picked for a reason that
+widening cannot reach, rather than for being merely uncompiled today.
+
+## The single-slot gate was inherited, not needed (2026-09-10, the forty-seventh increment)
+
+`7 def b true do [1 2 (if b [] [9 9])]` refused with "variadic result
+promoted to frame slots". The do-region ALONE compiles — `def b true do
+[...]` answers `[1 2]` and its false twin `[1 2 9 9]` — so only the inert
+prefix beneath it was the problem.
+
+**The promotion was the problem, not the shape.** An out-of-order residual
+(an event result above an inert bottom) force-promotes every residual event
+to a frame local so the reconciliation can re-push in order. For a variadic
+region that is unsound — the stores pop exactly nout values while the run's
+runtime length is a different number — which `lowerCall` then said, one stage
+later. Excluded from `forceOrder`, the run stays on the sim as a REGION and
+`OpSeatBelowMark` lifts the prefix beneath it: the fortieth increment's
+machinery, one producer over.
+
+**Three gates were in the way and all three were inherited from the two
+producers that happened to exist** (a value-producing loop, await's winner),
+not from anything the mechanism needs:
+
+- the plan's SINGLE-SLOT test. `variadicRegionEvent` asks the looser question
+  the prefix actually needs — is the run's length not the recorded count? —
+  while `singleSlotRegion` stays for the COLLECT, whose shape genuinely is a
+  list literal over one recorded operand;
+- `regionPrefixShape`'s "the region is the LAST entry", now the trailing
+  contiguous RUN of the producer's entries;
+- `seatRegionPrefix`'s "exactly one region operand", likewise.
+
+`OpSeatBelowMark` never named the run's length, so the 2-value and 4-value
+arms lower identically — which is the whole point, and what a fixed-count
+lowering that happened to agree on one arm would fail on the other.
+
+**Only the seq the plan will seat is excused, and only from `forceOrder`.** A
+variadic region bound to a NAME (`def x (do …) x`) is promoted by its
+dyn-bind source instead, and keeps the earlier, more informative refusal —
+which is what the six `TestS9FrontierDefOverCatchRegion` rows check, and what
+a blanket "never force-promote a variadic" would have quietly downgraded.
+
+## The island's one slot was already the region (2026-09-10, the forty-eighth increment)
+
+`def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3` refused with
+"error: handler nets no value — the single-output island model would leave
+the stack one short". The diagnosis was right — the caught path nets zero
+where the pass-through nets one, and a fixed seat cannot carry both — and the
+conclusion was wrong. The refusal's own comment named the fix it could not
+see: "FallbackSpan has no out-count field to say otherwise".
+
+It needs none. A run whose length is a runtime value is a REGION, and the
+island's ONE simulated slot IS that representation already: `runFallback`
+appends whatever the re-run produced, 0 values or 1. **Nothing changed in
+what is emitted.** `errorReturnsFn` returns the honest 0-or-more spread
+instead of marking the program uncompilable, `RecordFallback` marks the event
+a region, and the residual absorbs the run.
+
+**One ordering fix came with it, and it is the kind worth watching for.** The
+region guard in `resolveDynamicApply` ran BELOW the NUR121 hazard scan. That
+scan asks whether a fn-value LEAD had its argument collected by a later
+dispatch — and a region is not a lead, it is a count. Asked of one, it
+answered yes for this handler's 0-or-1 run and refused a program with no fn
+value in it at all. A guard that says "this entry is not a value" has to run
+before every guard that asks a question about the value.
+
+**The through-line of all three increments**, and the reason they landed
+together: each refusal was a true statement about a mechanism that was not
+the only mechanism available. A deferred token defeats the trap and not the
+rematch; a variable count defeats a promotion and not a mark; a variable
+count defeats a fixed seat and not an island's own slot. The ledger falls
+36 → 32.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -6125,3 +6230,7 @@ position than the construct that produced the binding.
 | `lang/go/foreach_closure_test.go` | the forty-fourth increment's parity (the Function form, a side-effecting fn value, the quotation twin, a lambda over a list, the empty body, a value-netting body, an empty collection, both map forms), that the body lowers to its own closure unit, the measured lambda convention on both lanes, and the ambiguous-overload refusal that `CrossCollectionTokenShape` would have (wrongly) lifted |
 | `lang/go/residual_rebuild_test.go` (`TestShuffledClosureRefusesAndTheInterpreterApplies`, `TestShuffledFnReadStillCompiles`) | NUR131: the four fold witnesses and the two rebuild-screen shapes refusing with the interpreter's answers, and the def-bound `/v` shuffles plus a non-callable event pair still compiling |
 | `compiler/go/residual_rebuild_test.go` (`TestSeatProgramResidualScreensACallable`) | the caller's screen at the seam: a non-callable residual rebuilds, a Function-typed one and a Dynamic one keep the seating's refusal and emit nothing |
+| `lang/go/deferred_rematch_test.go` | the forty-sixth increment: both ledger rows compiling to a byte-identical raise (and with a prefix before them), the deferring arm (the flex witnesses, the lens spellings that always matched), and the reorder-hint window keeping its refusal with the interpreter's own hint |
+| `lang/go/region_prefix_test.go` (`TestRegionPrefixSeatsAMultiSeatRegion`, `TestMultiSeatRegionEmitsTheMarkAndSeat`) | the forty-seventh increment: both arms of the branch-variant do region under a prefix, a two-value prefix, a non-Integer prefix, and the emitted stream — mark before the region, seat after it, no STORE_LOCAL |
+| `compiler/go/region_prefix_test.go` (`TestVariadicRegionEventAdmitsTheDoCatch`) | the two predicates side by side: a do-catch is a region for the PREFIX and not for the COLLECT, a loop is both, a fixed-arity call is neither, and a possibly-callable region is out of both (NUR129) |
+| `lang/go/bytecode_do_error_arity_test.go` (`TestMaybeRaisingZeroNettingHandlerIsARegion`, `TestRegionHandlerRefusesAFixedSeatConsumer`) | the forty-eighth increment: both runtime arms of the maybe-raising handler through one lowering, the proven-raise twin keeping its fixed arity, a one-netting handler unaffected, and the fixed-seat consumer's byte-identical def_error |

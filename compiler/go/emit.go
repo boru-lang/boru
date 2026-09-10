@@ -9362,6 +9362,28 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 // REGION (NUR067's consuming half — `99 for 3 [i]`, `99 await {mode:'first'}
 // [[]]`). Declines when another mark plan already owns the frame: one mark
 // client per program, exactly as planMarkWindow declines to planVariadicClaims.
+// excusePrefixRegion drops the region the PREFIX plan will seat from the
+// force-promotion set, in place.
+//
+// A force-promoted region is unsound: its stores pop exactly nout values
+// while the run's runtime length is a different number, which lowerCall
+// refuses a stage later ("variadic result promoted to frame slots"). Left on
+// the sim it stays a region and OpSeatBelowMark lifts the prefix beneath it
+// without ever naming the length (the forty-seventh increment).
+//
+// Only THIS seq is excused, and only from forceOrder. A variadic region
+// bound to a NAME (`def x (do …) x`) is promoted by its DYN-BIND source
+// instead, which this does not touch — so those keep the earlier and more
+// informative refusal rather than falling through to a later, vaguer one.
+//
+// Split out of Finalize rather than written inline because Finalize sits on
+// the gocyclo ceiling: one more branch there is one branch too many.
+func (es *EmitState) excusePrefixRegion(residual []core.Value, forceOrder map[int]bool) {
+	if seq, ok := es.regionPrefixShape(residual); ok {
+		delete(forceOrder, seq)
+	}
+}
+
 func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
 	seq, ok := es.regionPrefixShape(residual)
 	if !ok || len(lw.markBefore) > 0 {
@@ -10279,18 +10301,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			forceOrder[seq] = true
 		}
 	}
-	// A region the PREFIX plan will seat must NOT be force-promoted: the
-	// stores pop exactly nout values while the run's runtime length is a
-	// different number, which lowerCall refuses a stage later ("variadic
-	// result promoted to frame slots"). Left on the sim it stays a region and
-	// OpSeatBelowMark lifts the prefix beneath it without naming the length
-	// (the forty-seventh increment). Only THIS seq is excused, and only from
-	// forceOrder: a variadic region bound to a NAME (`def x (do …) x`) is
-	// promoted by its dyn-bind source instead and keeps the earlier, more
-	// informative refusal.
-	if seq, ok := es.regionPrefixShape(residual); ok && forceOrder[seq] {
-		delete(forceOrder, seq)
-	}
+	es.excusePrefixRegion(residual, forceOrder)
 	lw.promoted, lw.dead = es.planValueDefLocals(es.units[0], es.frames[0], residualSeqs, forceOrder)
 	lw.bindConsumes = collectRootBindConsumes(es.frames[0], lw.dead)
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
