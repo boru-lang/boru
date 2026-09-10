@@ -2236,9 +2236,19 @@ func (lw *lowerer) simHolds(op EmitOperand) bool {
 // this could not close; the unused OpStackMark is emitted into a program that
 // never runs.
 func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
-	n := len(ops) - 1
-	if lw.regionPrefixSeq == 0 || n < 1 || ops[n].kind != opEvent || ops[n].idx != lw.regionPrefixSeq ||
-		len(lw.vm) != 1 || !slotIs(lw.vm[0], ops[n]) {
+	if lw.regionPrefixSeq == 0 || len(lw.vm) != 1 || lw.vm[0].seq != lw.regionPrefixSeq {
+		return false
+	}
+	// The region's RUN is the trailing operands the plan's producer left, and
+	// there may be more than one: a do-catch records nout seats for a run
+	// whose runtime length is a different number. They lowered to the ONE
+	// variadic sim slot checked above, so what matters here is only where the
+	// prefix ends.
+	n := len(ops)
+	for n > 0 && ops[n-1].kind == opEvent && ops[n-1].idx == lw.regionPrefixSeq {
+		n--
+	}
+	if n == len(ops) || n < 1 {
 		return false
 	}
 	// Every operand beneath the region is inert by construction —
@@ -2253,7 +2263,7 @@ func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
 	for range ops[:n] {
 		lw.vm = append(lw.vm, nonEventSlot)
 	}
-	lw.vm = append(lw.vm, vmSlot{seq: ops[n].idx, idx: ops[n].resIdx})
+	lw.vm = append(lw.vm, vmSlot{seq: lw.regionPrefixSeq, idx: 0})
 	lw.note()
 	return true
 }
@@ -2623,7 +2633,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// exactly nout values, a dead-result drop pops exactly one — so neither
 	// can serve a run whose size is a runtime value; refuse instead, the
 	// earliest true diagnosis, and the interpreter owns the program.
-	if lw.es != nil && lw.es.eventInfo[ev.seq].variadicRegion {
+	if lw.es != nil && (lw.es.eventInfo[ev.seq].variadicRegion || lw.regionPrefixSeq == ev.seq) {
 		if _, prom := lw.promoted[ev.seq]; prom {
 			return c.word + ": variadic region promoted to a frame slot (the runtime count is not the static seat)"
 		}

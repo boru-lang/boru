@@ -27,6 +27,8 @@ import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input 
 # reason the fallible rows are: its runtime count differs from any static
 # seat. Promoted under a dirty-stack prefix (the variation differential's
 # prefix-stack transform found it), the stores would pop values the short
-# path never produced; lowerCall's store-prologue gate refuses and the
-# interpreter owns the shape.
-7 def b true  do [1 2 (if b [] [9 9])]	7 1 2
+# path never produced. GRADUATED 2026-09-10 (the forty-seventh increment):
+# the promotion was the problem, not the shape — left on the sim the region
+# is seated by OpSeatBelowMark, which never names the run's length, so the
+# 2-value and 4-value arms lower identically. The rows live in
+# lang/spec/control.tsv §2.

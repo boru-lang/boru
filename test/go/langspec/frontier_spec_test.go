@@ -596,8 +596,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// (0-or-2 values per arm) is variadic without any raise in sight, and a
 	// dirty-stack prefix forces its promotion — the same exact-arity seat
 	// hazard as the fallible regions.
-	`7 def b true  do [1 2 (if b [] [9 9])]`: {why: "PR #280 review: branch-variant multi-out do region promoted under a dirty-stack prefix", failsWith: "variadic result promoted to frame slots"},
-
+	// The branch-variant do region under a dirty-stack prefix GRADUATED
 	// Chained forward application of Function params (frontier-chained-apply
 	// .tsv) — the compose family, a live MISCOMPILE until 2026-08-02 (the
 	// whole-frame replay's flat window lost the paren structure: compiled

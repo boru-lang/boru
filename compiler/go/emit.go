@@ -9378,13 +9378,30 @@ func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	// singleSlotRegion answers false for a nil event, and it is checked FIRST
-	// so regionReadsTheStack is never handed one.
+	// variadicRegionEvent answers false for a nil event, and it is checked
+	// FIRST so regionReadsTheStack is never handed one.
 	ev := es.topLevelEventBySeq(pr.seq)
-	if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) {
+	if !es.variadicRegionEvent(ev) || regionReadsTheStack(ev) {
 		return 0, false
 	}
-	for _, rv := range residual[:len(residual)-1] {
+	// The region's RUN is the trailing entries the producer left, and there
+	// may be more than one of them: a do-catch records nout seats for a run
+	// whose runtime length is a different number (2 recorded, 2-or-4
+	// delivered). Walk back over the contiguous run of THIS producer's
+	// entries; everything beneath it must be inert (no producing event at
+	// all), which is what makes the prefix pushable after the run.
+	i := len(residual) - 1
+	for i > 0 {
+		p, isEvent := es.producedBy[residual[i-1].ID]
+		if !isEvent || p.seq != pr.seq {
+			break
+		}
+		i--
+	}
+	if i == 0 {
+		return 0, false // the run IS the whole residual; no prefix to seat
+	}
+	for _, rv := range residual[:i] {
 		if _, isEvent := es.producedBy[rv.ID]; isEvent {
 			return 0, false
 		}
@@ -9462,9 +9479,11 @@ func (es *EmitState) regionCollectShape(events []EmitEvent) (int, int, bool) {
 // for a RUNTIME-VARIABLE count of values: a value-producing loop (`for` /
 // `while` — RecordLoop's hasBodyOut arm), or a variadic REGION call
 // (callVariadicRegion — await's winner-takes-all residual). A do-catch's
-// variadicResult is deliberately NOT one: it seats nout static slots and
-// shrinks at run time, so there is no single slot to seat a prefix under.
-// A nil event (no top-level event with that seq) is not one either.
+// variadicResult is NOT one: it records nout slots for a run whose runtime
+// length is a different number. The COLLECT needs this narrower question —
+// its shape is a list literal over exactly ONE recorded operand — where the
+// PREFIX does not (variadicRegionEvent). A nil event (no top-level event
+// with that seq) is not one either.
 func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
 	if ev == nil {
 		return false
@@ -9472,6 +9491,25 @@ func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
 	f := es.eventInfo[ev.seq]
 	return !f.zeroOut && !f.regionMayBeFn &&
 		(f.variadicRegion || (ev.kind == evLoop && f.variadicResult))
+}
+
+// variadicRegionEvent is singleSlotRegion's question WITHOUT the single-slot
+// half: does ev leave a run whose runtime length is not its recorded count?
+// That admits the do-catch region too (nout recorded seats, 2-or-4 delivered
+// by a branch-variant body; one caught Error on the raise path).
+//
+// The prefix seating can ask the looser question because OpSeatBelowMark
+// never names the run's length — it lifts the top n values down to the mark,
+// whatever lies between. The forty-seventh increment is exactly that
+// observation: the plan's single-slot gate was inherited from the two
+// producers that happened to exist, not from anything the mechanism needs.
+func (es *EmitState) variadicRegionEvent(ev *EmitEvent) bool {
+	if ev == nil {
+		return false
+	}
+	f := es.eventInfo[ev.seq]
+	return !f.zeroOut && !f.regionMayBeFn &&
+		(f.variadicRegion || f.variadicResult)
 }
 
 // topLevelEventBySeq finds the top-level frame's event with the given seq
@@ -10220,6 +10258,18 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		for _, seq := range residualSeqs {
 			forceOrder[seq] = true
 		}
+	}
+	// A region the PREFIX plan will seat must NOT be force-promoted: the
+	// stores pop exactly nout values while the run's runtime length is a
+	// different number, which lowerCall refuses a stage later ("variadic
+	// result promoted to frame slots"). Left on the sim it stays a region and
+	// OpSeatBelowMark lifts the prefix beneath it without naming the length
+	// (the forty-seventh increment). Only THIS seq is excused, and only from
+	// forceOrder: a variadic region bound to a NAME (`def x (do …) x`) is
+	// promoted by its dyn-bind source instead and keeps the earlier, more
+	// informative refusal.
+	if seq, ok := es.regionPrefixShape(residual); ok && forceOrder[seq] {
+		delete(forceOrder, seq)
 	}
 	lw.promoted, lw.dead = es.planValueDefLocals(es.units[0], es.frames[0], residualSeqs, forceOrder)
 	lw.bindConsumes = collectRootBindConsumes(es.frames[0], lw.dead)

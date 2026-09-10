@@ -153,3 +153,55 @@ func TestSingleSlotRegionCountsOnlyWholeRunSlots(t *testing.T) {
 		t.Error("a seq with no top-level event is not a region")
 	}
 }
+
+// TestVariadicRegionEventAdmitsTheDoCatch pins the forty-seventh increment's
+// widening at the seam, where the two predicates sit side by side and the
+// difference between them is legible.
+//
+// singleSlotRegion asks "is the result ONE recorded slot standing for a
+// runtime count?" — the COLLECT needs that, because its shape is a list
+// literal over exactly one recorded operand. variadicRegionEvent asks only
+// "is the run's length not the recorded count?", which is all the PREFIX
+// needs: OpSeatBelowMark lifts the top n values down to the mark whatever
+// lies between, so the run's length was never its business.
+func TestVariadicRegionEventAdmitsTheDoCatch(t *testing.T) {
+	es := rpState(t)
+
+	// A do-catch region: a CALL event with nout recorded seats whose runtime
+	// count is a different number.
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2}})
+	f := es.eventInfo[seq]
+	f.variadicResult = true
+	es.eventInfo[seq] = f
+	ev := es.topLevelEventBySeq(seq)
+
+	if es.singleSlotRegion(ev) {
+		t.Error("a do-catch records nout slots — it is not a SINGLE-slot region")
+	}
+	if !es.variadicRegionEvent(ev) {
+		t.Error("its run's length is not its recorded count, so the prefix seating must admit it")
+	}
+
+	// A value-producing LOOP is both: one slot, runtime count.
+	lseq, _ := rpLoop(es, emitLoop{hasBodyOut: true, bodyOut: EmitOperand{kind: opLocal}})
+	lev := es.topLevelEventBySeq(lseq)
+	if !es.singleSlotRegion(lev) || !es.variadicRegionEvent(lev) {
+		t.Error("a value-producing loop is a region on both questions")
+	}
+
+	// An ORDINARY call is neither — the widening must not reach it.
+	oseq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzplain", nout: 2}})
+	oev := es.topLevelEventBySeq(oseq)
+	if es.singleSlotRegion(oev) || es.variadicRegionEvent(oev) {
+		t.Error("a fixed-arity call is not a region on either question")
+	}
+
+	// A region that MAY CARRY A CALLABLE is excluded from both, unchanged:
+	// only the interpreter re-steps one (NUR129).
+	f = es.eventInfo[seq]
+	f.regionMayBeFn = true
+	es.eventInfo[seq] = f
+	if es.variadicRegionEvent(ev) {
+		t.Error("a possibly-callable region stays out of the prefix seating too")
+	}
+}
