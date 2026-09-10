@@ -500,7 +500,13 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	//     family one step in: the continuation call `(k m)` inside a
 	//     fn-local fn is a fn CALL operand of unknown provenance.
 	`def chainif fn [[a:Function b:Function s:Integer][Any][def r1 (a s) if (r1.ok) [def r2 (b (r1.rest)) (r2.val)] [0]]] chainif ([z:Integer] => [{ok:true rest:8}]) ([z:Integer] => [{ok:true val:50}]) 4`: {why: "NUR087's branch-local def-split: the check pass is clean since the fix, but the branch arm's dispatch through a Function param takes the checker's best-fit recovery, and a recovered dispatch refuses compilation; graduation = a modelled branch-arm param dispatch", failsWith: "unmatched dispatch recovered at dot"},
-	`def dbl x:Integer => [mul 2 x]  for-each dbl/v [1 2 3]`: {why: "for-each's Function form meets the Stage 3 function-valued-operand gate before the callback is even reached", failsWith: "function-valued operand at for-each (Stage 3)"},
+	// `for-each dbl/v [1 2 3]` GRADUATED with the forty-fourth increment
+	// (2026-09-10): the word declared no CallableSpec, so its body never
+	// compiled to a closure and its Function form met the Stage-3 gate
+	// before the callback was reached. It now carries each's spec minus
+	// the three flags its handler does not earn, and lambdaCallbackInputs
+	// gained its (measured) convention. The rows live in
+	// lang/spec/higher-order.tsv §6.
 	// Rewritten 2026-08-24 for the BROAD park (NUR073): the audit's §1
 	// programs are respelled with explicit apply, so these keys are the
 	// migrated TSV rows verbatim (literal keys — the shared hof* prefixes no

@@ -934,7 +934,13 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		case isList:
 			return []core.Value{pairCarrier(elem)}, ClosureInValue, true
 		}
-	case "each":
+	case "each", "for-each":
+		// for-each shares each's convention exactly — same handler shape,
+		// same per-container unit — and only the RESULT differs (for-each
+		// discards it). Measured on the interpreter rather than inferred
+		// from the shared handler family: `for-each ([e:Any] => [typeof e
+		// print]) [1 2 3]` prints Integer, and the same lambda over
+		// `{a:1 b:2}` prints KeyVal — the two branches below.
 		if isMap {
 			return []core.Value{keyValCarrier(r, elem)}, ClosureInKeyVal, true
 		}

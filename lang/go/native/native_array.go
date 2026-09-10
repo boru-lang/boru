@@ -349,6 +349,28 @@ var allArrayNatives = []NativeFunc{
 		// result" rule. See §7.4 in the DX report.
 		Name:          "for-each",
 		CompileEffect: CompileFallbackBody,
+		// The body compiles to a per-element closure exactly as each's does
+		// (the forty-fourth increment). Three of each's flags are NOT set
+		// here, and the differences are the word's own:
+		//   - BodyOut 0, not 1: forEachHandler discards every invocation's
+		//     result, so the unit declares no returns and RETs whatever the
+		//     body nets — which is also why EmptyBodyErrors is absent (a
+		//     0-net body is not an error here, it is the ordinary case).
+		//   - BodyResultTop: the handler reads NOTHING of the residual, so
+		//     a fortiori never below its top; unconsumed values (the element
+		//     a body that ignores it leaves) may be dropped at the RET.
+		//   - CrossCollectionTokenShape is NOT set: it licenses committing
+		//     to the List overload for a statically-ambiguous collection
+		//     because each's handler cross-delegates to the Map one at run
+		//     time. forEachHandler does not — it reads args[1] as a list —
+		//     so a gradual collection must keep the ambiguous-overload
+		//     refusal rather than commit to a handler that would raise.
+		//   - BodyMultiRunKeepsDefs: verified at the handler, which drives
+		//     InvokeBody once per element on the shared registry with no def
+		//     cleanup — the same seam and the same leak eachHandler has.
+		Callable: &CallableSpec{BodyPos: 0, BodyOut: 0, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
+			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+		}},
 
 		Signatures: []Signature{
 			{

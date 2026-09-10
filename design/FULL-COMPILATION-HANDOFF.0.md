@@ -5205,6 +5205,58 @@ existing residual path allocated a local; the general lesson is that
 "compiled=false with no reason" is a bug report, not a refusal, and worth a
 test of its own (`TestResidualRebuildFrameCountsTheSpills`).
 
+## `for-each` never compiled its body, and that is why its Function form could not (2026-09-10, the forty-fourth increment)
+
+`def dbl x:Integer => [mul 2 x]  for-each dbl/v [1 2 3]` refused with
+"function-valued operand at for-each (Stage 3)". The gate is real: a
+fn-valued operand reaching a fn-INVOKING word is refused because that
+handler re-steps the fn on the tape, and the VM has no tape.
+
+But `each dbl/v [1 2 3]` compiles, through the same handler family and the
+same `InvokeBody` seam. The difference was not the operand at all —
+**`for-each` declared no `CallableSpec`**. Its body therefore never compiled
+to a closure: the dispatch baked the token list as a plain `List` const and
+the handler interpreted it once per element. And for a word whose body does
+not compile, the gate's premise is TRUE, so the refusal was correct for the
+wrong reason.
+
+**What landed.** A `CallableSpec` for `for-each`, and its case in
+`lambdaCallbackInputs` (which had none, the same missing-case shape family
+G's `each` rows had in 2026-08-27). Both graduate together, because the
+closure body is what makes the fn-valued operand admissible.
+
+**The spec is each's minus three flags, and each omission is the word's
+own.** `BodyOut` 0, not 1: `forEachHandler` discards every invocation's
+result, so the unit declares no returns and RETs whatever the body nets —
+which is also why `EmptyBodyErrors` is absent, since a 0-net body is
+for-each's ordinary case rather than an error the handler raises.
+`BodyResultTop` is set for the stronger reason: the handler reads NOTHING of
+the residual, so a fortiori never below its top. `CrossCollectionTokenShape`
+is NOT set, and that one matters: it licenses committing to the List overload
+for a statically-ambiguous (gradual-Any) collection, on the grounds that
+`eachHandler` delegates to the map iteration when the runtime value turns out
+to be a map. `forEachHandler` does not — it reads `args[1]` as a list — so
+committing would raise where the interpreter iterates. The ambiguous-overload
+refusal stays, pinned in `TestForEachKeepsTheAmbiguousOverloadRefusal`.
+
+**The lambda convention was MEASURED, not inherited.** Sharing a handler
+family is not evidence about the callback shape.
+`for-each ([e:Any] => [typeof e print]) [1 2 3]` prints `Integer` and the
+same lambda over `{a:1 b:2}` prints `KeyVal` — a list hands the bare element,
+a map hands the KeyVal, which is each's convention, confirmed rather than
+assumed. `TestForEachLambdaConventionMatchesTheInterpreter` keeps that
+measurement as a test.
+
+**What compiling the body COSTS, and why it is right anyway.** Two shapes
+that previously "compiled" now refuse: `def acc (flex []) end [1 2 3]
+for-each [acc swap append drop] end acc` draws "residual value of unknown
+provenance", and the same body under a trailing literal draws "body leaves
+extra values". They compiled before only because the body was never compiled
+— the const list rode through and the interpreter ran it. Both refusals are
+byte-identical to what `each` draws on the identical body today, so the
+change makes the two words uniform rather than making for-each worse; the
+corpus's one for-each row is unaffected.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -5957,3 +6009,4 @@ position than the construct that produced the binding.
 | `lang/go/while_compile_test.go` (`TestWhileEmptyConditionTraps`, `TestWhileNonEmptyConditionDoesNotTrap`) | the forty-second increment: the empty condition compiles to a terminal trap with the interpreter's own error (with a prefix before it, and whatever the body is), a condition WITH tokens never traps, and the empty condition below the top level keeps the arity refusal |
 | `lang/go/residual_rebuild_test.go` | the forty-third increment's parity (the permuting roll, `swap`, three results rotated both ways, a duplicated result, a dropped one, an inert value beneath a result, non-Integer results), that an in-order residual still spills nothing, and the frame-count pin (`TestResidualRebuildFrameCountsTheSpills`) |
 | `compiler/go/residual_rebuild_test.go` | `seatResidualRebuild`'s seam: the emitted spill/re-push stream for a permutation, one temp read twice for a duplicate, a dropped entry, and the four declines (an empty sim, an operand absent from it, a result index absent from it, a variadic region, each of the three armed mark plans — each emitting nothing) |
+| `lang/go/foreach_closure_test.go` | the forty-fourth increment's parity (the Function form, a side-effecting fn value, the quotation twin, a lambda over a list, the empty body, a value-netting body, an empty collection, both map forms), that the body lowers to its own closure unit, the measured lambda convention on both lanes, and the ambiguous-overload refusal that `CrossCollectionTokenShape` would have (wrongly) lifted |
