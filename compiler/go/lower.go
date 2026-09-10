@@ -471,6 +471,16 @@ type lowerer struct {
 	// planVariadicClaims.
 	markBefore   map[int]bool
 	variadicElse map[int]bool
+	// regionPrefixSeq is the event seq of a residual-final runtime-variadic
+	// REGION whose residual carries an INERT PREFIX beneath it (NUR067's
+	// consuming half — planRegionPrefix armed it and put an OpStackMark in
+	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
+	regionPrefixSeq int
+	// collectAtSeq is the event seq of the LIST LITERAL that collects a
+	// runtime-variadic region (NUR067's consuming half — planRegionCollect
+	// armed it and put an OpStackMark before the region's own event). 0 = not
+	// armed. Read once, by collectRegionTop.
+	collectAtSeq int
 	loops        []loopCtx
 	maxDepth     int
 	// depth counts live lowerFragment recursion (nested branch / loop bodies).
@@ -2090,6 +2100,63 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 	return ""
 }
 
+// seatProgramResidual lays out the PROGRAM's residual as the final stack and
+// returns the refusal, if any. Two layouts, tried in order: the region-prefix
+// seating, which closes a residual shaped [inert…, REGION] through the mark
+// the plan opened; then the ordinary in-order seating, which owns every other
+// shape and whose wording is the honest one for anything the first declines.
+//
+// Split out of Finalize rather than written inline because Finalize sits on
+// the gocyclo ceiling: one more branch there is one branch too many, and this
+// choice belongs beside the two seatings anyway.
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) string {
+	if lw.seatRegionPrefix(ops, pos) {
+		return ""
+	}
+	return lw.seatResults(ops, false, false, seatMsgs{
+		aboveLiteral: "residual shape beyond Stage 1 (call result above a literal)",
+		reordered:    "residual shape beyond Stage 1 (call results reordered)",
+		unconsumed:   "residual shape beyond Stage 1 (unconsumed call results)",
+	}, pos)
+}
+
+// seatRegionPrefix seats a residual shaped [inert…, REGION] and reports
+// whether it did (NUR067's consuming half). planRegionPrefix armed the plan
+// and opened an OpStackMark before the region's producing event; the region's
+// own run is now the sim's ONE remaining entry, so the prefix pushes ABOVE it
+// — the only place a static lowering can put it — and OpSeatBelowMark moves
+// the prefix down to the mark, lifting the run above it without ever naming
+// the run's length.
+//
+// Returns false — leaving the emitted code untouched — whenever the plan is
+// not armed (every ordinary program) or the post-lowering stack is not the
+// bare region the plan expected. The caller then takes the ordinary seating,
+// whose refusal ("call result above a literal") is the honest one for a shape
+// this could not close; the unused OpStackMark is emitted into a program that
+// never runs.
+func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
+	n := len(ops) - 1
+	if lw.regionPrefixSeq == 0 || n < 1 || ops[n].kind != opEvent || ops[n].idx != lw.regionPrefixSeq ||
+		len(lw.vm) != 1 || !slotIs(lw.vm[0], ops[n]) {
+		return false
+	}
+	// Every operand beneath the region is inert by construction —
+	// regionPrefixShape admitted the residual only because none of those
+	// entries had a producing event — so each is a plain push.
+	for _, op := range ops[:n] {
+		lw.pushOperand(op, pos)
+	}
+	lw.emit(OpSeatBelowMark, n, pos)
+	// Model the seated layout: the prefix beneath the region's one slot.
+	lw.vm = lw.vm[:0]
+	for range ops[:n] {
+		lw.vm = append(lw.vm, nonEventSlot)
+	}
+	lw.vm = append(lw.vm, vmSlot{seq: ops[n].idx, idx: ops[n].resIdx})
+	lw.note()
+	return true
+}
+
 // planBranchPromotion classifies one evBranch merge result for
 // planValueDefLocals: a DEAD 2-arm value-def (`def _ (if c [t] [e])`, never
 // read) drops its result — the interpreter binds the merge OFF the residual
@@ -2323,6 +2390,9 @@ func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, v
 
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
+	if lw.collectRegionTop(ev) {
+		return ""
+	}
 	n := len(c.ops)
 	if reason := lw.layoutOperands(c.ops, c.pos, layoutMsgs{
 		loopResults:  "consumes loop results (Stage 2 loops only feed the program residual)",
@@ -2441,6 +2511,29 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.emit(OpCallNative, si, c.pos)
 	}
 	lw.vm = lw.vm[:len(lw.vm)-n]
+	// A VARIADIC REGION result (NUR067's growing direction): the handler
+	// leaves 0-or-MORE values where this event carries ONE recorded slot.
+	// Take the LOOP region's representation — mark the slot lw.variadic, so
+	// every rule a value-producing loop's region already obeys applies here
+	// verbatim: layoutOperands refuses it as a call/list operand, seatResults
+	// admits it only in a variadic-absorbing LAST position (the program
+	// residual, a no-contract RET), and the store/bind hooks refuse it. The
+	// two dispositions BELOW both need a static count — a promotion stores
+	// exactly nout values, a dead-result drop pops exactly one — so neither
+	// can serve a run whose size is a runtime value; refuse instead, the
+	// earliest true diagnosis, and the interpreter owns the program.
+	if lw.es != nil && lw.es.eventInfo[ev.seq].variadicRegion {
+		if _, prom := lw.promoted[ev.seq]; prom {
+			return c.word + ": variadic region promoted to a frame slot (the runtime count is not the static seat)"
+		}
+		if lw.dead[ev.seq] {
+			return c.word + ": variadic region result discarded (the runtime count is not the static seat)"
+		}
+		lw.variadic[ev.seq] = true
+		lw.vm = append(lw.vm, vmSlot{seq: ev.seq, idx: 0})
+		lw.note()
+		return ""
+	}
 	// A promoted result: store it into a frame slot now and re-push it per
 	// reference / per residual position (the references were rewritten to local
 	// operands). A single-result value-def stores one slot; a multi-output stack
@@ -2496,6 +2589,41 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	}
 	lw.note()
 	return ""
+}
+
+// collectRegionTop lowers a list literal whose ONE operand is a
+// runtime-variadic REGION, and reports whether it did (NUR067's consuming
+// half). planRegionCollect armed the plan and opened an OpStackMark before the
+// region's producing event, which lowerEvents emitted immediately before the
+// region ran; the run is therefore exactly stack[mark:], and
+// OpMakeListToMark closes it into one List without naming the run's length.
+//
+// Returns false — leaving the emitted code untouched — whenever the plan is
+// not armed for this event (every ordinary call), the region is not the sim's
+// top, or the list result is a DEAD binding the ordinary lowering drops. The
+// caller then takes the ordinary lowering, whose layoutOperands refusal
+// ("consumes loop results") is the honest one.
+//
+// A PROMOTED result is handled here rather than declined: the collect leaves
+// exactly ONE List, a static single value, so the ordinary store-once /
+// re-push-per-reference promotion applies to it unchanged (`def xs [(for 3
+// [i])]  xs`). It is the REGION that has no static count, and the region is
+// gone by the time the store runs.
+func (lw *lowerer) collectRegionTop(ev *EmitEvent) bool {
+	c := &ev.call
+	if lw.collectAtSeq != ev.seq || len(c.ops) != 1 || len(lw.vm) == 0 ||
+		lw.vm[len(lw.vm)-1].seq != c.ops[0].idx || lw.dead[ev.seq] {
+		return false
+	}
+	lw.emit(OpMakeListToMark, 0, c.pos)
+	lw.vm[len(lw.vm)-1] = vmSlot{seq: ev.seq, idx: 0}
+	if slot, prom := lw.promoted[ev.seq]; prom {
+		lw.seatStoreName(ev.seq, 0)
+		lw.emit(OpStoreLocal, slot, c.pos)
+		lw.vm = lw.vm[:len(lw.vm)-1]
+	}
+	lw.note()
+	return true
 }
 
 // lowerFragment lowers a closed body: a fresh stack scope that must

@@ -210,9 +210,38 @@ const (
 	// of its count); on the FALSE path, OpPopMark discards the mark and keeps the
 	// eager as the result. The merged result is itself a 0-or-1 the program residual
 	// absorbs. Arg is unused.
+	//
+	// The 0-or-1 is this CLIENT's shape, not the ops' (measured 2026-09-10,
+	// NUR067): DropToMark truncates to stack[:m] and PopMark keeps whatever
+	// stands above the mark, so both are count-agnostic already. What is
+	// 0-or-1-specific is planVariadicClaims, which only recognises the chained
+	// `if`.
 	OpStackMark
 	OpDropToMark
 	OpPopMark
+	// OpSeatBelowMark seats a residual's INERT PREFIX beneath a
+	// runtime-variadic REGION (NUR067's consuming half). `99 for 3 [i]` and
+	// `99 await {mode:'first'} [[]]` both leave [99, <region>], and the region's
+	// count is a runtime value, so the prefix cannot be pushed after it (it
+	// would land on TOP of the run) and cannot be indexed past it from the top.
+	// The lowering therefore opens an OpStackMark before the region's producing
+	// event, pushes the prefix ABOVE the finished region in residual order, and
+	// closes with this op: Arg = the prefix length n; pop the innermost mark m,
+	// lift the top n values, and re-lay the stack as
+	// [ … , prefix₀ … prefixₙ₋₁, region … ] — the prefix at the mark, the whole
+	// run above it, order preserved on both sides. Nothing else moves, and the
+	// region's count is never named.
+	OpSeatBelowMark
+	// OpMakeListToMark collects a runtime-variadic REGION into one List
+	// (NUR067's consuming half, the collect). `[(for 3 [i])]` and
+	// `size [(await {mode:'any'} [[7 8]])]` build a list of the whole run, and
+	// OpMakeList cannot: its Arg is a STATIC element count. The lowering opens
+	// an OpStackMark before the region's producing event and closes with this
+	// op — pop the innermost mark m, replace stack[m:] with one List of those
+	// values in order. Elements are ascription-stripped exactly as OpMakeList
+	// strips them (list elements are stored data). Arg is unused; the count is
+	// the run's, and is never named.
+	OpMakeListToMark
 	// OpCallDynamicMixed handles the MIXED fn-value-call boundary: a runtime
 	// FUNCTION value sitting INTERIOR to the program residual, with static args
 	// both BELOW it and ABOVE it (`3 m.f 2` — `m.f` is a 2-arg fn collecting the
@@ -550,6 +579,8 @@ var opcodeNames = [...]string{
 	OpStackMark:            "STACK_MARK",
 	OpDropToMark:           "DROP_TO_MARK",
 	OpPopMark:              "POP_MARK",
+	OpSeatBelowMark:        "SEAT_BELOW_MARK",
+	OpMakeListToMark:       "MAKE_LIST_TO_MARK",
 	OpCallDynamicMixed:     "CALL_DYNAMIC_MIXED",
 	OpInterp:               "INTERP",
 	OpInterpXml:            "INTERP_XML",

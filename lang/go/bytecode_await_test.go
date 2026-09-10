@@ -21,10 +21,16 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 		`import "boru:time-util" TimeUtil.await [[def x 5 x add 1] [3 mul 4]]`,
 		`import "boru:time-util" TimeUtil.await [[raise bad_input "boom"] [3 mul 4]]`,
 		`import "boru:time-util" TimeUtil.await {mode:"full"} [[raise bad_input "boom"] [3 mul 4]]`,
-		// The winner-takes-all modes (first/any) are NOT here: their result
-		// is the winning branch's whole residual — a runtime-variable count —
-		// so the compile pass refuses them wholesale (NUR067; the pinned
-		// refusal is TestAwaitWinnerModesRefuseCompilation below).
+		// The winner-takes-all modes (first/any), GRADUATED (NUR067): their
+		// result is the winning branch's whole residual — 0-or-more values,
+		// a count that can EXCEED any static seat — and it is now RECORDED as
+		// a runtime-variadic REGION (eventFlags.variadicRegion), the same one
+		// slot a value-producing loop's region already uses. Three counts, so
+		// the region is pinned across the whole range: THREE values where the
+		// static seat is one, ONE (the sole surviving branch), and ZERO.
+		`import "boru:time-util" TimeUtil.await {mode:"first"} [[1 2 3]]`,
+		`import "boru:time-util" TimeUtil.await {mode:"any"} [[raise bad_input "boom"] [3 mul 4]]`,
+		`import "boru:time-util" TimeUtil.await {mode:"first"} [[]]`,
 	}
 	for _, src := range cases {
 		t.Run(src, func(t *testing.T) {
@@ -54,37 +60,57 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 	}
 }
 
-// TestAwaitWinnerModesRefuseCompilation — first/any hand back the winning
-// branch's WHOLE residual (0-or-more values, a count that can EXCEED any
-// static seat), so the compile pass refuses wholesale and the interpreter
-// owns these modes (NUR067 — the pre-refusal 1-seat layout was a live
-// miscompile: `size [(await {mode:'any'} [[7 8]])]` stranded a value).
-// The refusal reason is pinned so a graduation (a runtime-variadic region
-// representation) flips this test loudly.
-func TestAwaitWinnerModesRefuseCompilation(t *testing.T) {
-	for _, src := range []string{
-		`import "boru:time-util" TimeUtil.await {mode:"any"} [[raise bad_input "boom"] [3 mul 4]]`,
-		`import "boru:time-util" TimeUtil.await {mode:"first"} [[1 2 3]]`,
+// TestAwaitWinnerRegionRefusesFixedArityConsumers — the negative half of
+// NUR067's graduation. The region is REPRESENTED now (the wholesale
+// MarkUncompilable is gone), so what refuses is each position that genuinely
+// needs a STATIC count, one at a time and for its own stated reason:
+//
+//   - a promotion — `def x (await …) x` would store exactly nout values into
+//     a frame slot while the run delivers a runtime count;
+//   - the dead-result drop — `def _ (await …)` would pop exactly one.
+//
+// The two CONSUMING shapes that were here — the collecting paren
+// (`size [(await {mode:'any'} [[7 8]])]`, whose 1-seat layout WAS the live
+// miscompile) and the inert prefix (`99 await …`) — graduated on their own
+// closing ops and are pinned as PARITY rows in region_collect_test.go and
+// region_prefix_test.go, beside their `for` twins.
+//
+// Each refusal below is a SOUND interpreter fallback, so parity is asserted
+// alongside it: a refusal that changed the answer would be no better than the
+// miscompile it replaced.
+func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
+	for _, tc := range []struct{ src, reason, want string }{
+		{`import "boru:time-util" def x (TimeUtil.await {mode:"first"} [[1 2 3]]) x`,
+			"variadic region promoted to a frame slot", "[2 3 1]"},
+		{`import "boru:time-util" def _ (TimeUtil.await {mode:"first"} [[1 2 3]]) 5`,
+			"variadic region result discarded", "[2 3 5]"},
 	} {
-		t.Run(src, func(t *testing.T) {
+		t.Run(tc.src, func(t *testing.T) {
 			a, err := New()
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, compiled, err := a.RunCompiled(src)
+			_, compiled, err := a.RunCompiled(tc.src)
 			if compiled {
-				t.Fatal("a winner-mode await must refuse compilation — has the runtime-variadic region representation landed? Graduate the frontier-await-winner.tsv ledger rows with this pin")
+				t.Fatal("a fixed-arity consumer of the winner region must refuse: the runtime count is not the static seat")
 			}
-			if err == nil || !strings.Contains(err.Error(), "runtime-variadic (0-or-more values) with no static seat") {
-				t.Fatalf("refusal reason drifted: %v", err)
+			if err == nil || !strings.Contains(err.Error(), tc.reason) {
+				t.Fatalf("refusal reason drifted: want %q, got %v", tc.reason, err)
 			}
-			// The interpreter owns the modes, byte-identically.
+			// The refusal is a FALLBACK, so the answer the program gives is
+			// the interpreter's — asserted against a value written out here
+			// rather than against a second run of the same lane, which would
+			// be comparing the interpreter to itself (NUR106).
 			b, err := New()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := b.RunInterp(src); err != nil {
+			gotI, err := b.RunInterp(tc.src)
+			if err != nil {
 				t.Fatalf("RunInterp: %v", err)
+			}
+			if got := fmt.Sprintf("%v", gotI); got != tc.want {
+				t.Errorf("interpreter oracle %s, want %s", got, tc.want)
 			}
 		})
 	}
@@ -136,6 +162,71 @@ func TestAwaitRefusedBranchInterpretsPerElement(t *testing.T) {
 	}
 	if fmt.Sprintf("%v", gotC) != fmt.Sprintf("%v", gotI) {
 		t.Errorf("parity: compiled %v != interp %v", gotC, gotI)
+	}
+}
+
+// TestAwaitEmptyBranchEntersNoInterpreter is the twin of the test above, in
+// the other direction: an EMPTY branch body must reach the interpreter ZERO
+// times. compileStoredBody declines an empty token list, so before the
+// short-circuit this branch spawned a sub-engine over nothing and spent one
+// interpreter entry inside an otherwise compiled program — debt the
+// interp-entry census counts, for a result that is empty by construction.
+//
+// The answer is asserted beside the count: a short-circuit that changed what
+// an empty branch contributes would be worse than the entry it saves.
+func TestAwaitEmptyBranchEntersNoInterpreter(t *testing.T) {
+	for _, src := range []string{
+		`import "boru:time-util" TimeUtil.await {mode:"first"} [[]]`,
+		`import "boru:time-util" 99 TimeUtil.await {mode:"first"} [[]]`,
+		`import "boru:time-util" TimeUtil.await [[] [3 mul 4]]`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			a, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var (
+				mu      sync.Mutex
+				entries int
+			)
+			// The same filter the interp-entry census applies: a check-mode
+			// entry is the compiler front end running RunInCheckMode words,
+			// and an ATTRIBUTED one is interpretation the end state permits.
+			// What must be zero is the unattributed run-time entry.
+			disarm := a.ArmInterpEntryHook(func(e InterpEntry) {
+				if e.CheckMode || e.Attribution != "" {
+					return
+				}
+				mu.Lock()
+				entries++
+				mu.Unlock()
+			})
+			gotC, compiled, err := a.RunCompiled(src)
+			disarm()
+			if err != nil {
+				t.Fatalf("RunCompiled: %v", err)
+			}
+			if !compiled {
+				t.Fatal("the program must run compiled")
+			}
+			mu.Lock()
+			n := entries
+			mu.Unlock()
+			if n != 0 {
+				t.Errorf("an empty branch body entered the interpreter %d time(s); zero tokens is zero work", n)
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotI, err := b.RunInterp(src)
+			if err != nil {
+				t.Fatalf("RunInterp: %v", err)
+			}
+			if fmt.Sprintf("%v", gotC) != fmt.Sprintf("%v", gotI) {
+				t.Errorf("parity: compiled %v != interp %v", gotC, gotI)
+			}
+		})
 	}
 }
 

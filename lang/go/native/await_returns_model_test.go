@@ -181,27 +181,44 @@ func TestAwaitRunnerTableMatchesTheMirror(t *testing.T) {
 	}
 }
 
-// The COMPILE pass refuses the winner-takes-all modes wholesale: the
-// runtime count can exceed any static seat (NUR067's miscompile), so the
-// Compiling arm marks the program uncompilable and keeps the one-seat
-// dynamic Any for the recorded event's shape.
-func TestAwaitVariadicResultCompilePassRefuses(t *testing.T) {
+// The winner-takes-all model is ONE model, not two (NUR067's graduation):
+// the compile pass records the SAME variadic-spread carrier the plain pass
+// returns, and the recorder turns that one out into a runtime-variadic
+// REGION event (callVariadicRegion → eventFlags.variadicRegion). The
+// wholesale MarkUncompilable this used to assert is gone — a region has a
+// representation now, so the fixed-arity consumers refuse individually
+// instead of the whole program refusing up front.
+func TestAwaitVariadicResultModelsARegionOnBothPasses(t *testing.T) {
 	reg, err := DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
 	done := reg.Check.Begin()
 	defer done()
+	plain := awaitVariadicResult(reg)
 	reg.Check.Compiling = true
 	defer func() { reg.Check.Compiling = false }()
 	got := awaitVariadicResult(reg)
 	if len(got) != 1 {
 		t.Fatalf("compile pass: got %d residual values, want 1", len(got))
 	}
-	if _, spread := core.IsVariadicSpread(got[0]); spread {
-		t.Error("compile pass must keep the one-seat dynamic Any, not the spread")
+	elem, spread := core.IsVariadicSpread(got[0])
+	if !spread {
+		t.Fatalf("compile pass residual %+v, want the variadic-spread carrier", got[0])
 	}
-	if !got[0].Dynamic || got[0].Parent == nil || !got[0].Parent.Equal(TAny) {
-		t.Errorf("compile pass residual %+v, want dynamic(Any)", got[0])
+	if !core.ValueType(elem).Equal(TAny) {
+		t.Errorf("compile pass element %+v, want the deliberate Any", elem)
+	}
+	if len(plain) != 1 {
+		t.Fatalf("plain pass: got %d residual values, want 1", len(plain))
+	}
+	if _, plainSpread := core.IsVariadicSpread(plain[0]); !plainSpread {
+		t.Errorf("plain pass residual %+v, want the same spread carrier", plain[0])
+	}
+	// The two passes agree by IDENTITY, not by coincidence: one model, so a
+	// future divergence (a compile-only seat, the shape this graduated from)
+	// fails here rather than at a corpus row.
+	if core.Canon(got) != core.Canon(plain) {
+		t.Errorf("compile residual %s, plain %s — the two passes must model one region", core.Canon(got), core.Canon(plain))
 	}
 }

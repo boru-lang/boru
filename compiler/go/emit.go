@@ -186,6 +186,31 @@ type eventFlags struct {
 	// was reassigned to this event, so a re-read of the payload after the
 	// spread must decline (resolveResidualOperands).
 	spliceDyn bool
+	// regionMayBeFn marks a REGION event whose run can leave a CALLABLE value.
+	// The two lanes disagree about one: the INTERPRETER re-steps a Function
+	// that arrives on its stack (or in a handler's spliced-back results), the
+	// VM appends it as data — `5 for 1 [g/v]` is [6] interpreted and [5 fn]
+	// compiled. A region has no static count and no per-value seat, so nothing
+	// downstream can re-step one; the only sound answer is not to CONSUME such
+	// a region, which is what regionPrefixShape and regionCollectShape read
+	// this for (via singleSlotRegion). Set at record time from the values the
+	// region's run is modelled to leave.
+	regionMayBeFn bool
+	// variadicRegion marks a NATIVE call whose result is a runtime-variadic
+	// REGION — the GROWING direction: the handler leaves 0-or-MORE values
+	// where the recorded event carries ONE slot standing for the whole run
+	// (await's winner-takes-all first/any, NUR067). The shrinking mark alone
+	// (variadicResult, the L-DO catch: N seats, 1 delivered) cannot express
+	// it — a count that EXCEEDS the static seat strands values around every
+	// fixed layout — so the region takes the LOOP region's representation
+	// instead: one slot, marked lw.variadic at lowering, absorbed only by a
+	// variadic-absorbing position (the program residual / a no-contract RET)
+	// and refused at every fixed-arity consumer, at promotion, and at the
+	// dead-result drop. Self-identifying at record time: the check-side model
+	// of "0-or-more values" IS core.NewVariadicCarrier, so the call's own outs
+	// carry the mark (callVariadicRegion) — no latch to leak onto a later
+	// dispatch.
+	variadicRegion bool
 	// splitBound marks a variadic loop region whose FIRST value an S5 split
 	// bind consumed (SplitLoopRegionBind → RecordDynBind): the remaining
 	// regionN-1 values are the statically-counted rest. Inside a LOOP BODY
@@ -998,6 +1023,16 @@ type EmitState struct {
 	bindHazard  map[readKey]bool
 	storeHazard map[slotKey]bool
 
+	// storedBodyFnResidual records, for the ONE dispatch whose operands are
+	// being built, whether any STORE-BODY-LIST element can leave a CALLABLE
+	// value: a compiled branch unit whose residual holds one, or a non-empty
+	// element that did not compile (its residual is then unknown). RecordCall
+	// reads it a few lines later to decide whether the dispatch's variadic
+	// residual may be recorded as a REGION. Reset at the head of
+	// RecordCallOperands so it cannot outlive the dispatch that set it — the
+	// property of a latch that catchVariadicPending has to buy with a
+	// signature test.
+	storedBodyFnResidual bool
 	// eventInfo holds the per-event compile flags, keyed by event seq. It
 	// consolidates the former parallel zeroOutSeq/typeOut/valueDefs/genericSeq
 	// maps: each is a "property of event N", read via a producer's seq
@@ -3066,6 +3101,15 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
+	}
+	if unit < len(es.fnRecs) && es.fnRecs[unit] != nil && regionValsMayBeCallable(es.fnRecs[unit].outOpsVals) {
+		// The body compiles, and its residual can leave a CALLABLE. A word
+		// that hands such a residual back as its OWN result (await's
+		// winner-takes-all modes) may not record it as a region — see
+		// eventFlags.regionMayBeFn. Noted rather than refused here: a
+		// fixed-arity caller of the same edge is unaffected, and the body
+		// itself compiles perfectly well.
+		es.storedBodyFnResidual = true
 	}
 	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
@@ -5754,6 +5798,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 	if len(body.applyArgs) > 0 {
 		f.applyLoop = true
 	}
+	f.regionMayBeFn = regionValsMayBeCallable(bodyStk)
 	if lp.hasBodyOut {
 		// A value-producing loop leaves a runtime-variable count (one per-iteration
 		// value, N unknown at compile time) — variadic, like lowerLoop marks
@@ -6229,6 +6274,27 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		f.variadicResult = true
 		es.eventInfo[seq] = f
 	}
+	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
+	// check model IS "0-or-more values", so record the event as a region —
+	// variadicResult keeps every runtime-variable-count rule, variadicRegion
+	// adds the loop-region lowering on top.
+	if callVariadicRegion(outs) {
+		if es.storedBodyFnResidual {
+			// A branch body can leave a CALLABLE, and the winner's residual is
+			// handed back as this handler's results — which the INTERPRETER
+			// splices onto its tape and RE-STEPS, so `await {mode:'first'}
+			// [[5 g/v]]` answers 6 where a region would leave [5 fn]. A region
+			// carries no per-value seat to re-step from, so the program falls
+			// back: NUR067's remaining edge, and a far narrower one than the
+			// wholesale refusal it replaced.
+			es.MarkUncompilable(word + ": a branch body can leave a CALLABLE value, which the interpreter re-steps out of the handler's results and a region cannot (NUR067)")
+		} else {
+			f := es.eventInfo[seq]
+			f.variadicResult = true
+			f.variadicRegion = true
+			es.eventInfo[seq] = f
+		}
+	}
 	// Carrier-identity de-collision (the deferred runtime-independence item, in
 	// its targeted form). A call OUTPUT whose ID already maps to a PRIOR event is
 	// a repeated identical computed call: `(context get 'n') add (context get
@@ -6271,6 +6337,60 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		}
 		es.setProducedAt(outs[i], seq, i)
 	}
+}
+
+// residualHasVariadicRegion reports whether any residual entry was produced by
+// a VARIADIC REGION event — the one recorded slot standing for a runtime count
+// (eventFlags.variadicRegion). Its presence disqualifies the residual from
+// every fn-value-call classification: none of those arms can read a count.
+func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
+	for _, v := range residual {
+		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicRegion {
+			return true
+		}
+	}
+	return false
+}
+
+// regionValsMayBeCallable reports whether any value a region's run is modelled
+// to leave could be CALLABLE at run time. A fn value or a Function-typed
+// carrier plainly can; so can a DYNAMIC one, whose runtime type the model does
+// not bound. It is the question eventFlags.regionMayBeFn records, and it is
+// asked in the widening direction on purpose: a region that cannot be
+// re-stepped must not be consumed if it MIGHT carry something the interpreter
+// would re-step.
+func regionValsMayBeCallable(vals []core.Value) bool {
+	for _, v := range vals {
+		if v.Dynamic || core.IsFnValueResidual(v) || core.SigTypeMatches(v, core.TFunction) {
+			return true
+		}
+	}
+	return false
+}
+
+// storedBodyIsEmpty reports whether a stored-body-list element is a list of
+// ZERO tokens — the one shape compileStoredBody declines whose residual is
+// nonetheless KNOWN, namely none at all.
+func storedBodyIsEmpty(elem core.Value) bool {
+	lst, err := core.AsList(elem)
+	return err == nil && !lst.IsNil() && len(lst.Slice()) == 0
+}
+
+// callVariadicRegion reports whether a dispatch's modelled residual is a
+// VARIADIC REGION: exactly ONE out, and that out a variadic-spread carrier
+// (core.NewVariadicCarrier — the check-side "0-or-more values of element
+// type"). One out is what makes the region representable: the single recorded
+// slot stands for the whole runtime run, exactly as a value-producing loop's
+// does. A residual of any other length is an ordinary fixed-arity result and
+// is left alone; no compile-pass producer mints a spread alongside other
+// values, and one that did would owe its own region recording rather than
+// riding this one.
+func callVariadicRegion(outs []core.Value) bool {
+	if len(outs) != 1 {
+		return false
+	}
+	_, ok := core.IsVariadicSpread(outs[0])
+	return ok
 }
 
 // recordCallElided reports whether a dispatch is ELIDED — already recorded by a
@@ -6685,6 +6805,7 @@ func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) boo
 // pooled compound const can never reach one — the receiver is always a computed
 // event or a frame local.
 func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args []core.Value) ([]EmitOperand, bool) {
+	es.storedBodyFnResidual = false
 	introspect := sig.CompileEffect.Has(core.CompileReadsFn)
 	inertFn := introspect || sig.CompileEffect.Has(core.CompileStoresFn)
 	for i, t := range sig.ArgTypes() {
@@ -6802,6 +6923,15 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 						continue
 					}
 					rebuilt[j] = elems[j]
+					// The element keeps its raw list and that branch runs on
+					// the interpreter, so its residual is UNKNOWN here — and a
+					// residual the recorder cannot see may hold a callable.
+					// An EMPTY body is the exception, and the common one:
+					// compileStoredBody's first guard declines a zero-token
+					// list, and a body that runs nothing leaves nothing.
+					if !storedBodyIsEmpty(elems[j]) {
+						es.storedBodyFnResidual = true
+					}
 				}
 				if any {
 					ops[i] = ConstOperand(es.intern(core.WithPos(core.NewList(rebuilt), a)))
@@ -9190,6 +9320,135 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 	return pr.seq, true
 }
 
+// planRegionPrefix arms the INERT-PREFIX seating beneath a runtime-variadic
+// REGION (NUR067's consuming half — `99 for 3 [i]`, `99 await {mode:'first'}
+// [[]]`). Declines when another mark plan already owns the frame: one mark
+// client per program, exactly as planMarkWindow declines to planVariadicClaims.
+func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
+	seq, ok := es.regionPrefixShape(residual)
+	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{seq: true}
+	lw.regionPrefixSeq = seq
+}
+
+// regionPrefixShape reports the producing seq of a residual shaped
+// [inert…, REGION] — a runtime-variadic region LAST, with every entry beneath
+// it inert (a const or a type: no producing event at all). That is the one
+// shape OpSeatBelowMark can close, and it is the shape the ordinary seating
+// refuses as "call result above a literal": the prefix cannot be pushed after
+// the region (it would land on top of the run) and cannot be indexed past it
+// from the top (the run's length is a runtime value).
+//
+// The producer must be a TOP-LEVEL event, for planMarkWindow's reason:
+// lowerEvents reads markBefore only over frames[0], so a fragment-resident
+// anchor would arm the plan with no OpStackMark ever emitted and the VM would
+// raise where the interpreter succeeds.
+func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
+	if len(residual) < 2 {
+		return 0, false
+	}
+	pr, ok := es.producedBy[residual[len(residual)-1].ID]
+	if !ok {
+		return 0, false
+	}
+	// singleSlotRegion answers false for a nil event, and it is checked FIRST
+	// so regionReadsTheStack is never handed one.
+	ev := es.topLevelEventBySeq(pr.seq)
+	if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) {
+		return 0, false
+	}
+	for _, rv := range residual[:len(residual)-1] {
+		if _, isEvent := es.producedBy[rv.ID]; isEvent {
+			return 0, false
+		}
+	}
+	return pr.seq, true
+}
+
+// regionReadsTheStack reports whether the region event ev takes an operand
+// that is ALREADY on the simulated stack when its OpStackMark opens, and so
+// sits BELOW the mark: a prior EVENT's result, or a CLOSURE whose captures
+// may themselves be such results. The region would then pop from beneath its
+// own mark (`def m {n:3}  99 for (m get "n") [i]` — the bound is a live `get`
+// result), leaving the mark above the stack top and SEAT_BELOW_MARK with
+// nothing coherent to lift. Const, local and type operands are all pushed
+// AFTER the mark, so those keep the plan.
+//
+// Only the operands that can reach the ENCLOSING stack are walked, which is
+// why this does not reuse forEachOperand: a loop's condOut / bodyOut are its
+// FRAGMENTS' results, live on the fragment's own scope and never on this one,
+// and treating them as stack reads would decline every value-producing loop
+// (their bodyOut is an event operand whenever the body is computed —
+// `99 for 2 [(1 add 2)]`).
+func regionReadsTheStack(ev *EmitEvent) bool {
+	ops := ev.call.ops
+	if ev.kind == evLoop {
+		ops = []EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step}
+		for _, c := range ev.loop.carried {
+			ops = append(ops, c.init)
+		}
+	}
+	for _, op := range ops {
+		if op.kind == opEvent || op.kind == opClosure {
+			return true
+		}
+	}
+	return false
+}
+
+// planRegionCollect arms the COLLECT of a runtime-variadic region into one
+// List (NUR067's consuming half — `size [(for 3 [i])]`, `size [(await
+// {mode:'any'} [[7 8]])]`). Declines when another mark plan already owns the
+// frame: one mark client per program.
+func (es *EmitState) planRegionCollect(lw *lowerer) {
+	region, list, ok := es.regionCollectShape(es.frames[0])
+	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{region: true}
+	lw.collectAtSeq = list
+}
+
+// regionCollectShape finds a top-level [REGION, list-literal-over-it] ADJACENT
+// pair and returns the two seqs. Adjacency is the whole safety argument: the
+// mark opens before the region's event, so everything above it at run time
+// must be the region and nothing else, and no event runs between the two to
+// leave a value there or consume one from beneath. A list literal with any
+// other operand beside the region (`[9 (for 3 [i])]`, `[(for 3 [i]) 9]`)
+// keeps refusing — its elements would need seating either side of a run whose
+// length is a runtime value, which is the prefix problem OpSeatBelowMark
+// solves only for the program residual.
+func (es *EmitState) regionCollectShape(events []EmitEvent) (int, int, bool) {
+	for i := 0; i+1 < len(events); i++ {
+		ev, next := &events[i], &events[i+1]
+		if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) ||
+			next.kind != evCall || !next.call.makeList || len(next.call.ops) != 1 ||
+			next.call.ops[0].kind != opEvent || next.call.ops[0].idx != ev.seq {
+			continue
+		}
+		return ev.seq, next.seq, true
+	}
+	return 0, 0, false
+}
+
+// singleSlotRegion reports whether ev's result is ONE recorded slot standing
+// for a RUNTIME-VARIABLE count of values: a value-producing loop (`for` /
+// `while` — RecordLoop's hasBodyOut arm), or a variadic REGION call
+// (callVariadicRegion — await's winner-takes-all residual). A do-catch's
+// variadicResult is deliberately NOT one: it seats nout static slots and
+// shrinks at run time, so there is no single slot to seat a prefix under.
+// A nil event (no top-level event with that seq) is not one either.
+func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
+	if ev == nil {
+		return false
+	}
+	f := es.eventInfo[ev.seq]
+	return !f.zeroOut && !f.regionMayBeFn &&
+		(f.variadicRegion || (ev.kind == evLoop && f.variadicResult))
+}
+
 // topLevelEventBySeq finds the top-level frame's event with the given seq
 // (nil when the seq belongs to a nested fragment or unit).
 func (es *EmitState) topLevelEventBySeq(seq int) *EmitEvent {
@@ -9230,6 +9489,19 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		if es.hazardLead(v) {
 			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
 		}
+	}
+	// A VARIADIC REGION entry is a COUNT, not a value (NUR067): at run time it
+	// stands for 0-or-MORE stack values, so there is no single entry for any
+	// apply arm to classify — and the carrier is Dynamic by construction (it
+	// must match optimistically for the soundness oracle), which is exactly
+	// what the trailing-apply arm reads as "a fn value over one arg". Measured
+	// before the guard: `99 await {mode:'first'} [[1 2 3]]` lowered to
+	// CALL_DYNAMIC_TRAILING and answered [1 2 99 3] against the interpreter's
+	// [99 1 2 3]. Decline the whole fn-value-call boundary and let the ordinary
+	// residual seating rule instead — a lone region IS the residual and seats,
+	// a region above an inert tail refuses "call result above a literal".
+	if es.residualHasVariadicRegion(residual) {
+		return residual, 0, ""
 	}
 	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
@@ -9929,6 +10201,10 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
 	// Mark-window plan (L-DO part 2b): see planMarkWindow.
 	es.planMarkWindow(lw, residual)
+	// Region-prefix plan (NUR067's consuming half): see planRegionPrefix.
+	es.planRegionPrefix(lw, residual)
+	// Region-collect plan (NUR067's consuming half): see planRegionCollect.
+	es.planRegionCollect(lw)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -9971,11 +10247,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	if es.trapAt == 0 && dynOp != OpCallDynMixedFromMark {
-		if reason := lw.seatResults(ops, false, false, seatMsgs{
-			aboveLiteral: "residual shape beyond Stage 1 (call result above a literal)",
-			reordered:    "residual shape beyond Stage 1 (call results reordered)",
-			unconsumed:   "residual shape beyond Stage 1 (unconsumed call results)",
-		}, lastPos); reason != "" {
+		if reason := lw.seatProgramResidual(ops, lastPos); reason != "" {
 			// Reachable: a dirty-stack prefix under a dynamic-apply residual
 			// (the variation sweep's prefix-stack transform) seats a shape
 			// this refuses — a genuine Stage-1 refusal path, not a fault arm.
@@ -10638,6 +10910,15 @@ func (es *EmitState) creditWordRead(id string) {
 // none of the three: their count mismatch is the higher-order word's own
 // error and their reads are the enclosing frame's.
 func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []core.Value, ops []EmitOperand, dynTrail int) string {
+	// The residual VALUES are recorded for EVERY unit, a closure included, and
+	// BEFORE the closure early-return: they are what compileStoredBody reads to
+	// decide whether a stored branch body can leave a CALLABLE
+	// (eventFlags.regionMayBeFn), and a `spawnbody` unit IS a closure. Leaving
+	// them unset there was silent — the callable test simply read an empty
+	// slice and admitted the region, so `9 await {mode:'first'} [[g/v]]`
+	// compiled to [9 fn] against the interpreter's [10]. The replay accounting
+	// below is a plain-unit concern and still skips a closure.
+	rec.outOpsVals = vals
 	if rec.closure && !rec.plainLambda() {
 		return ""
 	}
@@ -10658,7 +10939,6 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 			return "bare read of a fn-valued binding is a word dispatch the frame replay cannot seat (NUR123)"
 		}
 	}
-	rec.outOpsVals = vals
 	return es.wordReadAccounting(rec)
 }
 

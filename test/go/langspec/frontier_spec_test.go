@@ -438,19 +438,22 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// KeepDefsBodyGuard now publishes only at FnBodyDepth == 0, exactly as
 	// its multi-run sibling does, and the row compiles with parity.)
 
-	// NUR067 — await's winner-takes-all modes (frontier-await-winner.tsv):
-	// `first` / `any` hand back the winning branch's WHOLE residual, 0-or-more
-	// values — a count that can EXCEED any static seat, the direction the L-DO
-	// variadic mark cannot express. The 1-seat layout was a live MISCOMPILE
-	// (`size [(await {mode:'any'} [[7 8]])]` — interpreter 2, compiled a
-	// stranded 7 and a 1-element list), so awaitVariadicResult now refuses the
-	// compile pass wholesale and the interpreter owns these modes. Graduation
-	// = a runtime-variadic region representation (an OpStackMark-style collect
-	// with no static count); the refusal arm then records the region and the
-	// rows move to lang/spec/module-time.tsv.
-	`import "boru:time-util" TimeUtil.await {mode:'first'} [[1 2 3]]`:      {why: "NUR067: the winner's 3-value residual has no static seat", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
-	`import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]`: {why: "NUR067: the miscompile shape — both values must reach the collecting paren", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
-	`import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]`:        {why: "NUR067: an empty winner contributes nothing — the zero-count direction", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
+	// (NUR067's family — frontier-await-winner.tsv — is GRADUATED IN FULL as
+	// of 2026-09-10, and the file is gone. `first` / `any` hand back the
+	// winning branch's whole residual, 0-or-more values, and that is now a
+	// runtime-variadic REGION: awaitVariadicResult returns one variadic-spread
+	// carrier on BOTH passes, RecordCall turns it into a region event
+	// (callVariadicRegion), and lowerCall gives it a value-producing loop's
+	// representation — ONE simulated slot marked lw.variadic. The wholesale
+	// MarkUncompilable is gone.
+	//
+	// The two CONSUMING rows graduated with their LOOP twins on two closing
+	// ops, since neither was ever an await question: OpSeatBelowMark seats a
+	// residual's inert prefix beneath a run (`99 await …`, `99 for 3 [i]`) and
+	// OpMakeListToMark collects a run into one List (`size [(await …)]`,
+	// `size [(for 3 [i])]`). All of them now live in
+	// lang/spec/bytecode-migrated.tsv and lang/spec/module-time.tsv, where the
+	// live censuses own them.)
 
 	// Net drivers — plan Phase 5: per-iteration mark/collect in the for: lowering.
 

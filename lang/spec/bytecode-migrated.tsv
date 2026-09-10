@@ -71,6 +71,34 @@ for 2 [(1 add 2) (3 mul 4)]	3 12 3 12
 # Net drivers COMPLETE (2026-07-14): the inert-const multi-value loop body
 # graduates — captured operands re-push per iteration (frontier-for-multi).
 for 3 [1 2]	1 2 1 2 1 2
+# Region prefix (2026-09-10, NUR067's consuming half): a residual shaped
+# [inert..., REGION] — values that must end up BENEATH a run whose length is
+# a runtime value. The lowering opens an OpStackMark before the region's
+# producing event and closes with SEAT_BELOW_MARK, which lifts the prefix
+# down to the mark without naming the run's length. Both producers of a
+# single-slot region are here, at many / one / zero.
+99 for 3 [i]	99 0 1 2
+99 for 0 [i]	99
+1 2 for 3 [i]	1 2 0 1 2
+99 for 2 [(1 add 2)]	99 3 3
+5 for 2 [1 2]	5 1 2 1 2
+import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[1 2 3]]	99 1 2 3
+import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]	99
+# Region collect (2026-09-10, NUR067's consuming half): a list literal whose
+# one element is a paren over a runtime-variadic region. OpMakeList cannot
+# build it — its Arg is a STATIC element count — so the lowering opens a mark
+# before the region's producing event and closes with MAKE_LIST_TO_MARK,
+# whose element count IS the mark. The await row is the one NUR067 was opened
+# on: its one-seat layout compiled a stranded 7 and a 1-element list where the
+# interpreter answers 2.
+[(for 3 [i])]	[0 1 2]
+[(for 0 [i])]	[]
+size [(for 3 [i])]	3
+[(for 2 [(1 add 2)])]	[3 3]
+def xs [(for 3 [i])] xs	[0 1 2]
+[(for 3 [i])] get 1	1
+import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]	2
+import "boru:time-util" [(TimeUtil.await {mode:'any'} [[7 8]])]	[7 8]
 # await branch bodies compile per element (CompileStoresBodyList, 2026-07-14):
 # each parallels element becomes its own 0-param unit run via RunUnit on its
 # branch fork; a raising branch surfaces as the mode's error value.

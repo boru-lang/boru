@@ -4864,6 +4864,378 @@ dyn-scope rescue), and the probe declines it only because
 `forkForProbe` seeds no `producedBy` — `[1 2] each [(f 1)]` refuses
 "code-body word each (Stage 2)" on exactly that.
 
+## The runtime-variadic REGION already existed: it is the loop's (2026-09-10, the thirty-ninth increment, NUR067)
+
+`await {mode:'first'}` / `{mode:'any'}` hand back the winning branch's
+WHOLE residual — 0-or-more values, a count that can EXCEED any static seat.
+`awaitVariadicResult` refused the whole program on the compile pass, on the
+stated grounds that "the emitter's variadic machinery covers only the
+SHRINKING direction (the L-DO catch's N seats, 1 delivered)" and that the
+growing direction needs "a runtime-variadic region representation" —
+`design/FULL-COMPILATION.0.md` §6.6 named that as the *generalized mark
+region*, an `OpStackMark` with no static count.
+
+**The premise was half wrong, and the half that was wrong is the expensive
+half.** Two measurements, both from reading code that was already there:
+
+1. **The VM's mark ops are already count-agnostic** (`eng/go/vm.go`,
+   `vmMark`). Their comments say "0-or-1", but `OpDropToMark` does
+   `stack[:m]` — which truncates ANY count — and `OpPopMark` keeps whatever
+   is above the mark. Nothing at the VM was 0-or-1-specific.
+2. **A value-producing loop's region IS the representation.** `RecordLoop`
+   registers ONE carrier for a loop whose trip count is a runtime value and
+   marks the event `variadicResult`; `lowerLoop` pushes ONE simulated slot
+   and marks `lw.variadic[seq]`. Every downstream rule then reads that one
+   mark: `layoutOperands` refuses the slot as a call/list operand,
+   `seatResults` admits it only in a variadic-absorbing LAST position, the
+   store and dyn-bind hooks refuse it.
+
+So the growing direction needed no new opcode and no new machinery. It
+needed the await result to be RECORDED as the region it already is.
+
+**What landed.**
+
+- `awaitVariadicResult` returns the SAME `core.NewVariadicCarrier` on both
+  passes. There is no compile-pass branch left at all — one model, and the
+  wholesale `MarkUncompilable` is deleted (the refusal-site census drops one).
+- `callVariadicRegion` (compiler) reads that carrier straight out of the
+  dispatch's `outs` in `RecordCall`: exactly one out, and that out a
+  variadic spread. Self-identifying, so there is no latch to leak onto a
+  later dispatch the way `SetCatchVariadic` has to guard against.
+- `eventFlags.variadicRegion` joins `variadicResult`. The pair is deliberate:
+  `variadicResult` alone means "runtime-variable count" and every existing
+  rule keys on it; `variadicRegion` adds "and the recorded slot stands for
+  the WHOLE run", which is what `lowerCall` needs to mark `lw.variadic`.
+- `lowerCall` gives the region the loop's lowering — one slot, `lw.variadic`
+  — and refuses the two dispositions that need a static count: a frame
+  PROMOTION (stores exactly `nout` values) and the DEAD-result drop (pops
+  exactly one). Both refusals are reachable and pinned.
+
+**The miscompile the change EXPOSED, and the guard for it.** With the region
+recorded but nothing else changed, `99 TimeUtil.await {mode:'first'} [[1 2 3]]`
+compiled to `CALL_DYNAMIC_TRAILING` and answered `[1 2 99 3]` where the
+interpreter answers `[99 1 2 3]`. The cause is the spread carrier's own
+contract: `NewVariadicCarrier` is Dynamic *by construction* (it must match
+optimistically so the soundness oracle can intercept it), and
+`resolveDynamicApply`'s trailing arm reads "a Dynamic value last over one
+arg" as a fn value to apply. `residualHasVariadicRegion` now declines the
+whole fn-value-call boundary when any residual entry is a region: a region
+is a COUNT, not a value, so no apply arm can classify it. The ordinary
+residual seating then rules — a lone region seats, a region above an inert
+tail refuses "call result above a literal".
+
+**Measured.** The ledger drops from 38 rows to 37: the plain-residual row
+(`await {mode:'first'} [[1 2 3]]`) compiles and moves to
+`lang/spec/module-time.tsv` with two siblings that pin the other two counts
+(one value via `{mode:'any'}` over a rejecting branch, and zero via `[[]]`).
+The two rows left in `frontier-await-winner.tsv` refuse at their CONSUMER,
+each with the reason its LOOP twin already gives: `size [(await …)]` gets
+"consumes loop results", the same as `size [(for 3 [i])]`; `99 await … [[]]`
+gets "residual shape beyond Stage 1 (call result above a literal)", the same
+as `99 for 3 [i]`. Their `failsWith` pins were rewritten accordingly.
+
+**What the next author should not re-derive.** These two rows are no longer
+an *await* frontier and should not be worked as one. They are the general
+consuming half — an op that collects a region into a list, and a residual
+seating that can put fixed values BENEATH a region — and graduating either
+one graduates the `for` spelling in the same stroke. Start from the loop
+rows, which are simpler and already in the corpus.
+
+**Also fixed on the way.** `awaitResidual`'s doc referred to
+`awaitClearVariadic`, a function that does not exist anywhere in the tree —
+a stale reference to a latch design that was never built.
+
+## Seating an inert prefix beneath a region (2026-09-10, the fortieth increment, NUR067)
+
+The thirty-ninth increment gave the growing direction a REPRESENTATION and
+left the two CONSUMING shapes refusing. This is the first of them, and it is
+shared with the loop rows verbatim: a residual of
+`[inert…, REGION]` — `99 for 3 [i]`, `99 await {mode:'first'} [[]]` — where
+values have to end up BENEATH a run whose length is a runtime value.
+
+**Why the ordinary seating cannot do it.** `seatResults` pushes inert
+operands as a TRAILING tail, above the last event result, and refuses an
+event above a queued tail ("call result above a literal"). For a region there
+is no other static option: pushing the prefix after the region lands it on
+TOP of the run, and no fixed offset reaches past a runtime count. The
+existing repair for the non-region case — promote the producing event to a
+frame local and re-push in residual order (`forceOrder`) — is exactly what a
+region cannot do: a promotion stores `nout` values.
+
+**What landed.** `OpSeatBelowMark`, one new op, and a plan that arms it:
+
+- `planRegionPrefix` / `regionPrefixShape` (Finalize, before lowering)
+  recognise `[inert…, REGION-last]` and put an `OpStackMark` in `markBefore`
+  — the same map `planVariadicClaims` and `planMarkWindow` use, and it
+  declines to both, so a program has one mark client.
+- `seatRegionPrefix` (after lowering) pushes the prefix ABOVE the finished
+  run and emits `OpSeatBelowMark n`. It returns a BOOL rather than a reason:
+  a shape it cannot close falls through to the ordinary seating, whose
+  refusal is the honest one, and the unused mark is emitted into a program
+  that never runs.
+- `vmSeatBelowMark` (eng) pops the mark m, lifts the top n values, and re-lays
+  the stack as `[…, prefix, region…]`. The region's length is never named —
+  that is the whole point, and it is why the ZERO case needs no special arm.
+
+**Two facts the plan has to get right, neither visible from a passing row.**
+
+1. **`singleSlotRegion` is not `variadicResult`.** A `do`-catch is
+   `variadicResult` too, and it seats `nout` STATIC slots that shrink at run
+   time — there is no one slot to seat a prefix under. Only a value-producing
+   loop (`RecordLoop`'s `hasBodyOut` arm) and a `variadicRegion` call qualify.
+2. **A loop's `condOut` / `bodyOut` are its FRAGMENTS' results.** The mark
+   opens before the region's event, so an operand already live on the
+   ENCLOSING stack sits BELOW the mark and the region would pop from beneath
+   it (`def m {n:3}  99 for (m get "n") [i]` — the bound is a live `get`
+   result). `regionReadsTheStack` therefore declines an event or closure
+   operand — but it walks `start`/`end`/`step`/`carried` only, NOT
+   `forEachOperand`: the fragment outs never touch this scope, and counting
+   them would have declined every computed-body loop (`99 for 2 [(1 add 2)]`)
+   silently and for a wrong reason.
+
+**Measured.** Seven rows enter `lang/spec/bytecode-migrated.tsv` — the loop
+spellings at three counts (three values, zero, a two-deep prefix), a computed
+body, a multi-value body, and both await counts — and the ledger drops from
+37 to 36. The stack-reading region keeps its refusal with the interpreter's
+answer pinned beside it.
+
+**What the next author should not re-derive.** The remaining consuming shape
+is the collecting paren (`size [(for 3 [i])]`, `size [(await …)]`), and it
+needs the OTHER half of §6.6's generalized region: an op that builds a List
+of `stack[mark:]`. The mark plumbing this increment added is already the
+right half of it — `markBefore`, one client per program, the plan/seat split
+— so that increment is a second closing op, not new machinery.
+
+## Collecting a region into a List, and NUR067 closed (2026-09-10, the forty-first increment)
+
+The last consuming shape: a list literal whose one element is a paren over a
+runtime-variadic region — `[(for 3 [i])]`, `size [(await {mode:'any'}
+[[7 8]])]`. `OpMakeList` cannot build it, and for one reason: its Arg is a
+STATIC element count.
+
+**What landed.** `OpMakeListToMark` — pop the innermost mark m, replace
+`stack[m:]` with one List of those values in order (ascriptions stripped, as
+`OpMakeList` strips them: list elements are stored data). The plan is the
+prefix plan's twin: `planRegionCollect` / `regionCollectShape` recognise the
+pair and put an `OpStackMark` in `markBefore`; `collectRegionTop` (a bool, so
+a shape it cannot close falls through to the ordinary refusal) emits the
+close. The collected List is a static single value, so a PROMOTED result
+stores and re-pushes like any other — `def xs [(for 3 [i])]  xs` compiles,
+and only the region needed the mark.
+
+**The safety argument is ADJACENCY, and it is the thing to keep.** The mark
+opens before the region's event, so everything above it at run time must be
+the region and nothing else. An event between the region and the list literal
+could leave a value there, or take one from beneath it. So the shape requires
+the two to be NEIGHBOURS in the top-level frame, and the seam test pins that
+they must be — no whole-program row can show it, because the row that would
+break is the row that refuses.
+
+**What stays refused, and why it is not arbitrary.** A list literal with any
+element BESIDE the region (`[9 (for 3 [i])]`, `size [(for 3 [i]) 9]`) keeps
+"consumes loop results": its other elements would have to seat either side of
+a run whose length is a runtime value, which is the prefix problem — and
+OpSeatBelowMark solves that only for the PROGRAM residual, where there is
+exactly one place to put things. A DEAD binding (`def _ [(for 3 [i])] 5`)
+keeps it too: dropping the result wants a static count to pop.
+
+**NUR067 is closed.** All three of its rows compile, `frontier-await-winner.tsv`
+is deleted, and its ledger entry is gone (36 → 35). Eight rows enter
+`lang/spec/bytecode-migrated.tsv`, `size [(await {mode:'any'} [[7 8]])]`
+among them — the row the whole NUR was opened on, whose one-seat layout
+compiled a stranded 7 and a 1-element list where the interpreter answers 2.
+
+**What the next author should not re-derive.** The three increments took a
+family that `design/FULL-COMPILATION.0.md` §6.6 had scheduled for the G-lane
+("the generalized mark region") and closed it in the T-lane, with two closing
+ops over machinery that already existed. The reusable lesson is the one the
+thirty-ninth increment found: **a value-producing loop's region was already
+"one recorded slot, a runtime count", and the VM's mark ops were already
+count-agnostic.** Before building a representation, check whether the one you
+need is already carrying a different client.
+
+## A CALLABLE in the region: the review finding, and the older defect behind it (2026-09-10, NUR067 / NUR129)
+
+A P1 review finding on the region PR, and it is correct. The row:
+
+```
+def g fn [[x:Integer] [Integer] [x add 1]]  await {mode:'first'} [[5 g/v]]
+  interpreted  [6]      — the winner's residual [5, g/v] is spliced back onto
+                          the tape and RE-STEPPED, so g/v dispatches over 5
+  compiled     [5 fn]   — OpCallNative appends the handler's results as data
+```
+
+The rule it violates is NUR124's: a Function that ARRIVES on the stack
+dispatches over what is beneath it. A region carries no per-value seat, so
+nothing in the compiled lane re-steps one.
+
+**Measured before deciding, and the measurement changed the answer.** The
+same probe run on `0e0ad83` — before any of the three increments — says:
+
+| row | on 0e0ad83 | on the branch |
+|---|---|---|
+| `for 2 [g/v]` | compiles, `[fn fn]` vs the interpreter's `uncalled_function` | unchanged |
+| `5 for 1 [g/v]` | REFUSED ("above a literal") | compiled, `[5 fn]` vs `[6]` |
+| `[(for 2 [g/v])]` | REFUSED ("consumes loop results") | compiled, `[[fn fn]]` vs an error |
+| `await {mode:'first'} [[5 g/v]]` | REFUSED (NUR067) | compiled, `[5 fn]` vs `[6]` |
+
+So the divergence is OLDER than the region work and lives in the bare loop
+residual; the increments extended it into three shapes that used to refuse.
+That split decided the fix: close the three the increments opened, record the
+one they did not.
+
+**The guard.** `regionValsMayBeCallable` answers, of the values a region's run
+is modelled to leave, whether any could be callable — a fn value, a
+Function-typed carrier, or a DYNAMIC one, whose runtime type the model does
+not bound. It seats in two places:
+
+- `RecordLoop` marks `eventFlags.regionMayBeFn` from the body residual, and
+  `singleSlotRegion` refuses such a region — so BOTH consumers decline it
+  through one test rather than repeating it.
+- The await side cannot use the modelled element (`Any`, deliberately — the
+  branches are unevaluated code bodies). It uses the COMPILED BRANCH UNITS
+  instead: `compileStoredBody` inspects each unit's `outOpsVals`, and a
+  non-empty element that did not compile counts as unknown-and-therefore-
+  unsafe. `RecordCall` then refuses the dispatch rather than recording a
+  region. Every graduated row still compiles, because their branch residuals
+  are concrete.
+
+**What it costs, stated rather than discovered.** The dynamic arm is wide on
+purpose, so the two consumers decline regions the model merely cannot vouch
+for — `99 for 3 [(f i)]` and its family — not only ones that carry a fn.
+Those never compiled before this batch, so nothing regresses; the narrowing
+(a dynamic residual that provably excludes Function, the not-disjoint rule the
+residual lowering already uses for the same question) is the follow-up.
+
+**The bare loop residual is NUR129, not fixed.** Applying the same predicate
+at `RecordLoop` would refuse every loop whose body residual is dynamic, which
+is a large class of programs that compile CORRECTLY today. Trading a rare
+wrong answer for a common lost compile is not a call to make quietly, so it
+is recorded with the measurement and what a real fix needs.
+
+**And it costs back the refusal site the thirty-ninth increment saved.** That
+increment deleted `awaitVariadicResult`'s wholesale `MarkUncompilable` and
+lowered the census ceiling 93 → 92; this guard adds one refusal at the same
+arity, so the ceiling goes back to 93 and the BATCH is net zero. Worth stating
+plainly rather than leaving the earlier number to stand: a representation that
+removes a refusal and then turns out to owe a smaller one has not reduced the
+refusal machinery, and the census is right to say so. The ceiling comment
+carries the round trip.
+
+**What the next author should not re-derive.** The finding named await; the
+defect is the region's, and both producers have it. Measure a review finding
+against the MERGE BASE before scoping the fix — here that is the whole
+difference between "the increments introduced a divergence" (three shapes,
+closed) and "the increments extended one" (a fourth, older, recorded).
+
+## The coverage gate found a functional hole, not a missing test (2026-09-10)
+
+`make cover-gate` came back with ONE uncovered statement in the whole tree —
+`compiler/go/emit.go`, the line inside the callable guard that sets
+`storedBodyFnResidual` from a COMPILED branch unit's residual. Every other
+module was 100%.
+
+The uncovered line was not a test gap. It was the guard's compiled-unit half
+never running at all:
+
+```go
+if unit < len(es.fnRecs) && es.fnRecs[unit] != nil &&
+    regionValsMayBeCallable(es.fnRecs[unit].outOpsVals) { … }
+```
+
+`outOpsVals` is assigned in `fnResidualReplayReason` — AFTER its first line,
+which returns early for a closure unit that is not a plain lambda. A
+`spawnbody` unit (`compileStoredBody` → `compileClosureBody(…,
+ClosureInValue, …)`) is exactly such a closure, so its `outOpsVals` was never
+set. The callable test therefore read an EMPTY slice for every branch body
+that compiled, and answered false. The guard only ever worked through its
+other arm — "this element did not compile, so its residual is unknown".
+
+**Measured, and it was a live divergence in the fix that was supposed to
+close them:**
+
+```
+def g fn [[x:Integer] [Integer] [x add 1]]  9 await {mode:'first'} [[g/v]]
+  interpreted  [10]      g/v arrives above 9 and dispatches
+  compiled     [9 fn]
+```
+
+`[[5 g/v]]` declines to compile as a unit and so was caught; `[[g/v]]`
+compiles and was not. The two rows differ by one token.
+
+**The fix** is to record the residual values for EVERY unit, before the
+closure early-return. It only ever populates a field that was empty for those
+units, and the replay accounting the early return guards is untouched.
+
+**What the next author should not re-derive.** A 100% coverage gate is not
+only a test-completeness instrument. A statement that cannot be reached is a
+statement whose CONDITION is never true, and when that condition is a guard,
+"never true" is the bug. This one was found by the gate and by nothing else:
+every functional test of the guard passed, because they exercised the arm that
+worked.
+
+## What the batch gate caught: three gates the region rows moved (2026-09-10, repairs to the thirty-ninth-to-forty-first increments)
+
+The three region increments each passed their own tests and their own corpus
+files. The batch gate then answered with three reds, and all three were the
+gates doing their job on rows that had never been inside them before —
+`frontier-await-winner.tsv` sat OUTSIDE every live census, so moving its rows
+into the main corpus is the first time they meet these.
+
+**1. Type soundness (the one that mattered).**
+
+```
+TYPE UNSOUND bytecode-migrated.tsv:L85: 99 TimeUtil.await {mode:'first'} [[1 2 3]]
+  checked=[Integer dynamic(Any)] actual=[Integer Integer Integer Integer]
+```
+
+`stackTypeCovered` recognised a variadic spread ONLY at `checked[0]`, which is
+where the `[]`-declared recursive fn's residual puts it (recursion.tsv:53). The
+region rows put it on TOP of a fixed entry instead, and the fixed-length path
+below then rejected a residual that says exactly what happens: "an Integer at
+the bottom, then 0-or-more values". The oracle now reads the spread WHEREVER it
+sits — fixed entries below align with the bottom of the runtime stack, fixed
+entries above with the top, everything between absorbed — and every absorbed
+entry still passes `typeCovered(elem, ·)`, so this is count flexibility only,
+exactly as before. `variadic_spread_test.go` gained the new positions with
+their negatives, including a leak in the absorbed middle while both fixed ends
+match. 0 violations across 6460 rows.
+
+The reason this is a fix and not a weakening: the pin was 0 and the count was
+0 before the batch, so there was no other violation for the generalisation to
+mask, and it admits nothing the spread carrier does not already claim.
+
+**2. The interp-entry census, 35 against a ceiling of 33.** `BORU_LOG_CENSUS_ROWS=1`
+named the two rows in one line each, and they were the same shape:
+`await {mode:'first'} [[]]` — an EMPTY branch body. `compileStoredBody`
+declines an empty token list (its first guard), so that branch fell to
+`interpretBranchBody`, which spawned a sub-engine over zero tokens: one
+interpreter entry inside an otherwise compiled program, for a result that is
+empty by construction. The short-circuit is one guard in
+`interpretBranchBody`, and it is behaviour-identical by construction — zero
+tokens, zero steps, an empty stack either way. Back to 33 with two rows more
+in the corpus than before.
+
+The pin is `TestAwaitEmptyBranchEntersNoInterpreter`, and it applies the
+census's OWN filter (`CheckMode || Attribution != ""`) rather than counting
+every entry — the first version counted check-mode entries and failed on all
+three rows for the wrong reason. Verified against a control with the guard
+deleted: 1 unattributed entry per row.
+
+**3. `TestNoStrandedOracleReads`.** The refusal rows in
+`bytecode_await_test.go` compared `a.Run(src)` against `b.RunInterp(src)` as a
+"fallback parity" check. The gate is right and the check was vacuous: after a
+compile refusal `Run` IS the interpreter, so it was comparing that lane to
+itself (NUR106). The rows already assert the expected value written out, which
+is the assertion that carries weight; the second run is gone.
+
+**What the next author should not re-derive.** A frontier TSV lives outside
+the live censuses BY DESIGN, so "the row passes its own file" says nothing
+about what the batch gate will find when the row graduates. Budget for it: of
+the three reds here, one was a real gap in a gate (the oracle), one was real
+debt the rows newly exposed (the empty branch), and one was a genuinely
+vacuous assertion of mine. None was a bookkeeping bump.
+
 ## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
 
 The thirty-seventh and thirty-eighth increments each graduated rows into the
