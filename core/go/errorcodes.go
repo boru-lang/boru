@@ -156,6 +156,20 @@ func LookupErrorCode(code string) (ErrorCode, bool) {
 // kernelErrorCodes are the codes the eng kernel itself attaches — parse and
 // dispatch failures, the check-mode diagnostic families, the resource
 // ceilings, and the compiled/interpreted runtime contracts.
+// `runtime_error` is the interpreter's own runtime-fault code (`while` /
+// `if`: "condition produced no value"). It has been reaching users since
+// those raises existed, but only through `Engine.runtimeError` — a helper
+// codeMintPatterns does not match — so nothing ever required it to be
+// enumerated. The forty-second increment's check mirror and terminal trap
+// attach it from matched sites, which is what surfaced the gap.
+//
+// MEASURED WHILE FIXING IT, and NOT fixed here: the same blind spot still
+// hides `flow_error` and `halt`, the other two codes `runtimeError` mints
+// that no matched site attaches (`move_error`, `evaluation_limit` and
+// `tape_exhausted` are registered by other routes). Closing it properly
+// means adding a `runtimeError\(` pattern to codeMintPatterns and
+// registering those two — a change to the code-stability contract that
+// wants its own increment rather than a ride on this one.
 var kernelErrorCodes = []string{
 	"analysis_truncated", "arity_mismatch", "branch_error", "concurrency_error",
 	"constraint_violation", "def_error", "dynamic_dispatch", "evaluation_limit",
@@ -166,7 +180,7 @@ var kernelErrorCodes = []string{
 	"invalid_word_name", "locked_signature", "macro_error", "macroexpand_error",
 	"micron_name", "missing_returns", "mixed_form_call", "no_signature",
 	"no_value_error", "partial_dispatch", "record_shape_mismatch", "redundant_guard",
-	"reserved_word", "signature_error", "speculative_forward_commit", "step_budget_exceeded",
+	"reserved_word", "runtime_error", "signature_error", "speculative_forward_commit", "step_budget_exceeded",
 	"stranded_type_call",
 	"syntax_error", "tape_exhausted", "type_error", "unbound_param",
 	"sugar_unbound",
