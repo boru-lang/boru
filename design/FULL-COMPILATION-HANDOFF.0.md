@@ -5161,6 +5161,50 @@ so `RecordTrap` declines there and the arity refusal stands, with the
 interpreter's answer intact. Both shapes are pinned in
 `lang/go/while_compile_test.go`.
 
+## The program residual can be rebuilt, and a frame count was written back too early (2026-09-10, the forty-third increment)
+
+`(1 add 2) (3 add 4) 1 roll` refused with "residual shape beyond Stage 1
+(call results reordered)". The full-stack fold models the permutation exactly
+— it holds both values and knows the answer is `7 3` — and then the LOWERING
+declines, because each call left its result where it ran and no static offset
+reaches past a value already on the stack.
+
+**What landed.** `seatResidualRebuild` (compiler/go/lower.go), tried only
+after the in-place `seatResults` declines: spill every simulated-stack entry
+to a fresh frame local, then push the residual back exactly as recorded — an
+event result from its spill temp, an inert operand from its own push. It is
+the program-residual twin of `spillSeat`, the call-site DDCG fallback that
+has done this at operand sites all along; the two differ only in operand
+direction (a residual is bottom-first, a call's operands sig-first).
+
+One mechanism closes four shapes at once, and only the first was ledgered:
+a PERMUTED residual, a DUPLICATED call result (`0 pick` — one temp read
+twice), a DROPPED one, and an inert value seated BENEATH a call result (the
+shape whose refusal read "call result above a literal").
+
+**What it declines, and why each is a precondition rather than a policy.** A
+VARIADIC region operand: its run is not one spillable stack entry, so
+`OpStoreLocal` would take the run's last value and leave the rest. An event
+operand not on the simulated stack: there is no value to spill for it. An
+armed mark plan (the mark window, the region prefix, the region collect): its
+`OpStackMark` is already emitted and indexes the very stack a spill would
+empty. None of these is reachable from a source row that also needs the
+rebuild, so all four are dialled directly in
+`compiler/go/residual_rebuild_test.go`.
+
+**The defect this exposed, which is the part worth carrying forward.**
+`Finalize` seeded the lowerer's frame-local counter from the unit's planned
+count, lowered the events, and wrote the count BACK — and only then ran the
+residual reconciliation. Every spill temp the residual seating allocated
+therefore landed outside the frame: `Program.NumLocals` said 0 while the code
+held `STORE_LOCAL l0`. The failure mode is the quiet one — the VM fails its
+first store, the program falls back to the interpreter, and the answer is
+still RIGHT, with `compiled=false` and an EMPTY refusal reason to explain it.
+The write-back moved after the reconciliation. It had been latent because no
+existing residual path allocated a local; the general lesson is that
+"compiled=false with no reason" is a bug report, not a refusal, and worth a
+test of its own (`TestResidualRebuildFrameCountsTheSpills`).
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -5911,3 +5955,5 @@ position than the construct that produced the binding.
 | `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
 | `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |
 | `lang/go/while_compile_test.go` (`TestWhileEmptyConditionTraps`, `TestWhileNonEmptyConditionDoesNotTrap`) | the forty-second increment: the empty condition compiles to a terminal trap with the interpreter's own error (with a prefix before it, and whatever the body is), a condition WITH tokens never traps, and the empty condition below the top level keeps the arity refusal |
+| `lang/go/residual_rebuild_test.go` | the forty-third increment's parity (the permuting roll, `swap`, three results rotated both ways, a duplicated result, a dropped one, an inert value beneath a result, non-Integer results), that an in-order residual still spills nothing, and the frame-count pin (`TestResidualRebuildFrameCountsTheSpills`) |
+| `compiler/go/residual_rebuild_test.go` | `seatResidualRebuild`'s seam: the emitted spill/re-push stream for a permutation, one temp read twice for a duplicate, a dropped entry, and the four declines (an empty sim, an operand absent from it, a result index absent from it, a variadic region, each of the three armed mark plans — each emitting nothing) |

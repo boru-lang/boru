@@ -7,12 +7,12 @@
 # dispatch needs no opcode and no event. The graduated rows moved to
 # lang/spec/corpus-core.tsv where the census owns them.
 #
-# The REMAINING sub-frontier is the row below: a roll that permutes two
-# EVENT results asks the program-residual reconciliation to re-push call
-# results in a non-production order, which exceeds the Stage-1 residual
-# discipline — the fold produces the right model and the LOWERING declines
-# (sound interpreter fallback). Graduation = residual ordering beyond
-# Stage 1 (the forceOrder machinery generalised to program residuals), at
-# which point the ledger entry deletes and the row joins corpus-core.
-(1 add 2) (3 add 4) 1 roll	7 3	two event results permuted: the residual re-push order exceeds Stage 1
+# The permuting roll GRADUATED with the forty-third increment
+# (2026-09-10): the program residual now REBUILDS when its order is not
+# the order the events produced it in — every simulated-stack entry
+# spills to a frame local and the residual is pushed back exactly as
+# recorded (seatResidualRebuild, the program-residual twin of the
+# call-site spillSeat). The rows joined lang/spec/corpus-core.tsv.
+#
+# The REMAINING sub-frontier is the row below.
 [10 20] each [drop 1 2 3 1 pick]	[2 2]	a full-stack word inside a wrapped code body islands (fold gated to the top unit; the island is the sound seam)

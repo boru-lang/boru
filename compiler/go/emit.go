@@ -10212,8 +10212,6 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if reason := lw.lowerEvents(es.frames[0], 0); reason != "" {
 		return nil, reason, false
 	}
-	es.units[0].numLocals = lw.numLocals
-
 	// Residual reconciliation.
 	lastPos := core.SrcPos{}
 	if n := len(es.frames[0]); n > 0 {
@@ -10471,6 +10469,12 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.p.Types = es.types
 	lw.p.Fallbacks = es.fallbacks
 	lw.p.MaxStack = lw.maxDepth
+	// AFTER the residual reconciliation, not before it: the residual's own
+	// seating allocates spill temps too (seatResidualRebuild), and a count
+	// written back before it left those locals outside the frame — every
+	// STORE_LOCAL past NLocals then failed at run time and the program fell
+	// back to the interpreter with no refusal reason to show for it.
+	es.units[0].numLocals = lw.numLocals
 	lw.p.NumLocals = es.units[0].numLocals
 	// Back-stamp every stored-fn handler ref with the now-built *Program so a
 	// callback invoked after this run returns (a serve-raw connection handler on

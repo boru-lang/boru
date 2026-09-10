@@ -298,13 +298,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// Full-stack words GRADUATED 2026-08-03 (EmitState.FoldFullStack —
 	// static fold over a provably-exact stack; rows moved to
-	// corpus-core.tsv). The remaining sub-frontier
-	// (frontier-full-stack.tsv): a roll permuting two EVENT results asks
-	// the program residual to re-push call results in a non-production
-	// order — beyond the Stage-1 residual discipline. The fold models it
-	// correctly; the LOWERING declines. Graduation = program-residual
-	// ordering beyond Stage 1.
-	`(1 add 2) (3 add 4) 1 roll`: {why: "two event results permuted by roll: the residual re-push order exceeds Stage 1", failsWith: "residual shape beyond Stage 1"},
+	// corpus-core.tsv). The permuting roll GRADUATED with the forty-third
+	// increment (2026-09-10): a program residual whose order is not the
+	// order the events produced it in REBUILDS — every simulated-stack
+	// entry spills to a frame local and the residual is pushed back
+	// exactly as recorded (seatResidualRebuild). The rows joined
+	// corpus-core.tsv. What remains of frontier-full-stack.tsv is the
+	// code-body occurrence below, which is the island seam's, not the
+	// residual's.
 	// A full-stack word inside a wrapped code body compiles WITH an island
 	// (the fold is gated to the top unit; the body's island machinery owns
 	// the occurrence — sound interpreter re-entry, parity held). Graduation
