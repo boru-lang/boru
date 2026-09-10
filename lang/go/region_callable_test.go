@@ -30,6 +30,7 @@ import (
 
 func TestRegionCarryingACallableRefuses(t *testing.T) {
 	const g = `def g fn [[x:Integer] [Integer] [x add 1]] `
+	const mk = `def mk fn [[x:Integer] [Function] [([y:Integer] => [x add y])]] `
 	const tu = `import "boru:time-util" `
 	for _, tc := range []struct{ src, reason, want string }{
 		// await's winner residual: the branch body leaves [5, g/v], which the
@@ -42,6 +43,23 @@ func TestRegionCarryingACallableRefuses(t *testing.T) {
 			"a branch body can leave a CALLABLE value", "[99 6]"},
 		{g + tu + `size [(TimeUtil.await {mode:'first'} [[5 g/v]])]`,
 			"a branch body can leave a CALLABLE value", "[1]"},
+		// The branch body that COMPILES to a unit and leaves a callable — the
+		// other half of the await guard, and the one that reads the unit's own
+		// residual rather than "this element did not compile, so who knows".
+		// `[[5 g/v]]` above declines to compile as a unit; `[[g/v]]` does
+		// compile, and its unit's residual is the fn.
+		{g + tu + `9 TimeUtil.await {mode:'first'} [[g/v]]`,
+			"a branch body can leave a CALLABLE value", "[10]"},
+		{mk + tu + `9 TimeUtil.await {mode:'first'} [[(mk 1)]]`,
+			"a branch body can leave a CALLABLE value", "[10]"},
+		// Nothing beneath the region, so the interpreter leaves the fn as
+		// data and the two lanes would have AGREED. The guard is wide on
+		// purpose — it refuses a region that MAY carry a callable, not one
+		// that is observed to be re-stepped — so this correct compile is
+		// given up, and giving it up is the pinned behaviour rather than an
+		// accident.
+		{g + tu + `TimeUtil.await {mode:'first'} [[g/v]]`,
+			"a branch body can leave a CALLABLE value", "[fn g(Integer)]"},
 		// The LOOP producer, at the two consumers this batch added. Both fall
 		// back to the refusal each had before the consumer existed.
 		{g + `5 for 1 [g/v]`,

@@ -5128,6 +5128,52 @@ against the MERGE BASE before scoping the fix — here that is the whole
 difference between "the increments introduced a divergence" (three shapes,
 closed) and "the increments extended one" (a fourth, older, recorded).
 
+## The coverage gate found a functional hole, not a missing test (2026-09-10)
+
+`make cover-gate` came back with ONE uncovered statement in the whole tree —
+`compiler/go/emit.go`, the line inside the callable guard that sets
+`storedBodyFnResidual` from a COMPILED branch unit's residual. Every other
+module was 100%.
+
+The uncovered line was not a test gap. It was the guard's compiled-unit half
+never running at all:
+
+```go
+if unit < len(es.fnRecs) && es.fnRecs[unit] != nil &&
+    regionValsMayBeCallable(es.fnRecs[unit].outOpsVals) { … }
+```
+
+`outOpsVals` is assigned in `fnResidualReplayReason` — AFTER its first line,
+which returns early for a closure unit that is not a plain lambda. A
+`spawnbody` unit (`compileStoredBody` → `compileClosureBody(…,
+ClosureInValue, …)`) is exactly such a closure, so its `outOpsVals` was never
+set. The callable test therefore read an EMPTY slice for every branch body
+that compiled, and answered false. The guard only ever worked through its
+other arm — "this element did not compile, so its residual is unknown".
+
+**Measured, and it was a live divergence in the fix that was supposed to
+close them:**
+
+```
+def g fn [[x:Integer] [Integer] [x add 1]]  9 await {mode:'first'} [[g/v]]
+  interpreted  [10]      g/v arrives above 9 and dispatches
+  compiled     [9 fn]
+```
+
+`[[5 g/v]]` declines to compile as a unit and so was caught; `[[g/v]]`
+compiles and was not. The two rows differ by one token.
+
+**The fix** is to record the residual values for EVERY unit, before the
+closure early-return. It only ever populates a field that was empty for those
+units, and the replay accounting the early return guards is untouched.
+
+**What the next author should not re-derive.** A 100% coverage gate is not
+only a test-completeness instrument. A statement that cannot be reached is a
+statement whose CONDITION is never true, and when that condition is a guard,
+"never true" is the bug. This one was found by the gate and by nothing else:
+every functional test of the guard passed, because they exercised the arm that
+worked.
+
 ## What the batch gate caught: three gates the region rows moved (2026-09-10, repairs to the thirty-ninth-to-forty-first increments)
 
 The three region increments each passed their own tests and their own corpus

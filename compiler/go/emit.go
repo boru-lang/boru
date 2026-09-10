@@ -10910,6 +10910,15 @@ func (es *EmitState) creditWordRead(id string) {
 // none of the three: their count mismatch is the higher-order word's own
 // error and their reads are the enclosing frame's.
 func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []core.Value, ops []EmitOperand, dynTrail int) string {
+	// The residual VALUES are recorded for EVERY unit, a closure included, and
+	// BEFORE the closure early-return: they are what compileStoredBody reads to
+	// decide whether a stored branch body can leave a CALLABLE
+	// (eventFlags.regionMayBeFn), and a `spawnbody` unit IS a closure. Leaving
+	// them unset there was silent — the callable test simply read an empty
+	// slice and admitted the region, so `9 await {mode:'first'} [[g/v]]`
+	// compiled to [9 fn] against the interpreter's [10]. The replay accounting
+	// below is a plain-unit concern and still skips a closure.
+	rec.outOpsVals = vals
 	if rec.closure && !rec.plainLambda() {
 		return ""
 	}
@@ -10930,7 +10939,6 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 			return "bare read of a fn-valued binding is a word dispatch the frame replay cannot seat (NUR123)"
 		}
 	}
-	rec.outOpsVals = vals
 	return es.wordReadAccounting(rec)
 }
 

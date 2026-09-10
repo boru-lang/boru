@@ -331,8 +331,9 @@ answer and the one `design/FULL-COMPILATION.0.md` §6.6 points at.
 **Guarded where it was reachable.** The two region CONSUMERS added alongside
 this record (`OpSeatBelowMark`, `OpMakeListToMark`) and `await`'s region
 recording all decline a region that may carry a callable, so
-`5 for 1 [g/v]`, `[(for 2 [g/v])]` and `await {mode:'first'} [[5 g/v]]` refuse
-rather than diverge. Only the bare loop residual above is open.
+`5 for 1 [g/v]`, `[(for 2 [g/v])]`, `await {mode:'first'} [[5 g/v]]` and
+`9 await {mode:'first'} [[g/v]]` refuse rather than diverge. Only the bare
+loop residual above is open.
 
 ---
 
