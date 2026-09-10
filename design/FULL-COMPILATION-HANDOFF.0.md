@@ -5286,6 +5286,31 @@ was written as `[]` because that is what `RunCompiled`'s host-value
 projection prints; the TSV runner renders the ENGINE value, which is
 `(flex [])`. Two lanes, two renderers — the corpus is the engine's.
 
+**3. The check-accuracy ratchet asked the increment to finish its job.**
+`control.tsv=2 (pin 1)` — the new `while [] [1]` ERROR row was an error row
+the CHECKER did not flag. Bumping the pin would have been the wrong repair:
+the pin exists to track checker coverage the compiler has, and the
+forty-second increment's whole premise is that an empty condition is
+statically DECIDABLE. So the check pass now mirrors it —
+`runtime_error: while: condition produced no value`, error severity,
+`RuntimeMirror` set, which is what keeps the compile pipeline compiling the
+program to its terminal trap rather than refusing on an error diagnostic.
+
+Two details worth carrying forward. The diagnostic is shaped inline rather
+than through `CheckAddUniqueDiagnostic`, because the code is the RUNTIME's
+own (`runtime_error`, so the report and the raise read alike) and that code
+has no entry in `checkCodeSeverity` — an unclassified code defaults to
+`info`, which does not gate `boru check`. And it is gated on
+`FnBodyDepth == 0 && NestedBodyDepth == 0`: a mirror claims "the program
+errors", so a fn body (runs only if called), a branch arm (only if taken)
+and a catching `do` (swallows it) must all stay silent — the same
+reachability rule the trap's top-level-only guard enforces one layer down.
+
+**4. The interp-entry census tightened.** 33 → 32: for-each's body coming off
+the interpreter takes fn-value.tsv's module-scope-fn-as-body-word row with
+it. The census fails in BOTH directions by design, so the fall is a required
+edit, not an optional one.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —

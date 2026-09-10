@@ -81,6 +81,37 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// its read resolved to the pre-loop value and the compiled loop never
 	// terminated. Both analyses run to their fixed points over the joined
 	// bindings, so the order changes no verdict.
+	// A STATICALLY EMPTY condition is a guaranteed runtime error, so the
+	// check pass MIRRORS it: `boru check` reports what the program will
+	// raise instead of staying silent about a certainty. It is stamped a
+	// RuntimeMirror (CheckAddUniqueDiagnostic does that for its callers),
+	// which is what lets the compile pipeline keep compiling the program
+	// to the terminal trap below rather than refusing on an error
+	// diagnostic — the finding's model is exact, and the trap raises the
+	// identical error.
+	//
+	// Only where the loop is UNCONDITIONALLY reached: inside a fn body or
+	// any nested body the loop runs only if that body does, and a mirror
+	// claiming "the program errors" must not be made from a conditional
+	// site. That is the same reachability rule the trap's top-level-only
+	// guard enforces one layer down.
+	if emptyWhileCond(args[0]) && r.Check.FnBodyDepth == 0 && r.Check.NestedBodyDepth == 0 {
+		// Shaped here rather than through CheckAddUniqueDiagnostic because
+		// the code is the RUNTIME's own — `runtime_error`, so the check
+		// report and the raise a user meets read alike — and that code has
+		// no entry in the severity table (an unclassified code defaults to
+		// info, which would not gate `boru check`). The mirror flag is set
+		// explicitly for the same reason CheckAddUniqueDiagnostic sets it.
+		CheckAddUnique(r, CheckDiagnostic{
+			Code:          "runtime_error",
+			Detail:        "while: condition produced no value",
+			Word:          "while",
+			Row:           args[0].Pos().Row,
+			Col:           args[0].Pos().Col,
+			Severity:      SeverityError,
+			RuntimeMirror: true,
+		})
+	}
 	es := r.Check.Recorder()
 	recording := es.Active()
 	if recording {

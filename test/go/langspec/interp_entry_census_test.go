@@ -702,7 +702,13 @@ import (
 //     `fn (Integer) x`. Taking it means reproducing the interpreter's park rule
 //     for an unmatched callee without an engine, which is a different question
 //     from every other row here and worth one row at most.
-const interpEntryRowCeiling = 33
+//
+// 33 -> 32 (2026-09-10, the forty-fourth increment): `for-each` gained the
+// CallableSpec it never had, so its body compiles to a per-element closure
+// instead of riding as a List const the handler interprets. One corpus row
+// (fn-value.tsv's module-scope fn as a for-each body word) stops entering the
+// interpreter. The ratchet only falls, and this is the fall.
+const interpEntryRowCeiling = 32
 
 func TestInterpEntryCensus(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")

@@ -212,3 +212,69 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 		t.Errorf("NUR130 moved — the interpreter no longer anchors at the tape pointer (1:14): %v", errI)
 	}
 }
+
+// TestWhileEmptyConditionChecksAsAnError — the CHECK half of the forty-second
+// increment. A statically-empty condition is a certainty, so `boru check`
+// reports it rather than staying silent: an error-severity RUNTIME MIRROR,
+// which is what lets the compile pipeline keep compiling the program to its
+// terminal trap (a mirror promises the program raises the identical error,
+// and the trap does).
+func TestWhileEmptyConditionChecksAsAnError(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := a.Check(`5 while [] [1]`)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if rep.Summary.Errors != 1 {
+		t.Fatalf("want one error diagnostic, got %+v", rep.Diagnostics)
+	}
+	d := rep.Diagnostics[0]
+	if d.Code != "runtime_error" || !strings.Contains(d.Detail, "condition produced no value") {
+		t.Errorf("diagnostic = %+v", d)
+	}
+	if !d.RuntimeMirror {
+		t.Error("the finding must be a RUNTIME MIRROR — an un-mirrored error would refuse the compile")
+	}
+	// And the program still compiles, to the trap.
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, cerr := b.CompileCheck(`5 while [] [1]`)
+	if cerr != nil || prog == nil {
+		t.Fatalf("the mirror must not refuse the compile: %q %v", reason, cerr)
+	}
+}
+
+// TestWhileEmptyConditionCheckReachability is the negative: a mirror claims
+// "the program errors", so it may only be made where the loop is
+// UNCONDITIONALLY reached. A fn body runs only if called, a branch arm only
+// if taken, and a catching `do` swallows the raise outright — none of them
+// may report a program error.
+func TestWhileEmptyConditionCheckReachability(t *testing.T) {
+	for _, src := range []string{
+		`def f fn [[][Integer][while [] [1]]] end 5`,
+		`if false [while [] [1]] [0]`,
+		`for 2 [while [] [1]]`,
+		`do [while [] [1]]`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			a, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			rep, err := a.Check(src)
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			for _, d := range rep.Diagnostics {
+				if d.Code == "runtime_error" && strings.Contains(d.Detail, "condition produced no value") {
+					t.Errorf("a conditionally-reached loop must not report a program error: %+v", d)
+				}
+			}
+		})
+	}
+}
