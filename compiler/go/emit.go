@@ -5940,6 +5940,17 @@ func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, ou
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		f.variadicRegion = true
+		// …and it may leave a CALLABLE, which no consumer of a region can
+		// re-step (eventFlags.regionMayBeFn / NUR129). An island's run is the
+		// INTERPRETER executing arbitrary code, so what it appends is not
+		// bounded by the modelled out at all — `def xs [1] def g fn x:Integer
+		// Integer [x add 1] 5 do [if ((xs 0 getr) eq 1) [g/v] [1 div 0]]
+		// error [drop]` passes a fn value through the handler, which the
+		// interpreter re-steps against the 5 beneath it for [6] and the
+		// compiled lane seated as data, raising uncalled_function (Codex, PR
+		// #448). Marked unconditionally: a narrower claim would have to be a
+		// claim about interpreted code the recorder never saw.
+		f.regionMayBeFn = true
 		es.eventInfo[seq] = f
 	}
 	es.setProduced(out, seq)
@@ -9459,13 +9470,40 @@ func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
 // and treating them as stack reads would decline every value-producing loop
 // (their bodyOut is an event operand whenever the body is computed —
 // `99 for 2 [(1 add 2)]`).
+//
+// EVERY region-producing event kind must be represented here, and the switch
+// below is the whole list. It read `ev.call.ops` and the loop's operands
+// alone until 2026-09-10, which was complete for the two producers that then
+// existed — a value-producing loop and await's winner, both evCall — and
+// silently wrong the moment the forty-seventh and forty-eighth increments
+// admitted two more (Codex found all three witnesses on PR #448, and all
+// three were real):
+//
+//   - evCallUser (a variadic-returning fn). `def f fn [[n:Integer] [] [for n
+//     [i]]] 9 f (1 add 2)` compiled the mark AFTER the `add` whose result the
+//     call then popped from beneath it, and answered `0 9 1 2` for the
+//     interpreter's `9 0 1 2`;
+//   - evFallback (the island's own 0-or-more run). `def xs [1] [do [1 div
+//     (xs 0 getr)] error [drop]]` opened the mark above the do-result the
+//     FALLBACK's own input then consumed, and MAKE_LIST_TO_MARK collected the
+//     empty run: `1 []` for the interpreter's `[1]`.
+//
+// A kind whose operands are not listed here does not "have none": it is
+// unscreened. If a new region producer is added, add its operands.
 func regionReadsTheStack(ev *EmitEvent) bool {
-	ops := ev.call.ops
-	if ev.kind == evLoop {
+	var ops []EmitOperand
+	switch ev.kind {
+	case evLoop:
 		ops = []EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step}
 		for _, c := range ev.loop.carried {
 			ops = append(ops, c.init)
 		}
+	case evCallUser:
+		ops = ev.uc.ops
+	case evFallback:
+		ops = ev.fb.ins
+	default:
+		ops = ev.call.ops
 	}
 	for _, op := range ops {
 		if op.kind == opEvent || op.kind == opClosure {

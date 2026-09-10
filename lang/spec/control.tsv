@@ -112,3 +112,28 @@ def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [break] end n] end 'z'	1
 def f fn [[k:Integer][Integer][def n 0 while [n lt k] [def n (n add 1)] n]] end (f 4)	4	a while inside a fn body counts against a param
 def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'	'z'	a nested while's break ends only the inner loop
 while [] [1]	ERROR:while: condition produced no value	an empty condition region has no tokens, so the first round nets nothing and raises
+# The SIXTH and last frontier-while row (the fifty-first increment,
+# 2026-09-10), and the file lang/spec/frontier/frontier-while.tsv with it.
+# Its refusal was never the loop's: the body's `if ((c get 'n') eq 2)
+# [continue]` is an if whose ELSE arm came off the value stack, and the
+# computed-arm lowering conflated two things — "nets no value" and
+# "diverges" — and knew only one of the two stack layouts. A diverging arm
+# never reaches the merge, so the single merge slot is exact; and an arm
+# supplied from the value stack sits UNDER its own condition rather than
+# over it, so the swap the written spelling owes is not owed here.
+def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]	(flex {n:3}) 1 (flex {n:3}) 3	continue abandons the current body round
+#
+# §8  break / continue trim the round, and break closes its loop
+#
+# The fiftieth increment's rows (2026-09-10, NUR132). §7's `1 break` /
+# `1 continue` twins above pin the same rule over a CONST round value, and
+# they compiled correctly all along because a const the round never seats
+# is dropped at lowering. A COMPUTED one is seated, and a same-unit
+# break/continue used to leave it behind: it lowered to a bare OpJmp, which
+# reaches the right pc and does neither of the two things the VM's flow
+# signal does — trim the round to its iteration base, and pop the loop.
+# Both terminators emit the signal now.
+for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]	9 5 9 5	a continue drops the round's already-computed value
+for 3 [ (7 add 2) if (i eq 2) [break] [5] end i ]	9 5 0 9 5 1	a break drops it too, and the rounds before it survive
+while [true] [ (7 add 2) if true [break] [5] end ] end 'x'	'x'	the first round's computed value goes with the round
+for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]	0 0 1 0	an inner break closes the inner loop, and the outer one still counts

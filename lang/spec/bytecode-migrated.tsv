@@ -127,8 +127,14 @@ def f fn [[a:Integer] [List] [ def l [a None]  l ]] (f 1)	[1 None]
 def f fn [[a:Integer] [Map] [ def m {x: a  k: Integer}  m ]] (f 2)	{x:2 k:Integer}
 def f fn [[a:Integer] [Map] [ {x: a  r: None} ]] (f 3)	{x:3 r:None}
 do [1 div 0] error [drop] end 2 add 3	5	§8.2(6) graduation: a PROVEN-raise do with a zero-netting handler records a 0-output call (review §9.13)
-def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3	5	§8.2(6)'s other half (the forty-eighth increment): a MAYBE-raising body's zero-netting handler is a variadic REGION, not a fixed seat — this input raises, so the handler nets nothing
-def xs [1] do [1 div (xs 0 getr)] error [drop] end 2 add 3	1 5	…and this input does not raise, so the same lowering nets one — the count is not the static seat
+# (§8.2(6)'s OTHER half — the MAYBE-raising twins `def xs [0|1] do [1 div
+# (xs 0 getr)] error [drop] end 2 add 3` — was moved here by the
+# forty-eighth increment and moved back out by the batch gate that caught
+# it. They compile, which is the increment's real result, but they compile
+# WITH the island: the region representation the increment found IS the
+# island's own simulated slot, so the OpFallback span stays. This corpus's
+# island ceiling is 0, so they live in lang/spec/frontier/
+# frontier-do-error-arity.tsv, ledgered "islanded" like family G's others.)
 #
 # closure-capture family GRADUATED 2026-09-07 (the twenty-sixth increment,
 # design/FULL-COMPILATION-HANDOFF.0.md): a lambda VALUE unit takes the fn

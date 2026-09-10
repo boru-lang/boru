@@ -49,8 +49,17 @@ def inc fn [[n:Integer][Integer][n add 1]]  5 inc apply	ERROR:signature_error	ba
 #     values the interpreter's own dispatch examines, so the compiled
 #     program raises the byte-identical signature_error instead of the whole
 #     program falling back.
+#
+#     The SWAPPED spelling `$.1 [10 20 30] apply` is deliberately NOT here.
+#     Its window carries sigError's REORDER HINT, which is derived from tape
+#     state the runtime rebuild cannot reproduce, so it keeps a sound
+#     whole-program refusal — and this corpus's refusal ceiling is 0, so a
+#     row that refuses does not belong in it whatever its answers are. It is
+#     pinned instead by lang/go/deferred_rematch_test.go
+#     (TestReorderHintWindowKeepsItsRefusal), which asserts both the refusal
+#     and the interpreter's own hint. (It WAS added here by the forty-sixth
+#     increment and taken out again by the batch gate that caught it.)
 def p {name:'ada'}  p $.name apply	'ada'	apply a reach lens to a stack receiver (lens on top)
 [10 20 30] $.1 apply	20	apply an index lens to a stack list
 def p {name:'ada'}  p apply $.name	ERROR:signature_error	forward lens refused — apply is stack-only, no per-overload exception
 [10 20 30] apply $.1	ERROR:signature_error	forward lens refused for the list form too
-$.1 [10 20 30] apply	ERROR:signature_error	…and the swapped spelling keeps its own refusal: sigError's reorder hint reads tape state the runtime rebuild cannot rebuild

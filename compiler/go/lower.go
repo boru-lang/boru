@@ -81,8 +81,7 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	}
 	head := len(*lw.code)
 	fn := lw.emit(OpForNext, 0, lp.pos)
-	endHoles := []int{}
-	lw.loops = append(lw.loops, loopCtx{nextPC: head, endHoles: &endHoles})
+	lw.loops = append(lw.loops, loopCtx{nextPC: head})
 	// A CONDITION loop (RecordWhile, `while [cond] [body]`): the condition's
 	// one value is tested at the head of every iteration — falsy jumps to the
 	// FLOW_BREAK placed past the back-edge, which pops the loop frame and
@@ -112,11 +111,10 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 		(*lw.code)[condExit].Arg = int32(len(*lw.code))
 		lw.emit(OpFlowBreak, 0, lp.pos)
 	}
-	endPC := len(*lw.code)
-	(*lw.code)[fn].Arg = int32(endPC)
-	for _, h := range endHoles {
-		(*lw.code)[h].Arg = int32(endPC)
-	}
+	// FOR_NEXT's own exit target. A `break` in the body no longer patches a
+	// hole here: it emits OpFlowBreak, which reads this very Arg back off the
+	// FOR_NEXT at run time (vmLoop.exitPC) — see lowerBreak.
+	(*lw.code)[fn].Arg = int32(len(*lw.code))
 	// A value-producing loop contributes N (variadic) values to the simulated
 	// stack; a SIDE-EFFECT loop (!hasBodyOut — body nets 0 per iteration) leaves
 	// NOTHING. Mirrors RecordLoop's variadicResult/zeroOut split: keep them
@@ -426,12 +424,12 @@ func (lw *lowerer) lowerStore(ev *EmitEvent) string {
 
 // lowerer walks an event trace emitting instructions over a simulated
 // stack of producing event seqs (-1 = const).
-// loopCtx is the lowering context of one open loop: the FOR_NEXT pc
-// (continue's target, and the back-edge) and the holes to patch with
-// the loop's end pc (break's targets).
+// loopCtx is the lowering context of one open loop: its FOR_NEXT pc, which
+// is the back-edge's target. break and continue name no pc at all — they
+// emit the FLOW signal ops, which resolve the open loop at run time
+// (lowerBreak) — so the loop needs only its depth recorded here.
 type loopCtx struct {
-	nextPC   int
-	endHoles *[]int
+	nextPC int
 }
 
 type lowerer struct {
@@ -2910,34 +2908,49 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 }
 
 // lowerBreak / lowerContinue: flow-control terminators inside a loop
-// body fragment. break jumps to the loop end (hole patched by
-// lowerLoop); continue jumps back to FOR_NEXT — a back-edge the VM
-// accepts because it targets the loop header.
+// body fragment. Both lower to the FLOW signal ops — the same pair a
+// break/continue in a CALLEE uses — whether or not the loop lives in
+// this unit.
+//
+// They used to lower to a bare OpJmp when the loop was in the same unit:
+// break to the loop end (a hole patched by lowerLoop), continue back to
+// FOR_NEXT. Both targets were right and both jumps were wrong, because
+// the two things flowSignal ALSO does are the two things the interpreter
+// does and a jump cannot (NUR132, measured 2026-09-10):
+//
+//   - it TRIMS THE ROUND (stack[:lp.iterBase]) — the interpreter's
+//     break/continue splices the round's tape back to its mark, so a value
+//     this round already produced is discarded. A jump left it on the
+//     stack: `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]`
+//     answered `9 5 9 5 9` where the interpreter answers `9 5 9 5`;
+//   - it POPS THE LOOP (loops[:target]) on a break. A jump to the loop's
+//     end lands PAST its FOR_NEXT, the only op that pops, so the entry
+//     leaked: after `for 2 [ … end for 3 [ if (i eq 1) [break] [0] end ] ]`
+//     the OUTER loop's FOR_NEXT read the INNER loop's stale counter and
+//     never terminated — the compiled program exhausted the stack ceiling
+//     where the interpreter answers `0 0 1 0`.
+//
+// The signal resolves the nearest OPEN loop at run time, which for a
+// same-unit break/continue is this very loop: exitPC is the FOR_NEXT's own
+// exit target (the hole's old value) and nextPC is the FOR_NEXT (the
+// back-edge's old value), so the destinations are unchanged. Only the
+// discipline the jump skipped is added. The while lowering's
+// condition-false exit has emitted OpFlowBreak for exactly this reason
+// since the thirty-seventh increment; this makes the body's own
+// terminators agree with it.
 func (lw *lowerer) lowerBreak(ev *EmitEvent) string {
-	if len(lw.loops) == 0 {
-		if lw.isFnUnit {
-			// Cross-frame break: targets the caller's loop at run time.
-			lw.emit(OpFlowBreak, 0, ev.call.pos)
-			return ""
-		}
+	if len(lw.loops) == 0 && !lw.isFnUnit {
 		return "break outside a compiled loop (Stage 2)"
 	}
-	h := lw.emit(OpJmp, 0, ev.call.pos)
-	ctx := lw.loops[len(lw.loops)-1]
-	*ctx.endHoles = append(*ctx.endHoles, h)
+	lw.emit(OpFlowBreak, 0, ev.call.pos)
 	return ""
 }
 
 func (lw *lowerer) lowerContinue(ev *EmitEvent) string {
-	if len(lw.loops) == 0 {
-		if lw.isFnUnit {
-			// Cross-frame continue: targets the caller's loop at run time.
-			lw.emit(OpFlowContinue, 0, ev.call.pos)
-			return ""
-		}
+	if len(lw.loops) == 0 && !lw.isFnUnit {
 		return "continue outside a compiled loop (Stage 2)"
 	}
-	lw.emit(OpJmp, lw.loops[len(lw.loops)-1].nextPC, ev.call.pos)
+	lw.emit(OpFlowContinue, 0, ev.call.pos)
 	return ""
 }
 
@@ -3039,6 +3052,21 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	// out-of-order residual forced to a slot): store now, re-push per reference
 	// (references were rewritten to local operands). Mirrors lowerCall.
 	if slot, ok := lw.promoted[ev.seq]; ok {
+		// …but NOT for a VARIADIC-returning callee. The one store pops one
+		// value where the call left a runtime-variable count, and the rest of
+		// the run stays on the stack in the wrong place: `def f fn
+		// [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 1 9 2` for
+		// the interpreter's `9 0 1 2` — the run's last value stored, its
+		// first two stranded beneath the 9. lowerCall carries the same guard
+		// for a multi-out variadic ("variadic result promoted to frame
+		// slots"); this is its user-call twin, and it is needed at nout 1
+		// because the variadic slot IS one slot. Measured pre-existing on
+		// 6bc55db, surfaced by a Codex finding on PR #448 whose own diagnosis
+		// (the mark plan) was a second, separate defect (NUR133).
+		if lw.es != nil && uc.unit >= 0 && uc.unit < len(lw.es.fnRecs) &&
+			lw.es.fnRecs[uc.unit].variadic {
+			return lw.es.fnRecs[uc.unit].name + ": variadic fn result promoted to a frame slot (runtime count differs from the one store)"
+		}
 		lw.seatStoreName(ev.seq, 0)
 		lw.emit(OpStoreLocal, slot, uc.pos)
 		lw.note()
@@ -3377,18 +3405,48 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		// One arm's value is an eagerly-computed event (`if c [t] (expr)` or
 		// `if c (expr) e`). It is the last thing evaluated before the branch, so
 		// it sits on TOP of the sim stack; the OTHER (non-eager) arm DROPs it and
-		// produces its own value, so it must net a value here.
+		// produces its own value, so it must net a value here — OR NOT ARRIVE.
+		//
+		// Those are two different things, and this gate used to conflate them:
+		// its message said "diverges" while its test was "has no out", which a
+		// DIVERGING arm and a merely 0-NETTING one both fail. Only the second
+		// is a problem. A 0-netting arm reaches the merge having produced
+		// nothing, so the join is 1-or-0 where the slot models 1; a DIVERGING
+		// arm (break / continue / raise / a tail call) leaves the construct and
+		// never reaches the merge at all, so every path that ARRIVES carries the
+		// eager value and the single merge slot is exact. That is the last
+		// frontier-while row (the fifty-first increment): the `continue` arm of
+		// `if ((c get 'n') eq 2) [continue]` under a computed prefix.
 		eager, nonEagerHasOut := br.elsVal, br.hasThenOut
+		nonEager := br.then
 		if br.thenComputed {
 			eager, nonEagerHasOut = br.thenVal, br.hasElsOut
+			nonEager = br.els
 		}
-		if !nonEagerHasOut {
-			return "if: computed-branch non-eager arm diverges (Stage 2)"
+		if !nonEagerHasOut && !fragDivergesDeep(nonEager) {
+			return "if: computed-branch non-eager arm nets no value (Stage 2)"
 		}
-		if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], eager) {
+		// Two stack layouts reach here, and they are mirror images.
+		//
+		// WRITTEN-ARM (`if c [t] (expr)`): the eager arm is the last thing
+		// written, so it is evaluated after the condition and sits on TOP,
+		// with the cond just below — lowerComputedCond SWAPs.
+		//
+		// STACK-SUPPLIED ARM (`(expr) … if (c) [t]`): the eager arm arrived
+		// on the VALUE STACK before the `if` was reached, and the condition
+		// is a forward token evaluated at the dispatch, so the two sit the
+		// other way round — the cond is already on top and no swap is owed.
+		// This is the second half of the last frontier-while row: the
+		// argument-order rule fills the else position from the value stack,
+		// which puts the arm UNDER its own condition.
+		top := len(lw.vm) - 1
+		eagerOnTop := top >= 0 && slotIs(lw.vm[top], eager)
+		condOnTop := !eagerOnTop && br.cond.kind == opEvent && top >= 1 &&
+			slotIs(lw.vm[top], br.cond) && slotIs(lw.vm[top-1], eager)
+		if !eagerOnTop && !condOnTop {
 			return "if: computed-branch eager value not on top (Stage 2)"
 		}
-		jf, reason := lw.lowerComputedCond(br)
+		jf, reason := lw.lowerComputedCond(br, condOnTop)
 		if reason != "" {
 			return reason
 		}
@@ -3617,9 +3675,12 @@ func (lw *lowerer) lowerBothComputedMatCond(ev *EmitEvent) string {
 //   - a list-form condition body (`if [x gt 0] (expr) e`): lowered inline above
 //     the eager value, netting one Boolean (not tracked in the parent sim);
 //   - an event cond (`if (x eq 0) (expr) e`): the cond event sits just BELOW the
-//     eager value — SWAP it to the top;
+//     eager value — SWAP it to the top. Unless condOnTop: the eager arm came
+//     off the VALUE STACK before the `if`, so the cond — a forward token
+//     evaluated at the dispatch — is already above it and the swap is skipped
+//     (lowerBranch decided which layout this is);
 //   - a const / local / type cond (`if flag (expr) e`): pushed above the eager.
-func (lw *lowerer) lowerComputedCond(br *emitBranch) (int, string) {
+func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, string) {
 	switch {
 	case br.condFrag != nil:
 		if reason := lw.lowerFragment(br.condFrag, &br.condOut, false, br.pos); reason != "" {
@@ -3627,10 +3688,12 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch) (int, string) {
 		}
 		return lw.emit(OpJmpIfFalse, 0, br.pos), ""
 	case br.cond.kind == opEvent:
-		if len(lw.vm) < 2 || !slotIs(lw.vm[len(lw.vm)-2], br.cond) {
-			return 0, "if: computed-branch condition not below the eager value (Stage 2)"
+		if !condOnTop {
+			if len(lw.vm) < 2 || !slotIs(lw.vm[len(lw.vm)-2], br.cond) {
+				return 0, "if: computed-branch condition not below the eager value (Stage 2)"
+			}
+			lw.swapTop2(br.pos)
 		}
-		lw.swapTop2(br.pos)
 		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed; eager value stays on top
 		return jf, ""

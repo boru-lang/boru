@@ -14,5 +14,14 @@
 # representation: runFallback appends whatever the re-run produced, 0
 # values or 1. So errorReturnsFn returns the honest spread instead of
 # marking the program uncompilable, RecordFallback marks the event a
-# region, and the residual absorbs the run. The rows moved to
-# lang/spec/bytecode-migrated.tsv. This file is now empty of ledgered rows.
+# region, and the residual absorbs the run.
+#
+# CORRECTED 2026-09-10 by the batch gate: those two rows were moved to
+# lang/spec/bytecode-migrated.tsv and had to come back. The increment's
+# result stands — they COMPILE where they refused — but "the island's own
+# slot is the region" is literal: the OpFallback span is still in the
+# program, and the main corpus's island ceiling is 0. So they stay here,
+# ledgered "islanded" alongside family G's other working islands, and
+# graduate when the region is seated without re-entering the interpreter.
+def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3	5	a MAYBE-raising body's zero-netting handler: this input raises, so the handler nets nothing
+def xs [1] do [1 div (xs 0 getr)] error [drop] end 2 add 3	1 5	…and this input does not raise, so the same lowering nets one — the count is not the static seat
