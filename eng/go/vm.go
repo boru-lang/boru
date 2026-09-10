@@ -2278,7 +2278,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = stack[:len(stack)-1]
 		case compiler.OpStackMark, compiler.OpDropToMark, compiler.OpPopMark, compiler.OpCallDynMixedFromMark,
-			compiler.OpSeatBelowMark:
+			compiler.OpSeatBelowMark, compiler.OpMakeListToMark:
 			var err error
 			if marks, stack, err = vc.vmMarkOp(curReg, in.Op, int(in.Arg), marks, stack, curDebug, pc); err != nil {
 				return nil, err

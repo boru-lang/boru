@@ -9323,6 +9323,41 @@ func regionReadsTheStack(ev *EmitEvent) bool {
 	return false
 }
 
+// planRegionCollect arms the COLLECT of a runtime-variadic region into one
+// List (NUR067's consuming half — `size [(for 3 [i])]`, `size [(await
+// {mode:'any'} [[7 8]])]`). Declines when another mark plan already owns the
+// frame: one mark client per program.
+func (es *EmitState) planRegionCollect(lw *lowerer) {
+	region, list, ok := es.regionCollectShape(es.frames[0])
+	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{region: true}
+	lw.collectAtSeq = list
+}
+
+// regionCollectShape finds a top-level [REGION, list-literal-over-it] ADJACENT
+// pair and returns the two seqs. Adjacency is the whole safety argument: the
+// mark opens before the region's event, so everything above it at run time
+// must be the region and nothing else, and no event runs between the two to
+// leave a value there or consume one from beneath. A list literal with any
+// other operand beside the region (`[9 (for 3 [i])]`, `[(for 3 [i]) 9]`)
+// keeps refusing — its elements would need seating either side of a run whose
+// length is a runtime value, which is the prefix problem OpSeatBelowMark
+// solves only for the program residual.
+func (es *EmitState) regionCollectShape(events []EmitEvent) (int, int, bool) {
+	for i := 0; i+1 < len(events); i++ {
+		ev, next := &events[i], &events[i+1]
+		if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) ||
+			next.kind != evCall || !next.call.makeList || len(next.call.ops) != 1 ||
+			next.call.ops[0].kind != opEvent || next.call.ops[0].idx != ev.seq {
+			continue
+		}
+		return ev.seq, next.seq, true
+	}
+	return 0, 0, false
+}
+
 // singleSlotRegion reports whether ev's result is ONE recorded slot standing
 // for a RUNTIME-VARIABLE count of values: a value-producing loop (`for` /
 // `while` — RecordLoop's hasBodyOut arm), or a variadic REGION call
@@ -10092,6 +10127,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planMarkWindow(lw, residual)
 	// Region-prefix plan (NUR067's consuming half): see planRegionPrefix.
 	es.planRegionPrefix(lw, residual)
+	// Region-collect plan (NUR067's consuming half): see planRegionCollect.
+	es.planRegionCollect(lw)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.

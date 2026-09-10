@@ -232,6 +232,16 @@ const (
 	// run above it, order preserved on both sides. Nothing else moves, and the
 	// region's count is never named.
 	OpSeatBelowMark
+	// OpMakeListToMark collects a runtime-variadic REGION into one List
+	// (NUR067's consuming half, the collect). `[(for 3 [i])]` and
+	// `size [(await {mode:'any'} [[7 8]])]` build a list of the whole run, and
+	// OpMakeList cannot: its Arg is a STATIC element count. The lowering opens
+	// an OpStackMark before the region's producing event and closes with this
+	// op — pop the innermost mark m, replace stack[m:] with one List of those
+	// values in order. Elements are ascription-stripped exactly as OpMakeList
+	// strips them (list elements are stored data). Arg is unused; the count is
+	// the run's, and is never named.
+	OpMakeListToMark
 	// OpCallDynamicMixed handles the MIXED fn-value-call boundary: a runtime
 	// FUNCTION value sitting INTERIOR to the program residual, with static args
 	// both BELOW it and ABOVE it (`3 m.f 2` — `m.f` is a 2-arg fn collecting the
@@ -570,6 +580,7 @@ var opcodeNames = [...]string{
 	OpDropToMark:           "DROP_TO_MARK",
 	OpPopMark:              "POP_MARK",
 	OpSeatBelowMark:        "SEAT_BELOW_MARK",
+	OpMakeListToMark:       "MAKE_LIST_TO_MARK",
 	OpCallDynamicMixed:     "CALL_DYNAMIC_MIXED",
 	OpInterp:               "INTERP",
 	OpInterpXml:            "INTERP_XML",

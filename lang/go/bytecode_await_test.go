@@ -65,26 +65,21 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 // MarkUncompilable is gone), so what refuses is each position that genuinely
 // needs a STATIC count, one at a time and for its own stated reason:
 //
-//   - a collecting paren / call operand — layoutOperands sees the lw.variadic
-//     slot and refuses, the same wording a loop region gets (this is the
-//     shape whose 1-seat layout WAS the live miscompile: `size [(await
-//     {mode:'any'} [[7 8]])]` compiled a stranded 7 and a 1-element list
-//     where the interpreter answers 2);
 //   - a promotion — `def x (await …) x` would store exactly nout values into
 //     a frame slot while the run delivers a runtime count;
 //   - the dead-result drop — `def _ (await …)` would pop exactly one.
 //
-// The INERT-PREFIX shape that was here (`99 await …`) graduated on its own
-// closing op and is pinned as a PARITY row in region_prefix_test.go, beside
-// its `for` twin.
+// The two CONSUMING shapes that were here — the collecting paren
+// (`size [(await {mode:'any'} [[7 8]])]`, whose 1-seat layout WAS the live
+// miscompile) and the inert prefix (`99 await …`) — graduated on their own
+// closing ops and are pinned as PARITY rows in region_collect_test.go and
+// region_prefix_test.go, beside their `for` twins.
 //
 // Each refusal below is a SOUND interpreter fallback, so parity is asserted
 // alongside it: a refusal that changed the answer would be no better than the
 // miscompile it replaced.
 func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 	for _, tc := range []struct{ src, reason, want string }{
-		{`import "boru:time-util" size [(TimeUtil.await {mode:"any"} [[7 8]])]`,
-			"consumes loop results", "[2]"},
 		{`import "boru:time-util" def x (TimeUtil.await {mode:"first"} [[1 2 3]]) x`,
 			"variadic region promoted to a frame slot", "[2 3 1]"},
 		{`import "boru:time-util" def _ (TimeUtil.await {mode:"first"} [[1 2 3]]) 5`,

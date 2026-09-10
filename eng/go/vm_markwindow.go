@@ -24,7 +24,31 @@ func (vc *vmContext) vmMarkOp(reg *core.Registry, op compiler.Opcode, arg int, m
 	if op == compiler.OpSeatBelowMark {
 		return vmSeatBelowMark(arg, marks, stack, curDebug, pc)
 	}
+	if op == compiler.OpMakeListToMark {
+		return vmMakeListToMark(marks, stack, curDebug, pc)
+	}
 	return vmMark(op, marks, stack, curDebug, pc)
+}
+
+// vmMakeListToMark collects a region into one List (OpMakeListToMark): pop the
+// innermost mark m and replace stack[m:] with a single List holding those
+// values in order. It is OpMakeList with the element count taken from the mark
+// instead of from Arg, and it strips ascriptions for the same reason
+// OpMakeList does — list elements are stored data.
+func vmMakeListToMark(marks []int, stack []core.Value, debug []core.SrcPos, pc int) ([]int, []core.Value, error) {
+	if len(marks) == 0 {
+		return marks, stack, vmErrAt(debug, pc, "MAKE_LIST_TO_MARK with no open mark")
+	}
+	m := marks[len(marks)-1]
+	marks = marks[:len(marks)-1]
+	if m > len(stack) {
+		return marks, stack, vmErrAt(debug, pc, "MAKE_LIST_TO_MARK above current depth")
+	}
+	elems := make([]core.Value, len(stack)-m)
+	for i, v := range stack[m:] {
+		elems[i] = core.StripAscribed(v)
+	}
+	return marks, append(stack[:m], core.NewList(elems)), nil
 }
 
 // vmSeatBelowMark closes a region whose residual carries an INERT PREFIX

@@ -476,8 +476,13 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
-	loops           []loopCtx
-	maxDepth        int
+	// collectAtSeq is the event seq of the LIST LITERAL that collects a
+	// runtime-variadic region (NUR067's consuming half — planRegionCollect
+	// armed it and put an OpStackMark before the region's own event). 0 = not
+	// armed. Read once, by collectRegionTop.
+	collectAtSeq int
+	loops        []loopCtx
+	maxDepth     int
 	// depth counts live lowerFragment recursion (nested branch / loop bodies).
 	// The parser already caps source nesting (maxParseNestingDepth), so a program
 	// that reached the lowerer is shallow enough; this is defense-in-depth for an
@@ -2385,6 +2390,9 @@ func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, v
 
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
+	if lw.collectRegionTop(ev) {
+		return ""
+	}
 	n := len(c.ops)
 	if reason := lw.layoutOperands(c.ops, c.pos, layoutMsgs{
 		loopResults:  "consumes loop results (Stage 2 loops only feed the program residual)",
@@ -2581,6 +2589,41 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	}
 	lw.note()
 	return ""
+}
+
+// collectRegionTop lowers a list literal whose ONE operand is a
+// runtime-variadic REGION, and reports whether it did (NUR067's consuming
+// half). planRegionCollect armed the plan and opened an OpStackMark before the
+// region's producing event, which lowerEvents emitted immediately before the
+// region ran; the run is therefore exactly stack[mark:], and
+// OpMakeListToMark closes it into one List without naming the run's length.
+//
+// Returns false — leaving the emitted code untouched — whenever the plan is
+// not armed for this event (every ordinary call), the region is not the sim's
+// top, or the list result is a DEAD binding the ordinary lowering drops. The
+// caller then takes the ordinary lowering, whose layoutOperands refusal
+// ("consumes loop results") is the honest one.
+//
+// A PROMOTED result is handled here rather than declined: the collect leaves
+// exactly ONE List, a static single value, so the ordinary store-once /
+// re-push-per-reference promotion applies to it unchanged (`def xs [(for 3
+// [i])]  xs`). It is the REGION that has no static count, and the region is
+// gone by the time the store runs.
+func (lw *lowerer) collectRegionTop(ev *EmitEvent) bool {
+	c := &ev.call
+	if lw.collectAtSeq != ev.seq || len(c.ops) != 1 || len(lw.vm) == 0 ||
+		lw.vm[len(lw.vm)-1].seq != c.ops[0].idx || lw.dead[ev.seq] {
+		return false
+	}
+	lw.emit(OpMakeListToMark, 0, c.pos)
+	lw.vm[len(lw.vm)-1] = vmSlot{seq: ev.seq, idx: 0}
+	if slot, prom := lw.promoted[ev.seq]; prom {
+		lw.seatStoreName(ev.seq, 0)
+		lw.emit(OpStoreLocal, slot, c.pos)
+		lw.vm = lw.vm[:len(lw.vm)-1]
+	}
+	lw.note()
+	return true
 }
 
 // lowerFragment lowers a closed body: a fresh stack scope that must

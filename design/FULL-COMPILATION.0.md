@@ -115,7 +115,7 @@ row than the ledger — a one-row re-audit of that pool is owed):
 | F. Dispatch recovery | 5 | `unmatched dispatch recovered at apply/…` — recovered windows have no trap lowering yet |
 | G. Working islands | 7 → 5 | compile and run correctly; ledgered only because the program embeds `OpFallback`. **2 graduated 2026-08-27** (list `each`, Function and lambda forms): `lambdaCallbackInputs` had a MAP case and no LIST case, so the lambda lowering declined at its first gate — a missing case, not the "modelled fn-value callback frame" the ledger asked for. **5 more graduated 2026-08-28** (list `fold`/`scan`, Function and lambda, seeded and unseeded): they needed no frame either — both handlers hand `(accumulator, element)`, and the two engines disagree only because the MAP path binds POSITIONALLY (`CallBoruFn`) while the LIST path runs its inputs as a STACK (`InvokeBody` → `RunResolved`), where `MatchSignature` fills top-down. One per-word permutation at the closure bind (`ClosureInStackPair`) reconciles them (§6.3). The family is down to the `apply` island and the full-stack-word row |
 | H. `while` | 6 | no structured lowering; body words splice tape-coupled tokens |
-| I. Variadic no-static-seat | 5 → 1 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067). **The REPRESENTATION graduated 2026-09-10** and it did not need §6.6's generalized mark region: a value-producing LOOP's region is already ONE simulated slot standing for a runtime count, and the VM's stack ops are already count-agnostic, so the recorder now turns await's variadic-spread residual into that same region (`callVariadicRegion` → `eventFlags.variadicRegion`, `lw.variadic` at lowering). The plain-residual row compiles. The region-above-an-inert-tail row graduated in the same batch on **OpSeatBelowMark** (a mark opened before the region's event, the prefix lifted down to it — the run's length never named). The 1 row left is the collecting paren, which refuses for exactly the reason its `for` twin refuses, so it is no longer an await family: it belongs to the general "a fixed-arity position that can consume a region" frontier |
+| I. Variadic no-static-seat | 5 → 0 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067). **The REPRESENTATION graduated 2026-09-10** and it did not need §6.6's generalized mark region: a value-producing LOOP's region is already ONE simulated slot standing for a runtime count, and the VM's stack ops are already count-agnostic, so the recorder now turns await's variadic-spread residual into that same region (`callVariadicRegion` → `eventFlags.variadicRegion`, `lw.variadic` at lowering). The plain-residual row compiles. The two CONSUMING rows graduated in the same batch, with their `for` twins, on two closing ops: **OpSeatBelowMark** (a mark opened before the region's event, an inert prefix lifted down to it) and **OpMakeListToMark** (the run collected into one List, element count taken from the mark). **The family is CLOSED** — `frontier-await-winner.tsv` is deleted |
 | J. Pinned miscompiles | 2 | bare `Function`-param read — both lanes wrong vs the 2026-08-15 ruling |
 | K/L. Context layer; conditional fn shadow | 2 | `context` needs a frame the inline stream lacks; `installDef` overlap-removal defeats rollback |
 
@@ -2931,14 +2931,20 @@ promotion applies only at the region's typed borders.
   `MarkUncompilable` is gone.
 
   The *consuming* half is where the generalized region does earn its keep,
-  and it is a T-lane question the loop rows ask identically. Half of it
-  landed the same day: **`OpSeatBelowMark`** closes a mark by lifting a
-  residual's inert PREFIX down to it, so `99 for 3 [i]` and
-  `99 await {mode:'first'} [[]]` compile — fixed values BENEATH a run whose
-  length is never named. What is still owed is the collect: an op that builds
-  one List of `stack[mark:]`, for `size [(for 3 [i])]` and its await twin.
-  The mark plumbing is now shared (one `markBefore` client per program, a
-  plan/seat split), so that is a second closing op rather than new machinery.
+  and it is a T-lane question the loop rows ask identically. It landed the
+  same day, as two CLOSING OPS over the mark plumbing that already existed:
+  **`OpSeatBelowMark`** lifts a residual's inert PREFIX down to the mark, so
+  `99 for 3 [i]` and `99 await {mode:'first'} [[]]` compile — fixed values
+  BENEATH a run whose length is never named — and **`OpMakeListToMark`**
+  collects `stack[mark:]` into one List, so `size [(for 3 [i])]` and
+  `size [(await {mode:'any'} [[7 8]])]` compile. Family I is closed.
+
+  What the generalized region is still owed is the SHAPES these two ops do
+  not reach: a run with fixed values on BOTH sides (`[9 (for 3 [i]) 8]`), a
+  region consumed by an arbitrary word rather than a list literal, and a
+  region that is not adjacent to its consumer. Each of those is a place where
+  "the stack is the address" would answer directly and a static seat still
+  cannot.
 - Family D's synthetics (`$module`, namespace reads) become `wordRef`
   slots resolved by the same runtime lookup as any name; "operand of
   unknown provenance" is not an answerable question in the G-lane because
@@ -3925,9 +3931,12 @@ necessary but insufficient — the finding §6.2/§6.6 answer);
 `RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md` (the doctrine and the defer
 worklist); `HIGHER-ORDER-FUNCTIONS.0.md` (§9d and the §9g generated-sweep law);
 `FUNCTION-VALUE-SCOPE.0.md` (the env axis); `NUR.md` NUR101/NUR078
-(NUR067 and NUR037 survive outside `NUR.md` — the ledger notes at
-`test/go/langspec/frontier_spec_test.go:439-451` and
-`design/HIGHER-ORDER-FUNCTIONS.0.md:1197`);
+(NUR037 survives outside `NUR.md` — the ledger note at
+`design/HIGHER-ORDER-FUNCTIONS.0.md:1197`. NUR067 did too, in the
+`frontier-await-winner.tsv` ledger entry, and is CLOSED as of 2026-09-10:
+both the file and the entry are deleted, and its record is the
+frontier_spec_test.go note that replaced them plus this note's §6.6 and the
+handoff's thirty-ninth-to-forty-first increments);
 `DO-STRUCTURE-COMPILATION.0.md` (the "always compile" directive);
 `HOT-CODE-LOADING.0.md`; `STAGE3-INLINING-DESIGN-ROUND.0.md` (one
 recording path; the third architecture); `VOXGIG-COMPILE-LEAVES.1.md`

@@ -438,25 +438,22 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// KeepDefsBodyGuard now publishes only at FnBodyDepth == 0, exactly as
 	// its multi-run sibling does, and the row compiles with parity.)
 
-	// NUR067 — await's winner-takes-all modes (frontier-await-winner.tsv).
-	// The REPRESENTATION graduated 2026-09-10: `first` / `any` hand back the
+	// (NUR067's family — frontier-await-winner.tsv — is GRADUATED IN FULL as
+	// of 2026-09-10, and the file is gone. `first` / `any` hand back the
 	// winning branch's whole residual, 0-or-more values, and that is now a
-	// runtime-variadic REGION — awaitVariadicResult returns one
-	// variadic-spread carrier on BOTH passes, RecordCall turns it into a
-	// region event (callVariadicRegion), and lowerCall gives it a
-	// value-producing loop's representation: ONE simulated slot marked
-	// lw.variadic. The plain-residual row compiles and moved to
-	// lang/spec/module-time.tsv, and the wholesale MarkUncompilable is gone.
+	// runtime-variadic REGION: awaitVariadicResult returns one variadic-spread
+	// carrier on BOTH passes, RecordCall turns it into a region event
+	// (callVariadicRegion), and lowerCall gives it a value-producing loop's
+	// representation — ONE simulated slot marked lw.variadic. The wholesale
+	// MarkUncompilable is gone.
 	//
-	// The INERT-PREFIX row graduated in the same batch with its loop twin
-	// `99 for 3 [i]`, on the shared OpSeatBelowMark lowering (both in
-	// lang/spec/bytecode-migrated.tsv).
-	//
-	// The row left refuses at its CONSUMER, for the reason its LOOP twin
-	// refuses — a collecting paren has to build a List of the run, and no op
-	// does that yet. So it is not an await frontier at all; its graduation is
-	// the general one and graduates the `for` spelling in the same stroke.
-	`import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]`: {why: "a collecting paren needs a static count; the loop twin `size [(for 3 [i])]` refuses identically", failsWith: "consumes loop results"},
+	// The two CONSUMING rows graduated with their LOOP twins on two closing
+	// ops, since neither was ever an await question: OpSeatBelowMark seats a
+	// residual's inert prefix beneath a run (`99 await …`, `99 for 3 [i]`) and
+	// OpMakeListToMark collects a run into one List (`size [(await …)]`,
+	// `size [(for 3 [i])]`). All of them now live in
+	// lang/spec/bytecode-migrated.tsv and lang/spec/module-time.tsv, where the
+	// live censuses own them.)
 
 	// Net drivers — plan Phase 5: per-iteration mark/collect in the for: lowering.
 

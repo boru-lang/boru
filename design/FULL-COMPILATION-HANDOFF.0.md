@@ -5006,6 +5006,54 @@ of `stack[mark:]`. The mark plumbing this increment added is already the
 right half of it — `markBefore`, one client per program, the plan/seat split
 — so that increment is a second closing op, not new machinery.
 
+## Collecting a region into a List, and NUR067 closed (2026-09-10, the forty-first increment)
+
+The last consuming shape: a list literal whose one element is a paren over a
+runtime-variadic region — `[(for 3 [i])]`, `size [(await {mode:'any'}
+[[7 8]])]`. `OpMakeList` cannot build it, and for one reason: its Arg is a
+STATIC element count.
+
+**What landed.** `OpMakeListToMark` — pop the innermost mark m, replace
+`stack[m:]` with one List of those values in order (ascriptions stripped, as
+`OpMakeList` strips them: list elements are stored data). The plan is the
+prefix plan's twin: `planRegionCollect` / `regionCollectShape` recognise the
+pair and put an `OpStackMark` in `markBefore`; `collectRegionTop` (a bool, so
+a shape it cannot close falls through to the ordinary refusal) emits the
+close. The collected List is a static single value, so a PROMOTED result
+stores and re-pushes like any other — `def xs [(for 3 [i])]  xs` compiles,
+and only the region needed the mark.
+
+**The safety argument is ADJACENCY, and it is the thing to keep.** The mark
+opens before the region's event, so everything above it at run time must be
+the region and nothing else. An event between the region and the list literal
+could leave a value there, or take one from beneath it. So the shape requires
+the two to be NEIGHBOURS in the top-level frame, and the seam test pins that
+they must be — no whole-program row can show it, because the row that would
+break is the row that refuses.
+
+**What stays refused, and why it is not arbitrary.** A list literal with any
+element BESIDE the region (`[9 (for 3 [i])]`, `size [(for 3 [i]) 9]`) keeps
+"consumes loop results": its other elements would have to seat either side of
+a run whose length is a runtime value, which is the prefix problem — and
+OpSeatBelowMark solves that only for the PROGRAM residual, where there is
+exactly one place to put things. A DEAD binding (`def _ [(for 3 [i])] 5`)
+keeps it too: dropping the result wants a static count to pop.
+
+**NUR067 is closed.** All three of its rows compile, `frontier-await-winner.tsv`
+is deleted, and its ledger entry is gone (36 → 35). Eight rows enter
+`lang/spec/bytecode-migrated.tsv`, `size [(await {mode:'any'} [[7 8]])]`
+among them — the row the whole NUR was opened on, whose one-seat layout
+compiled a stranded 7 and a 1-element list where the interpreter answers 2.
+
+**What the next author should not re-derive.** The three increments took a
+family that `design/FULL-COMPILATION.0.md` §6.6 had scheduled for the G-lane
+("the generalized mark region") and closed it in the T-lane, with two closing
+ops over machinery that already existed. The reusable lesson is the one the
+thirty-ninth increment found: **a value-producing loop's region was already
+"one recorded slot, a runtime count", and the VM's mark ops were already
+count-agnostic.** Before building a representation, check whether the one you
+need is already carrying a different client.
+
 ## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
 
 The thirty-seventh and thirty-eighth increments each graduated rows into the
