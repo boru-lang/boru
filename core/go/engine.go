@@ -9240,7 +9240,12 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		}
 	}
 	vals := make([]Value, 0, len(window))
-	hasCarrier := false
+	// needsRematch: the window holds at least one operand whose value the
+	// check pass does not have exactly — a carrier, a dynamic, or a DEFERRED
+	// EXPRESSION — so a static trap cannot be baked, but the RUNTIME rematch
+	// can re-run the match over what the interpreter's dispatch actually
+	// examines.
+	needsRematch := false
 	for _, p := range window {
 		v := e.Tape.At(p)
 		if IsWord(v) {
@@ -9284,9 +9289,18 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// time, and its expansion can read state the check pass models only
 		// abstractly — a reach over a mutated flex cell resolved at run time
 		// where the static match saw the raw Reach token (flex.tsv L88/L95).
-		// Its presence makes the failure non-definite; decline.
+		// So the failure is NOT definite and no static trap may be baked.
+		//
+		// It is exactly what the REMATCH is for, though, and routing it there
+		// rather than declining outright is the forty-sixth increment. The
+		// rematch never reads a static tag: it re-runs the match at run time
+		// over the values the interpreter's own dispatch examines — the
+		// EXPANDED ones — so it defers when the expansion matches and raises
+		// the byte-identical rich error when it does not. The flex witness is
+		// the deferring case and keeps its answer; `p apply $.name` is the
+		// raising one, and stops needing the whole program to fall back.
 		if IsReach(v) || IsParenExpr(v) || IsInterpString(v) {
-			return false
+			needsRematch = true
 		}
 		// A CARRIER operand is not concrete at compile time, so the rich
 		// diagnostic this trap would bake (received-argument note,
@@ -9315,10 +9329,10 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// dynamic with no compiled home fails RecordDispatchRematchValues'
 		// operand resolution and the refusal stands.
 		if v.Carrier || v.Dynamic {
-			hasCarrier = true
+			needsRematch = true
 		}
 	}
-	if hasCarrier {
+	if needsRematch {
 		// Not statically definite — but every position is a runtime-stable
 		// value or a provenance-carrying carrier: record the runtime
 		// rematch (OpDispatchRematch), under three byte-identity guards.

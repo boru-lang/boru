@@ -41,9 +41,16 @@ def inc fn [[n:Integer][Integer][n add 1]]  5 inc apply	ERROR:signature_error	ba
 #     receiver beneath, lens on top — `receiver lens apply`. The forward
 #     spellings are refused exactly as the Function overload's are, so the
 #     word carries ONE sourcing regime with no per-overload exception. The
-#     two forward-lens NEGATIVES are pinned in
-#     lang/spec/frontier/frontier-apply-stackonly.tsv: their check-time
-#     no-match takes the recovery path, which refuses compilation, and
-#     this corpus's refusal ceiling is 0.
+#     two forward-lens NEGATIVES joined this file with the forty-sixth
+#     increment (2026-09-10): their check-time no-match takes the recovery
+#     path, and a recovered window whose operands include a DEFERRED
+#     EXPRESSION (a reach, a paren expr, an interp string) now takes the
+#     runtime REMATCH rather than declining — it re-runs the match over the
+#     values the interpreter's own dispatch examines, so the compiled
+#     program raises the byte-identical signature_error instead of the whole
+#     program falling back.
 def p {name:'ada'}  p $.name apply	'ada'	apply a reach lens to a stack receiver (lens on top)
 [10 20 30] $.1 apply	20	apply an index lens to a stack list
+def p {name:'ada'}  p apply $.name	ERROR:signature_error	forward lens refused — apply is stack-only, no per-overload exception
+[10 20 30] apply $.1	ERROR:signature_error	forward lens refused for the list form too
+$.1 [10 20 30] apply	ERROR:signature_error	…and the swapped spelling keeps its own refusal: sigError's reorder hint reads tape state the runtime rebuild cannot rebuild

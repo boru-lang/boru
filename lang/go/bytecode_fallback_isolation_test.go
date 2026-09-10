@@ -67,12 +67,24 @@ func TestRunCompiledFallbackIsolation(t *testing.T) {
 	cases := []string{
 		// EVERY row here pairs a rollback-sensitive SIDE EFFECT with a tail
 		// that still refuses, and the tail is the perishable half: it has been
-		// re-chosen three times as the subset widened. It was the predicate-fn
+		// re-chosen FOUR times as the subset widened. It was the predicate-fn
 		// `is` until 2026-08-28, on the reasoning that "the VM cannot re-step a
 		// fn body" — which was never why that row refused (a predicate node
 		// rides as data; §6.3), and it compiles now that predicate bodies run
-		// on the VM. The forward-lens `apply` no-match is the current tail: it
-		// takes dispatch recovery, is pure, and is short.
+		// on the VM. Then it was the forward-lens `apply` no-match
+		// (`[10 20 30] apply $.1`), which the forty-sixth increment graduated:
+		// a deferred-expression window takes the runtime REMATCH now instead
+		// of declining, so that row compiles and raises byte-identically.
+		//
+		// The current tail is the SWAPPED spelling, chosen for a STRUCTURAL
+		// reason rather than for being merely uncompiled today: its operands
+		// are in the wrong order, so sigError attaches its REORDER HINT ("did
+		// you swap the arguments?"), and a reorder hint is derived from TAPE
+		// STATE the runtime rebuild has no access to. The rematch declines on
+		// exactly that, by construction, so widening the compiled subset does
+		// not reach this row — only building a runtime reorder-hint rebuild
+		// would, and that is a deliberate act rather than an incidental
+		// widening. Still pure, still short.
 		//
 		// type mint + undef, then reuse — a re-mint would clash. A flex default
 		// bakes (make freshens it per instance) AND a mutation of the flex field
@@ -81,21 +93,21 @@ func TestRunCompiledFallbackIsolation(t *testing.T) {
 		// so the class-mint + `undef C` needs the refusing tail to keep the
 		// whole row on the fallback path: the undef-C side effect must still be
 		// rolled back before the whole-program interpreter fallback re-runs.
-		`def C class {x:(flex [])} def p (make C {}) undef C end (p.x push 1) ([10 20 30] apply $.1)`,
+		`def C class {x:(flex [])} def p (make C {}) undef C end (p.x push 1) ($.1 [10 20 30] apply)`,
 		// fn registration under a capitalised name — a re-register clashes.
-		`def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] [10 20 30] apply $.1`,
+		`def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] $.1 [10 20 30] apply`,
 		// native-module import whose namespace metadata a re-import degrades.
 		// The module-SYNTHETIC reads (`typeof MathUtil`, `MathUtil.$name`,
 		// `MathUtil.$module.name`) now const-fold and compile, so this pairs the
 		// import with the refusing tail: the import side effect must still be
 		// rolled back before the whole-program fallback re-runs.
-		`import "boru:math-util" [10 20 30] apply $.1`,
+		`import "boru:math-util" $.1 [10 20 30] apply`,
 		// boru:test import isolation: Test.test / Test.describe cases (closure
 		// path) AND the property words prop/check-prop/skip (their inert bodies
 		// bake as consts — the dot-access reach inside now an inert member) all
 		// compile, so this pairs the import with the refusing tail to exercise
 		// the import rollback.
-		`import "boru:test" [10 20 30] apply $.1`,
+		`import "boru:test" $.1 [10 20 30] apply`,
 	}
 	for _, src := range cases {
 		ac, err := New()
