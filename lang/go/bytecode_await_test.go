@@ -74,6 +74,10 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 //     a frame slot while the run delivers a runtime count;
 //   - the dead-result drop — `def _ (await …)` would pop exactly one.
 //
+// The INERT-PREFIX shape that was here (`99 await …`) graduated on its own
+// closing op and is pinned as a PARITY row in region_prefix_test.go, beside
+// its `for` twin.
+//
 // Each refusal below is a SOUND interpreter fallback, so parity is asserted
 // alongside it: a refusal that changed the answer would be no better than the
 // miscompile it replaced.
@@ -81,8 +85,6 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 	for _, tc := range []struct{ src, reason, want string }{
 		{`import "boru:time-util" size [(TimeUtil.await {mode:"any"} [[7 8]])]`,
 			"consumes loop results", "[2]"},
-		{`import "boru:time-util" 99 TimeUtil.await {mode:"first"} [[1 2 3]]`,
-			"residual shape beyond Stage 1 (call result above a literal)", "[99 1 2 3]"},
 		{`import "boru:time-util" def x (TimeUtil.await {mode:"first"} [[1 2 3]]) x`,
 			"variadic region promoted to a frame slot", "[2 3 1]"},
 		{`import "boru:time-util" def _ (TimeUtil.await {mode:"first"} [[1 2 3]]) 5`,
@@ -102,9 +104,7 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 			}
 			// The fallback answers what the INTERPRETER answers, and the
 			// expected value is written out: a refusal that changed the
-			// answer would be no better than the miscompile it replaced,
-			// and `[99 1 2 3]` in particular is the exact shape the
-			// pre-guard trailing-apply lowering got wrong ([1 2 99 3]).
+			// answer would be no better than the miscompile it replaced.
 			b, err := New()
 			if err != nil {
 				t.Fatal(err)

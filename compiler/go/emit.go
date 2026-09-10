@@ -9245,6 +9245,99 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 	return pr.seq, true
 }
 
+// planRegionPrefix arms the INERT-PREFIX seating beneath a runtime-variadic
+// REGION (NUR067's consuming half — `99 for 3 [i]`, `99 await {mode:'first'}
+// [[]]`). Declines when another mark plan already owns the frame: one mark
+// client per program, exactly as planMarkWindow declines to planVariadicClaims.
+func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
+	seq, ok := es.regionPrefixShape(residual)
+	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{seq: true}
+	lw.regionPrefixSeq = seq
+}
+
+// regionPrefixShape reports the producing seq of a residual shaped
+// [inert…, REGION] — a runtime-variadic region LAST, with every entry beneath
+// it inert (a const or a type: no producing event at all). That is the one
+// shape OpSeatBelowMark can close, and it is the shape the ordinary seating
+// refuses as "call result above a literal": the prefix cannot be pushed after
+// the region (it would land on top of the run) and cannot be indexed past it
+// from the top (the run's length is a runtime value).
+//
+// The producer must be a TOP-LEVEL event, for planMarkWindow's reason:
+// lowerEvents reads markBefore only over frames[0], so a fragment-resident
+// anchor would arm the plan with no OpStackMark ever emitted and the VM would
+// raise where the interpreter succeeds.
+func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
+	if len(residual) < 2 {
+		return 0, false
+	}
+	pr, ok := es.producedBy[residual[len(residual)-1].ID]
+	if !ok {
+		return 0, false
+	}
+	// singleSlotRegion answers false for a nil event, and it is checked FIRST
+	// so regionReadsTheStack is never handed one.
+	ev := es.topLevelEventBySeq(pr.seq)
+	if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) {
+		return 0, false
+	}
+	for _, rv := range residual[:len(residual)-1] {
+		if _, isEvent := es.producedBy[rv.ID]; isEvent {
+			return 0, false
+		}
+	}
+	return pr.seq, true
+}
+
+// regionReadsTheStack reports whether the region event ev takes an operand
+// that is ALREADY on the simulated stack when its OpStackMark opens, and so
+// sits BELOW the mark: a prior EVENT's result, or a CLOSURE whose captures
+// may themselves be such results. The region would then pop from beneath its
+// own mark (`def m {n:3}  99 for (m get "n") [i]` — the bound is a live `get`
+// result), leaving the mark above the stack top and SEAT_BELOW_MARK with
+// nothing coherent to lift. Const, local and type operands are all pushed
+// AFTER the mark, so those keep the plan.
+//
+// Only the operands that can reach the ENCLOSING stack are walked, which is
+// why this does not reuse forEachOperand: a loop's condOut / bodyOut are its
+// FRAGMENTS' results, live on the fragment's own scope and never on this one,
+// and treating them as stack reads would decline every value-producing loop
+// (their bodyOut is an event operand whenever the body is computed —
+// `99 for 2 [(1 add 2)]`).
+func regionReadsTheStack(ev *EmitEvent) bool {
+	ops := ev.call.ops
+	if ev.kind == evLoop {
+		ops = []EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step}
+		for _, c := range ev.loop.carried {
+			ops = append(ops, c.init)
+		}
+	}
+	for _, op := range ops {
+		if op.kind == opEvent || op.kind == opClosure {
+			return true
+		}
+	}
+	return false
+}
+
+// singleSlotRegion reports whether ev's result is ONE recorded slot standing
+// for a RUNTIME-VARIABLE count of values: a value-producing loop (`for` /
+// `while` — RecordLoop's hasBodyOut arm), or a variadic REGION call
+// (callVariadicRegion — await's winner-takes-all residual). A do-catch's
+// variadicResult is deliberately NOT one: it seats nout static slots and
+// shrinks at run time, so there is no single slot to seat a prefix under.
+// A nil event (no top-level event with that seq) is not one either.
+func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
+	if ev == nil {
+		return false
+	}
+	f := es.eventInfo[ev.seq]
+	return !f.zeroOut && (f.variadicRegion || (ev.kind == evLoop && f.variadicResult))
+}
+
 // topLevelEventBySeq finds the top-level frame's event with the given seq
 // (nil when the seq belongs to a nested fragment or unit).
 func (es *EmitState) topLevelEventBySeq(seq int) *EmitEvent {
@@ -9997,6 +10090,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
 	// Mark-window plan (L-DO part 2b): see planMarkWindow.
 	es.planMarkWindow(lw, residual)
+	// Region-prefix plan (NUR067's consuming half): see planRegionPrefix.
+	es.planRegionPrefix(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -10039,11 +10134,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	if es.trapAt == 0 && dynOp != OpCallDynMixedFromMark {
-		if reason := lw.seatResults(ops, false, false, seatMsgs{
-			aboveLiteral: "residual shape beyond Stage 1 (call result above a literal)",
-			reordered:    "residual shape beyond Stage 1 (call results reordered)",
-			unconsumed:   "residual shape beyond Stage 1 (unconsumed call results)",
-		}, lastPos); reason != "" {
+		if reason := lw.seatProgramResidual(ops, lastPos); reason != "" {
 			// Reachable: a dirty-stack prefix under a dynamic-apply residual
 			// (the variation sweep's prefix-stack transform) seats a shape
 			// this refuses — a genuine Stage-1 refusal path, not a fault arm.

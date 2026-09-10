@@ -12,10 +12,13 @@
 # plain-residual row therefore compiles and has moved to
 # lang/spec/module-time.tsv.
 #
-# What is left here are the two rows whose CONSUMER needs a static count.
-# They are no longer an await-specific frontier: each refuses for exactly
-# the reason its loop twin refuses (`size [(for 3 [i])]`, `99 for 3 [i]`),
-# so their graduation is the general one — a region a fixed-arity position
-# can consume — not anything about await.
+# The INERT-PREFIX row (`99 await {mode:'first'} [[]]`) graduated in the
+# same batch with its loop twin `99 for 3 [i]`, on the shared
+# OpSeatBelowMark lowering — both in lang/spec/bytecode-migrated.tsv.
+#
+# What is left is the one row whose CONSUMER needs a static count: a
+# collecting paren has to build a List of the run, and no op does that yet.
+# It is not an await frontier — it refuses for exactly the reason its loop
+# twin `size [(for 3 [i])]` refuses — so its graduation is the general one
+# and graduates the `for` spelling in the same stroke.
 import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]	2
-import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]	99

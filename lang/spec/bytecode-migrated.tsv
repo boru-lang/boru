@@ -71,6 +71,19 @@ for 2 [(1 add 2) (3 mul 4)]	3 12 3 12
 # Net drivers COMPLETE (2026-07-14): the inert-const multi-value loop body
 # graduates — captured operands re-push per iteration (frontier-for-multi).
 for 3 [1 2]	1 2 1 2 1 2
+# Region prefix (2026-09-10, NUR067's consuming half): a residual shaped
+# [inert..., REGION] — values that must end up BENEATH a run whose length is
+# a runtime value. The lowering opens an OpStackMark before the region's
+# producing event and closes with SEAT_BELOW_MARK, which lifts the prefix
+# down to the mark without naming the run's length. Both producers of a
+# single-slot region are here, at many / one / zero.
+99 for 3 [i]	99 0 1 2
+99 for 0 [i]	99
+1 2 for 3 [i]	1 2 0 1 2
+99 for 2 [(1 add 2)]	99 3 3
+5 for 2 [1 2]	5 1 2 1 2
+import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[1 2 3]]	99 1 2 3
+import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]	99
 # await branch bodies compile per element (CompileStoresBodyList, 2026-07-14):
 # each parallels element becomes its own 0-param unit run via RunUnit on its
 # branch fork; a raising branch surfaces as the mode's error value.

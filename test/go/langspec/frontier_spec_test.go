@@ -448,13 +448,15 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// lw.variadic. The plain-residual row compiles and moved to
 	// lang/spec/module-time.tsv, and the wholesale MarkUncompilable is gone.
 	//
-	// The two rows left refuse at their CONSUMER, each for the reason its
-	// LOOP twin refuses — a region cannot be read where a static count is
-	// required. So they are no longer an await frontier at all; their
-	// graduation is the general one (a fixed-arity position that can consume
-	// a region), and it graduates the `for` spellings in the same stroke.
+	// The INERT-PREFIX row graduated in the same batch with its loop twin
+	// `99 for 3 [i]`, on the shared OpSeatBelowMark lowering (both in
+	// lang/spec/bytecode-migrated.tsv).
+	//
+	// The row left refuses at its CONSUMER, for the reason its LOOP twin
+	// refuses — a collecting paren has to build a List of the run, and no op
+	// does that yet. So it is not an await frontier at all; its graduation is
+	// the general one and graduates the `for` spelling in the same stroke.
 	`import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]`: {why: "a collecting paren needs a static count; the loop twin `size [(for 3 [i])]` refuses identically", failsWith: "consumes loop results"},
-	`import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]`:        {why: "a region above an inert tail cannot seat; the loop twin `99 for 3 [i]` refuses identically", failsWith: "residual shape beyond Stage 1 (call result above a literal)"},
 
 	// Net drivers — plan Phase 5: per-iteration mark/collect in the for: lowering.
 

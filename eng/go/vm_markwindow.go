@@ -17,11 +17,40 @@ import (
 // vmMark; the mark-window island needs the vmContext (its island runner), so
 // it dispatches here — keeping the run loop's mark case a single line under
 // the cognitive-complexity cap.
-func (vc *vmContext) vmMarkOp(reg *core.Registry, op compiler.Opcode, marks []int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]int, []core.Value, error) {
+func (vc *vmContext) vmMarkOp(reg *core.Registry, op compiler.Opcode, arg int, marks []int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]int, []core.Value, error) {
 	if op == compiler.OpCallDynMixedFromMark {
 		return vc.callDynMixedFromMark(reg, marks, stack, curDebug, pc)
 	}
+	if op == compiler.OpSeatBelowMark {
+		return vmSeatBelowMark(arg, marks, stack, curDebug, pc)
+	}
 	return vmMark(op, marks, stack, curDebug, pc)
+}
+
+// vmSeatBelowMark closes a region whose residual carries an INERT PREFIX
+// underneath it (NUR067's consuming half, OpSeatBelowMark). The prefix was
+// pushed ABOVE the finished region — the only place a static lowering can put
+// it, since the region's count is a runtime value — so this op moves the top
+// n values down to the mark and lifts the run above them:
+//
+//	before  [ … | region₀ … regionₖ₋₁ , prefix₀ … prefixₙ₋₁ ]
+//	after   [ … | prefix₀ … prefixₙ₋₁ , region₀ … regionₖ₋₁ ]
+//
+// with the mark at the │ and k — the region's length — never named. Both runs
+// keep their order, and the mark is consumed.
+func vmSeatBelowMark(n int, marks []int, stack []core.Value, debug []core.SrcPos, pc int) ([]int, []core.Value, error) {
+	if len(marks) == 0 {
+		return marks, stack, vmErrAt(debug, pc, "SEAT_BELOW_MARK with no open mark")
+	}
+	m := marks[len(marks)-1]
+	marks = marks[:len(marks)-1]
+	if n < 0 || len(stack)-n < m {
+		return marks, stack, vmErrAt(debug, pc, "SEAT_BELOW_MARK prefix reaches past the mark")
+	}
+	prefix := append([]core.Value(nil), stack[len(stack)-n:]...)
+	region := append([]core.Value(nil), stack[m:len(stack)-n]...)
+	stack = append(stack[:m], prefix...)
+	return marks, append(stack, region...), nil
 }
 
 func (vc *vmContext) callDynMixedFromMark(reg *core.Registry, marks []int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]int, []core.Value, error) {

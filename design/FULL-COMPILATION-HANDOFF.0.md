@@ -4945,6 +4945,67 @@ rows, which are simpler and already in the corpus.
 `awaitClearVariadic`, a function that does not exist anywhere in the tree —
 a stale reference to a latch design that was never built.
 
+## Seating an inert prefix beneath a region (2026-09-10, the fortieth increment, NUR067)
+
+The thirty-ninth increment gave the growing direction a REPRESENTATION and
+left the two CONSUMING shapes refusing. This is the first of them, and it is
+shared with the loop rows verbatim: a residual of
+`[inert…, REGION]` — `99 for 3 [i]`, `99 await {mode:'first'} [[]]` — where
+values have to end up BENEATH a run whose length is a runtime value.
+
+**Why the ordinary seating cannot do it.** `seatResults` pushes inert
+operands as a TRAILING tail, above the last event result, and refuses an
+event above a queued tail ("call result above a literal"). For a region there
+is no other static option: pushing the prefix after the region lands it on
+TOP of the run, and no fixed offset reaches past a runtime count. The
+existing repair for the non-region case — promote the producing event to a
+frame local and re-push in residual order (`forceOrder`) — is exactly what a
+region cannot do: a promotion stores `nout` values.
+
+**What landed.** `OpSeatBelowMark`, one new op, and a plan that arms it:
+
+- `planRegionPrefix` / `regionPrefixShape` (Finalize, before lowering)
+  recognise `[inert…, REGION-last]` and put an `OpStackMark` in `markBefore`
+  — the same map `planVariadicClaims` and `planMarkWindow` use, and it
+  declines to both, so a program has one mark client.
+- `seatRegionPrefix` (after lowering) pushes the prefix ABOVE the finished
+  run and emits `OpSeatBelowMark n`. It returns a BOOL rather than a reason:
+  a shape it cannot close falls through to the ordinary seating, whose
+  refusal is the honest one, and the unused mark is emitted into a program
+  that never runs.
+- `vmSeatBelowMark` (eng) pops the mark m, lifts the top n values, and re-lays
+  the stack as `[…, prefix, region…]`. The region's length is never named —
+  that is the whole point, and it is why the ZERO case needs no special arm.
+
+**Two facts the plan has to get right, neither visible from a passing row.**
+
+1. **`singleSlotRegion` is not `variadicResult`.** A `do`-catch is
+   `variadicResult` too, and it seats `nout` STATIC slots that shrink at run
+   time — there is no one slot to seat a prefix under. Only a value-producing
+   loop (`RecordLoop`'s `hasBodyOut` arm) and a `variadicRegion` call qualify.
+2. **A loop's `condOut` / `bodyOut` are its FRAGMENTS' results.** The mark
+   opens before the region's event, so an operand already live on the
+   ENCLOSING stack sits BELOW the mark and the region would pop from beneath
+   it (`def m {n:3}  99 for (m get "n") [i]` — the bound is a live `get`
+   result). `regionReadsTheStack` therefore declines an event or closure
+   operand — but it walks `start`/`end`/`step`/`carried` only, NOT
+   `forEachOperand`: the fragment outs never touch this scope, and counting
+   them would have declined every computed-body loop (`99 for 2 [(1 add 2)]`)
+   silently and for a wrong reason.
+
+**Measured.** Seven rows enter `lang/spec/bytecode-migrated.tsv` — the loop
+spellings at three counts (three values, zero, a two-deep prefix), a computed
+body, a multi-value body, and both await counts — and the ledger drops from
+37 to 36. The stack-reading region keeps its refusal with the interpreter's
+answer pinned beside it.
+
+**What the next author should not re-derive.** The remaining consuming shape
+is the collecting paren (`size [(for 3 [i])]`, `size [(await …)]`), and it
+needs the OTHER half of §6.6's generalized region: an op that builds a List
+of `stack[mark:]`. The mark plumbing this increment added is already the
+right half of it — `markBefore`, one client per program, the plan/seat split
+— so that increment is a second closing op, not new machinery.
+
 ## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
 
 The thirty-seventh and thirty-eighth increments each graduated rows into the

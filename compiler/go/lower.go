@@ -471,8 +471,13 @@ type lowerer struct {
 	// planVariadicClaims.
 	markBefore   map[int]bool
 	variadicElse map[int]bool
-	loops        []loopCtx
-	maxDepth     int
+	// regionPrefixSeq is the event seq of a residual-final runtime-variadic
+	// REGION whose residual carries an INERT PREFIX beneath it (NUR067's
+	// consuming half — planRegionPrefix armed it and put an OpStackMark in
+	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
+	regionPrefixSeq int
+	loops           []loopCtx
+	maxDepth        int
 	// depth counts live lowerFragment recursion (nested branch / loop bodies).
 	// The parser already caps source nesting (maxParseNestingDepth), so a program
 	// that reached the lowerer is shallow enough; this is defense-in-depth for an
@@ -2088,6 +2093,63 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 		lw.pushOperand(op, pos)
 	}
 	return ""
+}
+
+// seatProgramResidual lays out the PROGRAM's residual as the final stack and
+// returns the refusal, if any. Two layouts, tried in order: the region-prefix
+// seating, which closes a residual shaped [inert…, REGION] through the mark
+// the plan opened; then the ordinary in-order seating, which owns every other
+// shape and whose wording is the honest one for anything the first declines.
+//
+// Split out of Finalize rather than written inline because Finalize sits on
+// the gocyclo ceiling: one more branch there is one branch too many, and this
+// choice belongs beside the two seatings anyway.
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) string {
+	if lw.seatRegionPrefix(ops, pos) {
+		return ""
+	}
+	return lw.seatResults(ops, false, false, seatMsgs{
+		aboveLiteral: "residual shape beyond Stage 1 (call result above a literal)",
+		reordered:    "residual shape beyond Stage 1 (call results reordered)",
+		unconsumed:   "residual shape beyond Stage 1 (unconsumed call results)",
+	}, pos)
+}
+
+// seatRegionPrefix seats a residual shaped [inert…, REGION] and reports
+// whether it did (NUR067's consuming half). planRegionPrefix armed the plan
+// and opened an OpStackMark before the region's producing event; the region's
+// own run is now the sim's ONE remaining entry, so the prefix pushes ABOVE it
+// — the only place a static lowering can put it — and OpSeatBelowMark moves
+// the prefix down to the mark, lifting the run above it without ever naming
+// the run's length.
+//
+// Returns false — leaving the emitted code untouched — whenever the plan is
+// not armed (every ordinary program) or the post-lowering stack is not the
+// bare region the plan expected. The caller then takes the ordinary seating,
+// whose refusal ("call result above a literal") is the honest one for a shape
+// this could not close; the unused OpStackMark is emitted into a program that
+// never runs.
+func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
+	n := len(ops) - 1
+	if lw.regionPrefixSeq == 0 || n < 1 || ops[n].kind != opEvent || ops[n].idx != lw.regionPrefixSeq ||
+		len(lw.vm) != 1 || !slotIs(lw.vm[0], ops[n]) {
+		return false
+	}
+	// Every operand beneath the region is inert by construction —
+	// regionPrefixShape admitted the residual only because none of those
+	// entries had a producing event — so each is a plain push.
+	for _, op := range ops[:n] {
+		lw.pushOperand(op, pos)
+	}
+	lw.emit(OpSeatBelowMark, n, pos)
+	// Model the seated layout: the prefix beneath the region's one slot.
+	lw.vm = lw.vm[:0]
+	for range ops[:n] {
+		lw.vm = append(lw.vm, nonEventSlot)
+	}
+	lw.vm = append(lw.vm, vmSlot{seq: ops[n].idx, idx: ops[n].resIdx})
+	lw.note()
+	return true
 }
 
 // planBranchPromotion classifies one evBranch merge result for

@@ -115,7 +115,7 @@ row than the ledger — a one-row re-audit of that pool is owed):
 | F. Dispatch recovery | 5 | `unmatched dispatch recovered at apply/…` — recovered windows have no trap lowering yet |
 | G. Working islands | 7 → 5 | compile and run correctly; ledgered only because the program embeds `OpFallback`. **2 graduated 2026-08-27** (list `each`, Function and lambda forms): `lambdaCallbackInputs` had a MAP case and no LIST case, so the lambda lowering declined at its first gate — a missing case, not the "modelled fn-value callback frame" the ledger asked for. **5 more graduated 2026-08-28** (list `fold`/`scan`, Function and lambda, seeded and unseeded): they needed no frame either — both handlers hand `(accumulator, element)`, and the two engines disagree only because the MAP path binds POSITIONALLY (`CallBoruFn`) while the LIST path runs its inputs as a STACK (`InvokeBody` → `RunResolved`), where `MatchSignature` fills top-down. One per-word permutation at the closure bind (`ClosureInStackPair`) reconciles them (§6.3). The family is down to the `apply` island and the full-stack-word row |
 | H. `while` | 6 | no structured lowering; body words splice tape-coupled tokens |
-| I. Variadic no-static-seat | 5 → 2 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067). **The REPRESENTATION graduated 2026-09-10** and it did not need §6.6's generalized mark region: a value-producing LOOP's region is already ONE simulated slot standing for a runtime count, and the VM's stack ops are already count-agnostic, so the recorder now turns await's variadic-spread residual into that same region (`callVariadicRegion` → `eventFlags.variadicRegion`, `lw.variadic` at lowering). The plain-residual row compiles. The 2 rows left refuse at their CONSUMER — a collecting paren, a region above an inert tail — for exactly the reason their `for` twins refuse, so they are no longer an await family: they belong to the general "a fixed-arity position that can consume a region" frontier |
+| I. Variadic no-static-seat | 5 → 1 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067). **The REPRESENTATION graduated 2026-09-10** and it did not need §6.6's generalized mark region: a value-producing LOOP's region is already ONE simulated slot standing for a runtime count, and the VM's stack ops are already count-agnostic, so the recorder now turns await's variadic-spread residual into that same region (`callVariadicRegion` → `eventFlags.variadicRegion`, `lw.variadic` at lowering). The plain-residual row compiles. The region-above-an-inert-tail row graduated in the same batch on **OpSeatBelowMark** (a mark opened before the region's event, the prefix lifted down to it — the run's length never named). The 1 row left is the collecting paren, which refuses for exactly the reason its `for` twin refuses, so it is no longer an await family: it belongs to the general "a fixed-arity position that can consume a region" frontier |
 | J. Pinned miscompiles | 2 | bare `Function`-param read — both lanes wrong vs the 2026-08-15 ruling |
 | K/L. Context layer; conditional fn shadow | 2 | `context` needs a frame the inline stream lacks; `installDef` overlap-removal defeats rollback |
 
@@ -2930,11 +2930,15 @@ promotion applies only at the region's typed borders.
   as a region, `lowerCall` marks `lw.variadic` — and the wholesale
   `MarkUncompilable` is gone.
 
-  What is still owed is the *consuming* half, and it is a T-lane question the
-  loop rows ask identically (`size [(for 3 [i])]`, `99 for 3 [i]`): an op that
-  collects a region into a list, and a residual seating that can put fixed
-  values BENEATH one. That, not the producing mark, is where the generalized
-  region earns its keep.
+  The *consuming* half is where the generalized region does earn its keep,
+  and it is a T-lane question the loop rows ask identically. Half of it
+  landed the same day: **`OpSeatBelowMark`** closes a mark by lifting a
+  residual's inert PREFIX down to it, so `99 for 3 [i]` and
+  `99 await {mode:'first'} [[]]` compile — fixed values BENEATH a run whose
+  length is never named. What is still owed is the collect: an op that builds
+  one List of `stack[mark:]`, for `size [(for 3 [i])]` and its await twin.
+  The mark plumbing is now shared (one `markBefore` client per program, a
+  plan/seat split), so that is a second closing op rather than new machinery.
 - Family D's synthetics (`$module`, namespace reads) become `wordRef`
   slots resolved by the same runtime lookup as any name; "operand of
   unknown provenance" is not an answerable question in the G-lane because

@@ -219,6 +219,19 @@ const (
 	OpStackMark
 	OpDropToMark
 	OpPopMark
+	// OpSeatBelowMark seats a residual's INERT PREFIX beneath a
+	// runtime-variadic REGION (NUR067's consuming half). `99 for 3 [i]` and
+	// `99 await {mode:'first'} [[]]` both leave [99, <region>], and the region's
+	// count is a runtime value, so the prefix cannot be pushed after it (it
+	// would land on TOP of the run) and cannot be indexed past it from the top.
+	// The lowering therefore opens an OpStackMark before the region's producing
+	// event, pushes the prefix ABOVE the finished region in residual order, and
+	// closes with this op: Arg = the prefix length n; pop the innermost mark m,
+	// lift the top n values, and re-lay the stack as
+	// [ … , prefix₀ … prefixₙ₋₁, region … ] — the prefix at the mark, the whole
+	// run above it, order preserved on both sides. Nothing else moves, and the
+	// region's count is never named.
+	OpSeatBelowMark
 	// OpCallDynamicMixed handles the MIXED fn-value-call boundary: a runtime
 	// FUNCTION value sitting INTERIOR to the program residual, with static args
 	// both BELOW it and ABOVE it (`3 m.f 2` — `m.f` is a 2-arg fn collecting the
@@ -556,6 +569,7 @@ var opcodeNames = [...]string{
 	OpStackMark:            "STACK_MARK",
 	OpDropToMark:           "DROP_TO_MARK",
 	OpPopMark:              "POP_MARK",
+	OpSeatBelowMark:        "SEAT_BELOW_MARK",
 	OpCallDynamicMixed:     "CALL_DYNAMIC_MIXED",
 	OpInterp:               "INTERP",
 	OpInterpXml:            "INTERP_XML",

@@ -2277,9 +2277,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, vmErrAt(curDebug, pc, "DROP stack underflow")
 			}
 			stack = stack[:len(stack)-1]
-		case compiler.OpStackMark, compiler.OpDropToMark, compiler.OpPopMark, compiler.OpCallDynMixedFromMark:
+		case compiler.OpStackMark, compiler.OpDropToMark, compiler.OpPopMark, compiler.OpCallDynMixedFromMark,
+			compiler.OpSeatBelowMark:
 			var err error
-			if marks, stack, err = vc.vmMarkOp(curReg, in.Op, marks, stack, curDebug, pc); err != nil {
+			if marks, stack, err = vc.vmMarkOp(curReg, in.Op, int(in.Arg), marks, stack, curDebug, pc); err != nil {
 				return nil, err
 			}
 		case compiler.OpMakeList:
