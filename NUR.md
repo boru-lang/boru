@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
@@ -283,6 +284,50 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR130 — a terminal trap's caret is the recorded site, the interpreter's is its tape pointer {#nur130}
+
+**Status:** Pending. **Found:** 2026-09-10, the forty-second increment (the
+statically-empty `while` condition compiled to a terminal `OpTrap`).
+
+**Rule:** a position is part of the error a user meets (NUR108), so two lanes
+raising the same error should anchor it at the same place.
+
+**Divergence.** Message, code and exit agree; the caret does not.
+
+```
+while [] [1] end 5
+  compiled     runtime_error: while: condition produced no value  --> 1:7   (the `[]`)
+  interpreted  runtime_error: while: condition produced no value  --> 1:14  (the `5`)
+
+while [] [1]
+  compiled     --> 1:7
+  interpreted  --> source position unknown
+```
+
+**Why, and which one is right.** A trap carries the position the RECORDER
+saw — here the condition operand, which is the thing that is wrong. The
+interpreter raises from `stepMoveWhile`, whose error takes the engine's
+current pointer, and after the loop's mark/move triple has been spliced that
+pointer is wherever the tape happens to sit: the token after the loop, or
+nothing at all. The compiled anchor is the useful one; the interpreter's is
+an artefact.
+
+**Not narrow to `while`.** Every `RecordTrap` client has this shape — the
+trap's `pos` is chosen at the record site and the interpreter's comes from
+its own raise. `RecordTrapErr` does not: it serialises the interpreter's
+whole diagnostic, spans included, so those traps agree by construction.
+Nothing was measured across the other plain-`RecordTrap` clients here, so
+this record claims only the `while` witness and the mechanism.
+
+**What the fix would be.** Either give `stepMoveWhile` (and its siblings) the
+operand position their errors are about, which moves the INTERPRETER to the
+better anchor and closes the gap from the correct side, or teach the trap to
+carry the interpreter's own position. The first is the one worth doing, and
+it is an interpreter change with its own parity rows, which is why it is not
+folded into a compile increment.
 
 ---
 

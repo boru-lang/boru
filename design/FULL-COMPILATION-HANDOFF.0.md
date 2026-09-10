@@ -5257,6 +5257,35 @@ byte-identical to what `each` draws on the identical body today, so the
 change makes the two words uniform rather than making for-each worse; the
 corpus's one for-each row is unaffected.
 
+## What the batch gate caught: two graduations and a render (2026-09-10, repairs to the forty-second-to-forty-fourth increments)
+
+Three reds, and the shape of two of them is the one this line keeps meeting:
+**a "sound refusal" test is a claim that can expire.**
+
+**1. Two refusal rows became parity rows** — and both had to be MEASURED
+before being moved, because a shape that starts compiling is a graduation
+only if it compiles to the interpreter's answer.
+
+- `def k2 x:Integer => [[a:Integer b:Integer] => [a sub b]] end 10 3 (k2 0)
+  apply` was pinned as "the seating cannot reorder". The forty-third
+  increment IS the reordering, so it compiles — to `-7`, which is the
+  interpreter's answer. It moved into
+  `TestProducedClosureApplyParity`.
+- `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  5 (mk 3)` was
+  pinned as "call result above a literal", with a test message asserting that
+  an unclaimed parked result "must not compile to an apply (it answered 15)".
+  The rebuild seats that residual now — and the compiled program leaves
+  `[5 fn (Integer)]`, the PARKED PAIR, exactly as the interpreter does. The
+  15 in that message was a note about an older attempt, not a live
+  measurement; the assertion that matters (never applies) is unchanged and
+  now checked on a compiling program.
+
+**2. A spec row's expected value was written from the wrong renderer.** The
+new for-each row `def acc (flex []) end … for-each dbl/v [1 2 3] end acc`
+was written as `[]` because that is what `RunCompiled`'s host-value
+projection prints; the TSV runner renders the ENGINE value, which is
+`(flex [])`. Two lanes, two renderers — the corpus is the engine's.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —

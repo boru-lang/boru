@@ -68,7 +68,7 @@ join ['a' 'b' 'c']	'a,b,c'	default separator is a comma
 #     each: `for-each ([e:Any] => [typeof e print]) [1 2 3]` prints
 #     Integer and the same lambda over `{a:1 b:2}` prints KeyVal.
 def dbl x:Integer => [mul 2 x]  each dbl/v [1 2 3]	[2 4 6]	a Function VALUE maps over a list — the element reaches the callback with no quotation wrapper
-def acc (flex []) end def dbl x:Integer => [mul 2 x] end for-each dbl/v [1 2 3] end acc	[]	for-each's Function form reaches the same callback — every result discarded, so the accumulator is untouched
+def acc (flex []) end def dbl x:Integer => [mul 2 x] end for-each dbl/v [1 2 3] end acc	(flex [])	for-each's Function form reaches the same callback — every result discarded, so the accumulator is untouched
 def acc (flex {}) end def stp fn [[e:String] [Any] [acc set (e) true]] end for-each stp/v ['x' 'y'] end acc	(flex {x:true y:true})	…and a side-effecting fn value is driven once per element
 for-each ([e:Any] => [e print]) {a:1 b:2}		a LAMBDA over a MAP receives the KeyVal, exactly as each's map form does
 def dbl x:Integer => [mul 2 x]  each [dbl] [1 2 3]	[2 4 6]	…and the quotation wrapper it replaces still answers identically

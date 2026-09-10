@@ -68,6 +68,13 @@ func TestProducedClosureApplyParity(t *testing.T) {
 		{`def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply`, "T — Church true"},
 		{`def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply`, "F — Church false: its capture-free inner lambda is a stamped const, entered under the value's own contract"},
 		{`def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules`, "6 — the fetched-fn apply (increment 27's positive twin), native now"},
+		// A two-arg closure over two literals. This was a sound refusal
+		// ("the seating cannot reorder") until the forty-third increment:
+		// the apply's two operands leave the residual in an order no static
+		// offset reaches, and the program residual now REBUILDS instead —
+		// every simulated-stack entry spills to a frame local and the
+		// residual is pushed back as recorded.
+		{`def k2 x:Integer => [[a:Integer b:Integer] => [a sub b]] end 10 3 (k2 0) apply`, "-7 — a two-arg closure over two literals, seated by the residual rebuild"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -102,8 +109,6 @@ func TestProducedClosureApplySoundRefusals(t *testing.T) {
 		// a produced closure applied over ANOTHER produced closure: the
 		// second dispatches over the first before apply runs
 		{pcaK + `(kk 7) (kk 8) apply`, "argument slot", "8"},
-		// a two-arg closure over two literals: the seating cannot reorder
-		{`def k2 x:Integer => [[a:Integer b:Integer] => [a sub b]] end 10 3 (k2 0) apply`, "reordered", "-7"},
 	}
 	for _, c := range rows {
 		a, err := New()

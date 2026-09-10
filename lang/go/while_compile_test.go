@@ -174,3 +174,41 @@ func TestWhileNonEmptyConditionDoesNotTrap(t *testing.T) {
 		}
 	}
 }
+
+// TestWhileEmptyConditionTrapPosition pins NUR130 as MEASURED, not as
+// parity: the two lanes raise the identical error and anchor it in different
+// places. The trap carries the position the recorder saw — the condition
+// operand, which is the thing that is wrong — while the interpreter raises
+// from stepMoveWhile with the engine's current pointer, which after the
+// loop's mark/move triple has been spliced is wherever the tape happens to
+// sit. The compiled anchor is the useful one; this row exists so the day the
+// interpreter is moved to it, the change is deliberate.
+func TestWhileEmptyConditionTrapPosition(t *testing.T) {
+	const src = `while [] [1] end 5`
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, errC := a.RunCompiled(src)
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, errI := b.RunInterp(src)
+	if errC == nil || errI == nil {
+		t.Fatalf("both lanes must raise: compiled=%v interp=%v", errC, errI)
+	}
+	// The ERROR is the same on both lanes — that half is parity, and it is
+	// what the corpus row asserts.
+	const want = "while: condition produced no value"
+	if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
+		t.Fatalf("message drifted: compiled=%v interp=%v", errC, errI)
+	}
+	// The POSITION is not (NUR130).
+	if !strings.Contains(errC.Error(), "1:7") {
+		t.Errorf("the trap must anchor at the condition operand (1:7): %v", errC)
+	}
+	if !strings.Contains(errI.Error(), "1:14") {
+		t.Errorf("NUR130 moved — the interpreter no longer anchors at the tape pointer (1:14): %v", errI)
+	}
+}
