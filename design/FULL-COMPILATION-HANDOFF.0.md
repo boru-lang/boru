@@ -2167,6 +2167,20 @@ predicate. If it recurs, the fix is in the check pass of the timer words
 (run the body synchronously under check, or fence the registry), not in
 the compiler.
 
+IT RECURRED, at a second site, 2026-09-10 (the increment 42-45 batch gate):
+`lang/go/modules` died with the same `fatal error: concurrent map read and
+map write`, this time in `DefTable.Depth` under
+`modules.serveRawHandler`'s connection goroutine — `InvokeCallbackFn` →
+`CallBoru` on the registry the test's main goroutine is still using. Same
+class, same verdict, a different async owner: a raw-socket connection
+handler rather than a timer body. Re-ran three times immediately after,
+all green, on the identical tree. The generalised statement is worth
+having: **any async body boru spawns runs in the registry that spawned it,
+and nothing fences it against a concurrent reader.** The two witnesses
+(timer words, serve-raw) are the two places the suite spawns one. The fix
+is a registry fence at the spawn seam, not per-word — and it is
+`InvokeCallback`'s, not the compiler's.
+
 Two rules this line paid for today, worth keeping in front of every
 increment: measure the INTERPRETER first, with the shape's siblings (the
 paren, the body frame, the fn body, the multi-output twin), because the
