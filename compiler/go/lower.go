@@ -2109,15 +2109,116 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 // Split out of Finalize rather than written inline because Finalize sits on
 // the gocyclo ceiling: one more branch there is one branch too many, and this
 // choice belongs beside the two seatings anyway.
-func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) string {
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos core.SrcPos) string {
 	if lw.seatRegionPrefix(ops, pos) {
 		return ""
 	}
-	return lw.seatResults(ops, false, false, seatMsgs{
+	reason := lw.seatResults(ops, false, false, seatMsgs{
 		aboveLiteral: "residual shape beyond Stage 1 (call result above a literal)",
 		reordered:    "residual shape beyond Stage 1 (call results reordered)",
 		unconsumed:   "residual shape beyond Stage 1 (unconsumed call results)",
 	}, pos)
+	if reason == "" {
+		return ""
+	}
+	// seatResults declined, and it emits nothing when it does — so the
+	// rebuild below starts from the same stack it saw. A residual that may
+	// carry a CALLABLE does not take it: see seatResidualRebuild.
+	if !regionValsMayBeCallable(vals) && lw.seatResidualRebuild(ops, pos) {
+		return ""
+	}
+	return reason
+}
+
+// seatResidualRebuild lays out a program residual whose ORDER is not the
+// order the events produced it in, and reports whether it did. It is the
+// program-residual twin of spillSeat (the call-site DDCG fallback): spill
+// every simulated-stack entry to a fresh frame local, then push the residual
+// back exactly as recorded — an event result from its spill temp, an inert
+// operand from its own push.
+//
+// seatResults above owns the shapes a static lowering can seat IN PLACE
+// (the events already in production order, inert values above them) and
+// costs nothing when it applies; this owns everything else the full-stack
+// words produce. `(1 add 2) (3 add 4) 1 roll` is the frontier row: the fold
+// models the permutation exactly, and the two call results then have to be
+// re-pushed swapped — no static offset reaches past a value that is already
+// on the stack. The same rebuild covers a residual that DUPLICATES a call
+// result (`0 pick`), one that DROPS a computed value, and one that seats an
+// inert value BENEATH a call result.
+//
+// It declines — leaving the emitted code untouched, so the caller's refusal
+// stands — for a residual that may carry a CALLABLE (the caller's screen,
+// regionValsMayBeCallable) and for three shapes a spill cannot honour.
+//
+// The CALLABLE screen is the one that is about semantics rather than
+// mechanism, and it is load-bearing. A value that ARRIVES on the stack is
+// re-stepped — a Function dispatches over what is beneath it (NUR124's
+// rule, and NUR129's open edge) — and the interpreter's own shuffle puts a
+// picked or rolled fn back on the tape where the pointer fires it. A
+// re-push here is a DATA push, so a rebuilt residual holding a closure
+// would answer `[5 fn fn]` where the interpreter applies it and answers
+// `[45]` (`def mk … 5 (mk 3) 0 pick`), and `[fn 5]` for its `1 roll` twin's
+// `[15]`. Declining keeps the pre-existing refusal and the interpreter's
+// answer. The screen is deliberately WIDE — a Dynamic residual entry counts
+// as possibly-callable, because the model does not bound it — which is the
+// same trade NUR129 records for the region consumers.
+//
+// The three mechanical declines:
+//
+//   - a VARIADIC region operand, whose runtime run is not one spillable
+//     stack entry (the count is not the static seat);
+//   - an event operand that is not on the simulated stack at all, so there
+//     is no value to spill for it;
+//   - an armed mark plan (the mark window, the region prefix, the region
+//     collect), whose OpStackMark is already emitted and indexes the very
+//     stack a spill would empty.
+func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool {
+	if len(lw.vm) == 0 || len(lw.markBefore) > 0 || lw.regionPrefixSeq != 0 || lw.collectAtSeq != 0 {
+		return false
+	}
+	for _, op := range ops {
+		if op.kind != opEvent {
+			continue
+		}
+		if lw.variadic[op.idx] || !lw.simHolds(op) {
+			return false
+		}
+	}
+	// Spill top-down. A slot already spilled keeps its FIRST temp: two
+	// residual entries naming one call result (the `pick` shape) read the
+	// same local twice.
+	temp := make(map[vmSlot]int, len(lw.vm))
+	for len(lw.vm) > 0 {
+		slot := lw.vm[len(lw.vm)-1]
+		t := lw.allocLocal()
+		lw.emit(OpStoreLocal, t, pos)
+		lw.vm = lw.vm[:len(lw.vm)-1]
+		if _, seen := temp[slot]; !seen {
+			temp[slot] = t
+		}
+	}
+	for _, op := range ops {
+		if op.kind != opEvent {
+			lw.pushOperand(op, pos)
+			continue
+		}
+		lw.emit(OpPushLocal, temp[vmSlot{seq: op.idx, idx: op.resIdx}], pos)
+		lw.vm = append(lw.vm, nonEventSlot)
+	}
+	lw.note()
+	return true
+}
+
+// simHolds reports whether an event operand's value is on the simulated
+// stack — the precondition for spilling it to a frame local.
+func (lw *lowerer) simHolds(op EmitOperand) bool {
+	for _, slot := range lw.vm {
+		if slotIs(slot, op) {
+			return true
+		}
+	}
+	return false
 }
 
 // seatRegionPrefix seats a residual shaped [inert…, REGION] and reports

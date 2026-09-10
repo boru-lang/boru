@@ -81,6 +81,37 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// its read resolved to the pre-loop value and the compiled loop never
 	// terminated. Both analyses run to their fixed points over the joined
 	// bindings, so the order changes no verdict.
+	// A STATICALLY EMPTY condition is a guaranteed runtime error, so the
+	// check pass MIRRORS it: `boru check` reports what the program will
+	// raise instead of staying silent about a certainty. It is stamped a
+	// RuntimeMirror (CheckAddUniqueDiagnostic does that for its callers),
+	// which is what lets the compile pipeline keep compiling the program
+	// to the terminal trap below rather than refusing on an error
+	// diagnostic — the finding's model is exact, and the trap raises the
+	// identical error.
+	//
+	// Only where the loop is UNCONDITIONALLY reached: inside a fn body or
+	// any nested body the loop runs only if that body does, and a mirror
+	// claiming "the program errors" must not be made from a conditional
+	// site. That is the same reachability rule the trap's top-level-only
+	// guard enforces one layer down.
+	if emptyWhileCond(args[0]) && r.Check.FnBodyDepth == 0 && r.Check.NestedBodyDepth == 0 {
+		// Shaped here rather than through CheckAddUniqueDiagnostic because
+		// the code is the RUNTIME's own — `runtime_error`, so the check
+		// report and the raise a user meets read alike — and that code has
+		// no entry in the severity table (an unclassified code defaults to
+		// info, which would not gate `boru check`). The mirror flag is set
+		// explicitly for the same reason CheckAddUniqueDiagnostic sets it.
+		CheckAddUnique(r, CheckDiagnostic{
+			Code:          "runtime_error",
+			Detail:        "while: condition produced no value",
+			Word:          "while",
+			Row:           args[0].Pos().Row,
+			Col:           args[0].Pos().Col,
+			Severity:      SeverityError,
+			RuntimeMirror: true,
+		})
+	}
 	es := r.Check.Recorder()
 	recording := es.Active()
 	if recording {
@@ -105,6 +136,19 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	}
 	if recording {
 		condFrag := es.TakeFragment()
+		// A STATICALLY EMPTY condition (`while [] [1]`) cannot produce a
+		// value: the region holds no tokens, so the interpreter's very
+		// first condition round nets nothing and raises before the body
+		// has run once. That is a certainty about the SOURCE, not a
+		// check-pass approximation, so the compiled program raises the
+		// byte-identical error through a TERMINAL trap instead of
+		// refusing the whole program. RecordTrap owns it only at the top
+		// level; inside a fn/branch/loop fragment it declines and the
+		// arity refusal below keeps the interpreter's fallback.
+		if emptyWhileCond(args[0]) && es.RecordTrap("runtime_error",
+			"while: condition produced no value", "while", "", args[0].Pos()) {
+			return []Value{out}
+		}
 		iter := NewCarrier(TInteger)
 		es.RegisterLocal(iter.ID)
 		es.RecordWhile(condFrag, bodyFrag, condStk, stk, iter.ID, out, args[0].Pos())
@@ -130,4 +174,16 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		elem = top
 	}
 	return []Value{NewVariadicCarrier(elem)}
+}
+
+// emptyWhileCond reports whether a while's condition operand is the
+// literally-empty list — the one condition shape whose value count is
+// known from the SOURCE rather than inferred from the analysis. The
+// concreteness guard rides in the same expression deliberately: a
+// carrier list also carries a payload (ChildTypeInfo), and reading a
+// zero length off one would trap a condition whose runtime length is
+// not known at all.
+func emptyWhileCond(cond Value) bool {
+	lst, err := AsList(cond)
+	return err == nil && IsConcrete(cond) && lst.Len() == 0
 }

@@ -178,6 +178,10 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 
 	// Nothing claims it: the arm declines rather than applies. A refusal is
 	// the sound fallback — the default lane then answers on the interpreter.
+	// The forty-third increment's residual rebuild does NOT take this shape:
+	// its callable screen stands aside for a residual that may hold a
+	// Function, because a re-push is a data push where the interpreter
+	// re-steps (NUR131).
 	a, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +191,7 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 		t.Fatalf("check: %v", cerr)
 	}
 	if prog != nil {
-		t.Error("an unclaimed parked result must not compile to an apply (it answered 15)")
+		t.Error("an unclaimed parked result must not compile to an apply")
 	}
 	if !strings.Contains(reason, "call result above a literal") {
 		t.Errorf("refusal = %q, want the existing residual-shape site", reason)

@@ -2167,6 +2167,20 @@ predicate. If it recurs, the fix is in the check pass of the timer words
 (run the body synchronously under check, or fence the registry), not in
 the compiler.
 
+IT RECURRED, at a second site, 2026-09-10 (the increment 42-45 batch gate):
+`lang/go/modules` died with the same `fatal error: concurrent map read and
+map write`, this time in `DefTable.Depth` under
+`modules.serveRawHandler`'s connection goroutine — `InvokeCallbackFn` →
+`CallBoru` on the registry the test's main goroutine is still using. Same
+class, same verdict, a different async owner: a raw-socket connection
+handler rather than a timer body. Re-ran three times immediately after,
+all green, on the identical tree. The generalised statement is worth
+having: **any async body boru spawns runs in the registry that spawned it,
+and nothing fences it against a concurrent reader.** The two witnesses
+(timer words, serve-raw) are the two places the suite spawns one. The fix
+is a registry fence at the spawn seam, not per-word — and it is
+`InvokeCallback`'s, not the compiler's.
+
 Two rules this line paid for today, worth keeping in front of every
 increment: measure the INTERPRETER first, with the shape's siblings (the
 paren, the body frame, the fn body, the multi-output twin), because the
@@ -5128,6 +5142,234 @@ against the MERGE BASE before scoping the fix — here that is the whole
 difference between "the increments introduced a divergence" (three shapes,
 closed) and "the increments extended one" (a fourth, older, recorded).
 
+## A statically-empty `while` condition is a certainty, not an approximation (2026-09-10, the forty-second increment)
+
+`while [] [1]` refused with "while: condition nets 0 values, not one" — the
+lowering admits a condition netting exactly one value, and an empty region
+nets none. That reads like the honest refusal it was: the recorder standing
+aside where its model does not reach.
+
+It is not. The refusal was keyed on the CHECK PASS's residual count, and the
+row's real property is a fact about the SOURCE: the condition list holds no
+tokens, so no value can be produced, so the interpreter's very first
+condition round nets nothing and raises before the body has run once. That is
+provable without any analysis at all.
+
+**What landed.** `whileReturnsFn` (basic/go/whileloop.go) tests the condition
+operand for the literally-empty list (`emptyWhileCond`) and records a
+TERMINAL trap carrying the interpreter's own error — code `runtime_error`,
+detail `while: condition produced no value`, word `while` — instead of
+letting `RecordWhile` refuse. Everything recorded before the loop is kept and
+emitted; `OpTrap` aborts there, exactly where the interpreter does.
+
+**Why the guard is the source and not the count.** A condition WITH tokens
+that the analysis happens to net zero values for is a different claim: the
+count at run time is the condition's to decide, and the recorder has no proof.
+Only the empty list is certain. `TestWhileNonEmptyConditionDoesNotTrap` pins
+that direction, which is the half a positive row cannot show.
+
+**The trap is top-level only, and that is `RecordTrap`'s pre-existing rule,
+not a new one.** A trap inside a fn body, a branch arm or a loop fragment is
+CONDITIONAL — the program has one terminal point and a fragment is not it —
+so `RecordTrap` declines there and the arity refusal stands, with the
+interpreter's answer intact. Both shapes are pinned in
+`lang/go/while_compile_test.go`.
+
+## The program residual can be rebuilt, and a frame count was written back too early (2026-09-10, the forty-third increment)
+
+`(1 add 2) (3 add 4) 1 roll` refused with "residual shape beyond Stage 1
+(call results reordered)". The full-stack fold models the permutation exactly
+— it holds both values and knows the answer is `7 3` — and then the LOWERING
+declines, because each call left its result where it ran and no static offset
+reaches past a value already on the stack.
+
+**What landed.** `seatResidualRebuild` (compiler/go/lower.go), tried only
+after the in-place `seatResults` declines: spill every simulated-stack entry
+to a fresh frame local, then push the residual back exactly as recorded — an
+event result from its spill temp, an inert operand from its own push. It is
+the program-residual twin of `spillSeat`, the call-site DDCG fallback that
+has done this at operand sites all along; the two differ only in operand
+direction (a residual is bottom-first, a call's operands sig-first).
+
+One mechanism closes four shapes at once, and only the first was ledgered:
+a PERMUTED residual, a DUPLICATED call result (`0 pick` — one temp read
+twice), a DROPPED one, and an inert value seated BENEATH a call result (the
+shape whose refusal read "call result above a literal").
+
+**What it declines, and why each is a precondition rather than a policy.** A
+VARIADIC region operand: its run is not one spillable stack entry, so
+`OpStoreLocal` would take the run's last value and leave the rest. An event
+operand not on the simulated stack: there is no value to spill for it. An
+armed mark plan (the mark window, the region prefix, the region collect): its
+`OpStackMark` is already emitted and indexes the very stack a spill would
+empty. None of these is reachable from a source row that also needs the
+rebuild, so all four are dialled directly in
+`compiler/go/residual_rebuild_test.go`.
+
+**The defect this exposed, which is the part worth carrying forward.**
+`Finalize` seeded the lowerer's frame-local counter from the unit's planned
+count, lowered the events, and wrote the count BACK — and only then ran the
+residual reconciliation. Every spill temp the residual seating allocated
+therefore landed outside the frame: `Program.NumLocals` said 0 while the code
+held `STORE_LOCAL l0`. The failure mode is the quiet one — the VM fails its
+first store, the program falls back to the interpreter, and the answer is
+still RIGHT, with `compiled=false` and an EMPTY refusal reason to explain it.
+The write-back moved after the reconciliation. It had been latent because no
+existing residual path allocated a local; the general lesson is that
+"compiled=false with no reason" is a bug report, not a refusal, and worth a
+test of its own (`TestResidualRebuildFrameCountsTheSpills`).
+
+## `for-each` never compiled its body, and that is why its Function form could not (2026-09-10, the forty-fourth increment)
+
+`def dbl x:Integer => [mul 2 x]  for-each dbl/v [1 2 3]` refused with
+"function-valued operand at for-each (Stage 3)". The gate is real: a
+fn-valued operand reaching a fn-INVOKING word is refused because that
+handler re-steps the fn on the tape, and the VM has no tape.
+
+But `each dbl/v [1 2 3]` compiles, through the same handler family and the
+same `InvokeBody` seam. The difference was not the operand at all —
+**`for-each` declared no `CallableSpec`**. Its body therefore never compiled
+to a closure: the dispatch baked the token list as a plain `List` const and
+the handler interpreted it once per element. And for a word whose body does
+not compile, the gate's premise is TRUE, so the refusal was correct for the
+wrong reason.
+
+**What landed.** A `CallableSpec` for `for-each`, and its case in
+`lambdaCallbackInputs` (which had none, the same missing-case shape family
+G's `each` rows had in 2026-08-27). Both graduate together, because the
+closure body is what makes the fn-valued operand admissible.
+
+**The spec is each's minus three flags, and each omission is the word's
+own.** `BodyOut` 0, not 1: `forEachHandler` discards every invocation's
+result, so the unit declares no returns and RETs whatever the body nets —
+which is also why `EmptyBodyErrors` is absent, since a 0-net body is
+for-each's ordinary case rather than an error the handler raises.
+`BodyResultTop` is set for the stronger reason: the handler reads NOTHING of
+the residual, so a fortiori never below its top. `CrossCollectionTokenShape`
+is NOT set, and that one matters: it licenses committing to the List overload
+for a statically-ambiguous (gradual-Any) collection, on the grounds that
+`eachHandler` delegates to the map iteration when the runtime value turns out
+to be a map. `forEachHandler` does not — it reads `args[1]` as a list — so
+committing would raise where the interpreter iterates. The ambiguous-overload
+refusal stays, pinned in `TestForEachKeepsTheAmbiguousOverloadRefusal`.
+
+**The lambda convention was MEASURED, not inherited.** Sharing a handler
+family is not evidence about the callback shape.
+`for-each ([e:Any] => [typeof e print]) [1 2 3]` prints `Integer` and the
+same lambda over `{a:1 b:2}` prints `KeyVal` — a list hands the bare element,
+a map hands the KeyVal, which is each's convention, confirmed rather than
+assumed. `TestForEachLambdaConventionMatchesTheInterpreter` keeps that
+measurement as a test.
+
+**What compiling the body COSTS, and why it is right anyway.** Two shapes
+that previously "compiled" now refuse: `def acc (flex []) end [1 2 3]
+for-each [acc swap append drop] end acc` draws "residual value of unknown
+provenance", and the same body under a trailing literal draws "body leaves
+extra values". They compiled before only because the body was never compiled
+— the const list rode through and the interpreter ran it. Both refusals are
+byte-identical to what `each` draws on the identical body today, so the
+change makes the two words uniform rather than making for-each worse; the
+corpus's one for-each row is unaffected.
+
+## What the batch gate caught: two graduations and a render (2026-09-10, repairs to the forty-second-to-forty-fourth increments)
+
+Three reds, and the shape of two of them is the one this line keeps meeting:
+**a "sound refusal" test is a claim that can expire.**
+
+**1. Two refusal rows became parity rows** — and both had to be MEASURED
+before being moved, because a shape that starts compiling is a graduation
+only if it compiles to the interpreter's answer.
+
+- `def k2 x:Integer => [[a:Integer b:Integer] => [a sub b]] end 10 3 (k2 0)
+  apply` was pinned as "the seating cannot reorder". The forty-third
+  increment IS the reordering, so it compiles — to `-7`, which is the
+  interpreter's answer. It moved into
+  `TestProducedClosureApplyParity`.
+- `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  5 (mk 3)` was
+  pinned as "call result above a literal", with a test message asserting that
+  an unclaimed parked result "must not compile to an apply (it answered 15)".
+  The rebuild seats that residual now — and the compiled program leaves
+  `[5 fn (Integer)]`, the PARKED PAIR, exactly as the interpreter does. The
+  15 in that message was a note about an older attempt, not a live
+  measurement; the assertion that matters (never applies) is unchanged and
+  now checked on a compiling program.
+
+**2. A spec row's expected value was written from the wrong renderer.** The
+new for-each row `def acc (flex []) end … for-each dbl/v [1 2 3] end acc`
+was written as `[]` because that is what `RunCompiled`'s host-value
+projection prints; the TSV runner renders the ENGINE value, which is
+`(flex [])`. Two lanes, two renderers — the corpus is the engine's.
+
+**3. The check-accuracy ratchet asked the increment to finish its job.**
+`control.tsv=2 (pin 1)` — the new `while [] [1]` ERROR row was an error row
+the CHECKER did not flag. Bumping the pin would have been the wrong repair:
+the pin exists to track checker coverage the compiler has, and the
+forty-second increment's whole premise is that an empty condition is
+statically DECIDABLE. So the check pass now mirrors it —
+`runtime_error: while: condition produced no value`, error severity,
+`RuntimeMirror` set, which is what keeps the compile pipeline compiling the
+program to its terminal trap rather than refusing on an error diagnostic.
+
+Two details worth carrying forward. The diagnostic is shaped inline rather
+than through `CheckAddUniqueDiagnostic`, because the code is the RUNTIME's
+own (`runtime_error`, so the report and the raise read alike) and that code
+has no entry in `checkCodeSeverity` — an unclassified code defaults to
+`info`, which does not gate `boru check`. And it is gated on
+`FnBodyDepth == 0 && NestedBodyDepth == 0`: a mirror claims "the program
+errors", so a fn body (runs only if called), a branch arm (only if taken)
+and a catching `do` (swallows it) must all stay silent — the same
+reachability rule the trap's top-level-only guard enforces one layer down.
+
+**4. The interp-entry census tightened.** 33 → 32: for-each's body coming off
+the interpreter takes fn-value.tsv's module-scope-fn-as-body-word row with
+it. The census fails in BOTH directions by design, so the fall is a required
+edit, not an optional one.
+
+## The review was right about the class and wrong about the culprit (2026-09-10, the forty-fifth increment, NUR131)
+
+A P1 review finding on the residual rebuild: *"When a full-stack word
+duplicates or moves an event-produced closure, this unconditional rebuild
+admits a residual whose callable must be re-stepped by the interpreter …
+These shapes previously refused at residual seating."*
+
+The witnesses are real, and they are worse than the finding says — they are
+silent wrong answers on the default lane:
+
+```
+def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end
+  5 (mk 3) 0 pick      compiled [5 fn (Integer) fn (Integer)]   interpreted [45]
+  5 (mk 3) 1 roll      compiled [fn (Integer) 5]                interpreted [15]
+```
+
+**The premise is wrong, and checking it was the whole job.** Measured on the
+merge base `d65f25a`: both compile to the same wrong answers THERE. They
+never went through residual seating at all — the disassembly shows
+`FoldFullStack`'s own promotion (`STORE_LOCAL` right after the call, then two
+`PUSH_LOCAL`), which leaves the residual already in production order, so
+`seatResults` accepts it and the rebuild is never reached. Two more witnesses
+turned up the same way (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`).
+
+**Both were worth doing anyway.** The rebuild does not cause these, but it is
+a mechanism whose entire job is re-pushing values, so it gets the wider
+possibly-callable screen (`regionValsMayBeCallable`) before it may seat
+anything — free, since it only forgoes graduations never realised. And the
+FOLD gets a narrow one: decline `pick`/`roll` when a preserved entry is both
+event-produced and provably a Function.
+
+**The asymmetry between the two screens is the part to keep.** A wide screen
+costs nothing on new machinery and costs live compiles on old: `def g …
+(1 add 2) g/v 0 pick` is 5 on both lanes today, because a def-bound `/v` read
+is not event-produced and the deopt machinery covers it. Widening the fold's
+screen to match the rebuild's would have taken that row with it. Choose the
+screen's width by what it costs where it sits, not by symmetry.
+
+**The lesson for reading review findings.** A bot finding is a bug report,
+and the report here was accurate about the CLASS and wrong about the
+mechanism and the blame. Verifying against the merge base — one worktree,
+three minutes — is what separated "my increment introduced this" from "my
+increment is next to this", and the fix is different in each case: the first
+would have been a revert, the second is two guards and a record.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -5877,3 +6119,9 @@ position than the construct that produced the binding.
 | `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the sound refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
 | `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
 | `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |
+| `lang/go/while_compile_test.go` (`TestWhileEmptyConditionTraps`, `TestWhileNonEmptyConditionDoesNotTrap`) | the forty-second increment: the empty condition compiles to a terminal trap with the interpreter's own error (with a prefix before it, and whatever the body is), a condition WITH tokens never traps, and the empty condition below the top level keeps the arity refusal |
+| `lang/go/residual_rebuild_test.go` | the forty-third increment's parity (the permuting roll, `swap`, three results rotated both ways, a duplicated result, a dropped one, an inert value beneath a result, non-Integer results), that an in-order residual still spills nothing, and the frame-count pin (`TestResidualRebuildFrameCountsTheSpills`) |
+| `compiler/go/residual_rebuild_test.go` | `seatResidualRebuild`'s seam: the emitted spill/re-push stream for a permutation, one temp read twice for a duplicate, a dropped entry, and the four declines (an empty sim, an operand absent from it, a result index absent from it, a variadic region, each of the three armed mark plans — each emitting nothing) |
+| `lang/go/foreach_closure_test.go` | the forty-fourth increment's parity (the Function form, a side-effecting fn value, the quotation twin, a lambda over a list, the empty body, a value-netting body, an empty collection, both map forms), that the body lowers to its own closure unit, the measured lambda convention on both lanes, and the ambiguous-overload refusal that `CrossCollectionTokenShape` would have (wrongly) lifted |
+| `lang/go/residual_rebuild_test.go` (`TestShuffledClosureRefusesAndTheInterpreterApplies`, `TestShuffledFnReadStillCompiles`) | NUR131: the four fold witnesses and the two rebuild-screen shapes refusing with the interpreter's answers, and the def-bound `/v` shuffles plus a non-callable event pair still compiling |
+| `compiler/go/residual_rebuild_test.go` (`TestSeatProgramResidualScreensACallable`) | the caller's screen at the seam: a non-callable residual rebuilds, a Function-typed one and a Dynamic one keep the seating's refusal and emit nothing |

@@ -6016,6 +6016,31 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if len(args) != 1 || !core.IsConcrete(args[0]) {
 			return nil, false
 		}
+		// A shuffle RE-PUSHES its values, and a value that arrives on the
+		// stack is RE-STEPPED — a Function dispatches over what is beneath
+		// it (NUR124's rule). The interpreter's pick/roll splices the
+		// permutation back onto the tape, where the pointer fires any fn
+		// that matches; the fold's output is data, so a preserved closure
+		// answers `[5 fn fn]` where the interpreter applies it twice and
+		// answers `[45]`. Measured, and PRE-DATING the residual rebuild
+		// this guard was added beside (NUR131).
+		//
+		// The test is PROVEN-callable, not the wider possibly-callable one
+		// the rebuild's screen uses, and the asymmetry is deliberate: the
+		// rebuild is new machinery, so a wide screen costs only graduations
+		// that were never realised, while this fold has live correct
+		// compiles a wide screen would take with it — a def-bound `/v` read
+		// shuffled over a literal (`5 g/v 0 pick` → 7) agrees on both lanes
+		// today, because a read is not event-produced and the deopt
+		// machinery covers it.
+		for _, v := range preserved {
+			if _, produced := es.producedBy[v.ID]; !produced {
+				continue
+			}
+			if core.IsFnValueResidual(v) || core.SigTypeMatches(v, core.TFunction) {
+				return nil, false
+			}
+		}
 		nn, err := core.AsInteger(args[0])
 		if err != nil || nn < 0 || int(nn) >= len(preserved) {
 			return nil, false
@@ -10212,8 +10237,6 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if reason := lw.lowerEvents(es.frames[0], 0); reason != "" {
 		return nil, reason, false
 	}
-	es.units[0].numLocals = lw.numLocals
-
 	// Residual reconciliation.
 	lastPos := core.SrcPos{}
 	if n := len(es.frames[0]); n > 0 {
@@ -10247,7 +10270,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	if es.trapAt == 0 && dynOp != OpCallDynMixedFromMark {
-		if reason := lw.seatProgramResidual(ops, lastPos); reason != "" {
+		if reason := lw.seatProgramResidual(ops, residual, lastPos); reason != "" {
 			// Reachable: a dirty-stack prefix under a dynamic-apply residual
 			// (the variation sweep's prefix-stack transform) seats a shape
 			// this refuses — a genuine Stage-1 refusal path, not a fault arm.
@@ -10471,6 +10494,12 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.p.Types = es.types
 	lw.p.Fallbacks = es.fallbacks
 	lw.p.MaxStack = lw.maxDepth
+	// AFTER the residual reconciliation, not before it: the residual's own
+	// seating allocates spill temps too (seatResidualRebuild), and a count
+	// written back before it left those locals outside the frame — every
+	// STORE_LOCAL past NLocals then failed at run time and the program fell
+	// back to the interpreter with no refusal reason to show for it.
+	es.units[0].numLocals = lw.numLocals
 	lw.p.NumLocals = es.units[0].numLocals
 	// Back-stamp every stored-fn handler ref with the now-built *Program so a
 	// callback invoked after this run returns (a serve-raw connection handler on

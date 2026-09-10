@@ -545,6 +545,7 @@ var (
 	CanonValue               = core.CanonValue
 	ErrNoComparer            = core.ErrNoComparer
 	CheckAddUniqueDiagnostic = core.CheckAddUniqueDiagnostic
+	CheckAddUnique           = core.CheckAddUnique
 	AsMicronFields           = core.AsMicronFields
 	PathonContentEqual       = core.PathonContentEqual
 	NewBigInteger            = core.NewBigInteger

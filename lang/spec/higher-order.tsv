@@ -53,7 +53,24 @@ join ['a' 'b' 'c']	'a,b,c'	default separator is a comma
 #     §12 below is the fold/scan half, GRADUATED 2026-08-28. The note here
 #     used to say their accumulator's post-step-1 type was "a separate
 #     measured question"; it is not the blocker and never was — see §12.
+#
+#     `for-each` GRADUATED with the forty-fourth increment (2026-09-10),
+#     the same two-part gap one word over: it declared no CallableSpec at
+#     all, so its body never compiled to a closure and its Function form
+#     met the Stage-3 function-valued-operand gate before the callback was
+#     reached; and lambdaCallbackInputs had no case for it. Its spec is
+#     each's minus three flags — BodyOut 0 (the handler discards every
+#     result), no EmptyBodyErrors (a 0-net body is the ordinary case, not
+#     an error), no CrossCollectionTokenShape (forEachHandler does not
+#     cross-delegate to the map iteration, so a gradual collection must
+#     keep refusing rather than commit to the list overload). The lambda
+#     convention was measured off the interpreter, not inherited from
+#     each: `for-each ([e:Any] => [typeof e print]) [1 2 3]` prints
+#     Integer and the same lambda over `{a:1 b:2}` prints KeyVal.
 def dbl x:Integer => [mul 2 x]  each dbl/v [1 2 3]	[2 4 6]	a Function VALUE maps over a list — the element reaches the callback with no quotation wrapper
+def acc (flex []) end def dbl x:Integer => [mul 2 x] end for-each dbl/v [1 2 3] end acc	(flex [])	for-each's Function form reaches the same callback — every result discarded, so the accumulator is untouched
+def acc (flex {}) end def stp fn [[e:String] [Any] [acc set (e) true]] end for-each stp/v ['x' 'y'] end acc	(flex {x:true y:true})	…and a side-effecting fn value is driven once per element
+for-each ([e:Any] => [e print]) {a:1 b:2}		a LAMBDA over a MAP receives the KeyVal, exactly as each's map form does
 def dbl x:Integer => [mul 2 x]  each [dbl] [1 2 3]	[2 4 6]	…and the quotation wrapper it replaces still answers identically
 each ([x:Integer] => [x add 1]) [1]	[2]	a LAMBDA over a LIST is an each signature since NUR086's fix — neither a quotation wrapper nor a map form is needed
 each ([x:Integer] => [x add 1]) [1 2 3]	[2 3 4]	…over more than one element, the closure body is compiled ONCE and driven per element

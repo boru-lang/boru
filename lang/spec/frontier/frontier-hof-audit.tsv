@@ -253,4 +253,3 @@ def chainif fn [[a:Function b:Function s:Integer][Any][def r1 (a s) if (r1.ok) [
 #     STACK (InvokeBody -> RunResolved), where MatchSignature fills top-down.
 #     One per-word permutation at the closure bind (ClosureInStackPair) makes
 #     the two agree, and the rows compile NATIVE with no interpreter entry.
-def dbl x:Integer => [mul 2 x]  for-each dbl/v [1 2 3]		for-each discards every result — the fn must still satisfy its OWN declared return arity (a void lambda breaks its contract, not for-each's)
