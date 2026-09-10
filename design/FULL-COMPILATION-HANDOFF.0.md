@@ -5113,6 +5113,15 @@ is a large class of programs that compile CORRECTLY today. Trading a rare
 wrong answer for a common lost compile is not a call to make quietly, so it
 is recorded with the measurement and what a real fix needs.
 
+**And it costs back the refusal site the thirty-ninth increment saved.** That
+increment deleted `awaitVariadicResult`'s wholesale `MarkUncompilable` and
+lowered the census ceiling 93 → 92; this guard adds one refusal at the same
+arity, so the ceiling goes back to 93 and the BATCH is net zero. Worth stating
+plainly rather than leaving the earlier number to stand: a representation that
+removes a refusal and then turns out to owe a smaller one has not reduced the
+refusal machinery, and the census is right to say so. The ceiling comment
+carries the round trip.
+
 **What the next author should not re-derive.** The finding named await; the
 defect is the region's, and both producers have it. Measure a review finding
 against the MERGE BASE before scoping the fix — here that is the whole
