@@ -5128,6 +5128,39 @@ against the MERGE BASE before scoping the fix — here that is the whole
 difference between "the increments introduced a divergence" (three shapes,
 closed) and "the increments extended one" (a fourth, older, recorded).
 
+## A statically-empty `while` condition is a certainty, not an approximation (2026-09-10, the forty-second increment)
+
+`while [] [1]` refused with "while: condition nets 0 values, not one" — the
+lowering admits a condition netting exactly one value, and an empty region
+nets none. That reads like the honest refusal it was: the recorder standing
+aside where its model does not reach.
+
+It is not. The refusal was keyed on the CHECK PASS's residual count, and the
+row's real property is a fact about the SOURCE: the condition list holds no
+tokens, so no value can be produced, so the interpreter's very first
+condition round nets nothing and raises before the body has run once. That is
+provable without any analysis at all.
+
+**What landed.** `whileReturnsFn` (basic/go/whileloop.go) tests the condition
+operand for the literally-empty list (`emptyWhileCond`) and records a
+TERMINAL trap carrying the interpreter's own error — code `runtime_error`,
+detail `while: condition produced no value`, word `while` — instead of
+letting `RecordWhile` refuse. Everything recorded before the loop is kept and
+emitted; `OpTrap` aborts there, exactly where the interpreter does.
+
+**Why the guard is the source and not the count.** A condition WITH tokens
+that the analysis happens to net zero values for is a different claim: the
+count at run time is the condition's to decide, and the recorder has no proof.
+Only the empty list is certain. `TestWhileNonEmptyConditionDoesNotTrap` pins
+that direction, which is the half a positive row cannot show.
+
+**The trap is top-level only, and that is `RecordTrap`'s pre-existing rule,
+not a new one.** A trap inside a fn body, a branch arm or a loop fragment is
+CONDITIONAL — the program has one terminal point and a fragment is not it —
+so `RecordTrap` declines there and the arity refusal stands, with the
+interpreter's answer intact. Both shapes are pinned in
+`lang/go/while_compile_test.go`.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -5877,3 +5910,4 @@ position than the construct that produced the binding.
 | `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the sound refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
 | `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
 | `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |
+| `lang/go/while_compile_test.go` (`TestWhileEmptyConditionTraps`, `TestWhileNonEmptyConditionDoesNotTrap`) | the forty-second increment: the empty condition compiles to a terminal trap with the interpreter's own error (with a prefix before it, and whatever the body is), a condition WITH tokens never traps, and the empty condition below the top level keeps the arity refusal |

@@ -105,6 +105,19 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	}
 	if recording {
 		condFrag := es.TakeFragment()
+		// A STATICALLY EMPTY condition (`while [] [1]`) cannot produce a
+		// value: the region holds no tokens, so the interpreter's very
+		// first condition round nets nothing and raises before the body
+		// has run once. That is a certainty about the SOURCE, not a
+		// check-pass approximation, so the compiled program raises the
+		// byte-identical error through a TERMINAL trap instead of
+		// refusing the whole program. RecordTrap owns it only at the top
+		// level; inside a fn/branch/loop fragment it declines and the
+		// arity refusal below keeps the interpreter's fallback.
+		if emptyWhileCond(args[0]) && es.RecordTrap("runtime_error",
+			"while: condition produced no value", "while", "", args[0].Pos()) {
+			return []Value{out}
+		}
 		iter := NewCarrier(TInteger)
 		es.RegisterLocal(iter.ID)
 		es.RecordWhile(condFrag, bodyFrag, condStk, stk, iter.ID, out, args[0].Pos())
@@ -130,4 +143,16 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		elem = top
 	}
 	return []Value{NewVariadicCarrier(elem)}
+}
+
+// emptyWhileCond reports whether a while's condition operand is the
+// literally-empty list — the one condition shape whose value count is
+// known from the SOURCE rather than inferred from the analysis. The
+// concreteness guard rides in the same expression deliberately: a
+// carrier list also carries a payload (ChildTypeInfo), and reading a
+// zero length off one would trap a condition whose runtime length is
+// not known at all.
+func emptyWhileCond(cond Value) bool {
+	lst, err := AsList(cond)
+	return err == nil && IsConcrete(cond) && lst.Len() == 0
 }

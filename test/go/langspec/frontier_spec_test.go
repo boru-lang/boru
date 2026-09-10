@@ -606,10 +606,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// (RecordWhile — an unbounded FOR_SETUP/FOR_NEXT, the condition
 	// fragment lowered at the head of every iteration, a falsy value
 	// exiting through FLOW_BREAK); they live in lang/spec/control.tsv §7.
-	// The two rows that remain refuse soundly, each under a gate that is
-	// not the loop's.
+	// The empty-condition row GRADUATED with the forty-second increment
+	// (2026-09-10): a statically-empty condition has no tokens, so the
+	// interpreter's first round provably nets nothing and raises — the
+	// compiled program raises the byte-identical error through a terminal
+	// trap (RecordTrap, top level only) instead of refusing. It lives in
+	// lang/spec/control.tsv §7. The one row that remains refuses soundly,
+	// under a gate that is not the loop's.
 	`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-seventh increment): the while itself lowers; the body's `if ((c get 'n') eq 2) [continue]` is a computed-condition no-else if whose one arm diverges, which the branch recorder refuses under `for` too (`if (n eq 2) [continue]` over a plain read compiles). Graduation = the diverging arm of a computed-condition no-else if", failsWith: "computed-branch non-eager arm diverges"},
-	`while [] [1]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-seventh increment): the lowering admits a condition netting exactly one value; an empty region nets none, so the recorder refuses where the interpreter raises its runtime_error. Graduation = a terminal trap for the statically-empty condition (RecordTrap, top level only)", failsWith: "condition nets 0 values, not one"},
 }
 
 type frontierEntryLS struct {

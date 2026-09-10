@@ -10,7 +10,8 @@
 # core/go/while_test.go / lang/go/while_limit_test.go). The compile
 # lane lowers the word on the counted loop's frame since the
 # thirty-seventh increment (2026-09-09; the graduated rows live in
-# lang/spec/control.tsv §7). The two rows here still refuse — the
-# ledger pins each reason; the interpreter is the oracle.
+# lang/spec/control.tsv §7), and the empty-condition row graduated with
+# the forty-second (2026-09-10) as a terminal trap. The one row here
+# still refuses — the ledger pins its reason; the interpreter is the
+# oracle.
 def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]	(flex {n:3}) 1 (flex {n:3}) 3	continue abandons the current body round
-while [] [1]	ERROR:while: condition produced no value	an empty condition region is a loud error

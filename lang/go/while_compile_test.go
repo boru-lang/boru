@@ -61,9 +61,19 @@ func TestWhileCompileParity(t *testing.T) {
 // miscompile).
 func TestWhileCompileSoundRefusals(t *testing.T) {
 	rows := []struct{ src, reason, interpErr string }{
-		// The lowering admits a condition netting exactly one value.
-		{`while [] [1]`, "while: condition nets 0 values, not one", "condition produced no value"},
+		// The lowering admits a condition netting exactly one value. The
+		// EMPTY condition is no longer here: it is a statically-provable
+		// error, so it compiles to a terminal trap (see
+		// TestWhileEmptyConditionTraps below). Two values is not provable
+		// either way — the region's last value is the condition and the
+		// rest are dropped, which the lowering does not model — so it
+		// keeps the refusal.
 		{`while [1 false] ['x'] end 'z'`, "while: condition nets 2 values, not one", ""},
+		// The empty condition BELOW the top level: the trap is terminal
+		// and only a top-level program has one terminal point, so a
+		// fn body's empty condition keeps the arity refusal.
+		{`def f fn [[][Integer][while [] [1]]] end (f)`, "while: condition nets 0 values, not one", "condition produced no value"},
+		{`if true [while [] [1]] []`, "while: condition nets 0 values, not one", "condition produced no value"},
 		// A pre-existing gate `for` shares: a multi-value body with a rebind.
 		{`def n 0 end while [n lt 3] [def n (n add 1) n n] end 'z'`, "dynamic-scope def `n` of unpromoted computed value", ""},
 	}
@@ -90,6 +100,77 @@ func TestWhileCompileSoundRefusals(t *testing.T) {
 			}
 		} else if ierr == nil || !strings.Contains(ierr.Error(), c.interpErr) {
 			t.Errorf("%q: interpreter error %v, want %q", c.src, ierr, c.interpErr)
+		}
+	}
+}
+
+// TestWhileEmptyConditionTraps — the forty-second increment. `while [] [1]`
+// is not an approximation the recorder has to stand aside for: the
+// condition region holds NO TOKENS, so the interpreter's very first round
+// nets nothing and raises before the body has run once. The compiled
+// program therefore raises the byte-identical error through a terminal
+// OpTrap, and the whole program still compiles.
+func TestWhileEmptyConditionTraps(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`while [] [1]`, "while: condition produced no value"},
+		// A PREFIX before the loop still runs: the trap is terminal, not a
+		// whole-program refusal, so everything recorded before it is kept.
+		{`5 while [] [1]`, "while: condition produced no value"},
+		// The condition is empty; the BODY is irrelevant, it never runs.
+		{`while [] []`, "while: condition produced no value"},
+	} {
+		t.Run(c.src, func(t *testing.T) {
+			a, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			prog, reason, _, cerr := a.CompileCheck(c.src)
+			if cerr != nil {
+				t.Fatalf("check: %v", cerr)
+			}
+			if prog == nil {
+				t.Fatalf("refused %q — the empty condition is a provable error, not an unmodelled shape", reason)
+			}
+			if !strings.Contains(prog.Disassemble(), "TRAP") {
+				t.Errorf("compiled without a terminal trap:\n%s", prog.Disassemble())
+			}
+			_, compiled, errC := a.RunCompiled(c.src)
+			if !compiled {
+				t.Fatal("the trapping program must run compiled")
+			}
+			if errC == nil || !strings.Contains(errC.Error(), c.want) {
+				t.Errorf("compiled error %v, want %q", errC, c.want)
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, errI := b.RunInterp(c.src); errI == nil || !strings.Contains(errI.Error(), c.want) {
+				t.Errorf("interpreter error %v, want %q — the oracle moved", errI, c.want)
+			}
+		})
+	}
+}
+
+// TestWhileNonEmptyConditionDoesNotTrap is the negative that keeps the trap
+// keyed on the SOURCE rather than on the check pass's residual count: a
+// condition with tokens is never trapped, whatever the analysis nets — the
+// runtime count is the condition's to decide.
+func TestWhileNonEmptyConditionDoesNotTrap(t *testing.T) {
+	for _, src := range []string{
+		`while [false] ['x'] end 'done'`,
+		`def n 0 end while [n lt 3] [def n (n add 1)] end n`,
+	} {
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prog, reason, _, cerr := a.CompileCheck(src)
+		if cerr != nil || prog == nil {
+			t.Fatalf("%q: refused %q err=%v", src, reason, cerr)
+		}
+		if strings.Contains(prog.Disassemble(), "TRAP") {
+			t.Errorf("%q: a non-empty condition must not trap:\n%s", src, prog.Disassemble())
 		}
 	}
 }
