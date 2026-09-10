@@ -176,24 +176,31 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 		t.Errorf("the apply word applies the parked result: %v", gotI)
 	}
 
-	// Nothing claims it: the arm must not apply. It used to REFUSE here —
-	// the residual is a literal beneath a call result, which the in-order
-	// seating cannot lay out — and the interpreter answered. Since the
-	// forty-third increment the residual REBUILDS (a spill and a re-push in
-	// the recorded order), so the shape compiles; what this asserts is
-	// unchanged, and is the part that matters: the compiled program leaves
-	// the PARKED PAIR, exactly as the interpreter does, and never applies.
-	src2 := mk + `5 (mk 3)`
-	gotC2, compiled2, errC2, gotI2, errI2 := runBothEngines(t, src2)
-	if !compiled2 {
-		t.Fatal("the parked pair's residual seats through the rebuild")
+	// Nothing claims it: the arm declines rather than applies. A refusal is
+	// the sound fallback — the default lane then answers on the interpreter.
+	// The forty-third increment's residual rebuild does NOT take this shape:
+	// its callable screen stands aside for a residual that may hold a
+	// Function, because a re-push is a data push where the interpreter
+	// re-steps (NUR131).
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
 	}
-	requireParity(t, src2, gotC2, errC2, gotI2, errI2)
-	if fmt.Sprint(gotI2) != "[5 fn (Integer)]" {
+	prog, reason, _, cerr := a.CompileCheck(mk + `5 (mk 3)`)
+	if cerr != nil {
+		t.Fatalf("check: %v", cerr)
+	}
+	if prog != nil {
+		t.Error("an unclaimed parked result must not compile to an apply")
+	}
+	if !strings.Contains(reason, "call result above a literal") {
+		t.Errorf("refusal = %q, want the existing residual-shape site", reason)
+	}
+	// And the value both lanes agree on is the PARKED pair.
+	d, _ := New()
+	gotI2, errI2 := d.RunInterp(mk + `5 (mk 3)`)
+	if errI2 != nil || fmt.Sprint(gotI2) != "[5 fn (Integer)]" {
 		t.Errorf("the park rule leaves both values: %v/%v", gotI2, errI2)
-	}
-	if fmt.Sprint(gotC2) != "[5 fn (Integer)]" {
-		t.Errorf("an unclaimed parked result must not compile to an apply: %v", gotC2)
 	}
 
 	// Shapes the discriminator must leave alone, all previously passing.

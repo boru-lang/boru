@@ -5311,6 +5311,51 @@ the interpreter takes fn-value.tsv's module-scope-fn-as-body-word row with
 it. The census fails in BOTH directions by design, so the fall is a required
 edit, not an optional one.
 
+## The review was right about the class and wrong about the culprit (2026-09-10, the forty-fifth increment, NUR131)
+
+A P1 review finding on the residual rebuild: *"When a full-stack word
+duplicates or moves an event-produced closure, this unconditional rebuild
+admits a residual whose callable must be re-stepped by the interpreter …
+These shapes previously refused at residual seating."*
+
+The witnesses are real, and they are worse than the finding says — they are
+silent wrong answers on the default lane:
+
+```
+def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end
+  5 (mk 3) 0 pick      compiled [5 fn (Integer) fn (Integer)]   interpreted [45]
+  5 (mk 3) 1 roll      compiled [fn (Integer) 5]                interpreted [15]
+```
+
+**The premise is wrong, and checking it was the whole job.** Measured on the
+merge base `d65f25a`: both compile to the same wrong answers THERE. They
+never went through residual seating at all — the disassembly shows
+`FoldFullStack`'s own promotion (`STORE_LOCAL` right after the call, then two
+`PUSH_LOCAL`), which leaves the residual already in production order, so
+`seatResults` accepts it and the rebuild is never reached. Two more witnesses
+turned up the same way (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`).
+
+**Both were worth doing anyway.** The rebuild does not cause these, but it is
+a mechanism whose entire job is re-pushing values, so it gets the wider
+possibly-callable screen (`regionValsMayBeCallable`) before it may seat
+anything — free, since it only forgoes graduations never realised. And the
+FOLD gets a narrow one: decline `pick`/`roll` when a preserved entry is both
+event-produced and provably a Function.
+
+**The asymmetry between the two screens is the part to keep.** A wide screen
+costs nothing on new machinery and costs live compiles on old: `def g …
+(1 add 2) g/v 0 pick` is 5 on both lanes today, because a def-bound `/v` read
+is not event-produced and the deopt machinery covers it. Widening the fold's
+screen to match the rebuild's would have taken that row with it. Choose the
+screen's width by what it costs where it sits, not by symmetry.
+
+**The lesson for reading review findings.** A bot finding is a bug report,
+and the report here was accurate about the CLASS and wrong about the
+mechanism and the blame. Verifying against the merge base — one worktree,
+three minutes — is what separated "my increment introduced this" from "my
+increment is next to this", and the fix is different in each case: the first
+would have been a revert, the second is two guards and a record.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -6064,3 +6109,5 @@ position than the construct that produced the binding.
 | `lang/go/residual_rebuild_test.go` | the forty-third increment's parity (the permuting roll, `swap`, three results rotated both ways, a duplicated result, a dropped one, an inert value beneath a result, non-Integer results), that an in-order residual still spills nothing, and the frame-count pin (`TestResidualRebuildFrameCountsTheSpills`) |
 | `compiler/go/residual_rebuild_test.go` | `seatResidualRebuild`'s seam: the emitted spill/re-push stream for a permutation, one temp read twice for a duplicate, a dropped entry, and the four declines (an empty sim, an operand absent from it, a result index absent from it, a variadic region, each of the three armed mark plans — each emitting nothing) |
 | `lang/go/foreach_closure_test.go` | the forty-fourth increment's parity (the Function form, a side-effecting fn value, the quotation twin, a lambda over a list, the empty body, a value-netting body, an empty collection, both map forms), that the body lowers to its own closure unit, the measured lambda convention on both lanes, and the ambiguous-overload refusal that `CrossCollectionTokenShape` would have (wrongly) lifted |
+| `lang/go/residual_rebuild_test.go` (`TestShuffledClosureRefusesAndTheInterpreterApplies`, `TestShuffledFnReadStillCompiles`) | NUR131: the four fold witnesses and the two rebuild-screen shapes refusing with the interpreter's answers, and the def-bound `/v` shuffles plus a non-callable event pair still compiling |
+| `compiler/go/residual_rebuild_test.go` (`TestSeatProgramResidualScreensACallable`) | the caller's screen at the seam: a non-callable residual rebuilds, a Function-typed one and a Dynamic one keep the seating's refusal and emit nothing |

@@ -95,6 +95,43 @@ func TestResidualRebuildDropsAnUnnamedResult(t *testing.T) {
 	}
 }
 
+// TestSeatProgramResidualScreensACallable pins the CALLER's screen — the
+// one that is about semantics rather than the spill's mechanics. A residual
+// that may carry a Function never reaches the rebuild, because a re-push is
+// a DATA push where the interpreter re-steps the value (NUR131).
+func TestSeatProgramResidualScreensACallable(t *testing.T) {
+	// The shape the rebuild would otherwise take: an inert operand seated
+	// beneath a call result.
+	ops := []EmitOperand{ConstOperand(0), EventOperand(1, 0)}
+	plain := []core.Value{core.NewInteger(9), core.NewCarrier(core.TInteger)}
+	callable := []core.Value{core.NewInteger(9), core.NewCarrier(core.TFunction)}
+
+	lw := rbLowerer(1)
+	lw.p.Consts = []core.Value{core.NewInteger(9)}
+	if reason := lw.seatProgramResidual(ops, plain, core.SrcPos{}); reason != "" {
+		t.Fatalf("a non-callable residual must rebuild, got %q", reason)
+	}
+
+	lw = rbLowerer(1)
+	lw.p.Consts = []core.Value{core.NewInteger(9)}
+	reason := lw.seatProgramResidual(ops, callable, core.SrcPos{})
+	if reason == "" {
+		t.Fatal("a residual that may carry a callable must keep the seating's refusal")
+	}
+	if len(lw.p.Code) != 0 {
+		t.Errorf("the screen must emit nothing, got %v", lw.p.Code)
+	}
+	// A DYNAMIC entry counts as possibly-callable too: the model does not
+	// bound it, and the screen is deliberately wide here (NUR129's trade).
+	dyn := core.NewCarrier(core.TInteger)
+	dyn.Dynamic = true
+	lw = rbLowerer(1)
+	lw.p.Consts = []core.Value{core.NewInteger(9)}
+	if lw.seatProgramResidual(ops, []core.Value{core.NewInteger(9), dyn}, core.SrcPos{}) == "" {
+		t.Error("a dynamic residual entry must keep the refusal")
+	}
+}
+
 func TestResidualRebuildDeclines(t *testing.T) {
 	// Nothing on the simulated stack: there is no call result to seat, so
 	// the in-place seating owns the shape (a const-only residual) and its

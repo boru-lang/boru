@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
 | [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
@@ -284,6 +285,60 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR131 — a full-stack shuffle over a produced closure compiled it as data {#nur131}
+
+**Status:** Resolved (2026-09-10, the forty-fifth increment). **Found:**
+2026-09-10, verifying a Codex P1 review finding against the forty-third
+increment's residual rebuild.
+
+**Rule:** a value that ARRIVES on the stack is re-stepped — a Function
+dispatches over what is beneath it. NUR124's rule, and the one NUR129 leaves
+open for a loop region.
+
+**Divergence.** Four witnesses, all silent wrong answers on the DEFAULT lane
+with exit 0:
+
+```
+def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end
+  5 (mk 3) 0 pick      compiled [5 fn (Integer) fn (Integer)]   interpreted [45]
+  5 (mk 3) 1 roll      compiled [fn (Integer) 5]                interpreted [15]
+  9 (mk 3) 9 2 roll    compiled [fn (Integer) 9 9]              interpreted [27 9]
+  7 (mk 3) 1 pick      compiled [7 fn (Integer) 7]              interpreted [7 21]
+```
+
+The interpreter's `pick`/`roll` splices its permutation back onto the tape,
+where the pointer steps each value and any fn that matches what is beneath it
+FIRES. `FoldFullStack` models the same permutation statically and its output
+is data, so the closure just sits there.
+
+**It pre-dated the increment it was found beside.** The review read these as
+shapes the residual rebuild had newly admitted ("these shapes previously
+refused at residual seating"). They did not: measured on the merge base
+`d65f25a`, all four compile to the same wrong answers, through the fold's own
+promotion path (`MarkValueDef` + `STORE_LOCAL`/`PUSH_LOCAL`) rather than
+through any residual seating. The rebuild's disassembly is absent from all
+four. What the review got right is the CLASS, and that is what made the
+finding worth acting on.
+
+**The fix, and why the two screens differ.** `FoldFullStack` declines
+`pick`/`roll` when a preserved entry is BOTH event-produced AND provably a
+Function; the residual rebuild uses the wider possibly-callable screen
+(`regionValsMayBeCallable`, which counts a Dynamic entry too). The asymmetry
+is deliberate and measured: the rebuild is new machinery, so a wide screen
+costs only graduations that were never realised, while the fold has live
+correct compiles a wide screen would take with it — `def g … (1 add 2) g/v
+0 pick` is 5 on both lanes today, because a def-bound `/v` read is not
+event-produced and the deopt machinery already covers it. Both spellings of
+that shape, and a non-callable event pair, are pinned as still compiling.
+
+**What stays open.** A DYNAMIC event result that turns out to be callable at
+run time is still not screened by the fold — the same edge NUR129 names, and
+for the same reason: the predicate that would catch it refuses a large class
+of programs that compile correctly today. The rebuild does screen it, at no
+cost, which is the only reason the two differ.
 
 ---
 

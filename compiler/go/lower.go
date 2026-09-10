@@ -2109,7 +2109,7 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 // Split out of Finalize rather than written inline because Finalize sits on
 // the gocyclo ceiling: one more branch there is one branch too many, and this
 // choice belongs beside the two seatings anyway.
-func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) string {
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos core.SrcPos) string {
 	if lw.seatRegionPrefix(ops, pos) {
 		return ""
 	}
@@ -2122,8 +2122,9 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) strin
 		return ""
 	}
 	// seatResults declined, and it emits nothing when it does — so the
-	// rebuild below starts from the same stack it saw.
-	if lw.seatResidualRebuild(ops, pos) {
+	// rebuild below starts from the same stack it saw. A residual that may
+	// carry a CALLABLE does not take it: see seatResidualRebuild.
+	if !regionValsMayBeCallable(vals) && lw.seatResidualRebuild(ops, pos) {
 		return ""
 	}
 	return reason
@@ -2147,7 +2148,23 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, pos core.SrcPos) strin
 // inert value BENEATH a call result.
 //
 // It declines — leaving the emitted code untouched, so the caller's refusal
-// stands — for the three shapes a spill cannot honour:
+// stands — for a residual that may carry a CALLABLE (the caller's screen,
+// regionValsMayBeCallable) and for three shapes a spill cannot honour.
+//
+// The CALLABLE screen is the one that is about semantics rather than
+// mechanism, and it is load-bearing. A value that ARRIVES on the stack is
+// re-stepped — a Function dispatches over what is beneath it (NUR124's
+// rule, and NUR129's open edge) — and the interpreter's own shuffle puts a
+// picked or rolled fn back on the tape where the pointer fires it. A
+// re-push here is a DATA push, so a rebuilt residual holding a closure
+// would answer `[5 fn fn]` where the interpreter applies it and answers
+// `[45]` (`def mk … 5 (mk 3) 0 pick`), and `[fn 5]` for its `1 roll` twin's
+// `[15]`. Declining keeps the pre-existing refusal and the interpreter's
+// answer. The screen is deliberately WIDE — a Dynamic residual entry counts
+// as possibly-callable, because the model does not bound it — which is the
+// same trade NUR129 records for the region consumers.
+//
+// The three mechanical declines:
 //
 //   - a VARIADIC region operand, whose runtime run is not one spillable
 //     stack entry (the count is not the static seat);

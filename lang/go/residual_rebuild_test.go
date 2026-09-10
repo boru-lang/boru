@@ -130,3 +130,99 @@ func TestResidualRebuildFrameCountsTheSpills(t *testing.T) {
 		t.Errorf("compiled %s, want [7 11 3]", got)
 	}
 }
+
+// mkClosure is a factory whose result is a DECLARED Function — a produced
+// closure, the value both guards below are about.
+const mkClosure = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end `
+
+// TestShuffledClosureRefusesAndTheInterpreterApplies pins NUR131 from the
+// side that matters: a full-stack shuffle over a PRODUCED closure must not
+// compile, because the interpreter re-steps what the shuffle re-pushes and
+// the compiled lane would leave it as data.
+//
+// The first four rows COMPILED TO WRONG ANSWERS before this guard, and they
+// did so on the merge base too — the defect is the fold's, not the residual
+// rebuild's, and it was found reviewing the rebuild. Each row's `want` is
+// the interpreter's answer, which is what the refusal preserves.
+func TestShuffledClosureRefusesAndTheInterpreterApplies(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		// The closure is duplicated onto the top and fires twice: 5*3*3.
+		{mkClosure + `5 (mk 3) 0 pick`, "[45]"},
+		// …and rolled to the top, firing once: 5*3.
+		{mkClosure + `5 (mk 3) 1 roll`, "[15]"},
+		// A deeper roll, with a value left above the application.
+		{mkClosure + `9 (mk 3) 9 2 roll`, "[27 9]"},
+		// A pick that copies the closure over a value further down.
+		{mkClosure + `7 (mk 3) 1 pick`, "[7 21]"},
+		// The residual REBUILD's own screen (a different guard, same rule):
+		// a literal beneath a produced closure, and two of them permuted.
+		{mkClosure + `5 (mk 3)`, "[5 fn (Integer)]"},
+		{mkClosure + `(mk 3) (mk 4) 1 roll`, "[fn (Integer) fn (Integer)]"},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			a, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			prog, reason, cerr := func() (any, string, error) {
+				p, r, _, e := a.CompileCheck(tc.src)
+				if p == nil {
+					return nil, r, e
+				}
+				return p, r, e
+			}()
+			if cerr != nil {
+				t.Fatalf("check: %v", cerr)
+			}
+			if prog != nil {
+				t.Fatalf("a shuffled produced closure must refuse — the interpreter re-steps it")
+			}
+			if reason == "" {
+				t.Error("a refusal must carry a reason")
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, ierr := b.RunInterp(tc.src)
+			if ierr != nil {
+				t.Fatalf("RunInterp: %v", ierr)
+			}
+			if got := fmt.Sprintf("%v", out); got != tc.want {
+				t.Errorf("interpreter %s, want %s — the oracle moved", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestShuffledFnReadStillCompiles is the other half of the guard's line, and
+// the reason it tests PROVEN-callable-and-event-produced rather than the
+// wider possibly-callable screen the rebuild uses. A def-bound `/v` read is
+// not event-produced and the deopt machinery already covers it, so these
+// shuffles agree on both lanes today and must keep compiling.
+func TestShuffledFnReadStillCompiles(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{`def g fn [[x:Integer][Integer][x add 1]] end (1 add 2) g/v 0 pick`, "[5]"},
+		{`def g fn [[x:Integer][Integer][x add 1]] end (1 add 2) g/v 1 roll`, "[4]"},
+		{`def g fn [[x:Integer][Integer][x add 1]] end g/v (1 add 2) 1 roll`, "[4]"},
+		// A non-callable event result is untouched by either guard.
+		{`def m {a:1} end (m get 'a') (m get 'a') 1 roll`, "[1 1]"},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			if got := rrRun(t, tc.src); got != tc.want {
+				t.Errorf("compiled %s, want %s", got, tc.want)
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, ierr := b.RunInterp(tc.src)
+			if ierr != nil {
+				t.Fatalf("RunInterp: %v", ierr)
+			}
+			if got := fmt.Sprintf("%v", out); got != tc.want {
+				t.Errorf("interpreter %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
