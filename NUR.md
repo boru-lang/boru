@@ -66,6 +66,8 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three refuse and fall back now; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
+| [NUR132](#nur132) | RESOLVED (2026-09-10, the fiftieth increment). A `break` / `continue` whose loop was in the SAME unit lowered to a bare `OpJmp`, which reached the right pc and did neither of the two things the interpreter does: TRIM THE ROUND (its tape splices back to the round's mark) and, for a break, CLOSE THE LOOP. `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` for the interpreter's `9 5 9 5`, its `break` twin `9 5 0 9 5 1 9` for `9 5 0 9 5 1`, and `while [true] [ (7 add 2) if true [break] [5] end ]` `9` for `[]` — silent, exit 0, on the DEFAULT lane. The leak was worse than the trim: an inner loop's break landed PAST the `FOR_NEXT` that pops it, so `for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]` had the OUTER loop stepping the INNER loop's stale counter and never terminated (tape_exhausted) where the interpreter answers `0 0 1 0`. Both terminators emit the FLOW signal ops now — the same pair the cross-frame case already used, whose `vmLoop` carries the very destinations the jumps named | shrinking the last `while` frontier row to its minimal shape, 2026-09-10 |
 | [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
 | [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
@@ -285,6 +287,134 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR133 — a region's consumer read only two of the four kinds of event that produce one {#nur133}
+
+**Status:** Resolved (2026-09-10). **Found:** 2026-09-10, by a Codex review
+of PR #448 — three P1 findings, all three real, all three reproduced before
+being fixed.
+
+**Rule:** a runtime-variadic REGION is consumable only when the mark that
+bounds it opens BELOW everything its own event will pop, and only when its
+run cannot carry a CALLABLE (the two lanes disagree about one — the
+interpreter re-steps a Function that arrives on its stack, the VM appends it
+as data; NUR129).
+
+**Divergence.** `regionReadsTheStack` — the predicate that answers the first
+half — walked `ev.call.ops` and a loop's operands and nothing else. That was
+COMPLETE for the two producers that existed when it was written (a
+value-producing loop and await's winner, both `evCall`) and silently
+incomplete the moment two more were admitted:
+
+```
+def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)
+                     compiled [0 9 1 2]  interpreted [9 0 1 2]   (evCallUser)
+def xs [1] [do [1 div (xs 0 getr)] error [drop]]
+                     compiled [1 []]     interpreted [[1]]       (evFallback)
+```
+
+In both the `STACK_MARK` was emitted AFTER the value the region's own op then
+popped, so the op consumed from beneath its own mark.
+
+Separately, `RecordFallback` marked the island a region without
+`eventFlags.regionMayBeFn`. An island's run is the INTERPRETER executing
+arbitrary code, so what it appends is not bounded by the modelled out at all:
+
+```
+def xs [1] def g fn x:Integer Integer [x add 1] 5
+  do [if ((xs 0 getr) eq 1) [g/v] [1 div 0]] error [drop]
+                     compiled uncalled_function  interpreted [6]
+```
+
+**One of the three is OLDER than the PR, and that matters for the record.**
+Measured on the merge base `6bc55db`: the two `error`-region shapes REFUSED
+there ("the single-output island model would leave the stack one short"), so
+the forty-eighth increment turned two sound refusals into wrong answers. The
+`evCallUser` witness diverged there identically (`0 1 9 2` — a different
+wrong answer from the same program's mark-plan variant), which makes the
+review's diagnosis of it wrong about the cause and right about the
+divergence: underneath the mark plan, `lowerUserCall` force-promoted a
+VARIADIC-returning callee's result to ONE frame slot. One `STORE_LOCAL` pops
+one value; the run had three, and the other two were stranded beneath the
+prefix. `lowerCall` has carried the equivalent guard since PR #280
+("variadic result promoted to frame slots") and needs `nout >= 2` there; the
+user-call twin is needed at `nout` 1, because a variadic slot IS one slot.
+
+**Fix.** `regionReadsTheStack` switches on the event kind and names every
+producer's operands (a kind that is not listed is UNSCREENED, not
+operand-less — the comment says so, because that is the mistake to prevent);
+`RecordFallback` marks its region possibly-callable unconditionally; and
+`lowerUserCall` refuses to promote a variadic callee's result. All three
+shapes fall back to the interpreter and agree. The const-argument twin `9 f 3`
+still compiles natively and is still seated by `OpSeatBelowMark`, which is
+the pin that keeps the fix from being a blanket retreat.
+
+Pinned by `lang/go/region_stack_read_test.go`.
+
+---
+
+## NUR132 — a same-unit break/continue jumped, where the interpreter splices {#nur132}
+
+**Status:** Resolved (2026-09-10, the fiftieth increment). **Found:**
+2026-09-10, shrinking the last `while` frontier row (the diverging arm of a
+computed-condition no-else `if`) to its minimal shape.
+
+**Rule:** `break` and `continue` end the CURRENT ROUND. The interpreter
+splices the round's tape back to the mark it opened at the round's start, so
+whatever that round already produced goes with it; a `break` additionally
+closes the loop. The VM has one mechanism that does both —
+`flowSignal`, reached by `OpFlowBreak` / `OpFlowContinue` — and it was used
+only for the CROSS-FRAME case (a break raised in a callee).
+
+**Divergence.** A break/continue whose loop lived in the SAME unit lowered to
+a bare `OpJmp`: to the loop's end for a break (a hole `lowerLoop` patched),
+back to `FOR_NEXT` for a continue. Both destinations were right. Neither
+jump trimmed the round, and the break's landed PAST the `FOR_NEXT` that is
+the only op popping the loop — so:
+
+```
+for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]
+                        compiled [9 5 9 5 9]   interpreted [9 5 9 5]
+for 3 [ (7 add 2) if (i eq 2) [break] [5] end i ]
+                        compiled [9 5 0 9 5 1 9]  interpreted [9 5 0 9 5 1]
+while [true] [ (7 add 2) if true [break] [5] end ]
+                        compiled [9]           interpreted []
+for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]
+                        compiled tape_exhausted   interpreted [0 0 1 0]
+```
+
+The first three are silent wrong answers on the DEFAULT lane with exit 0.
+The fourth is worse: the inner loop's leaked counter is what the OUTER
+loop's `FOR_NEXT` then stepped, so the program never terminated and died at
+the evaluation stack's growth ceiling.
+
+**Why the corpus never caught it.** The round's value has to be COMPUTED.
+`lang/spec/control.tsv` §7 already pins the rule over a CONST round value
+(`while [true] [1 break] end 'x'`), and those rows are right for a reason
+that hides this one: a const the round never seats is dropped at lowering,
+so there is nothing left to trim. The computed twins mostly refuse before
+reaching the terminator ("branch leaves extra values"), and the narrow gap
+between those two facts — a computed prefix, a branch arm with an explicit
+else — is where every witness lives.
+
+**Fix.** `lowerBreak` / `lowerContinue` emit the FLOW signal ops
+unconditionally. The signal resolves the nearest OPEN loop at run time,
+which for a same-unit terminator is this loop, and `vmLoop` already carries
+the destinations the jumps used to name: `exitPC` is the `FOR_NEXT`'s own
+exit target and `nextPC` is the `FOR_NEXT`. So the destinations did not
+move; only the discipline the jump skipped was added, and `loopCtx`'s
+`endHoles` — a second source of truth for a pc the FOR_NEXT already holds —
+is deleted. The `while` lowering's condition-false exit has emitted
+`OpFlowBreak` for exactly this reason since the thirty-seventh increment;
+the body's own terminators now agree with it.
+
+Pinned by `lang/go/loop_flow_trim_test.go` (all four witnesses on both
+lanes, plus the rows that always agreed), `compiler/go/loop_flow_signal_test.go`
+(the emitted op, arm by arm, and that a refused break emits nothing) and
+four `lang/spec/control.tsv` §8 rows, which put the shape under the corpus
+differential and the variation sweep for good.
 
 ---
 

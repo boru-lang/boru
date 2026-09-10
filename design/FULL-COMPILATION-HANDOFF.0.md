@@ -5475,6 +5475,185 @@ rematch; a variable count defeats a promotion and not a mark; a variable
 count defeats a fixed seat and not an island's own slot. The ledger falls
 36 → 32.
 
+## What a mirror needs is a RAISE, not a call (2026-09-10, the forty-ninth increment)
+
+`import "boru:fn-util"  FnUtil.flip 5` refused the whole program with the
+generic "check diagnostics". Behind it, `execFnDefLiteral`'s
+`uncalled_function` arm — a NAMED fn value reached as a call whose match
+failed — carried this note:
+
+> NOT a RuntimeMirror: a mirror promises the program still compiles and
+> raises the identical error, and there is no call here to compile —
+> dispatch did not resolve, exactly like `no_signature`.
+
+Every clause is true. The conclusion does not follow, because what a mirror
+needs is not a CALL but something that RAISES IDENTICALLY, and a terminal
+`OpTrap` is exactly that — the same answer `while []`'s empty condition got
+seven increments earlier. Both rows raise the interpreter's own error today,
+caret, span and `/v` hint included, and `frontier-fn-util.tsv` carries no
+compile-ledger rows.
+
+**The screen is narrower than the word-dispatch trap's, deliberately.**
+`TryRecordUnmatchedDispatchTrap` resolves word bindings and routes the
+inexact cases to the runtime rematch; there is no rematch op for THIS site
+(the failure is a fn VALUE reached as a call, not a word dispatch), so the
+screen only has to be SOUND, and `uncalledDispatchDefinite` takes the
+obviously-sound version: every candidate a plain concrete const. A carrier, a
+dynamic, an undefined placeholder, a raw word token, an open paren, a reach,
+an unexpanded paren expr and a template string each decline, and the
+whole-program refusal stands.
+
+**The diagnostic's content does not move; only its stamp does, and only on a
+compile pass.** `boru check` never compiles, so it still reports
+`uncalled_function` at error severity — the mirror flag is what lets the
+pipeline compile past a finding whose recording model is exact, and a plain
+check has no trap to be exact about.
+
+## A jump reaches the right pc and skips the discipline (2026-09-10, the fiftieth increment, NUR132)
+
+Found shrinking the last `while` frontier row, not looking for it. `for 3 [
+(7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` where the
+interpreter answers `9 5 9 5`, silently, exit 0, on the default lane.
+
+A `break` / `continue` whose loop lives in the SAME unit lowered to a bare
+`OpJmp`: to the loop's end for a break, back to `FOR_NEXT` for a continue.
+Both destinations are right. Neither jump does the two things the VM's own
+`flowSignal` does — and those two things are what the interpreter does:
+
+- **it trims the round.** The interpreter's break/continue splices the
+  round's tape back to the mark it opened, so a value the round already
+  produced goes with it. `stack[:lp.iterBase]`, in the VM.
+- **it pops the loop.** A break's jump lands PAST the `FOR_NEXT` that is the
+  only op popping the loop, so the entry leaked. That one is not a wrong
+  answer but a wrong PROGRAM: after `for 2 [ (i add 0) end for 3 [ if (i eq
+  1) [break] [0] end ] ]` the outer loop's `FOR_NEXT` read the inner loop's
+  stale counter and never terminated, dying at the growth ceiling where the
+  interpreter answers `0 0 1 0`.
+
+**Why the corpus never had a witness.** The round's value has to be COMPUTED.
+`control.tsv` §7 already pinned the rule over a CONST one (`while [true] [1
+break] end 'x'`), and those rows are right for the reason that hid this: a
+const the round never seats is dropped at lowering, so there is nothing left
+to trim. The computed twins mostly refuse before reaching the terminator
+("branch leaves extra values"). Every witness lives in the narrow gap between
+those two facts.
+
+**The fix is a deletion.** Both terminators emit the FLOW signal ops
+unconditionally; the signal resolves the nearest open loop at run time, and
+`vmLoop` already carries the destinations the jumps named (`exitPC` is the
+FOR_NEXT's own exit target, `nextPC` the FOR_NEXT). So `loopCtx.endHoles` —
+a second source of truth for a pc the FOR_NEXT already holds — is gone. The
+`while` lowering's condition-false exit had emitted `OpFlowBreak` for exactly
+this reason since the thirty-seventh increment; the body's own terminators
+now agree with it.
+
+## "Nets no value" is not "diverges", and an arm can sit under its own condition (2026-09-10, the fifty-first increment)
+
+The last `while` frontier row, and `frontier-while.tsv` with it. Family H is
+CLOSED.
+
+`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add
+1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]` refused with
+"if: computed-branch non-eager arm diverges". The ledger's own note had the
+important half right — the refusal is not the loop's, it is the body's `if` —
+and then took the message at its word. The gate said DIVERGES and tested
+`hasOut`, which two different things fail:
+
+- a **0-netting** arm reaches the merge having produced nothing, so the join
+  is 1-or-0 where the single slot models 1. That is a real problem, and it is
+  the only one: `for 3 [ (7 add 2) if (i eq 2) [] end i ]` still refuses.
+- a **diverging** arm (break, continue, raise, a tail call) leaves the
+  construct and never reaches the merge at all. Every path that ARRIVES
+  carries the eager value, so the slot is exact. `fragDivergesDeep` already
+  existed to answer this, for `lowerArms`.
+
+**A second gate was behind it, and it is the more interesting one.** The
+computed-arm lowering assumed the eager arm is on TOP of the stack, because
+in the spelling it was written for — `if c [t] (expr)` — the arm is the last
+thing written and so the last thing evaluated. An arm filled from the VALUE
+STACK by the argument-order rule was there BEFORE the `if` was reached, and
+the condition, a forward token, is evaluated at the dispatch: the two sit the
+other way round. No swap is owed in that layout, and the lowering refused
+rather than not swapping. Both layouts lower now, which also compiles the
+value-netting twin `for 3 [ (7 add 2) if (i eq 2) [3] end i ]` that neither
+fact alone would have reached.
+
+## What the review caught: a predicate that was complete for the producers that existed (2026-09-10, NUR133)
+
+Three Codex P1 findings on PR #448, all three real, all three reproduced
+before being touched. They are one question asked of four producers: what
+does this region's own event CONSUME, and where does its run live?
+
+`regionReadsTheStack` walked `ev.call.ops` and a loop's operands. That is the
+complete list for a value-producing loop and await's winner — both `evCall` —
+and it was written when those were the only two region producers there were.
+The forty-seventh increment admitted a variadic USER CALL and the
+forty-eighth an island's own run, and neither is examined by either arm, so
+the mark opened above a value the region's op then popped:
+
+- `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` → `0 9 1 2` for the
+  interpreter's `9 0 1 2`;
+- `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` → `1 []` for `[1]`.
+
+The predicate now switches on the event kind and names each producer's
+operands, and its comment says the thing the old one implied wrongly: **a
+kind that is not listed here is UNSCREENED, not operand-less.**
+
+The third finding is separate and simpler. `RecordFallback` marked the island
+a region without `regionMayBeFn`, and an island's run is the INTERPRETER
+executing arbitrary code — what it appends is not bounded by the modelled out
+at all. A Function passed through a handler was seated as data where the
+interpreter re-steps it against the value beneath (`uncalled_function` for
+`[6]`). Marked unconditionally now: a narrower claim would have to be a claim
+about interpreted code the recorder never saw.
+
+**Two of the three were the forty-eighth increment's, and one was not, and
+measuring said which.** On the merge base `6bc55db` the two `error`-region
+shapes REFUSED — so that increment turned two sound refusals into wrong
+answers, which is the worst direction. The `evCallUser` witness diverged
+there identically (`0 1 9 2`, a different wrong answer from the same
+program), so the review's diagnosis of it was wrong about the cause and right
+about the divergence: underneath the mark plan, `lowerUserCall`
+force-promoted a VARIADIC-returning callee's result to ONE frame slot. One
+`STORE_LOCAL` pops one value; the run had three, and the other two were
+stranded beneath the prefix. `lowerCall` has carried the equivalent guard
+since PR #280 and needs `nout >= 2` there — the user-call twin is needed at
+`nout` 1, because a variadic slot IS one slot.
+
+The const-argument twin `9 f 3` still compiles natively and is still seated
+by `OpSeatBelowMark`. That pin is the point: the fix is three declines where
+the model is not exact, not a retreat from the mark machinery.
+
+## What CI caught: three spec rows in the wrong corpus (2026-09-10, repairs to the forty-sixth and forty-eighth increments)
+
+PR #448's CI went red on `test/go/langspec` and the local batch gate agreed.
+Nothing about the three compiler changes was wrong; the SPEC PLACEMENT of
+three rows was, in two ways, and both are worth stating as rules.
+
+**A sound refusal does not belong in the main corpus, whatever its answers
+are.** The forty-sixth increment put `$.1 [10 20 30] apply` into
+`lang/spec/apply.tsv` §5 beside the two rows it graduated. Its answers agree
+on both lanes — it falls back and raises the interpreter's error — but it
+REFUSES, and this corpus's refusal ceiling is 0 (`TestRefusalsAreFailures`,
+`TestCompiledCoverage`). The row's refusal is real and stated (sigError's
+reorder hint reads tape state the runtime rebuild cannot reproduce), so it
+belongs where a refusal is pinned: the Go test that already asserts it
+(`TestReorderHintWindowKeepsItsRefusal`), and not in the corpus at all.
+
+**"It compiles" is not "it graduated" while an OpFallback span is still in
+it.** The forty-eighth increment's own text says the region representation IS
+the island's one simulated slot, and that is literal: the two maybe-raising
+`do … error` rows compile — a real result, they refused before — and the
+island stays. `bytecode-migrated.tsv`'s island ceiling is 0 too, so they go
+back to `frontier-do-error-arity.tsv`, ledgered "islanded" alongside family
+G's other working islands. Graduation is now a smaller, nameable step:
+seating that region without re-entering the interpreter.
+
+The lesson for the batch rhythm is narrower than "run the gate": the module
+suites and `TestFrontier` were green before the push, and neither can see
+these. The corpus-wide ceilings live in `test/go/langspec` and only the full
+package run reaches them.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -6234,3 +6413,9 @@ position than the construct that produced the binding.
 | `lang/go/region_prefix_test.go` (`TestRegionPrefixSeatsAMultiSeatRegion`, `TestMultiSeatRegionEmitsTheMarkAndSeat`) | the forty-seventh increment: both arms of the branch-variant do region under a prefix, a two-value prefix, a non-Integer prefix, and the emitted stream — mark before the region, seat after it, no STORE_LOCAL |
 | `compiler/go/region_prefix_test.go` (`TestVariadicRegionEventAdmitsTheDoCatch`) | the two predicates side by side: a do-catch is a region for the PREFIX and not for the COLLECT, a loop is both, a fixed-arity call is neither, and a possibly-callable region is out of both (NUR129) |
 | `lang/go/bytecode_do_error_arity_test.go` (`TestMaybeRaisingZeroNettingHandlerIsARegion`, `TestRegionHandlerRefusesAFixedSeatConsumer`) | the forty-eighth increment: both runtime arms of the maybe-raising handler through one lowering, the proven-raise twin keeping its fixed arity, a one-netting handler unaffected, and the fixed-seat consumer's byte-identical def_error |
+| `lang/go/uncalled_dispatch_trap_test.go` | the forty-ninth increment: both fn-util ledger rows and two module-native twins raising byte-identically through the trap (with a prefix before one), the emitted terminal TRAP with no island, the two inexact-operand declines keeping their refusal, and the plain check still reporting uncalled_function at error severity |
+| `core/go/uncalled_dispatch_definite_test.go` | `uncalledDispatchDefinite` arm by arm: concrete consts and an empty candidate list admit; a carrier, a dynamic, an undefined placeholder, a raw word token, an open paren, a paren expr, a reach and a template string decline |
+| `lang/go/loop_flow_trim_test.go` | the fiftieth increment (NUR132): every witness of the round that survived its own break/continue, the rows that always agreed, and the nested-loop program that never terminated because a break did not pop its loop |
+| `compiler/go/loop_flow_signal_test.go` | the seam: `lowerBreak` / `lowerContinue` emit exactly one FLOW signal op carrying no target, in a loop and from a fn unit alike, and a break with neither refuses and emits nothing |
+| `lang/go/diverging_arm_lowering_test.go` | the fifty-first increment: the last frontier-while row and its `for` twins compiling with parity, the stack-supplied layout's value-netting twin with them, both other divergence kinds (raise, and a fn body's return-count contract — position excluded per NUR118), and the 0-netting arm keeping its refusal under the message that now says what it means |
+| `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
