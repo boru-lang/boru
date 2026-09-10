@@ -350,7 +350,18 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 
 // interpretBranchBody runs a branch's raw token list on a fresh interpreter
 // sub-engine over the fork — the pre-stamping branch path, byte-identical.
+//
+// An EMPTY body short-circuits. Zero tokens is zero work: the sub-engine would
+// run no step and return an empty stack, so the outcome is empty BY
+// CONSTRUCTION and the only thing the run produces is an interpreter entry
+// inside an otherwise compiled program, which the interp-entry census counts
+// as debt (`await {mode:'first'} [[]]` is the row). The compile side cannot
+// remove it either — compileStoredBody declines an empty token list, so an
+// empty branch is the one shape that reaches here with nothing to do.
 func interpretBranchBody(reg *Registry, body []Value) parallelResult {
+	if len(body) == 0 {
+		return branchOutcome(nil, nil)
+	}
 	sub := New(reg)
 	input := make([]Value, len(body))
 	copy(input, body)

@@ -603,30 +603,47 @@ func runRow(t *testing.T, input string) ([]core.Value, bool) {
 // may be longer (None padding from branch joins); a runtime stack
 // longer than the checked one is a violation.
 func stackTypeCovered(checked, actual []core.Value) bool {
-	// Variadic-spread bottom carrier (a `[]`-declared recursive fn whose depth
-	// is a runtime value, e.g. recursion.tsv:53 → 0-or-more Integers): the
-	// fixed prefix `checked[1:]` is checked top-aligned as usual, and the bottom
-	// runtime entries beyond that prefix are absorbed — each must still pass the
-	// real typeCovered(elem, ·), so this adds COUNT flexibility only, never TYPE
-	// flexibility (a wrong-typed leak is still flagged).
-	if len(checked) > 0 {
-		if elem, ok := core.IsVariadicSpread(checked[0]); ok {
-			fixed := checked[1:]
-			if len(actual) < len(fixed) {
+	// Variadic-spread carrier — ONE checked slot standing for 0-or-more runtime
+	// values (a `[]`-declared recursive fn whose depth is a runtime value,
+	// recursion.tsv:53; `while`'s trip count; await's winner-takes-all
+	// residual, NUR067). The fixed entries BELOW it align with the BOTTOM of
+	// the runtime stack and the fixed entries ABOVE it with the TOP; everything
+	// between is absorbed, and each absorbed entry must still pass the real
+	// typeCovered(elem, ·). So this adds COUNT flexibility only, never TYPE
+	// flexibility: a wrong-typed leak is still flagged.
+	//
+	// The spread used to be recognised only at checked[0], which is where the
+	// recursive-fn residual puts it. `99 await {mode:'first'} [[1 2 3]]` puts
+	// it on TOP of a fixed Integer instead — checked [Integer, spread(Any)]
+	// against a runtime [99 1 2 3] — and the fixed-length path below then
+	// rejected a residual that says exactly what happens. Reading the spread
+	// wherever it sits is what the carrier already claims; it admits nothing
+	// the claim does not.
+	for k := range checked {
+		elem, ok := core.IsVariadicSpread(checked[k])
+		if !ok {
+			continue
+		}
+		below, above := checked[:k], checked[k+1:]
+		if len(actual) < len(below)+len(above) {
+			return false
+		}
+		for i := range below {
+			if !typeCovered(below[i], actual[i]) {
 				return false
 			}
-			for i := 0; i < len(fixed); i++ {
-				if !typeCovered(fixed[len(fixed)-1-i], actual[len(actual)-1-i]) {
-					return false
-				}
-			}
-			for i := 0; i < len(actual)-len(fixed); i++ {
-				if !typeCovered(elem, actual[i]) {
-					return false
-				}
-			}
-			return true
 		}
+		for i := range above {
+			if !typeCovered(above[len(above)-1-i], actual[len(actual)-1-i]) {
+				return false
+			}
+		}
+		for _, a := range actual[len(below) : len(actual)-len(above)] {
+			if !typeCovered(elem, a) {
+				return false
+			}
+		}
+		return true
 	}
 	if len(actual) > len(checked) {
 		return false

@@ -97,9 +97,10 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.reason) {
 				t.Fatalf("refusal reason drifted: want %q, got %v", tc.reason, err)
 			}
-			// The fallback answers what the INTERPRETER answers, and the
-			// expected value is written out: a refusal that changed the
-			// answer would be no better than the miscompile it replaced.
+			// The refusal is a FALLBACK, so the answer the program gives is
+			// the interpreter's — asserted against a value written out here
+			// rather than against a second run of the same lane, which would
+			// be comparing the interpreter to itself (NUR106).
 			b, err := New()
 			if err != nil {
 				t.Fatal(err)
@@ -110,13 +111,6 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 			}
 			if got := fmt.Sprintf("%v", gotI); got != tc.want {
 				t.Errorf("interpreter oracle %s, want %s", got, tc.want)
-			}
-			gotF, err := a.Run(tc.src)
-			if err != nil {
-				t.Fatalf("Run (fallback): %v", err)
-			}
-			if fmt.Sprintf("%v", gotF) != fmt.Sprintf("%v", gotI) {
-				t.Errorf("fallback parity: %v != interp %v", gotF, gotI)
 			}
 		})
 	}
@@ -168,6 +162,71 @@ func TestAwaitRefusedBranchInterpretsPerElement(t *testing.T) {
 	}
 	if fmt.Sprintf("%v", gotC) != fmt.Sprintf("%v", gotI) {
 		t.Errorf("parity: compiled %v != interp %v", gotC, gotI)
+	}
+}
+
+// TestAwaitEmptyBranchEntersNoInterpreter is the twin of the test above, in
+// the other direction: an EMPTY branch body must reach the interpreter ZERO
+// times. compileStoredBody declines an empty token list, so before the
+// short-circuit this branch spawned a sub-engine over nothing and spent one
+// interpreter entry inside an otherwise compiled program — debt the
+// interp-entry census counts, for a result that is empty by construction.
+//
+// The answer is asserted beside the count: a short-circuit that changed what
+// an empty branch contributes would be worse than the entry it saves.
+func TestAwaitEmptyBranchEntersNoInterpreter(t *testing.T) {
+	for _, src := range []string{
+		`import "boru:time-util" TimeUtil.await {mode:"first"} [[]]`,
+		`import "boru:time-util" 99 TimeUtil.await {mode:"first"} [[]]`,
+		`import "boru:time-util" TimeUtil.await [[] [3 mul 4]]`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			a, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var (
+				mu      sync.Mutex
+				entries int
+			)
+			// The same filter the interp-entry census applies: a check-mode
+			// entry is the compiler front end running RunInCheckMode words,
+			// and an ATTRIBUTED one is interpretation the end state permits.
+			// What must be zero is the unattributed run-time entry.
+			disarm := a.ArmInterpEntryHook(func(e InterpEntry) {
+				if e.CheckMode || e.Attribution != "" {
+					return
+				}
+				mu.Lock()
+				entries++
+				mu.Unlock()
+			})
+			gotC, compiled, err := a.RunCompiled(src)
+			disarm()
+			if err != nil {
+				t.Fatalf("RunCompiled: %v", err)
+			}
+			if !compiled {
+				t.Fatal("the program must run compiled")
+			}
+			mu.Lock()
+			n := entries
+			mu.Unlock()
+			if n != 0 {
+				t.Errorf("an empty branch body entered the interpreter %d time(s); zero tokens is zero work", n)
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotI, err := b.RunInterp(src)
+			if err != nil {
+				t.Fatalf("RunInterp: %v", err)
+			}
+			if fmt.Sprintf("%v", gotC) != fmt.Sprintf("%v", gotI) {
+				t.Errorf("parity: compiled %v != interp %v", gotC, gotI)
+			}
+		})
 	}
 }
 

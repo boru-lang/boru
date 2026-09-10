@@ -5054,6 +5054,68 @@ thirty-ninth increment found: **a value-producing loop's region was already
 count-agnostic.** Before building a representation, check whether the one you
 need is already carrying a different client.
 
+## What the batch gate caught: three gates the region rows moved (2026-09-10, repairs to the thirty-ninth-to-forty-first increments)
+
+The three region increments each passed their own tests and their own corpus
+files. The batch gate then answered with three reds, and all three were the
+gates doing their job on rows that had never been inside them before —
+`frontier-await-winner.tsv` sat OUTSIDE every live census, so moving its rows
+into the main corpus is the first time they meet these.
+
+**1. Type soundness (the one that mattered).**
+
+```
+TYPE UNSOUND bytecode-migrated.tsv:L85: 99 TimeUtil.await {mode:'first'} [[1 2 3]]
+  checked=[Integer dynamic(Any)] actual=[Integer Integer Integer Integer]
+```
+
+`stackTypeCovered` recognised a variadic spread ONLY at `checked[0]`, which is
+where the `[]`-declared recursive fn's residual puts it (recursion.tsv:53). The
+region rows put it on TOP of a fixed entry instead, and the fixed-length path
+below then rejected a residual that says exactly what happens: "an Integer at
+the bottom, then 0-or-more values". The oracle now reads the spread WHEREVER it
+sits — fixed entries below align with the bottom of the runtime stack, fixed
+entries above with the top, everything between absorbed — and every absorbed
+entry still passes `typeCovered(elem, ·)`, so this is count flexibility only,
+exactly as before. `variadic_spread_test.go` gained the new positions with
+their negatives, including a leak in the absorbed middle while both fixed ends
+match. 0 violations across 6460 rows.
+
+The reason this is a fix and not a weakening: the pin was 0 and the count was
+0 before the batch, so there was no other violation for the generalisation to
+mask, and it admits nothing the spread carrier does not already claim.
+
+**2. The interp-entry census, 35 against a ceiling of 33.** `BORU_LOG_CENSUS_ROWS=1`
+named the two rows in one line each, and they were the same shape:
+`await {mode:'first'} [[]]` — an EMPTY branch body. `compileStoredBody`
+declines an empty token list (its first guard), so that branch fell to
+`interpretBranchBody`, which spawned a sub-engine over zero tokens: one
+interpreter entry inside an otherwise compiled program, for a result that is
+empty by construction. The short-circuit is one guard in
+`interpretBranchBody`, and it is behaviour-identical by construction — zero
+tokens, zero steps, an empty stack either way. Back to 33 with two rows more
+in the corpus than before.
+
+The pin is `TestAwaitEmptyBranchEntersNoInterpreter`, and it applies the
+census's OWN filter (`CheckMode || Attribution != ""`) rather than counting
+every entry — the first version counted check-mode entries and failed on all
+three rows for the wrong reason. Verified against a control with the guard
+deleted: 1 unattributed entry per row.
+
+**3. `TestNoStrandedOracleReads`.** The refusal rows in
+`bytecode_await_test.go` compared `a.Run(src)` against `b.RunInterp(src)` as a
+"fallback parity" check. The gate is right and the check was vacuous: after a
+compile refusal `Run` IS the interpreter, so it was comparing that lane to
+itself (NUR106). The rows already assert the expected value written out, which
+is the assertion that carries weight; the second run is gone.
+
+**What the next author should not re-derive.** A frontier TSV lives outside
+the live censuses BY DESIGN, so "the row passes its own file" says nothing
+about what the batch gate will find when the row graduates. Budget for it: of
+the three reds here, one was a real gap in a gate (the oracle), one was real
+debt the rows newly exposed (the empty branch), and one was a genuinely
+vacuous assertion of mine. None was a bookkeeping bump.
+
 ## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
 
 The thirty-seventh and thirty-eighth increments each graduated rows into the
