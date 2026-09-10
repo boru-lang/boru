@@ -22,11 +22,20 @@
 # level — so `(c 10)` is a shaped Function carrier, `def c10` binds it, and
 # `(c10 3)` models its own dispatch; the row is in lang/spec/module-fn.tsv.
 #
-# THE TWO ROWS LEFT are not that family at all: `FnUtil.flip 5` is refused
+# THE TWO ROWS LEFT were not that family at all: `FnUtil.flip 5` was refused
 # by the strict-lane CHECK, as [uncalled_function] "call to 'flip' matched
-# no signature", before compilation is reached. Graduation = the check
-# admitting a dispatch whose failure is the program's specified result.
+# no signature", before compilation was reached.
 #
-# The interpreter is the oracle that the vocabulary WORKS.
-import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip refuses a non-function operand at dispatch
-import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry refuses a non-function operand at dispatch
+# BOTH GRADUATED 2026-09-10 (the forty-ninth increment), and not by making
+# the check admit the dispatch — the dispatch really did fail, and the
+# program's specified result is that error. The site's own note ("NOT a
+# RuntimeMirror … there is no call here to compile") named a true fact and
+# drew the wrong conclusion: what a mirror needs is something that RAISES
+# IDENTICALLY, not a call, and a terminal OpTrap is exactly that. A DEFINITE
+# failure on the uncaught top line — every operand a plain concrete const the
+# runtime match examines unchanged — now bakes the interpreter's own error
+# into that trap, and the diagnostic becomes a mirror the pipeline compiles
+# past. The rows live in lang/spec/module-fn.tsv.
+#
+# The interpreter remains the oracle that the vocabulary WORKS. This file
+# now holds no compile-ledger rows.

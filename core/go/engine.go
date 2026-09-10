@@ -5804,6 +5804,8 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 			// described what the OLD contract did with the value, and saying it
 			// while raising would tell the reader the opposite of what happened.
 			detail := "call to '" + fnDef.Name + "' matched no signature"
+			hint := "hint: check the call's argument types and arity — or use " +
+				fnDef.Name + "/v to push the function as a value deliberately"
 			if e.Registry.analysisActive() {
 				// Analysis continues past the finding, so the value stays on the
 				// tape and downstream check-mode consumers must be able to tell
@@ -5814,30 +5816,81 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				fv.FailedDispatch = true
 				e.Tape.Set(valIdx, fv)
 				if e.Registry.analysisAtUncaughtTopLevel() {
-					// NOT a RuntimeMirror: a mirror promises the program still
-					// compiles and raises the identical error, and there is no
-					// call here to compile — dispatch did not resolve, exactly
-					// like no_signature. So the compile pipeline must refuse on
-					// it (eng/go/CLAUDE.md, the model-undermining class).
-					e.Registry.noteAnalysisUniqueDiagnostic(CheckDiagnostic{
+					// The old note here read: "NOT a RuntimeMirror — a mirror
+					// promises the program still compiles and raises the identical
+					// error, and there is no call here to compile". Every clause of
+					// that is true, and the conclusion still did not follow: what a
+					// mirror needs is not a CALL but something to COMPILE that
+					// raises identically, and a terminal OpTrap is exactly that
+					// (the same answer `while []`'s empty condition got — the
+					// forty-second increment).
+					//
+					// So a DEFINITE failure on the uncaught top line takes the
+					// trap: every value the failed match examined is a value the
+					// runtime match examines unchanged, so the error serialised
+					// here is the error the interpreter builds at run time, and
+					// the diagnostic becomes a mirror the pipeline compiles past.
+					// Anything the trap declines — an inexact operand, a plain
+					// (non-compiling) check pass, a nested frame or unit —
+					// keeps the model-undermining diagnostic and the whole-program
+					// refusal it earns.
+					d := CheckDiagnostic{
 						Code:   "uncalled_function",
 						Detail: detail,
 						Word:   fnDef.Name,
 						Row:    pos.Row,
 						Col:    pos.Col,
-					})
+					}
+					if e.Registry.analysisCompiling() && uncalledDispatchDefinite(candidates) &&
+						e.Registry.analysisRecorder().RecordTrapErr(
+							makeBoruErrorAt("uncalled_function", detail, fnDef.Name,
+								e.effectiveSource(), hint, pos), pos) {
+						d.RuntimeMirror = true
+					}
+					e.Registry.noteAnalysisUniqueDiagnostic(d)
 				}
 			} else {
 				return makeBoruErrorAt("uncalled_function", detail,
-					fnDef.Name, e.effectiveSource(),
-					"hint: check the call's argument types and arity — or use "+fnDef.Name+"/v to push the function as a value deliberately",
-					pos)
+					fnDef.Name, e.effectiveSource(), hint, pos)
 			}
 		}
 	}
 
 	e.Pointer++
 	return nil
+}
+
+// uncalledDispatchDefinite reports whether a failed NAMED-fn-value dispatch
+// fails identically at run time — the soundness condition for baking its
+// error into a terminal trap (execFnDefLiteral's uncalled_function arm).
+//
+// It holds when every value the failed match examined is the value the
+// RUNTIME match examines: a plain concrete const. Everything else declines,
+// and the whole-program refusal stands:
+//
+//   - a CARRIER or DYNAMIC operand carries a static tag, not a value — the
+//     runtime tag may be a refinement that matches (and the rich diagnostic
+//     the trap would bake over the carrier would not be the one the
+//     interpreter builds over the concrete value);
+//   - an UNDEFINED placeholder raises a different error entirely;
+//   - a raw WORD token stands for whatever its binding holds at run time;
+//   - an OPEN PAREN, a REACH, an unexpanded paren expression or a template
+//     string is a DEFERRED expression: it expands at dispatch time, so the
+//     token the check pass saw is not the value the match will examine.
+//
+// Deliberately narrower than TryRecordUnmatchedDispatchTrap's screen, which
+// resolves word bindings and routes the inexact cases to the runtime
+// rematch. There is no rematch op for THIS site — the failure is a fn VALUE
+// reached as a call, not a word dispatch — so the screen only has to be
+// sound, and the narrow version is the one that is obviously so.
+func uncalledDispatchDefinite(candidates []Value) bool {
+	for _, c := range candidates {
+		if !IsConcrete(c) || c.Dynamic || c.Undefined ||
+			IsWord(c) || IsOpenParen(c) || IsReach(c) || IsParenExpr(c) || IsInterpString(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // fnDefAtPointer reads the FnDefInfo the value at the pointer dispatches as.
