@@ -3144,6 +3144,14 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 // value. Multiple threaded inputs are a documented follow-on.
 func (lw *lowerer) lowerFallback(ev *EmitEvent) string {
 	fb := &ev.fb
+	// A REGION island (`error` over a maybe-raising body): the one sim slot
+	// this pushes below already IS the region's representation — runFallback
+	// appends whatever the re-run produced, 0 values or 1 — so the mark is
+	// all that is needed, and it is what keeps a consumer from seating the
+	// run at a fixed count.
+	if lw.es != nil && lw.es.eventInfo[ev.seq].variadicRegion {
+		lw.variadic[ev.seq] = true
+	}
 	switch len(fb.ins) {
 	case 0:
 		lw.emit(OpFallback, fb.spanIdx, fb.pos)

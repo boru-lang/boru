@@ -5929,6 +5929,19 @@ func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, ou
 	es.fallbacks = append(es.fallbacks, span)
 	seq := es.appendEvent(EmitEvent{kind: evFallback, fb: emitFallback{spanIdx: idx, ins: ops, pos: pos}})
 	es.SiteCounts[SiteDynamic]++
+	// A VARIADIC REGION result (the forty-eighth increment): the word's
+	// check model IS "0-or-more values", so record the island as a region.
+	// The island's ONE sim slot is already the region's representation —
+	// runFallback appends whatever the re-run produced — so nothing changes
+	// in what is emitted; the mark is what stops a consumer seating the run
+	// at a fixed count. `error` over a maybe-raising body is the producer:
+	// the caught path nets zero, the pass-through nets one.
+	if callVariadicRegion([]core.Value{out}) {
+		f := es.eventInfo[seq]
+		f.variadicResult = true
+		f.variadicRegion = true
+		es.eventInfo[seq] = f
+	}
 	es.setProduced(out, seq)
 	return true
 }
@@ -9542,17 +9555,6 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// its apply, and a decline there means the residual tail may cross the
 	// value's statement boundary — see methodShapeAnnotated.
 	applyDynamic := false
-	// A fn-value lead a later dispatch collected past, ANYWHERE in the
-	// residual (NUR121: `g x add 1` — the model's `add` took `x`, so the
-	// residual's args are its RESULT, not the lead's; `do [(f 5) 2] drop` —
-	// the model's drop took the 2 the frame's rewind would have applied the
-	// lead to, leaving the lead alone), refuses before any arm can apply it;
-	// a placed (lazy) lead is the arms' own business (hazardLead).
-	for _, v := range residual {
-		if es.hazardLead(v) {
-			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
-		}
-	}
 	// A VARIADIC REGION entry is a COUNT, not a value (NUR067): at run time it
 	// stands for 0-or-MORE stack values, so there is no single entry for any
 	// apply arm to classify — and the carrier is Dynamic by construction (it
@@ -9563,8 +9565,26 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// [99 1 2 3]. Decline the whole fn-value-call boundary and let the ordinary
 	// residual seating rule instead — a lone region IS the residual and seats,
 	// a region above an inert tail refuses "call result above a literal".
+	//
+	// It runs BEFORE the NUR121 hazard scan below (the forty-eighth
+	// increment moved it there): that scan asks whether a fn-value LEAD had
+	// its argument collected by a later dispatch, and a region is not a
+	// lead — it is a count. Asked of one, the scan answered yes for the
+	// zero-netting handler's 0-or-1 run and refused a program that has no
+	// fn value in it at all.
 	if es.residualHasVariadicRegion(residual) {
 		return residual, 0, ""
+	}
+	// A fn-value lead a later dispatch collected past, ANYWHERE in the
+	// residual (NUR121: `g x add 1` — the model's `add` took `x`, so the
+	// residual's args are its RESULT, not the lead's; `do [(f 5) 2] drop` —
+	// the model's drop took the 2 the frame's rewind would have applied the
+	// lead to, leaving the lead alone), refuses before any arm can apply it;
+	// a placed (lazy) lead is the arms' own business (hazardLead).
+	for _, v := range residual {
+		if es.hazardLead(v) {
+			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
+		}
 	}
 	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
