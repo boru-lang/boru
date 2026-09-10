@@ -115,7 +115,7 @@ row than the ledger — a one-row re-audit of that pool is owed):
 | F. Dispatch recovery | 5 | `unmatched dispatch recovered at apply/…` — recovered windows have no trap lowering yet |
 | G. Working islands | 7 → 5 | compile and run correctly; ledgered only because the program embeds `OpFallback`. **2 graduated 2026-08-27** (list `each`, Function and lambda forms): `lambdaCallbackInputs` had a MAP case and no LIST case, so the lambda lowering declined at its first gate — a missing case, not the "modelled fn-value callback frame" the ledger asked for. **5 more graduated 2026-08-28** (list `fold`/`scan`, Function and lambda, seeded and unseeded): they needed no frame either — both handlers hand `(accumulator, element)`, and the two engines disagree only because the MAP path binds POSITIONALLY (`CallBoruFn`) while the LIST path runs its inputs as a STACK (`InvokeBody` → `RunResolved`), where `MatchSignature` fills top-down. One per-word permutation at the closure bind (`ClosureInStackPair`) reconciles them (§6.3). The family is down to the `apply` island and the full-stack-word row |
 | H. `while` | 6 | no structured lowering; body words splice tape-coupled tokens |
-| I. Variadic no-static-seat | 5 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067) |
+| I. Variadic no-static-seat | 5 → 2 | `await first/any` winner residuals: 0..N results exceed any static seat (NUR067). **The REPRESENTATION graduated 2026-09-10** and it did not need §6.6's generalized mark region: a value-producing LOOP's region is already ONE simulated slot standing for a runtime count, and the VM's stack ops are already count-agnostic, so the recorder now turns await's variadic-spread residual into that same region (`callVariadicRegion` → `eventFlags.variadicRegion`, `lw.variadic` at lowering). The plain-residual row compiles. The 2 rows left refuse at their CONSUMER — a collecting paren, a region above an inert tail — for exactly the reason their `for` twins refuse, so they are no longer an await family: they belong to the general "a fixed-arity position that can consume a region" frontier |
 | J. Pinned miscompiles | 2 | bare `Function`-param read — both lanes wrong vs the 2026-08-15 ruling |
 | K/L. Context layer; conditional fn shadow | 2 | `context` needs a frame the inline stream lacks; `installDef` overlap-removal defeats rollback |
 
@@ -2919,6 +2919,22 @@ promotion applies only at the region's typed borders.
   "everything since the mark" (variadic collect, splice, residual merge).
   This is the interpreter's own model — the tape region before the pointer
   *is* the value stack — finally given a compiled twin.
+
+  **Partly overtaken by measurement (2026-09-10).** The *producing* half
+  needed none of this. `OpDropToMark` truncates to `stack[:m]` and
+  `OpPopMark` keeps whatever is above the mark, so the mark ops were never
+  0-or-1-specific at the VM at all; and a value-producing loop's region
+  already IS "one recorded slot, runtime count" on the compile side. Family
+  I therefore graduated by REUSING that representation — `awaitVariadicResult`
+  returns one variadic-spread carrier, `callVariadicRegion` records the event
+  as a region, `lowerCall` marks `lw.variadic` — and the wholesale
+  `MarkUncompilable` is gone.
+
+  What is still owed is the *consuming* half, and it is a T-lane question the
+  loop rows ask identically (`size [(for 3 [i])]`, `99 for 3 [i]`): an op that
+  collects a region into a list, and a residual seating that can put fixed
+  values BENEATH one. That, not the producing mark, is where the generalized
+  region earns its keep.
 - Family D's synthetics (`$module`, namespace reads) become `wordRef`
   slots resolved by the same runtime lookup as any name; "operand of
   unknown provenance" is not an answerable question in the G-lane because

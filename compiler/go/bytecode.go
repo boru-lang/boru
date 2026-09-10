@@ -210,6 +210,12 @@ const (
 	// of its count); on the FALSE path, OpPopMark discards the mark and keeps the
 	// eager as the result. The merged result is itself a 0-or-1 the program residual
 	// absorbs. Arg is unused.
+	//
+	// The 0-or-1 is this CLIENT's shape, not the ops' (measured 2026-09-10,
+	// NUR067): DropToMark truncates to stack[:m] and PopMark keeps whatever
+	// stands above the mark, so both are count-agnostic already. What is
+	// 0-or-1-specific is planVariadicClaims, which only recognises the chained
+	// `if`.
 	OpStackMark
 	OpDropToMark
 	OpPopMark

@@ -4864,6 +4864,87 @@ dyn-scope rescue), and the probe declines it only because
 `forkForProbe` seeds no `producedBy` — `[1 2] each [(f 1)]` refuses
 "code-body word each (Stage 2)" on exactly that.
 
+## The runtime-variadic REGION already existed: it is the loop's (2026-09-10, the thirty-ninth increment, NUR067)
+
+`await {mode:'first'}` / `{mode:'any'}` hand back the winning branch's
+WHOLE residual — 0-or-more values, a count that can EXCEED any static seat.
+`awaitVariadicResult` refused the whole program on the compile pass, on the
+stated grounds that "the emitter's variadic machinery covers only the
+SHRINKING direction (the L-DO catch's N seats, 1 delivered)" and that the
+growing direction needs "a runtime-variadic region representation" —
+`design/FULL-COMPILATION.0.md` §6.6 named that as the *generalized mark
+region*, an `OpStackMark` with no static count.
+
+**The premise was half wrong, and the half that was wrong is the expensive
+half.** Two measurements, both from reading code that was already there:
+
+1. **The VM's mark ops are already count-agnostic** (`eng/go/vm.go`,
+   `vmMark`). Their comments say "0-or-1", but `OpDropToMark` does
+   `stack[:m]` — which truncates ANY count — and `OpPopMark` keeps whatever
+   is above the mark. Nothing at the VM was 0-or-1-specific.
+2. **A value-producing loop's region IS the representation.** `RecordLoop`
+   registers ONE carrier for a loop whose trip count is a runtime value and
+   marks the event `variadicResult`; `lowerLoop` pushes ONE simulated slot
+   and marks `lw.variadic[seq]`. Every downstream rule then reads that one
+   mark: `layoutOperands` refuses the slot as a call/list operand,
+   `seatResults` admits it only in a variadic-absorbing LAST position, the
+   store and dyn-bind hooks refuse it.
+
+So the growing direction needed no new opcode and no new machinery. It
+needed the await result to be RECORDED as the region it already is.
+
+**What landed.**
+
+- `awaitVariadicResult` returns the SAME `core.NewVariadicCarrier` on both
+  passes. There is no compile-pass branch left at all — one model, and the
+  wholesale `MarkUncompilable` is deleted (the refusal-site census drops one).
+- `callVariadicRegion` (compiler) reads that carrier straight out of the
+  dispatch's `outs` in `RecordCall`: exactly one out, and that out a
+  variadic spread. Self-identifying, so there is no latch to leak onto a
+  later dispatch the way `SetCatchVariadic` has to guard against.
+- `eventFlags.variadicRegion` joins `variadicResult`. The pair is deliberate:
+  `variadicResult` alone means "runtime-variable count" and every existing
+  rule keys on it; `variadicRegion` adds "and the recorded slot stands for
+  the WHOLE run", which is what `lowerCall` needs to mark `lw.variadic`.
+- `lowerCall` gives the region the loop's lowering — one slot, `lw.variadic`
+  — and refuses the two dispositions that need a static count: a frame
+  PROMOTION (stores exactly `nout` values) and the DEAD-result drop (pops
+  exactly one). Both refusals are reachable and pinned.
+
+**The miscompile the change EXPOSED, and the guard for it.** With the region
+recorded but nothing else changed, `99 TimeUtil.await {mode:'first'} [[1 2 3]]`
+compiled to `CALL_DYNAMIC_TRAILING` and answered `[1 2 99 3]` where the
+interpreter answers `[99 1 2 3]`. The cause is the spread carrier's own
+contract: `NewVariadicCarrier` is Dynamic *by construction* (it must match
+optimistically so the soundness oracle can intercept it), and
+`resolveDynamicApply`'s trailing arm reads "a Dynamic value last over one
+arg" as a fn value to apply. `residualHasVariadicRegion` now declines the
+whole fn-value-call boundary when any residual entry is a region: a region
+is a COUNT, not a value, so no apply arm can classify it. The ordinary
+residual seating then rules — a lone region seats, a region above an inert
+tail refuses "call result above a literal".
+
+**Measured.** The ledger drops from 38 rows to 37: the plain-residual row
+(`await {mode:'first'} [[1 2 3]]`) compiles and moves to
+`lang/spec/module-time.tsv` with two siblings that pin the other two counts
+(one value via `{mode:'any'}` over a rejecting branch, and zero via `[[]]`).
+The two rows left in `frontier-await-winner.tsv` refuse at their CONSUMER,
+each with the reason its LOOP twin already gives: `size [(await …)]` gets
+"consumes loop results", the same as `size [(for 3 [i])]`; `99 await … [[]]`
+gets "residual shape beyond Stage 1 (call result above a literal)", the same
+as `99 for 3 [i]`. Their `failsWith` pins were rewritten accordingly.
+
+**What the next author should not re-derive.** These two rows are no longer
+an *await* frontier and should not be worked as one. They are the general
+consuming half — an op that collects a region into a list, and a residual
+seating that can put fixed values BENEATH a region — and graduating either
+one graduates the `for` spelling in the same stroke. Start from the loop
+rows, which are simpler and already in the corpus.
+
+**Also fixed on the way.** `awaitResidual`'s doc referred to
+`awaitClearVariadic`, a function that does not exist anywhere in the tree —
+a stale reference to a latch design that was never built.
+
 ## What the batch gate caught: two graduations that moved a ratchet (2026-09-09, repairs to the thirty-seventh and thirty-eighth increments)
 
 The thirty-seventh and thirty-eighth increments each graduated rows into the

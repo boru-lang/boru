@@ -39,6 +39,9 @@ import "boru:time-util" typeof (TimeUtil.await [[1 add 2] [3 add 4]])	List	…an
 import "boru:time-util" TimeUtil.await {mode:5} [[1 add 2]]	[3]	a non-String/Atom mode reads as the default, it does not raise
 import "boru:time-util" TimeUtil.await {mode:'bogus'} [[1 add 2]]	ERROR:await_error	an unknown mode raises
 import "boru:time-util" TimeUtil.await {mode:'bogus'} []	[]	…but NOT for an empty list: doAwait returns before it selects a runner
+import "boru:time-util" TimeUtil.await {mode:'first'} [[1 2 3]]	1 2 3	`first` hands back the winning branch's WHOLE residual — a runtime-variadic REGION, three values through one recorded slot (NUR067, graduated)
+import "boru:time-util" TimeUtil.await {mode:'first'} [[]]		…and the zero-count direction: an empty winner contributes nothing
+import "boru:time-util" TimeUtil.await {mode:'any'} [[raise bad_input "boom"] [3 mul 4]]	12	`any` takes the one branch that resolves; the rejecting one contributes nothing
 #
 # §6  negative — the namespace is unbound until imported; words gone from core
 TimeUtil.unix 0	ERROR:undefined_word	`TimeUtil` is undefined without `import`

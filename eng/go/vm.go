@@ -3051,12 +3051,17 @@ func vmReturnCountErr(r *core.Registry, fn *compiler.CompiledFn, expected, got i
 	return core.BuildReturnCountError(src, fn.Name, expected, got, values, at, fn.Decl)
 }
 
-// vmShuffle reverses the top n operand-stack values in place: OpSwap is the n=2
 // vmMark executes the variadic-region opcodes (OpStackMark / OpDropToMark /
-// OpPopMark) — a 0-or-1 (runtime-variable count) value produced above a saved
-// depth is truncated away (DropToMark) or kept (PopMark). Extracted from the
-// main run loop so its branches don't inflate that switch's cyclomatic
-// complexity. Returns the updated mark stack and operand stack.
+// OpPopMark): a runtime-variable count of values produced above a saved depth
+// is truncated away (DropToMark) or kept (PopMark). Extracted from the main
+// run loop so its branches don't inflate that switch's cyclomatic complexity.
+// Returns the updated mark stack and operand stack.
+//
+// These ops are COUNT-AGNOSTIC, and this comment used to say "0-or-1" as if
+// they were not (measured 2026-09-10, NUR067): DropToMark truncates to
+// stack[:m] whatever the count above m is, and PopMark keeps whatever is
+// there. 0-or-1 describes the only CLIENT the lowerer emits them for today
+// (the chained variadic-statement `if`), not the mechanism.
 func vmMark(op compiler.Opcode, marks []int, stack []core.Value, debug []core.SrcPos, pc int) ([]int, []core.Value, error) {
 	switch op {
 	case compiler.OpStackMark:
@@ -3085,8 +3090,10 @@ func vmMark(op compiler.Opcode, marks []int, stack []core.Value, debug []core.Sr
 	}
 }
 
-// case, OpReverse takes n from arg. Used to seat an N-operand call's computed
-// args (which evaluate into reverse sig order) onto the stack in sig order.
+// vmShuffle reverses the top n operand-stack values in place: OpSwap is the
+// n=2 case, OpReverse takes n from arg. Used to seat an N-operand call's
+// computed args (which evaluate into reverse sig order) onto the stack in sig
+// order.
 func vmShuffle(stack []core.Value, op compiler.Opcode, arg int, debug []core.SrcPos, pc int) ([]core.Value, error) {
 	n := 2
 	if op == compiler.OpReverse {

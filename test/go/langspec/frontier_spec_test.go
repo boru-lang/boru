@@ -438,19 +438,23 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// KeepDefsBodyGuard now publishes only at FnBodyDepth == 0, exactly as
 	// its multi-run sibling does, and the row compiles with parity.)
 
-	// NUR067 — await's winner-takes-all modes (frontier-await-winner.tsv):
-	// `first` / `any` hand back the winning branch's WHOLE residual, 0-or-more
-	// values — a count that can EXCEED any static seat, the direction the L-DO
-	// variadic mark cannot express. The 1-seat layout was a live MISCOMPILE
-	// (`size [(await {mode:'any'} [[7 8]])]` — interpreter 2, compiled a
-	// stranded 7 and a 1-element list), so awaitVariadicResult now refuses the
-	// compile pass wholesale and the interpreter owns these modes. Graduation
-	// = a runtime-variadic region representation (an OpStackMark-style collect
-	// with no static count); the refusal arm then records the region and the
-	// rows move to lang/spec/module-time.tsv.
-	`import "boru:time-util" TimeUtil.await {mode:'first'} [[1 2 3]]`:      {why: "NUR067: the winner's 3-value residual has no static seat", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
-	`import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]`: {why: "NUR067: the miscompile shape — both values must reach the collecting paren", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
-	`import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]`:        {why: "NUR067: an empty winner contributes nothing — the zero-count direction", failsWith: "runtime-variadic (0-or-more values) with no static seat"},
+	// NUR067 — await's winner-takes-all modes (frontier-await-winner.tsv).
+	// The REPRESENTATION graduated 2026-09-10: `first` / `any` hand back the
+	// winning branch's whole residual, 0-or-more values, and that is now a
+	// runtime-variadic REGION — awaitVariadicResult returns one
+	// variadic-spread carrier on BOTH passes, RecordCall turns it into a
+	// region event (callVariadicRegion), and lowerCall gives it a
+	// value-producing loop's representation: ONE simulated slot marked
+	// lw.variadic. The plain-residual row compiles and moved to
+	// lang/spec/module-time.tsv, and the wholesale MarkUncompilable is gone.
+	//
+	// The two rows left refuse at their CONSUMER, each for the reason its
+	// LOOP twin refuses — a region cannot be read where a static count is
+	// required. So they are no longer an await frontier at all; their
+	// graduation is the general one (a fixed-arity position that can consume
+	// a region), and it graduates the `for` spellings in the same stroke.
+	`import "boru:time-util" size [(TimeUtil.await {mode:'any'} [[7 8]])]`: {why: "a collecting paren needs a static count; the loop twin `size [(for 3 [i])]` refuses identically", failsWith: "consumes loop results"},
+	`import "boru:time-util" 99 TimeUtil.await {mode:'first'} [[]]`:        {why: "a region above an inert tail cannot seat; the loop twin `99 for 3 [i]` refuses identically", failsWith: "residual shape beyond Stage 1 (call result above a literal)"},
 
 	// Net drivers — plan Phase 5: per-iteration mark/collect in the for: lowering.
 

@@ -186,6 +186,21 @@ type eventFlags struct {
 	// was reassigned to this event, so a re-read of the payload after the
 	// spread must decline (resolveResidualOperands).
 	spliceDyn bool
+	// variadicRegion marks a NATIVE call whose result is a runtime-variadic
+	// REGION — the GROWING direction: the handler leaves 0-or-MORE values
+	// where the recorded event carries ONE slot standing for the whole run
+	// (await's winner-takes-all first/any, NUR067). The shrinking mark alone
+	// (variadicResult, the L-DO catch: N seats, 1 delivered) cannot express
+	// it — a count that EXCEEDS the static seat strands values around every
+	// fixed layout — so the region takes the LOOP region's representation
+	// instead: one slot, marked lw.variadic at lowering, absorbed only by a
+	// variadic-absorbing position (the program residual / a no-contract RET)
+	// and refused at every fixed-arity consumer, at promotion, and at the
+	// dead-result drop. Self-identifying at record time: the check-side model
+	// of "0-or-more values" IS core.NewVariadicCarrier, so the call's own outs
+	// carry the mark (callVariadicRegion) — no latch to leak onto a later
+	// dispatch.
+	variadicRegion bool
 	// splitBound marks a variadic loop region whose FIRST value an S5 split
 	// bind consumed (SplitLoopRegionBind → RecordDynBind): the remaining
 	// regionN-1 values are the statically-counted rest. Inside a LOOP BODY
@@ -6229,6 +6244,16 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		f.variadicResult = true
 		es.eventInfo[seq] = f
 	}
+	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
+	// check model IS "0-or-more values", so record the event as a region —
+	// variadicResult keeps every runtime-variable-count rule, variadicRegion
+	// adds the loop-region lowering on top.
+	if callVariadicRegion(outs) {
+		f := es.eventInfo[seq]
+		f.variadicResult = true
+		f.variadicRegion = true
+		es.eventInfo[seq] = f
+	}
 	// Carrier-identity de-collision (the deferred runtime-independence item, in
 	// its targeted form). A call OUTPUT whose ID already maps to a PRIOR event is
 	// a repeated identical computed call: `(context get 'n') add (context get
@@ -6271,6 +6296,36 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		}
 		es.setProducedAt(outs[i], seq, i)
 	}
+}
+
+// residualHasVariadicRegion reports whether any residual entry was produced by
+// a VARIADIC REGION event — the one recorded slot standing for a runtime count
+// (eventFlags.variadicRegion). Its presence disqualifies the residual from
+// every fn-value-call classification: none of those arms can read a count.
+func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
+	for _, v := range residual {
+		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicRegion {
+			return true
+		}
+	}
+	return false
+}
+
+// callVariadicRegion reports whether a dispatch's modelled residual is a
+// VARIADIC REGION: exactly ONE out, and that out a variadic-spread carrier
+// (core.NewVariadicCarrier — the check-side "0-or-more values of element
+// type"). One out is what makes the region representable: the single recorded
+// slot stands for the whole runtime run, exactly as a value-producing loop's
+// does. A residual of any other length is an ordinary fixed-arity result and
+// is left alone; no compile-pass producer mints a spread alongside other
+// values, and one that did would owe its own region recording rather than
+// riding this one.
+func callVariadicRegion(outs []core.Value) bool {
+	if len(outs) != 1 {
+		return false
+	}
+	_, ok := core.IsVariadicSpread(outs[0])
+	return ok
 }
 
 // recordCallElided reports whether a dispatch is ELIDED — already recorded by a
@@ -9230,6 +9285,19 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		if es.hazardLead(v) {
 			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
 		}
+	}
+	// A VARIADIC REGION entry is a COUNT, not a value (NUR067): at run time it
+	// stands for 0-or-MORE stack values, so there is no single entry for any
+	// apply arm to classify — and the carrier is Dynamic by construction (it
+	// must match optimistically for the soundness oracle), which is exactly
+	// what the trailing-apply arm reads as "a fn value over one arg". Measured
+	// before the guard: `99 await {mode:'first'} [[1 2 3]]` lowered to
+	// CALL_DYNAMIC_TRAILING and answered [1 2 99 3] against the interpreter's
+	// [99 1 2 3]. Decline the whole fn-value-call boundary and let the ordinary
+	// residual seating rule instead — a lone region IS the residual and seats,
+	// a region above an inert tail refuses "call result above a literal".
+	if es.residualHasVariadicRegion(residual) {
+		return residual, 0, ""
 	}
 	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {

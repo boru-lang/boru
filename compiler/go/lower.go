@@ -2441,6 +2441,29 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.emit(OpCallNative, si, c.pos)
 	}
 	lw.vm = lw.vm[:len(lw.vm)-n]
+	// A VARIADIC REGION result (NUR067's growing direction): the handler
+	// leaves 0-or-MORE values where this event carries ONE recorded slot.
+	// Take the LOOP region's representation — mark the slot lw.variadic, so
+	// every rule a value-producing loop's region already obeys applies here
+	// verbatim: layoutOperands refuses it as a call/list operand, seatResults
+	// admits it only in a variadic-absorbing LAST position (the program
+	// residual, a no-contract RET), and the store/bind hooks refuse it. The
+	// two dispositions BELOW both need a static count — a promotion stores
+	// exactly nout values, a dead-result drop pops exactly one — so neither
+	// can serve a run whose size is a runtime value; refuse instead, the
+	// earliest true diagnosis, and the interpreter owns the program.
+	if lw.es != nil && lw.es.eventInfo[ev.seq].variadicRegion {
+		if _, prom := lw.promoted[ev.seq]; prom {
+			return c.word + ": variadic region promoted to a frame slot (the runtime count is not the static seat)"
+		}
+		if lw.dead[ev.seq] {
+			return c.word + ": variadic region result discarded (the runtime count is not the static seat)"
+		}
+		lw.variadic[ev.seq] = true
+		lw.vm = append(lw.vm, vmSlot{seq: ev.seq, idx: 0})
+		lw.note()
+		return ""
+	}
 	// A promoted result: store it into a frame slot now and re-push it per
 	// reference / per residual position (the references were rewritten to local
 	// operands). A single-result value-def stores one slot; a multi-output stack
