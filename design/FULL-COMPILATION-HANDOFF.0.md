@@ -6687,6 +6687,72 @@ question is not "does my new kind work here" but "what does every OTHER path
 keyed on kind do with it". And when you write a guard against a class, spend
 the extra minutes making it fail on purpose before trusting it.
 
+## The dyn-body backstop: measured at the gate, and it is not what reading suggested (2026-09-11)
+
+The backstop is the interp-entry census's largest single bucket (11 rows:
+`control` 4, `bytecode-migrated` 6, `word-splice` 1), so why a `do` body
+records a closure or falls to it is worth more than either remaining frontier
+family. This is the measurement pass. NOTHING was changed; the design is not
+settled, and two things I had written down from reading turned out wrong.
+
+**The instrument.** A print at the `BodyOutResidual` gate
+(`callable_words.go:774`) showing the dispatch's recorded out-count beside the
+probe unit's own shape. Both spellings of the witness pair:
+
+```
+do [1 (if true  [] [9 9])]   len(outs)=1  variadic=true  dynTrail=false  len(outOps)=2   COMPILES
+do [1 (if false [] [9 9])]   len(outs)=3  variadic=true  dynTrail=false  len(outOps)=2   BACKSTOP
+```
+
+**Wrong thing #1: the units are not different.** I had recorded that the
+`true` spelling compiles because its unit is exact and the `false` one's is
+variadic. Both units are `variadic=true` with the SAME two out-operands. The
+only difference is what the DISPATCH recorded — 1 value against 3 — because
+the check pass evaluated the folded branch and saw the arm net 0 or 2. The
+`true` case therefore compiles a VARIADIC unit, by skipping the exactness
+check entirely rather than by passing it (`len(outs) > 1` guards the call).
+
+**Wrong thing #2: the dispatch does not statically seat that count at run
+time.** I had written that the fix must be "the mark machinery applied at the
+dispatch seating". But a whole-residual dispatch's RET is frameless and
+returns whatever the body left — `CallableSpec.BodyOut`'s own doc says so.
+`closureResidualExact`'s doc is precise where my paraphrase was not: the
+count it protects is the SIMULATED stack's, the compiler's model, not a
+runtime seat. This witness makes it concrete — the dispatch recorded ONE out
+and the runtime leaves ZERO, on both lanes, correctly:
+
+```
+def zs [1] def zt (zs 0 getr)  do [(if (zt gt 0) [] [9])]
+  len(outs)=1  variadic=true  len(outOps)=1     both lanes: empty
+```
+
+So a count mismatch at the PROGRAM residual is absorbed. What the exactness
+check defends is a mismatch some downstream consumer would mis-model.
+
+**One hazard checked and found closed.** `closureResidualExact` compares
+`len(rec.outOps)` — an OPERAND count — against `len(outs)`, a VALUE count.
+Those differ exactly when an operand stands for a multi-value region, which is
+this whole family. It cannot bite, because `!rec.variadic` is tested FIRST and
+every such body is variadic; the count comparison is only ever reached where
+operands and values coincide. Worth stating because the comparison reads like
+a units error and is not one.
+
+**Where that leaves the increment.** Not "relax the exactness check" (the
+`false` case fails `!rec.variadic` before any count is compared) and not "seat
+a runtime count at the dispatch" (there is no static runtime seat to fix). The
+open question is narrower and genuinely unanswered: WHICH downstream consumer
+of a `do` call's simulated result count would mis-model a variadic body, and
+can it be told the count is a region rather than a number — the same answer
+the residual seatings got in increments 40, 41, 47 and 55, but at the call
+site's model rather than at a stack layout. Answer that before writing code.
+
+**And a measurement trap, since it cost time twice.** `-force-compile`
+reports SUCCESS for a program that reaches the dyn-body backstop, because a
+backstop IS a compiled program — it just has an interpreter inside it. It
+cannot tell native compilation from an interp entry. The instrument that can
+is `TestInterpEntryCensus`, which is how the backstop was identified at all
+(it failed 33-against-32 when increment 55's row went into the corpus).
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
