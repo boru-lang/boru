@@ -329,7 +329,27 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// the occurrence — sound interpreter re-entry, parity held). Graduation
 	// = per-unit exactness for the fold. Same bucket pinned in
 	// varyRefusalLedger ("islanded").
-	`[10 20] each [drop 1 2 3 1 pick]`: {why: "full-stack word in a code body: the fold declines outside the top unit; the island seam owns it", failsWith: "islanded"},
+	// GRADUATED 2026-09-11 (the fifty-second increment). The fold's
+	// exactness condition is per-UNIT, and the "top unit" half of the gate
+	// was inherited from where the machinery was first needed rather than
+	// from the argument: a compiled body unit has its own stack discipline
+	// exactly as the top unit does, and `depth` inside a body counts the
+	// BODY's stack on both lanes (`[10 20] each [1 2 3 depth]` is 4 — the
+	// element is in it, the collection is not). What the argument genuinely
+	// cannot survive is an open FRAGMENT above the unit's root frame, whose
+	// events are not reconciled into any scope's residual yet, so that is
+	// what the gate tests now. NUR131's callable screen is per-ENTRY and
+	// unaffected. The const/local rows live in lang/spec/corpus-core.tsv.
+	//
+	// The EVENT-PRODUCED occurrence stays, and its reason is a different one
+	// — not exactness but the absence of a residual REBUILD in a body unit.
+	// The top unit can take a permuted residual (seatResidualRebuild, the
+	// forty-third increment); a body unit's seating refuses a result above a
+	// literal, so folding a permutation there turns a sound island into a
+	// refusal. The first cut of this increment did exactly that to four
+	// variation seeds, which is how the line below came to be drawn at
+	// "no event-produced entry inside a body unit".
+	`[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`: {why: "full-stack word over EVENT-produced entries in a code body: the body unit has no residual rebuild, so the fold declines and the island seam owns it", failsWith: "islanded"},
 
 	// Cross-module fn value in a higher-order word's CLOSURE slot
 	// (design/FUNCTION-VALUE-SCOPE.0.md §12.3) — GRADUATED 2026-08-27

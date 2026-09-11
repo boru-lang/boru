@@ -5624,6 +5624,66 @@ The const-argument twin `9 f 3` still compiles natively and is still seated
 by `OpSeatBelowMark`. That pin is the point: the fix is three declines where
 the model is not exact, not a retreat from the mark machinery.
 
+## The fold's "top unit" was inherited from where it was first needed (2026-09-11, the fifty-second increment)
+
+`[10 20] each [drop 1 2 3 1 pick]` compiled with an interpreter island, and
+`frontier-full-stack.tsv`'s last ledger row said why: "the fold declines
+outside the top unit; the island seam owns it". True, and the gate it
+describes has two halves that were never separately argued.
+
+`FoldFullStack` bakes the recorder's simulated stack as the runtime stack,
+and the exactness condition it needs is that those two coincide HERE. The old
+gate read that as `len(es.frames) != 1 || len(es.units) != 1`:
+
+- the FRAME half is load-bearing. An open fragment — a branch arm, a loop
+  body mid-capture — holds events not yet reconciled into any scope's
+  residual, so the model is not a stack anybody will hold.
+- the UNIT half is not. A compiled body unit has its own stack discipline
+  exactly as the top unit does, and the decisive measurement is `depth`:
+  `[10 20] each [1 2 3 depth]` is **4** on both lanes, not 4-plus-the-
+  collection. The body's stack is the body's; the element is in it and the
+  collection is not, and the recorder models exactly that.
+
+So the gate is now "the current UNIT's root frame" — `frames[0]` for the top
+unit, which is the old test verbatim, and `fnUnitRec.rootFrame` for a body
+unit — plus one new screen the wider admission needs: an entry produced
+OUTSIDE this unit is a capture or the parent's residual, not something on
+this unit's stack, and declines.
+
+**The widening had to be narrowed again, and the variation differential is
+what said so.** The first cut admitted any entry whose producer was in this
+unit. That turned FOUR working islands into REFUSALS — `(1 add 2) (3 add 4)
+1 pick` wrapped in a fn, `do`, `each` and module body — and island-to-refusal
+is backwards. The cause is not exactness at all: a body unit has no residual
+REBUILD. The top unit can take a permuted residual (`seatResidualRebuild`,
+the forty-third increment, spills every entry to a frame local and re-pushes
+it in the recorded order); a body unit's residual seating refuses a result
+that lands above a literal. So a body unit admits the fold only over entries
+that need no rebuild — consts and locals, re-pushable from the same operand
+home in any order — which is exactly what `varyRefusalLedger`'s own bucket
+text had already predicted the graduation would be ("widened to the current
+unit's local/const model").
+
+So the class SPLIT rather than graduated: the const/local occurrence folds,
+the event-produced one stays a working island, and the frontier keeps one
+row — a different one. Graduation of the remainder = the residual rebuild
+inside a body unit.
+
+**What the widening must not take with it, and does not.** NUR131's callable
+screen is per-ENTRY, so a produced closure shuffled inside a body is still
+data to the fold and still refuses. The top-level rows that already folded
+still fold. Both are pinned.
+
+**The measurement that nearly stopped it, and why it did not.** Two fn-body
+probe rows flagged as divergent — `def zf fn [[a:Integer][Any][1 2 3 depth]]
+end (zf 9)` among them. Values, code, detail and the declaration note all
+agree; the only difference is the CARET, `1:29` (the body's first token)
+compiled against `1:48` (the call site) interpreted. That is NUR118, recorded
+since 2026-09-04 and excluded by this line's own convention — one unit serves
+every call site, so the compiled RET check is stamped with the unit's
+position. Worth writing down that the flag fired and what it turned out to
+be, because the next author running the same probe will see it too.
+
 ## What CI caught: three spec rows in the wrong corpus (2026-09-10, repairs to the forty-sixth and forty-eighth increments)
 
 PR #448's CI went red on `test/go/langspec` and the local batch gate agreed.
@@ -6436,3 +6496,4 @@ position than the construct that produced the binding.
 | `compiler/go/loop_flow_signal_test.go` | the seam: `lowerBreak` / `lowerContinue` emit exactly one FLOW signal op carrying no target, in a loop and from a fn unit alike, and a break with neither refuses and emits nothing |
 | `lang/go/diverging_arm_lowering_test.go` | the fifty-first increment: the last frontier-while row and its `for` twins compiling with parity, the stack-supplied layout's value-netting twin with them, both other divergence kinds (raise, and a fn body's return-count contract — position excluded per NUR118), and the 0-netting arm keeping its refusal under the message that now says what it means |
 | `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
+| `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |

@@ -14,5 +14,22 @@
 # recorded (seatResidualRebuild, the program-residual twin of the
 # call-site spillSeat). The rows joined lang/spec/corpus-core.tsv.
 #
-# The REMAINING sub-frontier is the row below.
-[10 20] each [drop 1 2 3 1 pick]	[2 2]	a full-stack word inside a wrapped code body islands (fold gated to the top unit; the island is the sound seam)
+# The CODE-BODY class SPLIT with the fifty-second increment (2026-09-11).
+#
+# The fold's exactness condition is per-UNIT: a compiled body unit has its
+# own stack discipline exactly as the top unit does, and `depth` inside a
+# body counts the BODY's stack on both lanes. So the CONST/LOCAL occurrence
+# folds now and lives in lang/spec/corpus-core.tsv.
+#
+# The EVENT-PRODUCED occurrence below does not, and the reason is not
+# exactness — it is that a body unit has no residual REBUILD. The top unit
+# can take a permuted residual (seatResidualRebuild spills every entry to a
+# frame local and re-pushes it in the recorded order, the forty-third
+# increment); a body unit's residual seating refuses a result that lands
+# above a literal. Folding a permutation there turns this sound island into
+# a REFUSAL, which is backwards — measured, by the variation differential,
+# on the first cut of this very increment.
+#
+# Graduation = the residual rebuild inside a body unit. The row below is the
+# variation ledger's representative for the "islanded" bucket.
+[10 20] each [drop (1 add 2) (3 add 4) 1 pick]	[3 3]	a full-stack word over EVENT-produced entries inside a code body islands (a body unit has no residual rebuild)

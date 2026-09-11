@@ -5985,6 +5985,18 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 	es.origByID[v.ID] = v
 }
 
+// atUnitRootFrame reports whether recording is at the CURRENT unit's root
+// frame — no fragment open above it. The top unit's root frame is frames[0];
+// a body unit's is the frame it opened at (fnUnitRec.rootFrame). Used by
+// FoldFullStack, whose exactness argument is about THIS unit's stack.
+func (es *EmitState) atUnitRootFrame() bool {
+	if len(es.openUnitRecs) == 0 {
+		return len(es.frames) == 1
+	}
+	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
+	return len(es.frames)-1 == rec.rootFrame
+}
+
 // FoldFullStack statically folds a full-stack word — depth / pick / roll —
 // when the recorder can prove the simulated stack is EXACT, so the dispatch
 // ELIDES: no event records, no opcode runs, and the fold's outputs carry
@@ -6009,8 +6021,22 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 // out-of-range n declines too: the interpreter raises there, and the
 // fallback keeps the raise byte-identical.
 func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([]core.Value, bool) {
-	if es == nil || !es.Active() || es.suspended > 0 || !es.Compilable ||
-		len(es.frames) != 1 || len(es.units) != 1 || es.markWindowSeq != 0 {
+	if es == nil || !es.Active() || es.suspended > 0 || !es.Compilable || es.markWindowSeq != 0 {
+		return nil, false
+	}
+	// The exactness condition is per-UNIT, not per-program: what it needs is
+	// that the recorder's simulated stack is the one the VM will hold HERE,
+	// and a compiled body unit has its own stack discipline exactly as the
+	// top unit does. What it cannot survive is an unclosed FRAGMENT — a
+	// branch arm or a loop body mid-capture — whose events have not been
+	// reconciled into any scope's residual yet.
+	//
+	// So: the current frame must be the CURRENT unit's root frame. For the
+	// top unit that is frames[0], which is the old `len(es.frames) != 1`
+	// test verbatim; for a body unit it is the frame the unit opened at
+	// (fnUnitRec.rootFrame).
+	unit := len(es.units) - 1
+	if !es.atUnitRootFrame() {
 		return nil, false
 	}
 	for _, v := range preserved {
@@ -6021,9 +6047,31 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
 			}
+			// Inside a BODY UNIT the fold is admitted only over entries that
+			// need no residual REBUILD, and an event-produced entry is
+			// exactly the one that might.
+			//
+			// The top unit can take a permuted residual: seatResidualRebuild
+			// (the forty-third increment) spills every simulated entry to a
+			// frame local and re-pushes it in the recorded order. A body
+			// unit has no such rebuild — its residual seating refuses a
+			// result that ends up above a literal — so folding a permutation
+			// there turns a sound ISLAND into a REFUSAL, which is backwards.
+			// Measured: `(1 add 2) (3 add 4) 1 pick` islands in a fn / do /
+			// each / module body and compiles at the top level, and an
+			// unscreened per-unit fold refused all four
+			// (TestVariationDifferential, the fifty-second increment).
+			//
+			// A const or local entry cannot be permuted into that shape: the
+			// fold's output is re-pushable from the same operand homes in any
+			// order. That is the whole of what a body unit can support today,
+			// and it is what the graduated row needs.
+			if unit > 0 {
+				return nil, false
+			}
 			continue
 		}
-		if _, ok := es.units[0].localByID[v.ID]; ok {
+		if _, ok := es.units[unit].localByID[v.ID]; ok {
 			continue
 		}
 		if core.IsConcrete(v) || core.IsBareTypeNode(v) {
