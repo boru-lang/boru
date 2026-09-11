@@ -6612,6 +6612,57 @@ my new kind work" but "what does every OTHER path keyed on kind do with it" —
 and where such a path has a default, make the default the safe answer before
 you add the case.
 
+## The kind-keyed audit, and a guard that had to be tested twice (2026-09-11, the fifty-sixth increment)
+
+NUR137 was the second time a new EVENT KIND reached a predicate keyed on kind
+and inherited whatever its default happened to do. So the increment after it
+audited every `switch ev.kind` in `compiler/go` rather than fixing another
+instance. The result is better than expected, and the numbers are worth
+recording so nobody re-runs it:
+
+| site | default | verdict |
+|---|---|---|
+| `lower.go lowerEvent` | `reason = "unknown event kind"` | **already right** — an unnamed kind REFUSES |
+| `lower.go forEachOperand` | `default: // evBranch` | **the one finding** |
+| `lower.go singleOutputCall`, `:3297`, `emit.go:12996` | `return false` | conservative |
+| `lower.go:1765` (promotion walk) | `continue` | conservative |
+| `emit.go regionReadsTheStack` | `return true` | fixed by NUR137 |
+| `eventPos`, `eventDivergesDeep`, `eventsBindDynScope`, + 8 statement switches | no default | falls through to a safe nothing |
+
+**The finding.** `forEachOperand` ended `default: // evBranch` and
+dereferenced `ev.br`. It was correct only because every other kind is cased
+above it. A new kind would either nil-deref — which ADR-005 forbids outright
+— or contribute no operands, and an unvisited operand is an unreferenced one:
+`planValueDefLocals` marks a live producer dead and the lowerer drops the
+value. Same class as NUR137, wider blast radius. `evBranch` is an explicit
+case now.
+
+**The guard is the deliverable, not the case.** A comment did not hold this
+line the first time: NUR133's fix left one *in the function that then broke*,
+saying exactly what would go wrong. What holds a line is a test that FAILS
+when the premise changes. `evKindEnd` is a sentinel one past the last kind,
+and `TestEventKindCensus` asserts the census matches it — so adding a kind
+fails a test whose message names every kind-keyed site that must learn about
+it. `TestForEachOperandHandlesEveryKind` walks a well-formed event of every
+kind through the operand walker.
+
+**Two things that only came out by testing the guard itself, both worth the
+five minutes.**
+
+1. The census's FIRST form asserted `evBindTwin == len(evKinds)`. Simulating
+   a new kind did not fail it — a kind added after `evBindTwin` does not
+   change `evBindTwin`. A guard that does not guard is worse than none,
+   because it is believed. Hence the sentinel.
+2. `TestForEachOperandHandlesEveryKind` failed on `evTrap` at first, and the
+   code was right: a trap's operands are its REMATCH window, and the fixture
+   built a trap without one. The fixture was fixed, NOT the assertion — the
+   assertion is what would catch a kind whose case visits nothing.
+
+**The rule this leaves.** When you widen a gate that admits event kinds, the
+question is not "does my new kind work here" but "what does every OTHER path
+keyed on kind do with it". And when you write a guard against a class, spend
+the extra minutes making it fail on purpose before trusting it.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

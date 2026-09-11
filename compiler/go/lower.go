@@ -1028,7 +1028,7 @@ func forEachOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		visit(ev.dyn.src)
 	case evBindTwin:
 		// no operands — the twin references nothing and produces nothing
-	default: // evBranch
+	case evBranch:
 		// thenVal / elsVal are the value-arm operands — meaningful only when
 		// thenIsVal / elsIsVal, and an opEvent only for the computed-arm shapes
 		// (`if c (expr) e` / `if c [t] (expr)`); for any other branch each is the
@@ -1043,6 +1043,19 @@ func forEachOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		visit(ev.br.elsOut)
 		visit(ev.br.thenVal)
 		visit(ev.br.elsVal)
+	default:
+		// A kind this walk does not name contributes NO operands, and that is
+		// not a safe silence: an unvisited operand is an unreferenced one, so
+		// planValueDefLocals marks a live producer dead and the lowerer drops
+		// the value. This arm was `default: // evBranch` until NUR137 showed
+		// what a default that assumes a kind costs — there it read a payload
+		// the kind does not carry and answered a soundness question wrongly
+		// for four increments. Here it would also nil-deref `ev.br`.
+		//
+		// There is no conservative answer a callback walk can give, so the
+		// guard is a test rather than a value: TestEventKindCensus fails the
+		// moment a kind is added, and names every kind-keyed site that has to
+		// learn about it. Add the case; do not widen this comment.
 	}
 }
 

@@ -400,6 +400,14 @@ const (
 	evStore
 	evDynBind
 	evBindTwin
+	// evKindEnd is a SENTINEL, not a kind: it is one past the last, so
+	// `evKindEnd - 1` is how many kinds there are. A new kind goes ABOVE it,
+	// which changes that count and fails TestEventKindCensus — whose failure
+	// message names every site keyed on ev.kind that must then learn about
+	// it. That is deliberate: twice a new kind has reached a kind-keyed
+	// predicate and inherited whatever its default happened to do, and both
+	// times the result was a silent wrong answer (NUR133, NUR137).
+	evKindEnd
 )
 
 // emitUserCall is a recorded call of a compiled boru fn: the target
