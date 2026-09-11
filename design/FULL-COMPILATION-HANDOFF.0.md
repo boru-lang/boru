@@ -7026,6 +7026,152 @@ gates passing says nothing about its variants, and the merged coverage gate
 runs the lane while per-PR CI does not — so on this line, "CI green" and
 "gated" stay two different claims for two different reasons.
 
+## Twin-placement shape 1, measured at the bridge (2026-09-11)
+
+The frontier file says shape 1 is "an `import` inside a MULTI-RUN body — a
+module bind is not one of the BindDef twins the arm-residency bridge installs
+per element". Measured at `AdoptResidentTwins` with a print, on the ledgered
+row `[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`:
+
+```
+ZZ adopt twins 1 events 0
+ZZ   twin kind 0 name MathUtil          (kind 0 = BindDef)
+```
+
+**The twin IS a BindDef.** The note is imprecise in exactly the way shape 3's
+was — and, like that one, the imprecision points the next reader at the wrong
+layer. What is missing is the def-site EVENT: `installExports` reaches
+`InstallDef`, which notes the ledger transition, and nothing records an
+`evDynBind` for it, so the bridge's total pairing sees 1 twin against 0 events
+and declines.
+
+That is the same gap increment 53 closed for TYPE installs, and the fix has
+the same five parts:
+
+  1. `RecordModuleInstall` on `core.EmitRecorder`, recording only inside the
+     arm-resident bracket (`armResidentDepth != 0`) — exactly
+     `RecordTypeInstall`'s gate, and for the same reason: outside the bracket
+     a module bind is a top-level twin the root stream already replays.
+  2. A core funnel beside `NoteTypeInstall` so a twin and its event can never
+     fall out of step. Note the asymmetry with the TYPE case: `InstallDef`
+     already notes the BindDef transition, so the funnel here records the
+     EVENT only.
+  3. `emitDynBind.moduleInstall` — a THIRD operand-less half beside `undef`
+     and `typeInstall` (`bindsValue`, `lowerResidentBind`).
+  4. `ResidentBindSpec.ModuleInstall` and a VM arm. Unlike the type arm,
+     which must re-install the captured BODY so each element mints its own
+     node (NUR135), a module namespace is identity-stable: the captured VALUE
+     is what each element should get, so this arm is `ApplyResidentBind`'s
+     ordinary install over the twin entry.
+  5. A soundness screen, the analogue of `typeInstallElementIndependent`: the
+     import must be ELEMENT-INDEPENDENT. A literal path (`import
+     "boru:math-util"`) is; a computed one that reads the element is not, and
+     replaying one namespace there would be the module-shaped twin of the
+     `ZB` miscompile.
+
+**THE FIX ABOVE WAS BUILT AND DID NOT WORK, and why is the part worth
+keeping.** Every piece of it went in — `RecordModuleInstall` on the recorder
+interface, the core funnel, `emitDynBind.moduleInstall` as a third
+operand-less half, `ResidentBindSpec.ModuleInstall`, the VM arm installing the
+captured value — and the row refused exactly as before. The bridge still saw
+one twin and zero events.
+
+A print at the recording site says why in one line:
+
+```
+ZZ installOneExport MathUtil recorderActive false
+ZZ installOneExport MathUtil recorderActive false
+```
+
+**`installExports` runs with the recorder SUSPENDED, both times.** So there is
+no pass in which a `RecordModuleInstall` placed there can fire, and the whole
+plan above rests on a premise nobody checked: that the import EXECUTES inside
+the unit's recording run the way a `def` does. It does not.
+
+That is where the next attempt starts, and it is a question about the import's
+execution model rather than about the bridge:
+
+  - WHICH suspension is it? `MultiRunBodyGuard` suspends for the each body's
+    analysis and `BodyAnalysisGuard` for nested bodies; the twin is still
+    noted under suspension (that is what the tainted-range machinery is for),
+    while events are not. If the suspension is the multi-run guard's, the
+    question is whether the closure COMPILE re-runs the import at all.
+  - Both calls show `recorderActive false`, and only ONE reached a concrete
+    EmitState — with `armResidentDepth 0`. So the two runs are not
+    probe-and-real in the bracket; at least one is somewhere else entirely.
+    Identify both before writing any more code.
+  - If the import genuinely never re-runs under recording, then the event
+    cannot come from `installExports` and must be synthesized where the
+    TWIN is noted — a different design from increment 53's, not the same one.
+
+The type case was a clean precedent for the SHAPE of the fix and a misleading
+one for its placement: a type install happens during the body's own analysis,
+where recording is live inside the bracket, and an import does not. "Mirror
+the increment that closed the sibling gap" is a good starting hypothesis and
+was not a measurement.
+
+**WHAT THE REVIEW CAUGHT, and two of it corrects the plan above.** Codex
+reviewed the measurement and raised six findings; three change the design and
+two of those contradict each other, which is the interesting part.
+
+  1. **A cached repeat import installs NOTHING** (P1, and decisive).
+     `ensureExportsBound` guards every install on `!r.Defs.Has(name)`, and
+     `lang/spec/edge-modules-1.tsv` pins the consequence: `import
+     "boru:string-util" import "boru:string-util" StringUtil.$module eq
+     StringUtil.$module` is `true` — "a cache no-op: the binding keeps its ONE
+     descriptor instance across a repeat import". So the resident op may NOT
+     install unconditionally per element, which is exactly what part 4 above
+     proposed. It would push a binding the interpreter does not, and a later
+     `undef MathUtil` would then expose an extra compiled-only binding. That
+     is a miscompile the plan would have shipped.
+
+     It also explains something the measurement saw and I did not interrogate:
+     ONE twin for a TWO-element loop. The second iteration is the cache no-op.
+     A count that did not match the loop's length was sitting in the output
+     and I read past it.
+
+  2. **Mint a fresh instance per element** (P1) — and this one is WRONG for
+     this shape, by the same spec rows. Identity is per-import-INSTANCE, but a
+     cached repeat import keeps the one instance, so minting per element would
+     break the `eq` row above. The finding's reasoning holds only across an
+     intervening `undef`, which `ensureExportsBound`'s own guard already
+     handles by re-installing. Recorded because the two P1s are in direct
+     tension and the spec decides between them: (1) is right, (2) is not.
+
+  3. **Sorting is a PAIRING prerequisite, not only reproducibility** (P2), and
+     my note below understated it. The twins are captured during the body
+     ANALYSIS and the events during the later closure-unit COMPILE — two
+     separate `installExports` runs, so two independent map iterations. They
+     can choose different orders, and the bridge's strict name-plus-occurrence
+     check then declines NONDETERMINISTICALLY. Both ranges are sorted now
+     (`installExports` and `ensureExportsBound`).
+
+  4. **Word extensions note twins without InstallDef** (P2).
+     `transplantWordExtensions` reaches `core.TransplantExtension`, which
+     pushes the binding and calls `NoteBindTransition` DIRECTLY. So a module
+     exporting word extensions (`boru:time-util`, `boru:matrix-util`,
+     `boru:net`) makes twins a namespace-install funnel never sees, and the
+     bridge's total count declines for a second, independent reason. Any fix
+     needs an event there too, or an explicit scope restriction.
+
+The shape of the lesson is the same one this line keeps paying for: the plan
+was assembled from a sibling increment's structure rather than from this
+word's own execution model, and three separate things about that model —
+suspension, caching, and a second twin source — were all discoverable before
+writing code.
+
+**One thing fixed on the way in, which is not the blocker.**
+`installExports` (lang/go/native/native_module_module.go) iterates
+`desc.Exports` with a MAP RANGE. With one exported namespace the order is
+trivially stable, which is why the ledgered row does not expose it; with two
+or more, the twins and their events are appended in a random order that
+differs run to run. I first wrote that the pairing stays consistent
+because both come from the same loop iteration. That is WRONG, and finding 3
+above says why: the twins come from the body analysis and the events from the
+later closure-unit compile, so they are two independent map iterations that
+can disagree. Sorting is a prerequisite for the pairing, not a tidiness fix.
+Both ranges are sorted now.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

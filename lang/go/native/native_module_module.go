@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -639,8 +640,15 @@ func installExports(r *Registry, desc ModuleDesc, names []string) error {
 	linkModuleDebugParent(r, desc)
 	mod := NewModuleInstance(desc)
 	if names == nil {
-		for name, exportMap := range desc.Exports {
-			InstallDef(r, name, NewModuleNamespace(name, exportMap, mod))
+		// SORTED, not a map range. The bind ledger's twins are appended in
+		// this order, and the arm-residency bridge pairs twins to def-site
+		// events by occurrence — so an order that differs run to run makes
+		// the compiled stream non-reproducible for a module exporting two or
+		// more namespaces. One namespace is trivially stable, which is why no
+		// ledgered row exposes it; that is a reason to fix it rather than a
+		// reason it does not matter.
+		for _, name := range sortedExportNames(desc) {
+			InstallDef(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
 		}
 		return transplantWordExtensions(r, desc)
 	}
@@ -650,6 +658,17 @@ func installExports(r *Registry, desc ModuleDesc, names []string) error {
 		}
 	}
 	return transplantWordExtensions(r, desc)
+}
+
+// sortedExportNames gives installExports a deterministic order over the
+// export map. See its caller for why the order is load-bearing.
+func sortedExportNames(desc ModuleDesc) []string {
+	names := make([]string, 0, len(desc.Exports))
+	for name := range desc.Exports {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // transplantWordExtensions scans a module's exports for word-extension
@@ -962,9 +981,12 @@ func ResolveAnyModule(r *Registry, ref string) (ModuleDesc, error) {
 // any teardown+re-import.
 func ensureExportsBound(r *Registry, desc ModuleDesc) {
 	mod := NewModuleInstance(desc)
-	for name, exportMap := range desc.Exports {
+	// SORTED, for installExports' reason: these installs note bind-ledger
+	// transitions, and anything pairing against them by occurrence order
+	// must not be reading from a map.
+	for _, name := range sortedExportNames(desc) {
 		if !r.Defs.Has(name) {
-			InstallDef(r, name, NewModuleNamespace(name, exportMap, mod))
+			InstallDef(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
 		}
 	}
 }

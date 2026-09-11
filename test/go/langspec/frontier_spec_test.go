@@ -483,7 +483,18 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// owns every row. Graduation per shape: resident module binds / type
 	// twins inside compiled units, a closure lowering that admits the
 	// declined do body, and the root cause of the import-and-call pair.
-	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`: {why: "twin placement: an import inside a multi-run body is a module bind, not a BindDef the arm-residency bridge installs per element", failsWith: "no stream placement"},
+	// CORRECTED 2026-09-11: this entry used to say the import's bind is
+	// "not a BindDef". It IS one — installExports reaches InstallDef like
+	// any other binding, and a print at AdoptResidentTwins shows one BindDef
+	// twin (MathUtil) against ZERO def-site events. The missing half is the
+	// EVENT, and it cannot simply be recorded at installExports: that runs
+	// with the recorder SUSPENDED in both passes (measured). See
+	// design/FULL-COMPILATION-HANDOFF.0.md for the attempt that failed on
+	// that premise and for the two REVIEW-FOUND constraints any fix must
+	// meet — a cached repeat import installs NOTHING (ensureExportsBound
+	// guards on !r.Defs.Has), and transplantWordExtensions notes twins
+	// without passing through InstallDef at all.
+	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`: {why: "twin placement: the import's BindDef twin has no def-site EVENT for the arm-residency bridge to pair against, and installExports runs with the recorder suspended so the event cannot be recorded there", failsWith: "no stream placement"},
 	// Shape 2 NARROWED with the fifty-third increment (2026-09-11). The
 	// ELEMENT-INDEPENDENT type def graduated —
 	// `[10 20] each [drop def Tlo (Integer gt 10) def Thi (Integer lt 20)
