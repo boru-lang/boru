@@ -7069,7 +7069,48 @@ the same five parts:
      replaying one namespace there would be the module-shaped twin of the
      `ZB` miscompile.
 
-**And one thing to fix on the way in, which is not the blocker.**
+**THE FIX ABOVE WAS BUILT AND DID NOT WORK, and why is the part worth
+keeping.** Every piece of it went in — `RecordModuleInstall` on the recorder
+interface, the core funnel, `emitDynBind.moduleInstall` as a third
+operand-less half, `ResidentBindSpec.ModuleInstall`, the VM arm installing the
+captured value — and the row refused exactly as before. The bridge still saw
+one twin and zero events.
+
+A print at the recording site says why in one line:
+
+```
+ZZ installOneExport MathUtil recorderActive false
+ZZ installOneExport MathUtil recorderActive false
+```
+
+**`installExports` runs with the recorder SUSPENDED, both times.** So there is
+no pass in which a `RecordModuleInstall` placed there can fire, and the whole
+plan above rests on a premise nobody checked: that the import EXECUTES inside
+the unit's recording run the way a `def` does. It does not.
+
+That is where the next attempt starts, and it is a question about the import's
+execution model rather than about the bridge:
+
+  - WHICH suspension is it? `MultiRunBodyGuard` suspends for the each body's
+    analysis and `BodyAnalysisGuard` for nested bodies; the twin is still
+    noted under suspension (that is what the tainted-range machinery is for),
+    while events are not. If the suspension is the multi-run guard's, the
+    question is whether the closure COMPILE re-runs the import at all.
+  - Both calls show `recorderActive false`, and only ONE reached a concrete
+    EmitState — with `armResidentDepth 0`. So the two runs are not
+    probe-and-real in the bracket; at least one is somewhere else entirely.
+    Identify both before writing any more code.
+  - If the import genuinely never re-runs under recording, then the event
+    cannot come from `installExports` and must be synthesized where the
+    TWIN is noted — a different design from increment 53's, not the same one.
+
+The type case was a clean precedent for the SHAPE of the fix and a misleading
+one for its placement: a type install happens during the body's own analysis,
+where recording is live inside the bracket, and an import does not. "Mirror
+the increment that closed the sibling gap" is a good starting hypothesis and
+was not a measurement.
+
+**One thing fixed on the way in, which is not the blocker.**
 `installExports` (lang/go/native/native_module_module.go) iterates
 `desc.Exports` with a MAP RANGE. With one exported namespace the order is
 trivially stable, which is why the ledgered row does not expose it; with two
