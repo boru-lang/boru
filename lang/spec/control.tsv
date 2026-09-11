@@ -32,6 +32,25 @@ def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts d
 # One such row is already counted; three more would raise it. They are pinned
 # by lang/go/region_prefix_test.go instead (both arms, a two-value prefix, a
 # non-Integer prefix, and the emitted mark/seat stream).
+# An INERT PREFIX beneath the same variadic branch region (the fifty-fifth
+# increment). The prefix cannot be pushed after the run — it would land on top
+# of it — and cannot be indexed past it from the top, because the run's length
+# is a runtime value; OpSeatBelowMark is the op for exactly that, and the
+# forty-first increment gave it to the PROGRAM residual. A body unit plans and
+# seats its own now, so these lower natively rather than through the dyn-body
+# backstop (which is why they may join this corpus where the three prefix rows
+# noted above may not: no interpreter re-entry to count).
+# Its 2-value-run twin — `do [1 (if false [] [9 9])]`, which answers `1 9 9`
+# on both lanes — is deliberately NOT here, for the reason the three prefix
+# rows above are not: it reaches the dyn-body BACKSTOP (a sub-engine over
+# baked const tokens) rather than this seat, and the interp-entry census is a
+# ratchet that may only fall. Why the 0-value arm records a closure and the
+# 2-value arm does not is a RECORD-stage question this increment did not
+# change and did not answer; it is pinned, with that fact stated, in
+# lang/go/body_residual_rebuild_test.go.
+do [1 (if true [] [9 9])]	1	an inert prefix seats BENEATH a 0-value branch region
+do [def b true  1 (if b [] [9 9])]	1	a body-local read as the condition does not change the seat
+do [def zb true  do [1 (if zb [] [9 9])]]	1	and a NESTED do body plans its own prefix, one unit down
 do [for 3 [1] 7]	1 1 1 7	a loop inside a do body compiles (the unrolled model's repeated result identities de-collide)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket

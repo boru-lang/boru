@@ -2514,6 +2514,14 @@ func sameEventRunToEnd(ops []EmitOperand, idx int) bool {
 //     such an event; a fn RET does not.
 func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, variadicMid, allowRebuild bool, vals []core.Value, pos core.SrcPos) string {
 	extra := who + ": body leaves extra values (Stage 3 lowers in-order results)"
+	// The region-prefix seating first, exactly as seatProgramResidual orders
+	// them: it closes a residual shaped [inert…, REGION] through the mark
+	// planRegionPrefixUnit opened, which neither the in-order seating nor the
+	// rebuild below can — the prefix must land BENEATH a run whose length is
+	// a runtime value.
+	if lw.seatRegionPrefix(ops, pos) {
+		return ""
+	}
 	reason := lw.seatResults(ops, !variadicMid, noContract, seatMsgs{
 		variadic:     who + ": result is a variadic loop value (Stage 3)",
 		aboveLiteral: who + ": result above a literal (Stage 3)",

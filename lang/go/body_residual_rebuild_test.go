@@ -54,7 +54,6 @@ func TestBodyResidualRebuildSizesTheFrame(t *testing.T) {
 func TestBodyResidualRebuildScreens(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"variadic branch result", `do [def b true  do [1 2 (if b [] [9 9])]]`, "no stream placement"},
-		{"variadic, directly", `do [def zb true  do [1 (if zb [] [9 9])]]`, "result above a literal"},
 	} {
 		a, err := New()
 		if err != nil {
@@ -97,5 +96,49 @@ func TestBodyResidualRebuildScreens(t *testing.T) {
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("a closure in a body residual: compiled %v, interpreted %v", got, want)
+	}
+}
+
+// The body-unit REGION-PREFIX seating (the fifty-fifth increment), which is
+// the shape the rebuild above cannot take: the prefix must land BENEATH a run
+// whose length is a runtime value, and a spill slot per operand is exactly
+// what such a run has not got. OpSeatBelowMark is the op for it, and the
+// forty-first increment gave it to the program residual; a body unit plans
+// and seats its own now.
+//
+// The 0-value arm is pinned in lang/spec/control.tsv §2. Its 2-value-run twin
+// is pinned HERE and not there, because it reaches the dyn-body BACKSTOP — a
+// sub-engine over baked const tokens — rather than this seat, and the
+// interp-entry census is a ratchet that may only fall. WHY the two arms of one
+// `if` record differently is a RECORD-stage question this increment neither
+// changed nor answered: measured, not derived, and stated so the next author
+// does not read the asymmetry as intended.
+func TestBodyRegionPrefixSeatsBothArms(t *testing.T) {
+	for _, src := range []string{
+		`do [1 (if true [] [9 9])]`,
+		`do [1 (if false [] [9 9])]`,
+		`do [def b true  1 (if b [] [9 9])]`,
+		`do [def zb true  do [1 (if zb [] [9 9])]]`,
+		`[1 2] each [drop 5 (if true [] [9 9])]`,
+	} {
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, ierr := a.RunInterp(src)
+		if ierr != nil {
+			t.Fatalf("interpreter %q: %v", src, ierr)
+		}
+		b, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, cerr := b.RunCompiledStrict(src)
+		if cerr != nil {
+			t.Fatalf("compiled %q: %v", src, cerr)
+		}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("%q: compiled %v, interpreted %v", src, got, want)
+		}
 	}
 }

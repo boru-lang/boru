@@ -6338,6 +6338,54 @@ Do not look for provenance ON the folded Boolean: it is `Pos=0:0` with no
 and a fold over a bound param. The analysis CONTEXT is the only signal there
 is.
 
+## …and the region-prefix seat, which is the shape the rebuild cannot take (2026-09-11, the fifty-fifth increment)
+
+The rebuild spills one stack entry per residual operand. A residual shaped
+`[inert…, REGION]` has nothing to spill: the region's run is a length the
+compiler does not know, and the prefix must land BENEATH it. `OpSeatBelowMark`
+is the op for exactly that, and the forty-first increment gave the PROGRAM
+residual the plan and the seating. A body unit had neither — its lowerer is
+constructed with `markBefore` nil and `regionPrefixSeq` zero — so
+`reconcileResults` met `do [1 (if b [] [9 9])]` and refused "result above a
+literal".
+
+It has both now: `planRegionPrefixUnit` arms the plan before the unit's
+`lowerEvents` walk (the walk reads `markBefore` as it goes, so the
+`OpStackMark` lands ahead of the region-starting event), and
+`reconcileResults` tries `seatRegionPrefix` first, exactly as
+`seatProgramResidual` orders them.
+
+**Why it needed a new shape function, which is the part worth keeping.** The
+obvious move — call `regionPrefixShape` with the unit's residual values — is
+what I wrote first, and it declines every time. Measured: the inner do-body's
+residual is `[1, "None tor Integer"]` and the SECOND value's ID is not in
+`producedBy` at all, because a branch merge's carrier is minted at the JOIN
+rather than by the event. The unit's resolved OPERANDS say the same thing
+plainly — `[CONST, EVENT(the branch)]` — so `regionPrefixShapeOps` reads the
+shape off those instead. Same three conditions, no inference.
+
+**What it graduates, A/B-measured against the parent commit:** `do [1 (if
+true [] [9 9])]`, the same under a body-local condition, the same one unit
+further down (a nested `do`), and the `each`-body twin. Rows in
+`lang/spec/control.tsv` §2.
+
+**The asymmetry it did NOT explain, stated rather than smoothed over.** The
+2-value-run twin `do [1 (if false [] [9 9])]` also answers identically on both
+lanes — but it never reaches this seat: its `do` records no closure and falls
+to the dyn-body BACKSTOP (a sub-engine over baked const tokens), which is an
+interp entry, and the census caught it the moment I put the row in the corpus
+(33 against a ceiling of 32). So the row is pinned in a Go test instead, with
+that fact written down. WHY the 0-value arm records a closure and the 2-value
+arm does not is a RECORD-stage question this increment neither changed nor
+answered — `closureResidualExact` is where to start.
+
+**What did not move.** The variation census is unchanged (pass 381, refused
+57) and no ledger row graduated: the sweep's seeds and the frontier's rows do
+not happen to contain this shape. A real widening with no ratchet to show for
+it is worth saying out loud, because the temptation is to keep pulling until
+some number moves — and the number that would have moved here was the
+interp-entry census, in the wrong direction.
+
 ## A body unit gets the residual rebuild, and the gate that was waiting on it (2026-09-11, the fifty-fourth increment)
 
 Two increments earlier, the per-unit fold was admitted inside a body only

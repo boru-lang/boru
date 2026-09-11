@@ -9664,14 +9664,75 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 // Split out of Finalize rather than written inline because Finalize sits on
 // the gocyclo ceiling: one more branch there is one branch too many.
 func (es *EmitState) excusePrefixRegion(residual []core.Value, forceOrder map[int]bool) {
-	if seq, ok := es.regionPrefixShape(residual); ok {
+	if seq, ok := es.regionPrefixShape(residual, es.frames[0]); ok {
 		delete(forceOrder, seq)
 	}
 }
 
+// regionPrefixShapeOps is regionPrefixShape read off a unit's RESOLVED
+// OPERANDS rather than its residual values. A fn unit needs the operand form:
+// the residual values a body leaves carry identities the recorder does not
+// index in producedBy (a branch merge's carrier is minted at the join, not by
+// the event), so the value walk finds no producer and declines a shape the
+// operands state plainly — `do [1 (if b [] [9 9])]` resolves to
+// [CONST, EVENT(the branch)] and nothing else has to be inferred.
+//
+// The conditions are the same three: the LAST operand names a variadic REGION
+// event OF THIS SCOPE that does not read the stack; the contiguous run of
+// that event's own operands is the region; and everything beneath the run is
+// inert — no event operand at all — which is what makes the prefix pushable
+// after the run.
+func (es *EmitState) regionPrefixShapeOps(ops []EmitOperand, events []EmitEvent) (int, bool) {
+	if len(ops) < 2 || ops[len(ops)-1].kind != opEvent {
+		return 0, false
+	}
+	seq := ops[len(ops)-1].idx
+	ev := eventBySeq(events, seq)
+	if !es.variadicRegionEvent(ev) || regionReadsTheStack(ev) {
+		return 0, false
+	}
+	i := len(ops) - 1
+	for i > 0 && ops[i-1].kind == opEvent && ops[i-1].idx == seq {
+		i--
+	}
+	if i == 0 {
+		return 0, false // the run IS the whole residual; no prefix to seat
+	}
+	for _, op := range ops[:i] {
+		if op.kind == opEvent {
+			return 0, false
+		}
+	}
+	return seq, true
+}
+
 func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
-	seq, ok := es.regionPrefixShape(residual)
+	seq, ok := es.regionPrefixShape(residual, es.frames[0])
 	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{seq: true}
+	lw.regionPrefixSeq = seq
+}
+
+// planRegionPrefixUnit is planRegionPrefix for a FN UNIT's residual: the same
+// shape over the unit's OWN events, armed before the unit's lowerEvents walk
+// so the OpStackMark lands ahead of the region-starting event exactly as it
+// does at the top level.
+//
+// A body unit needs it for the same reason the program did (the forty-first
+// increment): a residual shaped [inert…, REGION] cannot be seated in place —
+// the prefix would land ON the run, whose length is a runtime value — and the
+// rebuild the fifty-fourth increment gave this seat cannot help, because a
+// spill slot per operand is exactly what a runtime-variable run has not got.
+// Measured: `do [def b true  do [1 2 (if b [] [9 9])]]` refused at the twin
+// placement gate because its inner do-body closure declined here first.
+func (es *EmitState) planRegionPrefixUnit(lw *lowerer, rec *fnUnitRec) {
+	if rec.frag == nil || len(lw.markBefore) > 0 { //covergate:allow every fn unit reaching the lowering has its fragment (the nil case returns above) and a fresh unit lowerer has no plan; asked anyway so the two planners state the same preconditions (§compiler)
+		return
+	}
+	seq, ok := es.regionPrefixShapeOps(rec.outOps, rec.frag.events)
+	if !ok {
 		return
 	}
 	lw.markBefore = map[int]bool{seq: true}
@@ -9686,11 +9747,12 @@ func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
 // the region (it would land on top of the run) and cannot be indexed past it
 // from the top (the run's length is a runtime value).
 //
-// The producer must be a TOP-LEVEL event, for planMarkWindow's reason:
-// lowerEvents reads markBefore only over frames[0], so a fragment-resident
-// anchor would arm the plan with no OpStackMark ever emitted and the VM would
-// raise where the interpreter succeeds.
-func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
+// The producer must be an event of the scope being lowered — frames[0] for
+// the program, the unit's own fragment for a fn unit — for planMarkWindow's
+// reason: lowerEvents reads markBefore only over the list it walks, so an
+// anchor resident in a NESTED fragment would arm the plan with no OpStackMark
+// ever emitted and the VM would raise where the interpreter succeeds.
+func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent) (int, bool) {
 	if len(residual) < 2 {
 		return 0, false
 	}
@@ -9700,7 +9762,7 @@ func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
 	}
 	// variadicRegionEvent answers false for a nil event, and it is checked
 	// FIRST so regionReadsTheStack is never handed one.
-	ev := es.topLevelEventBySeq(pr.seq)
+	ev := eventBySeq(events, pr.seq)
 	if !es.variadicRegionEvent(ev) || regionReadsTheStack(ev) {
 		return 0, false
 	}
@@ -9862,9 +9924,15 @@ func (es *EmitState) variadicRegionEvent(ev *EmitEvent) bool {
 // topLevelEventBySeq finds the top-level frame's event with the given seq
 // (nil when the seq belongs to a nested fragment or unit).
 func (es *EmitState) topLevelEventBySeq(seq int) *EmitEvent {
-	for i := range es.frames[0] {
-		if es.frames[0][i].seq == seq {
-			return &es.frames[0][i]
+	return eventBySeq(es.frames[0], seq)
+}
+
+// eventBySeq finds the event with the given seq in ONE event list — the
+// scope's own, never a nested fragment's (nil when it is not there).
+func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
+	for i := range events {
+		if events[i].seq == seq {
+			return &events[i]
 		}
 	}
 	return nil
@@ -10766,6 +10834,10 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: collectResidentBindConsumes(rec.frag.events, rec.dead), isFnUnit: true}
+		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
+		// so the OpStackMark lands ahead of the region-starting event (the
+		// walk reads flw.markBefore as it goes).
+		es.planRegionPrefixUnit(flw, rec)
 		seatUnitDeopts(flw, rec, &cf, diverged)
 		es.emitDynParamBinds(flw, rec)
 		// The apply-loop replay's unnamed-param re-pushes seat at UNIT START —

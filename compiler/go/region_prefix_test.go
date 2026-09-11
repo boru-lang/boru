@@ -49,22 +49,22 @@ func TestRegionPrefixShapeAdmitsTheInertPrefix(t *testing.T) {
 	seq, out := rpLoop(es, emitLoop{hasBodyOut: true, bodyOut: EmitOperand{kind: opLocal}})
 
 	// The frontier shape: one inert value beneath a value-producing loop.
-	got, ok := es.regionPrefixShape([]core.Value{core.NewInteger(99), out})
+	got, ok := es.regionPrefixShape([]core.Value{core.NewInteger(99), out}, es.frames[0])
 	if !ok || got != seq {
 		t.Errorf("regionPrefixShape = (%d,%v), want (%d,true)", got, ok, seq)
 	}
 	// TWO inert values still qualify — the prefix is a run, not a slot.
-	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(1), core.NewInteger(2), out}); !ok {
+	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(1), core.NewInteger(2), out}, es.frames[0]); !ok {
 		t.Error("a two-value inert prefix must qualify")
 	}
 	// The region ALONE needs no seating: the ordinary residual absorbs it.
-	if _, ok := es.regionPrefixShape([]core.Value{out}); ok {
+	if _, ok := es.regionPrefixShape([]core.Value{out}, es.frames[0]); ok {
 		t.Error("a lone region does not need the prefix plan")
 	}
 	// The region must be LAST. A value ABOVE it is not a prefix at all, and
 	// the ordinary seating already handles that shape (the tail pushes on
 	// top of the run, exactly as recorded).
-	if _, ok := es.regionPrefixShape([]core.Value{out, core.NewInteger(99)}); ok {
+	if _, ok := es.regionPrefixShape([]core.Value{out, core.NewInteger(99)}, es.frames[0]); ok {
 		t.Error("a region that is not last is not this plan's shape")
 	}
 	// A prefix entry with a PRODUCING EVENT is live on the simulated stack
@@ -73,11 +73,11 @@ func TestRegionPrefixShapeAdmitsTheInertPrefix(t *testing.T) {
 	prior := core.NewInteger(7)
 	prior.ID = core.GenerateID("zzrp")
 	es.setProduced(prior, es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "zzprior", nout: 1}}))
-	if _, ok := es.regionPrefixShape([]core.Value{prior, out}); ok {
+	if _, ok := es.regionPrefixShape([]core.Value{prior, out}, es.frames[0]); ok {
 		t.Error("an event-produced prefix entry is not inert")
 	}
 	// A residual whose last entry no event produced (a bare literal program).
-	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(1), core.NewInteger(2)}); ok {
+	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(1), core.NewInteger(2)}, es.frames[0]); ok {
 		t.Error("a residual with no region has nothing to seat")
 	}
 }
@@ -87,7 +87,7 @@ func TestRegionPrefixShapeRejectsAStackReadingRegion(t *testing.T) {
 	// The loop's BOUND is a prior event's result — live BELOW the mark the
 	// plan would open, so the loop would pop from beneath its own mark.
 	_, out := rpLoop(es, emitLoop{hasBodyOut: true, end: EmitOperand{kind: opEvent, idx: 1}})
-	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(99), out}); ok {
+	if _, ok := es.regionPrefixShape([]core.Value{core.NewInteger(99), out}, es.frames[0]); ok {
 		t.Error("a region reading the enclosing stack must decline the plan")
 	}
 
@@ -100,7 +100,7 @@ func TestRegionPrefixShapeRejectsAStackReadingRegion(t *testing.T) {
 		bodyOut:    EmitOperand{kind: opEvent, idx: 1},
 		condOut:    EmitOperand{kind: opEvent, idx: 2},
 	})
-	if _, ok := es2.regionPrefixShape([]core.Value{core.NewInteger(99), out2}); !ok {
+	if _, ok := es2.regionPrefixShape([]core.Value{core.NewInteger(99), out2}, es2.frames[0]); !ok {
 		t.Error("a loop's fragment outs are not enclosing-stack reads")
 	}
 }
