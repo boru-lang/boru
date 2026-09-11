@@ -10956,26 +10956,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			return nil, "fn " + rec.name + ": " + reason, false
 		}
 		if !diverged {
-			// The __RC unnamed-arg allowance, applied at LOWERING time: a
-			// declared fn's residual bottoms that are (a) within the
-			// NUnnamed window and (b) pure PARAM-LOCAL references are the
-			// frame's unconsumed unnamed args — the interpreter's __RC
-			// discards them, and since operands lower lazily they were
-			// never emitted, so dropping them here is the trim with zero
-			// runtime cost (the VM RET's NUnnamed trim remains as the
-			// runtime backstop). Bottoms that are anything else keep the
-			// full residual and let reconcileResults refuse as before.
-			if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
-				if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
-					drop := 0
-					for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
-						drop++
-					}
-					if drop == extra {
-						rec.outOps = rec.outOps[extra:]
-					}
-				}
-			}
+			trimUnconsumedUnnamed(rec)
 			// Reconcile the body's N result operands with the simulated
 			// stack and emit a RET. Event results must already sit on the
 			// stack in order (they were left by their own events); inert
@@ -13194,4 +13175,34 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 		Code:  []Instr{{Op: OpTrap, Arg: int32(ti)}},
 		Debug: []core.SrcPos{rec.pos}})
 	es.dropStampRef(len(p.Fns) - 1)
+}
+
+// trimUnconsumedUnnamed applies the __RC unnamed-arg allowance at LOWERING
+// time: a declared fn's residual bottoms that are (a) within the NUnnamed
+// window and (b) pure PARAM-LOCAL references are the frame's unconsumed
+// unnamed args — the interpreter's __RC discards them, and since operands
+// lower lazily they were never emitted, so dropping them here is the trim
+// with zero runtime cost (the VM RET's NUnnamed trim remains as the runtime
+// backstop). Bottoms that are anything else keep the full residual and let
+// reconcileResults refuse as before.
+//
+// Split out of Finalize rather than written inline for excusePrefixRegion's
+// reason: Finalize sits on the gocyclo ceiling, and this block is nine
+// decision points of a rule that has nothing to do with the rest of the
+// loop.
+func trimUnconsumedUnnamed(rec *fnUnitRec) {
+	if len(rec.returns) == 0 || rec.nUnnamed == 0 || len(rec.outOps) <= len(rec.returns) || rec.retReplay {
+		return
+	}
+	extra := len(rec.outOps) - len(rec.returns)
+	if extra > rec.nUnnamed {
+		return
+	}
+	drop := 0
+	for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
+		drop++
+	}
+	if drop == extra {
+		rec.outOps = rec.outOps[extra:]
+	}
 }
