@@ -981,9 +981,12 @@ func ResolveAnyModule(r *Registry, ref string) (ModuleDesc, error) {
 // any teardown+re-import.
 func ensureExportsBound(r *Registry, desc ModuleDesc) {
 	mod := NewModuleInstance(desc)
-	for name, exportMap := range desc.Exports {
+	// SORTED, for installExports' reason: these installs note bind-ledger
+	// transitions, and anything pairing against them by occurrence order
+	// must not be reading from a map.
+	for _, name := range sortedExportNames(desc) {
 		if !r.Defs.Has(name) {
-			InstallDef(r, name, NewModuleNamespace(name, exportMap, mod))
+			InstallDef(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
 		}
 	}
 }

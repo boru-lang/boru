@@ -7110,15 +7110,67 @@ where recording is live inside the bracket, and an import does not. "Mirror
 the increment that closed the sibling gap" is a good starting hypothesis and
 was not a measurement.
 
+**WHAT THE REVIEW CAUGHT, and two of it corrects the plan above.** Codex
+reviewed the measurement and raised six findings; three change the design and
+two of those contradict each other, which is the interesting part.
+
+  1. **A cached repeat import installs NOTHING** (P1, and decisive).
+     `ensureExportsBound` guards every install on `!r.Defs.Has(name)`, and
+     `lang/spec/edge-modules-1.tsv` pins the consequence: `import
+     "boru:string-util" import "boru:string-util" StringUtil.$module eq
+     StringUtil.$module` is `true` — "a cache no-op: the binding keeps its ONE
+     descriptor instance across a repeat import". So the resident op may NOT
+     install unconditionally per element, which is exactly what part 4 above
+     proposed. It would push a binding the interpreter does not, and a later
+     `undef MathUtil` would then expose an extra compiled-only binding. That
+     is a miscompile the plan would have shipped.
+
+     It also explains something the measurement saw and I did not interrogate:
+     ONE twin for a TWO-element loop. The second iteration is the cache no-op.
+     A count that did not match the loop's length was sitting in the output
+     and I read past it.
+
+  2. **Mint a fresh instance per element** (P1) — and this one is WRONG for
+     this shape, by the same spec rows. Identity is per-import-INSTANCE, but a
+     cached repeat import keeps the one instance, so minting per element would
+     break the `eq` row above. The finding's reasoning holds only across an
+     intervening `undef`, which `ensureExportsBound`'s own guard already
+     handles by re-installing. Recorded because the two P1s are in direct
+     tension and the spec decides between them: (1) is right, (2) is not.
+
+  3. **Sorting is a PAIRING prerequisite, not only reproducibility** (P2), and
+     my note below understated it. The twins are captured during the body
+     ANALYSIS and the events during the later closure-unit COMPILE — two
+     separate `installExports` runs, so two independent map iterations. They
+     can choose different orders, and the bridge's strict name-plus-occurrence
+     check then declines NONDETERMINISTICALLY. Both ranges are sorted now
+     (`installExports` and `ensureExportsBound`).
+
+  4. **Word extensions note twins without InstallDef** (P2).
+     `transplantWordExtensions` reaches `core.TransplantExtension`, which
+     pushes the binding and calls `NoteBindTransition` DIRECTLY. So a module
+     exporting word extensions (`boru:time-util`, `boru:matrix-util`,
+     `boru:net`) makes twins a namespace-install funnel never sees, and the
+     bridge's total count declines for a second, independent reason. Any fix
+     needs an event there too, or an explicit scope restriction.
+
+The shape of the lesson is the same one this line keeps paying for: the plan
+was assembled from a sibling increment's structure rather than from this
+word's own execution model, and three separate things about that model —
+suspension, caching, and a second twin source — were all discoverable before
+writing code.
+
 **One thing fixed on the way in, which is not the blocker.**
 `installExports` (lang/go/native/native_module_module.go) iterates
 `desc.Exports` with a MAP RANGE. With one exported namespace the order is
 trivially stable, which is why the ledgered row does not expose it; with two
 or more, the twins and their events are appended in a random order that
-differs run to run. The pairing itself stays consistent — both come from the
-same loop iteration — so this is not what declines the row, but it makes the
-compiled stream non-reproducible, and a bridge that pairs by occurrence order
-should not be reading from a map. Sort the names.
+differs run to run. I first wrote that the pairing stays consistent
+because both come from the same loop iteration. That is WRONG, and finding 3
+above says why: the twins come from the body analysis and the events from the
+later closure-unit compile, so they are two independent map iterations that
+can disagree. Sorting is a prerequisite for the pairing, not a tidiness fix.
+Both ranges are sorted now.
 
 ## What the ledger excludes, and why each exclusion was measured
 
