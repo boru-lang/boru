@@ -526,7 +526,12 @@ const (
 	// unwind trail (leak persistence IS the semantics: a mid-iteration
 	// raise leaves earlier elements' installs, interpreter-identical).
 	// The undef arm (a var param's balanced per-iteration teardown) pops
-	// the name's live top entry instead, consuming no stack.
+	// the name's live top entry instead, consuming no stack. The TYPE arm
+	// re-installs its twin-table entry's BODY per element — a type binding
+	// has no runtime value, so the expression is evaluated once at compile
+	// time and each element mints its own node — and consumes no stack
+	// either; the bridge proves the type expression element-independent
+	// before stamping the site (typeInstallElementIndependent).
 	OpBindResident
 	// OpDeoptIfFn is the per-read DEOPT of a gradual word read (NUR123): a
 	// bare read of a frame binding the pass types dynamic(Any) — a body-
@@ -951,6 +956,14 @@ type ResidentBindSpec struct {
 	Twin  int
 	Undef bool
 	Pop   bool
+	// TypeInstall selects the TYPE arm: the binding has no runtime value,
+	// so the op re-installs BindTwinEntries[Twin].Body per element, minting
+	// that element's own node (a top-level OpBindTwin replays the captured
+	// node instead, which is right for ONE execution and wrong for N —
+	// NUR135). Mutually exclusive with Undef and Pop, and never emitted
+	// until AdoptResidentTwins has proved the type expression
+	// element-independent.
+	TypeInstall bool
 }
 
 type GlobalBindSpec struct {
@@ -1499,8 +1512,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		case OpBindResident:
 			rb := p.ResidentBinds[in.Arg]
 			arm := "install"
-			if rb.Undef {
+			switch {
+			case rb.Undef:
 				arm = "undef"
+			case rb.TypeInstall:
+				arm = "type"
 			}
 			fmt.Fprintf(sb, " a%-3d ; resident bind %s (%s, twin %d)", in.Arg, rb.Name, arm, rb.Twin)
 		case OpCallDynMethod:

@@ -106,6 +106,26 @@ var parityShapes = []parityShape{
 		src:    `def xs [{ok:true} {ok:false}] def _ (xs each [ var [[r] def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0 ] ]) 9`,
 		probes: []string{"xs", "_", "ok", "res", "_2", "r"}},
 
+	// --- The TYPE half of the same bridge (the fifty-third increment). A
+	// type binding has no runtime value to install — the node is minted
+	// once at check time — so its resident op REPLAYS the captured twin
+	// entry per element, and these rows are what makes that more than a
+	// placement: the probe measures the DEPTH, which is the only thing a
+	// one-shot replay would get wrong and the only thing observable, since
+	// a root read of an arm-bound name refuses inside the same program.
+	{name: "each-type-def", src: `[10 20] each [drop def Big (Integer gt 5) 7]`,
+		probes: []string{"Big"}},
+	{name: "each-type-def-pair-and-use", src: `[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]`,
+		probes: []string{"A", "B", "x"}},
+	// The screen's negative: the type expression reads the body's OWN var
+	// param, so each element mints a different node — measured, 15 fails
+	// against the top `ZB` and passes against the one below it. Replaying
+	// one captured node would answer that read wrongly, so the bridge
+	// declines and the whole program refuses. Graduation = an op that
+	// REBUILDS the type per element instead of replaying one.
+	{name: "each-type-def-element-dependent", src: `[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`,
+		probes: []string{"ZB", "e"}, refused: "twin regime:"},
+
 	// --- The sibling multi-run words, graduated on the same mechanism.
 	// `each` was flagged first because its body population is the simplest
 	// (one run per element); these carry BodyMultiRunKeepsDefs for the same

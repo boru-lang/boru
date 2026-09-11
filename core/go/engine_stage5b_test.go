@@ -329,6 +329,78 @@ func TestS5BStackMatchAnalysisWreckage(t *testing.T) {
 	}
 }
 
+func TestS5BStackMatchDefiniteTrapMirrors(t *testing.T) {
+	// The forty-ninth increment's arm: on a COMPILING pass, over operands the
+	// runtime match examines unchanged, the failed named-fn dispatch bakes the
+	// interpreter's own error into a terminal trap and the diagnostic becomes a
+	// RuntimeMirror — the pipeline compiles past it instead of refusing.
+	//
+	// The twin below is the same program on a PLAIN check pass, where there is
+	// no trap to be exact about and the finding stays model-undermining.
+	for _, tc := range []struct {
+		name          string
+		compiling     bool
+		trapOK        bool
+		arg           Value
+		wantMirror    bool
+		wantTrapCalls int
+	}{
+		{"compiling, definite", true, true, NewString("nope"), true, 1},
+		{"the trap declines", true, false, NewString("nope"), false, 1},
+		{"a plain check never traps", false, true, NewString("nope"), false, 0},
+		{"an inexact operand", true, true, NewDynamicCarrier(TString), false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := covRegistry(t, nil)
+			r.Check.Mode = true
+			r.Check.Compiling = tc.compiling
+			t.Cleanup(func() { r.Check.Mode, r.Check.Compiling = false, false })
+
+			prevTop := AnalysisImpl.AtUncaughtTopLevel
+			AnalysisImpl.AtUncaughtTopLevel = func(*Registry) bool { return true }
+			t.Cleanup(func() { AnalysisImpl.AtUncaughtTopLevel = prevTop })
+
+			es := newS5BEmit()
+			es.trapOK = tc.trapOK
+			installS5BEmit(t, r, es)
+
+			fnDef := FnDefInfo{Name: "fw", Signatures: []Signature{{
+				Params:     []FnParam{{Name: "n", Type: TInteger}},
+				Impl:       Boru([]Value{NewInteger(1)}),
+				BarrierPos: BarrierAllForward,
+			}}}
+			arg := tc.arg
+			arg.SetPos(SrcPos{Row: 5, Col: 2})
+			e := NewTop(r)
+			e.Tape = NewTape([]Value{arg, NewFunction(fnDef)}, StackHeadroom)
+			e.Pointer = 1
+			if err := e.ExecFnDefSigStackMatch(1, fnDef, []Value{arg}); err != nil {
+				t.Fatalf("analysis mode must not raise: %v", err)
+			}
+			got := r.Check.Diagnostics
+			if len(got) != 1 || got[0].Code != "uncalled_function" {
+				t.Fatalf("diagnostic = %+v", got)
+			}
+			if got[0].RuntimeMirror != tc.wantMirror {
+				t.Errorf("RuntimeMirror = %v, want %v", got[0].RuntimeMirror, tc.wantMirror)
+			}
+			if len(es.trapErrs) != tc.wantTrapCalls {
+				t.Fatalf("RecordTrapErr calls = %d, want %d", len(es.trapErrs), tc.wantTrapCalls)
+			}
+			// The trap carries the error the INTERPRETER raises here, hint and
+			// all — that identity is the whole licence for the mirror.
+			if tc.wantTrapCalls > 0 {
+				ae := es.trapErrs[0]
+				if ae == nil || ae.Code != "uncalled_function" ||
+					!strings.Contains(ae.Detail, "call to 'fw' matched no signature") ||
+					!strings.Contains(ae.Hint, "fw/v to push the function as a value") {
+					t.Errorf("trapped error = %+v", ae)
+				}
+			}
+		})
+	}
+}
+
 func TestS5BExecFnDefSigForeignAnalysisError(t *testing.T) {
 	// Cross-registry execFnDefSig in analysis mode takes CallBoruNamed
 	// (line 5824) and propagates the body's error (line 5841).

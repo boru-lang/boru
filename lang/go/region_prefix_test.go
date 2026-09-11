@@ -135,3 +135,82 @@ func TestRegionPrefixDeclinesAStackReadingRegion(t *testing.T) {
 		t.Errorf("interpreter %s, want [99 0 1 2]", got)
 	}
 }
+
+// TestRegionPrefixSeatsAMultiSeatRegion — the forty-seventh increment. The
+// prefix plan was gated on a SINGLE-SLOT region, which was the shape of the
+// two producers that happened to exist (a value-producing loop, await's
+// winner) rather than anything OpSeatBelowMark needs: the op lifts the top n
+// values down to the mark whatever lies between, so the run's length was
+// never its business.
+//
+// A do-catch region is the multi-seat case. It records nout seats for a run
+// whose runtime length is a different number — here a branch-variant body
+// delivering two values on one arm and four on the other — and the same
+// lowering serves both.
+func TestRegionPrefixSeatsAMultiSeatRegion(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		// The frontier row, and its OTHER arm: two values, then four,
+		// through one lowering.
+		{`7 def b true  do [1 2 (if b [] [9 9])]`, "[7 1 2]"},
+		{`7 def b false  do [1 2 (if b [] [9 9])]`, "[7 1 2 9 9]"},
+		// A two-value prefix keeps its own order beneath the run.
+		{`1 2 def b false  do [1 2 (if b [] [9 9])]`, "[1 2 1 2 9 9]"},
+		// Nothing rides on the prefix's element type.
+		{`'a' def b true  do [1 2 (if b [] [9 9])]`, "[a 1 2]"},
+		// A constant condition inside the body reaches the same shape with
+		// no binding in the way.
+		{`99 do [1 2 (if true [] [9 9])]`, "[99 1 2]"},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			got, compiled, err := rpRun(t, tc.src)
+			if err != nil {
+				t.Fatalf("RunCompiled: %v", err)
+			}
+			if !compiled {
+				t.Fatal("a prefix beneath a multi-seat region must compile")
+			}
+			if got != tc.want {
+				t.Errorf("compiled %s, want %s", got, tc.want)
+			}
+			if in := rpInterp(t, tc.src); in != tc.want {
+				t.Errorf("interpreter %s, want %s — the oracle moved", in, tc.want)
+			}
+		})
+	}
+}
+
+// TestMultiSeatRegionEmitsTheMarkAndSeat pins the STREAM: a lowering that
+// promoted the region to nout frame slots and happened to agree on the
+// two-value arm would still be wrong on the four-value one, so the mark is
+// what this asserts, not just the answer.
+func TestMultiSeatRegionEmitsTheMarkAndSeat(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, err := a.CompileCheck(`7 def b true  do [1 2 (if b [] [9 9])]`)
+	if err != nil {
+		t.Fatalf("CompileCheck: %v", err)
+	}
+	if prog == nil {
+		t.Fatalf("refused: %s", reason)
+	}
+	dis := prog.Disassemble()
+	// The mark opens before the region's own operands — here after the
+	// `def b` prologue rather than at 0000, which is why this asks about
+	// ORDER rather than position.
+	mark := strings.Index(dis, "STACK_MARK")
+	call := strings.Index(dis, "CALL_NATIVE")
+	seat := strings.Index(dis, "SEAT_BELOW_MARK")
+	if mark < 0 || call < 0 || seat < 0 {
+		t.Fatalf("expected a mark, the region's call and the seat:\n%s", dis)
+	}
+	if !(mark < call && call < seat) {
+		t.Errorf("the mark must open before the region and the seat close after it:\n%s", dis)
+	}
+	// The region's results must NOT be stored to frame slots: that is the
+	// promotion whose fixed count this increment removed.
+	if strings.Contains(dis, "STORE_LOCAL") {
+		t.Errorf("the region must stay on the stack, not be promoted:\n%s", dis)
+	}
+}

@@ -51,3 +51,14 @@ import "boru:fn-util"  def f x:Integer => [add 1 x] end def p (FnUtil.partial f/
 # next, so each def-bound level models its own dispatch.
 import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def c (FnUtil.curry sub2/v) end def c10 (c 10) end (c10 3)	7	curry: one argument at a time
 import "boru:fn-util"  def sub3 fn [[a:Integer b:Integer c:Integer][Integer][a sub (b sub c)]] end def c (FnUtil.curry sub3/v) end def c1 (c 10) end def c2 (c1 3) end (c2 1)	8	curry: three levels
+#
+# GRADUATED 2026-09-10 (the forty-ninth increment), from
+# lang/spec/frontier/frontier-fn-util.tsv. A NAMED fn value reached as a call
+# whose match failed used to refuse the WHOLE program: the site's note read
+# "there is no call here to compile", which is true and beside the point — a
+# mirror needs something that RAISES IDENTICALLY, not a call, and on the
+# uncaught top line over operands the runtime match examines unchanged, a
+# terminal OpTrap is exactly that. Both rows now compile to that trap and
+# raise the interpreter's own error, caret and `/v` hint included.
+import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip refuses a non-function operand at dispatch
+import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry refuses a non-function operand at dispatch

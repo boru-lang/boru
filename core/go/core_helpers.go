@@ -256,7 +256,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		body = NewClassType(def, info)
 		r.Defs.Push(name, body)
 		if !shadow {
-			r.NoteBindTransition(BindTypeInstall, name, body.Pos())
+			r.NoteTypeInstall(name, body.Pos())
 		}
 		return
 	}

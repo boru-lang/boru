@@ -495,13 +495,17 @@ func TestW8LowerBranchVariadicElseLayout(t *testing.T) {
 	}
 }
 
-func TestW8LowerBranchComputedNonEagerDiverges(t *testing.T) {
+func TestW8LowerBranchComputedNonEagerNetsNoValue(t *testing.T) {
 	lw := w8lw()
-	// A computed-else arm whose non-eager (then) arm produces no value.
+	// A computed-else arm whose non-eager (then) arm produces no value AND
+	// does not diverge: it reaches the merge having pushed nothing, so the
+	// single merge slot would be a lie. (A DIVERGING arm never reaches the
+	// merge and is admitted — the fifty-first increment; its own coverage is
+	// the whole-program parity in lang/go/diverging_arm_lowering_test.go.)
 	ev := &EmitEvent{seq: 1, kind: evBranch, br: &emitBranch{
 		elsComputed: true, elsVal: EventOperand(5, 0), hasThenOut: false,
 	}}
-	if reason := lw.lowerBranch(ev); !strings.Contains(reason, "non-eager arm diverges") {
+	if reason := lw.lowerBranch(ev); !strings.Contains(reason, "non-eager arm nets no value") {
 		t.Fatalf("computed non-eager reason = %q", reason)
 	}
 }
@@ -546,7 +550,7 @@ func TestW8LowerBothComputedVariadicArm(t *testing.T) {
 
 func TestW8LowerComputedCondNotBelowEager(t *testing.T) {
 	lw := w8lw() // empty sim: no cond below the eager value
-	_, reason := lw.lowerComputedCond(&emitBranch{cond: EventOperand(5, 0)})
+	_, reason := lw.lowerComputedCond(&emitBranch{cond: EventOperand(5, 0)}, false)
 	if !strings.Contains(reason, "condition not below the eager value") {
 		t.Fatalf("computed-cond not-below reason = %q", reason)
 	}
@@ -555,7 +559,7 @@ func TestW8LowerComputedCondNotBelowEager(t *testing.T) {
 func TestW8LowerComputedCondFragRefusal(t *testing.T) {
 	lw := w8lw()
 	frag, badOut := w8failFrag()
-	_, reason := lw.lowerComputedCond(&emitBranch{condFrag: frag, condOut: badOut})
+	_, reason := lw.lowerComputedCond(&emitBranch{condFrag: frag, condOut: badOut}, false)
 	if reason == "" {
 		t.Fatal("failing computed cond-frag should refuse")
 	}

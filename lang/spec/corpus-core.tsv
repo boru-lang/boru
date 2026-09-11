@@ -156,3 +156,21 @@ xor true false	true	xor
 (1 add 2) (3 add 4) 1 pick	3 7 3	pick
 (1 add 2) (3 add 4) (5 add 6) 2 roll	7 11 3	roll
 (1 add 2) (3 add 4) drop	3	drop
+#
+# The last full-stack sub-frontier row (the fifty-second increment,
+# 2026-09-11): a full-stack word inside a WRAPPED CODE BODY. It compiled with
+# an interpreter island while FoldFullStack was gated to the top unit; the
+# fold is per-unit now, so the dispatch elides here exactly as it does at the
+# top level. `depth` counts the body's own stack on both lanes, which is the
+# fact the per-unit model rests on.
+[10 20] each [drop 1 2 3 1 pick]	[2 2]	a full-stack word inside a code body folds in that body's own unit
+[10 20] each [1 2 3 depth]	[4 4]	depth inside a body counts the BODY's stack — the element is in it
+#
+# …and over EVENT-PRODUCED entries (the fifty-fourth increment): the half the
+# per-unit fold had to leave islanded, because folding a PERMUTATION inside a
+# body needs somewhere for the permuted residual to land and a body unit had
+# no rebuild. reconcileResults takes the same seatResidualRebuild the program
+# residual has now, so the fold is unrestricted per unit.
+[10 20] each [drop (1 add 2) (3 add 4) 1 pick]	[3 3]	a full-stack word over EVENT-produced entries folds in the body's own unit
+[10 20] each [drop (1 add 2) (3 add 4) 1 roll]	[3 3]	…and the permuting roll with it, through the body unit's residual rebuild
+do [(1 add 2) (3 add 4) 1 roll]	7 3	a do body's permuted residual rebuilds exactly as the program's does

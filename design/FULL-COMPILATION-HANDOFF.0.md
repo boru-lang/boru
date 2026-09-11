@@ -5370,6 +5370,419 @@ three minutes — is what separated "my increment introduced this" from "my
 increment is next to this", and the fix is different in each case: the first
 would have been a revert, the second is two guards and a record.
 
+## A deferred expression is an argument against the TRAP, not against the REMATCH (2026-09-10, the forty-sixth increment)
+
+`p apply $.name` and `[10 20 30] apply $.1` refused the whole program with
+"unmatched dispatch recovered at apply". Both raise `signature_error` on the
+interpreter — `apply` is stack-only in both overloads (NUR098), so a forward
+lens never matches — and a spec ERROR row should still yield a Program that
+raises the same taxonomy at the same point.
+
+`TryRecordUnmatchedDispatchTrap` declined them, on a stated and sound reason:
+their window holds a REACH, and a deferred expression EXPANDS at dispatch
+time, so a static trap baked over the unexpanded token could describe a value
+the runtime never sees (`flex.tsv` L88/L95 — a reach over a mutated flex cell
+resolves at run time where the static match saw the raw Reach).
+
+**Read the reason against the instrument.** That argument is entirely about
+the TRAP, which bakes a static error. The RUNTIME REMATCH reads no static tag
+at all: it re-runs the match at run time over the values the interpreter's own
+dispatch examines, which are the EXPANDED ones. So the same fact that
+disqualifies the trap is what qualifies the rematch. The decline was one
+`return false` too early — it short-circuited both.
+
+The change is one line of classification: a deferred token sets
+`needsRematch` instead of returning false. The flex witnesses take the
+DEFERRING arm and keep their answers; the two ledger rows take the RAISING
+one and are byte-identical to the interpreter, caret and candidate notes
+included.
+
+**What it does not cross, and why that line is structural.** A window whose
+operands are in the wrong ORDER carries sigError's reorder hint ("did you
+swap the arguments?"), which is derived from TAPE STATE the runtime rebuild
+has no access to — the rematch already declines on exactly that. So
+`$.1 [10 20 30] apply` keeps its refusal, and it is now the fallback-isolation
+suite's refusing tail. That suite's tail has been re-chosen four times as the
+subset widened; this is the first time it was picked for a reason that
+widening cannot reach, rather than for being merely uncompiled today.
+
+## The single-slot gate was inherited, not needed (2026-09-10, the forty-seventh increment)
+
+`7 def b true do [1 2 (if b [] [9 9])]` refused with "variadic result
+promoted to frame slots". The do-region ALONE compiles — `def b true do
+[...]` answers `[1 2]` and its false twin `[1 2 9 9]` — so only the inert
+prefix beneath it was the problem.
+
+**The promotion was the problem, not the shape.** An out-of-order residual
+(an event result above an inert bottom) force-promotes every residual event
+to a frame local so the reconciliation can re-push in order. For a variadic
+region that is unsound — the stores pop exactly nout values while the run's
+runtime length is a different number — which `lowerCall` then said, one stage
+later. Excluded from `forceOrder`, the run stays on the sim as a REGION and
+`OpSeatBelowMark` lifts the prefix beneath it: the fortieth increment's
+machinery, one producer over.
+
+**Three gates were in the way and all three were inherited from the two
+producers that happened to exist** (a value-producing loop, await's winner),
+not from anything the mechanism needs:
+
+- the plan's SINGLE-SLOT test. `variadicRegionEvent` asks the looser question
+  the prefix actually needs — is the run's length not the recorded count? —
+  while `singleSlotRegion` stays for the COLLECT, whose shape genuinely is a
+  list literal over one recorded operand;
+- `regionPrefixShape`'s "the region is the LAST entry", now the trailing
+  contiguous RUN of the producer's entries;
+- `seatRegionPrefix`'s "exactly one region operand", likewise.
+
+`OpSeatBelowMark` never named the run's length, so the 2-value and 4-value
+arms lower identically — which is the whole point, and what a fixed-count
+lowering that happened to agree on one arm would fail on the other.
+
+**Only the seq the plan will seat is excused, and only from `forceOrder`.** A
+variadic region bound to a NAME (`def x (do …) x`) is promoted by its
+dyn-bind source instead, and keeps the earlier, more informative refusal —
+which is what the six `TestS9FrontierDefOverCatchRegion` rows check, and what
+a blanket "never force-promote a variadic" would have quietly downgraded.
+
+## The island's one slot was already the region (2026-09-10, the forty-eighth increment)
+
+`def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3` refused with
+"error: handler nets no value — the single-output island model would leave
+the stack one short". The diagnosis was right — the caught path nets zero
+where the pass-through nets one, and a fixed seat cannot carry both — and the
+conclusion was wrong. The refusal's own comment named the fix it could not
+see: "FallbackSpan has no out-count field to say otherwise".
+
+It needs none. A run whose length is a runtime value is a REGION, and the
+island's ONE simulated slot IS that representation already: `runFallback`
+appends whatever the re-run produced, 0 values or 1. **Nothing changed in
+what is emitted.** `errorReturnsFn` returns the honest 0-or-more spread
+instead of marking the program uncompilable, `RecordFallback` marks the event
+a region, and the residual absorbs the run.
+
+**One ordering fix came with it, and it is the kind worth watching for.** The
+region guard in `resolveDynamicApply` ran BELOW the NUR121 hazard scan. That
+scan asks whether a fn-value LEAD had its argument collected by a later
+dispatch — and a region is not a lead, it is a count. Asked of one, it
+answered yes for this handler's 0-or-1 run and refused a program with no fn
+value in it at all. A guard that says "this entry is not a value" has to run
+before every guard that asks a question about the value.
+
+**The through-line of all three increments**, and the reason they landed
+together: each refusal was a true statement about a mechanism that was not
+the only mechanism available. A deferred token defeats the trap and not the
+rematch; a variable count defeats a promotion and not a mark; a variable
+count defeats a fixed seat and not an island's own slot. The ledger falls
+36 → 32.
+
+## What a mirror needs is a RAISE, not a call (2026-09-10, the forty-ninth increment)
+
+`import "boru:fn-util"  FnUtil.flip 5` refused the whole program with the
+generic "check diagnostics". Behind it, `execFnDefLiteral`'s
+`uncalled_function` arm — a NAMED fn value reached as a call whose match
+failed — carried this note:
+
+> NOT a RuntimeMirror: a mirror promises the program still compiles and
+> raises the identical error, and there is no call here to compile —
+> dispatch did not resolve, exactly like `no_signature`.
+
+Every clause is true. The conclusion does not follow, because what a mirror
+needs is not a CALL but something that RAISES IDENTICALLY, and a terminal
+`OpTrap` is exactly that — the same answer `while []`'s empty condition got
+seven increments earlier. Both rows raise the interpreter's own error today,
+caret, span and `/v` hint included, and `frontier-fn-util.tsv` carries no
+compile-ledger rows.
+
+**The screen is narrower than the word-dispatch trap's, deliberately.**
+`TryRecordUnmatchedDispatchTrap` resolves word bindings and routes the
+inexact cases to the runtime rematch; there is no rematch op for THIS site
+(the failure is a fn VALUE reached as a call, not a word dispatch), so the
+screen only has to be SOUND, and `uncalledDispatchDefinite` takes the
+obviously-sound version: every candidate a plain concrete const. A carrier, a
+dynamic, an undefined placeholder, a raw word token, an open paren, a reach,
+an unexpanded paren expr and a template string each decline, and the
+whole-program refusal stands.
+
+**The diagnostic's content does not move; only its stamp does, and only on a
+compile pass.** `boru check` never compiles, so it still reports
+`uncalled_function` at error severity — the mirror flag is what lets the
+pipeline compile past a finding whose recording model is exact, and a plain
+check has no trap to be exact about.
+
+## A jump reaches the right pc and skips the discipline (2026-09-10, the fiftieth increment, NUR132)
+
+Found shrinking the last `while` frontier row, not looking for it. `for 3 [
+(7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` where the
+interpreter answers `9 5 9 5`, silently, exit 0, on the default lane.
+
+A `break` / `continue` whose loop lives in the SAME unit lowered to a bare
+`OpJmp`: to the loop's end for a break, back to `FOR_NEXT` for a continue.
+Both destinations are right. Neither jump does the two things the VM's own
+`flowSignal` does — and those two things are what the interpreter does:
+
+- **it trims the round.** The interpreter's break/continue splices the
+  round's tape back to the mark it opened, so a value the round already
+  produced goes with it. `stack[:lp.iterBase]`, in the VM.
+- **it pops the loop.** A break's jump lands PAST the `FOR_NEXT` that is the
+  only op popping the loop, so the entry leaked. That one is not a wrong
+  answer but a wrong PROGRAM: after `for 2 [ (i add 0) end for 3 [ if (i eq
+  1) [break] [0] end ] ]` the outer loop's `FOR_NEXT` read the inner loop's
+  stale counter and never terminated, dying at the growth ceiling where the
+  interpreter answers `0 0 1 0`.
+
+**Why the corpus never had a witness.** The round's value has to be COMPUTED.
+`control.tsv` §7 already pinned the rule over a CONST one (`while [true] [1
+break] end 'x'`), and those rows are right for the reason that hid this: a
+const the round never seats is dropped at lowering, so there is nothing left
+to trim. The computed twins mostly refuse before reaching the terminator
+("branch leaves extra values"). Every witness lives in the narrow gap between
+those two facts.
+
+**The fix is a deletion.** Both terminators emit the FLOW signal ops
+unconditionally; the signal resolves the nearest open loop at run time, and
+`vmLoop` already carries the destinations the jumps named (`exitPC` is the
+FOR_NEXT's own exit target, `nextPC` the FOR_NEXT). So `loopCtx.endHoles` —
+a second source of truth for a pc the FOR_NEXT already holds — is gone. The
+`while` lowering's condition-false exit had emitted `OpFlowBreak` for exactly
+this reason since the thirty-seventh increment; the body's own terminators
+now agree with it.
+
+## "Nets no value" is not "diverges", and an arm can sit under its own condition (2026-09-10, the fifty-first increment)
+
+The last `while` frontier row, and `frontier-while.tsv` with it. Family H is
+CLOSED.
+
+`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add
+1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]` refused with
+"if: computed-branch non-eager arm diverges". The ledger's own note had the
+important half right — the refusal is not the loop's, it is the body's `if` —
+and then took the message at its word. The gate said DIVERGES and tested
+`hasOut`, which two different things fail:
+
+- a **0-netting** arm reaches the merge having produced nothing, so the join
+  is 1-or-0 where the single slot models 1. That is a real problem, and it is
+  the only one: `for 3 [ (7 add 2) if (i eq 2) [] end i ]` still refuses.
+- a **diverging** arm (break, continue, raise, a tail call) leaves the
+  construct and never reaches the merge at all. Every path that ARRIVES
+  carries the eager value, so the slot is exact. `fragDivergesDeep` already
+  existed to answer this, for `lowerArms`.
+
+**A second gate was behind it, and it is the more interesting one.** The
+computed-arm lowering assumed the eager arm is on TOP of the stack, because
+in the spelling it was written for — `if c [t] (expr)` — the arm is the last
+thing written and so the last thing evaluated. An arm filled from the VALUE
+STACK by the argument-order rule was there BEFORE the `if` was reached, and
+the condition, a forward token, is evaluated at the dispatch: the two sit the
+other way round. No swap is owed in that layout, and the lowering refused
+rather than not swapping. Both layouts lower now, which also compiles the
+value-netting twin `for 3 [ (7 add 2) if (i eq 2) [3] end i ]` that neither
+fact alone would have reached.
+
+## What the review caught: a predicate that was complete for the producers that existed (2026-09-10, NUR133)
+
+Three Codex P1 findings on PR #448, all three real, all three reproduced
+before being touched. They are one question asked of four producers: what
+does this region's own event CONSUME, and where does its run live?
+
+`regionReadsTheStack` walked `ev.call.ops` and a loop's operands. That is the
+complete list for a value-producing loop and await's winner — both `evCall` —
+and it was written when those were the only two region producers there were.
+The forty-seventh increment admitted a variadic USER CALL and the
+forty-eighth an island's own run, and neither is examined by either arm, so
+the mark opened above a value the region's op then popped:
+
+- `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` → `0 9 1 2` for the
+  interpreter's `9 0 1 2`;
+- `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` → `1 []` for `[1]`.
+
+The predicate now switches on the event kind and names each producer's
+operands, and its comment says the thing the old one implied wrongly: **a
+kind that is not listed here is UNSCREENED, not operand-less.**
+
+The third finding is separate and simpler. `RecordFallback` marked the island
+a region without `regionMayBeFn`, and an island's run is the INTERPRETER
+executing arbitrary code — what it appends is not bounded by the modelled out
+at all. A Function passed through a handler was seated as data where the
+interpreter re-steps it against the value beneath (`uncalled_function` for
+`[6]`). Marked unconditionally now: a narrower claim would have to be a claim
+about interpreted code the recorder never saw.
+
+**Two of the three were the forty-eighth increment's, and one was not, and
+measuring said which.** On the merge base `6bc55db` the two `error`-region
+shapes REFUSED — so that increment turned two sound refusals into wrong
+answers, which is the worst direction. The `evCallUser` witness diverged
+there identically (`0 1 9 2`, a different wrong answer from the same
+program), so the review's diagnosis of it was wrong about the cause and right
+about the divergence: underneath the mark plan, `lowerUserCall`
+force-promoted a VARIADIC-returning callee's result to ONE frame slot. One
+`STORE_LOCAL` pops one value; the run had three, and the other two were
+stranded beneath the prefix. `lowerCall` has carried the equivalent guard
+since PR #280 and needs `nout >= 2` there — the user-call twin is needed at
+`nout` 1, because a variadic slot IS one slot.
+
+The const-argument twin `9 f 3` still compiles natively and is still seated
+by `OpSeatBelowMark`. That pin is the point: the fix is three declines where
+the model is not exact, not a retreat from the mark machinery.
+
+## The fold's "top unit" was inherited from where it was first needed (2026-09-11, the fifty-second increment)
+
+`[10 20] each [drop 1 2 3 1 pick]` compiled with an interpreter island, and
+`frontier-full-stack.tsv`'s last ledger row said why: "the fold declines
+outside the top unit; the island seam owns it". True, and the gate it
+describes has two halves that were never separately argued.
+
+`FoldFullStack` bakes the recorder's simulated stack as the runtime stack,
+and the exactness condition it needs is that those two coincide HERE. The old
+gate read that as `len(es.frames) != 1 || len(es.units) != 1`:
+
+- the FRAME half is load-bearing. An open fragment — a branch arm, a loop
+  body mid-capture — holds events not yet reconciled into any scope's
+  residual, so the model is not a stack anybody will hold.
+- the UNIT half is not. A compiled body unit has its own stack discipline
+  exactly as the top unit does, and the decisive measurement is `depth`:
+  `[10 20] each [1 2 3 depth]` is **4** on both lanes, not 4-plus-the-
+  collection. The body's stack is the body's; the element is in it and the
+  collection is not, and the recorder models exactly that.
+
+So the gate is now "the current UNIT's root frame" — `frames[0]` for the top
+unit, which is the old test verbatim, and `fnUnitRec.rootFrame` for a body
+unit — plus one new screen the wider admission needs: an entry produced
+OUTSIDE this unit is a capture or the parent's residual, not something on
+this unit's stack, and declines.
+
+**The widening had to be narrowed again, and the variation differential is
+what said so.** The first cut admitted any entry whose producer was in this
+unit. That turned FOUR working islands into REFUSALS — `(1 add 2) (3 add 4)
+1 pick` wrapped in a fn, `do`, `each` and module body — and island-to-refusal
+is backwards. The cause is not exactness at all: a body unit has no residual
+REBUILD. The top unit can take a permuted residual (`seatResidualRebuild`,
+the forty-third increment, spills every entry to a frame local and re-pushes
+it in the recorded order); a body unit's residual seating refuses a result
+that lands above a literal. So a body unit admits the fold only over entries
+that need no rebuild — consts and locals, re-pushable from the same operand
+home in any order — which is exactly what `varyRefusalLedger`'s own bucket
+text had already predicted the graduation would be ("widened to the current
+unit's local/const model").
+
+So the class SPLIT rather than graduated: the const/local occurrence folds,
+the event-produced one stays a working island, and the frontier keeps one
+row — a different one. Graduation of the remainder = the residual rebuild
+inside a body unit.
+
+**What the widening must not take with it, and does not.** NUR131's callable
+screen is per-ENTRY, so a produced closure shuffled inside a body is still
+data to the fold and still refuses. The top-level rows that already folded
+still fold. Both are pinned.
+
+**The measurement that nearly stopped it, and why it did not.** Two fn-body
+probe rows flagged as divergent — `def zf fn [[a:Integer][Any][1 2 3 depth]]
+end (zf 9)` among them. Values, code, detail and the declaration note all
+agree; the only difference is the CARET, `1:29` (the body's first token)
+compiled against `1:48` (the call site) interpreted. That is NUR118, recorded
+since 2026-09-04 and excluded by this line's own convention — one unit serves
+every call site, so the compiled RET check is stamped with the unit's
+position. Worth writing down that the flag fired and what it turned out to
+be, because the next author running the same probe will see it too.
+
+## The twin-placement cluster is THREE mechanisms, not one (2026-09-11, measured, not fixed)
+
+Three ledger rows share one refusal string — "twin regime: a bind transition
+has no stream placement (a multi-run-body or post-trap twin), so the rollback
+would lose it" — and it is tempting to read that as one cause worth one
+increment. It is not, and each row's own `why` in the ledger already said so.
+Measured minimal witnesses, so the next author starts from facts:
+
+```
+[10 20] each [drop def zq 5 zq]                        COMPILES
+[10 20] each [drop def zq 5 def zr 6 zr]               COMPILES
+[10 20] each [drop undef zq 7]                         COMPILES
+[10 20] each [drop def ZA (Integer gt 5) 7]            refuses   (type def)
+[10 20] each [drop import "boru:math-util" end 7]      refuses   (module bind)
+do [def b true  do [1 2 (if b [3] [9 9])]]             refuses   (nested do)
+```
+
+So the arm-residency bridge already carries the VALUE-def and UNDEF halves,
+one or many, per element. What is left is three unrelated things:
+
+1. **A TYPE def.** `AdoptResidentTwins` excludes it explicitly — `tr.Kind !=
+   BindDef && != BindUndef`, or `bindTwinEntries[i].TypeDef != nil` — under a
+   comment that says "shapes this increment does not carry".
+2. **A module bind.** An `import` performs its transition without an
+   `evDynBind` def-site event to pair with, so the bridge's
+   `len(events) != len(twins)` check declines before the kind is even read.
+3. **The nested `do`.** Nothing to do with residency: the inner body's
+   closure compile declines on its residual shape, so the once-run body's
+   def twin is never adopted at all. Confirmed element-independent of the
+   variadic arm — `do [def b true do [1 2 (if b [3] [9 9])]]` refuses the
+   same way as the `[]` twin the ledger carries.
+
+**Which decline fires, measured rather than read off the code** (an ZZDBG
+print in `AdoptResidentTwins`, reverted):
+
+```
+[10 20] each [drop def zq 5 zq]                    twin kind=def  typeDef=false   ADOPTED
+[10 20] each [drop def ZA (Integer gt 5) 7]        twin kind=type-install         declines on KIND/TYPEDEF
+[10 20] each [drop import "boru:math-util" end 7]  twin kind=def  typeDef=false   declines on COUNT: events=0 twins=1
+```
+
+So the two are not the same decline. A type def's twin is a distinct KIND
+(`type-install`) the gate names explicitly. An import's twin is an ordinary
+`def` — the `BindKind` census was right that a module namespace binding IS a
+def — and it fails one line later because `import` records no `evDynBind`
+def-site event for the bridge to pair an op with.
+
+**The soundness question that makes either more than plumbing.** The obvious
+move is to let `OpBindResident` replay the twin ENTRY per element, which is
+what `ApplyBindTwin` already does at the top level. That is correct exactly
+when the entry is the SAME every element, and both ledgered witnesses are
+(`(Integer gt 5)` and `(A tand B)` do not read the element) — but nothing in
+the bridge proves it.
+
+**A tempting shortcut, closed by measurement.** It looks as though the import
+half might be exempt: if a module path had to be a literal, its namespace
+would be element-independent by construction and no screen would be needed.
+It does not have to be. `def zp "boru:math-util" end import zp end
+MathUtil.cbrt 8` runs and checks clean, so a computed — and therefore
+possibly element-dependent — import path is legal boru. Both halves need the
+same treatment.
+
+That treatment is: the def site has to record provenance the bridge can
+screen (an import records no event at all today), and the screen has to
+establish element-independence — an inert-const path operand, a type
+expression reading no unit-local or param — or else the op must REBUILD per
+element instead of replaying. Choosing between those is the increment; the
+wiring is the easy half.
+
+## What CI caught: three spec rows in the wrong corpus (2026-09-10, repairs to the forty-sixth and forty-eighth increments)
+
+PR #448's CI went red on `test/go/langspec` and the local batch gate agreed.
+Nothing about the three compiler changes was wrong; the SPEC PLACEMENT of
+three rows was, in two ways, and both are worth stating as rules.
+
+**A sound refusal does not belong in the main corpus, whatever its answers
+are.** The forty-sixth increment put `$.1 [10 20 30] apply` into
+`lang/spec/apply.tsv` §5 beside the two rows it graduated. Its answers agree
+on both lanes — it falls back and raises the interpreter's error — but it
+REFUSES, and this corpus's refusal ceiling is 0 (`TestRefusalsAreFailures`,
+`TestCompiledCoverage`). The row's refusal is real and stated (sigError's
+reorder hint reads tape state the runtime rebuild cannot reproduce), so it
+belongs where a refusal is pinned: the Go test that already asserts it
+(`TestReorderHintWindowKeepsItsRefusal`), and not in the corpus at all.
+
+**"It compiles" is not "it graduated" while an OpFallback span is still in
+it.** The forty-eighth increment's own text says the region representation IS
+the island's one simulated slot, and that is literal: the two maybe-raising
+`do … error` rows compile — a real result, they refused before — and the
+island stays. `bytecode-migrated.tsv`'s island ceiling is 0 too, so they go
+back to `frontier-do-error-arity.tsv`, ledgered "islanded" alongside family
+G's other working islands. Graduation is now a smaller, nameable step:
+seating that region without re-entering the interpreter.
+
+The lesson for the batch rhythm is narrower than "run the gate": the module
+suites and `TestFrontier` were green before the push, and neither can see
+these. The corpus-wide ceilings live in `test/go/langspec` and only the full
+package run reaches them.
+
 ## The coverage gate found a functional hole, not a missing test (2026-09-10)
 
 `make cover-gate` came back with ONE uncovered statement in the whole tree —
@@ -5925,6 +6338,280 @@ Do not look for provenance ON the folded Boolean: it is `Pos=0:0` with no
 and a fold over a bound param. The analysis CONTEXT is the only signal there
 is.
 
+## …and the region-prefix seat, which is the shape the rebuild cannot take (2026-09-11, the fifty-fifth increment)
+
+The rebuild spills one stack entry per residual operand. A residual shaped
+`[inert…, REGION]` has nothing to spill: the region's run is a length the
+compiler does not know, and the prefix must land BENEATH it. `OpSeatBelowMark`
+is the op for exactly that, and the forty-first increment gave the PROGRAM
+residual the plan and the seating. A body unit had neither — its lowerer is
+constructed with `markBefore` nil and `regionPrefixSeq` zero — so
+`reconcileResults` met `do [1 (if b [] [9 9])]` and refused "result above a
+literal".
+
+It has both now: `planRegionPrefixUnit` arms the plan before the unit's
+`lowerEvents` walk (the walk reads `markBefore` as it goes, so the
+`OpStackMark` lands ahead of the region-starting event), and
+`reconcileResults` tries `seatRegionPrefix` first, exactly as
+`seatProgramResidual` orders them.
+
+**Why it needed a new shape function, which is the part worth keeping.** The
+obvious move — call `regionPrefixShape` with the unit's residual values — is
+what I wrote first, and it declines every time. Measured: the inner do-body's
+residual is `[1, "None tor Integer"]` and the SECOND value's ID is not in
+`producedBy` at all, because a branch merge's carrier is minted at the JOIN
+rather than by the event. The unit's resolved OPERANDS say the same thing
+plainly — `[CONST, EVENT(the branch)]` — so `regionPrefixShapeOps` reads the
+shape off those instead. Same three conditions, no inference.
+
+**What it graduates, A/B-measured against the parent commit:** `do [1 (if
+true [] [9 9])]`, the same under a body-local condition, the same one unit
+further down (a nested `do`), and the `each`-body twin. Rows in
+`lang/spec/control.tsv` §2.
+
+**The asymmetry it did NOT explain, stated rather than smoothed over.** The
+2-value-run twin `do [1 (if false [] [9 9])]` also answers identically on both
+lanes — but it never reaches this seat: its `do` records no closure and falls
+to the dyn-body BACKSTOP (a sub-engine over baked const tokens), which is an
+interp entry, and the census caught it the moment I put the row in the corpus
+(33 against a ceiling of 32). So the row is pinned in a Go test instead, with
+that fact written down. WHY the 0-value arm records a closure and the 2-value
+arm does not is a RECORD-stage question this increment neither changed nor
+answered — `closureResidualExact` is where to start.
+
+**What did not move.** The variation census is unchanged (pass 381, refused
+57) and no ledger row graduated: the sweep's seeds and the frontier's rows do
+not happen to contain this shape. A real widening with no ratchet to show for
+it is worth saying out loud, because the temptation is to keep pulling until
+some number moves — and the number that would have moved here was the
+interp-entry census, in the wrong direction.
+
+## A body unit gets the residual rebuild, and the gate that was waiting on it (2026-09-11, the fifty-fourth increment)
+
+Two increments earlier, the per-unit fold was admitted inside a body only
+over consts and locals, and the ledger said exactly why: *"a body unit has no
+residual REBUILD … folding a permutation there turns a sound island into a
+REFUSAL"*. That sentence was the whole specification for this increment.
+
+**The change is two lines of policy and one of ordering.** `reconcileResults`
+— the fn-unit caller of `seatResults` — takes the same `seatResidualRebuild`
+fallback `seatProgramResidual` has had since the forty-third increment, and
+`FoldFullStack` drops its `unit > 0` screen. Neither is useful without the
+other: the rebuild alone is dead code, because nothing in a body unit
+produced a permuted residual to seat.
+
+**Two screens a fn RET needs that the program residual does not**, and they
+are the reason this is not simply "call the same function":
+
+- a RUNTIME-VARIABLE-count event (`eventFlags.variadicResult` — a loop, or a
+  branch whose arms leave different counts). The rebuild spills one stack
+  entry per operand, so one slot cannot stand for a run of a length the
+  compiler does not know. The program residual ABSORBS such an event; a RET
+  does not. This is what still refuses `do [def b true do [1 2 (if b []
+  [9 9])]]`, and the twin-placement ledger's shape 3 is re-worded to say so:
+  its graduation is a variadic-capable body-unit seat, not this.
+- the residual shapes whose own post-processing reads the SEATED LAYOUT — a
+  body-tail dynamic apply (`OpCallDynTrailTop` consumes the top N), a
+  whole-frame replay (`OpCallDynFrame`), a RET-replay discipline. None may
+  have the layout rearranged underneath it.
+
+The CALLABLE screen carries over unchanged (`regionValsMayBeCallable` over
+`rec.outOpsVals`, which is recorded for every unit including closures).
+
+**The ordering bug this surfaced, which is the part worth reading.** The
+first time the rebuild fired, the VM crashed: `index out of range [2] with
+length 2`. A fn unit grew `cf.NLocals` from `flw.numLocals` BEFORE
+`reconcileResults`, so the rebuild's spill temps were outside the frame. The
+program's own write-back sits AFTER its reconciliation and carries a comment
+naming the identical bug it was moved for — the correct ordering had been
+derived once already, for the other unit, and the fn unit's copy of the step
+did not get it. Recorded as NUR136, and fenced by walking EVERY unit's
+`STORE_LOCAL`/`PUSH_LOCAL` against that unit's own `NLocals` rather than
+pinning the one witness.
+
+**What graduated.** `frontier-full-stack.tsv` is deleted — its last row and
+two siblings are in `lang/spec/corpus-core.tsv`. The variation ledger's
+`islanded` bucket is gone (the sweep reports **islanded=0** with no ledgered
+bucket for it at all), four `result above a literal (Stage 3)` buckets
+vanished with it, and the census moved pass 376 → 381, refused 62 → 57, twin
+regime 10 → 9.
+
+## The TYPE half of the arm-residency bridge: three problems, and only the first was plumbing (2026-09-11, the fifty-third increment)
+
+The twin-placement cluster's shape 2 — `[10 20] each [drop def A (Integer gt
+10) def B (Integer lt 20) def x:(A tand B) 15 x]` — is in the main corpus
+now (`lang/spec/user-types.tsv`). Its ledger entry blamed one thing ("the
+bridge pairs BindDef twins only"), which was true and was the least of it.
+Three things had to be solved, and the measurements that produced each are
+worth keeping because two of them reverse the obvious move.
+
+**1. There is no def-site event to pair against.** Measured with a print in
+`AdoptResidentTwins`: a type def inside an each body records NOTHING in the
+unit's fragment. `[10 20] each [drop def ZA (Integer gt 5) 7]` records one
+event, and it is the `drop`. A type install is a purely check-time product —
+the mint happens once, the top-level twin replays it at its own stream
+position, and the compiled stream carries no instruction for it — so there
+was no site for the bridge to stamp.
+
+`RecordTypeInstall` now writes one, and ONLY inside the arm-resident bracket
+(`armResidentDepth`), which is the same discipline `RecordDynUndef` took for
+the var-param teardown: outside the bracket it records nothing, so no other
+lane's event stream changes. Every `BindTypeInstall` note goes through one
+funnel (`Registry.NoteTypeInstall`) so a twin can never exist without its
+event or vice versa — either way the bridge's total pairing declines and the
+program refuses.
+
+**2. Replaying the captured entry per element is WRONG, and only a
+cross-request probe can see it.** This is the one that would have shipped. A
+type binding has no runtime value, so the obvious op is the one
+`OpBindTwin` already performs: push the captured entry. It compiles, the
+driving request answers correctly on both lanes, and the corpus is green.
+Then the parity oracle's install probe reads the name on a LATER request:
+
+```
+[10 20] each [drop def Big (Integer gt 5) 7]   both lanes [7 7]
+Big                                             both lanes Big
+undef Big                                       both lanes 1
+Big                       interpreted Big   compiled  bytecode: internal:
+                                                      unresolvable type operand Big
+```
+
+One `*Type` in two def-stack levels, both flagged `Minted`, so the first
+`undef` retires the node out from under the level below it — `Retire` is
+`delete(byID, ID)` with no reference count. The interpreter never meets this
+because every element MINTS: N executions leave N distinct nodes. Recorded as
+NUR135; the op re-installs the captured BODY instead
+(`core.ApplyResidentTypeBind`), so each element mints its own node, exactly
+as the install arm re-runs `InstallDef` rather than replaying a value.
+
+Note what caught it: not the corpus, not the differential, not the variation
+sweep — `bind_multirun_parity_test.go`, the cross-request oracle the design
+review demanded before any placement work. It is the only lane that reads a
+binding on a later request.
+
+**2b. The replay cannot go through the installer's front door.** The first
+cut of the fix called `InstallType` and failed on ELEMENT 0: `type: name part
+"Big" in "Big" conflicts with an existing type name`. The rollback before a
+compiled run restores BINDINGS and not registered name PARTS, and
+`validateTypeName` skips the part check only when the name is currently a
+type binding — so the replay is rejected on the check pass's own leftovers.
+`InstallTypeBody` is `InstallType` past its two entry checks, and exists for
+this caller alone. (Same NUR135: retirement and part registration are not one
+reversible operation.)
+
+**3. The screen is the actual increment.** An element-DEPENDENT type
+expression is ordinary boru, measured:
+
+```
+[10 20] each [var [[e] def ZB (Integer gt e) 7]]
+  def q:ZB 15 q   → type_error (15 fails against the TOP, `Integer gt 20`)
+  undef ZB then def q:ZB 15 q → [15]  (it passes against the one below)
+```
+
+Two different nodes, observably. So the bridge must PROVE element-
+independence before it stamps, and `typeInstallElementIndependent` does it
+with two halves, each closing one route the element can take into the
+expression:
+
+- THROUGH A NAME — every binding the body installs is a twin in the bracket
+  (that is the bridge's own premise, since a leftover twin declines), so the
+  bracket's names ARE the body-bound set. A word from outside the body — a
+  module-scope type, an enclosing fn's capture — is constant for the whole
+  loop and passes: `def zh 5  [10 20] each [drop def ZH (Integer gt zh) 7]`
+  compiles.
+- THROUGH A DISPATCH that did not const-fold — such a word records an EVENT
+  at its own position inside the unit, so an expression with no event in its
+  token span folded from its own tokens alone. The converse, a word the check
+  pass DID fold, is licensed everywhere else in this compiler: a folded
+  call's value is baked.
+
+The third route, reading the element off the VALUE STACK, is closed by the
+LANGUAGE and not by the screen — a paren group binds forward-only, so
+`[10 20] each [def ZG (Integer gt) 7]` and `(mk)` for a one-arg `mk` both
+raise "no signature matches" on the interpreter. Measured; do not re-derive.
+
+**A trap in the token walk.** `collectTokenSites` documented itself as
+descending "a paren group and a nested body [which] are both list-shaped".
+A paren group is NOT list-shaped — `AsList` declines a `ParenExprPayload` —
+so the screen's first cut treated `(Integer gt 5)` as one opaque token and
+declined the very row it exists to admit. The doc is corrected, and the walk
+is NOT widened: `collectTokenSites` decides which twins `AdoptBodyTwins` may
+adopt, and widening it would adopt twins noted inside a paren group, which
+nothing has argued for. `collectExprSites` is the separate walk that
+descends.
+
+**What stays on the frontier.** The element-dependent row, now shape 2 of
+`frontier-twin-placement.tsv`. Its graduation is an op that REBUILDS the type
+per element — re-evaluating the expression against that element — rather
+than re-installing one captured body. That is a genuinely different
+mechanism, not a wider screen.
+
+## The screen that was incomplete twice (2026-09-11, NUR137)
+
+The fifty-fifth increment's own adversarial re-read found a silent miscompile
+that had been in the branch for four increments, and the finding is worth
+keeping for its SHAPE rather than its fix, which is six lines.
+
+**What happened.** `regionReadsTheStack` decides whether a region's own event
+consumes something already on the stack — if it does, a mark opened before
+that event would sit above a value the event then pops. It switched on the
+event kind and ended:
+
+```go
+default:
+    ops = ev.call.ops
+```
+
+An `evBranch`'s operands live in `ev.br`. So for a branch the default read the
+ZERO-VALUE `emitCall`, found nil ops, and answered "does not read the stack"
+— for every branch region there is.
+
+The forty-seventh increment had widened `variadicRegionEvent` to admit branch
+regions, and its own doc says why, correctly: *"the plan's single-slot gate
+was inherited from the two producers that happened to exist, not from
+anything the mechanism needs."* True of the gate. Also true of the SCREEN,
+and that half was not noticed.
+
+```
+def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])
+  interpreted  1 9 9
+  compiled     9 1 9        silent, exit 0, the DEFAULT lane
+```
+
+Bisected: `6bc55db` (merge base) refused, `25b1af3` (46) refused, `d663fe1`
+(47) answers `9 1 9`.
+
+**Why it surfaced now.** The fifty-fifth increment gave a BODY unit the same
+prefix plan, and inside a fn unit the same unscreened shape is not a wrong
+answer but an internal one — `SEAT_BELOW_MARK prefix reaches past the mark`,
+on the default lane, where increment 54 had refused cleanly. Probing my own
+new seat with a condition the check pass cannot fold is what turned it up;
+the corpus, the differential, the variation sweep and CI were all green
+across it, because no row spells a branch region with an event condition.
+
+**The lesson, and what the fix actually changes.** This is NUR133's mistake a
+second time — a new region producer meeting a screen written for the
+producers that happened to exist — and NUR133's own fix had left a comment
+predicting it, in this exact function:
+
+> A kind whose operands are not listed here does not "have none": it is
+> unscreened.
+
+The comment was right and did not prevent the recurrence, because the code
+still silently produced an answer for an unnamed kind. A comment cannot hold
+a line that the default case undercuts. So the fix is not a fifth `case`: the
+DEFAULT now returns `true`. An event kind the screen does not name is assumed
+to read the stack, which declines the plan. Adding a region producer now
+costs a refusal until someone lists its operands — loud, and in the sound
+direction.
+
+**Generalise this when you meet the shape.** Two widenings in this line have
+now admitted producers to a consumer without widening the consumer's screen.
+If you widen a gate that admits event kinds, the question to ask is not "does
+my new kind work" but "what does every OTHER path keyed on kind do with it" —
+and where such a path has a default, make the default the safe answer before
+you add the case.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -6020,6 +6707,23 @@ position than the construct that produced the binding.
   commits because core/go's own suite reaches `NoteBindTransition` only
   with check mode off, so every statement past its first guard was
   unreachable from that suite alone.
+- **The pre-commit checklist is NOT what CI runs, and the gap is where two
+  red builds in one batch came from (2026-09-10).** `make fmt && make vet &&
+  make lint && make test && make cover-gate` misses six CI steps, each of
+  which has failed at least once: `make -C kg verify`, `make -C lang/go
+  lint-assertions`, `make parser-parity`, `make cover-gate-core` (the rule
+  above — it was already written here and skipped anyway), the bytecode RACE
+  gates, and the `borudebug` args-aliasing gates. Run them, or read
+  `.github/workflows/ci.yml` before a push and run whatever it lists.
+- **`make test` and `TestFrontier` cannot see a corpus-wide ceiling.** The
+  module suites and the frontier ledger were green before increments 46-48
+  were pushed, and `test/go/langspec` was red on four counts: a refusal in a
+  corpus whose refusal ceiling is 0, two rows carrying an OpFallback island
+  in one whose island ceiling is 0, three more carrying a `CallBoru` inside
+  a handler that only the interp-entry census counts, and a diagnostic-parity
+  ratchet. Every one of those lives in that one package, and only the FULL
+  package run reaches them — `-run TestFrontier` does not. A batch that adds
+  or moves a spec row is not gated until `test/go/langspec` has run whole.
 
 ## Constraints still in force
 
@@ -6125,3 +6829,14 @@ position than the construct that produced the binding.
 | `lang/go/foreach_closure_test.go` | the forty-fourth increment's parity (the Function form, a side-effecting fn value, the quotation twin, a lambda over a list, the empty body, a value-netting body, an empty collection, both map forms), that the body lowers to its own closure unit, the measured lambda convention on both lanes, and the ambiguous-overload refusal that `CrossCollectionTokenShape` would have (wrongly) lifted |
 | `lang/go/residual_rebuild_test.go` (`TestShuffledClosureRefusesAndTheInterpreterApplies`, `TestShuffledFnReadStillCompiles`) | NUR131: the four fold witnesses and the two rebuild-screen shapes refusing with the interpreter's answers, and the def-bound `/v` shuffles plus a non-callable event pair still compiling |
 | `compiler/go/residual_rebuild_test.go` (`TestSeatProgramResidualScreensACallable`) | the caller's screen at the seam: a non-callable residual rebuilds, a Function-typed one and a Dynamic one keep the seating's refusal and emit nothing |
+| `lang/go/deferred_rematch_test.go` | the forty-sixth increment: both ledger rows compiling to a byte-identical raise (and with a prefix before them), the deferring arm (the flex witnesses, the lens spellings that always matched), and the reorder-hint window keeping its refusal with the interpreter's own hint |
+| `lang/go/region_prefix_test.go` (`TestRegionPrefixSeatsAMultiSeatRegion`, `TestMultiSeatRegionEmitsTheMarkAndSeat`) | the forty-seventh increment: both arms of the branch-variant do region under a prefix, a two-value prefix, a non-Integer prefix, and the emitted stream — mark before the region, seat after it, no STORE_LOCAL |
+| `compiler/go/region_prefix_test.go` (`TestVariadicRegionEventAdmitsTheDoCatch`) | the two predicates side by side: a do-catch is a region for the PREFIX and not for the COLLECT, a loop is both, a fixed-arity call is neither, and a possibly-callable region is out of both (NUR129) |
+| `lang/go/bytecode_do_error_arity_test.go` (`TestMaybeRaisingZeroNettingHandlerIsARegion`, `TestRegionHandlerRefusesAFixedSeatConsumer`) | the forty-eighth increment: both runtime arms of the maybe-raising handler through one lowering, the proven-raise twin keeping its fixed arity, a one-netting handler unaffected, and the fixed-seat consumer's byte-identical def_error |
+| `lang/go/uncalled_dispatch_trap_test.go` | the forty-ninth increment: both fn-util ledger rows and two module-native twins raising byte-identically through the trap (with a prefix before one), the emitted terminal TRAP with no island, the two inexact-operand declines keeping their refusal, and the plain check still reporting uncalled_function at error severity |
+| `core/go/uncalled_dispatch_definite_test.go` | `uncalledDispatchDefinite` arm by arm: concrete consts and an empty candidate list admit; a carrier, a dynamic, an undefined placeholder, a raw word token, an open paren, a paren expr, a reach and a template string decline |
+| `lang/go/loop_flow_trim_test.go` | the fiftieth increment (NUR132): every witness of the round that survived its own break/continue, the rows that always agreed, and the nested-loop program that never terminated because a break did not pop its loop |
+| `compiler/go/loop_flow_signal_test.go` | the seam: `lowerBreak` / `lowerContinue` emit exactly one FLOW signal op carrying no target, in a loop and from a fn unit alike, and a break with neither refuses and emits nothing |
+| `lang/go/diverging_arm_lowering_test.go` | the fifty-first increment: the last frontier-while row and its `for` twins compiling with parity, the stack-supplied layout's value-netting twin with them, both other divergence kinds (raise, and a fn body's return-count contract — position excluded per NUR118), and the 0-netting arm keeping its refusal under the message that now says what it means |
+| `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
+| `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |

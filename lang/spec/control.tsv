@@ -23,6 +23,34 @@ do [1 add 2 10 mul 4]	1 48	an out-of-order residual (result above a literal) pro
 do [(1 add 2) (3 mul 4)]	3 12	two computed results both remain, in order
 do [10 20 30] add 5	10 20 35	a downstream word consumes the top of the multi-value residual
 def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts differ) compiles via the dyn-body backstop; the runtime residual lands whole
+# The forty-seventh increment's three PREFIX rows (`7 def b true do [1 2 (if
+# b [] [9 9])]` and its two siblings) are deliberately NOT here. They compile
+# and agree, and the row above shows why they cannot join this corpus: the
+# dyn-body backstop that lowers this shape re-enters the interpreter, and the
+# interp-entry census — which counts a CallBoru inside a handler, where the
+# OpFallback island ceiling cannot see one — is a ratchet that may only fall.
+# One such row is already counted; three more would raise it. They are pinned
+# by lang/go/region_prefix_test.go instead (both arms, a two-value prefix, a
+# non-Integer prefix, and the emitted mark/seat stream).
+# An INERT PREFIX beneath the same variadic branch region (the fifty-fifth
+# increment). The prefix cannot be pushed after the run — it would land on top
+# of it — and cannot be indexed past it from the top, because the run's length
+# is a runtime value; OpSeatBelowMark is the op for exactly that, and the
+# forty-first increment gave it to the PROGRAM residual. A body unit plans and
+# seats its own now, so these lower natively rather than through the dyn-body
+# backstop (which is why they may join this corpus where the three prefix rows
+# noted above may not: no interpreter re-entry to count).
+# Its 2-value-run twin — `do [1 (if false [] [9 9])]`, which answers `1 9 9`
+# on both lanes — is deliberately NOT here, for the reason the three prefix
+# rows above are not: it reaches the dyn-body BACKSTOP (a sub-engine over
+# baked const tokens) rather than this seat, and the interp-entry census is a
+# ratchet that may only fall. Why the 0-value arm records a closure and the
+# 2-value arm does not is a RECORD-stage question this increment did not
+# change and did not answer; it is pinned, with that fact stated, in
+# lang/go/body_residual_rebuild_test.go.
+do [1 (if true [] [9 9])]	1	an inert prefix seats BENEATH a 0-value branch region
+do [def b true  1 (if b [] [9 9])]	1	a body-local read as the condition does not change the seat
+do [def zb true  do [1 (if zb [] [9 9])]]	1	and a NESTED do body plans its own prefix, one unit down
 do [for 3 [1] 7]	1 1 1 7	a loop inside a do body compiles (the unrolled model's repeated result identities de-collide)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket
@@ -109,3 +137,28 @@ def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [break] end n] end 'z'	1
 def f fn [[k:Integer][Integer][def n 0 while [n lt k] [def n (n add 1)] n]] end (f 4)	4	a while inside a fn body counts against a param
 def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'	'z'	a nested while's break ends only the inner loop
 while [] [1]	ERROR:while: condition produced no value	an empty condition region has no tokens, so the first round nets nothing and raises
+# The SIXTH and last frontier-while row (the fifty-first increment,
+# 2026-09-10), and the file lang/spec/frontier/frontier-while.tsv with it.
+# Its refusal was never the loop's: the body's `if ((c get 'n') eq 2)
+# [continue]` is an if whose ELSE arm came off the value stack, and the
+# computed-arm lowering conflated two things — "nets no value" and
+# "diverges" — and knew only one of the two stack layouts. A diverging arm
+# never reaches the merge, so the single merge slot is exact; and an arm
+# supplied from the value stack sits UNDER its own condition rather than
+# over it, so the swap the written spelling owes is not owed here.
+def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]	(flex {n:3}) 1 (flex {n:3}) 3	continue abandons the current body round
+#
+# §8  break / continue trim the round, and break closes its loop
+#
+# The fiftieth increment's rows (2026-09-10, NUR132). §7's `1 break` /
+# `1 continue` twins above pin the same rule over a CONST round value, and
+# they compiled correctly all along because a const the round never seats
+# is dropped at lowering. A COMPUTED one is seated, and a same-unit
+# break/continue used to leave it behind: it lowered to a bare OpJmp, which
+# reaches the right pc and does neither of the two things the VM's flow
+# signal does — trim the round to its iteration base, and pop the loop.
+# Both terminators emit the signal now.
+for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]	9 5 9 5	a continue drops the round's already-computed value
+for 3 [ (7 add 2) if (i eq 2) [break] [5] end i ]	9 5 0 9 5 1	a break drops it too, and the rounds before it survive
+while [true] [ (7 add 2) if true [break] [5] end ] end 'x'	'x'	the first round's computed value goes with the round
+for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]	0 0 1 0	an inner break closes the inner loop, and the outer one still counts

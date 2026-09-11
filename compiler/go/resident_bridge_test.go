@@ -107,7 +107,30 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 	end()
 	es.AdoptResidentTwins(body)
 	if placed(es) != 0 {
-		t.Fatal("a non-BindDef twin in the bracket must decline the whole bridge")
+		t.Fatal("a twin with no def site of its own must decline the whole bridge")
+	}
+
+	// A def-replace twin is a shape the bridge carries no op for.
+	es = build([]string{}, []string{"x"})
+	end = es.MultiRunBodyGuard(r, body.ID)
+	es.RecordBindTwin(core.BindTransition{Kind: core.BindDefReplace, Name: "x", Depth: 1, Pos: pos},
+		core.DefEntry{Body: core.NewInteger(5)})
+	end()
+	es.AdoptResidentTwins(body)
+	if placed(es) != 0 {
+		t.Fatal("a def-replace twin in the bracket must decline the whole bridge")
+	}
+
+	// A VALUE def whose captured entry carries a TYPE node: the install arm
+	// would install a runtime value under a name the entry says is a type.
+	es = build([]string{}, []string{"x"})
+	end = es.MultiRunBodyGuard(r, body.ID)
+	es.RecordBindTwin(core.BindTransition{Kind: core.BindDef, Name: "x", Depth: 1, Pos: pos},
+		core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger})
+	end()
+	es.AdoptResidentTwins(body)
+	if placed(es) != 0 {
+		t.Fatal("a BindDef twin carrying a type node must decline the whole bridge")
 	}
 
 	// Leftover event: more def sites than bracket twins.
@@ -162,4 +185,93 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 	// Nil receiver: no-op.
 	var nilES *EmitState
 	nilES.AdoptResidentTwins(body)
+}
+
+// The TYPE twin's half of the same bridge: a BindTypeInstall twin pairs
+// ONLY with a type-install site, and the pairing is crossed in both
+// directions to prove neither kind can stand in for the other. The
+// admitted case needs a real token body, because the screen reads the def
+// site's type expression out of it (typeInstallElementIndependent).
+func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
+	r, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Check.Begin()()
+
+	defPos := core.SrcPos{Row: 1, Col: 1}
+	at := func(v core.Value, row, col int) core.Value {
+		v.SetPos(core.SrcPos{Row: row, Col: col})
+		return v
+	}
+	word := func(name string, row, col int) core.Value { return at(core.NewWord(name), row, col) }
+	// `def Big (Integer gt 5)` — one def site, an element-independent bound.
+	body := core.NewList([]core.Value{
+		word("def", 1, 1), word("Big", 1, 5),
+		at(core.NewParenExpr([]core.Value{
+			word("Integer", 1, 10), word("gt", 1, 18), at(core.NewInteger(5), 1, 21),
+		}), 1, 9),
+	})
+	body.SetPos(core.SrcPos{Row: 1, Col: 0})
+
+	build := func(kind core.BindKind, evTypeInstall bool) *EmitState {
+		es := NewEmitState()
+		es.BindRegistry(r)
+		end := es.MultiRunBodyGuard(r, body.ID)
+		es.RecordBindTwin(core.BindTransition{Kind: kind, Name: "Big", Depth: 1, Pos: defPos},
+			core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger, Minted: true})
+		end()
+		frag := &EmitFragment{events: []EmitEvent{{kind: evDynBind, dyn: &emitDynBind{
+			name: "Big", srcSeq: -1, pos: defPos, residentTwin: -1, typeInstall: evTypeInstall,
+		}}}}
+		es.fnRecs = append(es.fnRecs, &fnUnitRec{reg: r, frag: frag})
+		es.lastClosure = closureLatch{unit: 0, fresh: true}
+		return es
+	}
+
+	es := build(core.BindTypeInstall, true)
+	es.AdoptResidentTwins(body)
+	if !es.twinPlaced[0] || es.fnRecs[0].frag.events[0].dyn.residentTwin != 0 {
+		t.Fatal("a type twin over an element-independent expression must be stamped and placed")
+	}
+	if !es.armBoundNames["Big"] {
+		t.Fatal("an adopted type name must join the read fence too — its DEPTH is body-run-dependent")
+	}
+
+	es = build(core.BindTypeInstall, false)
+	es.AdoptResidentTwins(body)
+	if es.twinPlaced[0] {
+		t.Fatal("a type twin against a plain def site must decline the bridge")
+	}
+
+	es = build(core.BindDef, true)
+	es.AdoptResidentTwins(body)
+	if es.twinPlaced[0] {
+		t.Fatal("a value-def twin against a type-install site must decline the bridge")
+	}
+
+	// The screen declines: the body binds the word the bound reads. The
+	// event and the twin agree on everything else, so only the screen can
+	// be what refuses.
+	esDep := NewEmitState()
+	esDep.BindRegistry(r)
+	depBody := core.NewList([]core.Value{
+		word("def", 1, 1), word("Big", 1, 5),
+		at(core.NewParenExpr([]core.Value{
+			word("Integer", 1, 10), word("gt", 1, 18), word("Big", 1, 21),
+		}), 1, 9),
+	})
+	depBody.SetPos(core.SrcPos{Row: 1, Col: 0})
+	end := esDep.MultiRunBodyGuard(r, depBody.ID)
+	esDep.RecordBindTwin(core.BindTransition{Kind: core.BindTypeInstall, Name: "Big", Depth: 1, Pos: defPos},
+		core.DefEntry{Body: core.NewInteger(5), TypeDef: core.TInteger, Minted: true})
+	end()
+	esDep.fnRecs = append(esDep.fnRecs, &fnUnitRec{reg: r, frag: &EmitFragment{events: []EmitEvent{
+		{kind: evDynBind, dyn: &emitDynBind{name: "Big", srcSeq: -1, pos: defPos, residentTwin: -1, typeInstall: true}},
+	}}})
+	esDep.lastClosure = closureLatch{unit: 0, fresh: true}
+	esDep.AdoptResidentTwins(depBody)
+	if esDep.twinPlaced[0] {
+		t.Fatal("a type expression reading a name the body binds must decline the bridge")
+	}
 }

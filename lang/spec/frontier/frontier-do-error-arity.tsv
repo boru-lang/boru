@@ -7,8 +7,21 @@
 # call, and stripResidualShapeOK's want-0 arm admits the empty handler
 # residual (no island, no new opcode; the row moved to the main corpus and
 # is pinned native in lang/go/bytecode_do_error_arity_test.go). The
-# remaining sub-frontier below: a MAYBE-raising body (a dynamic Error
-# bound) has variable arity — the pass-through nets one where the caught
-# path nets zero — so it keeps the refusal; graduation = the variable-arity
-# island via the mark machinery (OpStackMark/OpDropToMark).
-def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3	5	a maybe-raising body with a zero-netting handler — variable arity keeps the sound refusal
+# The MAYBE-raising half GRADUATED 2026-09-10 (the forty-eighth increment),
+# and it needed no new opcode either. The variable arity is a runtime-
+# variadic REGION — the device await's winner and a value-producing loop
+# already ride — and the island's ONE simulated slot IS that
+# representation: runFallback appends whatever the re-run produced, 0
+# values or 1. So errorReturnsFn returns the honest spread instead of
+# marking the program uncompilable, RecordFallback marks the event a
+# region, and the residual absorbs the run.
+#
+# CORRECTED 2026-09-10 by the batch gate: those two rows were moved to
+# lang/spec/bytecode-migrated.tsv and had to come back. The increment's
+# result stands — they COMPILE where they refused — but "the island's own
+# slot is the region" is literal: the OpFallback span is still in the
+# program, and the main corpus's island ceiling is 0. So they stay here,
+# ledgered "islanded" alongside family G's other working islands, and
+# graduate when the region is seated without re-entering the interpreter.
+def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3	5	a MAYBE-raising body's zero-netting handler: this input raises, so the handler nets nothing
+def xs [1] do [1 div (xs 0 getr)] error [drop] end 2 add 3	1 5	…and this input does not raise, so the same lowering nets one — the count is not the static seat

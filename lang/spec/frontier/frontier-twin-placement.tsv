@@ -11,16 +11,38 @@
 #
 #   1. an `import` inside a MULTI-RUN body — a module bind is not one of
 #      the BindDef twins the arm-residency bridge installs per element;
-#   2. a TYPE def inside a multi-run body — the bridge pairs BindDef twins
-#      only (a type twin declines the whole bridge);
-#   3. a `do` body whose CLOSURE compile declines (a Stage-3 residual
-#      shape: literals under a branch result), so the once-run body's
+#   2. a type def inside a multi-run body whose type expression is
+#      ELEMENT-DEPENDENT — the bridge carries the element-independent
+#      case now (shape 2 below), and this is what it cannot: each element
+#      mints a different node, so no one captured entry stands for them;
+#   3. a `do` body whose CLOSURE compile declines, so the once-run body's
 #      twins are never adopted — `do [def b true (if b [] [9 9])]` and
-#      `do [def b true 1 2 b]` compile, this one does not;
+#      `do [def b true 1 2 b]` compile, this one does not. NARROWED
+#      2026-09-11 (the fifty-fourth increment): a body unit takes the
+#      residual REBUILD now, so a literal under an ordinary call result is
+#      no longer the obstacle. What remains is that the branch result here
+#      is RUNTIME-VARIABLE in count (`if b [] [9 9]` nets 0 or 2), and the
+#      rebuild spills one stack entry per operand — one slot cannot stand
+#      for a run of a length the compiler does not know. The program
+#      residual absorbs such an event; a fn RET does not.
 #
-# Graduation = resident module binds / resident type twins inside compiled
-# units (1, 2), and a closure lowering that admits the declined body (3);
-# each row then moves to the main corpus.
+# Graduation = resident module binds inside compiled units (1), an op that
+# REBUILDS the type per element rather than re-installing one captured body
+# (2), and a variadic-capable body-unit seat (3); each row then moves to the
+# main corpus.
+#
+# SHAPE 2 NARROWED 2026-09-11 (the fifty-third increment). It read "the
+# bridge pairs BindDef twins only (a type twin declines the whole bridge)",
+# and that was the mechanism but not the problem. Three things had to be
+# true and only the first was plumbing: a type install records NO def-site
+# event, so there was nothing to pair (RecordTypeInstall now writes one
+# inside the arm-resident bracket, and only there); replaying the captured
+# node per element is WRONG even when the expression is element-independent,
+# because one *Type in two def-stack levels makes the first `undef` retire
+# the level below it (measured: "unresolvable type operand Big"), so the op
+# re-installs the captured BODY and each element mints its own node; and
+# the expression has to be PROVED element-independent, which is the row
+# that stays here.
 #
 # SHAPE 4 GRADUATED 2026-09-02, and how it was written here is the part
 # worth keeping. It read: a call into a boru-IMPLEMENTED module inside the
@@ -36,5 +58,5 @@
 # exact condition under which a twin can be noted at all. The row moved to
 # lang/spec/module-sift.tsv.
 [10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]	[1.2599210498948732 1.2599210498948732]	shape 1: an import inside an each body
-[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]	[15 15]	shape 2: type defs inside an each body
+[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]	[7 7]	shape 2: a type def inside an each body whose bound READS the element
 do [def b true  do [1 2 (if b [] [9 9])]]	1 2	shape 3: a do body whose closure compile declines, so its def twin is never adopted

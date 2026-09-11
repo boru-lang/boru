@@ -416,10 +416,27 @@ func TestFoldFullStackGates(t *testing.T) {
 	if _, ok := es.FoldFullStack("depth", nil, nil); ok {
 		t.Error("a nested frame must decline")
 	}
+	// A nested UNIT is no longer a decline by itself (the fifty-second
+	// increment): a compiled body unit has its own stack discipline exactly
+	// as the top unit does, and the exactness condition is per-unit. What
+	// declines is being somewhere the unit's own residual has not been
+	// reconciled yet — an open FRAGMENT above the unit's root frame.
 	es = NewEmitState()
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}})
+	es.fnRecs = append(es.fnRecs, &fnUnitRec{rootFrame: 0})
+	es.openUnitRecs = append(es.openUnitRecs, 0)
+	es.frames = append(es.frames, nil) // a fragment open ABOVE the unit's root
 	if _, ok := es.FoldFullStack("depth", nil, nil); ok {
-		t.Error("a nested unit must decline")
+		t.Error("a fragment open above the unit's root frame must decline")
+	}
+	// …and the same unit AT its root frame is admitted, which is what makes
+	// the row above a statement about the fragment and not about the unit.
+	es = NewEmitState()
+	es.units = append(es.units, &emitUnit{localByID: map[string]int{}})
+	es.fnRecs = append(es.fnRecs, &fnUnitRec{rootFrame: 0})
+	es.openUnitRecs = append(es.openUnitRecs, 0)
+	if _, ok := es.FoldFullStack("depth", nil, nil); !ok {
+		t.Error("a body unit at its own root frame must fold")
 	}
 	es = NewEmitState()
 	es.markWindowSeq = 3

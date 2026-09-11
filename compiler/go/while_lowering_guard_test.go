@@ -73,8 +73,7 @@ func TestWhileConditionFragmentRefusalPopsTheLoopContext(t *testing.T) {
 	lw := wlgLowerer()
 	// An ENCLOSING loop context, so the pop can be shown to take exactly one
 	// frame — the condition loop's own — and not the outer loop's.
-	outerHoles := []int{}
-	lw.loops = []loopCtx{{nextPC: 42, endHoles: &outerHoles}}
+	lw.loops = []loopCtx{{nextPC: 42}}
 
 	// The condition fragment's events leave seq 5 on the sim, but the recorded
 	// condOut names seq 9: the fragment cannot seat that result and refuses.
@@ -95,7 +94,7 @@ func TestWhileConditionFragmentRefusalPopsTheLoopContext(t *testing.T) {
 	// residual, lowers cleanly — the condition branch and its FLOW_BREAK exit
 	// are emitted — and pops its own frame on the way out too.
 	lw2 := wlgLowerer()
-	lw2.loops = []loopCtx{{nextPC: 42, endHoles: &outerHoles}}
+	lw2.loops = []loopCtx{{nextPC: 42}}
 	if r := lw2.lowerLoop(wlgWhileEvent(EventOperand(5, 0))); r != "" {
 		t.Fatalf("a well-formed condition loop should lower cleanly, got %q", r)
 	}

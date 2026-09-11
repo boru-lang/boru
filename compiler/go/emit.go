@@ -547,7 +547,25 @@ type emitDynBind struct {
 	// to nothing, and the name-keyed walks (the dyn-scope bind detector,
 	// the def-site fn resolver) skip it — an undef binds nothing.
 	undef bool
+	// typeInstall marks a TYPE binding's push (RecordTypeInstall's event,
+	// riding the dyn-bind kind for the same reason the undef half does):
+	// no value operand and no stack effect, because the minted node is a
+	// COMPILE-TIME product the twin table already holds. Stamped, it lowers
+	// to OpBindResident's type arm, which re-installs the twin's captured
+	// BODY once per element (minting that element's own node — replaying
+	// the captured node instead is measurably wrong, NUR135); unstamped it
+	// lowers to nothing, and the name-keyed walks skip it exactly as they
+	// skip an undef — a type install binds no runtime value.
+	typeInstall bool
 }
+
+// bindsValue reports whether this def-site event installs a RUNTIME value
+// under its name. An undef binds nothing, and a type install binds a node
+// the twin table already holds, so every name-keyed walk — the dyn-scope
+// bind detector, the def-site fn resolver, the lowering's unstamped arm —
+// asks this rather than testing one flag and drifting when a third
+// operand-less shape arrives.
+func (d *emitDynBind) bindsValue() bool { return !d.undef && !d.typeInstall }
 
 // EmitFragment is a captured sub-trace: the events a branch body
 // recorded, plus the sequence floor — operands inside the fragment
@@ -2194,6 +2212,29 @@ func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
 	es.noteBindHazard(name)
 }
 
+// RecordTypeInstall notes a TYPE binding's push at its stream position
+// (the interface doc in core/go/emit_recorder.go) — like RecordDynUndef,
+// today only inside an arm-resident body compile (armResidentDepth, the
+// each-unit bracket), where the BindTypeInstall twin needs a def-site
+// event for the bridge to pair against and the unit needs an op to
+// install the node per element.
+//
+// Everywhere else this records NOTHING, and that is the whole reason a
+// type install could be given an event at all without disturbing any
+// other lane: outside the bracket a type binding is a purely check-time
+// product — the mint happens once, the TOP-LEVEL twin replays it at its
+// own stream position (OpBindTwin), and the compiled stream carries no
+// instruction for it. Nil-safe.
+func (es *EmitState) RecordTypeInstall(name string, pos core.SrcPos) {
+	if es == nil || !es.Active() || es.armResidentDepth == 0 || name == "" {
+		return
+	}
+	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
+		name: name, srcSeq: -1, pos: pos, residentTwin: -1, typeInstall: true,
+	}})
+	es.noteBindHazard(name)
+}
+
 // TakeFragment returns the last captured fragment (nil when the
 // capture never armed — plain check runs, suspended recordings).
 func (es *EmitState) TakeFragment() core.EmitFragmentRef {
@@ -2700,6 +2741,21 @@ func embedsEnclosingCompound(v core.Value, enclosing map[string]bool) bool {
 //     seat a single per-call construction in a fresh frame local
 //     (OpPushConstFreshLocal) — every marked shape now lowers; the pass
 //     cannot refuse.
+//
+// rebuildableResidual reports whether this unit's residual may take the
+// REBUILD seating (reconcileResults' fallback). A body-tail dynamic apply and
+// a whole-frame replay both read the SEATED LAYOUT after the reconciliation —
+// OpCallDynTrailTop consumes the top N, OpCallDynFrame replays the top
+// dynFrameW — and a RET-replay discipline describes the layout too, so none
+// of the three may have it rearranged underneath them.
+//
+// It is a method rather than three conjuncts at the call site because
+// Finalize sits on the gocyclo ceiling: the same reason seatProgramResidual
+// is its own function.
+func (rec *fnUnitRec) rebuildableResidual() bool {
+	return rec.dynTrailArity == 0 && rec.dynFrameW == 0 && !rec.retReplay
+}
+
 func freshenFnUnitConsts(cf *CompiledFn, es *EmitState, rec *fnUnitRec, p *Program) {
 	if len(es.freshenConst) == 0 {
 		return
@@ -4494,14 +4550,21 @@ type closureLatch struct {
 // the ledger's one generalized carrier-valued capture cannot replay.
 //
 // The pairing is NAME + OCCURRENCE ORDER, strict and total: the bracket's
-// eligible twins (Kind BindDef, no TypeDef — a value def) must equal the
-// unit's def-event sequence name-for-name in order, with a position
-// cross-check wherever both sides carry one. ANY mismatch — a leftover
-// twin (row 41's var-param BindUndef half, until the undef seam lands), a
-// leftover event, a name or position disagreement — adopts NOTHING: the
-// twins stay unplaced and the regime refuses the program, the sound
-// direction the parity oracle pins. The fences, each measured or
-// judge-raised on the design review:
+// eligible twins (a value def, its balanced undef half, or a TYPE install)
+// must equal the unit's def-event sequence name-for-name in order, with a
+// position cross-check wherever both sides carry one. ANY mismatch — a
+// leftover twin, a leftover event, a name or position disagreement —
+// adopts NOTHING: the twins stay unplaced and the regime refuses the
+// program, the sound direction the parity oracle pins.
+//
+// A TYPE install differs from a value def in what its op does: there is no
+// runtime value to install, so the op re-installs the twin's captured BODY
+// per element instead (core.ApplyResidentTypeBind). That is sound only for
+// an element-independent type expression, which
+// typeInstallElementIndependent screens for — read its doc before widening
+// anything here.
+//
+// The fences, each measured or judge-raised on the design review:
 //
 //   - the LATCH IDENTITY: lastMultiRun.bodyID must equal this dispatch's
 //     body ID — a nested multi-run body's analysis during this unit's
@@ -4550,21 +4613,32 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 		rec.reg != es.progReg || rec.frag == nil {
 		return
 	}
-	// The bracket's twins: every one must be an eligible value def or an
-	// undef (a var param's balanced teardown half), or the whole bridge
-	// declines (a replace, a type install — shapes this increment does
-	// not carry).
+	// The bracket's twins: every one must be an eligible value def, an
+	// undef (a var param's balanced teardown half), or a TYPE install, or
+	// the whole bridge declines (a def-replace is the shape left).
 	var twins []int
+	bound := map[string]bool{}
 	for i := ml.from; i < ml.to && i < len(es.bindTwins); i++ {
 		if es.twinPlaced[i] {
 			return
 		}
 		tr := es.bindTwins[i]
-		if (tr.Kind != core.BindDef && tr.Kind != core.BindUndef) ||
-			es.bindTwinEntries[i].TypeDef != nil {
+		switch tr.Kind {
+		case core.BindDef, core.BindUndef:
+			// A VALUE def's install carries a runtime value; a captured type
+			// node under those kinds is a shape this bridge does not carry.
+			if es.bindTwinEntries[i].TypeDef != nil {
+				return
+			}
+		case core.BindTypeInstall:
+		default:
 			return
 		}
 		twins = append(twins, i)
+		// Every binding the body installs is a twin in this bracket — that is
+		// the bridge's own premise, since a leftover twin declines — so the
+		// bracket's names ARE the body-bound set the type screen needs.
+		bound[tr.Name] = true
 	}
 	if len(twins) == 0 {
 		return
@@ -4584,22 +4658,28 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 		if d.name != tr.Name || d.residentTwin >= 0 {
 			return
 		}
-		// Kind correspondence: a BindDef twin pairs with an install site,
-		// a BindUndef twin with a teardown site — never crossed.
-		if d.undef != (tr.Kind == core.BindUndef) {
+		// Kind correspondence: a BindDef twin pairs with an install site, a
+		// BindUndef twin with a teardown site, a BindTypeInstall twin with a
+		// type-install site — never crossed.
+		if d.undef != (tr.Kind == core.BindUndef) ||
+			d.typeInstall != (tr.Kind == core.BindTypeInstall) {
 			return
 		}
 		if tr.Pos.Row != 0 && d.pos.Row != 0 && tr.Pos != d.pos {
 			return
 		}
+		if tr.Kind == core.BindTypeInstall &&
+			!typeInstallElementIndependent(body, rec.frag, tr.Pos, bound) {
+			return
+		}
 	}
-	// Total match: stamp, mark, and fence the reads (the def halves drive
-	// the fence; an undef half re-fences nothing).
+	// Total match: stamp, mark, and fence the reads (the installing halves
+	// drive the fence; an undef half re-fences nothing).
 	for k, i := range twins {
 		events[k].residentTwin = i
 		es.twinPlaced[i] = true
 		es.twinAdoptions = append(es.twinAdoptions, i)
-		if es.bindTwins[i].Kind == core.BindDef {
+		if k := es.bindTwins[i].Kind; k == core.BindDef || k == core.BindTypeInstall {
 			if es.armBoundNames == nil {
 				es.armBoundNames = map[string]bool{}
 			}
@@ -4608,13 +4688,149 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 	}
 }
 
+// typeInstallElementIndependent is the ARM-RESIDENT TYPE twin's soundness
+// screen. A value def's resident op installs the RUNTIME value once per
+// element, so it is right by construction whatever the body computes; a
+// type install has no runtime value — the minted node is a compile-time
+// product the twin table already holds — so its op REPLAYS the one captured
+// entry per element. That is correct exactly when every element's own
+// evaluation of the type expression would have produced an equivalent node,
+// and the ledgered witnesses are (`(Integer gt 10)`, `(Integer lt 20)` read
+// nothing per-element) — but the bridge must PROVE it, because the opposite
+// shape is ordinary boru: measured 2026-09-11,
+// `[10 20] each [var [[e] def ZB (Integer gt e) 7]]` leaves TWO different
+// `ZB` nodes stacked, so 15 fails against the top and passes against the one
+// below it. Replaying one node there would be a silent wrong answer.
+//
+// The element can reach a type expression two ways, and each has a screen:
+//
+//   - THROUGH A NAME. Every binding the body installs is a twin in the
+//     bracket, so `bound` is the body-bound set exactly; a type expression
+//     naming any of them is per-element. Words bound OUTSIDE the body — a
+//     module-scope type, an enclosing fn's capture — are constant across the
+//     whole loop, so they pass.
+//   - THROUGH A DISPATCH that did not const-fold. A word whose call the check
+//     pass could not fold records an EVENT at its own position inside the
+//     unit, so an expression with no event in its token span const-folded
+//     from its own tokens alone. The converse — a word the check pass DID
+//     fold — is already licensed everywhere else in this compiler: a folded
+//     call's value is baked into the program.
+//
+// The third route, reading the element off the VALUE STACK, is closed by the
+// language and not by this screen: a paren group binds forward-only, so
+// `[10 20] each [def ZG (Integer gt) 7]` and `(mk)` for a one-arg `mk` both
+// raise "no signature matches" on the interpreter (measured the same day).
+//
+// Anything this cannot see into — a def site the token walk cannot locate, a
+// non-word non-literal token in the expression — declines, which refuses the
+// regime program: the sound direction, never a wrong install.
+func typeInstallElementIndependent(body core.Value, frag *EmitFragment, pos core.SrcPos, bound map[string]bool) bool {
+	expr, ok := typeDefExprAt(body, pos)
+	if !ok {
+		return false
+	}
+	if !typeExprInert(expr, bound) {
+		return false
+	}
+	sites := map[core.SrcPos]bool{}
+	collectExprSites(expr, sites)
+	for _, ev := range frag.events {
+		if sites[eventPos(ev)] {
+			return false
+		}
+	}
+	return true
+}
+
+// typeDefExprAt locates the TYPE EXPRESSION token of the `def NAME <expr>`
+// written at pos in a code-body token tree — pos being the `def` token's own
+// position, which is what a bind transition's site resolves to
+// (core.bindSitePos: a type body carries 0:0, so the note falls back to the
+// dispatching word). The expression is the second operand in written order;
+// any other layout (a `def` whose operands ride the value stack, a truncated
+// tail) is not located and declines.
+func typeDefExprAt(v core.Value, pos core.SrcPos) (core.Value, bool) {
+	toks := tokenInterior(v)
+	for i, el := range toks {
+		if el.Pos() == pos && core.IsWord(el) && i+2 < len(toks) {
+			if w, werr := core.AsWord(el); werr == nil && w.Name == "def" {
+				return toks[i+2], true
+			}
+		}
+		if found, ok := typeDefExprAt(el, pos); ok {
+			return found, true
+		}
+	}
+	return core.Value{}, false
+}
+
+// typeExprInert reports whether every token in a type expression's subtree is
+// either a container to descend (a paren group is list-shaped, as
+// collectTokenSites' doc records), an inert const, or a plain WORD the body
+// does not bind. A reach, a splice, an interpolated string — anything that is
+// none of the three — declines, so the walk is closed by construction rather
+// than by a list of known-bad shapes.
+func typeExprInert(v core.Value, bound map[string]bool) bool {
+	if core.IsWord(v) {
+		w, err := core.AsWord(v)
+		return err == nil && !bound[w.Name]
+	}
+	for _, t := range tokenInterior(v) {
+		if !typeExprInert(t, bound) {
+			return false
+		}
+	}
+	if isTokenContainer(v) {
+		return true
+	}
+	return core.IsInertConst(v)
+}
+
+// isTokenContainer / tokenInterior are the token-tree descent the type
+// screen's two walks share. A paren group is NOT list-shaped — AsList
+// declines it, the payload being ParenExprPayload — so a walk that asks
+// AsList alone treats `(Integer gt 5)` as one opaque token: the sound
+// direction for typeExprInert (an opaque token is not inert, so it declines,
+// which is how this screen first refused the row it exists to admit) and the
+// WRONG one for a position gather, which would then screen an empty set.
+func isTokenContainer(v core.Value) bool {
+	if core.IsParenExpr(v) {
+		return true
+	}
+	_, err := core.AsList(v)
+	return err == nil
+}
+
+func tokenInterior(v core.Value) []core.Value {
+	if core.IsParenExpr(v) {
+		toks, err := core.AsParenExpr(v)
+		if err != nil { //covergate:allow IsParenExpr above already proved the payload type AsParenExpr asserts; asked anyway so the accessor pair is total (§compiler)
+			return nil
+		}
+		return toks
+	}
+	rl, err := core.AsList(v)
+	if err != nil {
+		return nil
+	}
+	out := make([]core.Value, 0, rl.Len())
+	for i := 0; i < rl.Len(); i++ {
+		out = append(out, rl.Get(i))
+	}
+	return out
+}
+
 // collectTokenSites gathers every source position in a code-body token
-// tree: the token's own, then list interiors recursively (a paren group
-// and a nested body are both list-shaped, so this reaches a twin noted
-// anywhere down the body). Non-list tokens — words, literals, sugar
-// markers — contribute their own position only; a construct this walk
-// cannot see into leaves its twins unadopted, which refuses the regime
-// program (the sound direction).
+// tree: the token's own, then LIST interiors recursively, so this reaches
+// a twin noted anywhere down a nested body. Everything else — words,
+// literals, sugar markers, and a PAREN GROUP, which is not list-shaped
+// (AsList declines a ParenExprPayload) — contributes its own position
+// only; a construct this walk cannot see into leaves its twins unadopted,
+// which refuses the regime program (the sound direction). The paren case
+// was documented here as list-shaped and is not: widening the walk would
+// adopt twins noted inside a paren group, which nothing has argued for.
+// collectExprSites below is the walk that does descend, for a screen that
+// needs the opposite default.
 func collectTokenSites(v core.Value, sites map[core.SrcPos]bool) {
 	if p := v.Pos(); p.Row != 0 {
 		sites[p] = true
@@ -4623,6 +4839,22 @@ func collectTokenSites(v core.Value, sites map[core.SrcPos]bool) {
 		for i := 0; i < rl.Len(); i++ {
 			collectTokenSites(rl.Get(i), sites)
 		}
+	}
+}
+
+// collectExprSites is collectTokenSites over a TYPE EXPRESSION, and it
+// descends one shape more: a PAREN group. The two are deliberately separate.
+// collectTokenSites decides which twins AdoptBodyTwins may adopt, and its
+// blindness to a paren interior is a refusal there — widening it would adopt
+// twins nothing has argued for. The type screen needs the opposite default:
+// it must see EVERY token inside `(Integer gt 5)` or it would screen an empty
+// set and pass anything.
+func collectExprSites(v core.Value, sites map[core.SrcPos]bool) {
+	if p := v.Pos(); p.Row != 0 {
+		sites[p] = true
+	}
+	for _, t := range tokenInterior(v) {
+		collectExprSites(t, sites)
 	}
 }
 
@@ -5547,7 +5779,7 @@ func (es *EmitState) RecordDynApplyName(name string, args []core.Value, fn, out 
 	found := false
 	for i := len(es.frames[0]) - 1; i >= 0 && !found; i-- {
 		ev := &es.frames[0][i]
-		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || ev.dyn.undef {
+		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || !ev.dyn.bindsValue() {
 			continue
 		}
 		switch {
@@ -5929,6 +6161,30 @@ func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, ou
 	es.fallbacks = append(es.fallbacks, span)
 	seq := es.appendEvent(EmitEvent{kind: evFallback, fb: emitFallback{spanIdx: idx, ins: ops, pos: pos}})
 	es.SiteCounts[SiteDynamic]++
+	// A VARIADIC REGION result (the forty-eighth increment): the word's
+	// check model IS "0-or-more values", so record the island as a region.
+	// The island's ONE sim slot is already the region's representation —
+	// runFallback appends whatever the re-run produced — so nothing changes
+	// in what is emitted; the mark is what stops a consumer seating the run
+	// at a fixed count. `error` over a maybe-raising body is the producer:
+	// the caught path nets zero, the pass-through nets one.
+	if callVariadicRegion([]core.Value{out}) {
+		f := es.eventInfo[seq]
+		f.variadicResult = true
+		f.variadicRegion = true
+		// …and it may leave a CALLABLE, which no consumer of a region can
+		// re-step (eventFlags.regionMayBeFn / NUR129). An island's run is the
+		// INTERPRETER executing arbitrary code, so what it appends is not
+		// bounded by the modelled out at all — `def xs [1] def g fn x:Integer
+		// Integer [x add 1] 5 do [if ((xs 0 getr) eq 1) [g/v] [1 div 0]]
+		// error [drop]` passes a fn value through the handler, which the
+		// interpreter re-steps against the 5 beneath it for [6] and the
+		// compiled lane seated as data, raising uncalled_function (Codex, PR
+		// #448). Marked unconditionally: a narrower claim would have to be a
+		// claim about interpreted code the recorder never saw.
+		f.regionMayBeFn = true
+		es.eventInfo[seq] = f
+	}
 	es.setProduced(out, seq)
 	return true
 }
@@ -5961,6 +6217,18 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 	es.origByID[v.ID] = v
 }
 
+// atUnitRootFrame reports whether recording is at the CURRENT unit's root
+// frame — no fragment open above it. The top unit's root frame is frames[0];
+// a body unit's is the frame it opened at (fnUnitRec.rootFrame). Used by
+// FoldFullStack, whose exactness argument is about THIS unit's stack.
+func (es *EmitState) atUnitRootFrame() bool {
+	if len(es.openUnitRecs) == 0 {
+		return len(es.frames) == 1
+	}
+	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
+	return len(es.frames)-1 == rec.rootFrame
+}
+
 // FoldFullStack statically folds a full-stack word — depth / pick / roll —
 // when the recorder can prove the simulated stack is EXACT, so the dispatch
 // ELIDES: no event records, no opcode runs, and the fold's outputs carry
@@ -5985,8 +6253,22 @@ func (es *EmitState) RememberOriginal(v core.Value) {
 // out-of-range n declines too: the interpreter raises there, and the
 // fallback keeps the raise byte-identical.
 func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([]core.Value, bool) {
-	if es == nil || !es.Active() || es.suspended > 0 || !es.Compilable ||
-		len(es.frames) != 1 || len(es.units) != 1 || es.markWindowSeq != 0 {
+	if es == nil || !es.Active() || es.suspended > 0 || !es.Compilable || es.markWindowSeq != 0 {
+		return nil, false
+	}
+	// The exactness condition is per-UNIT, not per-program: what it needs is
+	// that the recorder's simulated stack is the one the VM will hold HERE,
+	// and a compiled body unit has its own stack discipline exactly as the
+	// top unit does. What it cannot survive is an unclosed FRAGMENT — a
+	// branch arm or a loop body mid-capture — whose events have not been
+	// reconciled into any scope's residual yet.
+	//
+	// So: the current frame must be the CURRENT unit's root frame. For the
+	// top unit that is frames[0], which is the old `len(es.frames) != 1`
+	// test verbatim; for a body unit it is the frame the unit opened at
+	// (fnUnitRec.rootFrame).
+	unit := len(es.units) - 1
+	if !es.atUnitRootFrame() {
 		return nil, false
 	}
 	for _, v := range preserved {
@@ -5997,9 +6279,25 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
 			}
+			// An EVENT-produced entry is the one a fold can permute into a
+			// shape the residual seating cannot lay out in place — a result
+			// that ends up above a literal. That is why the fifty-second
+			// increment admitted the fold in a body unit only over consts
+			// and locals: the top unit had seatResidualRebuild and a body
+			// unit had nothing, so folding a permutation there turned a
+			// sound ISLAND into a REFUSAL, measured on that increment's
+			// first cut (`(1 add 2) (3 add 4) 1 pick` in a fn / do / each /
+			// module body, all four refused).
+			//
+			// reconcileResults takes the same rebuild now (the fifty-third
+			// increment's sibling), so the permutation a body-unit fold
+			// produces has somewhere to land and the entry needs no screen
+			// of its own. What the fold still refuses on its own account is
+			// a CALLABLE, below — a wider question than seating, and one the
+			// rebuild's own screen asks again.
 			continue
 		}
-		if _, ok := es.units[0].localByID[v.ID]; ok {
+		if _, ok := es.units[unit].localByID[v.ID]; ok {
 			continue
 		}
 		if core.IsConcrete(v) || core.IsBareTypeNode(v) {
@@ -9349,9 +9647,92 @@ func (es *EmitState) markWindowShape(residual []core.Value, promoted map[int]int
 // REGION (NUR067's consuming half — `99 for 3 [i]`, `99 await {mode:'first'}
 // [[]]`). Declines when another mark plan already owns the frame: one mark
 // client per program, exactly as planMarkWindow declines to planVariadicClaims.
+// excusePrefixRegion drops the region the PREFIX plan will seat from the
+// force-promotion set, in place.
+//
+// A force-promoted region is unsound: its stores pop exactly nout values
+// while the run's runtime length is a different number, which lowerCall
+// refuses a stage later ("variadic result promoted to frame slots"). Left on
+// the sim it stays a region and OpSeatBelowMark lifts the prefix beneath it
+// without ever naming the length (the forty-seventh increment).
+//
+// Only THIS seq is excused, and only from forceOrder. A variadic region
+// bound to a NAME (`def x (do …) x`) is promoted by its DYN-BIND source
+// instead, which this does not touch — so those keep the earlier and more
+// informative refusal rather than falling through to a later, vaguer one.
+//
+// Split out of Finalize rather than written inline because Finalize sits on
+// the gocyclo ceiling: one more branch there is one branch too many.
+func (es *EmitState) excusePrefixRegion(residual []core.Value, forceOrder map[int]bool) {
+	if seq, ok := es.regionPrefixShape(residual, es.frames[0]); ok {
+		delete(forceOrder, seq)
+	}
+}
+
+// regionPrefixShapeOps is regionPrefixShape read off a unit's RESOLVED
+// OPERANDS rather than its residual values. A fn unit needs the operand form:
+// the residual values a body leaves carry identities the recorder does not
+// index in producedBy (a branch merge's carrier is minted at the join, not by
+// the event), so the value walk finds no producer and declines a shape the
+// operands state plainly — `do [1 (if b [] [9 9])]` resolves to
+// [CONST, EVENT(the branch)] and nothing else has to be inferred.
+//
+// The conditions are the same three: the LAST operand names a variadic REGION
+// event OF THIS SCOPE that does not read the stack; the contiguous run of
+// that event's own operands is the region; and everything beneath the run is
+// inert — no event operand at all — which is what makes the prefix pushable
+// after the run.
+func (es *EmitState) regionPrefixShapeOps(ops []EmitOperand, events []EmitEvent) (int, bool) {
+	if len(ops) < 2 || ops[len(ops)-1].kind != opEvent {
+		return 0, false
+	}
+	seq := ops[len(ops)-1].idx
+	ev := eventBySeq(events, seq)
+	if !es.variadicRegionEvent(ev) || regionReadsTheStack(ev) {
+		return 0, false
+	}
+	i := len(ops) - 1
+	for i > 0 && ops[i-1].kind == opEvent && ops[i-1].idx == seq {
+		i--
+	}
+	if i == 0 {
+		return 0, false // the run IS the whole residual; no prefix to seat
+	}
+	for _, op := range ops[:i] {
+		if op.kind == opEvent {
+			return 0, false
+		}
+	}
+	return seq, true
+}
+
 func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
-	seq, ok := es.regionPrefixShape(residual)
+	seq, ok := es.regionPrefixShape(residual, es.frames[0])
 	if !ok || len(lw.markBefore) > 0 {
+		return
+	}
+	lw.markBefore = map[int]bool{seq: true}
+	lw.regionPrefixSeq = seq
+}
+
+// planRegionPrefixUnit is planRegionPrefix for a FN UNIT's residual: the same
+// shape over the unit's OWN events, armed before the unit's lowerEvents walk
+// so the OpStackMark lands ahead of the region-starting event exactly as it
+// does at the top level.
+//
+// A body unit needs it for the same reason the program did (the forty-first
+// increment): a residual shaped [inert…, REGION] cannot be seated in place —
+// the prefix would land ON the run, whose length is a runtime value — and the
+// rebuild the fifty-fourth increment gave this seat cannot help, because a
+// spill slot per operand is exactly what a runtime-variable run has not got.
+// Measured: `do [def b true  do [1 2 (if b [] [9 9])]]` refused at the twin
+// placement gate because its inner do-body closure declined here first.
+func (es *EmitState) planRegionPrefixUnit(lw *lowerer, rec *fnUnitRec) {
+	if rec.frag == nil || len(lw.markBefore) > 0 { //covergate:allow every fn unit reaching the lowering has its fragment (the nil case returns above) and a fresh unit lowerer has no plan; asked anyway so the two planners state the same preconditions (§compiler)
+		return
+	}
+	seq, ok := es.regionPrefixShapeOps(rec.outOps, rec.frag.events)
+	if !ok {
 		return
 	}
 	lw.markBefore = map[int]bool{seq: true}
@@ -9366,11 +9747,12 @@ func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
 // the region (it would land on top of the run) and cannot be indexed past it
 // from the top (the run's length is a runtime value).
 //
-// The producer must be a TOP-LEVEL event, for planMarkWindow's reason:
-// lowerEvents reads markBefore only over frames[0], so a fragment-resident
-// anchor would arm the plan with no OpStackMark ever emitted and the VM would
-// raise where the interpreter succeeds.
-func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
+// The producer must be an event of the scope being lowered — frames[0] for
+// the program, the unit's own fragment for a fn unit — for planMarkWindow's
+// reason: lowerEvents reads markBefore only over the list it walks, so an
+// anchor resident in a NESTED fragment would arm the plan with no OpStackMark
+// ever emitted and the VM would raise where the interpreter succeeds.
+func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent) (int, bool) {
 	if len(residual) < 2 {
 		return 0, false
 	}
@@ -9378,13 +9760,30 @@ func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	// singleSlotRegion answers false for a nil event, and it is checked FIRST
-	// so regionReadsTheStack is never handed one.
-	ev := es.topLevelEventBySeq(pr.seq)
-	if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) {
+	// variadicRegionEvent answers false for a nil event, and it is checked
+	// FIRST so regionReadsTheStack is never handed one.
+	ev := eventBySeq(events, pr.seq)
+	if !es.variadicRegionEvent(ev) || regionReadsTheStack(ev) {
 		return 0, false
 	}
-	for _, rv := range residual[:len(residual)-1] {
+	// The region's RUN is the trailing entries the producer left, and there
+	// may be more than one of them: a do-catch records nout seats for a run
+	// whose runtime length is a different number (2 recorded, 2-or-4
+	// delivered). Walk back over the contiguous run of THIS producer's
+	// entries; everything beneath it must be inert (no producing event at
+	// all), which is what makes the prefix pushable after the run.
+	i := len(residual) - 1
+	for i > 0 {
+		p, isEvent := es.producedBy[residual[i-1].ID]
+		if !isEvent || p.seq != pr.seq {
+			break
+		}
+		i--
+	}
+	if i == 0 {
+		return 0, false // the run IS the whole residual; no prefix to seat
+	}
+	for _, rv := range residual[:i] {
 		if _, isEvent := es.producedBy[rv.ID]; isEvent {
 			return 0, false
 		}
@@ -9407,13 +9806,65 @@ func (es *EmitState) regionPrefixShape(residual []core.Value) (int, bool) {
 // and treating them as stack reads would decline every value-producing loop
 // (their bodyOut is an event operand whenever the body is computed —
 // `99 for 2 [(1 add 2)]`).
+//
+// EVERY region-producing event kind must be represented here, and the switch
+// below is the whole list. It read `ev.call.ops` and the loop's operands
+// alone until 2026-09-10, which was complete for the two producers that then
+// existed — a value-producing loop and await's winner, both evCall — and
+// silently wrong the moment the forty-seventh and forty-eighth increments
+// admitted two more (Codex found all three witnesses on PR #448, and all
+// three were real):
+//
+//   - evCallUser (a variadic-returning fn). `def f fn [[n:Integer] [] [for n
+//     [i]]] 9 f (1 add 2)` compiled the mark AFTER the `add` whose result the
+//     call then popped from beneath it, and answered `0 9 1 2` for the
+//     interpreter's `9 0 1 2`;
+//   - evFallback (the island's own 0-or-more run). `def xs [1] [do [1 div
+//     (xs 0 getr)] error [drop]]` opened the mark above the do-result the
+//     FALLBACK's own input then consumed, and MAKE_LIST_TO_MARK collected the
+//     empty run: `1 []` for the interpreter's `[1]`.
+//
+// A kind whose operands are not listed here does not "have none": it is
+// unscreened. If a new region producer is added, add its operands.
 func regionReadsTheStack(ev *EmitEvent) bool {
-	ops := ev.call.ops
-	if ev.kind == evLoop {
+	var ops []EmitOperand
+	switch ev.kind {
+	case evCall:
+		ops = ev.call.ops
+	case evCallUser:
+		ops = ev.uc.ops
+	case evFallback:
+		ops = ev.fb.ins
+	case evLoop:
 		ops = []EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step}
 		for _, c := range ev.loop.carried {
 			ops = append(ops, c.init)
 		}
+	case evBranch:
+		// The CONDITION is on the stack when the branch runs, and so is an
+		// eagerly-computed arm value (`if c (expr) e` puts it BELOW the cond —
+		// emitBranch.thenComputed / elsComputed). The arm BODIES are not: they
+		// lower inside the branch, after any mark this screen protects.
+		ops = []EmitOperand{ev.br.cond}
+		if ev.br.thenIsVal {
+			ops = append(ops, ev.br.thenVal)
+		}
+		if ev.br.elsIsVal {
+			ops = append(ops, ev.br.elsVal)
+		}
+	default:
+		// UNSCREENED, and that is not the same as operand-less. This
+		// predicate has now been incomplete TWICE — NUR133 (a user call's
+		// and a fallback's own operands went unread) and NUR137 (a branch's
+		// condition did, after the forty-seventh increment widened
+		// variadicRegionEvent to admit branch regions) — and both times the
+		// shape was a NEW region producer meeting a screen written for the
+		// producers that happened to exist. So the default is now the safe
+		// answer rather than a silent one: a kind this function does not
+		// name is assumed to read the stack, which declines the plan. Adding
+		// a producer therefore costs a refusal until someone lists its
+		// operands here, never a wrong answer.
+		return true
 	}
 	for _, op := range ops {
 		if op.kind == opEvent || op.kind == opClosure {
@@ -9462,9 +9913,11 @@ func (es *EmitState) regionCollectShape(events []EmitEvent) (int, int, bool) {
 // for a RUNTIME-VARIABLE count of values: a value-producing loop (`for` /
 // `while` — RecordLoop's hasBodyOut arm), or a variadic REGION call
 // (callVariadicRegion — await's winner-takes-all residual). A do-catch's
-// variadicResult is deliberately NOT one: it seats nout static slots and
-// shrinks at run time, so there is no single slot to seat a prefix under.
-// A nil event (no top-level event with that seq) is not one either.
+// variadicResult is NOT one: it records nout slots for a run whose runtime
+// length is a different number. The COLLECT needs this narrower question —
+// its shape is a list literal over exactly ONE recorded operand — where the
+// PREFIX does not (variadicRegionEvent). A nil event (no top-level event
+// with that seq) is not one either.
 func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
 	if ev == nil {
 		return false
@@ -9474,12 +9927,37 @@ func (es *EmitState) singleSlotRegion(ev *EmitEvent) bool {
 		(f.variadicRegion || (ev.kind == evLoop && f.variadicResult))
 }
 
+// variadicRegionEvent is singleSlotRegion's question WITHOUT the single-slot
+// half: does ev leave a run whose runtime length is not its recorded count?
+// That admits the do-catch region too (nout recorded seats, 2-or-4 delivered
+// by a branch-variant body; one caught Error on the raise path).
+//
+// The prefix seating can ask the looser question because OpSeatBelowMark
+// never names the run's length — it lifts the top n values down to the mark,
+// whatever lies between. The forty-seventh increment is exactly that
+// observation: the plan's single-slot gate was inherited from the two
+// producers that happened to exist, not from anything the mechanism needs.
+func (es *EmitState) variadicRegionEvent(ev *EmitEvent) bool {
+	if ev == nil {
+		return false
+	}
+	f := es.eventInfo[ev.seq]
+	return !f.zeroOut && !f.regionMayBeFn &&
+		(f.variadicRegion || f.variadicResult)
+}
+
 // topLevelEventBySeq finds the top-level frame's event with the given seq
 // (nil when the seq belongs to a nested fragment or unit).
 func (es *EmitState) topLevelEventBySeq(seq int) *EmitEvent {
-	for i := range es.frames[0] {
-		if es.frames[0][i].seq == seq {
-			return &es.frames[0][i]
+	return eventBySeq(es.frames[0], seq)
+}
+
+// eventBySeq finds the event with the given seq in ONE event list — the
+// scope's own, never a nested fragment's (nil when it is not there).
+func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
+	for i := range events {
+		if events[i].seq == seq {
+			return &events[i]
 		}
 	}
 	return nil
@@ -9504,17 +9982,6 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// its apply, and a decline there means the residual tail may cross the
 	// value's statement boundary — see methodShapeAnnotated.
 	applyDynamic := false
-	// A fn-value lead a later dispatch collected past, ANYWHERE in the
-	// residual (NUR121: `g x add 1` — the model's `add` took `x`, so the
-	// residual's args are its RESULT, not the lead's; `do [(f 5) 2] drop` —
-	// the model's drop took the 2 the frame's rewind would have applied the
-	// lead to, leaving the lead alone), refuses before any arm can apply it;
-	// a placed (lazy) lead is the arms' own business (hazardLead).
-	for _, v := range residual {
-		if es.hazardLead(v) {
-			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
-		}
-	}
 	// A VARIADIC REGION entry is a COUNT, not a value (NUR067): at run time it
 	// stands for 0-or-MORE stack values, so there is no single entry for any
 	// apply arm to classify — and the carrier is Dynamic by construction (it
@@ -9525,8 +9992,26 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// [99 1 2 3]. Decline the whole fn-value-call boundary and let the ordinary
 	// residual seating rule instead — a lone region IS the residual and seats,
 	// a region above an inert tail refuses "call result above a literal".
+	//
+	// It runs BEFORE the NUR121 hazard scan below (the forty-eighth
+	// increment moved it there): that scan asks whether a fn-value LEAD had
+	// its argument collected by a later dispatch, and a region is not a
+	// lead — it is a count. Asked of one, the scan answered yes for the
+	// zero-netting handler's 0-or-1 run and refused a program that has no
+	// fn value in it at all.
 	if es.residualHasVariadicRegion(residual) {
 		return residual, 0, ""
+	}
+	// A fn-value lead a later dispatch collected past, ANYWHERE in the
+	// residual (NUR121: `g x add 1` — the model's `add` took `x`, so the
+	// residual's args are its RESULT, not the lead's; `do [(f 5) 2] drop` —
+	// the model's drop took the 2 the frame's rewind would have applied the
+	// lead to, leaving the lead alone), refuses before any arm can apply it;
+	// a placed (lazy) lead is the arms' own business (hazardLead).
+	for _, v := range residual {
+		if es.hazardLead(v) {
+			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
+		}
 	}
 	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
@@ -9981,7 +10466,7 @@ func eventsBindDynScope(events []EmitEvent, names map[string]bool) bool {
 			ev := &evs[i]
 			switch ev.kind {
 			case evDynBind:
-				if !ev.dyn.undef && names[ev.dyn.name] {
+				if ev.dyn.bindsValue() && names[ev.dyn.name] {
 					return true
 				}
 			case evBranch:
@@ -10221,6 +10706,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			forceOrder[seq] = true
 		}
 	}
+	es.excusePrefixRegion(residual, forceOrder)
 	lw.promoted, lw.dead = es.planValueDefLocals(es.units[0], es.frames[0], residualSeqs, forceOrder)
 	lw.bindConsumes = collectRootBindConsumes(es.frames[0], lw.dead)
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
@@ -10373,6 +10859,10 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: collectResidentBindConsumes(rec.frag.events, rec.dead), isFnUnit: true}
+		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
+		// so the OpStackMark lands ahead of the region-starting event (the
+		// walk reads flw.markBefore as it goes).
+		es.planRegionPrefixUnit(flw, rec)
 		seatUnitDeopts(flw, rec, &cf, diverged)
 		es.emitDynParamBinds(flw, rec)
 		// The apply-loop replay's unnamed-param re-pushes seat at UNIT START —
@@ -10413,14 +10903,6 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			}
 			return nil, "fn " + rec.name + ": " + reason, false
 		}
-		// spillSeat may have allocated frame-local temps during lowering; grow
-		// NLocals (and the debug name table) so the VM frame holds them.
-		if flw.numLocals > cf.NLocals {
-			cf.NLocals = flw.numLocals
-			for len(cf.LocalNames) < cf.NLocals {
-				cf.LocalNames = append(cf.LocalNames, "")
-			}
-		}
 		if !diverged {
 			// The __RC unnamed-arg allowance, applied at LOWERING time: a
 			// declared fn's residual bottoms that are (a) within the
@@ -10451,7 +10933,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// A deopt point no event followed (a residual read the tail test
 			// declined) runs before the residual is laid out.
 			flw.emitDeoptsBefore(core.SrcPos{})
-			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.pos); reason != "" {
+			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.rebuildableResidual(), rec.outOpsVals, rec.pos); reason != "" {
 				return nil, reason, false
 			}
 			// A paren-bounded trailing fn-value apply body: outOps were seated as the
@@ -10480,6 +10962,23 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			if rec.dynFrameW > 0 {
 				seatDynFrameWords(&cf, len(cf.Code), rec.dynFrameWords)
 				flw.emit(OpCallDynFrame, rec.dynFrameW, rec.pos)
+			}
+			// spillSeat may have allocated frame-local temps during lowering,
+			// and so may the RESIDUAL seating just above
+			// (seatResidualRebuild): grow NLocals (and the debug name table)
+			// so the VM frame holds them all.
+			//
+			// AFTER the reconciliation, not before it — the same ordering the
+			// program residual's own write-back documents, and for the same
+			// reason. Growing it before the seating left the rebuild's temps
+			// outside the frame, and the VM crashed reading past the end of a
+			// frame it had sized without them ("index out of range" —
+			// measured the moment the body-unit rebuild first fired).
+			if flw.numLocals > cf.NLocals {
+				cf.NLocals = flw.numLocals
+				for len(cf.LocalNames) < cf.NLocals {
+					cf.LocalNames = append(cf.LocalNames, "")
+				}
 			}
 			cf.RetReplay = rec.retReplay
 			stampDeoptRet(&cf, flw.emit(OpRet, 0, rec.pos))

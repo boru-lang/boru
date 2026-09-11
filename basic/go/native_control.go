@@ -1388,12 +1388,16 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		if !args[1].Dynamic && args[1].Parent != nil && args[1].Parent.ConformsTo(TError) {
 			return nil
 		}
-		if es := r.Check.Recorder(); es.Active() {
-			es.MarkUncompilable(
-				"error: handler nets no value — the single-output island model " +
-					"would leave the stack one short")
-		}
-		return wide
+		// The arity is variable, not unknown: ZERO on the caught path, ONE
+		// on the pass-through. A fixed seat cannot carry both — which is
+		// what the refusal here said — but a runtime-variadic REGION can,
+		// and it is the same device await's winner-takes-all residual and a
+		// value-producing loop already ride (the forty-eighth increment).
+		// One recorded slot stands for the whole run, callVariadicRegion
+		// marks the dispatch, and the residual absorbs whatever the run
+		// delivers. A consumer that needs a fixed count still refuses, at
+		// its own gate, over a region the recorder can name.
+		return []Value{NewVariadicCarrier(NewTypeLiteral(TAny))}
 	}
 	if len(stk) != 1 || stk[0].Parent == nil {
 		return wide

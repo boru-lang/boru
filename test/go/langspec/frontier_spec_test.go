@@ -187,8 +187,16 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// es.dynScopeNames and an optional ref no longer escalates a rebind, so
 	// both rows compile and the divergence is pinned where divergences belong,
 	// in varyKnownMiscompiles.)
-	`def p {name:'ada'}  p apply $.name`: {why: "forward-lens no-match takes dispatch recovery (apply is stack-only, NUR098's fix); graduation = trap for a recovered window", failsWith: "unmatched dispatch recovered at apply"},
-	`[10 20 30] apply $.1`:               {why: "forward-lens no-match takes dispatch recovery (apply is stack-only, NUR098's fix); graduation = trap for a recovered window", failsWith: "unmatched dispatch recovered at apply"},
+	// The two forward-lens `apply` rows GRADUATED with the forty-sixth
+	// increment (2026-09-10). Their window holds a REACH, which
+	// TryRecordUnmatchedDispatchTrap declined outright — a deferred
+	// expression expands at dispatch time, so no static trap may be baked
+	// over the unexpanded token. That is an argument against the TRAP and
+	// not against the runtime REMATCH, which reads no static tag at all:
+	// it re-runs the match over the values the interpreter's own dispatch
+	// examines. Routing the deferred window there compiles both rows to a
+	// byte-identical raise; frontier-apply-stackonly.tsv is deleted and the
+	// rows live in lang/spec/apply.tsv §5.
 	// (ADR-016 / NUR077 §5 Hole 1 was ledgered here and has GRADUATED —
 	// `def f ([] => [42])  f/v apply` compiles with parity. The refusal was
 	// an artefact of applying at the handler: that left the check engine's
@@ -274,7 +282,17 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// (0-or-2 values per arm) is variadic without any raise in sight, and a
 	// dirty-stack prefix forces its promotion — the same exact-arity seat
 	// hazard as the fallible regions.
-	`7 def b true  do [1 2 (if b [] [9 9])]`: {why: "PR #280 review: branch-variant multi-out do region promoted under a dirty-stack prefix", failsWith: "variadic result promoted to frame slots"},
+	// The branch-variant do region under a dirty-stack prefix GRADUATED
+	// with the forty-seventh increment (2026-09-10). The PROMOTION was the
+	// problem, not the shape: an out-of-order residual force-promoted the
+	// region's nout seats, and storing nout values for a run of a different
+	// length is unsound — which lowerCall then said, one stage later.
+	// Skipping that promotion leaves the run on the sim as a REGION, and
+	// OpSeatBelowMark lifts the prefix beneath it without naming its
+	// length, so the 2-value and 4-value arms lower identically. The plan's
+	// single-slot gate was the last thing in the way, and it was inherited
+	// from the two producers that happened to exist rather than from
+	// anything the mechanism needs. Rows in lang/spec/control.tsv §2.
 
 	// Chained forward application of Function params (frontier-chained-apply
 	// .tsv) — the compose family, a live MISCOMPILE until 2026-08-02 (the
@@ -311,7 +329,32 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// the occurrence — sound interpreter re-entry, parity held). Graduation
 	// = per-unit exactness for the fold. Same bucket pinned in
 	// varyRefusalLedger ("islanded").
-	`[10 20] each [drop 1 2 3 1 pick]`: {why: "full-stack word in a code body: the fold declines outside the top unit; the island seam owns it", failsWith: "islanded"},
+	// GRADUATED 2026-09-11 (the fifty-second increment). The fold's
+	// exactness condition is per-UNIT, and the "top unit" half of the gate
+	// was inherited from where the machinery was first needed rather than
+	// from the argument: a compiled body unit has its own stack discipline
+	// exactly as the top unit does, and `depth` inside a body counts the
+	// BODY's stack on both lanes (`[10 20] each [1 2 3 depth]` is 4 — the
+	// element is in it, the collection is not). What the argument genuinely
+	// cannot survive is an open FRAGMENT above the unit's root frame, whose
+	// events are not reconciled into any scope's residual yet, so that is
+	// what the gate tests now. NUR131's callable screen is per-ENTRY and
+	// unaffected. The const/local rows live in lang/spec/corpus-core.tsv.
+	//
+	// The EVENT-PRODUCED occurrence GRADUATED 2026-09-11 (the fifty-fourth
+	// increment) and frontier-full-stack.tsv is deleted. Its reason was
+	// never exactness: it was that a body unit had no residual REBUILD, so
+	// folding a permutation there turned a sound island into a refusal —
+	// which the fifty-second increment's first cut did to four variation
+	// seeds, and which is how the line came to be drawn at "no
+	// event-produced entry inside a body unit". reconcileResults takes the
+	// same seatResidualRebuild the program residual has now, under two
+	// screens a fn RET needs and the program residual does not (a
+	// runtime-variable-count event, which no single spill slot stands for;
+	// and the residual shapes whose own post-processing reads the seated
+	// layout). Moving NLocals' write-back AFTER that seating was the other
+	// half — sized before it, the frame did not hold the rebuild's temps and
+	// the VM read past its end. Rows in lang/spec/corpus-core.tsv.
 
 	// Cross-module fn value in a higher-order word's CLOSURE slot
 	// (design/FUNCTION-VALUE-SCOPE.0.md §12.3) — GRADUATED 2026-08-27
@@ -378,7 +421,23 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// below keeps the refusal: a dynamic Error bound has variable arity
 	// (pass-through 1 vs caught 0), the true remaining §8.2(6) target
 	// (the variable-arity island via the mark machinery).
-	`def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3`: {why: "maybe-raising body with a zero-netting handler: the pass-through nets one where the caught path nets zero — no fixed seat", failsWith: "handler nets no value"},
+	// The maybe-raising half stopped REFUSING with the forty-eighth increment
+	// (2026-09-10). "No fixed seat" was the right diagnosis and the wrong
+	// conclusion: a run whose length is a runtime value is a REGION, and the
+	// island's ONE simulated slot already IS that representation —
+	// runFallback appends whatever the re-run produced. errorReturnsFn hands
+	// back the honest 0-or-more spread, RecordFallback marks the event, and
+	// the residual absorbs the run.
+	//
+	// It was NOT a graduation, and the batch gate caught the difference:
+	// "the island's own slot is the region" is literal, so the OpFallback
+	// span is still in the emitted program. The rows were moved to
+	// lang/spec/bytecode-migrated.tsv and moved back; they are family G's
+	// class — a WORKING ISLAND, correct on both lanes, ledgered "islanded"
+	// because the main corpus's island ceiling is 0. Graduation = seating
+	// the region without re-entering the interpreter.
+	`def xs [0] do [1 div (xs 0 getr)] error [drop] end 2 add 3`: {why: "the maybe-raising zero-netting handler compiles as a variadic region, and the region IS the island's slot — the raising input", failsWith: "islanded"},
+	`def xs [1] do [1 div (xs 0 getr)] error [drop] end 2 add 3`: {why: "the same lowering on the input that does not raise: one value, same island", failsWith: "islanded"},
 
 	// NUR038 statement-seal twin-call matrix (frontier-nur038-seal.tsv):
 	// semantically green under the seal + arrival barrier; compile-refused
@@ -424,9 +483,38 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// owns every row. Graduation per shape: resident module binds / type
 	// twins inside compiled units, a closure lowering that admits the
 	// declined do body, and the root cause of the import-and-call pair.
-	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`:                       {why: "twin placement: an import inside a multi-run body is a module bind, not a BindDef the arm-residency bridge installs per element", failsWith: "no stream placement"},
-	`[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]`: {why: "twin placement: a type def inside a multi-run body — the bridge pairs BindDef twins only", failsWith: "no stream placement"},
-	`do [def b true  do [1 2 (if b [] [9 9])]]`:                                             {why: "twin placement: the do body's closure compile declines (Stage-3 residual shape), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
+	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`: {why: "twin placement: an import inside a multi-run body is a module bind, not a BindDef the arm-residency bridge installs per element", failsWith: "no stream placement"},
+	// Shape 2 NARROWED with the fifty-third increment (2026-09-11). The
+	// ELEMENT-INDEPENDENT type def graduated —
+	// `[10 20] each [drop def Tlo (Integer gt 10) def Thi (Integer lt 20)
+	// def tx:(Tlo tand Thi) 15 tx]` is in lang/spec/user-types.tsv — on
+	// three pieces, of which only the first was the plumbing this entry
+	// once named. (a) A type install records no def-site event at all, so
+	// the bridge had nothing to pair; RecordTypeInstall writes one inside
+	// the arm-resident bracket and nowhere else, leaving every other lane's
+	// event stream untouched. (b) Replaying the captured entry per element
+	// — the obvious move, and what a top-level twin does — is WRONG even
+	// for an element-independent expression: one *Type in two def-stack
+	// levels, both Minted, means the first `undef` retires the node out
+	// from under the level below it ("unresolvable type operand Big",
+	// caught by the cross-request parity oracle, not by any same-request
+	// lane). The op re-installs the captured BODY instead, so each element
+	// mints its own node. (c) The expression must be PROVED
+	// element-independent, which is what this row is not: its bound reads
+	// the body's own var param, so each element's node genuinely differs —
+	// 15 fails against the top `ZB` and passes against the one below it.
+	// Graduation = an op that REBUILDS the type per element (re-evaluating
+	// the expression against that element) rather than re-installing one
+	// captured body.
+	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
+	// NARROWED 2026-09-11 (the fifty-fourth increment): the decline is no
+	// longer "a literal under a call result" — a body unit takes the residual
+	// rebuild now. What is left is the COUNT: `if b [] [9 9]` nets 0 or 2, and
+	// a rebuild spills one stack entry per operand, so one slot cannot stand
+	// for a run whose length the compiler does not know. The program residual
+	// absorbs such an event; a fn RET does not. Graduation = a
+	// variadic-capable body-unit seat.
+	`do [def b true  do [1 2 (if b [] [9 9])]]`: {why: "twin placement: the do body's closure compile declines (its residual holds a runtime-variable-count branch result the body unit's seat cannot lay out), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
 	// (The fourth shape — `do [import "boru:sift" (Sift.parse kv/q {} "a: 1")]`
 	// — GRADUATED 2026-09-02 and its entry is deleted. It was the one this
 	// ledger recorded as "measured, not yet root-caused", and the cause was
@@ -602,9 +690,20 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// The curried-chain row graduated with the thirty-sixth increment: the
 	// claim carries the RESULT's shape (each curry level returns a unary
 	// level), so the read's result is a shaped Function carrier and the
-	// chain compiles level by level. Only the two strict-check rows remain.
-	`import "boru:fn-util"  FnUtil.flip 5`:  {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
-	`import "boru:fn-util"  FnUtil.curry 5`: {why: "strict-lane check: the FnUtil result is def-bound to a computed fn and unresolved (the frontier-hof-audit def-bound family; graduation = the def-bound computed-fn model)", failsWith: "check diagnostics"},
+	// chain compiles level by level.
+	//
+	// The last two — the strict-check rows `FnUtil.flip 5` / `FnUtil.curry 5`
+	// — GRADUATED 2026-09-10 (the forty-ninth increment), and NOT by making
+	// the check admit the dispatch: the dispatch really did fail, and the
+	// error IS the program's specified result. execFnDefLiteral's
+	// uncalled_function arm refused the whole program on the grounds that
+	// "there is no call here to compile" — true, and beside the point, since
+	// what a RuntimeMirror needs is something that RAISES IDENTICALLY, not a
+	// call. A DEFINITE failure on the uncaught top line (every operand a
+	// plain concrete const the runtime match examines unchanged) now bakes
+	// the interpreter's own error into a terminal OpTrap and the diagnostic
+	// becomes a mirror. The rows live in lang/spec/module-fn.tsv; this
+	// frontier file carries no compile-ledger rows any more.
 
 	// ───────────────────────────────────────────────────────────────────
 	// frontier-while.tsv — the `while` word (closed audit §5.9's gap,
@@ -618,9 +717,27 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// interpreter's first round provably nets nothing and raises — the
 	// compiled program raises the byte-identical error through a terminal
 	// trap (RecordTrap, top level only) instead of refusing. It lives in
-	// lang/spec/control.tsv §7. The one row that remains refuses soundly,
-	// under a gate that is not the loop's.
-	`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-seventh increment): the while itself lowers; the body's `if ((c get 'n') eq 2) [continue]` is a computed-condition no-else if whose one arm diverges, which the branch recorder refuses under `for` too (`if (n eq 2) [continue]` over a plain read compiles). Graduation = the diverging arm of a computed-condition no-else if", failsWith: "computed-branch non-eager arm diverges"},
+	// lang/spec/control.tsv §7.
+	//
+	// The LAST row graduated with the fifty-first increment (2026-09-10),
+	// and frontier-while.tsv is deleted. Its refusal was never the loop's —
+	// the earlier note had that much right — and it was not one gate but
+	// two, both in the COMPUTED-ARM lowering of the body's
+	// `if ((c get 'n') eq 2) [continue]`:
+	//
+	//   - the gate said "non-eager arm diverges" and tested hasOut, which a
+	//     DIVERGING arm and a merely 0-NETTING one both fail. Only the
+	//     second is a problem: a 0-netting arm reaches the merge having
+	//     produced nothing, while a diverging one leaves the construct and
+	//     never reaches it, so every path that ARRIVES carries the eager
+	//     value and the single merge slot is exact;
+	//   - and the layout gate assumed the eager arm is on TOP, which holds
+	//     for the WRITTEN spelling `if c [t] (expr)` (the arm is evaluated
+	//     last) and not for an arm filled from the VALUE STACK, which was
+	//     there before the `if` was reached and so sits UNDER its own
+	//     condition. No swap is owed in that layout.
+	//
+	// The row lives in lang/spec/control.tsv §7. Family H is CLOSED.
 }
 
 type frontierEntryLS struct {
