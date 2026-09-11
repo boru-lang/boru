@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
 | [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
 | [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, by design — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
 | [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three refuse and fall back now; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
@@ -289,6 +290,49 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR136 — the frame was sized before the seating that allocates into it {#nur136}
+
+**Status:** Resolved (2026-09-11, the fifty-fourth increment). **Found:** the
+first time a body unit's residual rebuild fired.
+
+**Rule:** one invariant, one place. A unit's local count must cover every
+local its own code stores to, and the two units — the program and a fn body —
+should establish that the same way.
+
+**Divergence.** They did not. The program's write-back sits after the residual
+reconciliation and says so in a comment that names the bug it was moved for:
+
+```go
+// AFTER the residual reconciliation, not before it: the residual's own
+// seating allocates spill temps too (seatResidualRebuild), and a count
+// written back before it left those locals outside the frame …
+es.units[0].numLocals = lw.numLocals
+```
+
+The fn unit's grew `cf.NLocals` from `flw.numLocals` **before**
+`reconcileResults`. Nothing allocated during a fn unit's seating, so the
+ordering was inert — until the body-unit rebuild landed, and then:
+
+```
+[10 20] each [drop (1 add 2) (3 add 4) 1 pick]
+  internal bytecode VM error: runtime error: index out of range [2] with length 2
+```
+
+**Why it is a non-uniformity and not just a bug.** The correct ordering had
+already been derived once, for the other unit, and written down beside the
+code. The fn unit's copy of the same step did not get it, and nothing tied
+the two together — so the second unit was free to be wrong for as long as no
+caller exercised it. That is the shape this register exists to make visible.
+
+**Fixed** by moving the fn unit's write-back to sit immediately before its
+RET, with the program's comment mirrored. The fence is deliberately not a
+witness pin: `TestBodyResidualRebuildSizesTheFrame` walks every unit's
+`STORE_LOCAL`/`PUSH_LOCAL` argument against that unit's own `NLocals`, so a
+third seating that allocates late fails on its own program rather than on
+this one.
 
 ---
 

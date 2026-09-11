@@ -2494,14 +2494,58 @@ func sameEventRunToEnd(ops []EmitOperand, idx int) bool {
 // This is the fn-unit caller of the shared seatResults primitive — it rejects a
 // variadic loop result (a fn body may not return one in Stage 3), the one way it
 // differs from Finalize's program-residual reconciliation.
-func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, variadicMid bool, pos core.SrcPos) string {
+//
+// On a decline it takes the same REBUILD fallback the program residual has
+// (seatResidualRebuild): seatResults emits nothing when it refuses, so the
+// rebuild starts from the stack it saw. Not having it here was the whole of
+// several refusals — `do [def b true  do [1 (if b [] [9 9])]]` refuses "fn
+// do$body: result above a literal (Stage 3)", and adding one more literal
+// makes the do-body closure decline instead, which loses the outer body's
+// def twin and refuses at the placement gate. The two screens the caller
+// supplies are what makes a body unit different from the program residual:
+//
+//   - vals is the residual's VALUES for the CALLABLE screen, which a rebuild
+//     may never cross (a re-push is a DATA push; the interpreter re-steps an
+//     arriving Function — NUR124, and NUR129's open edge);
+//   - allowRebuild is false for the residual shapes whose own post-processing
+//     reads the seated layout (a body-tail dynamic apply, a whole-frame
+//     replay), and for a residual holding a RUNTIME-VARIABLE-count event,
+//     which no single spill slot can stand for. The program residual absorbs
+//     such an event; a fn RET does not.
+func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, variadicMid, allowRebuild bool, vals []core.Value, pos core.SrcPos) string {
 	extra := who + ": body leaves extra values (Stage 3 lowers in-order results)"
-	return lw.seatResults(ops, !variadicMid, noContract, seatMsgs{
+	reason := lw.seatResults(ops, !variadicMid, noContract, seatMsgs{
 		variadic:     who + ": result is a variadic loop value (Stage 3)",
 		aboveLiteral: who + ": result above a literal (Stage 3)",
 		reordered:    extra,
 		unconsumed:   extra,
 	}, pos)
+	if reason == "" {
+		return ""
+	}
+	if allowRebuild && !regionValsMayBeCallable(vals) &&
+		!lw.opsHaveVariadicResult(ops) && lw.seatResidualRebuild(ops, pos) {
+		return ""
+	}
+	return reason
+}
+
+// opsHaveVariadicResult reports whether any operand names an event whose
+// RESULT COUNT is runtime-variable (eventFlags.variadicResult — a loop, or a
+// branch whose arms leave different counts). lw.variadic covers the loop
+// seqs the lowering itself marked; this is the recorder's own structural
+// mark, and it is the one a fn-unit rebuild must ask: spilling such a run to
+// one frame local stores one value for a run of a different length.
+func (lw *lowerer) opsHaveVariadicResult(ops []EmitOperand) bool {
+	if lw.es == nil {
+		return false
+	}
+	for _, op := range ops {
+		if op.kind == opEvent && lw.es.eventInfo[op.idx].variadicResult {
+			return true
+		}
+	}
+	return false
 }
 
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {

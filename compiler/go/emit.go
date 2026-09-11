@@ -2741,6 +2741,21 @@ func embedsEnclosingCompound(v core.Value, enclosing map[string]bool) bool {
 //     seat a single per-call construction in a fresh frame local
 //     (OpPushConstFreshLocal) — every marked shape now lowers; the pass
 //     cannot refuse.
+//
+// rebuildableResidual reports whether this unit's residual may take the
+// REBUILD seating (reconcileResults' fallback). A body-tail dynamic apply and
+// a whole-frame replay both read the SEATED LAYOUT after the reconciliation —
+// OpCallDynTrailTop consumes the top N, OpCallDynFrame replays the top
+// dynFrameW — and a RET-replay discipline describes the layout too, so none
+// of the three may have it rearranged underneath them.
+//
+// It is a method rather than three conjuncts at the call site because
+// Finalize sits on the gocyclo ceiling: the same reason seatProgramResidual
+// is its own function.
+func (rec *fnUnitRec) rebuildableResidual() bool {
+	return rec.dynTrailArity == 0 && rec.dynFrameW == 0 && !rec.retReplay
+}
+
 func freshenFnUnitConsts(cf *CompiledFn, es *EmitState, rec *fnUnitRec, p *Program) {
 	if len(es.freshenConst) == 0 {
 		return
@@ -6264,28 +6279,22 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
 			}
-			// Inside a BODY UNIT the fold is admitted only over entries that
-			// need no residual REBUILD, and an event-produced entry is
-			// exactly the one that might.
+			// An EVENT-produced entry is the one a fold can permute into a
+			// shape the residual seating cannot lay out in place — a result
+			// that ends up above a literal. That is why the fifty-second
+			// increment admitted the fold in a body unit only over consts
+			// and locals: the top unit had seatResidualRebuild and a body
+			// unit had nothing, so folding a permutation there turned a
+			// sound ISLAND into a REFUSAL, measured on that increment's
+			// first cut (`(1 add 2) (3 add 4) 1 pick` in a fn / do / each /
+			// module body, all four refused).
 			//
-			// The top unit can take a permuted residual: seatResidualRebuild
-			// (the forty-third increment) spills every simulated entry to a
-			// frame local and re-pushes it in the recorded order. A body
-			// unit has no such rebuild — its residual seating refuses a
-			// result that ends up above a literal — so folding a permutation
-			// there turns a sound ISLAND into a REFUSAL, which is backwards.
-			// Measured: `(1 add 2) (3 add 4) 1 pick` islands in a fn / do /
-			// each / module body and compiles at the top level, and an
-			// unscreened per-unit fold refused all four
-			// (TestVariationDifferential, the fifty-second increment).
-			//
-			// A const or local entry cannot be permuted into that shape: the
-			// fold's output is re-pushable from the same operand homes in any
-			// order. That is the whole of what a body unit can support today,
-			// and it is what the graduated row needs.
-			if unit > 0 {
-				return nil, false
-			}
+			// reconcileResults takes the same rebuild now (the fifty-third
+			// increment's sibling), so the permutation a body-unit fold
+			// produces has somewhere to land and the entry needs no screen
+			// of its own. What the fold still refuses on its own account is
+			// a CALLABLE, below — a wider question than seating, and one the
+			// rebuild's own screen asks again.
 			continue
 		}
 		if _, ok := es.units[unit].localByID[v.ID]; ok {
@@ -10797,14 +10806,6 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			}
 			return nil, "fn " + rec.name + ": " + reason, false
 		}
-		// spillSeat may have allocated frame-local temps during lowering; grow
-		// NLocals (and the debug name table) so the VM frame holds them.
-		if flw.numLocals > cf.NLocals {
-			cf.NLocals = flw.numLocals
-			for len(cf.LocalNames) < cf.NLocals {
-				cf.LocalNames = append(cf.LocalNames, "")
-			}
-		}
 		if !diverged {
 			// The __RC unnamed-arg allowance, applied at LOWERING time: a
 			// declared fn's residual bottoms that are (a) within the
@@ -10835,7 +10836,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// A deopt point no event followed (a residual read the tail test
 			// declined) runs before the residual is laid out.
 			flw.emitDeoptsBefore(core.SrcPos{})
-			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.pos); reason != "" {
+			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.rebuildableResidual(), rec.outOpsVals, rec.pos); reason != "" {
 				return nil, reason, false
 			}
 			// A paren-bounded trailing fn-value apply body: outOps were seated as the
@@ -10864,6 +10865,23 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			if rec.dynFrameW > 0 {
 				seatDynFrameWords(&cf, len(cf.Code), rec.dynFrameWords)
 				flw.emit(OpCallDynFrame, rec.dynFrameW, rec.pos)
+			}
+			// spillSeat may have allocated frame-local temps during lowering,
+			// and so may the RESIDUAL seating just above
+			// (seatResidualRebuild): grow NLocals (and the debug name table)
+			// so the VM frame holds them all.
+			//
+			// AFTER the reconciliation, not before it — the same ordering the
+			// program residual's own write-back documents, and for the same
+			// reason. Growing it before the seating left the rebuild's temps
+			// outside the frame, and the VM crashed reading past the end of a
+			// frame it had sized without them ("index out of range" —
+			// measured the moment the body-unit rebuild first fired).
+			if flw.numLocals > cf.NLocals {
+				cf.NLocals = flw.numLocals
+				for len(cf.LocalNames) < cf.NLocals {
+					cf.LocalNames = append(cf.LocalNames, "")
+				}
 			}
 			cf.RetReplay = rec.retReplay
 			stampDeoptRet(&cf, flw.emit(OpRet, 0, rec.pos))

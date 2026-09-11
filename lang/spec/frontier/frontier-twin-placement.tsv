@@ -15,15 +15,21 @@
 #      ELEMENT-DEPENDENT — the bridge carries the element-independent
 #      case now (shape 2 below), and this is what it cannot: each element
 #      mints a different node, so no one captured entry stands for them;
-#   3. a `do` body whose CLOSURE compile declines (a Stage-3 residual
-#      shape: literals under a branch result), so the once-run body's
+#   3. a `do` body whose CLOSURE compile declines, so the once-run body's
 #      twins are never adopted — `do [def b true (if b [] [9 9])]` and
-#      `do [def b true 1 2 b]` compile, this one does not;
+#      `do [def b true 1 2 b]` compile, this one does not. NARROWED
+#      2026-09-11 (the fifty-fourth increment): a body unit takes the
+#      residual REBUILD now, so a literal under an ordinary call result is
+#      no longer the obstacle. What remains is that the branch result here
+#      is RUNTIME-VARIABLE in count (`if b [] [9 9]` nets 0 or 2), and the
+#      rebuild spills one stack entry per operand — one slot cannot stand
+#      for a run of a length the compiler does not know. The program
+#      residual absorbs such an event; a fn RET does not.
 #
 # Graduation = resident module binds inside compiled units (1), an op that
 # REBUILDS the type per element rather than re-installing one captured body
-# (2), and a closure lowering that admits the declined body (3); each row
-# then moves to the main corpus.
+# (2), and a variadic-capable body-unit seat (3); each row then moves to the
+# main corpus.
 #
 # SHAPE 2 NARROWED 2026-09-11 (the fifty-third increment). It read "the
 # bridge pairs BindDef twins only (a type twin declines the whole bridge)",

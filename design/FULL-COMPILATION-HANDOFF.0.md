@@ -6338,6 +6338,56 @@ Do not look for provenance ON the folded Boolean: it is `Pos=0:0` with no
 and a fold over a bound param. The analysis CONTEXT is the only signal there
 is.
 
+## A body unit gets the residual rebuild, and the gate that was waiting on it (2026-09-11, the fifty-fourth increment)
+
+Two increments earlier, the per-unit fold was admitted inside a body only
+over consts and locals, and the ledger said exactly why: *"a body unit has no
+residual REBUILD … folding a permutation there turns a sound island into a
+REFUSAL"*. That sentence was the whole specification for this increment.
+
+**The change is two lines of policy and one of ordering.** `reconcileResults`
+— the fn-unit caller of `seatResults` — takes the same `seatResidualRebuild`
+fallback `seatProgramResidual` has had since the forty-third increment, and
+`FoldFullStack` drops its `unit > 0` screen. Neither is useful without the
+other: the rebuild alone is dead code, because nothing in a body unit
+produced a permuted residual to seat.
+
+**Two screens a fn RET needs that the program residual does not**, and they
+are the reason this is not simply "call the same function":
+
+- a RUNTIME-VARIABLE-count event (`eventFlags.variadicResult` — a loop, or a
+  branch whose arms leave different counts). The rebuild spills one stack
+  entry per operand, so one slot cannot stand for a run of a length the
+  compiler does not know. The program residual ABSORBS such an event; a RET
+  does not. This is what still refuses `do [def b true do [1 2 (if b []
+  [9 9])]]`, and the twin-placement ledger's shape 3 is re-worded to say so:
+  its graduation is a variadic-capable body-unit seat, not this.
+- the residual shapes whose own post-processing reads the SEATED LAYOUT — a
+  body-tail dynamic apply (`OpCallDynTrailTop` consumes the top N), a
+  whole-frame replay (`OpCallDynFrame`), a RET-replay discipline. None may
+  have the layout rearranged underneath it.
+
+The CALLABLE screen carries over unchanged (`regionValsMayBeCallable` over
+`rec.outOpsVals`, which is recorded for every unit including closures).
+
+**The ordering bug this surfaced, which is the part worth reading.** The
+first time the rebuild fired, the VM crashed: `index out of range [2] with
+length 2`. A fn unit grew `cf.NLocals` from `flw.numLocals` BEFORE
+`reconcileResults`, so the rebuild's spill temps were outside the frame. The
+program's own write-back sits AFTER its reconciliation and carries a comment
+naming the identical bug it was moved for — the correct ordering had been
+derived once already, for the other unit, and the fn unit's copy of the step
+did not get it. Recorded as NUR136, and fenced by walking EVERY unit's
+`STORE_LOCAL`/`PUSH_LOCAL` against that unit's own `NLocals` rather than
+pinning the one witness.
+
+**What graduated.** `frontier-full-stack.tsv` is deleted — its last row and
+two siblings are in `lang/spec/corpus-core.tsv`. The variation ledger's
+`islanded` bucket is gone (the sweep reports **islanded=0** with no ledgered
+bucket for it at all), four `result above a literal (Stage 3)` buckets
+vanished with it, and the census moved pass 376 → 381, refused 62 → 57, twin
+regime 10 → 9.
+
 ## The TYPE half of the arm-residency bridge: three problems, and only the first was plumbing (2026-09-11, the fifty-third increment)
 
 The twin-placement cluster's shape 2 — `[10 20] each [drop def A (Integer gt

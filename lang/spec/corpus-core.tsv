@@ -165,3 +165,12 @@ xor true false	true	xor
 # fact the per-unit model rests on.
 [10 20] each [drop 1 2 3 1 pick]	[2 2]	a full-stack word inside a code body folds in that body's own unit
 [10 20] each [1 2 3 depth]	[4 4]	depth inside a body counts the BODY's stack — the element is in it
+#
+# …and over EVENT-PRODUCED entries (the fifty-fourth increment): the half the
+# per-unit fold had to leave islanded, because folding a PERMUTATION inside a
+# body needs somewhere for the permuted residual to land and a body unit had
+# no rebuild. reconcileResults takes the same seatResidualRebuild the program
+# residual has now, so the fold is unrestricted per unit.
+[10 20] each [drop (1 add 2) (3 add 4) 1 pick]	[3 3]	a full-stack word over EVENT-produced entries folds in the body's own unit
+[10 20] each [drop (1 add 2) (3 add 4) 1 roll]	[3 3]	…and the permuting roll with it, through the body unit's residual rebuild
+do [(1 add 2) (3 add 4) 1 roll]	7 3	a do body's permuted residual rebuilds exactly as the program's does

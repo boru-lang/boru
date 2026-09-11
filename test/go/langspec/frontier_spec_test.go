@@ -341,15 +341,20 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// what the gate tests now. NUR131's callable screen is per-ENTRY and
 	// unaffected. The const/local rows live in lang/spec/corpus-core.tsv.
 	//
-	// The EVENT-PRODUCED occurrence stays, and its reason is a different one
-	// — not exactness but the absence of a residual REBUILD in a body unit.
-	// The top unit can take a permuted residual (seatResidualRebuild, the
-	// forty-third increment); a body unit's seating refuses a result above a
-	// literal, so folding a permutation there turns a sound island into a
-	// refusal. The first cut of this increment did exactly that to four
-	// variation seeds, which is how the line below came to be drawn at
-	// "no event-produced entry inside a body unit".
-	`[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`: {why: "full-stack word over EVENT-produced entries in a code body: the body unit has no residual rebuild, so the fold declines and the island seam owns it", failsWith: "islanded"},
+	// The EVENT-PRODUCED occurrence GRADUATED 2026-09-11 (the fifty-fourth
+	// increment) and frontier-full-stack.tsv is deleted. Its reason was
+	// never exactness: it was that a body unit had no residual REBUILD, so
+	// folding a permutation there turned a sound island into a refusal —
+	// which the fifty-second increment's first cut did to four variation
+	// seeds, and which is how the line came to be drawn at "no
+	// event-produced entry inside a body unit". reconcileResults takes the
+	// same seatResidualRebuild the program residual has now, under two
+	// screens a fn RET needs and the program residual does not (a
+	// runtime-variable-count event, which no single spill slot stands for;
+	// and the residual shapes whose own post-processing reads the seated
+	// layout). Moving NLocals' write-back AFTER that seating was the other
+	// half — sized before it, the frame did not hold the rebuild's temps and
+	// the VM read past its end. Rows in lang/spec/corpus-core.tsv.
 
 	// Cross-module fn value in a higher-order word's CLOSURE slot
 	// (design/FUNCTION-VALUE-SCOPE.0.md §12.3) — GRADUATED 2026-08-27
@@ -502,7 +507,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// the expression against that element) rather than re-installing one
 	// captured body.
 	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
-	`do [def b true  do [1 2 (if b [] [9 9])]]`:          {why: "twin placement: the do body's closure compile declines (Stage-3 residual shape), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
+	// NARROWED 2026-09-11 (the fifty-fourth increment): the decline is no
+	// longer "a literal under a call result" — a body unit takes the residual
+	// rebuild now. What is left is the COUNT: `if b [] [9 9]` nets 0 or 2, and
+	// a rebuild spills one stack entry per operand, so one slot cannot stand
+	// for a run whose length the compiler does not know. The program residual
+	// absorbs such an event; a fn RET does not. Graduation = a
+	// variadic-capable body-unit seat.
+	`do [def b true  do [1 2 (if b [] [9 9])]]`: {why: "twin placement: the do body's closure compile declines (its residual holds a runtime-variable-count branch result the body unit's seat cannot lay out), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
 	// (The fourth shape — `do [import "boru:sift" (Sift.parse kv/q {} "a: 1")]`
 	// — GRADUATED 2026-09-02 and its entry is deleted. It was the one this
 	// ledger recorded as "measured, not yet root-caused", and the cause was
