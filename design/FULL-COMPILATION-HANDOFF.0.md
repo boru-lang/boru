@@ -6771,6 +6771,27 @@ position than the construct that produced the binding.
   `lang/go` suite was still running.
 - **Run `make -C kg graph` after editing any tracked design doc.** Two CI
   failures came from forgetting.
+- **"CI is green" does NOT mean the merged coverage gate passed.** `ci.yml`
+  runs `make test` and `make cover-gate-core`; the repo-wide `make
+  cover-gate` lives in its OWN workflow (`cover-gate.yml`) on a nightly
+  schedule plus `workflow_dispatch` — deliberately, because re-profiling 13
+  modules would double every PR's CI time. So a PR's two green checks say
+  nothing about the ADR-008 floor.
+
+  This cost something real on 2026-09-11: the local `cover-gate` for the
+  NUR137 fix was killed mid-run on the reasoning "CI validated exactly this
+  content", and #448 was merged with the merged gate unverified on its final
+  commit. That reasoning was simply wrong about what CI covers. The
+  workflow's own header had already recorded the same class of miss twice —
+  *"a 100% floor nothing checks is a 100% floor nobody keeps"* — which is
+  the second time on this line that the answer was written down in the file
+  I was about to act against.
+
+  The rule: before merging, either let the local `make cover-gate` finish,
+  or dispatch `cover-gate.yml` on the branch (`gh workflow run` /
+  `actions_run_trigger`, which is what `workflow_dispatch` is there for) and
+  wait for it. Killing a local coverage run is only free when something else
+  is actually going to run that gate.
 - **Never run a second coverage job alongside `make cover-gate`.** Doing so
   starved `TestServeStepShutdownDrains` (a 10s wall-clock bound on a
   signal-driven shutdown) and cost a full re-run to disprove. The clean
