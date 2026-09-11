@@ -1,6 +1,7 @@
 package eng
 
 import (
+	"strings"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -68,5 +69,38 @@ func TestVMBindResidentTypeArm(t *testing.T) {
 	rest, ok := r.Defs.TopEntry("Tq")
 	if !ok || rest.TypeDef == nil || r.Types.LookupByID(rest.TypeDef.ID) == nil {
 		t.Fatalf("after one undef the remaining Tq node is unresolvable (%+v) — the arm shared one node", rest)
+	}
+}
+
+// The TYPE arm RAISES when the installer refuses, rather than installing
+// nothing and running on. The check pass ran the same body under the same
+// name, so a refusal here means a malformed program — driven directly with
+// a body whose lattice node is gone, the one refusal a Program can be built
+// to carry.
+func TestVMBindResidentTypeArmInstallerRefusal(t *testing.T) {
+	r, err := core.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	r.InitRootContext()
+
+	prefab := r.Types.MintRefinePrefab(core.TInteger)
+	body := core.NewTypeLiteral(prefab)
+	r.Types.Retire(prefab) // the node the installer would rename is no longer there
+
+	pos := core.SrcPos{Row: 1, Col: 1}
+	p := &compiler.Program{
+		Code:            []compiler.Instr{{Op: compiler.OpBindResident, Arg: 0}},
+		Debug:           []core.SrcPos{pos},
+		BindTwins:       []core.BindTransition{{Kind: core.BindTypeInstall, Name: "Tlost", Pos: pos}},
+		BindTwinEntries: []core.DefEntry{{Body: body}},
+		ResidentBinds:   []compiler.ResidentBindSpec{{Name: "Tlost", Twin: 0, TypeInstall: true}},
+	}
+	out, err := RunProgram(p, r)
+	if err == nil {
+		t.Fatalf("a refused type install must raise, got out=%v", out)
+	}
+	if !strings.Contains(err.Error(), "BIND_RESIDENT type install") {
+		t.Fatalf("error = %v, want the type-install arm's own wording", err)
 	}
 }
