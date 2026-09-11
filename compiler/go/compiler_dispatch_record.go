@@ -733,27 +733,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// of the call's inputs keeps its ID (a pass-through resolves to its
 	// operand). The outs slice is the dispatch's live result values, so the
 	// fresh IDs flow to the downstream consumers exactly as in RecordCall.
-	argIDs := make(map[string]bool, len(args))
-	for _, a := range args {
-		argIDs[a.ID] = true
-	}
-	seen := make(map[string]bool, len(outs))
-	for i := range outs {
-		_, prior := es.producedBy[outs[i].ID]
-		// An IDENTITY-LESS registry-instance out (a module-export instance
-		// minted outside any check pass — `do [M 3]`, §9.1) gets a fresh ID
-		// too: without one the engine's tape tracking cannot place it (the
-		// region inverted around it) and producedBy cannot link it to this
-		// event. NARROW to ExtensionPayload instances — scalar outs elided
-		// by the mode-gated ID discipline must STAY elided (a blanket mint
-		// miscompiled the each-body value-def promotion).
-		_, isExt := outs[i].Data.(core.ExtensionPayload)
-		if (outs[i].ID == "" && isExt) || ((prior || seen[outs[i].ID]) && !argIDs[outs[i].ID]) {
-			outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
-		}
-		seen[outs[i].ID] = true
-		es.setProducedAt(outs[i], seq, i)
-	}
+	es.produceRunOuts(args, outs, seq)
 	// Arm the program-wide environment mirror (see the EmitState.dynEnv doc) —
 	// but ONLY for a body whose handler RE-RUNS a code body at run time
 	// (resolving names against r.Defs / reading r.Args). A value-eval `do {map}`
@@ -987,4 +967,50 @@ func smallerArityOverload(r *core.Registry, word string, n int) bool {
 		}
 	}
 	return false
+}
+
+// produceRunOuts registers a RUN dispatch's results — an event whose N outs
+// are N distinct runtime stack values — under this event's seq, minting a
+// fresh ID for any out whose identity would collapse the registration.
+//
+// Carrier-identity de-collision, extended to INTRA-event repeats: the modeled
+// outs of such a sub-run may repeat one value — an unrolled loop body (`do
+// [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID would
+// collapse producedBy to the LAST result index and refuse "call results
+// reordered" at the residual. Unlike the generic RecordCall (which skips
+// same-event collisions — dup/swap identity is the DUP lowering's job), the
+// results here are N distinct runtime stack values, so every repeated out
+// mints a fresh ID; an out that IS one of the call's inputs keeps its ID (a
+// pass-through resolves to its operand). The outs slice is the dispatch's
+// live result values, so the fresh IDs flow to the downstream consumers
+// exactly as in RecordCall.
+//
+// Two dispatches record a run: the dyn-body backstop (below) and — since the
+// fifty-seventh increment — a whole-residual CLOSURE call whose unit leaves a
+// count-agnostic region (RecordClosureCall). `do [7 for 3 [1]]` is the row
+// that proves they need the same treatment: it compiled only while the
+// backstop owned it, and refused "call results reordered" the moment the
+// closure path claimed it with the plain registration.
+func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
+	argIDs := make(map[string]bool, len(args))
+	for _, a := range args {
+		argIDs[a.ID] = true
+	}
+	seen := make(map[string]bool, len(outs))
+	for i := range outs {
+		_, prior := es.producedBy[outs[i].ID]
+		// An IDENTITY-LESS registry-instance out (a module-export instance
+		// minted outside any check pass — `do [M 3]`, §9.1) gets a fresh ID
+		// too: without one the engine's tape tracking cannot place it (the
+		// region inverted around it) and producedBy cannot link it to this
+		// event. NARROW to ExtensionPayload instances — scalar outs elided
+		// by the mode-gated ID discipline must STAY elided (a blanket mint
+		// miscompiled the each-body value-def promotion).
+		_, isExt := outs[i].Data.(core.ExtensionPayload)
+		if (outs[i].ID == "" && isExt) || ((prior || seen[outs[i].ID]) && !argIDs[outs[i].ID]) {
+			outs[i].ID = core.GenerateID(core.IDPrefixForType(outs[i].Parent))
+		}
+		seen[outs[i].ID] = true
+		es.setProducedAt(outs[i], seq, i)
+	}
 }

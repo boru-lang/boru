@@ -9038,11 +9038,18 @@ func (es *EmitState) RecordSpliceDyn(payload core.Value, pos core.SrcPos) bool {
 // to its own closure unit by recordClosureDispatch), which rides its prepared
 // opClosure operand. Returns false, leaving es UNTOUCHED, when an operand is
 // dynamic or of unknown provenance — the caller then keeps the island path.
-func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []core.Value, bodyPos, unit int, capOps []EmitOperand, extraOps map[int]EmitOperand, outs []core.Value, retSpec *ClosureRetSpec, pos core.SrcPos) bool {
+// regionResidual is recordClosureDispatch's verdict that the unit's residual
+// is count-agnostic (closureResidualRegion): the recorded nout seats stand
+// for a run whose runtime length is its own, so the event is marked VARIADIC
+// and the program residual absorbs it.
+func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []core.Value, bodyPos, unit int, capOps []EmitOperand, extraOps map[int]EmitOperand, outs []core.Value, retSpec *ClosureRetSpec, regionResidual bool, pos core.SrcPos) bool {
 	// A whole-residual word (CallableSpec.BodyOutResidual — `do`) may seat
-	// N > 1 results: recordClosureDispatch has already asserted the unit's
-	// compiled residual count equals len(outs), and the multi-result seating
-	// below mirrors the generic RecordCall tail. Other callers stay 0/1-out.
+	// N > 1 results: recordClosureDispatch has already asserted EITHER that
+	// the unit's compiled residual count equals len(outs)
+	// (closureResidualExact) or that its residual is a count-agnostic region
+	// (closureResidualRegion, which sets regionResidual), and the
+	// multi-result seating below mirrors the generic RecordCall tail. Other
+	// callers stay 0/1-out.
 	if !es.Active() || sig == nil ||
 		(len(outs) > 1 && (sig.Callable == nil || sig.Callable.BodyOut != core.BodyOutResidual)) {
 		return false
@@ -9077,7 +9084,12 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// runtime count is N on no-raise but 1 on the caught path, so the
 	// result region is VARIADIC — the residual absorbs it; a fixed-arity
 	// consumer keeps the refusal (plan Phase 5, L-DO).
-	if es.catchVariadicFor(sig) {
+	//
+	// A count-agnostic REGION residual (the fifty-seventh increment) is the
+	// same mark for the same reason: the body's own residual holds a run
+	// whose runtime length is not the check run's, so nout is a seat count
+	// and not a value count.
+	if es.catchVariadicFor(sig) || regionResidual {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		es.eventInfo[seq] = f
@@ -9099,6 +9111,15 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 				break
 			}
 		}
+	}
+	if regionResidual {
+		// A count-agnostic region residual makes this dispatch a RUN: its
+		// outs are N distinct runtime stack values, so a repeated modeled
+		// value (an unrolled loop body — `do [7 for 3 [1]]`) must not
+		// collapse producedBy to its last index. Same registration the
+		// dyn-body backstop uses, and for the same reason.
+		es.produceRunOuts(args, outs, seq)
+		return true
 	}
 	for i := range outs {
 		es.setProducedAt(outs[i], seq, i)
@@ -9875,7 +9896,46 @@ func regionReadsTheStack(ev *EmitEvent) bool {
 		return true
 	}
 	for _, op := range ops {
-		if op.kind == opEvent || op.kind == opClosure {
+		if operandReadsTheStack(op) {
+			return true
+		}
+	}
+	return false
+}
+
+// operandReadsTheStack reports whether ONE operand of a region-producing
+// event takes its value from the ENCLOSING stack — the stack a mark plan's
+// OpStackMark has already indexed, and which the event must therefore not
+// pop from.
+//
+// An EVENT operand does: its producer ran earlier, so the value sits BELOW
+// the mark and the call pops it from there. Both NUR133 witnesses are that.
+//
+// A CLOSURE operand does NOT, and that correction is the fifty-seventh
+// increment's. OpPushClosure pushes the closure's captures and then the
+// closure itself, all ABOVE the mark, and the call pops exactly what it
+// pushed — net +1 above the mark, nothing read from below it. The captures
+// cannot be stack reads either: planValueDefLocals PROMOTES every captured
+// producer to a frame local (eachClosureCap states the rule — "a closure
+// capture can only reference a frame local or an enclosing operand at run
+// time, never a transient simulated-stack slot"), so each lowers to a local
+// push. The walk below ASKS rather than asserting it, so a capture that is
+// somehow not promoted declines the plan instead of mis-indexing the mark.
+//
+// The blanket `opClosure` arm this replaces cost every CLOSURE-COMPILED body
+// word its region plan, because a body word's own body operand IS an
+// opClosure: `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only
+// while that body took the dyn-body strategy, and refused the moment the
+// body compiled to a unit.
+func operandReadsTheStack(op EmitOperand) bool {
+	if op.kind == opEvent {
+		return true
+	}
+	if op.kind != opClosure {
+		return false
+	}
+	for _, c := range op.closureCaps {
+		if operandReadsTheStack(c) {
 			return true
 		}
 	}
@@ -10890,48 +10950,13 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		regionFloor := len(p.Regions)
 		if reason := flw.lowerEvents(rec.frag.events, rec.frag.startSeq); reason != "" {
 			if rec.stampOnly {
-				p.Regions = p.Regions[:regionFloor]
-				// A stamp-only unit is unreachable from the program's code —
-				// its only consumer is a fn value's compiled ref, which
-				// dropStampRef then clears. Refusing the whole PROGRAM because
-				// an optimisation could not lower is the wrong trade, and it is
-				// the one this arm prevents: two corpus rows went from
-				// compiling to "refused: fn storedfn$body: consumes loop
-				// results" the day stampFnConst was written without it. Emit the
-				// same defensive trap stub the unreachable-unit arm above uses,
-				// so unit indices stay aligned and any future reach fails loudly.
-				ti := len(p.Traps)
-				p.Traps = append(p.Traps, TrapSpec{Code: "internal_error",
-					Detail: "stamp-only fn unit " + rec.name + " entered after its lowering refused", Word: rec.name})
-				p.Fns = append(p.Fns, CompiledFn{Name: rec.name,
-					Code:  []Instr{{Op: OpTrap, Arg: int32(ti)}},
-					Debug: []core.SrcPos{rec.pos}})
-				es.dropStampRef(len(p.Fns) - 1)
+				es.unreachableUnitStub(p, rec, regionFloor)
 				continue
 			}
 			return nil, "fn " + rec.name + ": " + reason, false
 		}
 		if !diverged {
-			// The __RC unnamed-arg allowance, applied at LOWERING time: a
-			// declared fn's residual bottoms that are (a) within the
-			// NUnnamed window and (b) pure PARAM-LOCAL references are the
-			// frame's unconsumed unnamed args — the interpreter's __RC
-			// discards them, and since operands lower lazily they were
-			// never emitted, so dropping them here is the trim with zero
-			// runtime cost (the VM RET's NUnnamed trim remains as the
-			// runtime backstop). Bottoms that are anything else keep the
-			// full residual and let reconcileResults refuse as before.
-			if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
-				if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
-					drop := 0
-					for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
-						drop++
-					}
-					if drop == extra {
-						rec.outOps = rec.outOps[extra:]
-					}
-				}
-			}
+			trimUnconsumedUnnamed(rec)
 			// Reconcile the body's N result operands with the simulated
 			// stack and emit a RET. Event results must already sit on the
 			// stack in order (they were left by their own events); inert
@@ -10942,6 +10967,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// declined) runs before the residual is laid out.
 			flw.emitDeoptsBefore(core.SrcPos{})
 			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.rebuildableResidual(), rec.outOpsVals, rec.pos); reason != "" {
+				if rec.stampOnly {
+					// Same trade as the lowerEvents arm above, at the other
+					// per-unit refusal site: an unreachable unit's RESIDUAL
+					// SEATING refusing says nothing about the program either.
+					// Reached by a whole-residual dispatch that admitted a
+					// region residual on the probe and declined it on the real
+					// unit (recordClosureDispatch) — the unit is compiled by
+					// then, and nothing calls it.
+					es.unreachableUnitStub(p, rec, regionFloor)
+					continue
+				}
 				return nil, reason, false
 			}
 			// A paren-bounded trailing fn-value apply body: outOps were seated as the
@@ -13111,4 +13147,65 @@ func (es *EmitState) parenPlacedMemberFn(v core.Value) bool {
 		return false
 	}
 	return es.reg.Check.ParenPlacedFnIDs[v.ID]
+}
+
+// unreachableUnitStub replaces a unit whose lowering refused with a trap stub,
+// for a unit NOTHING IN THE PROGRAM CALLS — a fn value's stamp (stampFnConst)
+// or a closure dispatch that compiled its unit and then declined
+// (recordClosureDispatch's region re-check). Refusing the whole PROGRAM
+// because an unreachable unit could not lower is the wrong trade, and it is
+// the one this recovery prevents: two corpus rows went from compiling to
+// "refused: fn storedfn$body: consumes loop results" the day stampFnConst was
+// written without it, and `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went
+// the same way the day the region re-check was.
+//
+// The stub is the same defensive trap the unreachable-unit arm uses, so unit
+// indices stay aligned and any future reach fails loudly rather than running
+// a half-lowered body. regionFloor is where this unit's region descriptors
+// start: the stub replaces the whole body, so descriptors lowerCall already
+// appended describe code that no longer exists — unreachable rather than
+// wrong, but the census COUNTS descriptors, and a table carrying entries for
+// discarded code is a table whose count means something else.
+func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor int) {
+	p.Regions = p.Regions[:regionFloor]
+	ti := len(p.Traps)
+	p.Traps = append(p.Traps, TrapSpec{Code: "internal_error",
+		Detail: "stamp-only fn unit " + rec.name + " entered after its lowering refused", Word: rec.name})
+	p.Fns = append(p.Fns, CompiledFn{Name: rec.name,
+		Code:  []Instr{{Op: OpTrap, Arg: int32(ti)}},
+		Debug: []core.SrcPos{rec.pos}})
+	es.dropStampRef(len(p.Fns) - 1)
+}
+
+// trimUnconsumedUnnamed applies the __RC unnamed-arg allowance at LOWERING
+// time: a declared fn's residual bottoms that are (a) within the NUnnamed
+// window and (b) pure PARAM-LOCAL references are the frame's unconsumed
+// unnamed args — the interpreter's __RC discards them, and since operands
+// lower lazily they were never emitted, so dropping them here is the trim
+// with zero runtime cost (the VM RET's NUnnamed trim remains as the runtime
+// backstop). Bottoms that are anything else keep the full residual and let
+// reconcileResults refuse as before.
+//
+// Split out of Finalize rather than written inline for excusePrefixRegion's
+// reason: Finalize sits on the gocyclo ceiling, and this block is nine
+// decision points of a rule that has nothing to do with the rest of the
+// loop.
+// The body is the ORIGINAL nested form, moved verbatim rather than flattened
+// into early returns. Flattening reads better and is the wrong trade here: an
+// unentered `if` is a branch the coverage profile does not count, while the
+// `return` it becomes is a STATEMENT that must be reached — and ADR-008's
+// floor is statements. The De Morgan'd version cost one uncovered statement
+// in compiler/go for a guard no corpus row declines.
+func trimUnconsumedUnnamed(rec *fnUnitRec) {
+	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
+		if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
+			drop := 0
+			for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
+				drop++
+			}
+			if drop == extra {
+				rec.outOps = rec.outOps[extra:]
+			}
+		}
+	}
 }

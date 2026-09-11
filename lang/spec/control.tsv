@@ -22,16 +22,24 @@ def x 5  do [x 1 add 2]	5 3	a multi-value body mixing a binding read and a compu
 do [1 add 2 10 mul 4]	1 48	an out-of-order residual (result above a literal) promotes to frame locals and re-pushes in order
 do [(1 add 2) (3 mul 4)]	3 12	two computed results both remain, in order
 do [10 20 30] add 5	10 20 35	a downstream word consumes the top of the multi-value residual
-def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts differ) compiles via the dyn-body backstop; the runtime residual lands whole
-# The forty-seventh increment's three PREFIX rows (`7 def b true do [1 2 (if
-# b [] [9 9])]` and its two siblings) are deliberately NOT here. They compile
-# and agree, and the row above shows why they cannot join this corpus: the
-# dyn-body backstop that lowers this shape re-enters the interpreter, and the
-# interp-entry census — which counts a CallBoru inside a handler, where the
-# OpFallback island ceiling cannot see one — is a ratchet that may only fall.
-# One such row is already counted; three more would raise it. They are pinned
-# by lang/go/region_prefix_test.go instead (both arms, a two-value prefix, a
-# non-Integer prefix, and the emitted mark/seat stream).
+def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts differ) compiles NATIVELY; the runtime residual lands whole
+# The forty-seventh increment's three PREFIX rows joined this corpus with the
+# FIFTY-SEVENTH, and the note they replace is worth keeping as written: "they
+# compile and agree, and the row above shows why they cannot join this corpus
+# — the dyn-body backstop that lowers this shape re-enters the interpreter,
+# and the interp-entry census is a ratchet that may only fall. One such row is
+# already counted; three more would raise it."
+#
+# That reasoning was right and it expired: the shape no longer takes the
+# backstop. The whole-residual multi-out exactness screen used to refuse a
+# body whose residual holds a runtime-variable region, so the dispatch fell to
+# the dyn-body strategy — which compiles the PROGRAM while the interpreter
+# runs the BODY, the entry the census counts. The screen now admits the two
+# count-agnostic residual shapes and marks the dispatch variadic, so these
+# lower natively and bring the census DOWN rather than up (32 -> 29).
+#
+# They stay pinned by lang/go/region_prefix_test.go as well, for the emitted
+# mark/seat stream these rows cannot show.
 # An INERT PREFIX beneath the same variadic branch region (the fifty-fifth
 # increment). The prefix cannot be pushed after the run — it would land on top
 # of it — and cannot be indexed past it from the top, because the run's length
@@ -40,17 +48,22 @@ def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts d
 # seats its own now, so these lower natively rather than through the dyn-body
 # backstop (which is why they may join this corpus where the three prefix rows
 # noted above may not: no interpreter re-entry to count).
-# Its 2-value-run twin — `do [1 (if false [] [9 9])]`, which answers `1 9 9`
-# on both lanes — is deliberately NOT here, for the reason the three prefix
-# rows above are not: it reaches the dyn-body BACKSTOP (a sub-engine over
-# baked const tokens) rather than this seat, and the interp-entry census is a
-# ratchet that may only fall. Why the 0-value arm records a closure and the
-# 2-value arm does not is a RECORD-stage question this increment did not
-# change and did not answer; it is pinned, with that fact stated, in
-# lang/go/body_residual_rebuild_test.go.
+# Its 2-value-run twin — `do [1 (if false [] [9 9])]`, `1 9 9` on both lanes —
+# was held out for the same expired reason, and the RECORD-stage question the
+# note left open has an answer now. The two arms differ only in what the CHECK
+# RUN leaves: the `true` arm nets 0, so the dispatch records ONE out and the
+# multi-out screen is skipped entirely; the `false` arm nets 2, so it records
+# three and the screen ran. Nothing about the recorded branch differed — the
+# asymmetry was the screen's arity gate, not the recorder's model.
 do [1 (if true [] [9 9])]	1	an inert prefix seats BENEATH a 0-value branch region
 do [def b true  1 (if b [] [9 9])]	1	a body-local read as the condition does not change the seat
 do [def zb true  do [1 (if zb [] [9 9])]]	1	and a NESTED do body plans its own prefix, one unit down
+7 def b true  do [1 2 (if b [] [9 9])]	7 1 2	an inert prefix seats beneath a 2-seat branch region whose taken arm nets 0
+7 def b false  do [1 2 (if b [] [9 9])]	7 1 2 9 9	the same seat when the run is 2 values long
+1 2 def b false  do [1 2 (if b [] [9 9])]	1 2 1 2 9 9	a two-value prefix: the prefix is a run, not a slot
+do [1 (if false [] [9 9])]	1 9 9	the 2-value-run twin of the 0-value seat above
+do [def b true  do [1 2 (if b [] [9 9])]]	1 2	a nested do body whose residual is [inert inert REGION] keeps its def twin placed
+do [def b false  do [1 2 (if b [] [9 9])]]	1 2 9 9	the same, on the input whose region is 2 values long
 do [for 3 [1] 7]	1 1 1 7	a loop inside a do body compiles (the unrolled model's repeated result identities de-collide)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket

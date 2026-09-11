@@ -771,8 +771,19 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// tail, or any count mismatch declines to the refusal path. 0/1-out bodies
 	// keep today's shapes untouched (a diverging body's single Error out, a
 	// dynTrail apply netting one value).
+	//
+	// EXCEPT the two REGION shapes (the fifty-seventh increment): a residual
+	// whose runtime length is not the check run's still compiles when every
+	// value lands in one contiguous run the caller's region model carries.
+	// The dispatch's recorded seats then stand for a run of its own length —
+	// the do-catch model — so the event is marked VARIADIC below and the
+	// program residual absorbs it.
+	regionResidual := false
 	if spec.BodyOut == core.BodyOutResidual && len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs)) {
-		return false
+		if !closureResidualRegion(probe, probeUnit) {
+			return false
+		}
+		regionResidual = true
 	}
 	// Strip-input shape screen (`error`): admit the two residual shapes the
 	// runtime nets ONE value from, or — when the dispatch recorded ZERO
@@ -799,6 +810,42 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	if !realOk || unit < 0 {
 		return false
 	}
+	// The REGION shapes are a SHAPE test, so they must be re-asked of the
+	// REAL unit — and this is not belt-and-braces, it is the same probe/real
+	// divergence the decline above documents, seen from the other side. The
+	// probe carries no producedBy, so an enclosing binding read that an EVENT
+	// produces bakes there as a CONST and routes LIVE in the real compile.
+	// closureResidualExact survives that because it counts operands and the
+	// count does not change; regionPrefixShapeOps does not, because it
+	// requires everything beneath the run to be INERT, and a const-in-probe /
+	// event-in-real operand is not.
+	//
+	// Measured: `for 2 [def b true  do [1 2 (if b [] [9 9])]]` — the probe's
+	// do$body residual is [CONST CONST REGION] and the real one is
+	// [EVENT:0 EVENT:1 REGION]. Admitting on the probe alone recorded a
+	// closure whose unit then had no seating, and the LOWERING refuses with
+	// no fall-through: a row that compiled through the dyn-body strategy
+	// became a hard refusal. Declining here hands the dispatch to its own
+	// refusal path, which is where that strategy takes it.
+	if regionResidual && !closureResidualRegion(real, unit) {
+		// The units this compile just created are now ORPHANS: nothing
+		// records a dispatch to them, but Finalize lowers every unit in the
+		// table, and a refusal there kills the PROGRAM. That is the trade
+		// fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
+		// reasoning is identical — an unreachable unit's lowering says
+		// nothing about the program — so take the same recovery: a trap stub
+		// that keeps unit indices aligned and fails loudly if ever entered.
+		// Only a FRESH unit is marked; a memo hit belongs to the dispatch
+		// that made it.
+		if unit == recsBefore {
+			for u := recsBefore; u < len(real.fnRecs); u++ {
+				if real.fnRecs[u] != nil {
+					real.fnRecs[u].stampOnly = true
+				}
+			}
+		}
+		return false
+	}
 	// The closure latch for the arm-residency bridge: THIS unit, and
 	// whether it is fresh (a memo hit reuses a unit another dispatch's
 	// twins already own — the bridge declines on stale). Set before the
@@ -820,7 +867,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		}
 		extraOps[ex.slot] = EmitOperand{kind: opClosure, closureUnit: exUnit, closureCaps: ex.ops}
 	}
-	return real.RecordClosureCall(word, sig, args, spec.BodyPos, unit, capOps, extraOps, outs, retSpec, pos)
+	return real.RecordClosureCall(word, sig, args, spec.BodyPos, unit, capOps, extraOps, outs, retSpec, regionResidual, pos)
 }
 
 // closureResidualExact reports whether a probe-compiled closure unit's residual
@@ -836,6 +883,60 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 	}
 	rec := es.fnRecs[unit]
 	return !rec.variadic && rec.dynTrailArity == 0 && rec.dynFrameW == 0 && len(rec.outOps) == want
+}
+
+// closureResidualRegion reports whether a probe-compiled closure unit's
+// residual is one a whole-residual dispatch can take COUNT-AGNOSTICALLY: its
+// runtime length is not the check run's, but every value lands in ONE
+// contiguous run, which is exactly what the region model carries.
+//
+// Two shapes, and they are the two the unit's OWN seating already lays out:
+//
+//   - REGION-PREFIX, [inert…, REGION] — planRegionPrefixUnit's shape, seated
+//     by OpSeatBelowMark, which never names the run's length. This is the
+//     `do [1 2 (if b [] [9 9])]` residual: two consts and a branch whose arms
+//     net 0 and 2, recorded zeroOut with a phantom merge slot the check run's
+//     residual strips (hence 3 operands for 2 outs).
+//   - WHOLE-RUN, the residual IS one region event's contiguous results —
+//     seatResults' own relaxation (sameEventRunToEnd): they land together
+//     whatever the count. This is the ENCLOSING body's residual once the
+//     inner dispatch above is variadic, and without it the relaxation stops
+//     one level short: `do [def b true  do [1 2 (if b [] [9 9])]]` would
+//     compile its inner body and then decline its outer one.
+//
+// A dynamic-apply tail (dynTrailArity) and a dyn-frame window (dynFrameW)
+// still decline: their post-processing READS the seated layout, so a run of
+// unknown length is not a layout they can work from.
+//
+// The caller must mark the dispatch event VARIADIC for either shape. The
+// recorded nout seats then stand for a run whose runtime length is its own
+// (the do-catch model, catchVariadicFor), so the program residual absorbs it
+// and every fixed-arity consumer keeps its refusal.
+func closureResidualRegion(es *EmitState, unit int) bool {
+	if es == nil || unit < 0 || unit >= len(es.fnRecs) {
+		return false
+	}
+	rec := es.fnRecs[unit]
+	if rec.frag == nil || rec.dynTrailArity != 0 || rec.dynFrameW != 0 {
+		return false
+	}
+	if _, ok := es.regionPrefixShapeOps(rec.outOps, rec.frag.events); ok {
+		return true
+	}
+	if len(rec.outOps) == 0 || rec.outOps[0].kind != opEvent {
+		return false
+	}
+	seq := rec.outOps[0].idx
+	if !sameEventRunToEnd(rec.outOps, seq) {
+		return false
+	}
+	// No regionReadsTheStack screen on THIS arm, and the asymmetry with the
+	// prefix arm above is deliberate. That predicate exists for the MARK
+	// plans: their OpStackMark opens before the region's event, so an event
+	// that popped from beneath the mark would leave it indexing the wrong
+	// entry. The whole-run shape opens no mark — seatResults leaves the run
+	// exactly where it lands — so the question does not arise.
+	return es.variadicRegionEvent(eventBySeq(rec.frag.events, seq))
 }
 
 // stripResidualShapeOK reports whether a strip-input word's probe-compiled

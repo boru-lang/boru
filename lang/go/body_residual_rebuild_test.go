@@ -53,7 +53,19 @@ func TestBodyResidualRebuildSizesTheFrame(t *testing.T) {
 // re-pushed as data at all (NUR124's re-step rule).
 func TestBodyResidualRebuildScreens(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"variadic branch result", `do [def b true  do [1 2 (if b [] [9 9])]]`, "no stream placement"},
+		// `do [def b true  do [1 2 (if b [] [9 9])]]` was this row until the
+		// fifty-seventh increment, and it GRADUATED: the inner body's
+		// residual is [inert inert REGION], which planRegionPrefixUnit seats
+		// with OpSeatBelowMark before the rebuild is ever reached. So it
+		// never pinned the rebuild's screen — it pinned the fact that
+		// NOTHING else could seat that shape either, which is no longer
+		// true. It lives in lang/spec/control.tsv now.
+		//
+		// This witness reaches the screen: the variadic region is NOT last,
+		// so no mark plan applies, seatResults refuses, and the rebuild
+		// declines on opsHaveVariadicResult — one spill slot cannot stand
+		// for a run whose length is a runtime value.
+		{"variadic branch result", `do [def b true  do [(if b [] [9 9]) (1 add 2)]]`, "variadic loop value"},
 	} {
 		a, err := New()
 		if err != nil {
