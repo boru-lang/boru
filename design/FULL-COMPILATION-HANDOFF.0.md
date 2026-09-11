@@ -5716,15 +5716,42 @@ one or many, per element. What is left is three unrelated things:
    variadic arm — `do [def b true do [1 2 (if b [3] [9 9])]]` refuses the
    same way as the `[]` twin the ledger carries.
 
-**The soundness question that makes (1) more than plumbing.** The obvious
+**Which decline fires, measured rather than read off the code** (an ZZDBG
+print in `AdoptResidentTwins`, reverted):
+
+```
+[10 20] each [drop def zq 5 zq]                    twin kind=def  typeDef=false   ADOPTED
+[10 20] each [drop def ZA (Integer gt 5) 7]        twin kind=type-install         declines on KIND/TYPEDEF
+[10 20] each [drop import "boru:math-util" end 7]  twin kind=def  typeDef=false   declines on COUNT: events=0 twins=1
+```
+
+So the two are not the same decline. A type def's twin is a distinct KIND
+(`type-install`) the gate names explicitly. An import's twin is an ordinary
+`def` — the `BindKind` census was right that a module namespace binding IS a
+def — and it fails one line later because `import` records no `evDynBind`
+def-site event for the bridge to pair an op with.
+
+**The soundness question that makes either more than plumbing.** The obvious
 move is to let `OpBindResident` replay the twin ENTRY per element, which is
 what `ApplyBindTwin` already does at the top level. That is correct exactly
-when the entry is the SAME every element, and the two ledgered witnesses are
+when the entry is the SAME every element, and both ledgered witnesses are
 (`(Integer gt 5)` and `(A tand B)` do not read the element) — but nothing in
-the bridge proves it, and a type built from the element (`def ZA (Integer gt
-elem)`) would bake the check pass's one instance and install it N times. So
-(1) needs either a per-element rebuild or a proof of element-independence,
-and that choice is the increment, not the wiring.
+the bridge proves it.
+
+**A tempting shortcut, closed by measurement.** It looks as though the import
+half might be exempt: if a module path had to be a literal, its namespace
+would be element-independent by construction and no screen would be needed.
+It does not have to be. `def zp "boru:math-util" end import zp end
+MathUtil.cbrt 8` runs and checks clean, so a computed — and therefore
+possibly element-dependent — import path is legal boru. Both halves need the
+same treatment.
+
+That treatment is: the def site has to record provenance the bridge can
+screen (an import records no event at all today), and the screen has to
+establish element-independence — an inert-const path operand, a type
+expression reading no unit-local or param — or else the op must REBUILD per
+element instead of replaying. Choosing between those is the increment; the
+wiring is the easy half.
 
 ## What CI caught: three spec rows in the wrong corpus (2026-09-10, repairs to the forty-sixth and forty-eighth increments)
 
