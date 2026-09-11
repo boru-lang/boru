@@ -6687,13 +6687,33 @@ question is not "does my new kind work here" but "what does every OTHER path
 keyed on kind do with it". And when you write a guard against a class, spend
 the extra minutes making it fail on purpose before trusting it.
 
-## The dyn-body backstop: measured at the gate, and it is not what reading suggested (2026-09-11)
+## The do body that compiles but INTERPRETS ITS BODY: measured at the gate (2026-09-11)
 
-The backstop is the interp-entry census's largest single bucket (11 rows:
-`control` 4, `bytecode-migrated` 6, `word-splice` 1), so why a `do` body
-records a closure or falls to it is worth more than either remaining frontier
-family. This is the measurement pass. NOTHING was changed; the design is not
-settled, and two things I had written down from reading turned out wrong.
+**Terms first, because getting them wrong is how this section was originally
+written.** The "dyn-body backstop" is a NATIVE COMPILATION STRATEGY
+(DO-STRUCTURE-COMPILATION.0.md §8): `CompileDynBody` records a CALL_NATIVE
+over the body operand with a variadic result and arms DynEnv, and its own
+19-shape sweep force-compiles with byte parity. A program reaching it
+COMPILES. What it does not do is compile the BODY — the `do` handler invokes
+it through `InvokeBody`, so the interpreter runs the body at run time inside
+a compiled program. That is what `TestInterpEntryCensus` counts, and it is
+the thing this project exists to remove.
+
+So neither half of "falls back to the interpreter" is right here: nothing
+falls back, and nothing fails. The defect is narrower and worth naming
+exactly — a compiled program whose body is still interpreted.
+
+And the wider rule this correction carries, which earlier sections of this
+log get wrong in the other direction: **there is no acceptable interpreter
+tier.** The aim is that every form compiles. A REFUSAL is an ERROR — a
+defect to eliminate — and "a sound refusal" only ever means "not a
+miscompile", never "an acceptable resting place". Every frontier-ledger row
+is a bug with a date on it, not a bucket to manage.
+
+This is the measurement pass on that bucket — the interp-entry census's
+largest, 11 rows (`control` 4, `bytecode-migrated` 6, `word-splice` 1).
+NOTHING was changed; two things I had written down from reading turned out
+wrong.
 
 **The instrument.** A print at the `BodyOutResidual` gate
 (`callable_words.go:774`) showing the dispatch's recorded out-count beside the
@@ -6701,7 +6721,7 @@ probe unit's own shape. Both spellings of the witness pair:
 
 ```
 do [1 (if true  [] [9 9])]   len(outs)=1  variadic=true  dynTrail=false  len(outOps)=2   COMPILES
-do [1 (if false [] [9 9])]   len(outs)=3  variadic=true  dynTrail=false  len(outOps)=2   BACKSTOP
+do [1 (if false [] [9 9])]   len(outs)=3  variadic=true  dynTrail=false  len(outOps)=2   BODY INTERPRETED
 ```
 
 **Wrong thing #1: the units are not different.** I had recorded that the
@@ -6761,8 +6781,49 @@ both arms and cannot say which runs. `len(outs)` reflects the concrete run;
 declines because the model says variadic. Neither outcome is reasoning about
 the condition being constant, because nothing at this layer knows it is.
 
-**So the question for the next author is one level earlier, and it is
-cheap:** why is `ConstCond` nil for a LITERAL condition? `emitBranch` carries
+**ANSWERED, third pass — and the answer hands the increment over ready to
+write.** `ConstCond` is set in exactly one place: `if3ReturnsFn`
+(`basic/go/native_control.go:626`), behind `LiteralCondValue(args[0])`. That
+predicate takes a `condList` and requires `AsList(...)` with `Len() == 1`. A
+BARE literal condition is not a one-element list, so it never reaches the
+fold. The list-form `if [true] …` does.
+
+Measured, and this is the finding that makes it an increment — the SAME
+program compiles its body natively in one spelling and interprets it in the other:
+
+```
+do [1 (if [false] [] [9 9])]   1 9 9   compiles natively (const path, taken arm = [9 9])
+do [1 (if  false  [] [9 9])]   1 9 9   compiles, BODY INTERPRETED (const path never entered)
+do [1 (if [true]  [] [9 9])]   1       REFUSES "if: branch produces no value (Stage 2 …)"
+```
+
+So the const-fold path already handles exactly the shape that otherwise
+has its body interpreted. The increment is to let a bare literal reach it —
+widen `LiteralCondValue`, or its caller, to accept a bare Boolean beside the
+one-element list.
+
+Three things to weigh before writing it, none of them measured yet:
+
+  - POPULATION. Folding more conditions changes which branches are
+    const-eliminated, which moves `EmitUnreachableBranch`'s diagnostics.
+    `diagnosticParityCeiling` and `TestVariationDifferential` are the gates
+    that will say; run them before believing the change is narrow.
+  - The `[true]` spelling REFUSES on a zero-value taken arm ("branch
+    produces no value"). Increment 51's lesson was precisely that "nets no
+    value" is not "diverges" — the same question, at a different gate. If
+    the widening is done without settling this, bare `if true [] [...]`
+    moves from compiling (body interpreted) to REFUSING, and a refusal is a
+    DEFECT, not a lesser outcome — the variation sweep would catch it and
+    the corpus would not.
+  - `branchVariadicResult`'s const arm reads `ThenStk`, and its comment says
+    "the taken (then) arm". Reading `if3ReturnsFn` settles it: that site
+    assigns `ThenStk: stk` where `stk` is whichever arm ran, so the comment
+    is right and the field name is merely confusing. Widening the fold makes
+    that arm reachable from far more programs, so rename or re-comment it in
+    the same change.
+
+**(The superseded reading, kept because it is how the question was found:)**
+why is `ConstCond` nil for a LITERAL condition? `emitBranch` carries
 the field and `branchVariadicResult` has a whole arm for it, so something
 sets it somewhere — just not here. If a literal condition set it, that arm
 would apply, the merge could be modelled with the taken arm's fixed count,
@@ -6774,10 +6835,11 @@ false constant or whether that arm has a latent bug of its own. It is
 currently unreachable from these witnesses, so no row proves either way.
 
 **And a measurement trap, since it cost time twice.** `-force-compile`
-reports SUCCESS for a program that reaches the dyn-body backstop, because a
-backstop IS a compiled program — it just has an interpreter inside it. It
-cannot tell native compilation from an interp entry. The instrument that can
-is `TestInterpEntryCensus`, which is how the backstop was identified at all
+reports SUCCESS for a program whose body the dyn-body strategy interprets,
+because such a program genuinely DID compile — it just has an interpreter
+inside it. It cannot tell a natively-compiled body from an interpreted one.
+The instrument that can is `TestInterpEntryCensus`, which is how this bucket
+was identified at all
 (it failed 33-against-32 when increment 55's row went into the corpus).
 
 ## What the ledger excludes, and why each exclusion was measured
@@ -6864,6 +6926,21 @@ position than the construct that produced the binding.
   `lang/go` suite was still running.
 - **Run `make -C kg graph` after editing any tracked design doc.** Two CI
   failures came from forgetting.
+- **There is no interpreter tier, and a refusal is an ERROR.** The aim is
+  that every code form compiles. So "it refuses and falls back to the
+  interpreter — the sound direction" is half a sentence: SOUND means only
+  "not a miscompile", and the refusal is still a DEFECT with a date on it.
+  Every frontier-ledger row is a bug, not a managed bucket, and choosing a
+  refusal over a wrong answer is choosing the lesser of two defects, never
+  reaching a resting place. (Maintainer correction, 2026-09-11, after this
+  log had repeatedly written refusal up as an acceptable outcome.)
+
+  Two distinctions this log has blurred and that are worth keeping apart:
+  a program that REFUSES does not compile at all; a program that reaches
+  the dyn-body strategy COMPILES, but its body is interpreted at run time
+  (DO-STRUCTURE-COMPILATION.0.md §8 — it is a native strategy, not a
+  fallback). Both are defects; they are different defects, and only the
+  second is what `TestInterpEntryCensus` counts.
 - **"CI is green" does NOT mean the merged coverage gate passed.** `ci.yml`
   runs `make test` and `make cover-gate-core`; the repo-wide `make
   cover-gate` lives in its OWN workflow (`cover-gate.yml`) on a nightly
