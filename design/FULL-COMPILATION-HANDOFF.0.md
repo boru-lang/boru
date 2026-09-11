@@ -7026,6 +7026,59 @@ gates passing says nothing about its variants, and the merged coverage gate
 runs the lane while per-PR CI does not — so on this line, "CI green" and
 "gated" stay two different claims for two different reasons.
 
+## Twin-placement shape 1, measured at the bridge (2026-09-11)
+
+The frontier file says shape 1 is "an `import` inside a MULTI-RUN body — a
+module bind is not one of the BindDef twins the arm-residency bridge installs
+per element". Measured at `AdoptResidentTwins` with a print, on the ledgered
+row `[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`:
+
+```
+ZZ adopt twins 1 events 0
+ZZ   twin kind 0 name MathUtil          (kind 0 = BindDef)
+```
+
+**The twin IS a BindDef.** The note is imprecise in exactly the way shape 3's
+was — and, like that one, the imprecision points the next reader at the wrong
+layer. What is missing is the def-site EVENT: `installExports` reaches
+`InstallDef`, which notes the ledger transition, and nothing records an
+`evDynBind` for it, so the bridge's total pairing sees 1 twin against 0 events
+and declines.
+
+That is the same gap increment 53 closed for TYPE installs, and the fix has
+the same five parts:
+
+  1. `RecordModuleInstall` on `core.EmitRecorder`, recording only inside the
+     arm-resident bracket (`armResidentDepth != 0`) — exactly
+     `RecordTypeInstall`'s gate, and for the same reason: outside the bracket
+     a module bind is a top-level twin the root stream already replays.
+  2. A core funnel beside `NoteTypeInstall` so a twin and its event can never
+     fall out of step. Note the asymmetry with the TYPE case: `InstallDef`
+     already notes the BindDef transition, so the funnel here records the
+     EVENT only.
+  3. `emitDynBind.moduleInstall` — a THIRD operand-less half beside `undef`
+     and `typeInstall` (`bindsValue`, `lowerResidentBind`).
+  4. `ResidentBindSpec.ModuleInstall` and a VM arm. Unlike the type arm,
+     which must re-install the captured BODY so each element mints its own
+     node (NUR135), a module namespace is identity-stable: the captured VALUE
+     is what each element should get, so this arm is `ApplyResidentBind`'s
+     ordinary install over the twin entry.
+  5. A soundness screen, the analogue of `typeInstallElementIndependent`: the
+     import must be ELEMENT-INDEPENDENT. A literal path (`import
+     "boru:math-util"`) is; a computed one that reads the element is not, and
+     replaying one namespace there would be the module-shaped twin of the
+     `ZB` miscompile.
+
+**And one thing to fix on the way in, which is not the blocker.**
+`installExports` (lang/go/native/native_module_module.go) iterates
+`desc.Exports` with a MAP RANGE. With one exported namespace the order is
+trivially stable, which is why the ledgered row does not expose it; with two
+or more, the twins and their events are appended in a random order that
+differs run to run. The pairing itself stays consistent — both come from the
+same loop iteration — so this is not what declines the row, but it makes the
+compiled stream non-reproducible, and a bridge that pairs by occurrence order
+should not be reading from a map. Sort the names.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
