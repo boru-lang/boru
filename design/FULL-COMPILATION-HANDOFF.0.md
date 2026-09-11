@@ -6646,8 +6646,8 @@ fails a test whose message names every kind-keyed site that must learn about
 it. `TestForEachOperandHandlesEveryKind` walks a well-formed event of every
 kind through the operand walker.
 
-**Two things that only came out by testing the guard itself, both worth the
-five minutes.**
+**Four things that only came out by testing the guard itself, and the last
+two came from review rather than from me.**
 
 1. The census's FIRST form asserted `evBindTwin == len(evKinds)`. Simulating
    a new kind did not fail it — a kind added after `evBindTwin` does not
@@ -6657,6 +6657,30 @@ five minutes.**
    code was right: a trap's operands are its REMATCH window, and the fixture
    built a trap without one. The fixture was fixed, NOT the assertion — the
    assertion is what would catch a kind whose case visits nothing.
+3. The site list was WRONG, and the way it was wrong is the same mistake one
+   level up. The first cut named eight sites; review named three more
+   (`eachClosureCap`, `childFragments`, `RewritePromotedRefs`); parsing the
+   package found **nineteen**. All three of review's were in the audit above
+   — they are "no default, falls through to a safe nothing" rows — but the
+   audit is not what a future author reads. The FAILURE MESSAGE is, and it
+   was pointing at less than half the surface. So the list is no longer
+   maintained by hand: `TestKindKeyedSiteCensus` parses the package and
+   fails if any `switch X.kind` sits in a function neither
+   `eventKindSites` nor `operandKindSites` classifies (19 and 8
+   respectively, and the split matters — the second keys on OPERAND kind,
+   which a new event kind cannot reach).
+4. `TestEventPosHandlesEveryKind` shipped with `default: continue` — a
+   default that quietly does nothing while looking like coverage, which is
+   verbatim the defect this increment exists to remove. Review caught it. It
+   now fails on an unclassified kind, and the comment says what it used to
+   do rather than quietly correcting it.
+
+**The pattern under 3 and 4 is worth naming.** Both are the increment's own
+subject applied to the increment's own guard, and both were found by someone
+re-reading it rather than by the author who had just written the rule down.
+Knowing the rule is not the same as satisfying it; that is what review is
+for, and it is the second time on this line that a Codex pass has been the
+thing that closed a class rather than an instance.
 
 **The rule this leaves.** When you widen a gate that admits event kinds, the
 question is not "does my new kind work here" but "what does every OTHER path
