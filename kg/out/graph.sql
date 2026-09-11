@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '807383320577910024');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '4007756942550391833');
 INSERT INTO input_files VALUES ('../AGENTS.md', '3986719937509632624', 12545);
 INSERT INTO input_files VALUES ('../CLI.md', '3434391071839442713', 83578);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -40,7 +40,7 @@ INSERT INTO input_files VALUES ('../design/DIAGNOSTIC-VALUES.0.md', '40506076665
 INSERT INTO input_files VALUES ('../design/ENG-COVERAGE-PARITY.0.md', '2541301273793164298', 20169);
 INSERT INTO input_files VALUES ('../design/FN-OUTPUT-SIG.0.md', '5680123931664569575', 11346);
 INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '7570822714448974016', 32328);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '4283937894026565320', 462949);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '6148571356703761786', 466125);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '8584033307356315546', 251760);
 INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '350409287558203855', 65762);
 INSERT INTO input_files VALUES ('../design/GO-MODULE-GRAPH.0.md', '4124035938153723972', 28792);
@@ -53,6 +53,7 @@ INSERT INTO input_files VALUES ('../design/O1-RELITIGATION.0.md', '6063911734799
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '400250312279231357', 15480);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '7923837474928956303', 23776);
 INSERT INTO input_files VALUES ('../design/ROOT-MODULE-FEASIBILITY.0.md', '6235317352461048001', 6313);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7436523933626152354', 6639);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '7873846898373868814', 88994);
 INSERT INTO input_files VALUES ('../design/TS-PARITY-AUDIT.0.md', '2607459948929922084', 6455);
 INSERT INTO input_files VALUES ('../design/TYPE-REPRESENTATION.0.md', '948256638799959784', 11300);
@@ -69,7 +70,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '3890078019736541119', 539);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '1926872259734760970', 595);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '2634030907750079284', 76218);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '4973913652695270576', 78792);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -234,6 +235,9 @@ INSERT INTO sources VALUES ('src:reload-invalidation', 'text', 'design/RELOAD-IN
 INSERT INTO sources VALUES ('src:root-module', 'text', 'design/ROOT-MODULE-FEASIBILITY.0.md', 'root module below core and parser, measured', NULL, 'root-module-2026-08', 'primary', '{
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:session-handover', 'text', 'design/SESSION-HANDOVER.0.md', 'session handover for the full-compilation project', NULL, 'session-handover-2026-09-11', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO sources VALUES ('src:state-machines', 'text', 'design/STATE-MACHINES.0.md', 'general-purpose state machines: the boru:state module', NULL, 'state-machines-2026-08-14', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -318,6 +322,8 @@ INSERT INTO entities VALUES ('ent:Document:6369673620858945660', 'Document', 'en
 INSERT INTO entities VALUES ('ent:Document:6399157315994008191', 'Document', 'STYLE-GUIDE.md', 'style-guide.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:6779251111015546106', 'Document', 'design/DIAGNOSTIC-VALUES.0.md', 'design/diagnostic-values.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:6779251111015546106', 'role', 'the proposed rule that a diagnostic names the values it is about rather than describing them — recorded in design, not ADR.md, pending a maintainer ruling: the return-count error reported arithmetic and withheld the one thing identifying the fault, the count-and-values agreement corollary (callers pass exactly the slice the count was taken over), the single-builder byte-identity contract across interpreter, VM and checker, the abbreviate-never-truncate policy and its two nesting levels through diagMaxListHead, and the open sweep across no_signature, the arity errors and describeStackTypes');
+INSERT INTO entities VALUES ('ent:Document:6813571866310634100', 'Document', 'design/SESSION-HANDOVER.0.md', 'design/session-handover.0.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:6813571866310634100', 'role', 'the CURRENT-STATE page for the full-compilation project, and the one file a fresh session reads first: it says where the gates stand today rather than how they got there, which is the division of labour with FULL-COMPILATION-HANDOFF.0.md — that log is append-only, so an earlier section''s dated figures survive beside the later ones that overtook them and it is the wrong place to look for what is true now. Carries the gate table (frontier ledger 29, interp-entry census 29 and failing in BOTH directions, refusal/island/type-soundness pins at 0, minCompiledRows 6410, diagnostic-parity 320, armed-only 4, two remaining twin-placement shapes), what is in flight on the branch, the next increment''s three MEASURED constraints with the design they rule out, the ranked alternatives, the instruments that can see a defect the ordinary gates cannot (TestInterpEntryCensus is the only thing that sees a compiled program whose BODY is interpreted, since -force-compile reports SUCCESS for those; TestVariationDifferential runs only under make test and the merged coverage gate), and the process rules this line paid for in red CI — among them that re-running the gate that owns an edit applies to cosmetic edits too (four reds traced to skipping it, one on a commit containing nothing but a design note), that CI green is not the same as gated because the repo-wide ADR-008 floor is a separate dispatchable workflow, that a what-remains-is narrowing inherits the last reader''s vantage point, and that a COUNT test may be asked of the probe where a SHAPE test may not');
 INSERT INTO entities VALUES ('ent:Document:7150928906920308588', 'Document', 'design/HIGHER-ORDER-FUNCTIONS.0.md', 'design/higher-order-functions.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:7150928906920308588', 'role', 'the empirical audit of higher-order support and combinator expressibility, run against a built binary rather than read from the design notes (a POINT-IN-TIME report, 2026-08-19): what was actually built and run — SKI with I derived as S K K, BCKW, U-combinator anonymous recursion, Church numerals and pairs, CPS, a parser-combinator library, closures over fn-locals that outlive their scope — and the one construction that resisted every spelling, Church and/or; a capability comparison against Haskell, Scheme, JavaScript and Factor; and the call-vs-value gotcha cluster that only surfaces once a function value flows through a PARAMETER: a bare name calls where /r refused so no name-based read was total over both kinds — CLOSED by the 2026-08-19 /r->/v rename that made the value read total (NUR085, retired), the four code-body iterators taking a Function callback over a Map but not a List where filter takes both (NUR086), a branch-local def lost to the checker after a Function-parameter call so boru run refuses a working program (NUR087), the capitalised-name predicate-type collision, the context-dependent application of a paren-collapsed function, and the confirmation that NUR073 reproduces with the PLAIN default invocation siding with the compiler while -no-compile disagrees, exit 0 both ways');
 INSERT INTO entities VALUES ('ent:Document:7550033050871776514', 'Document', 'design/FN-OUTPUT-SIG.0.md', 'design/fn-output-sig.0.md', 'accepted');
@@ -792,6 +798,8 @@ INSERT INTO assertions VALUES ('ast:6299681106539820881', 'ent:Document:61867428
 INSERT INTO assertion_evidence VALUES ('ast:6299681106539820881', 'src:boru-scry', 'title', 'boru:scry — a boru system''s knowledge of itself, as plain data', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:6506454126246230063', 'ent:SoftwareModule:559301050642427014', 'has_attribute', 'literal', NULL, '"github.com/boru-lang/boru/check/go"', 'String', 'go-module-path', NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:6506454126246230063', 'src:gomod:check-go', 'module directive', 'module github.com/boru-lang/boru/check/go', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:6643288815722087044', 'ent:Document:6813571866310634100', 'related_to', 'entity', 'ent:Document:9178480464718060712', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:6643288815722087044', 'src:session-handover', 'Purpose', 'Update this file at the end of every increment.', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:6658327612052881629', 'ent:SoftwareModule:8275629451197117420', 'depends_on', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:6658327612052881629', 'src:gomod:lang-go', 'require block', 'github.com/boru-lang/boru/core/go v0.0.0', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:668078731239663174', 'ent:Document:7594380001231677524', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -874,6 +882,8 @@ INSERT INTO assertions VALUES ('ast:8753776083565122130', 'ent:SoftwareModule:45
 INSERT INTO assertion_evidence VALUES ('ast:8753776083565122130', 'src:go-tree', 'test/go/fissiongate', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8820902757097961904', 'ent:SoftwareModule:3641482396164462740', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8820902757097961904', 'src:go-tree', 'test/go/docexamples', NULL, 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:888601132524226634', 'ent:Document:6813571866310634100', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:888601132524226634', 'src:session-handover', 'title', 'Session handover — the full-compilation project', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:8905043332608038803', 'ent:SoftwareModule:927371487649425292', 'part_of', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8905043332608038803', 'src:go-tree', 'lang/go/debugserve', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8927535347315204632', 'ent:Concept:6094411313845087998', 'part_of', 'entity', 'ent:Concept:2039420555596601682', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
