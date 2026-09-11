@@ -64,7 +64,21 @@ do [def zb true  do [1 (if zb [] [9 9])]]	1	and a NESTED do body plans its own p
 do [1 (if false [] [9 9])]	1 9 9	the 2-value-run twin of the 0-value seat above
 do [def b true  do [1 2 (if b [] [9 9])]]	1 2	a nested do body whose residual is [inert inert REGION] keeps its def twin placed
 do [def b false  do [1 2 (if b [] [9 9])]]	1 2 9 9	the same, on the input whose region is 2 values long
-do [for 3 [1] 7]	1 1 1 7	a loop inside a do body compiles (the unrolled model's repeated result identities de-collide)
+do [for 3 [1] 7]	1 1 1 7	a loop inside a do body, with an inert value ABOVE the run: the body compiles NATIVELY (the fifty-ninth increment)
+# The SUFFIX half of the region pair (the fifty-ninth increment), and the two
+# halves are not symmetric. A fixed value BENEATH a runtime-variable run has
+# to be seated under it, which is what OpSeatBelowMark and the mark plan are
+# for; a fixed value ABOVE the run is simply PUSHED AFTER it and lands on top
+# of however many values the run really left. Nothing has to know the length.
+#
+# The refusal message said otherwise — "result is a variadic loop value" — and
+# a pin in lang/go/multiout_closure_test.go held the fn form as a permanent
+# refusal with the reason written out: "the RET cannot seat a runtime-variable
+# count with a fixed value above it". Above it is exactly where it can go. The
+# two shapes had been sharing one sentence since the forty-seventh increment.
+do [for 3 [1] 7 8]	1 1 1 7 8	two inert values above the run: one more push, not a new question
+def b true  do [(if b [] [9 9]) 1 2]	1 2	a BRANCH region with an inert suffix — the mirror of the prefix rows above
+def f fn [[] [] [for 3 [1] 7]]  f	1 1 1 7	a no-contract fn RETs the run and its suffix together (it refused until this increment)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket
 #

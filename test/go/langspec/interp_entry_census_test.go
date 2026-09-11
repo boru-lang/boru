@@ -722,7 +722,25 @@ import (
 // nothing about these rows' COMPILE status changed; only which engine ran
 // their bodies did. That is the whole argument for keeping this census beside
 // the ceiling rather than folding it in.
-const interpEntryRowCeiling = 29
+//
+// 29 -> 28 (2026-09-11, the fifty-ninth increment): the same dispatch takes
+// the MIRROR of the shape above — a region run FIRST, with nothing but INERT
+// operands above it. `do [for 3 [1] 7]` is the row (control.tsv), and it had
+// been reading as the same refusal as `do [7 for 3 [1]]` for as long as one
+// sentence described both.
+//
+// The two halves are not symmetric and the cheap one was the one being
+// refused. A fixed value BENEATH a runtime-variable run must be SEATED under
+// it, which is what OpSeatBelowMark and the mark plan cost; a fixed value
+// ABOVE the run is PUSHED after it and lands on top of however many values
+// the run really left, so nothing has to know the length. What the screen
+// needed was one predicate widened from "the run reaches the END" to "no
+// EVENT above the run" (eventRunThenInert) — no new op, no new plan.
+//
+// It also graduated a refusal the census cannot see: a NO-CONTRACT fn whose
+// body leaves the same shape (`def f fn [[] [] [for 3 [1] 7]]  f`) refused
+// outright, and the pin that held it wrote the wrong reason out in full.
+const interpEntryRowCeiling = 28
 
 func TestInterpEntryCensus(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")

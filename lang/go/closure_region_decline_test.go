@@ -49,3 +49,46 @@ func TestWholeResidualRegionDeclinesOnTheRealUnit(t *testing.T) {
 		t.Fatalf("lane disagreement: compiled %v, interpreted %v", got, want)
 	}
 }
+
+// The two shapes the fifty-ninth increment's SUFFIX arm still declines, and
+// they are pinned here rather than in lang/spec for the reason above: both
+// reach the dyn-body strategy, so each would RAISE the interp-entry census,
+// which only falls.
+//
+// The arm admits an operand that is PUSHED after the run. An EVENT's result
+// is not pushed — it is already on the simulated stack in its own production
+// order — so seating it above a run whose length is a runtime value is the
+// indexing problem an inert suffix does not have. A second REGION is the same
+// decline and worth its own row, because from either end the shape reads like
+// one the arm should take.
+//
+// What the pin is FOR is the answer, not the refusal: a declined probe falls
+// to the dyn-body strategy, which compiles, so a widening that wrongly
+// admitted either of these would show up here as a lane disagreement rather
+// than as a refusal.
+func TestRegionSuffixDeclinesKeepTheirAnswer(t *testing.T) {
+	for _, src := range []string{
+		`do [for 3 [1] (1 add 2)]`,
+		`do [for 3 [1] for 2 [9]]`,
+	} {
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, cerr := a.RunCompiledStrict(src)
+		if cerr != nil {
+			t.Fatalf("%q must compile: %v", src, cerr)
+		}
+		b, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, ierr := b.RunInterp(src)
+		if ierr != nil {
+			t.Fatalf("%q: the interpreter must run it clean: %v", src, ierr)
+		}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("%q lane disagreement: compiled %v, interpreted %v", src, got, want)
+		}
+	}
+}

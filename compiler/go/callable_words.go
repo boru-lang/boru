@@ -897,12 +897,18 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 //     `do [1 2 (if b [] [9 9])]` residual: two consts and a branch whose arms
 //     net 0 and 2, recorded zeroOut with a phantom merge slot the check run's
 //     residual strips (hence 3 operands for 2 outs).
-//   - WHOLE-RUN, the residual IS one region event's contiguous results —
-//     seatResults' own relaxation (sameEventRunToEnd): they land together
-//     whatever the count. This is the ENCLOSING body's residual once the
-//     inner dispatch above is variadic, and without it the relaxation stops
-//     one level short: `do [def b true  do [1 2 (if b [] [9 9])]]` would
-//     compile its inner body and then decline its outer one.
+//   - RUN-THEN-INERT, the residual OPENS with one region event's contiguous
+//     results and carries nothing but inert operands above them —
+//     seatResults' own relaxation (eventRunThenInert): the run lands where it
+//     falls whatever the count, and an inert operand is PUSHED after it
+//     rather than indexed past it, so it sits on top of however many values
+//     the run really left. With no suffix at all this is the ENCLOSING body's
+//     residual once the inner dispatch above is variadic, and without that
+//     the relaxation stops one level short: `do [def b true  do [1 2 (if b []
+//     [9 9])]]` would compile its inner body and then decline its outer one.
+//     With a suffix it is `do [for 3 [1] 7]` — [REGION, CONST], the region
+//     FIRST, which is the mirror of the prefix shape above and the cheaper
+//     half of the pair: above the run is free, beneath it costs a mark.
 //
 // A dynamic-apply tail (dynTrailArity) and a dyn-frame window (dynFrameW)
 // still decline: their post-processing READS the seated layout, so a run of
@@ -927,7 +933,7 @@ func closureResidualRegion(es *EmitState, unit int) bool {
 		return false
 	}
 	seq := rec.outOps[0].idx
-	if !sameEventRunToEnd(rec.outOps, seq) {
+	if !eventRunThenInert(rec.outOps, seq) {
 		return false
 	}
 	// No regionReadsTheStack screen on THIS arm, and the asymmetry with the

@@ -7172,6 +7172,98 @@ later closure-unit compile, so they are two independent map iterations that
 can disagree. Sorting is a prerequisite for the pairing, not a tidiness fix.
 Both ranges are sorted now.
 
+## The mirror of the seat, and it was free (2026-09-11, the fifty-ninth increment)
+
+The census dropped 29 -> 28 on one predicate widened by four lines, and the
+reason it had not been taken already is the interesting part: for twelve
+increments TWO different shapes have been described by ONE sentence, and the
+sentence is true of only one of them.
+
+The sentence, in the refusal message: **"result is a variadic loop value
+(Stage 3)"**. In the test that pinned it, written out: *"the RET cannot seat
+a runtime-variable count with a fixed value above it"*. In this very file,
+at the forty-seventh increment: *"the prefix cannot be pushed after the run —
+it would land on top of it — and cannot be indexed past it from the top,
+because the run's length is a runtime value"*.
+
+That last one is exact, and it is about a fixed value **BENEATH** the run.
+Above the run, none of it applies:
+
+- **Beneath** the run, a fixed value must be SEATED under a block whose
+  length nothing knows. That needs a mark, and OpSeatBelowMark is the op the
+  forty-first increment built for it.
+- **Above** the run, a fixed value is simply PUSHED AFTER it. It lands on top
+  of however many values the run really left. No mark, no plan, no length.
+
+`do [7 for 3 [1]]` is the first. `do [for 3 [1] 7]` is the second, and it was
+taking the dyn-body strategy — the program compiles, the BODY interprets, and
+`-force-compile` reports SUCCESS, which is why only the census could see it.
+
+### What changed
+
+`sameEventRunToEnd` required the variadic run to reach the END of the
+residual. `eventRunThenInert` requires only that no EVENT sits above it:
+
+```go
+func eventRunThenInert(ops []EmitOperand, idx int) bool {
+	n := 0
+	for n < len(ops) && ops[n].kind == opEvent && ops[n].idx == idx && ops[n].resIdx == n {
+		n++
+	}
+	if n == 0 {
+		return false
+	}
+	for _, op := range ops[n:] {
+		if op.kind == opEvent {
+			return false
+		}
+	}
+	return true
+}
+```
+
+Two callers, both of which already asked the narrower question: seatResults'
+variadic screen, and `closureResidualRegion`'s second arm (the fifty-seventh
+increment's WHOLE-RUN shape, which is this one with an empty suffix). No new
+op, no new plan, no change to the mark machinery.
+
+The EVENT/inert split is the whole content of the predicate, and it is not a
+conservatism. An inert operand is pushed at seat time, after the run. An
+event's result is NOT pushed — it is already on the simulated stack in its own
+production order — so seating it above a run of unknown length is exactly the
+indexing problem the inert suffix does not have. `do [for 3 [1] (1 add 2)]`
+and `do [for 3 [1] for 2 [9]]` both still decline, and both still answer,
+because a declined probe falls to the dyn-body strategy.
+
+### What it graduated beyond the census row
+
+A **no-contract fn** whose body leaves the same shape refused outright rather
+than falling back: `def f fn [[] [] [for 3 [1] 7]]  f` was a hard refusal, and
+it answers `1 1 1 7` now. A DECLARED contract never reached the compiler at
+all — the checker rejects the count first ("expected 1 return value(s), got
+4"), which is why this only ever affected the `[]`-declared form.
+
+Also `def b true  do [(if b [] [9 9]) 1 2]` — the branch-region mirror of the
+prefix rows the fifty-fifth increment added, and the shape that makes it clear
+this is about REGIONS rather than about loops.
+
+### The method note, which is the durable part
+
+The fifty-seventh increment's own file entry recorded that a "what remains
+is…" narrowing inherits the last reader's vantage point. This is the same
+defect one layer earlier: a SHARED SENTENCE inherits the shape its author was
+looking at. The forty-seventh increment wrote a true sentence about the seat
+it had just built, the refusal message generalised it to both shapes, and a
+test then pinned the generalisation as a contract with its reasoning spelled
+out — which is the form in which a wrong claim is hardest to see, because it
+reads as settled and it comes with an argument.
+
+The tell was available the whole time and cost one print to read: the probe
+declined with `nops 2` — one EVENT, one CONST — and the disassembly of the
+sibling row that DID compile showed `SEAT_BELOW_MARK` doing work that the
+suffix case plainly does not need. A refusal message is a claim about the
+code, not a measurement of it.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -7436,3 +7528,4 @@ position than the construct that produced the binding.
 | `lang/go/diverging_arm_lowering_test.go` | the fifty-first increment: the last frontier-while row and its `for` twins compiling with parity, the stack-supplied layout's value-netting twin with them, both other divergence kinds (raise, and a fn body's return-count contract — position excluded per NUR118), and the 0-netting arm keeping its refusal under the message that now says what it means |
 | `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
 | `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |
+| `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |

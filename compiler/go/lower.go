@@ -2087,14 +2087,19 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 			if rejectVariadic && lw.variadic[op.idx] {
 				// A no-contract (`[]`-declared) fn may return a VARIADIC tail: its
 				// RET leaves whatever the body left, exactly like the program
-				// residual. Permit a variadic event in the LAST position only — a
-				// variadic with fixed values ABOVE it cannot seat (the count is
-				// runtime-variable) — OR a CONTIGUOUS run of the SAME variadic
-				// event's results reaching the end (a multi-out dyn-body `do`
-				// whose whole runtime residual lands together; the fixed static
-				// model above it is unaffected, and anything pushed after would
-				// sit above the runtime run exactly as recorded).
-				if !(allowVariadicTail && i == len(ops)-1) && !sameEventRunToEnd(ops[i:], op.idx) {
+				// residual. Permit a variadic event in the LAST position only —
+				// OR a CONTIGUOUS run of the SAME variadic event's results with
+				// nothing but INERT operands above it (eventRunThenInert).
+				//
+				// The second is the one that needs stating, because it reads
+				// like the shape the message refuses. It is not: a run of
+				// runtime-variable length seats IN PLACE as long as nothing
+				// above it has to be indexed past it, and an inert operand is
+				// pushed AFTER the run rather than indexed — so it lands on top
+				// of however many values the run really left. What cannot seat
+				// is a fixed value BENEATH the run (it would land on the run),
+				// and that shape takes the mark plan instead.
+				if !(allowVariadicTail && i == len(ops)-1) && !eventRunThenInert(ops[i:], op.idx) {
 					return msgs.variadic
 				}
 			}
@@ -2489,13 +2494,32 @@ func (es *EmitState) promoteLateDynBind(rec *fnUnitRec) {
 	}
 }
 
-// sameEventRunToEnd reports whether ops is entirely the SAME event's results
-// in ascending result order — the contiguous multi-out variadic run the
-// seatResults relaxation admits (all of a dyn-body do's outputs land together
-// at run time, whatever their count).
-func sameEventRunToEnd(ops []EmitOperand, idx int) bool {
-	for i, op := range ops {
-		if op.kind != opEvent || op.idx != idx || op.resIdx != i {
+// eventRunThenInert reports whether ops OPENS with a contiguous run of the
+// SAME event's results in ascending result order and carries no further event
+// above it — the shape a RUNTIME-VARIADIC run can be left exactly where it
+// lands, whatever its length, because everything above it is pushed after it
+// and so lands on top of however many values it really left.
+//
+// It generalises the relaxation the fifty-seventh increment admitted, which
+// required the run to reach the END (`do [def b true  do [1 2 (if b []
+// [9 9])]]`, whose whole residual is the inner dispatch's run). An INERT
+// SUFFIX above the run is that same seating with one more push and no new
+// question: `do [for 3 [1] 7]` resolves to [REGION, CONST].
+//
+// The MIRROR shape is not this one and never can be. [inert…, REGION] cannot
+// seat in place — the prefix would land ON a run whose length is a runtime
+// value — which is the whole reason OpSeatBelowMark and regionPrefixShape
+// exist. Above the run is free; beneath it costs a mark.
+func eventRunThenInert(ops []EmitOperand, idx int) bool {
+	n := 0
+	for n < len(ops) && ops[n].kind == opEvent && ops[n].idx == idx && ops[n].resIdx == n {
+		n++
+	}
+	if n == 0 {
+		return false
+	}
+	for _, op := range ops[n:] {
+		if op.kind == opEvent {
 			return false
 		}
 	}

@@ -154,9 +154,10 @@ func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
 
 // TestDynBodyVariadicAndSpliceShapes — Phase E increment 2 pins:
 //   - a NESTED multi-out dyn-body do inside a closure unit seats its
-//     contiguous variadic residual (sameEventRunToEnd) and compiles;
-//   - a variadic run followed by ANOTHER value declines the unit residual
-//     (conservative; fallback parity holds);
+//     contiguous variadic residual (eventRunThenInert) and compiles;
+//   - a variadic run followed by an INERT value seats it too (the
+//     fifty-ninth increment: the suffix is PUSHED after the run, not indexed
+//     past it), while a run followed by another EVENT still declines;
 //   - a splice over a COMPUTED payload inside a do body compiles via the
 //     dyn-body backstop with the interpreter's SPREAD semantics (the
 //     captured-carrier closure previously baked identity — [7 8] against
@@ -182,6 +183,15 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 		`do [for 3 [1]]`,
 		`do [for 3 [1] 7]`,
 		`do [7 for 3 [1]]`,
+		// The fifty-ninth increment: the run-then-inert body COMPILES now
+		// rather than riding as a List const the handler interprets. Two
+		// values above the run, and a branch region rather than a loop.
+		`do [for 3 [1] 7 8]`,
+		`def b true  do [(if b [] [9 9]) 1 2]`,
+		// Still the dyn-body strategy, and both must keep answering: a
+		// second region above the first, and a call result above the run.
+		`do [for 3 [1] for 2 [9]]`,
+		`do [for 3 [1] (1 add 2)]`,
 		`def n 3  do [for n [1]]`,
 		// forceOrder ∪ dynBind-source merge (planValueDefLocals): the SECOND
 		// do's closure unit has an out-of-order residual (inert x below the
@@ -210,12 +220,22 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 	// code-bearing one defers to the interpreter at run time. Full family
 	// pinned in bytecode_splicedyn_test.go.
 	requireEngineParity(t, `def mk fn [[] [List] [[7 8]]]  def xs (mk)  word xs`, true)
+	// GRADUATED by the fifty-ninth increment, and it had been the pin for
+	// the sentence that was wrong: `def f fn [[] [] [for 3 [1] 7]]  f` was
+	// refused as "a variadic loop value MID-residual … the RET cannot seat a
+	// runtime-variable count with a fixed value above it". Above it is
+	// exactly where a fixed value CAN go — it is pushed after the run — and
+	// the shape that genuinely cannot seat is a fixed value BENEATH the run,
+	// which is what the mark plan exists for. A no-contract fn RETs whatever
+	// the body leaves, so the run and the 7 above it leave together.
+	requireEngineParity(t, `def f fn [[] [] [for 3 [1] 7]]  f`, true)
 	refusals := []string{
-		// A variadic loop value MID-residual in a fn body: the RET cannot
-		// seat a runtime-variable count with a fixed value above it
-		// (seatResults' sameEventRunToEnd screen), so the fn refuses
-		// "result is a variadic loop value (Stage 3)" — fallback parity.
-		`def f fn [[] [] [for 3 [1] 7]]  f`,
+		// What still refuses at that screen, and the honest witness for it:
+		// an EVENT above the run. A call result is not pushed after the run,
+		// it is already on the simulated stack in its own production order,
+		// so seating it above a length nothing knows is the indexing problem
+		// the inert suffix does not have.
+		`def f fn [[] [] [for 3 [1] (1 add 2)]]  f`,
 	}
 	for _, src := range refusals {
 		a, err := New()

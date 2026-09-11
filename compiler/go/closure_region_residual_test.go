@@ -48,10 +48,11 @@ func TestClosureResidualRegionAdmitsThePrefixShape(t *testing.T) {
 	if !closureResidualRegion(es, crrUnit(es, 1, 2)) {
 		t.Error("a multi-seat region under a one-value prefix must be admitted")
 	}
-	// The WHOLE-RUN shape: the residual IS the region, no prefix beneath it.
-	// regionPrefixShapeOps declines this one ("the run IS the whole residual;
-	// no prefix to seat") and the second arm takes it — seatResults leaves
-	// such a run where it lands, whatever its length (sameEventRunToEnd).
+	// The RUN-THEN-INERT shape with an EMPTY suffix: the residual IS the
+	// region, no prefix beneath it. regionPrefixShapeOps declines this one
+	// ("the run IS the whole residual; no prefix to seat") and the second arm
+	// takes it — seatResults leaves such a run where it lands, whatever its
+	// length (eventRunThenInert).
 	//
 	// It is not an academic arm. An ENCLOSING whole-residual body whose only
 	// content is an inner one of the prefix shape has exactly this residual,
@@ -67,18 +68,70 @@ func TestClosureResidualRegionAdmitsThePrefixShape(t *testing.T) {
 	}
 }
 
+// TestClosureResidualRegionAdmitsTheSuffixShape is the fifty-ninth increment,
+// and it is the arm that reads like the one the refusal message names. An
+// inert value ABOVE the run does NOT have to be seated on top of a length
+// nothing knows — it is PUSHED after the run rather than indexed past it, so
+// it lands on top of however many values the run really left. What cannot be
+// laid out is a fixed value BENEATH the run, and that is the prefix shape
+// above, which pays for itself with a mark.
+//
+// `do [for 3 [1] 7]` is the residual, and it had been reading as the same
+// refusal as `do [7 for 3 [1]]` for exactly as long as the two shapes were
+// described by one sentence.
+func TestClosureResidualRegionAdmitsTheSuffixShape(t *testing.T) {
+	es := rpState(t)
+	u := crrUnit(es, 0, 2)
+	es.fnRecs[u].outOps = append(es.fnRecs[u].outOps, ConstOperand(7))
+	if !closureResidualRegion(es, u) {
+		t.Fatal("[REGION, inert] pushes the inert after the run; it must be admitted")
+	}
+	// More than one inert above the run is the same push, twice.
+	u2 := crrUnit(es, 0, 1)
+	es.fnRecs[u2].outOps = append(es.fnRecs[u2].outOps, ConstOperand(7), ConstOperand(8))
+	if !closureResidualRegion(es, u2) {
+		t.Error("a two-value inert suffix is one more push, not a new question")
+	}
+}
+
 func TestClosureResidualRegionDeclines(t *testing.T) {
 	es := rpState(t)
 	for _, tc := range []struct {
 		name string
 		unit func() int
 	}{
-		// A run that is not contiguous to the END of the residual is neither
-		// shape: an inert value ABOVE the run would have to be seated on top
-		// of a length nothing knows.
-		{"an inert value above the run", func() int {
+		// An EVENT above the run is neither shape. The suffix arm admits
+		// operands that are PUSHED after the run; a second event's result is
+		// not pushed, it is already on the simulated stack in its own
+		// production order, so seating it above a run of unknown length is
+		// the indexing problem the inert suffix does not have.
+		// `do [for 3 [1] (1 add 2)]` is the row.
+		{"an event above the run", func() int {
 			u := crrUnit(es, 0, 2)
-			es.fnRecs[u].outOps = append(es.fnRecs[u].outOps, ConstOperand(7))
+			other := es.appendEvent(EmitEvent{kind: evCall})
+			es.fnRecs[u].outOps = append(es.fnRecs[u].outOps, EventOperand(other, 0))
+			es.fnRecs[u].frag = &EmitFragment{events: es.frames[0]}
+			return u
+		}},
+		// A SECOND region above the first is the same decline for the same
+		// reason, and it is worth its own row because the shape looks
+		// admissible from either end: `do [for 3 [1] for 2 [9]]`.
+		{"a second region above the run", func() int {
+			u := crrUnit(es, 0, 1)
+			other := crrUnit(es, 0, 1)
+			es.fnRecs[u].outOps = append(es.fnRecs[u].outOps, es.fnRecs[other].outOps...)
+			es.fnRecs[u].frag = &EmitFragment{events: es.frames[0]}
+			return u
+		}},
+		// A residual that OPENS at the run's SECOND result — the first was
+		// consumed downstream — is not a run this arm can read: the operands
+		// it has are a suffix of the event's results, and seating a suffix
+		// says nothing about where the rest of the block landed. It is the
+		// n == 0 answer, and the only way to reach it, since the caller has
+		// already established that operand 0 names the event.
+		{"a run starting past its first result", func() int {
+			u := crrUnit(es, 0, 2)
+			es.fnRecs[u].outOps = es.fnRecs[u].outOps[1:]
 			return u
 		}},
 		// A run whose event is NOT a region: its recorded count IS its
