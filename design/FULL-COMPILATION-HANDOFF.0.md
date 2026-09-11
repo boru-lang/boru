@@ -5684,6 +5684,48 @@ every call site, so the compiled RET check is stamped with the unit's
 position. Worth writing down that the flag fired and what it turned out to
 be, because the next author running the same probe will see it too.
 
+## The twin-placement cluster is THREE mechanisms, not one (2026-09-11, measured, not fixed)
+
+Three ledger rows share one refusal string — "twin regime: a bind transition
+has no stream placement (a multi-run-body or post-trap twin), so the rollback
+would lose it" — and it is tempting to read that as one cause worth one
+increment. It is not, and each row's own `why` in the ledger already said so.
+Measured minimal witnesses, so the next author starts from facts:
+
+```
+[10 20] each [drop def zq 5 zq]                        COMPILES
+[10 20] each [drop def zq 5 def zr 6 zr]               COMPILES
+[10 20] each [drop undef zq 7]                         COMPILES
+[10 20] each [drop def ZA (Integer gt 5) 7]            refuses   (type def)
+[10 20] each [drop import "boru:math-util" end 7]      refuses   (module bind)
+do [def b true  do [1 2 (if b [3] [9 9])]]             refuses   (nested do)
+```
+
+So the arm-residency bridge already carries the VALUE-def and UNDEF halves,
+one or many, per element. What is left is three unrelated things:
+
+1. **A TYPE def.** `AdoptResidentTwins` excludes it explicitly — `tr.Kind !=
+   BindDef && != BindUndef`, or `bindTwinEntries[i].TypeDef != nil` — under a
+   comment that says "shapes this increment does not carry".
+2. **A module bind.** An `import` performs its transition without an
+   `evDynBind` def-site event to pair with, so the bridge's
+   `len(events) != len(twins)` check declines before the kind is even read.
+3. **The nested `do`.** Nothing to do with residency: the inner body's
+   closure compile declines on its residual shape, so the once-run body's
+   def twin is never adopted at all. Confirmed element-independent of the
+   variadic arm — `do [def b true do [1 2 (if b [3] [9 9])]]` refuses the
+   same way as the `[]` twin the ledger carries.
+
+**The soundness question that makes (1) more than plumbing.** The obvious
+move is to let `OpBindResident` replay the twin ENTRY per element, which is
+what `ApplyBindTwin` already does at the top level. That is correct exactly
+when the entry is the SAME every element, and the two ledgered witnesses are
+(`(Integer gt 5)` and `(A tand B)` do not read the element) — but nothing in
+the bridge proves it, and a type built from the element (`def ZA (Integer gt
+elem)`) would bake the check pass's one instance and install it N times. So
+(1) needs either a per-element rebuild or a proof of element-independence,
+and that choice is the increment, not the wiring.
+
 ## What CI caught: three spec rows in the wrong corpus (2026-09-10, repairs to the forty-sixth and forty-eighth increments)
 
 PR #448's CI went red on `test/go/langspec` and the local batch gate agreed.
