@@ -135,31 +135,54 @@ the operand arrives concrete and the static result is `dynamic(Any)`. It lowers
 to `CALL_NATIVE_POLY`, which re-runs the kernel's own `MatchSignature` at run
 time (`vmContext.callPolyIn`) — the same first-match the interpreter takes.
 
-### (e) Genuinely uncompilable body → **whole-program interpreter fallback**
+### (e) Body the compiler has no representation for → **a REFUSAL, i.e. a defect**
+
+> **Superseded in its framing by §7 and §8 (note added 2026-09-11).** What
+> this subsection describes is real and still the mechanism; what it gets
+> wrong is calling it acceptable. There is no interpreter tier beneath the
+> compiler. A refusal is an ERROR to be closed, and the shapes named below
+> were closed by §8.
 
 If the body neither compiles to a closure nor bakes as an inert const nor
-islands, the whole program falls back to the interpreter silently under
+islands, the whole program runs on the interpreter silently under
 `--compile`, or aborts with the refusal reason under `--force-compile`
-(`RunCompiledStrict`, `lang/go/boru.go`).
+(`RunCompiledStrict`, `lang/go/boru.go`). The first of those is the dangerous
+one: a silent refusal is a defect that reports itself as success.
 
-**`do [ … ]` does NOT always natively compile** — and it doesn't need to, because
-the fallback is the interpreter, which produces the identical result. The body
-refuses whenever it contains a construct the VM has no representation for —
+**At the time of writing, `do [ … ]` did NOT always natively compile.** The
+original text continued "and it doesn't need to, because the fallback is the
+interpreter, which produces the identical result" — that reasoning is
+rejected: identical results make a refusal SOUND, not acceptable. The body
+refused whenever it contained a construct the VM had no representation for —
 principally **tape-coupled re-stepping tokens**:
 
 ```
-def xs [add 1 2]  do [word xs]         # → 3   (correct, but INTERPRETED)
-do [def d [add]  word d 1 2]           # → runs on the interpreter
+def xs [add 1 2]  do [word xs]         # → 3  — COMPILES since §8 (re-measured 2026-09-11)
+do [def d [add]  word d 1 2]           # → still refuses; see below
 ```
 
-Both abort under `--force-compile` with **`code-body word do (Stage 2)`**. The
+Both aborted under `--force-compile` with **`code-body word do (Stage 2)`**
+when this was written. Re-measured 2026-09-11, they have come apart, and the
+difference is worth keeping:
+
+- the first **compiles** — §8's `CompileDynBody` closed exactly that class;
+- the second still **refuses**, but at a DIFFERENT gate — *"twin regime: a
+  bind transition has no stream placement"* — so what remains of it is the
+  body-local `def`'s twin, not the `word` splice this subsection was written
+  about. Its interpreted result is itself an error (`cannot call add — no
+  signature matches`), so it is a poor witness for anything now; a
+  replacement whose interpreted run succeeds would be worth writing.
+
+The mechanism below is why they originally refused. The
 `word` splice (`__SP`) contributes tokens that are re-stepped against the live
 stack (`eng/go/CLAUDE.md` "Quotation System" → splice); a `var [[…] …]` block in
 the body (`CompileExecutesBody`) likewise splices `def`/`body`/`undef` tape
 tokens. Neither can be a compiled closure, so `do` refuses to lower and the
-program runs on the interpreter. The guarantee is therefore **"`do` always runs
-correctly," not "`do` always compiles."** The differential gate proves the two
-engines agree on the result either way.
+program ran on the interpreter. The guarantee at that point was **"`do` always
+runs correctly," not "`do` always compiles"** — and §7 records the maintainer
+directive that rejected settling for it. The differential gate proves the two
+engines agree on the result either way, which is what makes a refusal sound;
+soundness is the floor here, not the goal.
 
 ### 2b. `do [ … ] error [ … ]` — the try/catch combinator
 
@@ -228,7 +251,7 @@ param, and every divergence/trap case:
 | `do [do [raise x "e"]]` | `error(e)` | inner traps → Error, outer returns it |
 | `do [raise boom "kaboom"] error [drop "recovered"]` | `recovered` | paired closures (try/catch) |
 | `do [1 div 0] error [drop -1]` | `-1` | paired closures (try/catch) |
-| `def xs [add 1 2]  do [word xs]` | `3` | **refuses** → interpreter fallback |
+| `def xs [add 1 2]  do [word xs]` | `3` | refused when this table was written; COMPILES since §8 (re-measured 2026-09-11) |
 
 The capture case disassembles to a `do$body/1` unit with `[x]` local that the
 enclosing `bump/1` frame supplies via `PUSH_LOCAL` before `PUSH_CLOSURE` —
@@ -236,16 +259,34 @@ lexical capture flows through the closure boundary correctly.
 
 ## 5. Summary
 
-`do [ … ]` does **not** always natively compile — a body carrying tape-coupled
-re-stepping tokens (`word` splices, `var` blocks) refuses and the whole program
-falls back to the interpreter. What *is* guaranteed is that `do` always **runs
-correctly**: the recorder chooses among four native strategies (single-value
-closure, diverging closure with no RET, baked inert-const list, and Map poly)
-when it can, and the interpreter is the correctness backstop when it can't. The
-`do [ … ] error [ … ]` try/catch idiom compiles as two paired closures. The
-single `InvokeBody`/`doListHandler` seam is what keeps the trap-and-return
-semantics byte-identical across the interpreter and the VM. No defects were
-found during this investigation.
+> **Superseded on its central claim — read §7 and §8.** This section was
+> written before the always-compile directive (§7) and the dyn-body strategy
+> (§8), and it describes a refusal as though the interpreter were a
+> legitimate tier beneath the compiler. It is not. **The aim is that every
+> code form compiles, so a refusal is an ERROR** — a defect with a date on
+> it, not a resting place. "Sound refusal" means only "not a miscompile".
+> The paragraph below is kept as the record of what was measured at the
+> time; where it says the interpreter is the backstop, read: this is what
+> had not been built yet.
+
+At the time of this investigation `do [ … ]` did **not** always natively
+compile — a body carrying tape-coupled re-stepping tokens (`word` splices,
+`var` blocks) refused, and the whole program then ran on the interpreter.
+What was guaranteed even then is that `do` always **runs correctly**: the
+recorder chooses among four native strategies (single-value closure,
+diverging closure with no RET, baked inert-const list, and Map poly) when it
+can. §8's `CompileDynBody` has since closed the gap those refusals left — it
+is a NATIVE strategy, not a fallback, and the `word xs` row in §4's table
+above compiles today. The `do [ … ] error [ … ]` try/catch idiom compiles as
+two paired closures. The single `InvokeBody`/`doListHandler` seam is what
+keeps the trap-and-return semantics byte-identical across the interpreter and
+the VM. No defects were found during this investigation.
+
+**What remains, stated in the terms §7 set.** A program on the dyn-body
+strategy COMPILES, but its body is invoked through `InvokeBody` — the
+interpreter runs the body inside a compiled program. That is not a refusal
+and not a fallback; it is the remaining defect, it is what
+`TestInterpEntryCensus` counts, and closing it is the open work.
 
 ## 7. The always-compile goal — tranche 1 (July 2026)
 
@@ -277,9 +318,15 @@ The three classes that remained after tranche 1 (computed bodies `do b`,
 `args`-bearing bodies, variadic multi-out bodies) all compile as of Phase E
 increments 1–2. Kept for the record; the mechanism is §8.
 
-## 8. Phase E — the dyn-body backstop (July 2026): frontier EMPTY
+## 8. Phase E — the dyn-body strategy (July 2026): frontier EMPTY
 
-The universal backstop shipped in two increments (commits `7838403` and the
+> "Backstop" here names a universal LAST-RESORT NATIVE STRATEGY, not an
+> interpreter tier — a program on it compiles. The defect it leaves is
+> narrower and still open: the body is invoked through `InvokeBody`, so the
+> interpreter runs the BODY inside a compiled program, which is what
+> `TestInterpEntryCensus` counts.
+
+The universal strategy shipped in two increments (commits `7838403` and the
 increment-2 follow-up). Mechanism — `CompileDynBody` on do's List AND Map
 sigs; `tryRecordDynBody` (funnel specialist after the closure path) records
 a plain CALL_NATIVE over the body operand with a VARIADIC-flagged result

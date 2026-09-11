@@ -6612,6 +6612,236 @@ my new kind work" but "what does every OTHER path keyed on kind do with it" —
 and where such a path has a default, make the default the safe answer before
 you add the case.
 
+## The kind-keyed audit, and a guard that had to be tested twice (2026-09-11, the fifty-sixth increment)
+
+NUR137 was the second time a new EVENT KIND reached a predicate keyed on kind
+and inherited whatever its default happened to do. So the increment after it
+audited every `switch ev.kind` in `compiler/go` rather than fixing another
+instance. The result is better than expected, and the numbers are worth
+recording so nobody re-runs it:
+
+| site | default | verdict |
+|---|---|---|
+| `lower.go lowerEvent` | `reason = "unknown event kind"` | **already right** — an unnamed kind REFUSES |
+| `lower.go forEachOperand` | `default: // evBranch` | **the one finding** |
+| `lower.go singleOutputCall`, `:3297`, `emit.go:12996` | `return false` | conservative |
+| `lower.go:1765` (promotion walk) | `continue` | conservative |
+| `emit.go regionReadsTheStack` | `return true` | fixed by NUR137 |
+| `eventPos`, `eventDivergesDeep`, `eventsBindDynScope`, + 8 statement switches | no default | falls through to a safe nothing |
+
+**The finding.** `forEachOperand` ended `default: // evBranch` and
+dereferenced `ev.br`. It was correct only because every other kind is cased
+above it. A new kind would either nil-deref — which ADR-005 forbids outright
+— or contribute no operands, and an unvisited operand is an unreferenced one:
+`planValueDefLocals` marks a live producer dead and the lowerer drops the
+value. Same class as NUR137, wider blast radius. `evBranch` is an explicit
+case now.
+
+**The guard is the deliverable, not the case.** A comment did not hold this
+line the first time: NUR133's fix left one *in the function that then broke*,
+saying exactly what would go wrong. What holds a line is a test that FAILS
+when the premise changes. `evKindEnd` is a sentinel one past the last kind,
+and `TestEventKindCensus` asserts the census matches it — so adding a kind
+fails a test whose message names every kind-keyed site that must learn about
+it. `TestForEachOperandHandlesEveryKind` walks a well-formed event of every
+kind through the operand walker.
+
+**Four things that only came out by testing the guard itself, and the last
+two came from review rather than from me.**
+
+1. The census's FIRST form asserted `evBindTwin == len(evKinds)`. Simulating
+   a new kind did not fail it — a kind added after `evBindTwin` does not
+   change `evBindTwin`. A guard that does not guard is worse than none,
+   because it is believed. Hence the sentinel.
+2. `TestForEachOperandHandlesEveryKind` failed on `evTrap` at first, and the
+   code was right: a trap's operands are its REMATCH window, and the fixture
+   built a trap without one. The fixture was fixed, NOT the assertion — the
+   assertion is what would catch a kind whose case visits nothing.
+3. The site list was WRONG, and the way it was wrong is the same mistake one
+   level up. The first cut named eight sites; review named three more
+   (`eachClosureCap`, `childFragments`, `RewritePromotedRefs`); parsing the
+   package found **nineteen**. All three of review's were in the audit above
+   — they are "no default, falls through to a safe nothing" rows — but the
+   audit is not what a future author reads. The FAILURE MESSAGE is, and it
+   was pointing at less than half the surface. So the list is no longer
+   maintained by hand: `TestKindKeyedSiteCensus` parses the package and
+   fails if any `switch X.kind` sits in a function neither
+   `eventKindSites` nor `operandKindSites` classifies (19 and 8
+   respectively, and the split matters — the second keys on OPERAND kind,
+   which a new event kind cannot reach).
+4. `TestEventPosHandlesEveryKind` shipped with `default: continue` — a
+   default that quietly does nothing while looking like coverage, which is
+   verbatim the defect this increment exists to remove. Review caught it. It
+   now fails on an unclassified kind, and the comment says what it used to
+   do rather than quietly correcting it.
+
+**The pattern under 3 and 4 is worth naming.** Both are the increment's own
+subject applied to the increment's own guard, and both were found by someone
+re-reading it rather than by the author who had just written the rule down.
+Knowing the rule is not the same as satisfying it; that is what review is
+for, and it is the second time on this line that a Codex pass has been the
+thing that closed a class rather than an instance.
+
+**The rule this leaves.** When you widen a gate that admits event kinds, the
+question is not "does my new kind work here" but "what does every OTHER path
+keyed on kind do with it". And when you write a guard against a class, spend
+the extra minutes making it fail on purpose before trusting it.
+
+## The do body that compiles but INTERPRETS ITS BODY: measured at the gate (2026-09-11)
+
+**Terms first, because getting them wrong is how this section was originally
+written.** The "dyn-body backstop" is a NATIVE COMPILATION STRATEGY
+(DO-STRUCTURE-COMPILATION.0.md §8): `CompileDynBody` records a CALL_NATIVE
+over the body operand with a variadic result and arms DynEnv, and its own
+19-shape sweep force-compiles with byte parity. A program reaching it
+COMPILES. What it does not do is compile the BODY — the `do` handler invokes
+it through `InvokeBody`, so the interpreter runs the body at run time inside
+a compiled program. That is what `TestInterpEntryCensus` counts, and it is
+the thing this project exists to remove.
+
+So neither half of "falls back to the interpreter" is right here: nothing
+falls back, and nothing fails. The defect is narrower and worth naming
+exactly — a compiled program whose body is still interpreted.
+
+And the wider rule this correction carries, which earlier sections of this
+log get wrong in the other direction: **there is no acceptable interpreter
+tier.** The aim is that every form compiles. A REFUSAL is an ERROR — a
+defect to eliminate — and "a sound refusal" only ever means "not a
+miscompile", never "an acceptable resting place". Every frontier-ledger row
+is a bug with a date on it, not a bucket to manage.
+
+This is the measurement pass on that bucket — the interp-entry census's
+largest, 11 rows (`control` 4, `bytecode-migrated` 6, `word-splice` 1).
+NOTHING was changed; two things I had written down from reading turned out
+wrong.
+
+**The instrument.** A print at the `BodyOutResidual` gate
+(`callable_words.go:774`) showing the dispatch's recorded out-count beside the
+probe unit's own shape. Both spellings of the witness pair:
+
+```
+do [1 (if true  [] [9 9])]   len(outs)=1  variadic=true  dynTrail=false  len(outOps)=2   COMPILES
+do [1 (if false [] [9 9])]   len(outs)=3  variadic=true  dynTrail=false  len(outOps)=2   BODY INTERPRETED
+```
+
+**Wrong thing #1: the units are not different.** I had recorded that the
+`true` spelling compiles because its unit is exact and the `false` one's is
+variadic. Both units are `variadic=true` with the SAME two out-operands. The
+only difference is what the DISPATCH recorded — 1 value against 3 — because
+the check pass evaluated the folded branch and saw the arm net 0 or 2. The
+`true` case therefore compiles a VARIADIC unit, by skipping the exactness
+check entirely rather than by passing it (`len(outs) > 1` guards the call).
+
+**Wrong thing #2: the dispatch does not statically seat that count at run
+time.** I had written that the fix must be "the mark machinery applied at the
+dispatch seating". But a whole-residual dispatch's RET is frameless and
+returns whatever the body left — `CallableSpec.BodyOut`'s own doc says so.
+`closureResidualExact`'s doc is precise where my paraphrase was not: the
+count it protects is the SIMULATED stack's, the compiler's model, not a
+runtime seat. This witness makes it concrete — the dispatch recorded ONE out
+and the runtime leaves ZERO, on both lanes, correctly:
+
+```
+def zs [1] def zt (zs 0 getr)  do [(if (zt gt 0) [] [9])]
+  len(outs)=1  variadic=true  len(outOps)=1     both lanes: empty
+```
+
+So a count mismatch at the PROGRAM residual is absorbed. What the exactness
+check defends is a mismatch some downstream consumer would mis-model.
+
+**One hazard checked and found closed.** `closureResidualExact` compares
+`len(rec.outOps)` — an OPERAND count — against `len(outs)`, a VALUE count.
+Those differ exactly when an operand stands for a multi-value region, which is
+this whole family. It cannot bite, because `!rec.variadic` is tested FIRST and
+every such body is variadic; the count comparison is only ever reached where
+operands and values coincide. Worth stating because the comparison reads like
+a units error and is not one.
+
+**Where that leaves the increment — second measurement, and it relocates the
+question.** The obvious next suspect was `branchVariadicResult`'s const-cond
+arm, whose comment ("only the taken (then) arm is inlined") reads oddly
+against code that always looks at `ThenStk`: for a FALSE constant the taken
+arm is the else. Measured, and the suspicion is a dead end — but what it
+found is better. `ConstCond` is **nil in both spellings**:
+
+```
+do [1 (if true  [] [9 9])]   constCond=nil  thenN=0  elsN=2  hasElse=true
+do [1 (if false [] [9 9])]   constCond=nil  thenN=0  elsN=2  hasElse=true
+```
+
+The two record IDENTICAL BranchRecords. Both are variadic by the same clause
+(`elsN > 1`), and the const arm is never taken. So the difference between the
+spellings is not in the recorder's model of the branch at all.
+
+**What the pair actually shows.** The CHECK RUN is concrete — it takes one
+arm and leaves 1 value or 3. The RECORDER's model is variadic — it describes
+both arms and cannot say which runs. `len(outs)` reflects the concrete run;
+`rec.variadic` reflects the model. The `true` spelling compiles only because
+`outs` happens to be 1 and the exactness check is skipped; the `false` one
+declines because the model says variadic. Neither outcome is reasoning about
+the condition being constant, because nothing at this layer knows it is.
+
+**ANSWERED, third pass — and the answer hands the increment over ready to
+write.** `ConstCond` is set in exactly one place: `if3ReturnsFn`
+(`basic/go/native_control.go:626`), behind `LiteralCondValue(args[0])`. That
+predicate takes a `condList` and requires `AsList(...)` with `Len() == 1`. A
+BARE literal condition is not a one-element list, so it never reaches the
+fold. The list-form `if [true] …` does.
+
+Measured, and this is the finding that makes it an increment — the SAME
+program compiles its body natively in one spelling and interprets it in the other:
+
+```
+do [1 (if [false] [] [9 9])]   1 9 9   compiles natively (const path, taken arm = [9 9])
+do [1 (if  false  [] [9 9])]   1 9 9   compiles, BODY INTERPRETED (const path never entered)
+do [1 (if [true]  [] [9 9])]   1       REFUSES "if: branch produces no value (Stage 2 …)"
+```
+
+So the const-fold path already handles exactly the shape that otherwise
+has its body interpreted. The increment is to let a bare literal reach it —
+widen `LiteralCondValue`, or its caller, to accept a bare Boolean beside the
+one-element list.
+
+Three things to weigh before writing it, none of them measured yet:
+
+  - POPULATION. Folding more conditions changes which branches are
+    const-eliminated, which moves `EmitUnreachableBranch`'s diagnostics.
+    `diagnosticParityCeiling` and `TestVariationDifferential` are the gates
+    that will say; run them before believing the change is narrow.
+  - The `[true]` spelling REFUSES on a zero-value taken arm ("branch
+    produces no value"). Increment 51's lesson was precisely that "nets no
+    value" is not "diverges" — the same question, at a different gate. If
+    the widening is done without settling this, bare `if true [] [...]`
+    moves from compiling (body interpreted) to REFUSING, and a refusal is a
+    DEFECT, not a lesser outcome — the variation sweep would catch it and
+    the corpus would not.
+  - `branchVariadicResult`'s const arm reads `ThenStk`, and its comment says
+    "the taken (then) arm". Reading `if3ReturnsFn` settles it: that site
+    assigns `ThenStk: stk` where `stk` is whichever arm ran, so the comment
+    is right and the field name is merely confusing. Widening the fold makes
+    that arm reachable from far more programs, so rename or re-comment it in
+    the same change.
+
+**(The superseded reading, kept because it is how the question was found:)**
+why is `ConstCond` nil for a LITERAL condition? `emitBranch` carries
+the field and `branchVariadicResult` has a whole arm for it, so something
+sets it somewhere — just not here. If a literal condition set it, that arm
+would apply, the merge could be modelled with the taken arm's fixed count,
+and both spellings would have a determinate model. That is a recorder-level
+change with its own blast radius (every consumer of `variadicResult` would
+see fewer variadic branches), so measure the population before touching it —
+and while you are in there, settle whether `ThenStk` is the TAKEN arm under a
+false constant or whether that arm has a latent bug of its own. It is
+currently unreachable from these witnesses, so no row proves either way.
+
+**And a measurement trap, since it cost time twice.** `-force-compile`
+reports SUCCESS for a program whose body the dyn-body strategy interprets,
+because such a program genuinely DID compile — it just has an interpreter
+inside it. It cannot tell a natively-compiled body from an interpreted one.
+The instrument that can is `TestInterpEntryCensus`, which is how this bucket
+was identified at all
+(it failed 33-against-32 when increment 55's row went into the corpus).
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -6696,6 +6926,42 @@ position than the construct that produced the binding.
   `lang/go` suite was still running.
 - **Run `make -C kg graph` after editing any tracked design doc.** Two CI
   failures came from forgetting.
+- **There is no interpreter tier, and a refusal is an ERROR.** The aim is
+  that every code form compiles. So "it refuses and falls back to the
+  interpreter — the sound direction" is half a sentence: SOUND means only
+  "not a miscompile", and the refusal is still a DEFECT with a date on it.
+  Every frontier-ledger row is a bug, not a managed bucket, and choosing a
+  refusal over a wrong answer is choosing the lesser of two defects, never
+  reaching a resting place. (Maintainer correction, 2026-09-11, after this
+  log had repeatedly written refusal up as an acceptable outcome.)
+
+  Two distinctions this log has blurred and that are worth keeping apart:
+  a program that REFUSES does not compile at all; a program that reaches
+  the dyn-body strategy COMPILES, but its body is interpreted at run time
+  (DO-STRUCTURE-COMPILATION.0.md §8 — it is a native strategy, not a
+  fallback). Both are defects; they are different defects, and only the
+  second is what `TestInterpEntryCensus` counts.
+- **"CI is green" does NOT mean the merged coverage gate passed.** `ci.yml`
+  runs `make test` and `make cover-gate-core`; the repo-wide `make
+  cover-gate` lives in its OWN workflow (`cover-gate.yml`) on a nightly
+  schedule plus `workflow_dispatch` — deliberately, because re-profiling 13
+  modules would double every PR's CI time. So a PR's two green checks say
+  nothing about the ADR-008 floor.
+
+  This cost something real on 2026-09-11: the local `cover-gate` for the
+  NUR137 fix was killed mid-run on the reasoning "CI validated exactly this
+  content", and #448 was merged with the merged gate unverified on its final
+  commit. That reasoning was simply wrong about what CI covers. The
+  workflow's own header had already recorded the same class of miss twice —
+  *"a 100% floor nothing checks is a 100% floor nobody keeps"* — which is
+  the second time on this line that the answer was written down in the file
+  I was about to act against.
+
+  The rule: before merging, either let the local `make cover-gate` finish,
+  or dispatch `cover-gate.yml` on the branch (`gh workflow run` /
+  `actions_run_trigger`, which is what `workflow_dispatch` is there for) and
+  wait for it. Killing a local coverage run is only free when something else
+  is actually going to run that gate.
 - **Never run a second coverage job alongside `make cover-gate`.** Doing so
   starved `TestServeStepShutdownDrains` (a 10s wall-clock bound on a
   signal-driven shutdown) and cost a full re-run to disprove. The clean
