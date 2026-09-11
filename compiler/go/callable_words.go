@@ -810,6 +810,42 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	if !realOk || unit < 0 {
 		return false
 	}
+	// The REGION shapes are a SHAPE test, so they must be re-asked of the
+	// REAL unit — and this is not belt-and-braces, it is the same probe/real
+	// divergence the decline above documents, seen from the other side. The
+	// probe carries no producedBy, so an enclosing binding read that an EVENT
+	// produces bakes there as a CONST and routes LIVE in the real compile.
+	// closureResidualExact survives that because it counts operands and the
+	// count does not change; regionPrefixShapeOps does not, because it
+	// requires everything beneath the run to be INERT, and a const-in-probe /
+	// event-in-real operand is not.
+	//
+	// Measured: `for 2 [def b true  do [1 2 (if b [] [9 9])]]` — the probe's
+	// do$body residual is [CONST CONST REGION] and the real one is
+	// [EVENT:0 EVENT:1 REGION]. Admitting on the probe alone recorded a
+	// closure whose unit then had no seating, and the LOWERING refuses with
+	// no fall-through: a row that compiled through the dyn-body strategy
+	// became a hard refusal. Declining here hands the dispatch to its own
+	// refusal path, which is where that strategy takes it.
+	if regionResidual && !closureResidualRegion(real, unit) {
+		// The units this compile just created are now ORPHANS: nothing
+		// records a dispatch to them, but Finalize lowers every unit in the
+		// table, and a refusal there kills the PROGRAM. That is the trade
+		// fnUnitRec.stampOnly already rejects for a fn-value stamp, and the
+		// reasoning is identical — an unreachable unit's lowering says
+		// nothing about the program — so take the same recovery: a trap stub
+		// that keeps unit indices aligned and fails loudly if ever entered.
+		// Only a FRESH unit is marked; a memo hit belongs to the dispatch
+		// that made it.
+		if unit == recsBefore {
+			for u := recsBefore; u < len(real.fnRecs); u++ {
+				if real.fnRecs[u] != nil {
+					real.fnRecs[u].stampOnly = true
+				}
+			}
+		}
+		return false
+	}
 	// The closure latch for the arm-residency bridge: THIS unit, and
 	// whether it is fresh (a memo hit reuses a unit another dispatch's
 	// twins already own — the bridge declines on stale). Set before the

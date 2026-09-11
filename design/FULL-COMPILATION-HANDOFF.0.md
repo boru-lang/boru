@@ -6963,6 +6963,69 @@ refuses, and `opsHaveVariadicResult` declines the rebuild. A pin that stops
 failing is not automatically a pin that graduated; check which claim it was
 making.
 
+## What the variation lane caught: a screen asked of the wrong state (2026-09-11, repair to the fifty-seventh increment)
+
+The increment above went out green on `compiler/go`, the whole `lang/go`
+package, `fmt`/`vet`/`lint` and `kg verify`, and the dispatched merged
+coverage gate failed on it. Not on coverage — on
+`TestVariationDifferential`, inside the same run:
+
+```
+seed:      def b true  do [1 2 (if b [] [9 9])]     (control.tsv:25)
+transform: for-body
+variant:   for 2 [def b true  do [1 2 (if b [] [9 9])]]
+detail:    fn do$body: body leaves extra values (Stage 3 lowers in-order results)
+```
+
+A/B against the merge base: the variant answered `1 2 1 2` on both lanes
+before and REFUSED after. A row that compiled stopped compiling — the
+regression the ledger's own framing calls a defect.
+
+**The screen was asked of the PROBE, and the shape differs there.** The
+probe/real divergence is already documented one decline higher up in
+`recordClosureDispatch`: the probe carries no `producedBy`, so an enclosing
+binding read that an EVENT produces bakes there as a CONST and routes live in
+the real compile. `closureResidualExact` survives that because it COUNTS
+operands and the count does not change. `closureResidualRegion` does not,
+because `regionPrefixShapeOps` requires everything beneath the run to be
+INERT:
+
+```
+probe  do$body residual  [CONST CONST REGION]     admitted
+real   do$body residual  [EVENT:0 EVENT:1 REGION] no seating exists
+```
+
+So the dispatch recorded a closure whose unit then had nothing to seat it,
+and the LOWERING refuses — with no fall-through to the dyn-body strategy that
+used to own the row. The re-check on the real unit is the fix, and the lesson
+is narrow and reusable: **a COUNT test may be asked of the probe; a SHAPE
+test may not.**
+
+**And the re-check alone did not fix it**, which is the part worth reading.
+Declining after the real compile leaves the unit COMPILED and unreferenced,
+and Finalize lowers every unit in the table. The first attempt marked those
+orphans `stampOnly` — the existing flag for exactly this — and the row still
+refused, because the recovery that flag drives covered only ONE of the two
+per-unit refusal sites (NUR139). `lowerEvents` refusing had it;
+`reconcileResults` refusing returned straight out. Both now call one
+`unreachableUnitStub`.
+
+Three attempts, each ruled out by measurement rather than reasoning:
+
+| attempt | why it failed |
+|---|---|
+| re-check on the real unit | the orphan unit's lowering still refuses the program |
+| + mark the orphan `stampOnly` | `reconcileResults` never consulted the flag |
+| + one recovery at both sites | passes |
+
+**What caught it is the point.** Not a test of any rule above — the variation
+lane, which transforms each corpus row and diffs the refusal CLASSES. The
+seed was a row this increment had just added and the variant was in no
+corpus, which is exactly the case that lane exists for. A new corpus row's own
+gates passing says nothing about its variants, and the merged coverage gate
+runs the lane while per-PR CI does not — so on this line, "CI green" and
+"gated" stay two different claims for two different reasons.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

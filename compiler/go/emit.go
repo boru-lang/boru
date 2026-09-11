@@ -10950,23 +10950,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		regionFloor := len(p.Regions)
 		if reason := flw.lowerEvents(rec.frag.events, rec.frag.startSeq); reason != "" {
 			if rec.stampOnly {
-				p.Regions = p.Regions[:regionFloor]
-				// A stamp-only unit is unreachable from the program's code —
-				// its only consumer is a fn value's compiled ref, which
-				// dropStampRef then clears. Refusing the whole PROGRAM because
-				// an optimisation could not lower is the wrong trade, and it is
-				// the one this arm prevents: two corpus rows went from
-				// compiling to "refused: fn storedfn$body: consumes loop
-				// results" the day stampFnConst was written without it. Emit the
-				// same defensive trap stub the unreachable-unit arm above uses,
-				// so unit indices stay aligned and any future reach fails loudly.
-				ti := len(p.Traps)
-				p.Traps = append(p.Traps, TrapSpec{Code: "internal_error",
-					Detail: "stamp-only fn unit " + rec.name + " entered after its lowering refused", Word: rec.name})
-				p.Fns = append(p.Fns, CompiledFn{Name: rec.name,
-					Code:  []Instr{{Op: OpTrap, Arg: int32(ti)}},
-					Debug: []core.SrcPos{rec.pos}})
-				es.dropStampRef(len(p.Fns) - 1)
+				es.unreachableUnitStub(p, rec, regionFloor)
 				continue
 			}
 			return nil, "fn " + rec.name + ": " + reason, false
@@ -11002,6 +10986,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// declined) runs before the residual is laid out.
 			flw.emitDeoptsBefore(core.SrcPos{})
 			if reason := flw.reconcileResults(rec.outOps, "fn "+rec.name, len(rec.returns) == 0 || rec.dynTrailArity > 0 || rec.dynFrameW > 0, rec.retReplay, rec.rebuildableResidual(), rec.outOpsVals, rec.pos); reason != "" {
+				if rec.stampOnly {
+					// Same trade as the lowerEvents arm above, at the other
+					// per-unit refusal site: an unreachable unit's RESIDUAL
+					// SEATING refusing says nothing about the program either.
+					// Reached by a whole-residual dispatch that admitted a
+					// region residual on the probe and declined it on the real
+					// unit (recordClosureDispatch) — the unit is compiled by
+					// then, and nothing calls it.
+					es.unreachableUnitStub(p, rec, regionFloor)
+					continue
+				}
 				return nil, reason, false
 			}
 			// A paren-bounded trailing fn-value apply body: outOps were seated as the
@@ -13171,4 +13166,32 @@ func (es *EmitState) parenPlacedMemberFn(v core.Value) bool {
 		return false
 	}
 	return es.reg.Check.ParenPlacedFnIDs[v.ID]
+}
+
+// unreachableUnitStub replaces a unit whose lowering refused with a trap stub,
+// for a unit NOTHING IN THE PROGRAM CALLS — a fn value's stamp (stampFnConst)
+// or a closure dispatch that compiled its unit and then declined
+// (recordClosureDispatch's region re-check). Refusing the whole PROGRAM
+// because an unreachable unit could not lower is the wrong trade, and it is
+// the one this recovery prevents: two corpus rows went from compiling to
+// "refused: fn storedfn$body: consumes loop results" the day stampFnConst was
+// written without it, and `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went
+// the same way the day the region re-check was.
+//
+// The stub is the same defensive trap the unreachable-unit arm uses, so unit
+// indices stay aligned and any future reach fails loudly rather than running
+// a half-lowered body. regionFloor is where this unit's region descriptors
+// start: the stub replaces the whole body, so descriptors lowerCall already
+// appended describe code that no longer exists — unreachable rather than
+// wrong, but the census COUNTS descriptors, and a table carrying entries for
+// discarded code is a table whose count means something else.
+func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor int) {
+	p.Regions = p.Regions[:regionFloor]
+	ti := len(p.Traps)
+	p.Traps = append(p.Traps, TrapSpec{Code: "internal_error",
+		Detail: "stamp-only fn unit " + rec.name + " entered after its lowering refused", Word: rec.name})
+	p.Fns = append(p.Fns, CompiledFn{Name: rec.name,
+		Code:  []Instr{{Op: OpTrap, Arg: int32(ti)}},
+		Debug: []core.SrcPos{rec.pos}})
+	es.dropStampRef(len(p.Fns) - 1)
 }
