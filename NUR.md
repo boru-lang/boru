@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
 | [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, by design — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
 | [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three refuse and fall back now; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
 | [NUR132](#nur132) | RESOLVED (2026-09-10, the fiftieth increment). A `break` / `continue` whose loop was in the SAME unit lowered to a bare `OpJmp`, which reached the right pc and did neither of the two things the interpreter does: TRIM THE ROUND (its tape splices back to the round's mark) and, for a break, CLOSE THE LOOP. `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` for the interpreter's `9 5 9 5`, its `break` twin `9 5 0 9 5 1 9` for `9 5 0 9 5 1`, and `while [true] [ (7 add 2) if true [break] [5] end ]` `9` for `[]` — silent, exit 0, on the DEFAULT lane. The leak was worse than the trim: an inner loop's break landed PAST the `FOR_NEXT` that pops it, so `for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]` had the OUTER loop stepping the INNER loop's stale counter and never terminated (tape_exhausted) where the interpreter answers `0 0 1 0`. Both terminators emit the FLOW signal ops now — the same pair the cross-frame case already used, whose `vmLoop` carries the very destinations the jumps named | shrinking the last `while` frontier row to its minimal shape, 2026-09-10 |
@@ -288,6 +289,58 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR135 — a minted type node is retired by the FIRST pop, however many live bindings hold it {#nur135}
+
+**Status:** Pending (measured 2026-09-11, worked around in the arm-resident
+type twin). **Found:** the fifty-third increment, by the cross-request
+parity oracle — no same-request lane can see it.
+
+**Rule:** one binding store, one retirement rule. Popping a def entry should
+affect that entry and nothing else.
+
+**Divergence.** `TypeTable.Retire` is `delete(tt.byID, def.ID)`, and the
+`undef` path calls it whenever the popped entry is `Minted`. Nothing counts
+how many LIVE def entries hold that `*Type`. Push the same minted node twice
+under one name and the first pop unregisters it out from under the second:
+
+```
+r.Defs.PushType("Big", node, body)   // twice, same node
+undef Big                            // pops one level, retires the node
+Big                                  // the surviving level's node is GONE
+                                     //   bytecode: internal: unresolvable type operand Big
+```
+
+The interpreter never reaches this because every `def Big …` MINTS: N
+executions leave N distinct nodes, and each pop retires its own. So the
+divergence is invisible until something replays ONE captured node N times —
+which is exactly what a bind twin does, and what the arm-resident type twin
+was first written to do.
+
+**Where it bites, and the workaround.** `core.ApplyResidentTypeBind` now
+re-installs the captured BODY through `InstallTypeBody`, so each element
+mints its own node and the retirement rule is never asked the question. That
+is the right shape for the twin on its own merits (it is what the
+interpreter does), so the register records the underlying asymmetry rather
+than claiming the twin is still broken. Any future op that replays one
+captured type entry more than once will meet it again.
+
+**Second, smaller face of the same thing.** `Retire` removes the node from
+`byID` and never unregisters the name PARTS `RegisterPart` added, while
+`validateTypeName` skips the part check only when the name is currently a
+type binding. So after a rollback that restores bindings but not parts, a
+replay through the installer's front door is rejected on the check pass's own
+leftovers ("name part \"Big\" in \"Big\" conflicts with an existing type
+name" — measured on element 0). `InstallTypeBody` exists to enter past that
+check for exactly this replay.
+
+**What the fix would be.** Either reference-count a minted node across live
+def entries (retire on the last pop), or make retirement and part
+registration one reversible operation so the two halves cannot drift. Both
+are registry-model changes with their own parity rows, which is why this is
+recorded rather than folded into a compile increment.
 
 ---
 

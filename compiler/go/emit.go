@@ -547,7 +547,25 @@ type emitDynBind struct {
 	// to nothing, and the name-keyed walks (the dyn-scope bind detector,
 	// the def-site fn resolver) skip it — an undef binds nothing.
 	undef bool
+	// typeInstall marks a TYPE binding's push (RecordTypeInstall's event,
+	// riding the dyn-bind kind for the same reason the undef half does):
+	// no value operand and no stack effect, because the minted node is a
+	// COMPILE-TIME product the twin table already holds. Stamped, it lowers
+	// to OpBindResident's type arm, which re-installs the twin's captured
+	// BODY once per element (minting that element's own node — replaying
+	// the captured node instead is measurably wrong, NUR135); unstamped it
+	// lowers to nothing, and the name-keyed walks skip it exactly as they
+	// skip an undef — a type install binds no runtime value.
+	typeInstall bool
 }
+
+// bindsValue reports whether this def-site event installs a RUNTIME value
+// under its name. An undef binds nothing, and a type install binds a node
+// the twin table already holds, so every name-keyed walk — the dyn-scope
+// bind detector, the def-site fn resolver, the lowering's unstamped arm —
+// asks this rather than testing one flag and drifting when a third
+// operand-less shape arrives.
+func (d *emitDynBind) bindsValue() bool { return !d.undef && !d.typeInstall }
 
 // EmitFragment is a captured sub-trace: the events a branch body
 // recorded, plus the sequence floor — operands inside the fragment
@@ -2190,6 +2208,29 @@ func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
 	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, srcSeq: -1, pos: pos, residentTwin: -1, undef: true,
+	}})
+	es.noteBindHazard(name)
+}
+
+// RecordTypeInstall notes a TYPE binding's push at its stream position
+// (the interface doc in core/go/emit_recorder.go) — like RecordDynUndef,
+// today only inside an arm-resident body compile (armResidentDepth, the
+// each-unit bracket), where the BindTypeInstall twin needs a def-site
+// event for the bridge to pair against and the unit needs an op to
+// install the node per element.
+//
+// Everywhere else this records NOTHING, and that is the whole reason a
+// type install could be given an event at all without disturbing any
+// other lane: outside the bracket a type binding is a purely check-time
+// product — the mint happens once, the TOP-LEVEL twin replays it at its
+// own stream position (OpBindTwin), and the compiled stream carries no
+// instruction for it. Nil-safe.
+func (es *EmitState) RecordTypeInstall(name string, pos core.SrcPos) {
+	if es == nil || !es.Active() || es.armResidentDepth == 0 || name == "" {
+		return
+	}
+	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
+		name: name, srcSeq: -1, pos: pos, residentTwin: -1, typeInstall: true,
 	}})
 	es.noteBindHazard(name)
 }
@@ -4494,14 +4535,21 @@ type closureLatch struct {
 // the ledger's one generalized carrier-valued capture cannot replay.
 //
 // The pairing is NAME + OCCURRENCE ORDER, strict and total: the bracket's
-// eligible twins (Kind BindDef, no TypeDef — a value def) must equal the
-// unit's def-event sequence name-for-name in order, with a position
-// cross-check wherever both sides carry one. ANY mismatch — a leftover
-// twin (row 41's var-param BindUndef half, until the undef seam lands), a
-// leftover event, a name or position disagreement — adopts NOTHING: the
-// twins stay unplaced and the regime refuses the program, the sound
-// direction the parity oracle pins. The fences, each measured or
-// judge-raised on the design review:
+// eligible twins (a value def, its balanced undef half, or a TYPE install)
+// must equal the unit's def-event sequence name-for-name in order, with a
+// position cross-check wherever both sides carry one. ANY mismatch — a
+// leftover twin, a leftover event, a name or position disagreement —
+// adopts NOTHING: the twins stay unplaced and the regime refuses the
+// program, the sound direction the parity oracle pins.
+//
+// A TYPE install differs from a value def in what its op does: there is no
+// runtime value to install, so the op re-installs the twin's captured BODY
+// per element instead (core.ApplyResidentTypeBind). That is sound only for
+// an element-independent type expression, which
+// typeInstallElementIndependent screens for — read its doc before widening
+// anything here.
+//
+// The fences, each measured or judge-raised on the design review:
 //
 //   - the LATCH IDENTITY: lastMultiRun.bodyID must equal this dispatch's
 //     body ID — a nested multi-run body's analysis during this unit's
@@ -4550,21 +4598,32 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 		rec.reg != es.progReg || rec.frag == nil {
 		return
 	}
-	// The bracket's twins: every one must be an eligible value def or an
-	// undef (a var param's balanced teardown half), or the whole bridge
-	// declines (a replace, a type install — shapes this increment does
-	// not carry).
+	// The bracket's twins: every one must be an eligible value def, an
+	// undef (a var param's balanced teardown half), or a TYPE install, or
+	// the whole bridge declines (a def-replace is the shape left).
 	var twins []int
+	bound := map[string]bool{}
 	for i := ml.from; i < ml.to && i < len(es.bindTwins); i++ {
 		if es.twinPlaced[i] {
 			return
 		}
 		tr := es.bindTwins[i]
-		if (tr.Kind != core.BindDef && tr.Kind != core.BindUndef) ||
-			es.bindTwinEntries[i].TypeDef != nil {
+		switch tr.Kind {
+		case core.BindDef, core.BindUndef:
+			// A VALUE def's install carries a runtime value; a captured type
+			// node under those kinds is a shape this bridge does not carry.
+			if es.bindTwinEntries[i].TypeDef != nil {
+				return
+			}
+		case core.BindTypeInstall:
+		default:
 			return
 		}
 		twins = append(twins, i)
+		// Every binding the body installs is a twin in this bracket — that is
+		// the bridge's own premise, since a leftover twin declines — so the
+		// bracket's names ARE the body-bound set the type screen needs.
+		bound[tr.Name] = true
 	}
 	if len(twins) == 0 {
 		return
@@ -4584,22 +4643,28 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 		if d.name != tr.Name || d.residentTwin >= 0 {
 			return
 		}
-		// Kind correspondence: a BindDef twin pairs with an install site,
-		// a BindUndef twin with a teardown site — never crossed.
-		if d.undef != (tr.Kind == core.BindUndef) {
+		// Kind correspondence: a BindDef twin pairs with an install site, a
+		// BindUndef twin with a teardown site, a BindTypeInstall twin with a
+		// type-install site — never crossed.
+		if d.undef != (tr.Kind == core.BindUndef) ||
+			d.typeInstall != (tr.Kind == core.BindTypeInstall) {
 			return
 		}
 		if tr.Pos.Row != 0 && d.pos.Row != 0 && tr.Pos != d.pos {
 			return
 		}
+		if tr.Kind == core.BindTypeInstall &&
+			!typeInstallElementIndependent(body, rec.frag, tr.Pos, bound) {
+			return
+		}
 	}
-	// Total match: stamp, mark, and fence the reads (the def halves drive
-	// the fence; an undef half re-fences nothing).
+	// Total match: stamp, mark, and fence the reads (the installing halves
+	// drive the fence; an undef half re-fences nothing).
 	for k, i := range twins {
 		events[k].residentTwin = i
 		es.twinPlaced[i] = true
 		es.twinAdoptions = append(es.twinAdoptions, i)
-		if es.bindTwins[i].Kind == core.BindDef {
+		if k := es.bindTwins[i].Kind; k == core.BindDef || k == core.BindTypeInstall {
 			if es.armBoundNames == nil {
 				es.armBoundNames = map[string]bool{}
 			}
@@ -4608,13 +4673,149 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 	}
 }
 
+// typeInstallElementIndependent is the ARM-RESIDENT TYPE twin's soundness
+// screen. A value def's resident op installs the RUNTIME value once per
+// element, so it is right by construction whatever the body computes; a
+// type install has no runtime value — the minted node is a compile-time
+// product the twin table already holds — so its op REPLAYS the one captured
+// entry per element. That is correct exactly when every element's own
+// evaluation of the type expression would have produced an equivalent node,
+// and the ledgered witnesses are (`(Integer gt 10)`, `(Integer lt 20)` read
+// nothing per-element) — but the bridge must PROVE it, because the opposite
+// shape is ordinary boru: measured 2026-09-11,
+// `[10 20] each [var [[e] def ZB (Integer gt e) 7]]` leaves TWO different
+// `ZB` nodes stacked, so 15 fails against the top and passes against the one
+// below it. Replaying one node there would be a silent wrong answer.
+//
+// The element can reach a type expression two ways, and each has a screen:
+//
+//   - THROUGH A NAME. Every binding the body installs is a twin in the
+//     bracket, so `bound` is the body-bound set exactly; a type expression
+//     naming any of them is per-element. Words bound OUTSIDE the body — a
+//     module-scope type, an enclosing fn's capture — are constant across the
+//     whole loop, so they pass.
+//   - THROUGH A DISPATCH that did not const-fold. A word whose call the check
+//     pass could not fold records an EVENT at its own position inside the
+//     unit, so an expression with no event in its token span const-folded
+//     from its own tokens alone. The converse — a word the check pass DID
+//     fold — is already licensed everywhere else in this compiler: a folded
+//     call's value is baked into the program.
+//
+// The third route, reading the element off the VALUE STACK, is closed by the
+// language and not by this screen: a paren group binds forward-only, so
+// `[10 20] each [def ZG (Integer gt) 7]` and `(mk)` for a one-arg `mk` both
+// raise "no signature matches" on the interpreter (measured the same day).
+//
+// Anything this cannot see into — a def site the token walk cannot locate, a
+// non-word non-literal token in the expression — declines, which refuses the
+// regime program: the sound direction, never a wrong install.
+func typeInstallElementIndependent(body core.Value, frag *EmitFragment, pos core.SrcPos, bound map[string]bool) bool {
+	expr, ok := typeDefExprAt(body, pos)
+	if !ok {
+		return false
+	}
+	if !typeExprInert(expr, bound) {
+		return false
+	}
+	sites := map[core.SrcPos]bool{}
+	collectExprSites(expr, sites)
+	for _, ev := range frag.events {
+		if sites[eventPos(ev)] {
+			return false
+		}
+	}
+	return true
+}
+
+// typeDefExprAt locates the TYPE EXPRESSION token of the `def NAME <expr>`
+// written at pos in a code-body token tree — pos being the `def` token's own
+// position, which is what a bind transition's site resolves to
+// (core.bindSitePos: a type body carries 0:0, so the note falls back to the
+// dispatching word). The expression is the second operand in written order;
+// any other layout (a `def` whose operands ride the value stack, a truncated
+// tail) is not located and declines.
+func typeDefExprAt(v core.Value, pos core.SrcPos) (core.Value, bool) {
+	toks := tokenInterior(v)
+	for i, el := range toks {
+		if el.Pos() == pos && core.IsWord(el) && i+2 < len(toks) {
+			if w, werr := core.AsWord(el); werr == nil && w.Name == "def" {
+				return toks[i+2], true
+			}
+		}
+		if found, ok := typeDefExprAt(el, pos); ok {
+			return found, true
+		}
+	}
+	return core.Value{}, false
+}
+
+// typeExprInert reports whether every token in a type expression's subtree is
+// either a container to descend (a paren group is list-shaped, as
+// collectTokenSites' doc records), an inert const, or a plain WORD the body
+// does not bind. A reach, a splice, an interpolated string — anything that is
+// none of the three — declines, so the walk is closed by construction rather
+// than by a list of known-bad shapes.
+func typeExprInert(v core.Value, bound map[string]bool) bool {
+	if core.IsWord(v) {
+		w, err := core.AsWord(v)
+		return err == nil && !bound[w.Name]
+	}
+	for _, t := range tokenInterior(v) {
+		if !typeExprInert(t, bound) {
+			return false
+		}
+	}
+	if isTokenContainer(v) {
+		return true
+	}
+	return core.IsInertConst(v)
+}
+
+// isTokenContainer / tokenInterior are the token-tree descent the type
+// screen's two walks share. A paren group is NOT list-shaped — AsList
+// declines it, the payload being ParenExprPayload — so a walk that asks
+// AsList alone treats `(Integer gt 5)` as one opaque token: the sound
+// direction for typeExprInert (an opaque token is not inert, so it declines,
+// which is how this screen first refused the row it exists to admit) and the
+// WRONG one for a position gather, which would then screen an empty set.
+func isTokenContainer(v core.Value) bool {
+	if core.IsParenExpr(v) {
+		return true
+	}
+	_, err := core.AsList(v)
+	return err == nil
+}
+
+func tokenInterior(v core.Value) []core.Value {
+	if core.IsParenExpr(v) {
+		toks, err := core.AsParenExpr(v)
+		if err != nil { //covergate:allow IsParenExpr above already proved the payload type AsParenExpr asserts; asked anyway so the accessor pair is total (§compiler)
+			return nil
+		}
+		return toks
+	}
+	rl, err := core.AsList(v)
+	if err != nil {
+		return nil
+	}
+	out := make([]core.Value, 0, rl.Len())
+	for i := 0; i < rl.Len(); i++ {
+		out = append(out, rl.Get(i))
+	}
+	return out
+}
+
 // collectTokenSites gathers every source position in a code-body token
-// tree: the token's own, then list interiors recursively (a paren group
-// and a nested body are both list-shaped, so this reaches a twin noted
-// anywhere down the body). Non-list tokens — words, literals, sugar
-// markers — contribute their own position only; a construct this walk
-// cannot see into leaves its twins unadopted, which refuses the regime
-// program (the sound direction).
+// tree: the token's own, then LIST interiors recursively, so this reaches
+// a twin noted anywhere down a nested body. Everything else — words,
+// literals, sugar markers, and a PAREN GROUP, which is not list-shaped
+// (AsList declines a ParenExprPayload) — contributes its own position
+// only; a construct this walk cannot see into leaves its twins unadopted,
+// which refuses the regime program (the sound direction). The paren case
+// was documented here as list-shaped and is not: widening the walk would
+// adopt twins noted inside a paren group, which nothing has argued for.
+// collectExprSites below is the walk that does descend, for a screen that
+// needs the opposite default.
 func collectTokenSites(v core.Value, sites map[core.SrcPos]bool) {
 	if p := v.Pos(); p.Row != 0 {
 		sites[p] = true
@@ -4623,6 +4824,22 @@ func collectTokenSites(v core.Value, sites map[core.SrcPos]bool) {
 		for i := 0; i < rl.Len(); i++ {
 			collectTokenSites(rl.Get(i), sites)
 		}
+	}
+}
+
+// collectExprSites is collectTokenSites over a TYPE EXPRESSION, and it
+// descends one shape more: a PAREN group. The two are deliberately separate.
+// collectTokenSites decides which twins AdoptBodyTwins may adopt, and its
+// blindness to a paren interior is a refusal there — widening it would adopt
+// twins nothing has argued for. The type screen needs the opposite default:
+// it must see EVERY token inside `(Integer gt 5)` or it would screen an empty
+// set and pass anything.
+func collectExprSites(v core.Value, sites map[core.SrcPos]bool) {
+	if p := v.Pos(); p.Row != 0 {
+		sites[p] = true
+	}
+	for _, t := range tokenInterior(v) {
+		collectExprSites(t, sites)
 	}
 }
 
@@ -5547,7 +5764,7 @@ func (es *EmitState) RecordDynApplyName(name string, args []core.Value, fn, out 
 	found := false
 	for i := len(es.frames[0]) - 1; i >= 0 && !found; i-- {
 		ev := &es.frames[0][i]
-		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || ev.dyn.undef {
+		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || !ev.dyn.bindsValue() {
 			continue
 		}
 		switch {
@@ -10147,7 +10364,7 @@ func eventsBindDynScope(events []EmitEvent, names map[string]bool) bool {
 			ev := &evs[i]
 			switch ev.kind {
 			case evDynBind:
-				if !ev.dyn.undef && names[ev.dyn.name] {
+				if ev.dyn.bindsValue() && names[ev.dyn.name] {
 					return true
 				}
 			case evBranch:

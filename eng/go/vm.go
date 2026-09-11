@@ -2763,6 +2763,20 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				core.ApplyResidentBind(curReg, rb.Name, true, core.Value{})
 				break
 			}
+			if rb.TypeInstall {
+				// The TYPE arm: a type binding has no runtime value, so the
+				// op re-installs the captured BODY through the interpreter's
+				// own type installer — minting a fresh node per element, as
+				// the interpreter's per-element body run does (replaying one
+				// node instead is measurably wrong: see
+				// core.ApplyResidentTypeBind). Sound because the bridge
+				// proved the type expression element-independent before
+				// stamping the site.
+				if terr := core.ApplyResidentTypeBind(curReg, rb.Name, p.BindTwinEntries[rb.Twin]); terr != nil {
+					return nil, vmErrAt(curDebug, pc, "BIND_RESIDENT type install: "+terr.Error())
+				}
+				break
+			}
 			if len(stack) == 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 				return nil, vmErrAt(curDebug, pc, "BIND_RESIDENT underflow")
 			}

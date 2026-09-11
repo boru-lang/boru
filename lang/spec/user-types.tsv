@@ -335,3 +335,19 @@ def M (Integer tor none)  typeof M	Disjunct	…uniformly for a disjunct
 def T fnsig Integer String  typeof T	FunctionSignature	…for a fn shape
 def Big (Integer gt 10)  typeof Big	Integer	…for a dependent scalar
 def C class {a:Integer}  typeof C	Class	…and the class kind joins the rule (object.tsv re-pins)
+
+# ====================================================================
+# A type def inside a MULTI-RUN body (the arm-resident type twin)
+# ====================================================================
+# `each` runs its body once per element and KEEPS what each run binds,
+# so a type def inside it installs once per element — the same leak a
+# value def leaves. The compiled program reproduces it with a resident
+# install at the def site (OpBindResident's type arm), which re-runs the
+# installer per element so every element mints its OWN node, exactly as
+# the interpreter does; the type EXPRESSION is evaluated once, at compile
+# time, which is sound only because the bridge proves it reads nothing
+# per-element. The cross-request install stacks are measured in
+# test/go/langspec/bind_multirun_parity_test.go (count, values, order).
+[10 20] each [drop def Tbig (Integer gt 5) 7]	[7 7]	a type def inside an each body
+def tlim 5  [10 20] each [drop def Tlim (Integer gt tlim) 7]	[7 7]	…its bound may read a binding from OUTSIDE the body: one value for the whole loop
+[10 20] each [drop def Tlo (Integer gt 10) def Thi (Integer lt 20) def tx:(Tlo tand Thi) 15 tx]	[15 15]	…and two type defs feed a typed value def in the same body

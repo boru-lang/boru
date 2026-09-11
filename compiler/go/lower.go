@@ -174,12 +174,17 @@ func orderedCarried(carried []carriedInit) []carriedInit {
 // and an inert literal bakes unpooled. Any other provenance refuses the
 // whole program — the sound interpreter fallback, never a wrong install.
 func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
-	if d.undef {
-		// The teardown half: no value operand, no stack effect — the op
-		// pops the name's live binding per element.
+	if d.undef || d.typeInstall {
+		// The two operand-less halves: the TEARDOWN pops the name's live
+		// binding per element, and a TYPE install re-installs its captured
+		// twin BODY per element (the expression was evaluated once, at
+		// compile time — AdoptResidentTwins proved it element-independent
+		// before stamping — while the NODE mints per element). Neither
+		// touches the stack.
 		idx := len(lw.p.ResidentBinds)
 		lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{
-			Name: d.name, Twin: d.residentTwin, Undef: true,
+			Name: d.name, Twin: d.residentTwin,
+			Undef: d.undef, TypeInstall: d.typeInstall,
 		})
 		lw.emit(OpBindResident, idx, d.pos)
 		return ""
@@ -233,10 +238,12 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	if d.residentTwin >= 0 {
 		return lw.lowerResidentBind(d)
 	}
-	if d.undef {
-		// An unstamped teardown event (a var pair the bridge declined, or
-		// the default lane) lowers to nothing — an undef binds nothing, so
-		// neither the dyn-scope nor the global write-back arms may fire.
+	if !d.bindsValue() {
+		// An unstamped operand-less event — a teardown whose var pair the
+		// bridge declined, a type install outside an adopted unit, or either
+		// on the default lane — lowers to nothing: neither binds a runtime
+		// value, so neither the dyn-scope nor the global write-back arms may
+		// fire.
 		return ""
 	}
 	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]))

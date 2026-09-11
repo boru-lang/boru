@@ -49,6 +49,17 @@ func TestNoteBindTransitionWithoutCheckState(t *testing.T) {
 	r := newTestRegistry(t)
 	r.Check = nil
 	r.NoteBindTransition(BindDef, "x", SrcPos{})
+	// The type funnel is as total as the note it wraps: with no registry
+	// there is nothing to record on, and with no CheckState the recorder
+	// accessor hands back the inactive no-op rather than needing a guard.
+	nilReg.NoteTypeInstall("Tq", SrcPos{})
+	r.NoteTypeInstall("Tq", SrcPos{})
+	if got := bindSitePos(nil, SrcPos{Row: 3, Col: 4}); got != (SrcPos{Row: 3, Col: 4}) {
+		t.Fatalf("bindSitePos with no registry = %v, want the position it was given", got)
+	}
+	if got := bindSitePos(r, SrcPos{Row: 3, Col: 4}); got != (SrcPos{Row: 3, Col: 4}) {
+		t.Fatalf("bindSitePos with no CheckState = %v, want the position it was given", got)
+	}
 }
 
 // POSITION, the three-way rule. PendingBindPos (the def SITE, staged by the

@@ -348,7 +348,7 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 		def.SetTypeBody(pushed)
 	}
 	r.Defs.PushType(name, def, pushed)
-	r.NoteBindTransition(BindTypeInstall, name, pushed.Pos())
+	r.NoteTypeInstall(name, pushed.Pos())
 }
 
 func InstallType(r *Registry, name string, body Value) error {
@@ -361,6 +361,22 @@ func InstallType(r *Registry, name string, body Value) error {
 	if err := validateTypeName(r, name); err != nil {
 		return err
 	}
+	return InstallTypeBody(r, name, body)
+}
+
+// InstallTypeBody is InstallType past its two ENTRY checks — the body-shape
+// test and validateTypeName. It exists for the arm-resident type twin
+// (core.ApplyResidentTypeBind), which re-installs a body the CHECK PASS
+// already validated under this very name, into a registry whose bindings
+// were rolled back for replay but whose registered name PARTS were not: run
+// through the front door and validateTypeName rejects the replay on its own
+// leftovers ("name part \"Big\" in \"Big\" conflicts with an existing type
+// name" — measured, on element 0). Replay, never re-execution, is §6.5's
+// rule for exactly this reason; what the replay still wants from the
+// installer is the MINT, so each element gets its own node.
+//
+// Every other caller wants the checks: go through InstallType.
+func InstallTypeBody(r *Registry, name string, body Value) error {
 	// Seated with the operation, not with `def`'s capitalised arm, which
 	// returned this call's result directly and so reached no notification at
 	// all until 2026-09-04 (core/go/rebind_notify.go).
@@ -621,7 +637,7 @@ func InstallType(r *Registry, name string, body Value) error {
 			return err
 		}
 		r.Defs.PushTypeAdopted(name, canon, body)
-		r.NoteBindTransition(BindTypeInstall, name, body.Pos())
+		r.NoteTypeInstall(name, body.Pos())
 	} else {
 		// Structural / singleton bodies (record shape, `def One 1`,
 		// typed-container literals, refine Record/Options/Table bodies,

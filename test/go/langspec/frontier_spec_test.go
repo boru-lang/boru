@@ -478,9 +478,31 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// owns every row. Graduation per shape: resident module binds / type
 	// twins inside compiled units, a closure lowering that admits the
 	// declined do body, and the root cause of the import-and-call pair.
-	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`:                       {why: "twin placement: an import inside a multi-run body is a module bind, not a BindDef the arm-residency bridge installs per element", failsWith: "no stream placement"},
-	`[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]`: {why: "twin placement: a type def inside a multi-run body — the bridge pairs BindDef twins only", failsWith: "no stream placement"},
-	`do [def b true  do [1 2 (if b [] [9 9])]]`:                                             {why: "twin placement: the do body's closure compile declines (Stage-3 residual shape), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
+	`[10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]`: {why: "twin placement: an import inside a multi-run body is a module bind, not a BindDef the arm-residency bridge installs per element", failsWith: "no stream placement"},
+	// Shape 2 NARROWED with the fifty-third increment (2026-09-11). The
+	// ELEMENT-INDEPENDENT type def graduated —
+	// `[10 20] each [drop def Tlo (Integer gt 10) def Thi (Integer lt 20)
+	// def tx:(Tlo tand Thi) 15 tx]` is in lang/spec/user-types.tsv — on
+	// three pieces, of which only the first was the plumbing this entry
+	// once named. (a) A type install records no def-site event at all, so
+	// the bridge had nothing to pair; RecordTypeInstall writes one inside
+	// the arm-resident bracket and nowhere else, leaving every other lane's
+	// event stream untouched. (b) Replaying the captured entry per element
+	// — the obvious move, and what a top-level twin does — is WRONG even
+	// for an element-independent expression: one *Type in two def-stack
+	// levels, both Minted, means the first `undef` retires the node out
+	// from under the level below it ("unresolvable type operand Big",
+	// caught by the cross-request parity oracle, not by any same-request
+	// lane). The op re-installs the captured BODY instead, so each element
+	// mints its own node. (c) The expression must be PROVED
+	// element-independent, which is what this row is not: its bound reads
+	// the body's own var param, so each element's node genuinely differs —
+	// 15 fails against the top `ZB` and passes against the one below it.
+	// Graduation = an op that REBUILDS the type per element (re-evaluating
+	// the expression against that element) rather than re-installing one
+	// captured body.
+	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
+	`do [def b true  do [1 2 (if b [] [9 9])]]`:          {why: "twin placement: the do body's closure compile declines (Stage-3 residual shape), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
 	// (The fourth shape — `do [import "boru:sift" (Sift.parse kv/q {} "a: 1")]`
 	// — GRADUATED 2026-09-02 and its entry is deleted. It was the one this
 	// ledger recorded as "measured, not yet root-caused", and the cause was

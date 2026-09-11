@@ -1854,29 +1854,11 @@ func (r *Registry) NoteBindTransitionEntry(kind BindKind, name string, pos SrcPo
 	if r == nil || r.Check == nil {
 		return
 	}
-	pending := r.Check.PendingBindPos
 	if !r.Check.Mode || name == "" || r.Check.FnBodyDepth > 0 ||
 		r.Check.RolledBackBodyDepth > 0 {
 		return
 	}
-	// POSITION. The value's own Pos is the right answer when it has one, but it
-	// frequently does not: a fn or type BODY commonly carries 0:0, an `undef`
-	// supplies nothing to take a position from, and a word-extension install
-	// has no value position at all. Falling back to CurWordPos — the position
-	// of the word currently dispatching, published for NUR108 and correct for
-	// exactly this kind of question — gives every entry a real site.
-	//
-	// What each case then yields, stated rather than assumed: a `def` lands on
-	// the `def` token, an `undef` on the `undef` token, and a JOINED branch
-	// binding on the `if` — the join runs after that dispatch, so the arm's own
-	// def token is already gone. The last is the one to revisit when the twin
-	// op needs a finer position than the construct that produced the binding.
-	if pending.Row != 0 {
-		pos = pending
-	} else if pos.Row == 0 {
-		pos = r.Check.CurWordPos
-	}
-	tr := BindTransition{Kind: kind, Name: name, Pos: pos, Depth: r.Defs.Depth(name)}
+	tr := BindTransition{Kind: kind, Name: name, Pos: bindSitePos(r, pos), Depth: r.Defs.Depth(name)}
 	r.Check.BindLedger = append(r.Check.BindLedger, tr)
 	// Mirror the entry into the compile pass's twin table THROUGH the same
 	// funnel, after the same suppressions — the one-source-of-truth property
@@ -1884,4 +1866,53 @@ func (r *Registry) NoteBindTransitionEntry(kind BindKind, name string, pos SrcPo
 	// a divergence means a recorder-lifecycle hole (an isolated or swapped
 	// recorder ate a twin), not a second filter to keep in sync.
 	r.Check.Recorder().RecordBindTwin(tr, entry)
+}
+
+// bindSitePos resolves a bind transition's SITE position.
+//
+// The value's own Pos is the right answer when it has one, but it
+// frequently does not: a fn or type BODY commonly carries 0:0, an `undef`
+// supplies nothing to take a position from, and a word-extension install
+// has no value position at all. Falling back to CurWordPos — the position
+// of the word currently dispatching, published for NUR108 and correct for
+// exactly this kind of question — gives every entry a real site.
+//
+// What each case then yields, stated rather than assumed: a `def` lands on
+// the `def` token, an `undef` on the `undef` token, and a JOINED branch
+// binding on the `if` — the join runs after that dispatch, so the arm's own
+// def token is already gone. The last is the one to revisit when the twin
+// op needs a finer position than the construct that produced the binding.
+//
+// It is a FUNCTION rather than two inline lines because the arm-resident
+// type-install event (NoteTypeInstall) has to land on the very position its
+// twin carries, and the two are computed in different passes: a drift here
+// would make the bridge's position cross-check fail on programs it models
+// exactly right.
+func bindSitePos(r *Registry, pos SrcPos) SrcPos {
+	if r == nil || r.Check == nil {
+		return pos
+	}
+	if pending := r.Check.PendingBindPos; pending.Row != 0 {
+		return pending
+	}
+	if pos.Row == 0 {
+		return r.Check.CurWordPos
+	}
+	return pos
+}
+
+// NoteTypeInstall notes a TYPE binding push — the ledger transition plus,
+// inside a multi-run body's compiled unit, the def-site EVENT the
+// arm-residency bridge pairs the twin against (Recorder.RecordTypeInstall).
+// Every BindTypeInstall note goes through here so the two can never fall
+// out of step: a twin with no event, or an event with no twin, makes the
+// bridge's total pairing decline and the program refuse.
+func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
+	r.NoteBindTransition(BindTypeInstall, name, pos)
+	if r == nil {
+		return
+	}
+	// Recorder() is nil-receiver safe, so a registry with no CheckState
+	// reaches the inactive no-op rather than a guard of its own.
+	r.Check.Recorder().RecordTypeInstall(name, bindSitePos(r, pos))
 }

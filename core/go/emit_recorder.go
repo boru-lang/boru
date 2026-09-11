@@ -108,6 +108,14 @@ type EmitRecorder interface {
 	// bridging cannot see them; the recorder pairs them by name and
 	// order instead). Inactive: no-op.
 	RecordDynUndef(name string, pos SrcPos)
+	// RecordTypeInstall notes a TYPE binding's push at its stream position
+	// — like RecordDynUndef, today only inside a multi-run body's compiled
+	// unit, where the arm-residency bridge needs a def-site event to pair
+	// the BindTypeInstall twin against. A type install is otherwise a
+	// purely check-time product (the mint happens once and the compiled
+	// stream carries nothing for it), so outside that bracket this records
+	// nothing and no other lane's event stream changes. Inactive: no-op.
+	RecordTypeInstall(name string, pos SrcPos)
 	FnBodyGuard() func()
 
 	// --- refusal + site accounting --------------------------------------
@@ -381,6 +389,7 @@ func (inactiveEmit) BodyAnalysisGuard() func()                              { re
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
+func (inactiveEmit) RecordTypeInstall(string, SrcPos)                       {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }

@@ -6338,6 +6338,116 @@ Do not look for provenance ON the folded Boolean: it is `Pos=0:0` with no
 and a fold over a bound param. The analysis CONTEXT is the only signal there
 is.
 
+## The TYPE half of the arm-residency bridge: three problems, and only the first was plumbing (2026-09-11, the fifty-third increment)
+
+The twin-placement cluster's shape 2 — `[10 20] each [drop def A (Integer gt
+10) def B (Integer lt 20) def x:(A tand B) 15 x]` — is in the main corpus
+now (`lang/spec/user-types.tsv`). Its ledger entry blamed one thing ("the
+bridge pairs BindDef twins only"), which was true and was the least of it.
+Three things had to be solved, and the measurements that produced each are
+worth keeping because two of them reverse the obvious move.
+
+**1. There is no def-site event to pair against.** Measured with a print in
+`AdoptResidentTwins`: a type def inside an each body records NOTHING in the
+unit's fragment. `[10 20] each [drop def ZA (Integer gt 5) 7]` records one
+event, and it is the `drop`. A type install is a purely check-time product —
+the mint happens once, the top-level twin replays it at its own stream
+position, and the compiled stream carries no instruction for it — so there
+was no site for the bridge to stamp.
+
+`RecordTypeInstall` now writes one, and ONLY inside the arm-resident bracket
+(`armResidentDepth`), which is the same discipline `RecordDynUndef` took for
+the var-param teardown: outside the bracket it records nothing, so no other
+lane's event stream changes. Every `BindTypeInstall` note goes through one
+funnel (`Registry.NoteTypeInstall`) so a twin can never exist without its
+event or vice versa — either way the bridge's total pairing declines and the
+program refuses.
+
+**2. Replaying the captured entry per element is WRONG, and only a
+cross-request probe can see it.** This is the one that would have shipped. A
+type binding has no runtime value, so the obvious op is the one
+`OpBindTwin` already performs: push the captured entry. It compiles, the
+driving request answers correctly on both lanes, and the corpus is green.
+Then the parity oracle's install probe reads the name on a LATER request:
+
+```
+[10 20] each [drop def Big (Integer gt 5) 7]   both lanes [7 7]
+Big                                             both lanes Big
+undef Big                                       both lanes 1
+Big                       interpreted Big   compiled  bytecode: internal:
+                                                      unresolvable type operand Big
+```
+
+One `*Type` in two def-stack levels, both flagged `Minted`, so the first
+`undef` retires the node out from under the level below it — `Retire` is
+`delete(byID, ID)` with no reference count. The interpreter never meets this
+because every element MINTS: N executions leave N distinct nodes. Recorded as
+NUR135; the op re-installs the captured BODY instead
+(`core.ApplyResidentTypeBind`), so each element mints its own node, exactly
+as the install arm re-runs `InstallDef` rather than replaying a value.
+
+Note what caught it: not the corpus, not the differential, not the variation
+sweep — `bind_multirun_parity_test.go`, the cross-request oracle the design
+review demanded before any placement work. It is the only lane that reads a
+binding on a later request.
+
+**2b. The replay cannot go through the installer's front door.** The first
+cut of the fix called `InstallType` and failed on ELEMENT 0: `type: name part
+"Big" in "Big" conflicts with an existing type name`. The rollback before a
+compiled run restores BINDINGS and not registered name PARTS, and
+`validateTypeName` skips the part check only when the name is currently a
+type binding — so the replay is rejected on the check pass's own leftovers.
+`InstallTypeBody` is `InstallType` past its two entry checks, and exists for
+this caller alone. (Same NUR135: retirement and part registration are not one
+reversible operation.)
+
+**3. The screen is the actual increment.** An element-DEPENDENT type
+expression is ordinary boru, measured:
+
+```
+[10 20] each [var [[e] def ZB (Integer gt e) 7]]
+  def q:ZB 15 q   → type_error (15 fails against the TOP, `Integer gt 20`)
+  undef ZB then def q:ZB 15 q → [15]  (it passes against the one below)
+```
+
+Two different nodes, observably. So the bridge must PROVE element-
+independence before it stamps, and `typeInstallElementIndependent` does it
+with two halves, each closing one route the element can take into the
+expression:
+
+- THROUGH A NAME — every binding the body installs is a twin in the bracket
+  (that is the bridge's own premise, since a leftover twin declines), so the
+  bracket's names ARE the body-bound set. A word from outside the body — a
+  module-scope type, an enclosing fn's capture — is constant for the whole
+  loop and passes: `def zh 5  [10 20] each [drop def ZH (Integer gt zh) 7]`
+  compiles.
+- THROUGH A DISPATCH that did not const-fold — such a word records an EVENT
+  at its own position inside the unit, so an expression with no event in its
+  token span folded from its own tokens alone. The converse, a word the check
+  pass DID fold, is licensed everywhere else in this compiler: a folded
+  call's value is baked.
+
+The third route, reading the element off the VALUE STACK, is closed by the
+LANGUAGE and not by the screen — a paren group binds forward-only, so
+`[10 20] each [def ZG (Integer gt) 7]` and `(mk)` for a one-arg `mk` both
+raise "no signature matches" on the interpreter. Measured; do not re-derive.
+
+**A trap in the token walk.** `collectTokenSites` documented itself as
+descending "a paren group and a nested body [which] are both list-shaped".
+A paren group is NOT list-shaped — `AsList` declines a `ParenExprPayload` —
+so the screen's first cut treated `(Integer gt 5)` as one opaque token and
+declined the very row it exists to admit. The doc is corrected, and the walk
+is NOT widened: `collectTokenSites` decides which twins `AdoptBodyTwins` may
+adopt, and widening it would adopt twins noted inside a paren group, which
+nothing has argued for. `collectExprSites` is the separate walk that
+descends.
+
+**What stays on the frontier.** The element-dependent row, now shape 2 of
+`frontier-twin-placement.tsv`. Its graduation is an op that REBUILDS the type
+per element — re-evaluating the expression against that element — rather
+than re-installing one captured body. That is a genuinely different
+mechanism, not a wider screen.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
