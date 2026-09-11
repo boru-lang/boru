@@ -6842,6 +6842,127 @@ The instrument that can is `TestInterpEntryCensus`, which is how this bucket
 was identified at all
 (it failed 33-against-32 when increment 55's row went into the corpus).
 
+## The screen was the gate, not the seat (2026-09-11, the fifty-seventh increment)
+
+The section above is the measurement pass on the interp-entry census's
+largest bucket; this is the increment it made possible. It closes the
+twin-placement frontier's shape 3 — `do [def b true  do [1 2 (if b []
+[9 9])]]` — and takes the census **32 → 29**.
+
+**The obstacle was not where two increments in a row said it was.** Both the
+frontier ledger and `frontier-twin-placement.tsv` said the body unit's SEAT
+could not lay out a runtime-variable count: "a rebuild spills one stack entry
+per operand, so one slot cannot stand for a run of a length the compiler does
+not know." Every word of that is true about `seatResidualRebuild` and none of
+it is about this row, because the rebuild is not the seating this shape
+needs. The residual is `[inert inert REGION]`, which `OpSeatBelowMark` has
+seated since the forty-first increment and a body unit has planned since the
+fifty-fifth. The dispatch never reached the lowering at all: the
+whole-residual multi-out EXACTNESS screen (`callable_words.go`) refused the
+body first, on exactly the count the seating it needed does not use.
+
+The instrument that found it was a print at `planRegionPrefixUnit`, which
+never fired for the failing width — so the decline was upstream of the
+lowering, and every sentence written about the seat was about the wrong
+layer. Worth generalising: a `what remains is…` narrowing inherits the
+vantage point of whoever last changed that code, and the next reader should
+re-derive it from the refusal rather than from the sentence.
+
+**The asymmetry that named the bug.** One inert value before the region
+compiled; two did not.
+
+```
+def b true  do [1 (if b [] [9 9])]      natively compiled
+def b true  do [1 2 (if b [] [9 9])]    dyn-body: the interpreter runs the body
+```
+
+Nothing in the mechanism distinguishes them. The screen is gated on
+`len(outs) > 1`, and the check run's out-count is the PREFIX width — the
+branch nets 0 under `b true` — so one prefix value skipped the screen and two
+met it. That also answers the RECORD-stage question increment 55 left open in
+`control.tsv` ("why the 0-value arm records a closure and the 2-value arm does
+not"): the recorded branch is identical in both, and the asymmetry was the
+screen's arity gate.
+
+**Three things had to give, and only the first was the screen.**
+
+1. `closureResidualRegion` admits the two COUNT-AGNOSTIC residual shapes —
+   `[inert…, REGION]` (the prefix seat) and one region event's whole
+   contiguous run (`sameEventRunToEnd`, which `seatResults` already leaves
+   where it lands). `RecordClosureCall` then marks that dispatch VARIADIC, so
+   its recorded `nout` is a SEAT count and not a value count — the same model
+   `catchVariadicFor` gives a fallible catch body. The program residual
+   absorbs it; every fixed-arity consumer keeps its refusal, which
+   `def b false  do [1 2 (if b [] [9 9])] add 5` still pins.
+
+   The whole-run arm is not decoration. Without it the relaxation stops one
+   level short: the inner body compiles and the ENCLOSING one — whose residual
+   is just that dispatch's run — declines, and the row refuses at the twin
+   gate exactly as before.
+
+2. `regionReadsTheStack` stopped reading an `opClosure` operand as a stack
+   read. This is the correction with the widest blast radius and it has a
+   proof rather than a measurement: `OpPushClosure` pushes the captures and
+   then the closure, all ABOVE the mark, and the call pops exactly what it
+   pushed — net +1 above the mark, nothing read from below it. The captures
+   cannot be stack reads either, because `planValueDefLocals` promotes every
+   captured producer to a frame local (`eachClosureCap` states that rule).
+   The new `operandReadsTheStack` walks them anyway rather than asserting it,
+   so a capture that is somehow not promoted declines the plan instead of
+   mis-indexing the mark.
+
+   The blanket answer cost every CLOSURE-COMPILED body word its region plan,
+   because a body word's own body operand IS an `opClosure`. That is why
+   `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the
+   body took the dyn-body strategy, and refused the moment the body compiled
+   — a screen written for the producers that existed, meeting a producer that
+   did not. The same sentence as NUR133 and NUR137, in the opposite
+   direction: this one cost refusals rather than a wrong answer.
+
+3. The dyn-body strategy's intra-event ID de-collision became
+   `produceRunOuts` and is SHARED, because a closure dispatch over a region
+   is a RUN too. `do [7 for 3 [1]]` is the row that proves it: the unrolled
+   loop models `[1 1 1]` as one Value, and the plain registration collapses
+   `producedBy` to the last index — "call results reordered", on a row that
+   compiled before. It compiled before because the dyn-body strategy owned
+   it and already did this; claiming the row without claiming the
+   registration is how a relaxation regresses a program it was not aiming at.
+
+**What moved.**
+
+| gate | before | after |
+|---|---|---|
+| interp-entry census | 32 | **29** |
+| `frontierCompileLedger` | 30 | **29** |
+| twin-placement frontier shapes | 3 | **2** |
+| `TestCompiledCoverage` | unchanged | unchanged |
+
+Read the first and last rows together. The compile ceiling did not move,
+because nothing about these rows' COMPILE status changed — only which engine
+ran their bodies did. That is the whole argument for keeping the census
+beside the ceiling rather than folding it in.
+
+**Two notes in `control.tsv` expired, and both were right when written.** One
+held three prefix rows out of the corpus because "the dyn-body backstop that
+lowers this shape re-enters the interpreter, and the interp-entry census is a
+ratchet that may only fall"; the other held out `do [1 (if false [] [9 9])]`
+for the same reason. Both are now false — measured with the entry hook, all
+of them run with no unattributed entry at all — so the rows joined the corpus
+and the notes record what they used to say and why it expired. A
+corpus-exclusion note is a claim about the compiler on the day it was
+written, and it needs re-measuring, not re-reading, after a change like this.
+
+**The refusal pin that had to move.** `TestBodyResidualRebuildScreens` used
+this same row to pin the rebuild's runtime-variable-count screen — and, as
+above, the row never reached the rebuild. It pinned "nothing else can seat
+this shape either", which is a different claim and is no longer true. The
+screen itself is unchanged and still needed, so the row was replaced by a
+witness that genuinely reaches it: `do [def b true  do [(if b [] [9 9]) (1
+add 2)]]`, where the region is NOT last, so no mark plan applies, `seatResults`
+refuses, and `opsHaveVariadicResult` declines the rebuild. A pin that stops
+failing is not automatically a pin that graduated; check which claim it was
+making.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

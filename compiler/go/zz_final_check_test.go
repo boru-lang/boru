@@ -82,12 +82,12 @@ func TestRecordInterpRefusals(t *testing.T) {
 func TestRecordClosureCallRefusals(t *testing.T) {
 	es := NewEmitState()
 	// nil sig → declines.
-	if es.RecordClosureCall("w", nil, nil, 0, 0, nil, nil, nil, nil, core.SrcPos{}) {
+	if es.RecordClosureCall("w", nil, nil, 0, 0, nil, nil, nil, nil, false, core.SrcPos{}) {
 		t.Fatal("nil sig should decline")
 	}
 	// an unresolvable non-body operand → declines.
 	sig := &core.Signature{}
-	if es.RecordClosureCall("w", sig, []core.Value{carrierVal(core.TInteger)}, -1, 0, nil, nil, []core.Value{core.NewInteger(0)}, nil, core.SrcPos{}) {
+	if es.RecordClosureCall("w", sig, []core.Value{carrierVal(core.TInteger)}, -1, 0, nil, nil, []core.Value{core.NewInteger(0)}, nil, false, core.SrcPos{}) {
 		t.Fatal("unresolvable closure-call operand should decline")
 	}
 }

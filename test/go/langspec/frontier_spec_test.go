@@ -507,14 +507,42 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// the expression against that element) rather than re-installing one
 	// captured body.
 	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
-	// NARROWED 2026-09-11 (the fifty-fourth increment): the decline is no
-	// longer "a literal under a call result" — a body unit takes the residual
-	// rebuild now. What is left is the COUNT: `if b [] [9 9]` nets 0 or 2, and
-	// a rebuild spills one stack entry per operand, so one slot cannot stand
-	// for a run whose length the compiler does not know. The program residual
-	// absorbs such an event; a fn RET does not. Graduation = a
-	// variadic-capable body-unit seat.
-	`do [def b true  do [1 2 (if b [] [9 9])]]`: {why: "twin placement: the do body's closure compile declines (its residual holds a runtime-variable-count branch result the body unit's seat cannot lay out), so the once-run body's def twin is never adopted", failsWith: "no stream placement"},
+	// (The third shape — `do [def b true  do [1 2 (if b [] [9 9])]]` —
+	// GRADUATED 2026-09-11 (the fifty-seventh increment) and its entry is
+	// deleted. Rows in lang/spec/control.tsv.
+	//
+	// The entry named the COUNT as the obstacle — "a rebuild spills one stack
+	// entry per operand, so one slot cannot stand for a run whose length the
+	// compiler does not know" — and that was true of the REBUILD and beside
+	// the point, because the rebuild is not the seating this shape needs. Its
+	// residual is [inert inert REGION], which OpSeatBelowMark has seated since
+	// the forty-first increment and a body unit has planned since the
+	// fifty-fifth. The dispatch never got that far: the whole-residual
+	// multi-out EXACTNESS screen refused the body before the unit was lowered,
+	// on the same count the seating does not need.
+	//
+	// Three things had to give, and only the first was the screen:
+	//
+	//   - closureResidualRegion admits the two count-agnostic residual shapes
+	//     ([inert…, REGION] and one event's whole run), and the dispatch is
+	//     recorded VARIADIC so its nout is a seat count, not a value count;
+	//   - regionReadsTheStack stopped reading an opClosure operand as a stack
+	//     read. It is a PUSH — captures then closure, all above the mark, and
+	//     the call pops what it pushed — and the blanket answer declined the
+	//     region plan for every closure-compiled body word, whose own body
+	//     operand IS an opClosure. That is why the sibling `7 def b true  do
+	//     [1 2 (if b [] [9 9])]` seated its prefix only while the body took
+	//     the dyn-body strategy;
+	//   - the dyn-body intra-event ID de-collision became produceRunOuts and
+	//     is shared, because a closure dispatch over a region is a RUN too:
+	//     `do [7 for 3 [1]]` models [1 1 1] as one Value, and registering it
+	//     plainly collapses producedBy to the last index.
+	//
+	// Worth keeping: the ledger entry was WRONG about the mechanism while
+	// being right that the row was red, and the wrongness was inherited — the
+	// fifty-fourth increment had just narrowed it to the rebuild, so the next
+	// reader looked at the rebuild. A "graduation =" line is a guess until
+	// someone measures it.)
 	// (The fourth shape — `do [import "boru:sift" (Sift.parse kv/q {} "a: 1")]`
 	// — GRADUATED 2026-09-02 and its entry is deleted. It was the one this
 	// ledger recorded as "measured, not yet root-caused", and the cause was

@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR138](#nur138) | RESOLVED (2026-09-11, the fifty-seventh increment). Third instance of NUR133's and NUR137's shape — a screen written for the producers that happened to exist, meeting one that did not — and the FIRST in the opposite direction: it cost refusals, not a wrong answer. `regionReadsTheStack` answered "reads the stack" for any `opClosure` operand, but a closure operand is a PUSH (`OpPushClosure` puts captures then closure ABOVE the mark and the call pops what it pushed) and its captures are always promoted to frame locals. Since a body word's own body operand IS an `opClosure`, the blanket answer declined the region plan for every CLOSURE-COMPILED body word — so `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the body took the dyn-body strategy and refused the moment the body compiled. The screen now walks the captures instead of assuming, so an unpromoted capture still declines | widening the whole-residual dispatch's exactness screen, 2026-09-11 |
 | [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal, never a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
 | [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
 | [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
@@ -293,6 +294,70 @@ Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
 
 ---
+
+## NUR138 — a closure operand was read as a stack read, so every closure-compiled body word lost its region plan {#nur138}
+
+**Status:** Resolved (2026-09-11, the fifty-seventh increment), in the commit
+that records it. Kept rather than deleted for the reason NUR137 is kept: what
+recurred is the SHAPE of the mistake, and this is its third instance in three
+days — the first one that cost REFUSALS rather than a wrong answer, which is
+why nothing caught it. **Found:** widening the whole-residual dispatch's
+multi-out exactness screen, when the widened screen made a pinned row start
+refusing.
+
+**Rule:** one question, one answer — an operand either takes its value from
+the ENCLOSING stack (the stack a mark plan has already indexed) or it does
+not.
+
+**Divergence.** `regionReadsTheStack` ended its per-kind walk with
+
+```go
+if op.kind == opEvent || op.kind == opClosure { return true }
+```
+
+An `opEvent` operand does read the enclosing stack: its producer ran earlier,
+so the value sits below the mark and the call pops it from there. That is
+NUR133's two witnesses. An `opClosure` operand does not. `OpPushClosure`
+pushes the closure's captures and then the closure, all ABOVE the mark, and
+the call pops exactly what it pushed — net +1 above the mark, nothing read
+from below it. The captures cannot be stack reads either: `planValueDefLocals`
+promotes every captured producer to a frame local, and `eachClosureCap`'s own
+doc states the rule ("a closure capture can only reference a frame local or an
+enclosing operand at run time, never a transient simulated-stack slot").
+
+**Why it was invisible.** A body word's OWN body operand is an `opClosure`, so
+the answer was "reads the stack" for every closure-compiled body word there
+is — and the effect was that such a word's region plan declined, which is a
+refusal. A refusal is not silent-wrong, so no differential caught it; and the
+shape only became reachable at all once body words started compiling their
+bodies to units, so there was no before-and-after to notice.
+
+The asymmetry it produced, measured on the same program:
+
+```
+7 def b true  do [1 2 (if b [] [9 9])]
+  body on the dyn-body strategy   prefix seated, program compiles
+  body compiled to a unit         region plan declines
+```
+
+Compiling MORE made the program compile LESS — which is the signature to look
+for when a screen is inherited rather than derived.
+
+**Fix.** `operandReadsTheStack` asks the question per operand and recurses
+into a closure's captures rather than assuming the promotion: a capture that
+is somehow not promoted still declines the plan instead of mis-indexing the
+mark. Fence: `compiler/go/region_operand_screen_test.go`'s table gained four
+rows — a closure over no captures, over an inert capture, over an EVENT
+capture, and a closure capturing a closure over an event.
+
+**The pattern this is the third instance of.** NUR133: a screen read two of
+the four kinds of event that produce a region. NUR137: it read a payload an
+`evBranch` does not carry. NUR138: it read a kind of OPERAND as a stack read
+because every operand that was not inert happened to be one when it was
+written. Each time the screen was correct for the inputs that existed when it
+was written, and each time the next increment changed the inputs. The default
+arm is now safe (NUR137's fix), which bounds the cost of the next instance to
+a refusal — and this record is what that refusal looks like from the inside.
 
 ## NUR137 — a branch region's condition was never screened, because the screen read a payload the kind does not carry {#nur137}
 

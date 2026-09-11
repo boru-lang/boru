@@ -94,9 +94,23 @@ func TestRegionReadsTheStackByEventKind(t *testing.T) {
 		{"a branch whose computed then-value is an event", evBranch, []EmitOperand{constOp, eventOp}, true},
 		{"a branch whose computed else-value is an event", evBranch, []EmitOperand{constOp, constOp, eventOp}, true},
 		{"a branch over plain arm values", evBranch, []EmitOperand{constOp, constOp, constOp}, false},
-		// A CLOSURE operand counts too: its captures may themselves be
-		// enclosing-stack results.
-		{"a closure operand", evCall, []EmitOperand{{kind: opClosure}}, true},
+		// A CLOSURE operand is a PUSH, not a read: OpPushClosure puts its
+		// captures and then the closure above any mark, and the call pops
+		// exactly what it pushed. The fifty-seventh increment corrected the
+		// blanket "a closure reads the stack" answer this row used to pin —
+		// it declined the region plan for every closure-compiled body word,
+		// whose own body operand is an opClosure.
+		{"a closure operand over no captures", evCall, []EmitOperand{{kind: opClosure}}, false},
+		{"a closure operand over an inert capture", evCall,
+			[]EmitOperand{{kind: opClosure, closureCaps: []EmitOperand{constOp}}}, false},
+		// Its CAPTURES are still asked, so a capture that was not promoted
+		// to a frame local declines the plan rather than mis-indexing the
+		// mark.
+		{"a closure operand capturing an event", evCall,
+			[]EmitOperand{{kind: opClosure, closureCaps: []EmitOperand{eventOp}}}, true},
+		{"a closure operand capturing a closure over an event", evCall,
+			[]EmitOperand{{kind: opClosure, closureCaps: []EmitOperand{
+				{kind: opClosure, closureCaps: []EmitOperand{eventOp}}}}}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := regionReadsTheStack(rosEvent(tc.kind, tc.ops)); got != tc.want {

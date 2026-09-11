@@ -708,7 +708,21 @@ import (
 // instead of riding as a List const the handler interprets. One corpus row
 // (fn-value.tsv's module-scope fn as a for-each body word) stops entering the
 // interpreter. The ratchet only falls, and this is the fall.
-const interpEntryRowCeiling = 32
+//
+// 32 -> 29 (2026-09-11, the fifty-seventh increment): a whole-residual
+// dispatch (`do`) takes a body whose residual is COUNT-AGNOSTIC — [inert…,
+// REGION], or one region event's whole run — instead of refusing it to the
+// dyn-body strategy. The three rows are the variadic-branch bodies in
+// control.tsv (`def b true  do [1 2 (if b [] [9 9])]` and its siblings): they
+// compiled before and they compile now, but the body ran on the interpreter
+// through InvokeBody, which is exactly the entry this census exists to count
+// and the OpFallback ceiling cannot see.
+//
+// Read the two numbers together. `TestCompiledCoverage` did not move, because
+// nothing about these rows' COMPILE status changed; only which engine ran
+// their bodies did. That is the whole argument for keeping this census beside
+// the ceiling rather than folding it in.
+const interpEntryRowCeiling = 29
 
 func TestInterpEntryCensus(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")

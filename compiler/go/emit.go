@@ -9038,11 +9038,18 @@ func (es *EmitState) RecordSpliceDyn(payload core.Value, pos core.SrcPos) bool {
 // to its own closure unit by recordClosureDispatch), which rides its prepared
 // opClosure operand. Returns false, leaving es UNTOUCHED, when an operand is
 // dynamic or of unknown provenance — the caller then keeps the island path.
-func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []core.Value, bodyPos, unit int, capOps []EmitOperand, extraOps map[int]EmitOperand, outs []core.Value, retSpec *ClosureRetSpec, pos core.SrcPos) bool {
+// regionResidual is recordClosureDispatch's verdict that the unit's residual
+// is count-agnostic (closureResidualRegion): the recorded nout seats stand
+// for a run whose runtime length is its own, so the event is marked VARIADIC
+// and the program residual absorbs it.
+func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []core.Value, bodyPos, unit int, capOps []EmitOperand, extraOps map[int]EmitOperand, outs []core.Value, retSpec *ClosureRetSpec, regionResidual bool, pos core.SrcPos) bool {
 	// A whole-residual word (CallableSpec.BodyOutResidual — `do`) may seat
-	// N > 1 results: recordClosureDispatch has already asserted the unit's
-	// compiled residual count equals len(outs), and the multi-result seating
-	// below mirrors the generic RecordCall tail. Other callers stay 0/1-out.
+	// N > 1 results: recordClosureDispatch has already asserted EITHER that
+	// the unit's compiled residual count equals len(outs)
+	// (closureResidualExact) or that its residual is a count-agnostic region
+	// (closureResidualRegion, which sets regionResidual), and the
+	// multi-result seating below mirrors the generic RecordCall tail. Other
+	// callers stay 0/1-out.
 	if !es.Active() || sig == nil ||
 		(len(outs) > 1 && (sig.Callable == nil || sig.Callable.BodyOut != core.BodyOutResidual)) {
 		return false
@@ -9077,7 +9084,12 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// runtime count is N on no-raise but 1 on the caught path, so the
 	// result region is VARIADIC — the residual absorbs it; a fixed-arity
 	// consumer keeps the refusal (plan Phase 5, L-DO).
-	if es.catchVariadicFor(sig) {
+	//
+	// A count-agnostic REGION residual (the fifty-seventh increment) is the
+	// same mark for the same reason: the body's own residual holds a run
+	// whose runtime length is not the check run's, so nout is a seat count
+	// and not a value count.
+	if es.catchVariadicFor(sig) || regionResidual {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		es.eventInfo[seq] = f
@@ -9099,6 +9111,15 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 				break
 			}
 		}
+	}
+	if regionResidual {
+		// A count-agnostic region residual makes this dispatch a RUN: its
+		// outs are N distinct runtime stack values, so a repeated modeled
+		// value (an unrolled loop body — `do [7 for 3 [1]]`) must not
+		// collapse producedBy to its last index. Same registration the
+		// dyn-body backstop uses, and for the same reason.
+		es.produceRunOuts(args, outs, seq)
+		return true
 	}
 	for i := range outs {
 		es.setProducedAt(outs[i], seq, i)
@@ -9875,7 +9896,46 @@ func regionReadsTheStack(ev *EmitEvent) bool {
 		return true
 	}
 	for _, op := range ops {
-		if op.kind == opEvent || op.kind == opClosure {
+		if operandReadsTheStack(op) {
+			return true
+		}
+	}
+	return false
+}
+
+// operandReadsTheStack reports whether ONE operand of a region-producing
+// event takes its value from the ENCLOSING stack — the stack a mark plan's
+// OpStackMark has already indexed, and which the event must therefore not
+// pop from.
+//
+// An EVENT operand does: its producer ran earlier, so the value sits BELOW
+// the mark and the call pops it from there. Both NUR133 witnesses are that.
+//
+// A CLOSURE operand does NOT, and that correction is the fifty-seventh
+// increment's. OpPushClosure pushes the closure's captures and then the
+// closure itself, all ABOVE the mark, and the call pops exactly what it
+// pushed — net +1 above the mark, nothing read from below it. The captures
+// cannot be stack reads either: planValueDefLocals PROMOTES every captured
+// producer to a frame local (eachClosureCap states the rule — "a closure
+// capture can only reference a frame local or an enclosing operand at run
+// time, never a transient simulated-stack slot"), so each lowers to a local
+// push. The walk below ASKS rather than asserting it, so a capture that is
+// somehow not promoted declines the plan instead of mis-indexing the mark.
+//
+// The blanket `opClosure` arm this replaces cost every CLOSURE-COMPILED body
+// word its region plan, because a body word's own body operand IS an
+// opClosure: `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only
+// while that body took the dyn-body strategy, and refused the moment the
+// body compiled to a unit.
+func operandReadsTheStack(op EmitOperand) bool {
+	if op.kind == opEvent {
+		return true
+	}
+	if op.kind != opClosure {
+		return false
+	}
+	for _, c := range op.closureCaps {
+		if operandReadsTheStack(c) {
 			return true
 		}
 	}
