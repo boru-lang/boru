@@ -45,6 +45,21 @@ func rosEvent(kind int, ops []EmitOperand) *EmitEvent {
 			lp.carried = append(lp.carried, carriedInit{init: op})
 		}
 		ev.loop = &lp
+	case evBranch:
+		// A branch reads its CONDITION, plus an eagerly-computed arm value
+		// (which sits BELOW the cond). The arm BODIES lower inside the
+		// branch and are deliberately not read.
+		br := &emitBranch{}
+		if len(ops) > 0 {
+			br.cond = ops[0]
+		}
+		if len(ops) > 1 {
+			br.thenIsVal, br.thenVal = true, ops[1]
+		}
+		if len(ops) > 2 {
+			br.elsIsVal, br.elsVal = true, ops[2]
+		}
+		ev.br = br
 	default:
 		ev.call = emitCall{ops: ops}
 	}
@@ -72,6 +87,13 @@ func TestRegionReadsTheStackByEventKind(t *testing.T) {
 		{"a user call over an event", evCallUser, []EmitOperand{constOp, eventOp}, true},
 		{"a fallback with no threaded input", evFallback, nil, false},
 		{"a fallback whose input is an event", evFallback, []EmitOperand{eventOp}, true},
+		// The fifth producer, admitted by the forty-seventh increment and
+		// unscreened until NUR137.
+		{"a branch over a const condition", evBranch, []EmitOperand{constOp}, false},
+		{"a branch over an EVENT condition", evBranch, []EmitOperand{eventOp}, true},
+		{"a branch whose computed then-value is an event", evBranch, []EmitOperand{constOp, eventOp}, true},
+		{"a branch whose computed else-value is an event", evBranch, []EmitOperand{constOp, constOp, eventOp}, true},
+		{"a branch over plain arm values", evBranch, []EmitOperand{constOp, constOp, constOp}, false},
 		// A CLOSURE operand counts too: its captures may themselves be
 		// enclosing-stack results.
 		{"a closure operand", evCall, []EmitOperand{{kind: opClosure}}, true},
@@ -81,6 +103,20 @@ func TestRegionReadsTheStackByEventKind(t *testing.T) {
 				t.Fatalf("regionReadsTheStack = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// The DEFAULT arm: a kind this predicate does not name is UNSCREENED, and
+// after two incompletenesses (NUR133, NUR137) that now answers "reads the
+// stack" rather than reading a payload the kind does not carry. A break
+// event is the convenient witness — its `call` payload is the zero value,
+// which is exactly the empty-ops answer the old default gave every unnamed
+// kind. Adding a region producer must cost a refusal, never a wrong answer.
+func TestRegionReadsTheStackUnnamedKindIsUnscreened(t *testing.T) {
+	for _, kind := range []int{evBreak, evContinue, evTrap, evStore, evDynBind, evBindTwin} {
+		if !regionReadsTheStack(&EmitEvent{kind: kind}) {
+			t.Fatalf("kind %d is not named by the screen, so it must be assumed to read the stack", kind)
+		}
 	}
 }
 

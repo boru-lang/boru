@@ -6546,6 +6546,72 @@ per element — re-evaluating the expression against that element — rather
 than re-installing one captured body. That is a genuinely different
 mechanism, not a wider screen.
 
+## The screen that was incomplete twice (2026-09-11, NUR137)
+
+The fifty-fifth increment's own adversarial re-read found a silent miscompile
+that had been in the branch for four increments, and the finding is worth
+keeping for its SHAPE rather than its fix, which is six lines.
+
+**What happened.** `regionReadsTheStack` decides whether a region's own event
+consumes something already on the stack — if it does, a mark opened before
+that event would sit above a value the event then pops. It switched on the
+event kind and ended:
+
+```go
+default:
+    ops = ev.call.ops
+```
+
+An `evBranch`'s operands live in `ev.br`. So for a branch the default read the
+ZERO-VALUE `emitCall`, found nil ops, and answered "does not read the stack"
+— for every branch region there is.
+
+The forty-seventh increment had widened `variadicRegionEvent` to admit branch
+regions, and its own doc says why, correctly: *"the plan's single-slot gate
+was inherited from the two producers that happened to exist, not from
+anything the mechanism needs."* True of the gate. Also true of the SCREEN,
+and that half was not noticed.
+
+```
+def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])
+  interpreted  1 9 9
+  compiled     9 1 9        silent, exit 0, the DEFAULT lane
+```
+
+Bisected: `6bc55db` (merge base) refused, `25b1af3` (46) refused, `d663fe1`
+(47) answers `9 1 9`.
+
+**Why it surfaced now.** The fifty-fifth increment gave a BODY unit the same
+prefix plan, and inside a fn unit the same unscreened shape is not a wrong
+answer but an internal one — `SEAT_BELOW_MARK prefix reaches past the mark`,
+on the default lane, where increment 54 had refused cleanly. Probing my own
+new seat with a condition the check pass cannot fold is what turned it up;
+the corpus, the differential, the variation sweep and CI were all green
+across it, because no row spells a branch region with an event condition.
+
+**The lesson, and what the fix actually changes.** This is NUR133's mistake a
+second time — a new region producer meeting a screen written for the
+producers that happened to exist — and NUR133's own fix had left a comment
+predicting it, in this exact function:
+
+> A kind whose operands are not listed here does not "have none": it is
+> unscreened.
+
+The comment was right and did not prevent the recurrence, because the code
+still silently produced an answer for an unnamed kind. A comment cannot hold
+a line that the default case undercuts. So the fix is not a fifth `case`: the
+DEFAULT now returns `true`. An event kind the screen does not name is assumed
+to read the stack, which declines the plan. Adding a region producer now
+costs a refusal until someone lists its operands — loud, and in the sound
+direction.
+
+**Generalise this when you meet the shape.** Two widenings in this line have
+now admitted producers to a consumer without widening the consumer's screen.
+If you widen a gate that admits event kinds, the question to ask is not "does
+my new kind work" but "what does every OTHER path keyed on kind do with it" —
+and where such a path has a default, make the default the safe answer before
+you add the case.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

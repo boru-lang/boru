@@ -9829,17 +9829,42 @@ func (es *EmitState) regionPrefixShape(residual []core.Value, events []EmitEvent
 func regionReadsTheStack(ev *EmitEvent) bool {
 	var ops []EmitOperand
 	switch ev.kind {
+	case evCall:
+		ops = ev.call.ops
+	case evCallUser:
+		ops = ev.uc.ops
+	case evFallback:
+		ops = ev.fb.ins
 	case evLoop:
 		ops = []EmitOperand{ev.loop.start, ev.loop.end, ev.loop.step}
 		for _, c := range ev.loop.carried {
 			ops = append(ops, c.init)
 		}
-	case evCallUser:
-		ops = ev.uc.ops
-	case evFallback:
-		ops = ev.fb.ins
+	case evBranch:
+		// The CONDITION is on the stack when the branch runs, and so is an
+		// eagerly-computed arm value (`if c (expr) e` puts it BELOW the cond —
+		// emitBranch.thenComputed / elsComputed). The arm BODIES are not: they
+		// lower inside the branch, after any mark this screen protects.
+		ops = []EmitOperand{ev.br.cond}
+		if ev.br.thenIsVal {
+			ops = append(ops, ev.br.thenVal)
+		}
+		if ev.br.elsIsVal {
+			ops = append(ops, ev.br.elsVal)
+		}
 	default:
-		ops = ev.call.ops
+		// UNSCREENED, and that is not the same as operand-less. This
+		// predicate has now been incomplete TWICE — NUR133 (a user call's
+		// and a fallback's own operands went unread) and NUR137 (a branch's
+		// condition did, after the forty-seventh increment widened
+		// variadicRegionEvent to admit branch regions) — and both times the
+		// shape was a NEW region producer meeting a screen written for the
+		// producers that happened to exist. So the default is now the safe
+		// answer rather than a silent one: a kind this function does not
+		// name is assumed to read the stack, which declines the plan. Adding
+		// a producer therefore costs a refusal until someone lists its
+		// operands here, never a wrong answer.
+		return true
 	}
 	for _, op := range ops {
 		if op.kind == opEvent || op.kind == opClosure {

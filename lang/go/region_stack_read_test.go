@@ -122,3 +122,69 @@ func TestConstArgVariadicUserCallStillSeats(t *testing.T) {
 		t.Errorf("the prefix must still be seated by the mark:\n%s", dis)
 	}
 }
+
+// --- NUR137: the FIFTH producer, and the second time this predicate was
+// incomplete -------------------------------------------------------------
+
+// TestBranchRegionConditionIsAStackRead — a BRANCH region's condition. The
+// forty-seventh increment widened `variadicRegionEvent` to admit a
+// branch-variant region ("the plan's single-slot gate was inherited from the
+// two producers that happened to exist"), which is true and was half the
+// job: the SCREEN was inherited the same way. `regionReadsTheStack` read
+// `ev.call.ops` for every kind it did not name, and an evBranch's operands
+// live in `ev.br` — so the condition was never examined, the mark opened
+// above it, and the branch popped from beneath its own mark.
+//
+// Measured: on the merge base 6bc55db this REFUSED ("call result above a
+// literal"); at d663fe1 (the forty-seventh increment) it answered `9 1 9`
+// against the interpreter's `1 9 9`, silently, exit 0, on the default lane.
+func TestBranchRegionConditionIsAStackRead(t *testing.T) {
+	rsrRefuses(t,
+		`def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])`,
+		"residual shape beyond Stage 1", "[1 9 9]")
+	// The zero-run arm of the same shape: the count differs, the defect does
+	// not — one witness per arm so a fix that only repairs the populated run
+	// cannot pass.
+	rsrRefuses(t,
+		`def zs [1] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])`,
+		"residual shape beyond Stage 1", "[1]")
+}
+
+// TestBranchRegionConditionInABodyUnit — the same hole, reached through the
+// fifty-fifth increment's body-unit seat, where it surfaced as an INTERNAL
+// VM error rather than a wrong answer: `bytecode: internal: SEAT_BELOW_MARK
+// prefix reaches past the mark`. At the fifty-fourth increment this refused
+// cleanly, so the body-unit seat is what made the top-level hole reachable
+// here — the hole itself is older.
+func TestBranchRegionConditionInABodyUnit(t *testing.T) {
+	rsrRefuses(t,
+		`def zs [1] def zt (zs 0 getr)  do [1 (if (zt gt 0) [] [9 9])]`,
+		"result above a literal", "[1]")
+}
+
+// TestInertConditionBranchRegionStillSeats — the twins that must NOT
+// regress. A condition that is NOT event-produced leaves nothing on the
+// stack when the mark opens, so the prefix plan stays sound: the top-level
+// shape the forty-seventh increment graduated, and the body-unit shape the
+// fifty-fifth did.
+func TestInertConditionBranchRegionStillSeats(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{`1 (if true [] [9 9])`, "[1]"},
+		{`1 (if false [] [9 9])`, "[1 9 9]"},
+		{`do [def b true  1 (if b [] [9 9])]`, "[1]"},
+	} {
+		ran, gotC, gotI, cerr, ierr := rsrRun(t, tc.src)
+		if ierr != nil {
+			t.Fatalf("%s: the interpreter oracle errored: %v", tc.src, ierr)
+		}
+		if gotI != tc.want {
+			t.Fatalf("%s: the interpreter ORACLE moved: %s, want %s", tc.src, gotI, tc.want)
+		}
+		if !ran {
+			t.Fatalf("%s: must still compile natively: %v", tc.src, cerr)
+		}
+		if gotC != gotI {
+			t.Errorf("%s: compiled %s, interpreted %s", tc.src, gotC, gotI)
+		}
+	}
+}

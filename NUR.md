@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal, never a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
 | [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
 | [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
 | [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, by design — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
@@ -290,6 +291,64 @@ value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
+
+---
+
+## NUR137 — a branch region's condition was never screened, because the screen read a payload the kind does not carry {#nur137}
+
+**Status:** Resolved (2026-09-11), in the commit that records it. The record
+is kept rather than deleted because what recurred is the SHAPE of the
+mistake, not the line: NUR133 fixed the same predicate ONE DAY earlier and
+left a comment predicting exactly this, and the register is where that
+pattern is visible. **Found:** 2026-09-11, adversarially
+probing the fifty-fifth increment's own new seat.
+
+**Rule:** one region-prefix plan, one screen. A mark may not open above a
+value the region's own event then pops.
+
+**Divergence.** `regionReadsTheStack` switched on the event kind and ended
+with `default: ops = ev.call.ops`. An `evBranch`'s operands are in `ev.br`,
+so for a branch the default read the ZERO-VALUE `emitCall` — nil ops — and
+answered "does not read the stack" for every branch region there is.
+
+```
+def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])
+  interpreted  1 9 9
+  compiled     9 1 9        silent, exit 0, the DEFAULT lane
+```
+
+The condition `zt` is event-produced, so it is on the stack when the mark
+opens; the branch then pops it from beneath its own mark, and the prefix and
+the run interleave.
+
+**Dated by bisect.** The merge base `6bc55db` REFUSED this ("residual shape
+beyond Stage 1"). `25b1af3` (increment 46) still refused. `d663fe1`
+(increment 47) answers `9 1 9`. That increment's own doc says it widened the
+producer gate — *"the plan's single-slot gate was inherited from the two
+producers that happened to exist, not from anything the mechanism needs"* —
+which was true, and the screen was inherited exactly the same way.
+
+**The second face.** The fifty-fifth increment gave a body unit the same
+plan, so the same unscreened shape became reachable inside a fn unit, where
+it is not a wrong answer but an INTERNAL error:
+`def zs [1] def zt (zs 0 getr)  do [1 (if (zt gt 0) [] [9 9])]` raised
+`bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark` on the
+default lane, where increment 54 had refused cleanly.
+
+**Why this is a register entry and not just a bug.** It is NUR133's mistake
+a second time, and NUR133's own fix left a comment predicting it: *"A kind
+whose operands are not listed here does not 'have none': it is
+unscreened."* The comment was right and did not prevent the recurrence,
+because the default still silently produced an answer. So the fix changes
+the DEFAULT rather than adding a fifth case: an event kind the screen does
+not name is now assumed to read the stack. Adding a region producer costs a
+refusal until someone lists its operands — the sound direction, and the one
+that fails loudly.
+
+Pinned in `lang/go/region_stack_read_test.go` (both arms of the branch, the
+body-unit face, and the inert-condition twins that must keep compiling) and
+`compiler/go/region_operand_screen_test.go` (the per-kind table and the
+unnamed-kind default).
 
 ---
 
