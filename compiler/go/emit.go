@@ -13190,19 +13190,22 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 // reason: Finalize sits on the gocyclo ceiling, and this block is nine
 // decision points of a rule that has nothing to do with the rest of the
 // loop.
+// The body is the ORIGINAL nested form, moved verbatim rather than flattened
+// into early returns. Flattening reads better and is the wrong trade here: an
+// unentered `if` is a branch the coverage profile does not count, while the
+// `return` it becomes is a STATEMENT that must be reached — and ADR-008's
+// floor is statements. The De Morgan'd version cost one uncovered statement
+// in compiler/go for a guard no corpus row declines.
 func trimUnconsumedUnnamed(rec *fnUnitRec) {
-	if len(rec.returns) == 0 || rec.nUnnamed == 0 || len(rec.outOps) <= len(rec.returns) || rec.retReplay {
-		return
-	}
-	extra := len(rec.outOps) - len(rec.returns)
-	if extra > rec.nUnnamed {
-		return
-	}
-	drop := 0
-	for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
-		drop++
-	}
-	if drop == extra {
-		rec.outOps = rec.outOps[extra:]
+	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
+		if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
+			drop := 0
+			for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {
+				drop++
+			}
+			if drop == extra {
+				rec.outOps = rec.outOps[extra:]
+			}
+		}
 	}
 }
