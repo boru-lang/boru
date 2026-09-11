@@ -6737,14 +6737,41 @@ every such body is variadic; the count comparison is only ever reached where
 operands and values coincide. Worth stating because the comparison reads like
 a units error and is not one.
 
-**Where that leaves the increment.** Not "relax the exactness check" (the
-`false` case fails `!rec.variadic` before any count is compared) and not "seat
-a runtime count at the dispatch" (there is no static runtime seat to fix). The
-open question is narrower and genuinely unanswered: WHICH downstream consumer
-of a `do` call's simulated result count would mis-model a variadic body, and
-can it be told the count is a region rather than a number — the same answer
-the residual seatings got in increments 40, 41, 47 and 55, but at the call
-site's model rather than at a stack layout. Answer that before writing code.
+**Where that leaves the increment — second measurement, and it relocates the
+question.** The obvious next suspect was `branchVariadicResult`'s const-cond
+arm, whose comment ("only the taken (then) arm is inlined") reads oddly
+against code that always looks at `ThenStk`: for a FALSE constant the taken
+arm is the else. Measured, and the suspicion is a dead end — but what it
+found is better. `ConstCond` is **nil in both spellings**:
+
+```
+do [1 (if true  [] [9 9])]   constCond=nil  thenN=0  elsN=2  hasElse=true
+do [1 (if false [] [9 9])]   constCond=nil  thenN=0  elsN=2  hasElse=true
+```
+
+The two record IDENTICAL BranchRecords. Both are variadic by the same clause
+(`elsN > 1`), and the const arm is never taken. So the difference between the
+spellings is not in the recorder's model of the branch at all.
+
+**What the pair actually shows.** The CHECK RUN is concrete — it takes one
+arm and leaves 1 value or 3. The RECORDER's model is variadic — it describes
+both arms and cannot say which runs. `len(outs)` reflects the concrete run;
+`rec.variadic` reflects the model. The `true` spelling compiles only because
+`outs` happens to be 1 and the exactness check is skipped; the `false` one
+declines because the model says variadic. Neither outcome is reasoning about
+the condition being constant, because nothing at this layer knows it is.
+
+**So the question for the next author is one level earlier, and it is
+cheap:** why is `ConstCond` nil for a LITERAL condition? `emitBranch` carries
+the field and `branchVariadicResult` has a whole arm for it, so something
+sets it somewhere — just not here. If a literal condition set it, that arm
+would apply, the merge could be modelled with the taken arm's fixed count,
+and both spellings would have a determinate model. That is a recorder-level
+change with its own blast radius (every consumer of `variadicResult` would
+see fewer variadic branches), so measure the population before touching it —
+and while you are in there, settle whether `ThenStk` is the TAKEN arm under a
+false constant or whether that arm has a latent bug of its own. It is
+currently unreachable from these witnesses, so no row proves either way.
 
 **And a measurement trap, since it cost time twice.** `-force-compile`
 reports SUCCESS for a program that reaches the dyn-body backstop, because a
