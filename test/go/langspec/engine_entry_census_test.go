@@ -35,9 +35,21 @@ import (
 // engineEntryCeiling is the maximum number of UNATTRIBUTED interpreter
 // entries the compiled corpus walk may produce. Monotone DOWN only — it
 // reaches 0 at Stage 9, when the last escape valve retires and the
-// compiled lane executes without the tree-walker. Never raise it: a rise
-// means a compiled program started re-entering the interpreter somewhere
-// new, which is the regression this ratchet exists to catch.
+// compiled lane executes without the tree-walker. Never raise it silently:
+// a rise means a compiled program started re-entering the interpreter
+// somewhere new, which is the regression this ratchet exists to catch.
+//
+// It counts ENTRIES, not rows, and that is deliberate: interpEntryRowCeiling
+// is the row-normalised twin, and the two answer different questions (how
+// many programs interpret, versus how much interpreting they do). The cost
+// of the entry count is that it moves with corpus growth on a seam that is
+// ALREADY ledgered — a new Test.property row runs its raw-quotation body
+// about a hundred times, so one such row is about a hundred entries. That
+// is not a new route, and a change adding such a row moves this ceiling
+// WITH the row, naming the row and the seam in the history below, exactly
+// as diagnosticParityCeiling's history names each corpus row that moved
+// it. What stays forbidden is an unnamed rise, or a rise whose cause is a
+// new seam rather than a new row on a known one.
 const engineEntryCeiling = 281 // 505 (2026-08-25, Stage-1 baseline) -> 281 (2026-09-14, the first lowering: measured three times at exactly 281 on c34a2fb, the tree that closed increment 59 — Engine.Run×281 with CallBoru×240 beneath it, most of those Test.property's ~100 invocations per row, so the ENTRY count is concentrated in two or three module-test.tsv rows while the interp-entry ROW census stands at 28. The ceiling had sat 80% above the live value for seventeen days, which is a ceiling that cannot catch a regression; it is now the live value, as a ratchet must be) -> 0 (Stage 9)
 
 // deferCeiling is the maximum number of runtime bails (vmDefer activations)

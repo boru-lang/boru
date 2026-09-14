@@ -230,6 +230,58 @@ func siteKeysIn(rel, src string) []string {
 	return keys
 }
 
+// refusalDispositionCeiling pins the table's size in BOTH directions, which
+// is what makes "the table only shrinks" a gate rather than a sentence: a
+// site-and-row pair added together passes the two membership checks, so
+// growth has to be caught by the count; and a site that retires must lower
+// this number in the same change, so the history below records every
+// retirement. Equal to refusalSiteCeiling by construction (the two scans
+// count the same sites).
+const refusalDispositionCeiling = 92 // 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
+
+// dispositionFindings is the gate, factored so its negative arms can be
+// driven over synthetic input: every finding is one string, and an empty
+// result is a pass.
+func dispositionFindings(keys []string, table map[string]refusalDisposition, ceiling int) (findings []string, byKind map[string]int, byStage map[int]int) {
+	found := map[string]bool{}
+	byKind = map[string]int{}
+	byStage = map[int]int{}
+	for _, k := range keys {
+		found[k] = true
+		d, ok := table[k]
+		if !ok {
+			findings = append(findings, "refusal site "+k+" has no disposition — under the definition of done every site needs one of generic, trap or delete")
+			continue
+		}
+		switch d.kind {
+		case dispGeneric, dispTrap, dispDelete:
+		default:
+			findings = append(findings, "refusal site "+k+": disposition "+d.kind+" is not one of the three the ruling permits")
+		}
+		if d.stage < 3 || d.stage > 9 {
+			findings = append(findings, "refusal site "+k+": stage "+itoa(d.stage)+" is not a FULL-COMPILATION.0.md section 10 stage")
+		}
+		if strings.TrimSpace(d.note) == "" || strings.Contains(d.note, "\n") {
+			findings = append(findings, "refusal site "+k+": the note must be one non-empty line naming the mechanism that retires the site")
+		}
+		byKind[d.kind]++
+		byStage[d.stage]++
+	}
+	for k := range table {
+		if !found[k] {
+			findings = append(findings, "disposition table entry "+k+" names no refusal site — the site retired, so drop the row (or the key moved with a reordering: re-key it)")
+		}
+	}
+	switch {
+	case len(keys) > ceiling:
+		findings = append(findings, "refusal-disposition census "+itoa(len(keys))+" exceeds ceiling "+itoa(ceiling)+" — a new refusal site was added with its row; the count only falls, so the site needs a generic lowering, a trap or a deletion instead")
+	case len(keys) < ceiling:
+		findings = append(findings, "refusal-disposition census "+itoa(len(keys))+" is below ceiling "+itoa(ceiling)+" — a site retired: lower the ceiling and record which, so the history stays exact")
+	}
+	sort.Strings(findings)
+	return findings, byKind, byStage
+}
+
 func TestRefusalDispositionCensus(t *testing.T) {
 	keys := refusalSiteKeys(t)
 	_, total := refusalSites(t)
@@ -237,31 +289,9 @@ func TestRefusalDispositionCensus(t *testing.T) {
 		t.Errorf("disposition scan found %d sites, the site census %d — the two scans must agree", len(keys), total)
 	}
 
-	found := map[string]bool{}
-	byKind := map[string]int{}
-	byStage := map[int]int{}
-	for _, k := range keys {
-		found[k] = true
-		d, ok := refusalDispositions[k]
-		if !ok {
-			t.Errorf("refusal site %s has no disposition — under the definition of done every site needs one of generic, trap or delete", k)
-			continue
-		}
-		switch d.kind {
-		case dispGeneric, dispTrap, dispDelete:
-		default:
-			t.Errorf("refusal site %s: disposition %q is not one of the three the ruling permits", k, d.kind)
-		}
-		if d.stage < 3 || d.stage > 9 {
-			t.Errorf("refusal site %s: stage %d is not a FULL-COMPILATION.0.md section 10 stage", k, d.stage)
-		}
-		byKind[d.kind]++
-		byStage[d.stage]++
-	}
-	for k := range refusalDispositions {
-		if !found[k] {
-			t.Errorf("disposition table entry %s names no refusal site — the site retired, so drop the row (or the key moved with a reordering: re-key it)", k)
-		}
+	findings, byKind, byStage := dispositionFindings(keys, refusalDispositions, refusalDispositionCeiling)
+	for _, f := range findings {
+		t.Error(f)
 	}
 
 	stages := make([]int, 0, len(byStage))
@@ -275,6 +305,55 @@ func TestRefusalDispositionCensus(t *testing.T) {
 	}
 	t.Logf("refusal-disposition census: %d sites — generic %d, trap %d, delete %d; by retiring stage: %s",
 		len(keys), byKind[dispGeneric], byKind[dispTrap], byKind[dispDelete], strings.Join(parts, ", "))
+}
+
+// The gate's negative arms, over synthetic input: each shape that must fail
+// produces exactly the finding that names it, and the clean shape produces
+// none. The growth case is the one the membership checks alone cannot see —
+// a site and its row added together.
+func TestRefusalDispositionGateRefuses(t *testing.T) {
+	ok := refusalDisposition{dispGeneric, 5, "a region"}
+	base := map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok}
+	keys := []string{"m/a.go:f#1", "m/a.go:f#2"}
+	if f, _, _ := dispositionFindings(keys, base, 2); len(f) != 0 {
+		t.Fatalf("a matched table at the ceiling must pass, got %v", f)
+	}
+
+	cases := []struct {
+		name  string
+		keys  []string
+		table map[string]refusalDisposition
+		ceil  int
+		want  string
+	}{
+		{"a site and its row added together", append(keys, "m/a.go:g#1"),
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:g#1": ok}, 2, "exceeds ceiling"},
+		{"a site retired without lowering the ceiling", keys[:1],
+			map[string]refusalDisposition{"m/a.go:f#1": ok}, 2, "below ceiling"},
+		{"a site with no row", keys, map[string]refusalDisposition{"m/a.go:f#1": ok}, 2, "has no disposition"},
+		{"a row with no site", keys,
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:z#1": ok}, 2, "names no refusal site"},
+		{"a disposition outside the three", keys,
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {"carve-out", 5, "x"}}, 2, "not one of the three"},
+		{"a stage outside section 10", keys,
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 2, "x"}}, 2, "not a FULL-COMPILATION"},
+		{"a blank note", keys,
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "  "}}, 2, "one non-empty line"},
+		{"a multi-line note", keys,
+			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "a\nb"}}, 2, "one non-empty line"},
+	}
+	for _, c := range cases {
+		f, _, _ := dispositionFindings(c.keys, c.table, c.ceil)
+		hit := false
+		for _, s := range f {
+			if strings.Contains(s, c.want) {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("%s: want a finding containing %q, got %v", c.name, c.want, f)
+		}
+	}
 }
 
 func TestRefusalSiteKeysAreSyntactic(t *testing.T) {
