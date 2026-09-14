@@ -14,6 +14,11 @@ no graduation) and increment 59 landed the region-suffix seat.
 
 ## Where the project is
 
+For the forecast (probability of reaching each end state, remaining effort
+in session-days, and what remains by tier) read
+[FULL-COMPILATION-ASSESSMENT.0.md](FULL-COMPILATION-ASSESSMENT.0.md),
+dated 2026-09-14; refresh it at the end of each tier, not each increment.
+
 | gate | value | direction |
 |---|---|---|
 | `frontierCompileLedger` rows | **29** | down only |
