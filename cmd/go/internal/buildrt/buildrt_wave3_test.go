@@ -70,8 +70,8 @@ func TestReadEmbeddedPayloadMissingFile(t *testing.T) {
 func TestReadEmbeddedPayloadCorruptLength(t *testing.T) {
 	// A valid magic with a length larger than the file must error.
 	footer := make([]byte, footerSize)
-	copy(footer[:magicSize], magic)
-	binary.BigEndian.PutUint64(footer[magicSize:], 1<<40)
+	copy(footer[:len(magic)], magic)
+	binary.BigEndian.PutUint64(footer[len(magic):], 1<<40)
 	p := writeImage(t, append([]byte("host"), footer...))
 
 	_, ok, err := ReadEmbeddedPayload(p)
@@ -83,8 +83,8 @@ func TestReadEmbeddedPayloadCorruptLength(t *testing.T) {
 func TestReadEmbeddedPayloadCorruptJSON(t *testing.T) {
 	body := []byte("{not json")
 	footer := make([]byte, footerSize)
-	copy(footer[:magicSize], magic)
-	binary.BigEndian.PutUint64(footer[magicSize:], uint64(len(body)))
+	copy(footer[:len(magic)], magic)
+	binary.BigEndian.PutUint64(footer[len(magic):], uint64(len(body)))
 	image := append([]byte("host"), body...)
 	image = append(image, footer...)
 	p := writeImage(t, image)

@@ -33,12 +33,14 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/scrypt"
+
+	"github.com/boru-lang/boru/cmd/go/internal/wire"
 )
 
 const (
 	// keyringService is the namespace used for entries in the host
 	// OS keychain. Per-alias keys are stored as "boru:<alias>".
-	keyringService = "boru"
+	keyringService = wire.KeychainService
 
 	// BackendAuto picks the best available host keychain and falls
 	// back to the file backend.
@@ -148,6 +150,41 @@ func autoBackend() string {
 	return BackendFile
 }
 
+// The host credential stores are shared, OS-global namespaces, and this
+// project has written under more than one of them across renames. Writes
+// always go to wire.KeychainService; reads and deletes sweep every
+// namespace in wire.KeychainServices() so secrets stored by an
+// earlier-named release stay reachable instead of silently vanishing.
+
+// firstFound returns the first namespace's hit, treating ErrNotFound as
+// "keep looking" and any other error as fatal (a broken keychain must not
+// be reported as a missing secret).
+func firstFound(services []string, probe func(service string) (string, error)) (string, error) {
+	for _, svc := range services {
+		v, err := probe(svc)
+		if err == nil {
+			return v, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return "", err
+		}
+	}
+	return "", ErrNotFound
+}
+
+// deleteEach removes the alias from every namespace, so a rename does not
+// strand a stale copy that a later lookup could resurrect. It reports the
+// first real failure but always attempts them all.
+func deleteEach(services []string, del func(service string) error) error {
+	var firstErr error
+	for _, svc := range services {
+		if err := del(svc); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // --- macOS Keychain via /usr/bin/security -----------------------------------
 
 type macKeychain struct{}
@@ -214,8 +251,14 @@ func backslashEscapeAll(s string) string {
 }
 
 func (*macKeychain) Get(alias string) (string, error) {
+	return firstFound(wire.KeychainServices(), func(service string) (string, error) {
+		return macGet(service, alias)
+	})
+}
+
+func macGet(service, alias string) (string, error) {
 	cmd := exec.Command("security", "find-generic-password",
-		"-s", keyringService, "-a", alias, "-w")
+		"-s", service, "-a", alias, "-w")
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
@@ -229,8 +272,14 @@ func (*macKeychain) Get(alias string) (string, error) {
 }
 
 func (*macKeychain) Delete(alias string) error {
+	return deleteEach(wire.KeychainServices(), func(service string) error {
+		return macDelete(service, alias)
+	})
+}
+
+func macDelete(service, alias string) error {
 	cmd := exec.Command("security", "delete-generic-password",
-		"-s", keyringService, "-a", alias)
+		"-s", service, "-a", alias)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "could not be found") {
 			return nil
@@ -258,8 +307,14 @@ func (*secretService) Set(alias, value string) error {
 }
 
 func (*secretService) Get(alias string) (string, error) {
+	return firstFound(wire.KeychainServices(), func(service string) (string, error) {
+		return secretServiceGet(service, alias)
+	})
+}
+
+func secretServiceGet(service, alias string) (string, error) {
 	cmd := exec.Command("secret-tool", "lookup",
-		"service", keyringService, "account", alias)
+		"service", service, "account", alias)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && len(ee.Stderr) == 0 {
@@ -275,8 +330,14 @@ func (*secretService) Get(alias string) (string, error) {
 }
 
 func (*secretService) Delete(alias string) error {
+	return deleteEach(wire.KeychainServices(), func(service string) error {
+		return secretServiceDelete(service, alias)
+	})
+}
+
+func secretServiceDelete(service, alias string) error {
 	cmd := exec.Command("secret-tool", "clear",
-		"service", keyringService, "account", alias)
+		"service", service, "account", alias)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("secret-tool clear: %s: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -315,7 +376,13 @@ func (k *winCred) Set(alias, value string) error {
 }
 
 func (*winCred) Get(alias string) (string, error) {
-	cmd := winCredCmd("get", alias)
+	return firstFound(wire.KeychainServices(), func(service string) (string, error) {
+		return winCredGet(service, alias)
+	})
+}
+
+func winCredGet(service, alias string) (string, error) {
+	cmd := winCredCmdIn(service, "get", alias)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -330,7 +397,13 @@ func (*winCred) Get(alias string) (string, error) {
 }
 
 func (*winCred) Delete(alias string) error {
-	cmd := winCredCmd("delete", alias)
+	return deleteEach(wire.KeychainServices(), func(service string) error {
+		return winCredDelete(service, alias)
+	})
+}
+
+func winCredDelete(service, alias string) error {
+	cmd := winCredCmdIn(service, "delete", alias)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("credential delete: %s: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -343,10 +416,16 @@ func (*winCred) Delete(alias string) error {
 // by the caller; the script itself carries no secret. So nothing
 // sensitive reaches any process's argv. Exposed for testing.
 func winCredCmd(op, alias string) *exec.Cmd {
+	return winCredCmdIn(keyringService, op, alias)
+}
+
+// winCredCmdIn is winCredCmd against an explicit credential-store
+// namespace, so Get and Delete can sweep the legacy ones.
+func winCredCmdIn(service, op, alias string) *exec.Cmd {
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", winCredScript)
 	cmd.Env = append(os.Environ(),
 		"BORU_KR_OP="+op,
-		"BORU_KR_TARGET="+keyringService+":"+alias,
+		"BORU_KR_TARGET="+service+":"+alias,
 		"BORU_KR_USER="+alias,
 	)
 	return cmd
@@ -643,13 +722,14 @@ func (f *envelopeFileKeyring) loadFile() (*envelopeKeyringFile, error) {
 	if len(data) == 0 {
 		return &envelopeKeyringFile{Entries: map[string]string{}}, nil
 	}
-	if len(data) < len(keyringMagic)+1 || string(data[:len(keyringMagic)]) != keyringMagic {
+	magicLen, ok := keyringMagicLen(data)
+	if !ok {
 		return nil, errors.New("vault: keyring file has no recognizable header")
 	}
-	switch format := data[len(keyringMagic)]; format {
+	switch format := data[magicLen]; format {
 	case envelopeKeyringFormat:
 		var ekf envelopeKeyringFile
-		if err := json.Unmarshal(data[len(keyringMagic)+1:], &ekf); err != nil {
+		if err := json.Unmarshal(data[magicLen+1:], &ekf); err != nil {
 			return nil, fmt.Errorf("vault: parsing keyring: %w", err)
 		}
 		if ekf.Entries == nil {
@@ -766,10 +846,11 @@ func keyringFileFormat(folder string) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
-	if len(data) < len(keyringMagic)+1 || string(data[:len(keyringMagic)]) != keyringMagic {
+	magicLen, ok := keyringMagicLen(data)
+	if !ok {
 		return 1, nil // legacy headerless blob
 	}
-	return int(data[len(keyringMagic)]), nil
+	return int(data[magicLen]), nil
 }
 
 // scryptKey derives a 32-byte AES-256 key from passphrase + salt.
@@ -781,11 +862,13 @@ func scryptKey(passphrase string, salt []byte) ([]byte, error) {
 }
 
 const (
-	// keyringMagic prefixes a self-describing keyring file. Older files
-	// were written without it (a raw salt|nonce|ciphertext blob) and are
-	// still readable; they are re-written in the current format on the
-	// next save.
-	keyringMagic = "BORUK"
+	// keyringMagic prefixes a self-describing keyring file, and is the
+	// only magic this binary WRITES. Every magic it can read — including
+	// the ones earlier, differently-named releases wrote — comes from
+	// wire.KeyringMagics(). Older files still exist without any magic (a
+	// raw salt|nonce|ciphertext blob) and remain readable too; all of them
+	// are re-stamped in the current format on the next save.
+	keyringMagic = wire.KeyringMagic
 	// keyringFormat is the keyring layout version this binary writes.
 	// Bump it (and add a branch in decryptHeadered) when the KDF,
 	// cipher, or byte layout changes.
@@ -795,6 +878,15 @@ const (
 	keyringSaltLen  = 16
 	keyringNonceLen = 12
 )
+
+// keyringMagicLen matches blob's leading magic against every spelling this
+// binary can read, returning the MATCHED magic's length so callers can find
+// the format byte that follows it. The spellings differ in length, so every
+// reader must take its offset from here rather than assume
+// len(keyringMagic).
+func keyringMagicLen(blob []byte) (int, bool) {
+	return wire.MatchPrefix(blob, wire.KeyringMagics(), 1)
+}
 
 // Headered layout: "BORUK" | format(1 byte) | salt(16) | nonce(12) | ciphertext|tag.
 // The GCM additional data is the header bytes + salt, so the format
@@ -839,8 +931,8 @@ func keyringAAD(header, salt []byte) []byte {
 }
 
 func decryptBlob(blob []byte, passphrase string) ([]byte, error) {
-	if len(blob) >= len(keyringMagic)+1 && string(blob[:len(keyringMagic)]) == keyringMagic {
-		return decryptHeadered(blob, passphrase)
+	if n, ok := keyringMagicLen(blob); ok {
+		return decryptHeadered(blob, n, passphrase)
 	}
 	return decryptLegacy(blob, passphrase)
 }
@@ -848,9 +940,9 @@ func decryptBlob(blob []byte, passphrase string) ([]byte, error) {
 // decryptHeadered reads the self-describing format, dispatching on the
 // format byte. A newer format than this binary understands is reported
 // clearly rather than surfaced as a generic "corrupt keyring".
-func decryptHeadered(blob []byte, passphrase string) ([]byte, error) {
-	const off = len(keyringMagic) + 1 // magic + format byte
-	format := int(blob[len(keyringMagic)])
+func decryptHeadered(blob []byte, magicLen int, passphrase string) ([]byte, error) {
+	off := magicLen + 1 // magic + format byte
+	format := int(blob[magicLen])
 	if format > keyringFormat {
 		return nil, fmt.Errorf("vault: keyring is format %d but this boru understands up to %d; upgrade boru", format, keyringFormat)
 	}

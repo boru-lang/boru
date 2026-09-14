@@ -5,6 +5,7 @@ package vault
 
 import (
 	"bytes"
+	"crypto/aes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -248,5 +249,61 @@ func TestImportBundleFutureInnerVersionViaFile(t *testing.T) {
 	if code, _, errOut := runVault(t, "", "import", bundle); code == 0 ||
 		!strings.Contains(errOut, "upgrade boru") {
 		t.Errorf("future inner version: %q", errOut)
+	}
+}
+
+// preRenameSealExport builds a bundle envelope exactly as a pre-rename
+// binary did: the 4-byte "AQLX" magic instead of the 5-byte "BORUX", with
+// the header bytes plus salt bound in as the AEAD additional data.
+func preRenameSealExport(t *testing.T, plain []byte, passphrase string) []byte {
+	t.Helper()
+	salt := make([]byte, keyringSaltLen)
+	if _, err := randRead(salt); err != nil {
+		t.Fatal(err)
+	}
+	key, err := c7scryptKey(passphrase, salt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := gcmFromBlock(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := randRead(nonce); err != nil {
+		t.Fatal(err)
+	}
+	header := append([]byte("AQLX"), byte(exportEnvelopeFormat))
+	aad := append(append([]byte{}, header...), salt...)
+	ct := gcm.Seal(nil, nonce, plain, aad)
+	out := append([]byte{}, header...)
+	out = append(out, salt...)
+	out = append(out, nonce...)
+	return append(out, ct...)
+}
+
+// TestExportReadsPreRenameBundle pins the AQL->BORU compatibility path for
+// export bundles: the magic changed length, so a reader assuming
+// len(exportMagic) would slice salt and nonce at the wrong offsets and
+// reject the correct passphrase on every bundle exported before the rename.
+func TestExportReadsPreRenameBundle(t *testing.T) {
+	plain := []byte(`{"version":2,"aliases":[]}`)
+	blob := preRenameSealExport(t, plain, "bundle-pw")
+	if !isExportBundle(blob) {
+		t.Fatal("a pre-rename bundle should be recognised as an export bundle")
+	}
+	got, err := openExport(blob, "bundle-pw")
+	if err != nil {
+		t.Fatalf("pre-rename bundle rejected with the correct passphrase: %s", err)
+	}
+	if !bytes.Equal(got, plain) {
+		t.Errorf("pre-rename bundle round-trip mismatch: %q != %q", got, plain)
+	}
+	if _, err := openExport(blob, "wrong"); err == nil {
+		t.Error("wrong passphrase should fail on a pre-rename bundle too")
 	}
 }
