@@ -437,14 +437,15 @@ parallelism available; everything else contends for `compiler/go`.
 
 | | session-days | as a share of the whole |
 |---|---:|---:|
-| spent (08-26 to 09-11) | about 20 | 15 to 20% |
+| spent (08-26 to 09-11) | about 20 | 12 to 20% |
 | to A′ (corpus-native with rulings) | 18 to 33 | |
 | to B′ (T1 + T2 with a carve-out list) | a further 65 to 115 | |
 | total to B′ | **about 100 to 170** | |
 
-By effort, the project is somewhere between a sixth and a fifth of the way
-to the end state the directive names, and about half of the way to the
-corpus-native milestone the daily instruments measure. Expect the
+By effort, the project is somewhere between an eighth and a fifth of the
+way to the end state the directive names (20 of about 100 to 170), and
+about half of the way to the corpus-native milestone the daily
+instruments measure (20 of about 40 to 55). Expect the
 estimate to move by a third in either direction when B1 lands, because
 the generic lane is the one package whose cost the tree has not yet
 measured at all.
