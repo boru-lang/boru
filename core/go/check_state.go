@@ -32,6 +32,16 @@ type CheckState struct {
 	// ReturnsFunc signature carries no pos. Overwritten on every dispatch; not
 	// persistent state. Zero = unknown (synthetic/top-level).
 	CurCallPos SrcPos
+	// CurCallWord is CurCallPos's twin for the dispatching word's NAME:
+	// written beside it, read by the user-fn ReturnsFn at ENTRY (before the
+	// callee's body analysis dispatches and overwrites both), and handed to
+	// RecordUserCall so Phase B can claim the region capture the interpreter
+	// offered under exactly this (word, position) — the name the dispatch
+	// RESOLVED to, at the token that dispatched it (for a namespaced `M.m 5`
+	// that is the member word `m` at the `M.m` token's position). Empty
+	// where no dispatch published one (a fn-value apply), which makes the
+	// claim miss and is the safe direction.
+	CurCallWord string
 	// CurWordPos is the position of the WORD TOKEN whose dispatch handler is
 	// currently running — what `e.currentPos()` reads, written once per
 	// dispatch just before the handler is invoked.

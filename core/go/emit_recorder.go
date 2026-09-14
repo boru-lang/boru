@@ -157,7 +157,12 @@ type EmitRecorder interface {
 	RecordCall(word string, sig *Signature, args, outs []Value, pos SrcPos, forceDynOut, quoteInertOK bool)
 	RecordPoly(word string)
 	RecordPolyCall(word string, args, outs []Value, pos SrcPos, ownerReg *Registry, noMatch *PolyNoMatchSpec) bool
-	RecordUserCall(unit int, args []Value, outs []Value, pos SrcPos)
+	// RecordUserCall records one committed user-fn call to a compiled unit.
+	// pos is the call's blame position (the first argument's, as the event
+	// has always carried it); word and wordPos are the dispatching WORD
+	// token as the check pass published it (CheckState.CurCallWord /
+	// CurCallPos), the key Phase B claims the call's region capture by.
+	RecordUserCall(unit int, word string, args, outs []Value, pos, wordPos SrcPos)
 	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos)
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
@@ -417,7 +422,7 @@ func (inactiveEmit) RecordPoly(string)                                          
 func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, *PolyNoMatchSpec) bool {
 	return false
 }
-func (inactiveEmit) RecordUserCall(int, []Value, []Value, SrcPos) {}
+func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
 func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos) {
 }
 func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }

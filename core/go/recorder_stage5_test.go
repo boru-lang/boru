@@ -60,7 +60,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordPolyCall("w", nil, nil, SrcPos{}, nil, nil) {
 		t.Fatal("inactive RecordPolyCall must decline")
 	}
-	e.RecordUserCall(0, nil, nil, SrcPos{})
+	e.RecordUserCall(0, "w", nil, nil, SrcPos{}, SrcPos{})
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, SrcPos{})
 	if n, ok := e.RecordDynApply(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
 		t.Fatal("inactive RecordDynApply must decline with no consumed args")

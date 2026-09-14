@@ -3137,6 +3137,13 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	}); reason != "" {
 		return reason
 	}
+	// The user call's region descriptor lands here for the same reason
+	// lowerCall's does: appended at lowering, it shares the event's rollback,
+	// and it describes the DISPATCH whichever of the two opcodes below emits
+	// for it. Nothing reads Program.Regions yet.
+	if uc.region != nil {
+		lw.p.Regions = append(lw.p.Regions, *uc.region)
+	}
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.pos)
 		lw.vm = lw.vm[:len(lw.vm)-n]

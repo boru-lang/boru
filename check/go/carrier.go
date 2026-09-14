@@ -723,6 +723,7 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 	switch {
 	case sig.ReturnsFn != nil:
 		r.Check.CurCallPos = pos // expose call site to ReturnsFn (e.g. make Array identity)
+		r.Check.CurCallWord = word
 		raw := sig.ReturnsFn(resolveTypeNameArgs(args), r)
 		out = make([]core.Value, len(raw))
 		for i, v := range raw {

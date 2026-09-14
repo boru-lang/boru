@@ -7264,6 +7264,105 @@ sibling row that DID compile showed `SEAT_BELOW_MARK` doing work that the
 suffix case plainly does not need. A refusal message is a claim about the
 code, not a measurement of it.
 
+## The user-call seat: Phase B claims the second record family (2026-09-14, the sixtieth increment, the generic lane's first slice)
+
+The maintainer ruled the definition of done on 2026-09-14 ("all valid code
+compiles, no exceptions", SESSION-HANDOVER.0.md) and the disposition census
+(#455) put 19 of the 92 refusal sites on the generic dispatch lane and a
+further 26 on Stage 5's regions, both of which read `Program.Regions`. That
+table described ONE record family: Stage 4a seated Phase B on `RecordCall`,
+the mono native dispatch, and every user-fn call — `RecordUserCall`, the
+family all four of the lane's acceptance shapes belong to (escaping units,
+the stored-handler latch, family L, NUR037: each is a user fn dispatched
+where a live binding matters) — recorded an event with no descriptor. This
+increment lifts the seat to that family. Inert, as Stage 4a was: nothing
+reads the table yet, and the differential is the proof.
+
+### The join was keyed by a position the user call did not have
+
+Phase A offers a capture under the dispatching WORD token's name and
+position (`region_record.go`, `keyOf(w.Name, win.At(at).Pos())`), and it
+fires in `resolveForwardArgs` for every forward-collecting dispatch, so a
+user call's offer has always been made and never claimed. The obvious seat —
+`completeRegion` inside `RecordUserCall` — would have missed every one of
+them silently, because `RecordUserCall`'s `pos` is `args[0].Pos()`: the
+first ARGUMENT's position, the event's blame position, not the word's. A
+claim keyed by it looks exactly like "this call had no region", which is a
+documented, expected outcome, so the miss would have hidden inside the
+asymmetry the Phase-A file warns about. Measured before it was assumed: with
+the seat keyed by the event position the pin stayed at zero descriptors for
+`f 1 2`.
+
+So the record now takes the word token explicitly, and the check pass
+publishes it. `declaredReturnCarriers` already wrote `CheckState.CurCallPos`
+for a `ReturnsFn` that needs the call site; it now writes `CurCallWord`
+beside it (the name AS DISPATCHED — `M.m 5` dispatches the member word `m`,
+and the offer is under `m` at the `M.m` token's column, which the pin
+asserts against `args[0]`'s column two positions on). The user-fn
+`ReturnsFn` reads both at ENTRY — before it analyses the callee's body,
+whose own dispatches overwrite both cursors — and carries them as a
+`callSite` to `RecordUserCall(unit, word, args, outs, pos, wordPos)`. Where
+no dispatch published a word (a fn-value apply reaches the ReturnsFn
+through `method_shape.go`, which sets only the position), the claim misses,
+which is the safe direction.
+
+### What landed
+
+- `core`: `CheckState.CurCallWord`, classified in the lifecycle test as
+  `CurCallPos`'s twin; `EmitRecorder.RecordUserCall` takes the word and its
+  position.
+- `check`: `declaredReturnCarriers` publishes the word; the user-fn
+  `ReturnsFn` captures the `callSite` at entry and threads it through
+  `recordUserCallOrApply` and the zero-return record.
+- `compiler`: `RecordUserCall` claims the capture over the call's ARGS
+  alone (the captures appended after them are frame plumbing, not tape
+  slots) and rides the descriptor on `emitUserCall.region`; `lowerUserCall`
+  appends it to `Program.Regions` before choosing between `CALL_USER` and
+  `TAIL_CALL_USER`, under the event's rollback exactly as `lowerCall` does.
+- Pins: `compiler/go/region_user_call_test.go` at the seam (a claimed
+  offer rides the event, the offer is consumed, an offer-less call carries
+  nothing); `lang/go/region_capture_e2e_test.go` flips "only RecordCall
+  claims" to the positive claim, the namespaced claim at the dispatching
+  token's column, and the stack-fed NFwd 0; `region_table_test.go`'s stated
+  bound now names the two seated families and the three unseated ones.
+
+### Measured, whole corpus (`TestRegionTableWellFormed`, 7475 compiled rows)
+
+	                              before      after
+	rows carrying regions           5750       5930
+	descriptors                    51372      76277
+	slots claimed / in span  28324 / 84454   55976 / 143676
+	claimed nothing / prefix / whole   24968 / 5916 / 20488   33260 / 13270 / 29747
+	source const                   20096      29690
+	source local                    7379      25382
+	source wordRef                   848        903
+	source event                       1          1
+
+24905 descriptors joined, 48% more than the native seat alone described,
+and the claim rate rose from 34% of span slots to 39%: a user call's
+operands are written forward more often than a native's. The `local` column
+is where the family shows — a user fn's args resolve to the caller's frame
+slots inside fn bodies, which is where user calls sit — and the live
+wordRefs grew by 55: fifty-five more module-scope names read forward at
+user-call sites that the lane will re-derive live. No descriptor is
+malformed; the claim is still a strict prefix of the span.
+
+Parity: `TestSpecCompiledDifferential` 6556 rows compiled, 0 mismatches;
+`TestCompiledCoverage` unchanged at 7475 compiled, 0 islanded, 0 refused;
+the compiler and check suites green; lint clean on the five modules.
+
+### What this does not do, stated
+
+The poly (`RecordUserPolyCall`, `RecordPolyCall`), dyn-apply and dyn-method
+families still record no descriptor; the e2e pin's comment is the bound.
+`RecordUserPolyCall` already carries the word and could be seated the same
+way; its `pos` has the same `args[0]` defect and needs the same `callSite`.
+Nothing executes over a descriptor yet. The next slice is the first
+executing one: pick one of the four shapes Stage 4b left filed under
+`OpDispatchGeneric` as the acceptance pair, and give the VM's `CollectHost`
+adapter (`eng/go/region_host.go`, every evaluation declining today) its
+first evaluating arm.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -7529,3 +7628,4 @@ position than the construct that produced the binding.
 | `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
 | `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |
 | `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |
+| `compiler/go/region_user_call_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment: RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
