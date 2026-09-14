@@ -37,6 +37,44 @@ roughly a coin flip by year end even with an amended carve-out list. The
 remaining effort is not 29 rows; it is four unbuilt stages, and it is
 larger than everything spent so far.
 
+### 0.1 The ruling, received after this note was written (2026-09-14)
+
+Section 8's first recommendation asked for a written definition of done.
+The maintainer gave one the same day:
+
+> done is a language that compiles, as a developer expects. all valid
+> code compiles, no exceptions
+
+That is T1 exactly as the design states it (§1 of
+[FULL-COMPILATION.0.md](FULL-COMPILATION.0.md)), with no carve-out list.
+What it changes in this note:
+
+- **The target row in §5 is B, not B′.** The carve-out rulings §4.4 and
+  §8 asked for (the attributed set, O4) are answered NO for compilation.
+  The applicable estimate is §6.1 plus the whole of §6.2: a further 65
+  to 115 session-days after corpus-native, and about 25% by year end,
+  rising only as the generic lane lands.
+- **Every refusal site has three legal dispositions**: a generic
+  lowering, a trap raising the interpreter's own error, or deletion. The
+  §8 census pass is therefore not a triage but an assignment, and the
+  generic lane (§6.2, B1) is the critical path, because it is the only
+  mechanism that gives sites the first disposition in bulk.
+- **"Valid" is decided by the interpreter**, so the checker may never be
+  the reason a program fails to compile: the "check diagnostics"
+  sentinel (Stage 8's T1 half, §6.2 B5) is inside done, and so is
+  Stage 7 (§6.2 B3), since computed code is code.
+- **Two questions the ruling leaves open**, put to the maintainer the
+  same day: whether words whose answer IS the engine's behaviour
+  (`boru:debug`'s stepper and profiler, `RunTrace`) may still interpret
+  at run time inside a compiled program, which is T2's attributed set
+  and a runtime question rather than a compilation one; and whether
+  `boru check` agreeing with `boru run` (T4, §4.3's 279 rows) is inside
+  "as a developer expects".
+
+The current-state page,
+[SESSION-HANDOVER.0.md](SESSION-HANDOVER.0.md), carries the ruling and
+the next two increments it orders.
+
 ---
 
 ## 1. What "success" means, and why there are two universes

@@ -7,10 +7,52 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-11**, after increment 58 merged (a negative result,
-no graduation) and increment 59 landed the region-suffix seat.
+Last updated: **2026-09-14**, when the maintainer ruled the definition of
+done (below) and the assessment note merged (#453). Increments 1–59 are on
+`main`.
 
 ---
+
+## Definition of done (ruled by the maintainer, 2026-09-14)
+
+> done is a language that compiles, as a developer expects. all valid
+> code compiles, no exceptions
+
+Read as a checkable contract, this is T1 exactly as
+[FULL-COMPILATION.0.md](FULL-COMPILATION.0.md) §1 states it, with **no
+carve-out list**:
+
+- Every program the interpreter accepts produces a `Program`.
+  `compile_refused` is not a result, and the `BORU_COMPILE_FALLBACK`
+  hatch retires.
+- A refusal site has exactly three legal dispositions: a generic
+  lowering, a trap that raises the interpreter's own error at the same
+  moment, or deletion. "Carve-out" is not one of them.
+- "Valid" is decided by the interpreter. The checker may never be the
+  reason a program fails to compile, so the whole-program "check
+  diagnostics" sentinel goes (Stage 8's T1 half is inside done).
+- Computed code is code: runtime-supplied bodies compile too (Stage 7 is
+  inside done, and "runtime compilation must itself never refuse" is part
+  of the contract).
+
+In [FULL-COMPILATION-ASSESSMENT.0.md](FULL-COMPILATION-ASSESSMENT.0.md)
+§5 the target row is therefore **B**, not B′: the carve-out rulings that
+note asked for (the attributed set, O4) are answered NO for compilation.
+The applicable effort is Tier A plus the whole of Tier B (§6), and the
+generic lane (B1) is the critical path, because it is the only mechanism
+that can give a refusal site a "generic lowering" disposition in bulk.
+
+Two questions the ruling does not settle, put to the maintainer the same
+day and open until answered:
+
+1. Whether a word whose ANSWER is the engine's own behaviour
+   (`boru:debug`'s stepper and profiler, `RunTrace`) may still interpret
+   at run time inside a compiled program. This is T2's attributed set,
+   a runtime question, not a compilation one; the census currently treats
+   those entries as specified and not debt.
+2. Whether `boru check` agreeing with `boru run` (T4, the 279 rows where
+   the checker reports an error the compiler compiles past) is inside
+   "as a developer expects".
 
 ## Where the project is
 
@@ -34,13 +76,24 @@ no graduation).
 
 ## What is in flight
 
-Branch `claude/full-compilation-project-h5lmnt`, restarted from merged `main`.
+Nothing, as of 2026-09-14. Increment 59 (the region-suffix seat: the
+whole-residual dispatch takes `do [for 3 [1] 7]`, census 29 -> 28) merged
+to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
 
-**Increment 59** (the region-suffix seat) is on it: the whole-residual
-dispatch now takes a residual whose region runs FIRST with nothing but inert
-operands above it — `do [for 3 [1] 7]` — where it previously took only the
-mirror shape, [inert…, REGION]. Census 29 -> 28, and a no-contract fn whose
-body leaves that shape stops refusing.
+**Next, under the ruling above, in order:**
+
+1. The measurement PR: lower `engineEntryCeiling` to its live 281, and
+   give each of the 92 `MarkUncompilable` sites (and the lowerer's
+   declines) one of the three legal dispositions in a census the gate
+   can hold. About a session-day.
+2. The generic lane's first executing slice, on the `k` pair, in the
+   order the handoff's Stage 4a-2 revised: `frozenReads` gets its site
+   structure, the latch becomes a `Finalize` obligation, then
+   `OpCollect`, then `OpDispatchGeneric` reproducing the planner's
+   selection from the descriptor. Land inert first, as the twins did.
+3. The row-level remainder in parallel only where a row exposes a
+   mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
+   slice waits for the slice.
 
 ## Increment 58 is PARKED. If you pick it up
 
