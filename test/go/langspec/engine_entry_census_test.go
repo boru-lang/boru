@@ -38,7 +38,7 @@ import (
 // compiled lane executes without the tree-walker. Never raise it: a rise
 // means a compiled program started re-entering the interpreter somewhere
 // new, which is the regression this ratchet exists to catch.
-const engineEntryCeiling = 505 // 505 (2026-08-25, Stage-1 baseline) -> 0 (Stage 9)
+const engineEntryCeiling = 281 // 505 (2026-08-25, Stage-1 baseline) -> 281 (2026-09-14, the first lowering: measured three times at exactly 281 on c34a2fb, the tree that closed increment 59 — Engine.Run×281 with CallBoru×240 beneath it, most of those Test.property's ~100 invocations per row, so the ENTRY count is concentrated in two or three module-test.tsv rows while the interp-entry ROW census stands at 28. The ceiling had sat 80% above the live value for seventeen days, which is a ceiling that cannot catch a regression; it is now the live value, as a ratchet must be) -> 0 (Stage 9)
 
 // deferCeiling is the maximum number of runtime bails (vmDefer activations)
 // the compiled corpus walk may produce. A bail is the VM meeting a runtime
