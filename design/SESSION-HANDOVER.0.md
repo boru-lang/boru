@@ -76,7 +76,7 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `refusalSiteCeiling` | **92** (lowered from 93 to the live value, 2026-09-14) | down only |
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
-| region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **76277** descriptors with increment 60 (51372 before it); the floor is unchanged | floor, up only |
+| region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **76280** descriptors with increment 60 and its review corrections (51372 before it); the floor is unchanged | floor, up only |
 
 Increments 1–59 are on `main`; increment 60 is in review. The most recent
 landings: #451 (increment 58 — measurement and a negative result, no
@@ -100,6 +100,12 @@ rows, 0 mismatches; coverage 7475 compiled, 0 islanded, 0 refused,
 unchanged. The region table goes 51372 -> 76277 descriptors (claimed
 28324/84454 -> 55976/143676 slots). The narrative and the full tally
 are the sixtieth-increment section of FULL-COMPILATION-HANDOFF.0.md.
+Review corrections landed the same day (Codex on #456): the recovery
+hook now publishes the word cursor, and the user-fn ReturnsFn HOLDS its
+offer at entry (`EmitRecorder.HoldRegion`) because the offer pool is
+keyed by row and column only and cannot tell two sources apart; both
+pinned; the corpus table moved by three descriptors (76277 -> 76280),
+so the seams are real and rare.
 Increment 59 (the region-suffix seat, census 29 -> 28) merged on
 2026-09-11 as `c34a2fb`; the assessment merged as #453; the census
 as #455 (`6ea8ac1`).

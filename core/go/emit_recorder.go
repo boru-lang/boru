@@ -164,6 +164,15 @@ type EmitRecorder interface {
 	// CurCallPos), the key Phase B claims the call's region capture by.
 	RecordUserCall(unit int, word string, args, outs []Value, pos, wordPos SrcPos)
 	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos)
+	// HoldRegion takes the Phase-A region offer for the dispatching word
+	// token (word, pos — CheckState.CurCallWord / CurCallPos as read at a
+	// user-fn ReturnsFn's entry) out of the pending pool NOW, before the
+	// callee's body is analysed, and parks it for this call's record to
+	// complete; the returned release is deferred by the caller. The pool is
+	// keyed by row and column only, so a body that dispatches the same word
+	// at the same row and column of ANOTHER source would otherwise re-offer
+	// over this call's capture and consume it. Inactive: a no-op.
+	HoldRegion(word string, pos SrcPos) func()
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
 	// TOP of the window (the values nearest the fn). That is normally all of
@@ -425,6 +434,7 @@ func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, 
 func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
 func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos) {
 }
+func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
 func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
 func (inactiveEmit) RecordDynApplyName(string, []Value, Value, Value, SrcPos) bool {
 	return false

@@ -7351,6 +7351,42 @@ Parity: `TestSpecCompiledDifferential` 6556 rows compiled, 0 mismatches;
 `TestCompiledCoverage` unchanged at 7475 compiled, 0 islanded, 0 refused;
 the compiler and check suites green; lint clean on the five modules.
 
+### Corrected in review, the same day
+
+Codex's review of #456 found two seams the seat had not closed, both
+verified by construction before they were fixed:
+
+- **The recovery hook bypassed the cursor.** A single-overload user fn
+  dispatched over an operand the checker cannot match (`h y` where `y` is
+  Integer|String from two `if` arms) reaches its ReturnsFn through
+  `TryRecordRecoveredUserFn`, not `declaredReturnCarriers`, so nothing had
+  published the word; the ReturnsFn read the PREVIOUS dispatch's cursor
+  (measured: it still named `gt`) and the claim missed.
+  `checkModeAssumeSig` now publishes `(w.Name, pos)` at entry, for every
+  ReturnsFn the recovery can invoke, and the fn-value apply
+  (`shapedMethodReturnArity`) clears the word beside the position it sets,
+  so its claim misses by construction rather than by luck. Pinned e2e; the
+  pin fails with the publish removed.
+- **The pool cannot tell two sources apart.** `regionKey` is (word, row,
+  col) and `SrcPos.Src` is the token's TEXT, so a module file's recursive
+  `f 0` at 2:1 and the main program's `Ns.f 1` at 2:1 share one key. The
+  user call's record runs after the callee's body is analysed, and that
+  analysis dispatches the inner `f 0`: its capture overwrote the outer's
+  offer and its record consumed it, leaving the outer call with no
+  descriptor (measured: one descriptor at 2:1, the inner's `0`). The
+  ReturnsFn now HOLDS its offer at entry (`EmitRecorder.HoldRegion`, a
+  stack released in defer order; `claimRegion` completes the held offer
+  and a hold that found nothing blocks the pool, so a stack-fed dispatch
+  cannot claim an inner call's re-offer). Both calls are described now;
+  pinned e2e over a two-source program and at the seam, and the pin fails
+  with the hold removed.
+
+The whole-corpus table was re-measured after both fixes and moved by
+three: 76277 -> 76280 descriptors, 55976 -> 55979 claimed slots, all
+three of them prefix claims sourced from frame locals (13270 -> 13273,
+local 25382 -> 25385). Three corpus calls sat on one of the two seams —
+real, and rare, and now described.
+
 ### What this does not do, stated
 
 The poly (`RecordUserPolyCall`, `RecordPolyCall`), dyn-apply and dyn-method
@@ -7628,4 +7664,4 @@ position than the construct that produced the binding.
 | `lang/go/region_stack_read_test.go` | NUR133: the three review witnesses refusing with the interpreter's answers — a callable passed through an island's run, a fallback input beneath its own mark, a variadic callee's result promoted to one slot — and the const-argument twin still seated natively by OpSeatBelowMark |
 | `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |
 | `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |
-| `compiler/go/region_user_call_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment: RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
+| `compiler/go/region_user_call_test.go`, `compiler/go/region_hold_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`, `a user-fn call keeps its offer through a same-position dispatch in another source`, `a recovered user-fn call claims its capture`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment, with its review corrections (the hold at ReturnsFn entry survives a same-key offer from another source, an empty hold blocks the pool, a hold completes once, the inactive state holds nothing; the two-source collision and the recovered call from real programs): RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |

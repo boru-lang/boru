@@ -1,11 +1,13 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
+	"github.com/boru-lang/boru/lang/go/capabilities"
 )
 
 // TestRegionCaptureFiresOnRealPrograms is the end-to-end pin for Stage 4's
@@ -171,6 +173,73 @@ func TestRegionCaptureFiresOnRealPrograms(t *testing.T) {
 		prog := compile(t, `def f fn [[a:Integer b:Integer][Integer][add a b]] end 1 2 f`)
 		if d := findRegion(prog, "f"); d != nil && d.NFwd != 0 {
 			t.Errorf("NFwd = %d, want 0 — `1 2 f` filled every position from the stack", d.NFwd)
+		}
+	})
+
+	// The offer pool is keyed by (word, row, col) and not by source — SrcPos
+	// carries the token's TEXT, not a file — so a module's recursive `f 0`
+	// at 2:1 of ITS source and the main program's `Ns.f 1` at 2:1 of the
+	// main source share one key. The user call's record runs AFTER the
+	// callee's body is analysed, and that analysis dispatches the inner
+	// `f 0`, whose capture used to overwrite the outer's offer and whose
+	// record consumed it: the outer call ended with no descriptor, the miss
+	// that looks like "no region here". The ReturnsFn now HOLDS its offer at
+	// entry (HoldRegion), so both calls are described — the outer by the
+	// token it walked (`1`), the inner by its own (`0`).
+	t.Run("a user-fn call keeps its offer through a same-position dispatch in another source", func(t *testing.T) {
+		lib := "def f fn [[n:Integer][Integer][if (n lte 0) [0] [\nf 0]]]\nexport \"Ns\" { f: f/v }"
+		src := "import \"/lib.boru\"\nNs.f 1"
+		mem := capabilities.NewMem()
+		mem.Files["/lib.boru"] = []byte(lib)
+		b, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.SetFileOps(mem)
+		prog, reason, _, cerr := b.CompileCheck(src)
+		if cerr != nil || prog == nil {
+			t.Fatalf("the two-source program must compile: reason=%q err=%v", reason, cerr)
+		}
+		var tokens []string
+		for i := range prog.Regions {
+			d := &prog.Regions[i]
+			if d.Word != "f" || d.Pos.Row != 2 || d.Pos.Col != 1 {
+				continue
+			}
+			if len(d.Slots) != 1 || d.NFwd != 1 || d.Slots[0].Source != compiler.SlotConst {
+				t.Errorf("descriptor for f at 2:1: slots %d NFwd %d source %v, want 1/1/SlotConst", len(d.Slots), d.NFwd, d.Slots[0].Source)
+			}
+			tokens = append(tokens, fmt.Sprint(d.Slots[0].Token))
+		}
+		if len(tokens) != 2 || (tokens[0] != "1" && tokens[1] != "1") || (tokens[0] != "0" && tokens[1] != "0") {
+			t.Fatalf("both calls at 2:1 must be described, the outer by its `1` and the inner by its `0`; got tokens %v", tokens)
+		}
+	})
+
+	// The recovered user call — a single-overload fn dispatched over an
+	// operand the checker could not match statically (`y` is Integer|String
+	// from the two `if` arms) reaches its ReturnsFn through the recovery
+	// hook (TryRecordRecoveredUserFn) rather than declaredReturnCarriers,
+	// which is where the word cursor is published. checkModeAssumeSig now
+	// publishes it at entry, so the recovered `h y` claims its region under
+	// `h` at the word's column: one slot, the module-scope `y`, kept live.
+	// Without the publish the ReturnsFn read the PREVIOUS dispatch's cursor
+	// and the claim missed (measured: the cursor still named `gt`).
+	t.Run("a recovered user-fn call claims its capture", func(t *testing.T) {
+		src := `def h fn [[a:Integer] [Integer] [a]] def y (if (1 gt 0) [1] ['s']) h y`
+		prog := compile(t, src)
+		if !strings.Contains(prog.Disassemble(), "CALL_USER") {
+			t.Fatalf("the pin needs the recovered guarded CALL_USER:\n%s", prog.Disassemble())
+		}
+		d := findRegion(prog, "h")
+		if d == nil {
+			t.Fatal("the recovered `h y` must claim its region — the recovery publishes the word cursor before invoking the ReturnsFn")
+		}
+		if want := strings.Index(src, "h y") + 1; d.Pos.Col != want {
+			t.Errorf("descriptor at column %d, want %d — the `h` token's own position", d.Pos.Col, want)
+		}
+		if len(d.Slots) != 1 || d.NFwd != 1 || d.Slots[0].Source != compiler.SlotWordRef {
+			t.Errorf("slots %d, NFwd %d, slot 0 %v — want 1, 1 and SlotWordRef (the live module-scope y)", len(d.Slots), d.NFwd, d.Slots[0].Source)
 		}
 	})
 }

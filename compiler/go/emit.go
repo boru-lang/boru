@@ -660,6 +660,12 @@ type EmitState struct {
 	// every execution of the region", its own doc), so the extent at one
 	// position does not vary, and the last capture equals the first.
 	pendingRegions map[regionKey]pendingRegion
+	// heldRegions is the stack of offers taken out of pendingRegions EARLY,
+	// at a user-fn ReturnsFn's entry, so that the callee's body analysis
+	// cannot re-offer over them from another source — region_record.go,
+	// heldRegion. Pushed by HoldRegion, popped by its release, completed by
+	// the call's record in between.
+	heldRegions []heldRegion
 
 	// pendingLoopBind carries a SplitLoopRegionBind verdict to the
 	// RecordDynBind of the same installAndRecordDef call (S5).

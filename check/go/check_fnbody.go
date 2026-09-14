@@ -407,6 +407,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// The memo key mirrors AnalyseFnBody's so the unit is compiled
 		// exactly when the body is analysed.
 		es := r.Check.Recorder()
+		// Take this call's Phase-A offer out of the pool NOW, before the body
+		// analysis below can re-offer under the same (word, row, col) from
+		// another source and consume it (compiler/go/region_record.go,
+		// heldRegion). The record at the end of this closure completes the
+		// held offer; the release runs on every exit.
+		releaseRegion := es.HoldRegion(call.word, call.pos)
+		defer releaseRegion()
 		fnUnit := -1
 		var finishFn func([]core.Value)
 		polyPlan, polyBarred := dispatchPlanUserPoly(r, es, nameCopy, args, declaredReturns)
