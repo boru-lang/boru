@@ -339,6 +339,11 @@ func secretServiceDelete(service, alias string) error {
 	cmd := exec.Command("secret-tool", "clear",
 		"service", service, "account", alias)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		// Like lookup, clear exits 1 without diagnostics when nothing
+		// matched. An absent legacy namespace is a successful no-op.
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && len(out) == 0 {
+			return nil
+		}
 		return fmt.Errorf("secret-tool clear: %s: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil

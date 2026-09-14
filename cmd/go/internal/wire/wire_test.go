@@ -147,6 +147,9 @@ func TestMatchSuffixBounds(t *testing.T) {
 
 func TestMatchersRejectInvalidOffsets(t *testing.T) {
 	data := []byte("VLTK1")
+	if n, ok := MatchSuffix([]byte("VLTK2"), KeyringMagics(), 0); n != 0 || ok {
+		t.Errorf("MatchSuffix unknown marker = %d, %v", n, ok)
+	}
 	for _, offset := range []int{-1, len(data) + 1, int(^uint(0) >> 1)} {
 		if n, ok := MatchPrefix(data, KeyringMagics(), offset); n != 0 || ok {
 			t.Errorf("MatchPrefix with extra %d = %d, %v", offset, n, ok)
