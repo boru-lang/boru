@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"bytes"
 	"crypto/aes"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/boru-lang/boru/cmd/go/internal/auth"
 	"github.com/boru-lang/boru/cmd/go/internal/pathutil"
+
+	"github.com/boru-lang/boru/cmd/go/internal/wire"
 )
 
 // Export bundles let a vault be moved between machines and backends:
@@ -35,7 +36,10 @@ const (
 	// for both export and import.
 	EnvExportPassphrase = "BORU_VAULT_EXPORT_PASSPHRASE"
 
-	exportMagic = "BORUX"
+	// exportMagic is the only bundle magic this binary WRITES; every magic
+	// it can read comes from wire.ExportMagics(), which includes the ones
+	// earlier, differently-named releases wrote.
+	exportMagic = wire.ExportMagic
 	// exportEnvelopeFormat versions the crypto envelope (KDF/cipher/layout).
 	exportEnvelopeFormat = 1
 	// exportVersion versions the inner JSON schema.
@@ -74,7 +78,16 @@ type exportAlias struct {
 // its magic header. Used to dispatch `vault import` between bundles and
 // .env files.
 func isExportBundle(data []byte) bool {
-	return len(data) >= len(exportMagic) && string(data[:len(exportMagic)]) == exportMagic
+	_, ok := exportMagicLen(data)
+	return ok
+}
+
+// exportMagicLen matches data's leading magic against every spelling this
+// binary can read, returning the MATCHED magic's length so the reader can
+// locate the format byte. The spellings differ in length, so the offset
+// must come from here rather than from len(exportMagic).
+func exportMagicLen(data []byte) (int, bool) {
+	return wire.MatchPrefix(data, wire.ExportMagics(), 0)
 }
 
 // --- export ----------------------------------------------------------------
@@ -458,18 +471,18 @@ func sealExport(plain []byte, passphrase string) ([]byte, error) {
 // openExport validates and decrypts a bundle envelope. A newer envelope
 // format than this binary understands is reported clearly.
 func openExport(blob []byte, passphrase string) ([]byte, error) {
-	magic := []byte(exportMagic)
-	if len(blob) < len(magic)+1 || !bytes.Equal(blob[:len(magic)], magic) {
+	magicLen, ok := exportMagicLen(blob)
+	if !ok || len(blob) < magicLen+1 {
 		return nil, errors.New("vault: not a boru vault export bundle")
 	}
-	format := int(blob[len(magic)])
+	format := int(blob[magicLen])
 	if format > exportEnvelopeFormat {
 		return nil, fmt.Errorf("vault: export bundle is format %d but this boru understands up to %d; upgrade boru", format, exportEnvelopeFormat)
 	}
 	if format != 1 {
 		return nil, fmt.Errorf("vault: unknown export bundle format %d", format)
 	}
-	off := len(magic) + 1
+	off := magicLen + 1
 	if len(blob) < off+keyringSaltLen+keyringNonceLen+16 {
 		return nil, errors.New("vault: export bundle is truncated")
 	}

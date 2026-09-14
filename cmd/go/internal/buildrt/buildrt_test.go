@@ -154,9 +154,9 @@ func TestDecodePayloadShortImage(t *testing.T) {
 func TestDecodePayloadCorruptLength(t *testing.T) {
 	// Magic present but the declared length overruns the image.
 	footer := make([]byte, footerSize)
-	copy(footer[:magicSize], magic)
+	copy(footer[:len(magic)], magic)
 	// length far larger than the body
-	for i := magicSize; i < footerSize; i++ {
+	for i := len(magic); i < footerSize; i++ {
 		footer[i] = 0xff
 	}
 	image := append([]byte("body"), footer...)

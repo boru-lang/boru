@@ -32,6 +32,16 @@
 {
   sources: [
     {
+      id: "src:wire-identity"
+      kind: "text"
+      locator: "design/WIRE-IDENTITY.0.md"
+      title: "Wire identity across product renames"
+      retrieved_at: null
+      content_hash: "wire-identity-2026-09-14"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:readme"
       kind: "text"
       locator: "README.md"
@@ -413,6 +423,8 @@
     }
   ]
   entities: [
+    { key: "wire-identity", type: "Document", label: "design/WIRE-IDENTITY.0.md"
+      attributes: { role: "preserving shipped vault and executable markers and credential namespaces across product renames, with compatibility fixtures and a scoped rename inventory" } }
     { key: "boru", type: "Concept", label: "boru language"
       attributes: { paradigm: "concatenative, typed, word-based" } }
     { key: "repo", type: "Product", label: "boru-lang/boru repository"
@@ -538,6 +550,16 @@
     { key: "org", type: "Organization", label: "boru-lang" }
   ]
   assertions: [
+    { subject: "wire-identity", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:wire-identity", locator: "title",
+        quote: "Wire identity across product renames" }]
+      confidence: 0.95 }
+    { subject: "wire-identity", predicate: "supports"
+      object: { kind: "entity", entity: "cmd-go" }
+      evidence: [{ source: "src:wire-identity", locator: "Scope",
+        quote: "This note covers `cmd/go/internal/wire`: keyring and export-bundle markers," }]
+      confidence: 0.95 }
     { subject: "repo", predicate: "created_by"
       object: { kind: "entity", entity: "org" }
       evidence: [{ source: "src:readme", locator: "Install",

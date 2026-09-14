@@ -656,27 +656,29 @@ func TestRunCLIColorTolerances(t *testing.T) {
 	}
 }
 
-// anchorOf's fallback: when the cwd is unavailable, Abs on a relative
-// directory fails and the RELATIVE dir anchors — no worse than an empty
-// anchor, and deterministic to drive (delete the cwd out from under the
-// process).
+// Drive Abs failure directly: Windows cannot remove its cwd, and Darwin's
+// Go getcwd wrapper can return the stale path after removal.
 func TestAnchorOfFallsBackWhenCwdUnavailable(t *testing.T) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
+	resolve := func(dir string) (string, error) {
+		if dir != "x" {
+			t.Fatalf("resolved %q, want the script's directory", dir)
+		}
+		return "", &os.PathError{Op: "getwd", Err: os.ErrNotExist}
 	}
-	gone := filepath.Join(t.TempDir(), "gone")
-	if err := os.Mkdir(gone, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(gone); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
-	if err := os.Remove(gone); err != nil {
-		t.Fatal(err)
-	}
-	if got := anchorOf(filepath.Join("x", "m.boru")); got != "x" {
+	if got := anchorOfWithAbs(filepath.Join("x", "m.boru"), resolve); got != "x" {
 		t.Fatalf("anchorOf must fall back to the relative dir when Abs fails, got %q", got)
+	}
+}
+
+func TestAnchorOfResolvesDirectory(t *testing.T) {
+	want := t.TempDir()
+	if got := anchorOf(filepath.Join(want, "m.boru")); got != want {
+		t.Fatalf("anchorOf = %q, want %q", got, want)
+	}
+	if got := anchorOfWithAbs("", func(string) (string, error) {
+		t.Fatal("an empty path must not resolve a directory")
+		return "", nil
+	}); got != "" {
+		t.Fatalf("empty path anchor = %q", got)
 	}
 }

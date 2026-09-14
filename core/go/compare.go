@@ -850,7 +850,7 @@ func isPointerBody(body any) bool {
 	if body == nil {
 		return false
 	}
-	return reflect.TypeOf(body).Kind() == reflect.Ptr
+	return reflect.TypeOf(body).Kind() == reflect.Pointer
 }
 
 // opaqueIdealDeepEqual is the `deq` (deep-value) half of NUR031. It

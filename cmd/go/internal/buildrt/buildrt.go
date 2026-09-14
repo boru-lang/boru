@@ -14,7 +14,6 @@
 package buildrt
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -30,6 +29,8 @@ import (
 	"github.com/boru-lang/boru/lang/go/policy"
 
 	"github.com/boru-lang/boru/cmd/go/internal/termback"
+
+	"github.com/boru-lang/boru/cmd/go/internal/wire"
 )
 
 // CompileMode selects which execution engine Eval/Main drives: the
@@ -393,18 +394,45 @@ func Main(cfg Config, args []string, _ io.Reader, stdout, stderr io.Writer) int 
 	return 0
 }
 
-// magic marks the trailer of a self-embedding executable. It is intentionally
-// unlikely to occur in a vanilla binary's tail and is exactly magicSize bytes.
-var magic = []byte("BORUEXEC\x01")
+// magic marks the trailer of a self-embedding executable and is the only
+// trailer this binary WRITES. It is intentionally unlikely to occur in a
+// vanilla binary's tail. Every trailer this binary can READ comes from
+// wire.ExecMagics(), which includes the ones earlier, differently-named
+// releases wrote.
+var magic = []byte(wire.ExecMagic)
 
-// Footer layout appended after the JSON payload: magic (9 bytes) followed by
-// the payload length as a big-endian uint64 (8 bytes). Detection reads these
-// footerSize bytes from the end of the file.
-const (
-	magicSize  = 9
-	lenSize    = 8
-	footerSize = magicSize + lenSize
-)
+// Footer layout appended after the JSON payload: the magic followed by the
+// payload length as a big-endian uint64. The magics differ in LENGTH across
+// releases ("VLTEXEC\x01" and "AQLEXEC\x01" are 8 bytes, "BORUEXEC\x01" is
+// 9), so the length field's offset is derived from whichever magic matched —
+// never from len(magic). Assuming a fixed magic size is what silently
+// orphaned every executable built before the AQL -> BORU rename.
+const lenSize = 8
+
+// footerSize is the trailer this binary writes.
+var footerSize = len(magic) + lenSize
+
+// maxFooterSize bounds the tail read that detection needs in order to test
+// every readable magic, longest first.
+var maxFooterSize = func() int {
+	max := 0
+	for _, m := range wire.ExecMagics() {
+		if len(m) > max {
+			max = len(m)
+		}
+	}
+	return max + lenSize
+}()
+
+// matchFooter finds which readable magic terminates image (immediately
+// before the 8-byte length field) and returns the full footer size for it.
+func matchFooter(tail []byte) (int, bool) {
+	n, ok := wire.MatchSuffix(tail, wire.ExecMagics(), lenSize)
+	if !ok {
+		return 0, false
+	}
+	return n + lenSize, true
+}
 
 // EncodePayload returns the bytes to append to a copied host binary: the
 // JSON-encoded Config followed by the fixed trailer (magic + 8-byte big-endian
@@ -420,8 +448,8 @@ func EncodePayload(cfg Config) ([]byte, error) {
 		return nil, fmt.Errorf("encode payload: %w", err)
 	}
 	footer := make([]byte, footerSize)
-	copy(footer[:magicSize], magic)
-	binary.BigEndian.PutUint64(footer[magicSize:], uint64(len(body)))
+	copy(footer[:len(magic)], magic)
+	binary.BigEndian.PutUint64(footer[len(magic):], uint64(len(body)))
 	return append(body, footer...), nil
 }
 
@@ -430,15 +458,15 @@ func EncodePayload(cfg Config) ([]byte, error) {
 // plain boru binary, not a built executable. A present-but-corrupt trailer
 // returns an error.
 func DecodePayload(image []byte) (cfg Config, ok bool, err error) {
-	if len(image) < footerSize {
+	if len(image) < lenSize {
 		return Config{}, false, nil
 	}
-	footer := image[len(image)-footerSize:]
-	if !bytes.Equal(footer[:magicSize], magic) {
+	fs, ok := matchFooter(image)
+	if !ok {
 		return Config{}, false, nil
 	}
-	n := binary.BigEndian.Uint64(footer[magicSize:])
-	end := len(image) - footerSize
+	n := binary.BigEndian.Uint64(image[len(image)-lenSize:])
+	end := len(image) - fs
 	if uint64(end) < n {
 		return Config{}, false, fmt.Errorf("embedded payload: length %d exceeds image", n)
 	}
@@ -476,24 +504,31 @@ func ReadEmbeddedPayload(exePath string) (cfg Config, ok bool, err error) {
 		return Config{}, false, fmt.Errorf("read self: %w", err)
 	}
 	size := info.Size()
-	if size < footerSize {
+	if size < int64(lenSize) {
 		return Config{}, false, nil
 	}
 
-	footer := make([]byte, footerSize)
-	if _, err := fileReadAt(f, footer, size-footerSize); err != nil {
+	// Read enough tail to test the longest readable magic; a shorter one
+	// simply matches further into the buffer.
+	want := int64(maxFooterSize)
+	if want > size {
+		want = size
+	}
+	tail := make([]byte, want)
+	if _, err := fileReadAt(f, tail, size-want); err != nil {
 		return Config{}, false, fmt.Errorf("read self: %w", err)
 	}
-	if !bytes.Equal(footer[:magicSize], magic) {
+	fs, ok := matchFooter(tail)
+	if !ok {
 		return Config{}, false, nil
 	}
 
-	n := int64(binary.BigEndian.Uint64(footer[magicSize:]))
-	if n < 0 || n > size-footerSize {
+	n := int64(binary.BigEndian.Uint64(tail[len(tail)-lenSize:]))
+	if n < 0 || n > size-int64(fs) {
 		return Config{}, false, fmt.Errorf("embedded payload: length %d exceeds image", n)
 	}
 	body := make([]byte, n)
-	if _, err := fileReadAt(f, body, size-footerSize-n); err != nil {
+	if _, err := fileReadAt(f, body, size-int64(fs)-n); err != nil {
 		return Config{}, false, fmt.Errorf("embedded payload: %w", err)
 	}
 	if err := json.Unmarshal(body, &cfg); err != nil {
@@ -505,7 +540,11 @@ func ReadEmbeddedPayload(exePath string) (cfg Config, ok bool, err error) {
 // AbsDir returns the absolute directory of a file path, for keying bundled
 // files and setting the in-memory working directory consistently.
 func AbsDir(file string) (string, error) {
-	abs, err := filepath.Abs(file)
+	return absDirWithAbs(file, filepath.Abs)
+}
+
+func absDirWithAbs(file string, resolve func(string) (string, error)) (string, error) {
+	abs, err := resolve(file)
 	if err != nil {
 		return "", err
 	}

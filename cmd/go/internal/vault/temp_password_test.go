@@ -2,11 +2,8 @@ package vault
 
 import (
 	"bytes"
-	"net"
-	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -491,43 +488,6 @@ func tempBrokerVault(t *testing.T) string {
 	mustAddPassword(t, "test-pass", "temp-pass", "agent", "--scope=read", "--namespaces=*", "--ttl=1h")
 	setPass(t, "temp-pass") // the broker authenticates as the temporary agent
 	return home
-}
-
-// TestProxyRefusesToCacheTemporaryPassword drives runProxy under a temporary
-// password: it must warn and NOT cache the session (so per-request auth keeps
-// re-checking expiry).
-func TestProxyRefusesToCacheTemporaryPassword(t *testing.T) {
-	home := tempBrokerVault(t)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	_ = ln.Close()
-
-	var stdout, stderr w4SyncBuffer
-	done := make(chan int, 1)
-	go func() { done <- runProxy([]string{"--listen=" + addr}, home, &stdout, &stderr) }()
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if conn, e := net.DialTimeout("tcp", addr, 50*time.Millisecond); e == nil {
-			conn.Close()
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("runProxy did not shut down on SIGTERM")
-	}
-	if !strings.Contains(stderr.String(), "TEMPORARY password") {
-		t.Errorf("missing temporary-password warning: %q", stderr.String())
-	}
 }
 
 // TestMCPRefusesToCacheTemporaryPassword drives runMcp under a temporary

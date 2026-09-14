@@ -50,9 +50,13 @@ func formatByExt(path, src string) string {
 
 // Run handles `boru fmt [file.boru ...]`.
 func Run(args []string, stdout, stderr io.Writer) int {
+	return runWithWalk(args, stdout, stderr, filepath.Walk)
+}
+
+func runWithWalk(args []string, stdout, stderr io.Writer, walk func(string, filepath.WalkFunc) error) int {
 	var files []string
 	if len(args) == 0 {
-		err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		err := walk(".", func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}

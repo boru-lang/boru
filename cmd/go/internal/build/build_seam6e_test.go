@@ -92,19 +92,13 @@ func TestRunNativeSuccess(t *testing.T) {
 	}
 }
 
-// --- buildConfig: filepath.Abs failure (deleted cwd) ---
+// --- buildConfig: filepath.Abs failure (injected at resolution) ---
 
 func TestBuildConfigAbsError(t *testing.T) {
-	gone := filepath.Join(t.TempDir(), "gone")
-	if err := os.Mkdir(gone, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(gone)
-	if err := os.Remove(gone); err != nil {
-		t.Skipf("cannot remove cwd on this platform: %v", err)
-	}
-	if _, err := buildConfig("rel.boru", "", 0, buildrt.CompileOff, "", nil); err == nil {
-		t.Fatal("buildConfig with deleted cwd: want error, got nil")
+	boom := errors.New("absolute path unavailable")
+	resolve := func(string) (string, error) { return "", boom }
+	if _, err := buildConfigWithAbs("rel.boru", "", 0, buildrt.CompileOff, "", nil, resolve); !errors.Is(err, boom) {
+		t.Fatalf("buildConfig must propagate resolution failure: %v", err)
 	}
 }
 
@@ -205,17 +199,11 @@ func TestNativeModuleDirError(t *testing.T) {
 
 func TestNativeAbsError(t *testing.T) {
 	t.Setenv("BORU_SRC", fakeModuleTree(t))
-	gone := filepath.Join(t.TempDir(), "gone")
-	if err := os.Mkdir(gone, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(gone)
-	if err := os.Remove(gone); err != nil {
-		t.Skipf("cannot remove cwd on this platform: %v", err)
-	}
+	boom := errors.New("absolute path unavailable")
+	resolve := func(string) (string, error) { return "", boom }
 	var stdout, stderr bytes.Buffer
-	if err := buildNative(buildrt.Config{}, "relative-out", false, &stdout, &stderr); err == nil {
-		t.Fatal("buildNative with deleted cwd: want Abs error, got nil")
+	if err := buildNativeWithAbs(buildrt.Config{}, "relative-out", false, &stdout, &stderr, resolve); !errors.Is(err, boom) {
+		t.Fatalf("buildNative must propagate resolution failure: %v", err)
 	}
 }
 
