@@ -72,6 +72,9 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `minCompiledRows` | 6410 | up only |
 | `diagnosticParityCeiling` / `armedOnlyCeiling` | 320 / 4 | down only |
 | twin-placement frontier shapes | **2** (1 and 2; 3 and 4 graduated) | — |
+| `refusalSiteCeiling` | **92** (lowered from 93 to the live value, 2026-09-14) | down only |
+| refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
+| `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
 
 Increments 1–59 are on `main`. The most recent landings: #451 (increment
 58 — measurement and a negative result, no graduation), increment 59
@@ -86,10 +89,30 @@ to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
 
 **Next, under the ruling above, in order:**
 
-1. The measurement PR: lower `engineEntryCeiling` to its live 281, and
-   give each of the 92 `MarkUncompilable` sites (and the lowerer's
-   declines) one of the three legal dispositions in a census the gate
-   can hold. About a session-day.
+1. The measurement PRs, in two halves:
+   - **1a, DONE 2026-09-14** (#455): `engineEntryCeiling` lowered to its
+     live 281 (measured three times), `refusalSiteCeiling` to its live
+     92, and every `MarkUncompilable` site given one of the three legal
+     dispositions in
+     `test/go/langspec/refusal_disposition_census_test.go`, gated in
+     both directions, pinned at 92 in both directions, and keyed
+     syntactically (file, enclosing function, ordinal). The tally is in
+     the gate table above. What it says about the plan: 87 of 92 sites
+     are GENERIC lowerings, and by retiring stage the weight sits on
+     Stage 5 (26 sites, regions: "of unknown provenance" in its many
+     spellings), Stage 3 (21, the Apply kernel and universal fn values)
+     and Stage 4 (19, the generic dispatch lane and the lookup half).
+     Stage 7 owns 11. Only one site is a trap (an `if` condition that
+     nets no value) and four delete (an internal invariant, the recorder
+     method itself, two fixtures).
+   - **1b, OPEN: the lowerer and `Finalize` decline census.** Those
+     declines are a different mechanism (a decline reason returned from
+     a lowering, not a recorder latch): the site census deliberately does
+     not scan them, and FULL-COMPILATION-ASSESSMENT.0.md §2.1 still
+     records them as "not re-measured" (78 at the Stage-1 baseline, 161
+     reason templates with the recorder's). They need the same
+     enumeration and the same three dispositions. About a session-day;
+     it does not block item 2 and can run beside it.
 2. The generic lane's first executing slice. NOT on the `k` pair and NOT
    through `frozenReads`: Stage 4b (FULL-COMPILATION-HANDOFF.0.md, "What
    this corrects in the plan") superseded the 4a-2 order, the
