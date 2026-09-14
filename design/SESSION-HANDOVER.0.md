@@ -7,10 +7,55 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-11**, after increment 58 merged (a negative result,
-no graduation) and increment 59 landed the region-suffix seat.
+Last updated: **2026-09-14**, when the maintainer ruled the definition of
+done (below) and the assessment note merged (#453). Increments 1–59 are on
+`main`.
 
 ---
+
+## Definition of done (ruled by the maintainer, 2026-09-14)
+
+> done is a language that compiles, as a developer expects. all valid
+> code compiles, no exceptions
+
+Read as a checkable contract, this is T1 exactly as
+[FULL-COMPILATION.0.md](FULL-COMPILATION.0.md) §1 states it, with **no
+carve-out list**:
+
+- Every program the interpreter accepts produces a `Program`.
+  `compile_refused` is not a result, and the `BORU_COMPILE_FALLBACK`
+  hatch retires.
+- A refusal site has exactly three legal dispositions: a generic
+  lowering, a trap that raises the interpreter's own error at the same
+  moment, or deletion. "Carve-out" is not one of them.
+- "Valid" is decided by the interpreter. The checker may never be the
+  reason a program fails to compile, so the whole-program "check
+  diagnostics" sentinel goes (Stage 8's T1 half is inside done).
+- Computed code is code: runtime-supplied bodies compile too (Stage 7 is
+  inside done, and "runtime compilation must itself never refuse" is part
+  of the contract).
+
+In [FULL-COMPILATION-ASSESSMENT.0.md](FULL-COMPILATION-ASSESSMENT.0.md)
+§5 this settles the **T1 half** of outcome B: no compilation carve-outs,
+so O4 is answered NO for compilation and "carve-out" is no longer a
+disposition a refusal site can take. It does NOT choose between B and
+B′, because that choice turns on T2's attributed set (question 1 below),
+which the ruling does not address. Plan against B's figures as the upper
+bound: Tier A plus the whole of Tier B (§6), with the generic lane (B1)
+as the critical path, because it is the only mechanism that can give a
+refusal site a "generic lowering" disposition in bulk.
+
+Two questions the ruling does not settle, put to the maintainer the same
+day and open until answered:
+
+1. Whether a word whose ANSWER is the engine's own behaviour
+   (`boru:debug`'s stepper and profiler, `RunTrace`) may still interpret
+   at run time inside a compiled program. This is T2's attributed set,
+   a runtime question, not a compilation one; the census currently treats
+   those entries as specified and not debt.
+2. Whether `boru check` agreeing with `boru run` (T4, the 279 rows where
+   the checker reports an error the compiler compiles past) is inside
+   "as a developer expects".
 
 ## Where the project is
 
@@ -28,19 +73,42 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `diagnosticParityCeiling` / `armedOnlyCeiling` | 320 / 4 | down only |
 | twin-placement frontier shapes | **2** (1 and 2; 3 and 4 graduated) | — |
 
-Increments 1–58 are merged. The most recent three PRs: #449 (increment 56),
-#450 (increment 57), #451 (increment 58 — measurement and a negative result,
-no graduation).
+Increments 1–59 are on `main`. The most recent landings: #451 (increment
+58 — measurement and a negative result, no graduation), increment 59
+(`c34a2fb`, pushed to `main` directly on 2026-09-11), and #453 (the
+assessment note, 2026-09-14).
 
 ## What is in flight
 
-Branch `claude/full-compilation-project-h5lmnt`, restarted from merged `main`.
+Nothing, as of 2026-09-14. Increment 59 (the region-suffix seat: the
+whole-residual dispatch takes `do [for 3 [1] 7]`, census 29 -> 28) merged
+to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
 
-**Increment 59** (the region-suffix seat) is on it: the whole-residual
-dispatch now takes a residual whose region runs FIRST with nothing but inert
-operands above it — `do [for 3 [1] 7]` — where it previously took only the
-mirror shape, [inert…, REGION]. Census 29 -> 28, and a no-contract fn whose
-body leaves that shape stops refusing.
+**Next, under the ruling above, in order:**
+
+1. The measurement PR: lower `engineEntryCeiling` to its live 281, and
+   give each of the 92 `MarkUncompilable` sites (and the lowerer's
+   declines) one of the three legal dispositions in a census the gate
+   can hold. About a session-day.
+2. The generic lane's first executing slice. NOT on the `k` pair and NOT
+   through `frozenReads`: Stage 4b (FULL-COMPILATION-HANDOFF.0.md, "What
+   this corrects in the plan") superseded the 4a-2 order, the
+   program-wide `frozenReads` map is gone, and the `k` pair compiles
+   today through the binding-sensitive unit memo. What Stage 4b left
+   filed under `OpDispatchGeneric` is §6.9's lookup half for the shapes
+   the memo cannot re-record: escaping units, the stored-handler latch
+   (`NotifyNameRebound`'s stored-handler arm, where a module-scope def
+   site executes only in the check pass), family L's conditional fn
+   shadow, and NUR037's fn-local fn. Pick one of those pairs as the
+   acceptance test, widen Phase B's descriptors beyond mono-native
+   dispatch, then `OpCollect`, then `OpDispatchGeneric` reproducing the
+   planner's selection from the descriptor. Land inert first, as the
+   twins did. (This item was first written against the 4a-2 order and
+   corrected in review the same day: a "next increment" sentence
+   inherits its author's last reading, which is process rule 3 below.)
+3. The row-level remainder in parallel only where a row exposes a
+   mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
+   slice waits for the slice.
 
 ## Increment 58 is PARKED. If you pick it up
 

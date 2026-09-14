@@ -37,6 +37,47 @@ roughly a coin flip by year end even with an amended carve-out list. The
 remaining effort is not 29 rows; it is four unbuilt stages, and it is
 larger than everything spent so far.
 
+### 0.1 The ruling, received after this note was written (2026-09-14)
+
+Section 8's first recommendation asked for a written definition of done.
+The maintainer gave one the same day:
+
+> done is a language that compiles, as a developer expects. all valid
+> code compiles, no exceptions
+
+That is T1 exactly as the design states it (§1 of
+[FULL-COMPILATION.0.md](FULL-COMPILATION.0.md)), with no carve-out list.
+What it changes in this note:
+
+- **The T1 half of outcome B is settled; B versus B′ is not.** O4 is
+  answered NO for compilation, and "carve-out" is no longer a disposition
+  a refusal site can take. The choice between B and B′ turns on T2's
+  attributed set (the first open question below), which the ruling does
+  not address, so this note records neither as chosen. Plan against B's
+  figures as the upper bound: §6.1 plus the whole of §6.2, a further 65
+  to 115 session-days after corpus-native, and about 25% by year end,
+  rising as the generic lane lands.
+- **Every refusal site has three legal dispositions**: a generic
+  lowering, a trap raising the interpreter's own error, or deletion. The
+  §8 census pass is therefore not a triage but an assignment, and the
+  generic lane (§6.2, B1) is the critical path, because it is the only
+  mechanism that gives sites the first disposition in bulk.
+- **"Valid" is decided by the interpreter**, so the checker may never be
+  the reason a program fails to compile: the "check diagnostics"
+  sentinel (Stage 8's T1 half, §6.2 B5) is inside done, and so is
+  Stage 7 (§6.2 B3), since computed code is code.
+- **Two questions the ruling leaves open**, put to the maintainer the
+  same day: whether words whose answer IS the engine's behaviour
+  (`boru:debug`'s stepper and profiler, `RunTrace`) may still interpret
+  at run time inside a compiled program, which is T2's attributed set
+  and a runtime question rather than a compilation one; and whether
+  `boru check` agreeing with `boru run` (T4, §4.3's 279 rows) is inside
+  "as a developer expects".
+
+The current-state page,
+[SESSION-HANDOVER.0.md](SESSION-HANDOVER.0.md), carries the ruling and
+the next two increments it orders.
+
 ---
 
 ## 1. What "success" means, and why there are two universes
@@ -126,7 +167,7 @@ describes.
 | 1 | the censuses and the observable alphabet | **landed**; the interp-entry census (08-28) is the instrument the whole line has run on since |
 | 2 | extract the collection kernel; three Engine re-seats | **landed** (08-26), gate discharged (allocation ceilings, CPU share, cover-gate) |
 | 3 | universal fn values + the Apply kernel; retire `OpCallDynFrame` / `callDynamic` islands | **mostly landed**: Apply kernel, predicate units, container stamping, lenses, shaped-method apply, closure bridge, produced-closure apply, tail-apply collapse. **Open:** the Church `csucc` family (a bare read beneath a paren-bounded apply, NUR123's remaining half), the parser-combinator captures, the NUR038 member-arrival seal, the carrier-lead island. `OpCallDynFrame` and the `callDynamic` non-closure arms still exist and are still emitted |
-| 4 | statement descriptors + `OpCollect` / `OpDispatchGeneric` + bind twins; step 6 flips refuse to generic; drift window deleted | **half landed.** The bind twins are landed and flipped (09-02, rollback-and-replay is the only regime; two placement shapes remain). The dispatch half is **not built**: Phase B writes descriptors for mono-native dispatch only, the VM `CollectHost` adapter declines every evaluation, and Stage 4a-2's measurement (09-03) showed `OpCollect` must reproduce the planner's signature selection from the descriptor and carry raise-selection state, which is the hard part. The line has not returned to it since 09-04. The drift window is live |
+| 4 | statement descriptors + `OpCollect` / `OpDispatchGeneric` + bind twins; step 6 flips refuse to generic; drift window deleted | **half landed.** The bind twins are landed and flipped (09-02, rollback-and-replay is the only regime; two placement shapes remain). The dispatch half is **not built**: Phase B writes descriptors for mono-native dispatch only, the VM `CollectHost` adapter declines every evaluation, and Stage 4a-2's measurement (09-03) showed `OpCollect` must reproduce the planner's signature selection from the descriptor and carry raise-selection state, which is the hard part. Stage 4b (09-04) re-filed the frozen-read class under a binding-sensitive unit memo, so the `k` pair compiles without the lane; what stays filed under `OpDispatchGeneric` is the lookup half for escaping units, the stored-handler latch, family L's conditional fn shadow and NUR037. The line has not returned to it since. The drift window is live |
 | 5 | production-order regions + generalized marks | **narrow form**: a value-producing loop's region and `await`'s variadic residual are one simulated slot with a runtime count; `OpSeatBelowMark` and `OpMakeListToMark` close the prefix and list-collect shapes; increments 57 and 59 seat `[inert…, REGION]` and `[REGION, inert…]`. **Not built:** a run with inert values on both sides, a region consumed by an arbitrary word, a non-adjacent consumer, the split-rule window (`3 m.f 2`), and any region that may carry a callable (NUR129) |
 | 6 | handler migration per the triple: units not tokens, `while`, per-region DynEnv, `args` / `__pa` / `context` frames | **started by rows, not by the worklist**: `while` (37), `for-each` (44), `Log.with-span`, `Assert.throws`, `ArrayUtil.foldaxis` declared. The declaration census still reads 114 undeclared of 172; `context` (family K) and the check-lenient words are untouched |
 | 7 | runtime compilation everywhere: computed bodies, splices, module bodies; the structural unit cache; unbounded memoised restamp | **not started.** The unit cache the design names as a hard dependency is not built; O4 (module bodies at import) and O5 (check-budget exhaustion) are unruled; F5 is untested |
@@ -250,12 +291,18 @@ sample curves.
   nothing. F2 fired: raise selection needs state outside the collection
   machine (`reorderCandidates` reads the enclosing stack, `voidGroups`
   changes the error code). Descriptors exist for mono-native dispatch
-  only; the five other record families record no descriptor. The handoff's
-  revised order (pin the guard, give `frozenReads` site structure, convert
-  the latch to a `Finalize` obligation, then `OpCollect`) has one of four
-  steps done. This is the largest single piece of unbuilt work, and it is
-  the piece that would retire refusal sites in bulk rather than one at a
-  time.
+  only; the five other record families record no descriptor. Stage 4b
+  (09-04) then superseded 4a-2's revised order: the frozen-read class was
+  the unit memo's problem, not a routing one, the program-wide
+  `frozenReads` map is gone, and the `k` pair compiles today through a
+  binding-sensitive memo. What stays filed under the lane is §6.9's lookup
+  half for the shapes the memo cannot re-record: escaping units, the
+  stored-handler latch (a module-scope def site executes only in the check
+  pass, so a stored handler reads the pass-final binding), family L's
+  conditional fn shadow, and NUR037's fn-local fn. The lane's first
+  acceptance test is one of those pairs, not the `k` pair. This is the
+  largest single piece of unbuilt work, and it is the piece that would
+  retire refusal sites in bulk rather than one at a time.
 - **Handler migration (Stage 6).** 114 signatures take a code body, quote
   an operand, or can receive a Function value and declare nothing. Each is
   either a declaration (`for-each` took one increment) or a handler
