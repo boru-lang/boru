@@ -36,11 +36,14 @@ carve-out list**:
   of the contract).
 
 In [FULL-COMPILATION-ASSESSMENT.0.md](FULL-COMPILATION-ASSESSMENT.0.md)
-§5 the target row is therefore **B**, not B′: the carve-out rulings that
-note asked for (the attributed set, O4) are answered NO for compilation.
-The applicable effort is Tier A plus the whole of Tier B (§6), and the
-generic lane (B1) is the critical path, because it is the only mechanism
-that can give a refusal site a "generic lowering" disposition in bulk.
+§5 this settles the **T1 half** of outcome B: no compilation carve-outs,
+so O4 is answered NO for compilation and "carve-out" is no longer a
+disposition a refusal site can take. It does NOT choose between B and
+B′, because that choice turns on T2's attributed set (question 1 below),
+which the ruling does not address. Plan against B's figures as the upper
+bound: Tier A plus the whole of Tier B (§6), with the generic lane (B1)
+as the critical path, because it is the only mechanism that can give a
+refusal site a "generic lowering" disposition in bulk.
 
 Two questions the ruling does not settle, put to the maintainer the same
 day and open until answered:
@@ -70,9 +73,10 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `diagnosticParityCeiling` / `armedOnlyCeiling` | 320 / 4 | down only |
 | twin-placement frontier shapes | **2** (1 and 2; 3 and 4 graduated) | — |
 
-Increments 1–58 are merged. The most recent three PRs: #449 (increment 56),
-#450 (increment 57), #451 (increment 58 — measurement and a negative result,
-no graduation).
+Increments 1–59 are on `main`. The most recent landings: #451 (increment
+58 — measurement and a negative result, no graduation), increment 59
+(`c34a2fb`, pushed to `main` directly on 2026-09-11), and #453 (the
+assessment note, 2026-09-14).
 
 ## What is in flight
 
@@ -86,11 +90,22 @@ to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
    give each of the 92 `MarkUncompilable` sites (and the lowerer's
    declines) one of the three legal dispositions in a census the gate
    can hold. About a session-day.
-2. The generic lane's first executing slice, on the `k` pair, in the
-   order the handoff's Stage 4a-2 revised: `frozenReads` gets its site
-   structure, the latch becomes a `Finalize` obligation, then
-   `OpCollect`, then `OpDispatchGeneric` reproducing the planner's
-   selection from the descriptor. Land inert first, as the twins did.
+2. The generic lane's first executing slice. NOT on the `k` pair and NOT
+   through `frozenReads`: Stage 4b (FULL-COMPILATION-HANDOFF.0.md, "What
+   this corrects in the plan") superseded the 4a-2 order, the
+   program-wide `frozenReads` map is gone, and the `k` pair compiles
+   today through the binding-sensitive unit memo. What Stage 4b left
+   filed under `OpDispatchGeneric` is §6.9's lookup half for the shapes
+   the memo cannot re-record: escaping units, the stored-handler latch
+   (`NotifyNameRebound`'s stored-handler arm, where a module-scope def
+   site executes only in the check pass), family L's conditional fn
+   shadow, and NUR037's fn-local fn. Pick one of those pairs as the
+   acceptance test, widen Phase B's descriptors beyond mono-native
+   dispatch, then `OpCollect`, then `OpDispatchGeneric` reproducing the
+   planner's selection from the descriptor. Land inert first, as the
+   twins did. (This item was first written against the 4a-2 order and
+   corrected in review the same day: a "next increment" sentence
+   inherits its author's last reading, which is process rule 3 below.)
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.
