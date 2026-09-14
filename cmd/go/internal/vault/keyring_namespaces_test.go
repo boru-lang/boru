@@ -66,7 +66,7 @@ func TestSecretServiceDeleteLegacyNamespaces(t *testing.T) {
 			stubBin(t, dir, "secret-tool", `
 [ "$1" = clear ] || exit 3
 printf '%s\n' "$3" >> "$BORU_STUB_DELETE_LOG"
-[ "$3" = vlt.secrets ] && exit 0
+[ "$3" = boru ] && exit 0
 [ -z "$BORU_STUB_DELETE_ERROR" ] || printf '%s\n' "$BORU_STUB_DELETE_ERROR" >&2
 exit "$BORU_STUB_DELETE_CODE"
 `)
@@ -86,6 +86,53 @@ exit "$BORU_STUB_DELETE_CODE"
 				t.Errorf("delete namespaces = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestSecretServiceSharesShippedNamespace(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BORU_STUB_CREDENTIALS", dir)
+	stubBin(t, dir, "secret-tool", `
+op="$1"
+shift
+while [ "$#" -gt 1 ]; do
+  if [ "$1" = service ]; then service="$2"; break; fi
+  shift
+done
+case "$op" in
+  store) cat > "$BORU_STUB_CREDENTIALS/$service";;
+  lookup) [ -f "$BORU_STUB_CREDENTIALS/$service" ] || exit 1
+          cat "$BORU_STUB_CREDENTIALS/$service";;
+  *) exit 3;;
+esac
+`)
+	prependPath(t, dir)
+	oldPath := filepath.Join(dir, "boru")
+	developmentPath := filepath.Join(dir, "vlt.secrets")
+	if err := os.WriteFile(oldPath, []byte("old-binary-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(developmentPath, []byte("stale-development-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	k := &secretService{}
+	if got, err := k.Get("alias"); err != nil || got != "old-binary-value" {
+		t.Fatalf("current reader shadowed shipped credentials: %q, %v", got, err)
+	}
+	if err := k.Set("alias", "new-binary-value"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(oldPath); err != nil || string(got) != "new-binary-value" {
+		t.Fatalf("older reader cannot see new write: %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(developmentPath); err != nil || string(got) != "stale-development-value" {
+		t.Fatalf("write migrated to development namespace: %q, %v", got, err)
+	}
+	if err := os.WriteFile(oldPath, []byte("later-old-binary-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := k.Get("alias"); err != nil || got != "later-old-binary-value" {
+		t.Fatalf("current reader missed older binary's update: %q, %v", got, err)
 	}
 }
 

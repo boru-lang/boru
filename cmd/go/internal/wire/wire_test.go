@@ -3,10 +3,7 @@ package wire
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-
-	"github.com/boru-lang/boru/cmd/go/internal/brand"
 )
 
 // golden reads a checked-in fixture. These files are BINARY ON PURPOSE.
@@ -32,8 +29,8 @@ func TestCurrentIdentifiersStillMatchShippedBytes(t *testing.T) {
 	cases := []struct {
 		file, want string
 	}{
-		{"keyring.vltk1.golden", KeyringMagic},
-		{"export.vltx1.golden", ExportMagic},
+		{"keyring.boruk.golden", KeyringMagic},
+		{"export.borux.golden", ExportMagic},
 	}
 	for _, c := range cases {
 		data := golden(t, c.file)
@@ -44,7 +41,7 @@ func TestCurrentIdentifiersStillMatchShippedBytes(t *testing.T) {
 	}
 	// The executable magic sits before the 8-byte length field, not at the
 	// start of the file.
-	img := golden(t, "exec.vltexec.golden")
+	img := golden(t, "exec.boruexec.golden")
 	end := len(img) - 8
 	if got := string(img[end-len(ExecMagic) : end]); got != ExecMagic {
 		t.Errorf("exec fixture trailer is %q, want %q", got, ExecMagic)
@@ -92,18 +89,13 @@ func TestEveryHistoricalIdentifierStillReadable(t *testing.T) {
 	}
 }
 
-// TestIdentifiersAreBrandFree is the forward guard: it fails if a future
-// rename leaks the new product name into this package. The check is on the
-// SHAPE of the value, not on any particular name — it asserts the current
-// identifiers are exactly the vetted, brand-free literals. Changing one is
-// a deliberate act that must come with a migration, so it must not be
-// possible by sweeping a name through the tree.
-func TestIdentifiersAreBrandFree(t *testing.T) {
+// TestShippedIdentifiersAreFrozen pins the bytes older BORU binaries read.
+func TestShippedIdentifiersAreFrozen(t *testing.T) {
 	frozen := map[string]string{
-		"KeyringMagic":    "VLTK1",
-		"ExportMagic":     "VLTX1",
-		"ExecMagic":       "VLTEXEC\x01",
-		"KeychainService": "vlt.secrets",
+		"KeyringMagic":    "BORUK",
+		"ExportMagic":     "BORUX",
+		"ExecMagic":       "BORUEXEC\x01",
+		"KeychainService": "boru",
 	}
 	got := map[string]string{
 		"KeyringMagic":    KeyringMagic,
@@ -188,41 +180,5 @@ func TestReadSetsStartWithCurrentAndAreCopies(t *testing.T) {
 	a[0] = "MUTATED"
 	if KeyringMagics()[0] != KeyringMagic {
 		t.Error("callers must not be able to mutate the package's tables")
-	}
-}
-
-// TestIdentifiersDoNotContainAnyProductName is the gate that survives the
-// NEXT rename. TestIdentifiersAreBrandFree pins today's literals; this one
-// states the underlying rule, so it keeps working when the product is
-// called something nobody has thought of yet: whatever these identifiers
-// are, they must not be spelled after the product.
-//
-// It reads the current name from package brand, so renaming the product and
-// re-spelling a magic to match — the exact move that broke AQL -> BORU —
-// fails here without anyone having to remember this file exists.
-func TestIdentifiersDoNotContainAnyProductName(t *testing.T) {
-	names := []string{brand.Name, brand.CLI, "boru", "aql"} // current + every retired codename
-
-	ids := map[string]string{
-		"KeyringMagic":    KeyringMagic,
-		"ExportMagic":     ExportMagic,
-		"ExecMagic":       ExecMagic,
-		"KeychainService": KeychainService,
-	}
-	for id, val := range ids {
-		low := strings.ToLower(val)
-		for _, n := range names {
-			if n == "" {
-				continue
-			}
-			if strings.Contains(low, strings.ToLower(n)) {
-				t.Errorf("%s = %q contains the product name %q.\n"+
-					"Identifiers in this package are written into files and OS "+
-					"credential stores that outlive the name. Spelling one after "+
-					"the product guarantees the next rename orphans that data — "+
-					"it has already happened twice. Pick a name-free identifier.",
-					id, val, n)
-			}
-		}
 	}
 }

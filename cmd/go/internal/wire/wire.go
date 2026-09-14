@@ -1,27 +1,28 @@
-// Package wire holds every identifier this project writes into a place it
-// does not own: magic bytes inside files on disk, and namespaces inside the
-// host operating system's credential stores.
+// Package wire pins the keyring, export-bundle and embedded-executable
+// markers and OS credential-store namespaces independently of product naming.
 //
 // # The rule
 //
-// NOTHING HERE MAY BE DERIVED FROM THE PRODUCT NAME.
+// SHIPPED IDENTIFIERS NEVER FOLLOW A PRODUCT RENAME.
 //
 // The product name is a codename and will change again. These identifiers
 // cannot: they are already inside files and keychains on machines this
 // project will never see. Renaming one does not "rename" that data — it
 // makes it unreadable, and the failure surfaces as a correct passphrase
 // being rejected, or a built executable no longer recognising itself.
-// That has already happened twice (AQL -> BORU broke the keyring magic,
-// the export magic, and the executable trailer at once); brand-free
-// constants are how it stops happening.
+// The AQL -> BORU rename changed these identifiers. Readers accept both
+// spellings, while writers retain the shipped BORU spelling so existing
+// BORU binaries can still read data produced by this version. A historical
+// product name inside a frozen literal is not a reason to change its bytes.
 //
-// To change the product name, edit package brand. Nothing in this file
-// should need to move.
+// Cosmetic text is still distributed throughout the repository. See
+// scripts/brand-audit.sh and design/WIRE-IDENTITY.0.md for the inventory.
 //
 // # Adding a format
 //
-// Bump the format byte that follows the magic — do not mint a new magic.
 // A magic identifies the container; the format byte versions its layout.
+// Any layout change needs an explicit compatibility plan, even if its
+// marker remains unchanged.
 //
 // # Retiring an identifier
 //
@@ -38,37 +39,37 @@ package wire
 
 const (
 	// KeyringMagic prefixes the encrypted keyring blob. A format byte
-	// follows it; the trailing digit is part of the fixed magic, not a
-	// version to bump.
-	KeyringMagic = "VLTK1"
+	// follows it. Retain the shipped spelling for older BORU readers.
+	KeyringMagic = "BORUK"
 
 	// ExportMagic prefixes a portable, passphrase-encrypted export bundle.
-	ExportMagic = "VLTX1"
+	ExportMagic = "BORUX"
 
 	// ExecMagic marks the trailer of a self-embedding executable. Unlike
 	// the others it is matched at the END of a file, and it carries its own
 	// trailing version byte rather than a separate format byte.
-	ExecMagic = "VLTEXEC\x01"
+	ExecMagic = "BORUEXEC\x01"
 
 	// KeychainService is the namespace for entries in the host credential
 	// store (macOS Keychain, libsecret, Windows Credential Manager). It is
-	// a shared, OS-global namespace, so it is deliberately more specific
-	// than the other identifiers to avoid colliding with another vendor.
-	KeychainService = "vlt.secrets"
+	// a shared namespace: keep the shipped value so old and new binaries
+	// update the same credential rather than shadowing each other's writes.
+	KeychainService = "boru"
 )
 
-// The legacy sets: identifiers previous releases wrote, still accepted on
-// READ so their data keeps opening. Newest first. Never write these.
+// Additional read identifiers. AQL spellings came from earlier releases;
+// VLT spellings were proposed in development and remain readable for any
+// development artifacts. Shipped namespaces take priority. Never write these.
 var (
-	keyringMagicLegacy    = []string{"BORUK", "AQLK"}
-	exportMagicLegacy     = []string{"BORUX", "AQLX"}
-	execMagicLegacy       = []string{"BORUEXEC\x01", "AQLEXEC\x01"}
-	keychainServiceLegacy = []string{"boru", "aql"}
+	keyringMagicLegacy    = []string{"AQLK", "VLTK1"}
+	exportMagicLegacy     = []string{"AQLX", "VLTX1"}
+	execMagicLegacy       = []string{"AQLEXEC\x01", "VLTEXEC\x01"}
+	keychainServiceLegacy = []string{"aql", "vlt.secrets"}
 )
 
 // KeyringMagics returns every keyring magic this binary can read, current
 // first. Callers MUST take their field offsets from the length of the magic
-// that actually matched: the entries differ in length ("VLTK1" is 5 bytes,
+// that actually matched: the entries differ in length ("BORUK" is 5 bytes,
 // "AQLK" is 4), and assuming len(KeyringMagic) is precisely the bug this
 // package exists to prevent.
 func KeyringMagics() []string { return prepend(KeyringMagic, keyringMagicLegacy) }

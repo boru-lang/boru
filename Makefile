@@ -163,8 +163,8 @@ lint:
 	done
 
 # brand-audit — inventory every place the product name is baked in, split
-# by what breaks if it changes underneath existing data (ADR-017). A report,
-# not a gate; the hard gates are the golden fixtures and brand-containment
+# by what breaks if it changes underneath existing data (design/WIRE-IDENTITY.0.md).
+# A report, not a gate; the hard gates are the golden fixtures and identifier
 # test in cmd/go/internal/wire.
 brand-audit:
 	@./scripts/brand-audit.sh
