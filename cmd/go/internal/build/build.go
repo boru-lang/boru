@@ -182,7 +182,11 @@ func defaultOutput(srcPath string) string {
 // are skipped (they are in the runtime); every reachable .boru file is embedded
 // under its absolute path so the in-memory file system resolves it at run time.
 func buildConfig(srcPath, registry string, seed int64, mode buildrt.CompileMode, optionsBlob string, prof *policy.Profile) (buildrt.Config, error) {
-	entryAbs, err := filepath.Abs(srcPath)
+	return buildConfigWithAbs(srcPath, registry, seed, mode, optionsBlob, prof, filepath.Abs)
+}
+
+func buildConfigWithAbs(srcPath, registry string, seed int64, mode buildrt.CompileMode, optionsBlob string, prof *policy.Profile, abs func(string) (string, error)) (buildrt.Config, error) {
+	entryAbs, err := abs(srcPath)
 	if err != nil {
 		return buildrt.Config{}, err
 	}

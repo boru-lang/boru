@@ -413,3 +413,37 @@ func TestStripXattrNS(t *testing.T) {
 		t.Error("foreign namespace claimed")
 	}
 }
+
+func TestPortableXattrNamespaces(t *testing.T) {
+	for _, prefix := range []string{"", "user."} {
+		t.Run(prefix, func(t *testing.T) {
+			r, mem := ioFSReg(t)
+			if err := mem.WriteFile("f", nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for name, value := range map[string]string{prefix + "note": "kept", "security.other": "foreign"} {
+				if err := mem.XattrSet("f", name, []byte(value)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			record := NewOrderedMap()
+			if err := attachXattrsWithPrefix(r, NewMap(record), "f", prefix); err != nil {
+				t.Fatal(err)
+			}
+			value, ok := record.Get("xattr")
+			if !ok {
+				t.Fatal("missing xattr map")
+			}
+			attrs, err := AsMap(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := attrs.Get("note"); !ok {
+				t.Error("native attribute must be retained")
+			}
+			if _, ok := attrs.Get("security.other"); ok != (prefix == "") {
+				t.Error("foreign namespace must be excluded only in the prefixed regime")
+			}
+		})
+	}
+}

@@ -250,7 +250,9 @@ func TestArityKeyedSitesArePinned(t *testing.T) {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "node_modules", "vendor", "coverage":
+			// Agent scratch directories can contain whole other checkouts.
+			// Match the refusal census: audit this tree, not nested worktrees.
+			case ".git", ".claude", ".codex", "node_modules", "vendor", "coverage":
 				return filepath.SkipDir
 			}
 			return nil

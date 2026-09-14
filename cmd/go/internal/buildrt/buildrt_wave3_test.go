@@ -98,12 +98,13 @@ func TestReadEmbeddedPayloadCorruptJSON(t *testing.T) {
 // --- AbsDir ---
 
 func TestAbsDir(t *testing.T) {
-	got, err := AbsDir("/a/b/c.boru")
+	want := filepath.Join(t.TempDir(), "a", "b")
+	got, err := AbsDir(filepath.Join(want, "c.boru"))
 	if err != nil {
 		t.Fatalf("AbsDir: %v", err)
 	}
-	if got != "/a/b" {
-		t.Errorf("AbsDir(/a/b/c.boru) = %q, want /a/b", got)
+	if got != want {
+		t.Errorf("AbsDir = %q, want %q", got, want)
 	}
 
 	wd, err := os.Getwd()

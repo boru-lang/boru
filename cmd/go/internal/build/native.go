@@ -38,6 +38,10 @@ var osWriteFile = os.WriteFile
 // cmd/go module tree, then `go build` it. Reuses the module's replace graph so
 // we never reconstruct the (unpublished, replace-stitched) dependency set.
 func buildNative(cfg buildrt.Config, outPath string, keep bool, stdout, stderr io.Writer) error {
+	return buildNativeWithAbs(cfg, outPath, keep, stdout, stderr, filepath.Abs)
+}
+
+func buildNativeWithAbs(cfg buildrt.Config, outPath string, keep bool, stdout, stderr io.Writer, abs func(string) (string, error)) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("--native needs the Go toolchain on PATH: %w", err)
 	}
@@ -47,7 +51,7 @@ func buildNative(cfg buildrt.Config, outPath string, keep bool, stdout, stderr i
 		return err
 	}
 
-	absOut, err := filepath.Abs(outPath)
+	absOut, err := abs(outPath)
 	if err != nil {
 		return err
 	}

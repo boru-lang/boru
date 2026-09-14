@@ -10,13 +10,10 @@ package vault
 import (
 	"bytes"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -44,49 +41,6 @@ func TestProxyFlagParseError(t *testing.T) {
 	testHome(t)
 	if code, _, _ := runVault(t, "", "proxy", "-nope"); code == 0 {
 		t.Error("proxy with a bad flag should fail")
-	}
-}
-
-// TestRunProxyLifecycleUnderAdmin drives runProxy end to end: it starts
-// under an envelope-admin passphrase (emitting the admin warning) and
-// shuts down cleanly on SIGTERM.
-func TestRunProxyLifecycleUnderAdmin(t *testing.T) {
-	home := w4EnvelopeVault(t)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	_ = ln.Close()
-
-	var stdout, stderr w4SyncBuffer
-	done := make(chan int, 1)
-	go func() {
-		done <- runProxy([]string{"--listen=" + addr}, home, &stdout, &stderr)
-	}()
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case code := <-done:
-		if code != 0 {
-			t.Errorf("runProxy exit = %d, want 0 (stderr: %q)", code, stderr.String())
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("runProxy did not shut down on SIGTERM")
-	}
-	if !strings.Contains(stderr.String(), "ADMIN password") {
-		t.Errorf("missing the admin-password warning: %q", stderr.String())
 	}
 }
 

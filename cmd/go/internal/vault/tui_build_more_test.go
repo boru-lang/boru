@@ -238,11 +238,13 @@ func TestSecretDetailScreenActions(t *testing.T) {
 		}
 	}
 
-	// c copies the selected command; with no clipboard tool this must be a
-	// clean error status, never a panic.
-	if _, err := ctl.copyToClipboard("x"); err == nil {
-		t.Skip("a real clipboard tool is available; skipping the error-path assertion")
+	// Exercise copy failure without consulting or changing the OS clipboard.
+	origDetect := t7detectClipboard
+	t.Cleanup(func() { t7detectClipboard = origDetect })
+	t7detectClipboard = func(clipEnv) (*clipboardCmd, error) {
+		return nil, os.ErrNotExist
 	}
+
 	_, cmd = s.Update(keyMsg("c"))
 	msgs = collectMsgs(cmd)
 	if len(msgs) != 1 {

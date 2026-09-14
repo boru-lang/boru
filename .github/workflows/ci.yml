@@ -44,16 +44,6 @@ jobs:
           npm ci --prefix core/ts
           npm ci --prefix parser/ts
 
-      - name: Install golangci-lint
-        # Use `go install` (Go is already on PATH from setup-go) rather
-        # than the official action: `make lint` invokes the binary
-        # directly so we just need it on PATH. The action insists on
-        # running `golangci-lint run` itself, which we don't want here
-        # — we run it ourselves later, against every module.
-        run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
       - name: Install govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -82,9 +72,6 @@ jobs:
 
       - name: Lint assertions
         run: make -C lang/go lint-assertions
-
-      - name: Lint (golangci-lint, all modules)
-        run: make lint
 
       - name: Test (all modules)
         run: make test
@@ -144,3 +131,57 @@ jobs:
       - name: Vulncheck (advisory, all modules)
         run: make vuln
         continue-on-error: true
+
+  # Keep the module's minimum Go version covered above and exercise a
+  # current compiler/linter here: newer Go releases add deprecation checks.
+  lint-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Install golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Lint (all modules, current Go)
+        run: make lint
+      - name: Lint host-specific filesystem and terminal code
+        working-directory: lang/go
+        run: |
+          for target_os in darwin windows; do
+            GOOS="$target_os" golangci-lint run ./capabilities ./native
+          done
+
+  # These are native executions, not cross-compiles. Terminal fixtures
+  # must open a real PTY/console; missing fixtures fail instead of skip.
+  platform-regressions:
+    name: Platforms (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.24.7', stable]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build and start CLI
+        run: |
+          go build -o "$RUNNER_TEMP/boru.exe" ./cmd/go/boru
+          "$RUNNER_TEMP/boru.exe" help
+      - name: Filesystem portability
+        run: go test ./lang/go/capabilities -count=1 -timeout=3m -v -run 'TestPortable|TestOSLock|TestOSMmap|TestMemLock|TestMemMmap|TestDifferentialLockMmap'
+      - name: Real terminal and colour detection
+        run: go test ./lang/go/native -count=1 -timeout=3m -v -run 'TestOSStreamProbeAgainstRealFiles|TestResolveColor|TestPortableXattrNamespaces'
+      - name: Import anchor resolution and failure
+        run: go test ./cmd/go/internal/check ./cmd/go/internal/build ./cmd/go/internal/buildrt ./cmd/go/internal/fmt -count=1 -timeout=3m -v -run 'TestAnchorOf|TestAbsDir|TestSeam5AbsDirError|TestBuildConfigAbsError|TestNativeAbsError|TestRunWalkError'
+      - name: Credential and clipboard failures without host tools
+        run: go test ./cmd/go/internal/vault -count=1 -timeout=3m -v -run 'TestSelectKeyringBackends|TestMacKeychainErrorPaths|TestSecretDetailScreenActions'

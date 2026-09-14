@@ -173,14 +173,10 @@ func TestOSStreamProbeAgainstRealFiles(t *testing.T) {
 			"here is what made `prog > /dev/null` emit colour", os.DevNull)
 	}
 
-	// The true arm, on a real terminal.
-	if pty, perr := os.OpenFile("/dev/ptmx", os.O_RDWR, 0); perr == nil {
-		defer func() { _ = pty.Close() }()
-		if !probe.IsTerminal("stdout", pty) {
-			t.Error("a pty master should read as a terminal")
-		}
-	} else {
-		t.Logf("no /dev/ptmx, skipping the terminal arm: %v", perr)
+	// Exercise a real terminal on every supported desktop OS.
+	terminal := openTestTerminal(t)
+	if !probe.IsTerminal("stdout", terminal) {
+		t.Error("an initialized terminal should read as a terminal")
 	}
 
 	reg, err := os.CreateTemp(t.TempDir(), "plain")

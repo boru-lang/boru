@@ -309,11 +309,17 @@ func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed i
 // the cwd is unavailable, in which case a relative anchor is no worse than
 // the empty one.
 func anchorOf(path string) string {
+	return anchorOfWithAbs(path, filepath.Abs)
+}
+
+// Inject resolution per call so the error path can be tested without
+// deleting the process's working directory (which is not portable).
+func anchorOfWithAbs(path string, resolveAbs func(string) (string, error)) string {
 	if path == "" {
 		return ""
 	}
 	dir := filepath.Dir(path)
-	abs, err := filepath.Abs(dir)
+	abs, err := resolveAbs(dir)
 	if err != nil {
 		return dir
 	}

@@ -130,25 +130,11 @@ func TestSeam5ReadEmbeddedPayloadBodyReadError(t *testing.T) {
 	}
 }
 
-// TestSeam5AbsDirError drives AbsDir's error arm with a real input: a
-// relative path resolved from a working directory that no longer exists.
+// Resolution errors are injected so every OS exercises the same failure.
 func TestSeam5AbsDirError(t *testing.T) {
-	dir, err := os.MkdirTemp("", "seam5-gone-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-	if err := os.RemoveAll(dir); err != nil {
-		t.Fatal(err)
-	}
-	// Some platforms (notably macOS) keep resolving a removed working
-	// directory, so os.Getwd — and therefore AbsDir's error arm — never
-	// fails. Skip rather than fail spuriously where the arm is unreachable.
-	if _, err := os.Getwd(); err == nil {
-		t.Skip("this platform still resolves a removed working directory; AbsDir's getwd-error arm is unreachable here")
-	}
-
-	if _, err := AbsDir("rel/prog.boru"); err == nil {
-		t.Fatal("AbsDir must fail when the working directory is gone")
+	boom := errors.New("absolute path unavailable")
+	resolve := func(string) (string, error) { return "", boom }
+	if _, err := absDirWithAbs("rel/prog.boru", resolve); !errors.Is(err, boom) {
+		t.Fatalf("AbsDir must propagate resolution failure: %v", err)
 	}
 }

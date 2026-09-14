@@ -540,7 +540,11 @@ func ReadEmbeddedPayload(exePath string) (cfg Config, ok bool, err error) {
 // AbsDir returns the absolute directory of a file path, for keying bundled
 // files and setting the in-memory working directory consistently.
 func AbsDir(file string) (string, error) {
-	abs, err := filepath.Abs(file)
+	return absDirWithAbs(file, filepath.Abs)
+}
+
+func absDirWithAbs(file string, resolve func(string) (string, error)) (string, error) {
+	abs, err := resolve(file)
 	if err != nil {
 		return "", err
 	}

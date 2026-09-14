@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '9202844836200923521');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '7400092791886950717');
 INSERT INTO input_files VALUES ('../AGENTS.md', '3986719937509632624', 12545);
 INSERT INTO input_files VALUES ('../CLI.md', '3434391071839442713', 83578);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -63,7 +63,7 @@ INSERT INTO input_files VALUES ('../design/checker-compiler-completeness-review.
 INSERT INTO input_files VALUES ('../editors/tree-sitter/bindings/go/go.mod', '8359550297204300245', 134);
 INSERT INTO input_files VALUES ('../eng/go/go.mod', '1395838019470277805', 800);
 INSERT INTO input_files VALUES ('../go.work', '3757042855308333246', 546);
-INSERT INTO input_files VALUES ('../lang/go/go.mod', '4939140721251129377', 2432);
+INSERT INTO input_files VALUES ('../lang/go/go.mod', '729147395552432810', 2463);
 INSERT INTO input_files VALUES ('../parser/go/go.mod', '8990721982208133206', 350);
 INSERT INTO input_files VALUES ('../test/go/go.mod', '5812574713479453703', 3027);
 INSERT INTO input_files VALUES ('../test/solardemo/go.mod', '8784937342672483810', 59);
