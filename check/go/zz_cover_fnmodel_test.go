@@ -66,7 +66,7 @@ func (f *fmRec) RecordUserCall(unit int, _ string, _, outs []core.Value, pos, _ 
 	f.userPos = append(f.userPos, pos)
 }
 
-func (f *fmRec) RecordUserPolyCall(word string, _ *core.Registry, _, _ []int, _ []core.SigImpl, _ []core.Signature, _ []core.Value, outs []core.Value, _ core.SrcPos) {
+func (f *fmRec) RecordUserPolyCall(word string, _ *core.Registry, _, _ []int, _ []core.SigImpl, _ []core.Signature, _ []core.Value, outs []core.Value, _ core.SrcPos, _ string, _ core.SrcPos) {
 	f.polyWords = append(f.polyWords, word)
 	f.polyOuts = append(f.polyOuts, outs)
 }

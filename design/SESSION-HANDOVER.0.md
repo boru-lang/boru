@@ -9,8 +9,9 @@ today". Update this file at the end of every increment.
 
 Last updated: **2026-09-14**, when the maintainer ruled the definition of
 done (below), the assessment note merged (#453), the disposition census
-merged (#455) and the generic lane's first slice (increment 60) went up
-for review. Increments 1–59 are on `main`.
+merged (#455), the generic lane's first slice (increment 60, #456) went
+up for review and the poly seats (increment 61) were built on it.
+Increments 1–59 are on `main`.
 
 ---
 
@@ -76,9 +77,10 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `refusalSiteCeiling` | **92** (lowered from 93 to the live value, 2026-09-14) | down only |
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
-| region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **76280** descriptors with increment 60 and its review corrections (51372 before it); the floor is unchanged | floor, up only |
+| region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 
-Increments 1–59 are on `main`; increment 60 is in review. The most recent
+Increments 1–59 are on `main`; increment 60 is in review (#456) and 61
+is stacked on it. The most recent
 landings: #451 (increment 58 — measurement and a negative result, no
 graduation), increment 59 (`c34a2fb`, pushed to `main` directly on
 2026-09-11), #453 (the assessment note, 2026-09-14) and #455 (the
@@ -86,9 +88,22 @@ disposition census, 2026-09-14).
 
 ## What is in flight
 
-**Increment 60, the generic lane's first slice (2026-09-14, in review).**
-Phase B's `completeRegion` now claims at the USER-CALL seat as well as
-the mono-native one: `RecordUserCall` carries the dispatching word and
+**Increment 61, the poly seats (2026-09-14, up next, stacked on 60).**
+`RecordUserPolyCall` and `RecordPolyCall` claim their Phase-A captures:
+the user poly takes the published `(callWord, wordPos)` pair beside the
+`(word, pos)` it carried (its `word` is the VM's re-match name, not the
+dispatched token; its `pos` is `args[0]`'s); the native poly already had
+the word's position as `pos` at every call site and rides `emitCall.region`
+with no new parameter. Inert and measured inert: differential 6556 rows,
+0 mismatches. The region table goes 76280 -> 124401 descriptors, and a
+record-time tally by seat says the native POLY seat (66331 claims) is as
+large as the mono seat (65400) while the user-poly seat claims 2 in the
+whole corpus. Narrative and table: the sixty-first-increment section of
+FULL-COMPILATION-HANDOFF.0.md.
+
+**Increment 60, the generic lane's first slice (2026-09-14, in review as
+#456).** Phase B's `completeRegion` claims at the USER-CALL seat as well
+as the mono-native one: `RecordUserCall` carries the dispatching word and
 its token position (a new `CurCallWord` beside `CurCallPos` in the check
 state, captured at `BuildFnBodyReturnsFn` entry before body analysis
 overwrites the cursor), and `lowerUserCall` appends the claimed
@@ -152,14 +167,13 @@ as #455 (`6ea8ac1`).
    twins did. (This item was first written against the 4a-2 order and
    corrected in review the same day: a "next increment" sentence
    inherits its author's last reading, which is process rule 3 below.)
-   **Progress:** the inert widening's first step is increment 60 (above):
-   user-fn calls now claim their forward captures, so the descriptor
-   table describes the family the lane dispatches through. Still to do
-   before the first executing arm: the same seat for `RecordUserPolyCall`
-   (same `args[0]` join-key defect), then `OpCollect` and
-   `OpDispatchGeneric` against one of the four acceptance pairs, with the
-   `CollectHost` in `eng/go/region_host.go` given its first evaluating
-   arm.
+   **Progress:** the inert widening is increments 60 and 61 (above):
+   user-fn calls and both poly families now claim their forward captures,
+   so the descriptor table describes every family the lane dispatches
+   through except dyn-apply and dyn-method. Next is the first executing
+   arm: `OpCollect` and `OpDispatchGeneric` against one of the four
+   acceptance pairs, with the `CollectHost` in `eng/go/region_host.go`
+   given its first evaluating arm.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.

@@ -3226,6 +3226,11 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 	}); reason != "" {
 		return reason
 	}
+	// The poly call's descriptor lands under the event's rollback, as
+	// lowerUserCall's and lowerCall's do. Nothing reads Program.Regions yet.
+	if uc.region != nil {
+		lw.p.Regions = append(lw.p.Regions, *uc.region)
+	}
 	pi := len(lw.p.UserPolys)
 	lw.p.UserPolys = append(lw.p.UserPolys, UserPolyRef{
 		Word:   uc.poly.word,

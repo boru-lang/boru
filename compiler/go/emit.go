@@ -5498,7 +5498,13 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 // recorder). Captures are gated empty by the recorder, so no hidden trailing
 // operands ride here. An operand of unknown provenance marks the program
 // uncompilable, exactly as RecordUserCall does.
-func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, sigIdx, units []int, impls []core.SigImpl, sigs []core.Signature, args, outs []core.Value, pos core.SrcPos) {
+//
+// Phase B is seated here as it is on RecordUserCall: the claim is keyed by
+// the dispatching word token (callWord, wordPos), which is NOT (word, pos) —
+// word is the name the VM re-matches in ownerReg and pos is args[0]'s, the
+// blame position. The completed descriptor rides the event and lands in
+// Program.Regions at lowerUserPolyCall. Inert: nothing reads the table yet.
+func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, sigIdx, units []int, impls []core.SigImpl, sigs []core.Signature, args, outs []core.Value, pos core.SrcPos, callWord string, wordPos core.SrcPos) {
 	if !es.Active() {
 		return
 	}
@@ -5511,8 +5517,9 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 		}
 		ops[i] = op
 	}
+	region := es.completeRegion(callWord, wordPos, args, ops)
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
-		unit: -1, ops: ops, nout: len(outs), pos: pos,
+		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region,
 		poly: &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs},
 	}})
 	es.SiteCounts[SiteDynamic]++
@@ -7408,7 +7415,17 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		ops[i] = op
 	}
 	es.SiteCounts[SiteDynamic]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch}})
+	// Phase B for the native POLY family. Every caller passes the WORD
+	// token's own position as pos (declaredReturnCarriers' pos, or the
+	// engine's val.Pos() at the recovery hook), so the mono seat's key
+	// (word, pos) is this seat's key too, and the descriptor rides emitCall
+	// exactly as the mono one does — lowerCall appends it whichever opcode
+	// it chooses. args are in signature order (SigOrderArgs at the recovery
+	// sites), completeRegion's contract; a type-name token rewritten above
+	// is checked against its RAW form, so the claim stops there, which is
+	// the prefix rule and the safe direction.
+	region := es.completeRegion(word, pos, args, ops)
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region}})
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's

@@ -19,10 +19,13 @@
 // mono native dispatch — and, since 2026-09-14 (the first slice of the
 // generic lane's line), on RecordUserCall — the committed user-fn call,
 // claimed under the dispatching word's own name and position, which the
-// check pass publishes as CheckState.CurCallWord/CurCallPos. The poly,
-// dyn-apply and dyn-method families still have their own entry points and
-// claim nothing, so their regions are captured by Phase A and never
-// completed. Widening those seats is follow-on work, and
+// check pass publishes as CheckState.CurCallWord/CurCallPos — and, since the
+// sixty-first increment, on the two POLY records as well: RecordUserPolyCall
+// (keyed by the same published pair) and RecordPolyCall (whose pos is the
+// word's at every call site). The dyn-apply and dyn-method families still
+// have their own entry points and claim nothing, so their regions are
+// captured by Phase A and never completed. Widening those seats is
+// follow-on work, and
 // lang/go/region_capture_e2e_test.go fails if a seat lands without this note
 // being updated.
 package langspec

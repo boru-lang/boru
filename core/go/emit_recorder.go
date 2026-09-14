@@ -163,7 +163,14 @@ type EmitRecorder interface {
 	// token as the check pass published it (CheckState.CurCallWord /
 	// CurCallPos), the key Phase B claims the call's region capture by.
 	RecordUserCall(unit int, word string, args, outs []Value, pos, wordPos SrcPos)
-	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos)
+	// RecordUserPolyCall records one runtime-re-matched multi-overload
+	// user-fn call. word is the name the VM re-matches in ownerReg; pos is
+	// the call's blame position (the first argument's). callWord and wordPos
+	// are the dispatching WORD token as the check pass published it
+	// (CheckState.CurCallWord / CurCallPos, or the dispatched name and the
+	// engine's own word position at a recovery site) — the key Phase B claims
+	// the call's region capture by, exactly as RecordUserCall's.
+	RecordUserPolyCall(word string, ownerReg *Registry, sigIdx, units []int, impls []SigImpl, sigs []Signature, args, outs []Value, pos SrcPos, callWord string, wordPos SrcPos)
 	// HoldRegion takes the Phase-A region offer for the dispatching word
 	// token (word, pos — CheckState.CurCallWord / CurCallPos as read at a
 	// user-fn ReturnsFn's entry) out of the pending pool NOW, before the
@@ -432,7 +439,7 @@ func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, 
 	return false
 }
 func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
-func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos) {
+func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos, string, SrcPos) {
 }
 func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
 func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
