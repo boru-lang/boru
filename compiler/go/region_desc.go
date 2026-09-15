@@ -216,13 +216,25 @@ type RegionDesc struct {
 	// dispatches (it is a value read) and `/u` arrives as the `usurp` word,
 	// so neither flag is ever set here.
 	Mods *core.WordInfo
-	// LeadLocal marks a lead whose binding lives inside an enclosing fn — a
-	// body-local `def`, a fn-valued param — which no live lookup where the
-	// body runs can find: the fn-unit hazard fillOffer's slot rule guards,
-	// seen at the lead. The descriptor is still recorded (the COLLECT
-	// oracle counts such a lead as unbound); routing declines it, because
-	// the committed CALL_USER reaches the unit by index where the routed
-	// op would look up a name the run-time def stack does not hold.
+	// Reg is the registry the dispatch resolved its lead in — the running
+	// one, or a module's sub-registry when the lead is a module native
+	// reached through its wrapper (`StructUtil.clone k` dispatches the
+	// inner `clone` in the module's own table). The routed op looks the
+	// lead up here, as CALL_NATIVE_POLY looks its word up in PolyRef.Reg;
+	// looked up in the caller's registry the lead was unbound on every
+	// execution (found in review of #461). Nil in a hand-built descriptor
+	// means the running registry.
+	Reg *core.Registry
+	// LeadLocal marks a lead no live lookup in Reg finds where the body
+	// runs: a binding that lives inside an enclosing fn — a body-local
+	// `def`, a fn-valued param — the fn-unit hazard fillOffer's slot rule
+	// guards, seen at the lead; or a lead Reg does not hold at all — a
+	// module native reached through its wrapper, whose inner signature is
+	// dispatched from the caller's registry (review of #461). The
+	// descriptor is still recorded (the COLLECT oracle counts such a lead
+	// as unbound); routing declines it, because the committed CALL_USER /
+	// CALL_NATIVE reaches its target by index where the routed op would
+	// look up a name the run-time registry does not hold.
 	LeadLocal bool
 	// NFwd is the RECORDED CLAIM: how many leading slots the recording
 	// dispatch actually took forward, in written order. Slots at i >= NFwd

@@ -40,10 +40,13 @@ import core "github.com/boru-lang/boru/core/go"
 // later carries a routed name refuses (EmitState.carriedNames /
 // routedNames, found on the sixty-fifth increment's tree).
 //
-// A routed read is no longer a BAKE the unit depends on: unfreezeRead
-// retires the note NoteFrozenRead made when the operand was resolved, so the
-// memo does not re-record the unit for a rebind the dispatch already
-// honours, and the escaping latch does not refuse it.
+// A routed read is no longer a bake an ESCAPED unit holds stale: unfreezeRead
+// retires the escaping latch's note NoteFrozenRead made when the operand was
+// resolved, so the latch does not refuse it. The MEMO's staleness key stays
+// (review of #461): a rebind the check pass sees re-records the unit, so
+// the record's own overload, result count and arity follow the binding,
+// and the routed op meets a live rebind only where no call site could
+// re-record.
 
 // routeRegion decides whether a completed descriptor drives its dispatch,
 // retiring the frozen notes of the word slots it makes live. Nil for a

@@ -271,6 +271,22 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 			t.Errorf("want the claim-drift defer, got %v", bails)
 		}
 	})
+	t.Run("the lead resolves in the descriptor's registry", func(t *testing.T) {
+		// A module native reached through its wrapper dispatches in the
+		// module's sub-registry: the running registry has no `w` at all,
+		// the descriptor's does (review of #461).
+		p, reg := genericWorld(t)
+		other := seam7Reg(t)
+		other.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}),
+		}}}))
+		reg.Defs.Pop("w")
+		p.Regions[0].Reg = other
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(5)) {
+			t.Errorf("the lead is looked up where the record dispatched it, the operands where the unit runs: out=%v err=%v", out, err)
+		}
+	})
 	t.Run("a list operand enters the unit quoted", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		reg.Defs.Push("k", core.NewList([]core.Value{core.NewInteger(4)}))

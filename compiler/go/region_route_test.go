@@ -84,6 +84,9 @@ func TestRecordUserCallDeclinesCapturesAndLocalLeads(t *testing.T) {
 		// operand is a frame slot.
 		kv, b := core.NewInteger(5), core.NewInteger(1)
 		reg.Defs.Push("k", kv)
+		// The lead is a word the dispatch registry holds; the scoped case
+		// shadows it with a body-local binding below.
+		reg.Register("f", core.Signature{Args: []*core.Type{core.TAny, core.TAny}})
 		if scoped {
 			// The lead is bound AFTER the enclosing fn's baseline — a
 			// body-local `def f …`.
@@ -134,8 +137,8 @@ func TestRouteRegionRetiresOnlyTheRoutedReads(t *testing.T) {
 	if !es.routeRegion(d) {
 		t.Fatal("routes again")
 	}
-	if _, frozen := rec.frozen["k"]; frozen || rec.bakes["k"] != 0 {
-		t.Errorf("both reads routed: k is unfrozen and its bake generation dropped, got frozen=%v gen=%d", frozen, rec.bakes["k"])
+	if _, frozen := rec.frozen["k"]; frozen || rec.bakes["k"] != 1 {
+		t.Errorf("both reads routed: k is unfrozen for the escaping latch and its bake generation KEPT for the memo, got frozen=%v gen=%d", frozen, rec.bakes["k"])
 	}
 	if _, frozen := rec.frozen["j"]; !frozen {
 		t.Error("an unrouted name is untouched")
@@ -271,5 +274,45 @@ func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
 	es3.NoteLoopCarried("j", core.NewInteger(9), core.NewInteger(5))
 	if !es3.carriedNames["j"] || !es3.Compilable {
 		t.Errorf("an unrouted name is carried: %v %q", es3.carriedNames, es3.Reason)
+	}
+}
+
+// A value-dependent divergent word (div / mod) is never routed: the poly
+// seat asks the word's table in the registry the dispatch resolves in, the
+// owner's or the running one, and a word with no table or no such overload
+// is not diverging.
+func TestValueDivergingWordDeclines(t *testing.T) {
+	reg, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Register("div", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}, CompileEffect: core.CompileValueDiverges})
+	reg.Register("add", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}})
+	if !valueDivergingWord(nil, reg, "div") || valueDivergingWord(nil, reg, "add") || valueDivergingWord(nil, reg, "nope") {
+		t.Error("div diverges, add does not, an unbound word does not")
+	}
+	owner, _ := core.NewRegistry()
+	owner.Register("div", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}})
+	if valueDivergingWord(owner, reg, "div") || valueDivergingWord(nil, nil, "div") {
+		t.Error("the owner's table wins over the running one; no registry, no verdict")
+	}
+}
+
+// A lead the dispatch registry does not hold — a module native reached
+// through its wrapper, dispatched from the caller's registry — completes
+// LeadLocal and keeps its committed call (review of #461).
+func TestCompletionMarksAnUnheldLeadLocal(t *testing.T) {
+	es, reg, done := beginRegionPass(t)
+	defer done()
+	kv := core.NewInteger(5)
+	reg.Defs.Push("k", kv)
+	pos := capture(t, es, reg, "clone", core.NewWord("k"))
+	d := es.completeRegion("clone", pos, []core.Value{kv}, []EmitOperand{ConstOperand(0)})
+	if d == nil || !d.LeadLocal || d.Reg != reg {
+		t.Fatalf("an unheld lead completes LeadLocal over the dispatch registry: %+v", d)
+	}
+	openUnit(es, false)
+	if es.routeRegion(d) {
+		t.Error("an unheld lead keeps its committed call")
 	}
 }

@@ -142,15 +142,12 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 // parity with the interpreter; a row that starts compiling has graduated and
 // moves to the parity test with its interpreter answer.
 //
-// Two undef rows are a third kind since the sixty-fifth increment: the
-// read of `T` is a ROUTED forward slot (`5 is T` inside the unit dispatches
-// `is` through its descriptor, region_route.go), so it is no longer a bake
-// the memo re-records — the program COMPILES, and the run defers at the op
-// when the live lookup finds no `T` (`vm:generic-unbound-slot`, the
-// designed defer) to the interpreter's own undefined_word. Pinned by the
-// defer site and by parity; the `T/v` spelling is not routed (a modified
-// word in the claim keeps the committed call) and still refuses at check.
-// The op raising undefined_word itself is the next slice's.
+// The `5 is T` rows are ROUTED forward slots since the sixty-fifth
+// increment (`is` dispatches through its descriptor, region_route.go), and
+// they still refuse here: routing retires the escaping latch's note, not
+// the memo's key, so the undef re-records the unit and the check pass
+// reports the undefined name exactly as before (review of #461). The
+// routed op meets a live rebind only where no call site can re-record.
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
@@ -166,12 +163,12 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		// raises undefined_word; `true true` for the type; `1 1` for the
 		// sig-undef of a call target.
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  undef k  f`, "check diagnostics", ""},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "", "vm:generic-unbound-slot"},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "check diagnostics", ""},
 		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  undef g (fnsig [[] [Integer]])  f`, "check diagnostics", ""},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T/v]]  f  undef T  f`, "check diagnostics", ""},
 		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics", ""},
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics", ""},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "", "vm:generic-unbound-slot"},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics", ""},
 		// The MULTI-RUN twin of the rebind-site axis: an each body leaks its
 		// LAST iteration's def to module scope, and the top-level read after
 		// it is the arm-residency gate's. Measured `7 [9] 11` interpreted

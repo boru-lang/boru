@@ -426,6 +426,9 @@ func TestCompleteRegionStopsOnAFnScopedWordWithoutAFrameSlot(t *testing.T) {
 func TestCaptureCarriesTheLeadModifiers(t *testing.T) {
 	es, reg, done := beginRegionPass(t)
 	defer done()
+	// The lead is a word the dispatch registry holds (completion marks one
+	// it does not as LeadLocal).
+	reg.Register("f", core.Signature{Args: []*core.Type{core.TAny}})
 	a := core.NewInteger(1)
 	pos := core.SrcPos{Row: 1, Col: 1}
 	win := core.NewTape([]core.Value{core.WithPosAt(core.NewWord("f"), pos), a}, 0)
@@ -439,8 +442,8 @@ func TestCaptureCarriesTheLeadModifiers(t *testing.T) {
 		t.Fatalf("a modified lead carries its WordInfo: %+v", off.desc)
 	}
 	d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)})
-	if d == nil || d.Mods == nil || d.Mods != off.desc.Mods || d.LeadLocal {
-		t.Errorf("the completion carries the modifiers and a module-scope lead is not local: %+v", d)
+	if d == nil || d.Mods == nil || d.Mods != off.desc.Mods || d.LeadLocal || d.Reg != reg {
+		t.Errorf("the completion carries the modifiers, the dispatch registry, and a module-scope lead is not local: %+v", d)
 	}
 	if err := d.Validate(1, 0, 0); err != nil {
 		t.Errorf("the completed descriptor validates: %v", err)

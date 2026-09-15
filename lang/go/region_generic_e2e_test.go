@@ -75,9 +75,12 @@ func TestRoutedDispatchKeepsTheCommittedCallElsewhere(t *testing.T) {
 // record, and `w/1` selects the one-operand overload live as the record
 // did. The last is the pattern pair — overloads `[0]` and `[n:Integer]`
 // differ only in the pattern — where the unit compiled for `[0]` must not
-// answer the live match of `[n:Integer]`: the op defers rather than
-// raising the other arm's argument, and the fallback answers the
-// interpreter's 7.
+// answer the live match of `[n:Integer]`: the rebind re-records `go`
+// (the memo keeps its key on a routed read, review of #461), the second
+// unit commits to the other arm, and both lanes answer 100 then 7; at the
+// seam, the unit's identity includes its patterns, so a live mismatch no
+// call site could re-record defers rather than raise the other arm's
+// argument.
 func TestRoutedDispatchReviewShapes(t *testing.T) {
 	rows := []struct {
 		src, want string
@@ -88,7 +91,7 @@ func TestRoutedDispatchReviewShapes(t *testing.T) {
 		{`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k/v 1]] end go`, "[5]", false, true},
 		{`def w fn [[a:Any | b:Any][Any][a]] end def k 5 end def go fn [[][Any][w/f k 1]] end go`, "[5]", true, true},
 		{`def w fn [[a:Any][Any][a] [a:Any b:Any][Any][b]] end def k 5 end def go fn [[][Any][w/1 k 1 drop]] end go`, "[5]", true, true},
-		{`def w fn [[0][Integer][100] [n:Integer][Integer][n]] end def k 0 end def go fn [[][Integer][w k]] end go def k 7 end go`, "[100 7]", true, false},
+		{`def w fn [[0][Integer][100] [n:Integer][Integer][n]] end def k 0 end def go fn [[][Integer][w k]] end go def k 7 end go`, "[100 7]", true, true},
 	}
 	for _, c := range rows {
 		dis := compileDisasm(t, c.src)
@@ -178,5 +181,41 @@ func TestRoutedReadAndLoopCarriedRebindNeverMeet(t *testing.T) {
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
+	}
+}
+
+// The review of #461's three, each judged against the interpreter, each
+// with an effect before the rebind (the shape where a defer's fallback is
+// fenced and the user saw an internal error): a value-dependent divergent
+// word whose check-time call recorded no result (`10 div y` caught at 0),
+// a rebind that changes the word's overload (`set` over a Map, then a
+// Store), and a module native reached through its wrapper (`StructUtil.clone
+// k`, dispatched in the module's registry). The first two re-record on the
+// rebind (the memo keeps its key); the third routes and resolves its lead
+// in the descriptor's registry.
+func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
+	rows := []string{
+		`print "before" end def y 0 end def f fn [[] [Any] [10 div y]] end do [f] end drop end def y 2 end f`,
+		`print "before" end def k {} end def f fn [[] [] [set x/q 1 k]] end f end drop end def k (context) end f`,
+		`print 1 import "boru:struct-util" end def k {a:1} end def f fn [[] [Map] [StructUtil.clone k]] end f`,
+	}
+	for _, src := range rows {
+		c, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bails []string
+		disarm := c.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
+		gotC, compiled, errC := c.RunCompiled(src)
+		disarm()
+		d, _ := New()
+		gotI, errI := d.RunInterp(src)
+		if !compiled || len(bails) != 0 || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
+			t.Errorf("%q: want a compiled run with no defer and the interpreter's answer:\n  compiled=%v bails=%v\n  C=%v/%v\n  I=%v/%v", src, compiled, bails, gotC, errC, gotI, errI)
+		}
+	}
+	// The divergent word keeps its committed call: no route at all.
+	if dis := compileDisasm(t, `def y 2 end def f fn [[] [Any] [10 div y]] end f`); strings.Contains(dis, "DISPATCH_GENERIC") {
+		t.Errorf("a value-dependent divergent word is never routed:\n%s", dis)
 	}
 }

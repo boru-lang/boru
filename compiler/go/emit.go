@@ -6658,7 +6658,11 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// Program.Regions yet; what it buys now is that the descriptor model is
 	// exercised and gated over the whole corpus before OpCollect executes one.
 	region := es.completeRegion(word, pos, args, ops)
-	generic := es.routeRegion(region)
+	// A value-dependent divergent word (div / mod) is never routed: its
+	// result count is the VALUE's (a check-time raise recorded no result),
+	// and a routed spec freezes one count for every execution (review of
+	// #461). The committed call keeps the recorder's own handling below.
+	generic := !sig.CompileEffect.Has(core.CompileValueDiverges) && es.routeRegion(region)
 	es.SiteCounts[SiteMono]++
 	// A CompileValueDiverges word (div/mod) raises value-dependently: its
 	// check-mode ReturnsFn drops the declared result (len(outs)==0) exactly on
@@ -7405,6 +7409,30 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 	return ops, true
 }
 
+// valueDivergingWord reports whether any overload of word in the registry
+// the dispatch resolves in (owner, or running when the word is a core one)
+// is CompileValueDiverges — the poly seat's twin of RecordCall's test on its
+// one signature, for the same decline (review of #461).
+func valueDivergingWord(owner, running *core.Registry, word string) bool {
+	reg := owner
+	if reg == nil {
+		reg = running
+	}
+	if reg == nil {
+		return false
+	}
+	fd := reg.Lookup(word)
+	if fd == nil {
+		return false
+	}
+	for i := range fd.Signatures {
+		if fd.Signatures[i].CompileEffect.Has(core.CompileValueDiverges) {
+			return true
+		}
+	}
+	return false
+}
+
 // RecordPolyCall records a native dispatch the checker could not commit to
 // one overload for (a dynamic operand widened to Any): the call lowers to
 // OpCallNativePoly, which re-matches the word's signatures at run time (plan
@@ -7472,7 +7500,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// CALL_NATIVE_POLY re-matches over it. The census says this is where
 	// the volume is: 660 of the corpus's 677 routed native dispatches.
 	region := es.completeRegion(word, pos, args, ops)
-	generic := es.routeRegion(region)
+	generic := !valueDivergingWord(ownerReg, es.reg, word) && es.routeRegion(region)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
 	switch len(outs) {
 	case 0:

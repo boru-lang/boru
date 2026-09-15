@@ -90,7 +90,15 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	if err := vc.gateWord(reg, d.Word); err != nil {
 		return nil, -1, nil, err
 	}
-	fn := reg.Lookup(d.Word)
+	// The lead resolves in the registry the record dispatched it in
+	// (RegionDesc.Reg — a module's sub-registry for a native reached through
+	// its wrapper), as CALL_NATIVE_POLY resolves its word in PolyRef.Reg;
+	// the operands and the handler's registry are the running one's.
+	lookup := reg
+	if d.Reg != nil {
+		lookup = d.Reg
+	}
+	fn := lookup.Lookup(d.Word)
 	if fn == nil {
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; deferring to the interpreter")
 	}

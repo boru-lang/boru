@@ -83,13 +83,17 @@ func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitO
 	// The capture is keyed by position and re-offered on every execution, so
 	// completing in place would mutate a descriptor an earlier completion may
 	// already have stamped. Work on a copy; the slots are copied with it.
-	// The lead's scope is decided here, by the same rule the slots below
-	// use for a word: a binding pushed inside the enclosing fn is one no
-	// live lookup finds where the body runs (found in review of #460 — a
+	// The lead's reachability is decided here, by the same rule the slots
+	// below use for a word: a binding pushed inside the enclosing fn is one
+	// no live lookup finds where the body runs (found in review of #460 — a
 	// body-local callee routed, and the op looked up a name the run-time
-	// def stack does not hold).
-	out := &RegionDesc{Lead: d.Lead, Word: d.Word, Pos: d.Pos, Mods: d.Mods,
-		LeadLocal: fnScopedWord(off.reg, core.NewWord(d.Word)),
+	// def stack does not hold), and so is a lead the dispatch registry
+	// itself does not hold — a module native reached through its wrapper,
+	// whose inner signature is dispatched from the caller's registry where
+	// only the namespace is bound (review of #461).
+	leadHeld := off.reg != nil && off.reg.Lookup(d.Word) != nil
+	out := &RegionDesc{Lead: d.Lead, Word: d.Word, Pos: d.Pos, Mods: d.Mods, Reg: off.reg,
+		LeadLocal: !leadHeld || fnScopedWord(off.reg, core.NewWord(d.Word)),
 		Slots:     append([]SlotDesc(nil), d.Slots...)}
 	n := len(out.Slots)
 	if len(args) < n {

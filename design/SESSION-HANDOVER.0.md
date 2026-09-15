@@ -104,7 +104,13 @@ and closed in the same PR: a loop-carried name (a frame slot) and a
 routed read (the registry) never meet — a read of a carried name keeps
 its committed call, a loop carrying a routed name refuses — and NUR144
 records the neighbour that is the binder half's (an `undef` inside a
-top-level loop body is dropped). Narrative: the
+top-level loop body is dropped). The review of #461 found three more
+defers meeting the effect fence and closed them: routing retires only the
+escaping latch's note, the memo's key stays (a rebind the check pass sees
+re-records the unit); a value-dependent divergent word is never routed;
+a lead the dispatch registry does not hold (a module native through its
+wrapper) keeps its committed call, and the descriptor carries the
+registry its lead resolves in. Narrative: the
 sixty-fifth-increment section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 64, the first ROUTED dispatch (2026-09-15, built on 63).**

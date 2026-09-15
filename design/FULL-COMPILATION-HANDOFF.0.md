@@ -8167,6 +8167,48 @@ compiled program — no twin, no op — so `for 2 [ f  undef k ]` answers
 well. Recorded as NUR144 with its fence
 (`lang/go/nur144_undef_loop_test.go`); the binder half's.
 
+### The review's three (#461)
+
+Codex found three programs where the route's remaining DEFERS met the
+effect fence — an output before a rebind and a call, and the user saw the
+defer's internal error where the interpreter answers. All three
+reproduced; the fixes:
+
+1. **The memo keeps its key.** `unfreezeRead` retired both the escaping
+   latch's note AND the memo's staleness key, so a rebind the check pass
+   saw no longer re-recorded the unit: `def y 0  def f fn [[][Any][10 div
+   y]]  do [f] drop  def y 2  f` kept a unit recorded from the caught
+   zero-divisor call (`NOut` 0) and the live `div` returned one value
+   (`vm:generic-nout-drift`); `def k {}  def f fn [[][][set x/q 1 k]]  f
+   drop  def k (context)  f` kept the Map `set` overload's identity and
+   met the Store's (`vm:generic-foreign-native`). Now only the latch's
+   note goes: a rebind the check pass sees re-records the unit, so the
+   record's own overload, result count and arity follow the binding, and
+   the op meets a live rebind only where no call site could re-record —
+   an escaped unit, a stored ref. The frozen-read rows that had moved to
+   "compiles, defers" move back to "refuses at check", exactly as before
+   the route; the `k` pair's escaped unit still answers the rebind live.
+2. **A value-dependent divergent word is never routed** (`div` / `mod`,
+   `CompileValueDiverges`): its result count is the value's, and a spec
+   freezes one count for every execution. Both seats decline
+   (`valueDivergingWord` for the poly record's table).
+3. **A lead the dispatch registry does not hold keeps its committed call.**
+   `StructUtil.clone k` dispatches the inner `clone` in the module's own
+   table, from the caller's registry where only the namespace is bound;
+   routed, the op's lookup failed on every execution
+   (`vm:generic-unbound`). Completion now marks such a lead `LeadLocal`
+   (the same rule as a body-local callee), and the descriptor carries the
+   registry the dispatch resolved in (`RegionDesc.Reg`, as `PolyRef.Reg`
+   does) for the op's lookup.
+
+None of the three changes a corpus gate; the routed count is unchanged at
+677. Pinned at the seam (`TestRouteRegionRetiresOnlyTheRoutedReads` — the
+key kept, `TestValueDivergingWordDeclines`,
+`TestCompletionMarksAnUnheldLeadLocal`, the descriptor-registry lookup in
+`TestDispatchGenericGatesAndDeliveries`) and end to end over the three
+programs with the output before the rebind
+(`TestRoutedDispatchReviewOfTheNativeSeat`).
+
 ### What this does not do
 
 The op's own limits are unchanged from 64 (a no-match and a stranded
@@ -8448,4 +8490,4 @@ position than the construct that produced the binding.
 | `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor ; corrected in review: a zero-arg candidate as a zero-length claim, the container-identity agreement rule over a refined binding (`TestRegionOracleZeroArgCandidate`, `TestRegionOracleContainerIdentity`), `core/go/same_container_test.go` (identity where `ExactEqual` falls through, NUR142), and the lane's error-parity check with the module-flex snapshot rows ledgered (NUR143) |
 | `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
-| `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadAndLoopCarriedRebindNeverMeet`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
+| `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadAndLoopCarriedRebindNeverMeet`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |

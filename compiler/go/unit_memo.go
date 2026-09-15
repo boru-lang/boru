@@ -94,10 +94,17 @@ func (es *EmitState) NoteFrozenRead(name string, bake core.FrozenBake, gen int64
 }
 
 // unfreezeRead retires ONE noted read of name in the open unit — a read the
-// lowering will make LIVE through a routed dispatch (routeRegion), so the
-// bake it noted is dead code the VM never consults. The name stays frozen
-// while any other read of it in the unit is still a bake: the memo's
-// staleness key and the escaping latch guard those, and only those.
+// lowering will make LIVE through a routed dispatch (routeRegion). The name
+// stays frozen while any other read of it in the unit is still a bake; once
+// every read is routed, the ESCAPING LATCH's note goes (a live read is not
+// a bake an escaped unit could hold stale) but the MEMO's staleness key
+// STAYS: a rebind the check pass sees still re-records the unit, so the
+// record's own overload, result count and arity follow the binding, and
+// the routed op meets a live rebind only where no call site could
+// re-record — an escaped unit, a stored ref. Found in review of #461: with
+// the key dropped, a rebind that changed the word's overload or its result
+// count reached the op as a foreign-native or nout-drift defer, and an
+// effect already performed fenced the fallback into an internal error.
 func (es *EmitState) unfreezeRead(name string) {
 	if !es.Active() || len(es.openUnitRecs) == 0 {
 		return
@@ -113,7 +120,6 @@ func (es *EmitState) unfreezeRead(name string) {
 	rec.frozenReads[name]--
 	if rec.frozenReads[name] == 0 {
 		delete(rec.frozen, name)
-		delete(rec.bakes, name)
 		delete(rec.frozenReads, name)
 	}
 }
