@@ -31,12 +31,15 @@ import core "github.com/boru-lang/boru/core/go"
 //
 // Same body, same source position, same descriptor. A descriptor that froze
 // k's record-time class as a value slot answers 5 where the interpreter
-// raises. Today the compiler declines that program rather than getting it
-// wrong ("module binding k rebound after a fn unit baked its value",
-// compiler/go/emit.go:3159, NotifyNameRebound's fn-unit arm) — one of the
-// interim rebind-staleness latches §6.5 retires
-// once OpCollect re-derives. That pair is OpCollect's acceptance test: it
-// must ANSWER both spellings, not decline the second.
+// raises. Until the sixty-fourth increment the compiler declined that
+// program rather than getting it wrong ("module binding k rebound after a
+// fn unit baked its value", NotifyNameRebound's escaping-unit arm) — one
+// of the interim rebind-staleness latches §6.5 retires once a dispatch
+// re-derives. That pair was the ROUTED dispatch's acceptance test, and
+// OpDispatchGeneric (region_route.go, eng/go/vm_generic.go) now answers
+// both spellings from the same bytecode: `go` reads k live at every
+// execution, an escaped `go` (`def h go/v`) with it, and the fn rebind
+// raises the interpreter's own strict-barrier error.
 type SlotSource uint8
 
 const (

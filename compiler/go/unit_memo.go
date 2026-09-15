@@ -84,10 +84,37 @@ func (es *EmitState) NoteFrozenRead(name string, bake core.FrozenBake, gen int64
 	if rec.frozen == nil {
 		rec.frozen = map[string]core.FrozenBake{}
 		rec.bakes = map[string]int64{}
+		rec.frozenReads = map[string]int{}
 	}
+	rec.frozenReads[name]++
 	if _, seen := rec.frozen[name]; !seen {
 		rec.frozen[name] = bake
 		rec.bakes[name] = gen
+	}
+}
+
+// unfreezeRead retires ONE noted read of name in the open unit — a read the
+// lowering will make LIVE through a routed dispatch (routeRegion), so the
+// bake it noted is dead code the VM never consults. The name stays frozen
+// while any other read of it in the unit is still a bake: the memo's
+// staleness key and the escaping latch guard those, and only those.
+func (es *EmitState) unfreezeRead(name string) {
+	if !es.Active() || len(es.openUnitRecs) == 0 {
+		return
+	}
+	idx := es.openUnitRecs[len(es.openUnitRecs)-1]
+	if idx < 0 || idx >= len(es.fnRecs) {
+		return
+	}
+	rec := es.fnRecs[idx]
+	if rec == nil || rec.frozenReads == nil || rec.frozenReads[name] == 0 {
+		return
+	}
+	rec.frozenReads[name]--
+	if rec.frozenReads[name] == 0 {
+		delete(rec.frozen, name)
+		delete(rec.bakes, name)
+		delete(rec.frozenReads, name)
 	}
 }
 

@@ -7862,6 +7862,141 @@ fn-BODY def is frame-scoped and never had the class. Nothing is routed;
 `OpDispatchGeneric` still does not exist, and the next slice is the one
 the oracle was built to judge.
 
+## The first routed dispatch: `OpDispatchGeneric` at the user seat (2026-09-15, the sixty-fourth increment)
+
+Sixty-two increments built and measured a table; the sixty-third made a
+live read safe to make; this one makes the first. A dispatch now EXECUTES
+through its descriptor instead of beside one: the word is looked up at
+every execution, the forward tokens are collected by the kernel's own
+walk and matched by the kernel's own matcher, and the operands the
+lowering pushed are popped as what they are — the record's claim.
+
+### The shape, measured before it was chosen
+
+The recorder decides at `RecordUserCall` (compiler/go/region_route.go,
+`routeRegion`): a dispatch inside a FN UNIT whose claim carries a live word
+slot (`SlotWordRef`) over a span the descriptor host can DRIVE — every
+slot a plain value token or a word (no group, no interpolation, no
+sugar: region_host.go declines every evaluation), and no prior-event slot
+beyond the record's claim (its value is not on the stack when a live
+claim reaches it). Counted over the corpus with a scratch census before
+the shape was fixed:
+
+	seat / place            no live slot   live, drivable   live, undrivable
+	user seat, in a unit           24241                2                  0
+	user seat, top level             652               41                  0
+	native seat, in a unit         90018              708                  0
+	native seat, top level          8130              825                 54
+
+Two corpus sites at the user seat in units. That is the first shape by
+construction — region_desc.go's `k` pair is a user-fn dispatch in a fn
+unit — and it is the smallest, so the mechanism lands judged by the
+differential over rows it barely touches and by rows written for it. The
+native seat's 708 are the next slice's, on the same op.
+
+### What routing changes, and what it deliberately does not
+
+A routed call is lowered `DISPATCH_GENERIC q` (a `Program.Generics` entry:
+the region, the committed unit, the result count) in place of `CALL_USER`.
+The operands STAY PUSHED: they are the record's claim, the sim accounting
+is the call's, and the VM pops exactly `NFwd` of them. A routed call is
+never tail-marked.
+
+Routing retires the FROZEN NOTE of each read it makes live
+(`unfreezeRead`): `NoteFrozenRead` now counts reads per name, and a name
+leaves a unit's `frozen`/`bakes` tables only when every read of it in the
+unit is routed. So the binding-sensitive memo no longer re-records `go`
+for a rebind of `k` — the dispatch honours it — and the escaping latch no
+longer refuses it. The CALL-TARGET bake (`noteBakedCallTarget`) is
+untouched: the route makes the OPERAND side live and leaves the target as
+it was, so a redefinition of the callee between record and run is still
+the memo's to re-record or the latch's to refuse. That is also why the
+VM's unit identity can be SHAPE (the same arity and declared parameter
+types, `unitMatchesSig`) rather than the implementation identity the poly
+seat compares: the target is guarded upstream. The implementation
+identity joins the spec when the escaping shapes route.
+
+### The plan matcher moves onto the seam
+
+`Engine.MatchSignature` — the plan-level matcher that runs the
+per-candidate forward scan and the stack match and returns the
+signature, its positions and the speculative slot — was an Engine method
+over `e.Tape`, `e.Pointer`, `e.Registry`. It is now `core.PlanMatch(h, win,
+reg, fn, w, resolved, pointer, insideForward, checkActive, compiling)` in
+core/go/collect_plan.go, moved TEXTUALLY (receiver fields to parameters:
+`resolvedIndicesBeforeInto` became the same walk over an explicit window),
+with the Engine's method a three-line seat that computes its per-dispatch
+facts and calls it. gocyclo is unchanged (68, under the cap of 70); the
+five arity comparisons the census counted in engine.go are now counted in
+collect_plan.go. This is the same extraction discipline CollectForward
+and CollectCandidateScan were held to: "compiled code must work exactly
+the same as interpreted" does not survive two copies of the rule that
+decides which signature a call takes.
+
+### The op, arm by arm (eng/go/vm_generic.go)
+
+The window is laid out as the interpreter's tape when stepWord reaches
+the word: the FRAME's resolved values below (`stack[frameBase:]`, minus
+the popped claim), the word at `pointer`, the forward tokens after it — a
+claimed value slot presenting the pushed operand (`stack[top-i]` is
+position i), a live word slot its token, a slot beyond the claim its
+token. `CollectForward` walks it (a decline → defer), `PlanMatch` matches
+it, and the plan's positions resolve as the arrival loop resolves them: a
+forward position's token (a word to its live binding), a stack position's
+value. Then:
+
+- the committed unit, entered exactly as OpCallUserPoly enters a matched
+  arm, when the live match is a boru signature of its shape;
+- a native handler, called directly, when the live binding is one (the
+  module-call gate, StripAscribed, the result-count claim, screenResults —
+  callPolyIn's discipline);
+- a DESIGNED DEFER for every other outcome, each a named site the
+  interp-entry census counts: `vm:generic-unbound` (no binding names the
+  lead), `vm:generic-declined` (the walk needs an evaluation),
+  `vm:generic-no-match` (the interpreter's rich signature_error is built
+  from its tape), `vm:generic-speculative` (the strict-barrier strand,
+  likewise), `vm:generic-word-form` (a `/v` or `/u` word in the claim),
+  `vm:generic-unbound-slot`, `vm:generic-nout-drift`,
+  `vm:generic-foreign-unit` (a boru signature the program holds no unit
+  for).
+
+### Measured
+
+	                                 before (63)      after (64)
+	differential                6556 rows, 0 mismatches   unchanged
+	coverage                    7475 / 0 / 0              unchanged
+	region table                124401                    unchanged
+	collect oracle              47633 reproduced, 2 diverged (NUR143)   unchanged
+	routed sites in the corpus  0                         2
+
+The `k` pair, end to end (lang/go/region_generic_e2e_test.go), every row
+judged against the interpreter and every unit disassembled to show
+`DISPATCH_GENERIC` where `CALL_USER` was:
+
+	def w fn [[a:Any b:Any][Any][a]]  def k 5  def go fn [[][Any][w k 1]]
+	  go                                   5
+	  go  def k 7  go                      5 7     the same bytecode answers the rebind
+	  def h go/v  (h)  def k 7  (h)        5 7     the ESCAPED unit answers it too
+	  go  def k fn [[][Integer][9]]  go    the strict-barrier signature_error, identical on both lanes
+	def w fn [[a:Integer b:Integer][Integer][a add b]]  def k 5  def go fn [[n:Integer][Integer][w k n]]
+	  go 1  def k 10  go 1                 6 11    a frame local beside the live slot
+
+The third row is the escaping-unit acceptance test region_desc.go named:
+before this increment `(h)` after the rebind answered 7 only because the
+stored fn value applied on the interpreter island; now `h/0` is a
+compiled unit whose dispatch of `w` reads `k` live.
+
+### What this does not do, stated
+
+The native seat (708 drivable sites in units) is not routed. A no-match
+and a stranded forward DEFER rather than raise the interpreter's
+diagnostic — the strict-barrier text (`strandedForwardError`) is built
+from tape state and is the next extraction. Groups in the span are not
+driven (the host declines evaluations). Top-level dispatches keep their
+bakes by design. The stored-handler latch, family L and NUR037 are
+untouched — the binder half. None of this is hidden: each is a defer site
+with a name, or a shape the census counted.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8131,3 +8266,4 @@ position than the construct that produced the binding.
 | `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |
 | `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor ; corrected in review: a zero-arg candidate as a zero-length claim, the container-identity agreement rule over a refined binding (`TestRegionOracleZeroArgCandidate`, `TestRegionOracleContainerIdentity`), `core/go/same_container_test.go` (identity where `ExactEqual` falls through, NUR142), and the lane's error-parity check with the module-flex snapshot rows ledgered (NUR143) |
 | `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |
+| `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |

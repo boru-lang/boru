@@ -421,6 +421,24 @@ const (
 	// the record over the whole corpus — before OpDispatchGeneric routes a
 	// dispatch through a descriptor instead of beside one.
 	OpCollect
+	// OpDispatchGeneric is the generic lane's first ROUTED dispatch (Stage 4,
+	// §6.2/§6.5): Arg indexes Program.Generics, whose entry names the region
+	// descriptor the dispatch is driven from and the compiled unit the check
+	// pass committed to. The VM lays the descriptor's window out as the
+	// interpreter's tape — the resolved stack values, the word, the forward
+	// tokens (a claimed value slot presenting the operand the lowering
+	// pushed, a live word slot its token) — walks it with the kernel's own
+	// collection (CollectForward) and matches it with the kernel's own plan
+	// matcher (PlanMatch), so a rebinding between two executions of the
+	// region is honoured because the lookup is performed, not baked. The
+	// claimed operands the lowering pushed are popped (they were the
+	// record's claim; the live one may differ) and the dispatch proceeds
+	// over the live operands: the committed unit when the live match is its
+	// signature, a native handler when the live binding is one, and a
+	// designed defer (vmDefer) for every shape the first slice does not
+	// answer — a no-match, a speculative slot, a unit the program does not
+	// hold.
+	OpDispatchGeneric
 
 	// OpBindTyped is the runtime validate/reparent step of a typed value-def
 	// (`def x:Pos n`) whose constraint is a REFINEMENT — a predicate type, a
@@ -615,6 +633,7 @@ var opcodeNames = [...]string{
 	OpPushConstFresh:       "PUSH_CONST_FRESH",
 	OpPushConstFreshLocal:  "PUSH_CONST_FRESH_LOCAL",
 	OpCollect:              "COLLECT",
+	OpDispatchGeneric:      "DISPATCH_GENERIC",
 	OpBindTyped:            "BIND_TYPED",
 	OpCallDynMethod:        "CALL_DYN_METHOD",
 	OpLookupDynScope:       "LOOKUP_DYN_SCOPE",
@@ -1055,6 +1074,19 @@ type DispatchSpec struct {
 	Pos        core.SrcPos
 }
 
+// GenericSpec describes one OpDispatchGeneric (see the opcode doc): the
+// region descriptor the dispatch is driven from, the compiled unit the
+// check pass committed the call to (the user-fn seat's CALL_USER target —
+// entered when the live match selects its signature), and the result
+// count the record declared, which the live dispatch must reproduce for
+// the stack discipline the lowering assumed to hold.
+type GenericSpec struct {
+	Region int
+	Unit   int
+	NOut   int
+	Pos    core.SrcPos
+}
+
 // DynMethodSpec is one OpCallDynMethod's shape claim (Stage M2c): the member
 // word name (diagnostics only — dispatch is over the runtime VALUE, never the
 // name), the arity the check-mode match consumed, and the result count the
@@ -1086,6 +1118,8 @@ type Program struct {
 	// (region_desc.go). Peer to Dispatches. Nil for a program with no
 	// generically-lowered dispatch.
 	Regions []RegionDesc
+	// Generics backs OpDispatchGeneric: one entry per routed dispatch.
+	Generics []GenericSpec
 	// ClosureRet carries a pushed closure's CALLBACK return contract, keyed by
 	// the pc of its OpPushClosure. Keyed by pc rather than by unit because the
 	// unit is SHARED across fn values with identical bodies and inputs — the
@@ -1509,6 +1543,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " x%-3d ; trap %s", in.Arg, p.Traps[in.Arg].Code)
 		case OpCollect:
 			fmt.Fprintf(sb, " r%-3d ; collect oracle over %s", in.Arg, p.Regions[in.Arg].Word)
+		case OpDispatchGeneric:
+			gs := p.Generics[in.Arg]
+			fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (unit f%d)", in.Arg, p.Regions[gs.Region].Word, gs.Region, gs.Unit)
 		case OpReverse:
 			fmt.Fprintf(sb, " n%-3d ; reverse top %d", in.Arg, in.Arg)
 		case OpInterp:

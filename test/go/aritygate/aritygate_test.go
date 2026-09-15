@@ -68,7 +68,13 @@ var pinnedAritySites = map[string]int{
 	// ── The matcher and its machinery: reading arities to MATCH a signature
 	//    is the one argument rule (eng/go/CLAUDE.md, "Signature Ordering"),
 	//    not an exception to it.
-	"core/go/engine.go":       33,
+	// 33 -> 28: the plan-level matcher moved to core/go/collect_plan.go
+	// (PlanMatch, the sixty-fourth increment) with its five comparisons —
+	// the per-candidate arity reads that fill positions from the forward
+	// scan and the stack, the argument rule itself. The sites did not
+	// change; the file did.
+	"core/go/engine.go":       28,
+	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
 	"core/go/match.go":        1,
 	"core/go/fnsig.go":        3,
@@ -108,7 +114,10 @@ var pinnedAritySites = map[string]int{
 	// capture slots too and reading it whole sent every capturing closure
 	// to the island (the twenty-eighth increment). The census's pattern no
 	// longer sees the comparison; the site and its meaning are unchanged.
-	"eng/go/vm.go": 11,
+	// 11 -> 12: the OpDispatchGeneric arm enters the committed unit exactly
+	// as the OpCallUserPoly arm above it does — the same `i < fn.NParams`
+	// loop over the frame's PARAM slots (the sixty-fourth increment).
+	"eng/go/vm.go": 12,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -142,6 +151,16 @@ var pinnedAritySites = map[string]int{
 	// a given arity may do; a fn-local fn of any arity is scanned the same
 	// way against the synthetic signature.
 	"eng/go/region_oracle.go": 2,
+	// The routed dispatch (vm_generic.go, the sixty-fourth increment):
+	// unitMatchesSig asks whether the LIVE matched signature is of the
+	// committed unit's shape — the same arity (`sig.TotalArgs() !=
+	// fn.NArgs`), the guard on the slice it then walks (`len(fn.Params) <
+	// fn.NArgs`) and the walk's own bound (`i < fn.NArgs`), comparing the
+	// declared types position by position. Reading a matched signature's
+	// shape is the argument rule's own output (the same reading
+	// callDynApply and dynApplyEnter make above); a fn of any arity takes
+	// the same path.
+	"eng/go/vm_generic.go": 3,
 
 	// ── NUR100 §1, a NAMED DIVERGENCE: RunPredicate decides whether a
 	//    function may act as a predicate at all by counting its parameters.
