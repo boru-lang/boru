@@ -8246,6 +8246,78 @@ extracting the strict-barrier and no-match builders from tape state as
 `PlanMatch` was extracted — and the binder half (the stored-handler
 latch, family L, NUR037).
 
+## The routed dispatch raises its own diagnostics (2026-09-15, the sixty-sixth increment)
+
+The op's three designed defers that were not limits of the WINDOW but
+limits of where the diagnostic was BUILT — a no match, a strict-barrier
+strand, an unbound slot — are raises now. The interpreter builds each from
+its tape at the word (`sigError`, `strandedForwardError`,
+`undefinedWordError`, all Engine methods over `e.Tape` and `e.Pointer`),
+and the routed op's window IS that tape: the frame's resolved values, the
+word, the forward tokens. So the derivations moved onto the seam
+(core/go/region_diag.go — `NoMatchOverWindow` over `ReorderCandidates` /
+`ReorderForwardCandidates`, `StrandedForwardDiag` with
+`BarrierReceiverWord`, `UndefinedWordDiag` with `DidYouMeanOver`), the
+engine's methods became seats over them, and the op raises the same error
+byte for byte.
+
+### Why a raise, and what reaches it
+
+A defer is slow and never wrong only while the interpreter can be re-run.
+An effect already performed FENCES that re-run (core/go/effects.go), and
+the user then sees the defer's own internal error. On the sixty-fifth
+increment's tree as first built this was a program:
+
+	print 1  def w fn [[a:Integer b:Integer][Integer][a]]  def k 5  def go fn [[][Integer][w k 1]]  go  def k "x"  go
+	  interpreted -> signature_error: cannot call `w` — no signature matches the arguments
+	  compiled     -> internal_error: DISPATCH_GENERIC at w: no live signature matches; deferring …
+
+— the route had retired the memo's key with the latch's note, so the
+rebind was never re-recorded and the stale unit met it live. The review
+of #461 put the key back, and with it every such rebind is the CHECK
+PASS's: `go`'s second call re-records the unit and the check pass raises
+the interpreter's own error before anything runs; the escaped unit's
+apply (`(h)`) is analysed too. Measured after that fix, no program
+reaches the op's live no-match, strand or unbound slot — the seven
+shapes that did (both seats, escaped and not, with and without an effect
+first) each fail at check with the interpreter's error, and no
+`vm:generic-*` site fires (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`).
+
+The raise stands for the shape the check pass cannot see — none today,
+which is the measured state, not a guarantee: a memo relaxed for a class
+the latch alone guards, a stored ref invoked after a rebind. When one
+arrives the op answers with the interpreter's diagnostic rather than an
+internal error behind a fence; and the three defer sites are gone from
+the census's vocabulary, replaced by raises a hand-built window reaches
+at the seam.
+
+### The tape-only layers, and why the window owes none of them
+
+`sigError` adds a void-argument-group arm (`voidGroups` — a paren in the
+argument range that produced nothing) and the fn-shape typed-binding hint
+(`IsFnShapeTypedBindingContext` — the failing dispatch inside a `def`'s
+own forward collection over a fn-shape typed name). A drivable span has no
+group, and the strict barrier forbids a routed dispatch inside another
+word's pending collection, so neither arm can fire where the op raises.
+`undefinedWordError` adds the pending-`def` hint (the collecting word is
+`def` itself) and the void-group hint: the second is the same
+impossibility, the first fires exactly when the routed LEAD is `def`, so a
+`def` lead keeps the unbound-slot defer. The speculative arm keeps its
+defer for a window whose speculative slot is not a word — an arm
+`PlanMatch` cannot produce, kept as the honest fallback and allow-listed.
+
+### Measured
+
+Every gate unchanged: the corpus never reaches a live no-match, strand or
+unbound slot (the defer census stays at its five poly bails, none
+generic). The seam pins each raise — the no-match with the interpreter's
+text, the strand with its "still waiting for 2 argument(s)" and the
+barrier-receiver note, the unbound slot's undefined_word — and the
+`def`-lead defer (`TestDispatchGenericDefers`); the end-to-end pin says
+which programs would have reached them and that the check pass now
+diagnoses each first. The arity census moved one comparison from
+engine.go to region_diag.go.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8517,3 +8589,4 @@ position than the construct that produced the binding.
 | `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
+| `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first |

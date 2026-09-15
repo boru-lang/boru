@@ -92,14 +92,14 @@ func TestFailingTupleStopsAtEngineMarkers(t *testing.T) {
 	}
 	e.Tape = NewTape([]Value{NewWord("g"), NewInteger(3), dc, NewInteger(9)}, StackHeadroom)
 	e.Pointer = 0
-	if got := reorderForwardCandidates(e.Tape, e.Pointer); len(got) != 1 {
+	if got := ReorderForwardCandidates(e.Tape, e.Pointer); len(got) != 1 {
 		t.Errorf("the written tuple stops at the frame marker: %v", got)
 	}
 	if got := e.rematchWritten(); len(got) != 1 {
 		t.Errorf("the check-time twin stops there too: %v", got)
 	}
 	e.Tape = NewTape([]Value{NewWord("g"), dc}, StackHeadroom)
-	if got := reorderForwardCandidates(e.Tape, 0); len(got) != 0 {
+	if got := ReorderForwardCandidates(e.Tape, 0); len(got) != 0 {
 		t.Errorf("a marker right after the word leaves an empty tuple: %v", got)
 	}
 }

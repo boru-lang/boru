@@ -73,7 +73,14 @@ var pinnedAritySites = map[string]int{
 	// the per-candidate arity reads that fill positions from the forward
 	// scan and the stack, the argument rule itself. The sites did not
 	// change; the file did.
-	"core/go/engine.go":       28,
+	// 28 -> 27 (the sixty-sixth increment): barrierReceiverWord's one
+	// comparison (`s.BarrierPos < s.TotalArgs()` — does any overload read a
+	// slot from the enclosing stack, for the strict-barrier diagnostic's
+	// sequential-spelling note) moved to core/go/region_diag.go as
+	// BarrierReceiverWord, where the routed dispatch raises the same
+	// diagnostic from its window. The site did not change; the file did.
+	"core/go/engine.go":       27,
+	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
 	"core/go/match.go":        1,
