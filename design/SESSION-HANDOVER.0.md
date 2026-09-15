@@ -82,12 +82,26 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–63 are on `main`; increment 64 is in review (#460) and 65
-is stacked on it. The most recent landings: #457 (increment 61, the poly
-seats, 2026-09-15), #458 (increment 62, the COLLECT oracle, 2026-09-15)
-and #459 (increment 63, the twin-carrier fix, 2026-09-15).
+Increments 1–66 are on `main`. The most recent landings: #460 (increment
+64, the first routed dispatch), #461 (increment 65, the native seat routes)
+and #462 (increment 66, the routed dispatch raises its own diagnostics),
+all 2026-09-15.
 
 ## What is in flight
+
+**Increment 67, the speculative undef refuses (2026-09-15, built on 66).**
+The binder half's first slice, by measurement: NUR144's loop-body undef
+was one member of a class — an `undef` of an enclosing binding from inside
+any speculative region (a branch arm, a loop, each or while body, an error
+handler, a `do` inside a loop, a fn body) is one the check pass keeps in
+its model (the wrapped-undef FP class), so the compiled program never
+popped the binding and every later read stayed the pass's bake; a `while`
+whose condition read the name never terminated. The recorder now refuses
+at the carried-undef site (one site, two shapes; NUR145 records the class,
+NUR144 is resolved under it), every row falls back with parity, in-region
+undefs still compile, and no corpus row is touched. What the binder half
+owes — the placed transition and the live reads — is stated on NUR145 and
+the site's disposition row.
 
 **Increment 66, the routed dispatch raises its own diagnostics (2026-09-15,
 built on 65).** A no match, a strict-barrier strand and an unbound slot

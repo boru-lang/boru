@@ -4977,20 +4977,44 @@ func (es *EmitState) carriedSlot(name string) (int, bool) {
 	return -1, false
 }
 
-// RefuseCarriedUndef marks the program uncompilable when `undef` targets a
-// name an active armed loop carries: the undef exposes the PREVIOUS binding
-// while the carried slot still holds the rebound value, so compiled reads
-// would diverge from the interpreter. An undef of any other name is
-// untouched.
+// RefuseCarriedUndef marks the program uncompilable when an `undef` is one
+// the compiled lane cannot place — one site, two shapes, both the binder
+// half's:
+//
+//   - the undef targets a name an active armed loop carries: the undef
+//     exposes the PREVIOUS binding while the carried slot still holds the
+//     rebound value, so compiled reads would diverge from the interpreter;
+//   - the undef targets an ENCLOSING binding from inside a speculative
+//     region (a branch arm, a loop or each body, an error handler, a fn
+//     body — core.Registry.SpecUndefBlocked): the check pass keeps the
+//     binding in its model so a region that never runs raises nothing (the
+//     wrapped-undef FP class), which means the compiled program never pops
+//     it and every later read stays the pass's bake — `def k 5  if true
+//     [undef k] []  k` answered 5 for the interpreter's undefined_word, a
+//     `while [k eq 5] [undef k]` never terminated, and NUR144's loop-body
+//     undef answered twice (NUR145). This arm runs even while recording
+//     is SUSPENDED (a `do` body inside a loop), as the frozen-read latch
+//     does: the refusal is the program's, not the fragment's.
+//
+// An undef of any other name is untouched.
 func (es *EmitState) RefuseCarriedUndef(name string) {
-	if !es.Active() {
+	if es == nil || !es.Compilable {
 		return
 	}
-	for i := len(es.loopCarried) - 1; i >= 0; i-- {
-		if _, ok := es.loopCarried[i].slots[name]; ok {
-			es.MarkUncompilable("undef of the loop-carried def `" + name + "` (Stage 3)")
-			return
+	reason := ""
+	switch {
+	case es.reg != nil && es.reg.SpecUndefBlocked(name):
+		reason = "undef of the enclosing binding `" + name + "` inside a conditional, loop or fn body: no transition the compiled program can place (the binder half)"
+	case es.Active():
+		for i := len(es.loopCarried) - 1; i >= 0; i-- {
+			if _, ok := es.loopCarried[i].slots[name]; ok {
+				reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
+				break
+			}
 		}
+	}
+	if reason != "" {
+		es.MarkUncompilable(reason)
 	}
 }
 

@@ -1402,6 +1402,12 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// allowed to be. In-region bindings still pop (teardown untouched);
 	// top-level and `do`-body undefs still commit (leak fidelity).
 	if r.SpecUndefBlocked(name) {
+		// The model keeps the binding; the compiled lane cannot place a
+		// transition it never modelled, and its reads of the name stay the
+		// pass's bakes where the interpreter's would fail — so the recorder
+		// refuses the program (RefuseCarriedUndef's blocked arm) and the
+		// interpreter owns the shape (NUR145).
+		r.Check.Recorder().RefuseCarriedUndef(name)
 		return nil, nil
 	}
 	if r.IsBuiltinWord(name) {
