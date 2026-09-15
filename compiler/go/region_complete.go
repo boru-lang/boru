@@ -47,11 +47,39 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 	if es == nil {
 		return nil
 	}
-	off, ok := es.claimRegion(word, pos)
-	d := off.desc
-	if !ok || d == nil || len(d.Slots) == 0 {
+	return es.completeOffer(es.takePendingRegion(word, pos))(args, ops)
+}
+
+// completeHeldRegion is completeRegion for a record that HOLDS its offer — a
+// user-fn call, whose ReturnsFn took the offer out of the pool at entry
+// (HoldRegion). Only such a record may complete a held offer: a native
+// record under the same (word, row, col) — a module arm's `MathUtil.min`
+// beneath a main program's `Lib.min`, both at 2:1 — completes from the pool,
+// where its own offer is, and can never take the outer call's (the review
+// finding on #457). A holder whose hold found nothing completes nothing.
+func (es *EmitState) completeHeldRegion(word string, pos core.SrcPos, args []core.Value, ops []EmitOperand) *RegionDesc {
+	if es == nil {
 		return nil
 	}
+	return es.completeOffer(es.claimHeldRegion(word, pos))(args, ops)
+}
+
+// completeOffer fills the sources of the slots the dispatch actually took
+// forward, over the offer a claim handed back; a miss completes nothing.
+func (es *EmitState) completeOffer(off pendingRegion, ok bool) func(args []core.Value, ops []EmitOperand) *RegionDesc {
+	return func(args []core.Value, ops []EmitOperand) *RegionDesc {
+		d := off.desc
+		if !ok || d == nil || len(d.Slots) == 0 {
+			return nil
+		}
+		return es.fillOffer(off, args, ops)
+	}
+}
+
+// fillOffer is the completion proper: a COPY of the offered descriptor with
+// the claimed prefix's sources filled, NFwd where the claim stopped.
+func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitOperand) *RegionDesc {
+	d := off.desc
 	// The capture is keyed by position and re-offered on every execution, so
 	// completing in place would mutate a descriptor an earlier completion may
 	// already have stamped. Work on a copy; the slots are copied with it.

@@ -366,6 +366,52 @@ func TestRegionCapturePolySeats(t *testing.T) {
 			t.Errorf("descriptor %v — want one with NFwd 0", d)
 		}
 	})
+
+	// A held offer belongs to its HOLDER. The poly user call `Lib.min 1
+	// (id 5)` at 2:1 of the main source holds its offer across its arms'
+	// compilation; the Integer arm's body dispatches the NATIVE
+	// `MathUtil.min a b` at 2:1 of the module source, the same
+	// (word, row, col). That native record completes from the pool, where
+	// its own offer is, and never the outer call's (the review finding on
+	// #457, where it took the outer capture and left the poly call with
+	// nothing): two descriptors for `min` at 2:1, the outer's over the
+	// written `1` and the inner's over the frame locals `a b`.
+	t.Run("a nested native record cannot take a poly user call's held offer", func(t *testing.T) {
+		lib := "import \"boru:math-util\" end def min fn [[a:Integer b:Integer][Integer][\nMathUtil.min a b] [a:Integer b:String][Integer][a]]\nexport \"Lib\" { min: min/v }"
+		src := "import \"/lib.boru\" end def id fn [[x:Any][Any][x]]\nLib.min 1 (id 5)"
+		mem := capabilities.NewMem()
+		mem.Files["/lib.boru"] = []byte(lib)
+		b, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.SetFileOps(mem)
+		prog, reason, _, cerr := b.CompileCheck(src)
+		if cerr != nil || prog == nil {
+			t.Fatalf("the two-source program must compile: reason=%q err=%v", reason, cerr)
+		}
+		if !strings.Contains(prog.Disassemble(), "CALL_USER_POLY") {
+			t.Fatalf("the pin needs the outer call to be a poly user call:\n%s", prog.Disassemble())
+		}
+		var outer, inner int
+		for i := range prog.Regions {
+			d := &prog.Regions[i]
+			if d.Word != "min" || d.Pos.Row != 2 || d.Pos.Col != 1 {
+				continue
+			}
+			switch {
+			case d.NFwd == 1 && d.Slots[0].Source == compiler.SlotConst:
+				outer++
+			case d.NFwd == 2 && d.Slots[0].Source == compiler.SlotLocal && d.Slots[1].Source == compiler.SlotLocal:
+				inner++
+			default:
+				t.Errorf("a descriptor for min at 2:1 with neither call's shape: NFwd %d %+v", d.NFwd, d.Slots)
+			}
+		}
+		if outer != 1 || inner != 1 {
+			t.Fatalf("want the outer poly call's descriptor (1) and the inner native's (1), got %d and %d", outer, inner)
+		}
+	})
 }
 
 // compileRegionProgram compiles src on a fresh instance and fails the test

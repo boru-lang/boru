@@ -5461,7 +5461,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// position, which is why RecordUserCall now takes them: the event's pos
 	// is the first argument's, and a claim keyed by it would miss every
 	// offer.
-	region := es.completeRegion(word, wordPos, args, ops)
+	region := es.completeHeldRegion(word, wordPos, args, ops)
 	for _, cb := range rec.caps {
 		op, ok := es.resolveOperand(cb.Value)
 		if !ok {
@@ -5517,7 +5517,7 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 		}
 		ops[i] = op
 	}
-	region := es.completeRegion(callWord, wordPos, args, ops)
+	region := es.completeHeldRegion(callWord, wordPos, args, ops)
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
 		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region,
 		poly: &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs},
