@@ -435,6 +435,12 @@ type emitUserCall struct {
 	// emitCall.region, riding the event for the same rollback reason, and
 	// appended to Program.Regions at lowerUserCall.
 	region *RegionDesc
+	// generic marks a call the lowering ROUTES through its descriptor
+	// (OpDispatchGeneric) instead of the committed CALL_USER: decided at
+	// record time by routableRegion — a fn-unit dispatch whose claim carries
+	// a live word slot over a span the VM can drive. A generic call is
+	// never tail-marked.
+	generic bool
 }
 
 // emitUserPolySpec is the recorded arm table of one poly user call — the
@@ -1307,8 +1313,12 @@ type fnUnitRec struct {
 	// bakes maps each name to the binding's DefTable generation at the read —
 	// the memo's staleness key — and frozen to WHAT was baked (the escaping
 	// latch's refusal text). Nil until the first such read.
-	bakes  map[string]int64
-	frozen map[string]core.FrozenBake
+	bakes map[string]int64
+	// frozenReads counts the noted reads per name, so a read a routed
+	// dispatch makes live (unfreezeRead) retires the name's bake only when
+	// no other read in the unit still bakes it.
+	frozenReads map[string]int
+	frozen      map[string]core.FrozenBake
 	// variadic marks a VARIADIC-RETURNING fn: its body residual leaves a
 	// runtime-variable count (a `[]`-declared recursive accumulator, an
 	// `if c [] [a b]`). A call to it marks the call result variadic (lowerUserCall)
@@ -5462,6 +5472,11 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// is the first argument's, and a claim keyed by it would miss every
 	// offer.
 	region := es.completeHeldRegion(word, wordPos, args, ops)
+	// A callee with captures keeps its committed call: the captures ride as
+	// trailing CALL_USER operands the routed op has no plumbing for (it pops
+	// the record's claim and nothing else). Decided before routeRegion so a
+	// declined route retires no read.
+	generic := len(rec.caps) == 0 && es.routeRegion(region)
 	for _, cb := range rec.caps {
 		op, ok := es.resolveOperand(cb.Value)
 		if !ok {
@@ -5470,7 +5485,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		}
 		ops = append(ops, op)
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region}})
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region, generic: generic}})
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
 	// the result propagates variadic (a branch arm / body residual carrying it is

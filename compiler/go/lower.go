@@ -3240,6 +3240,18 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		lw.p.Regions = append(lw.p.Regions, *uc.region)
 		lw.emitRegionOracle(len(lw.p.Regions)-1, uc.pos)
 	}
+	if uc.generic {
+		// The routed dispatch (region_route.go): the operands stay pushed —
+		// they are the record's claim, and the VM pops them as such — and
+		// the descriptor drives the dispatch in place of the committed
+		// CALL_USER. The sim accounting is the call's: n consumed, nout
+		// produced, exactly what the record declared and the VM enforces.
+		gi := len(lw.p.Generics)
+		lw.p.Generics = append(lw.p.Generics, GenericSpec{Region: len(lw.p.Regions) - 1, Unit: uc.unit, NOut: uc.nout, NArgs: n, Pos: uc.pos})
+		lw.emit(OpDispatchGeneric, gi, uc.pos)
+		lw.vm = lw.vm[:len(lw.vm)-n]
+		return lw.lowerUserCallResult(ev, uc)
+	}
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.pos)
 		lw.vm = lw.vm[:len(lw.vm)-n]
@@ -3247,6 +3259,13 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	}
 	lw.emit(OpCallUser, uc.unit, uc.pos)
 	lw.vm = lw.vm[:len(lw.vm)-n]
+	return lw.lowerUserCallResult(ev, uc)
+}
+
+// lowerUserCallResult seats a user call's result once the call op is
+// emitted — shared by the committed CALL_USER and the routed
+// DISPATCH_GENERIC, whose result accounting is the same.
+func (lw *lowerer) lowerUserCallResult(ev *EmitEvent, uc *emitUserCall) string {
 	// A value-def local (single result referenced more than once, or an
 	// out-of-order residual forced to a slot): store now, re-push per reference
 	// (references were rewritten to local operands). Mirrors lowerCall.
@@ -3502,7 +3521,7 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 		// A POLY user call (uc.poly != nil, unit -1) is never tail-marked: the
 		// arm is only known at run time, and OpCallUserPoly always pushes a
 		// frame (the caller's RET check must still run over the arm's result).
-		if last.uc.poly == nil && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) {
+		if last.uc.poly == nil && !last.uc.generic && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) {
 			// Tail position requires the call's result to be the fragment's WHOLE
 			// residual — nothing left BELOW it. A multi-value arm (`[n mul 2 m (n
 			// sub 1)]`, where n*2 sits below the recursive call) is NOT tail: a

@@ -2366,6 +2366,45 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if err := vc.collectOracle(p, curCode, pc, &p.Regions[in.Arg], stack, curReg, curDebug); err != nil {
 				return nil, err
 			}
+		case compiler.OpDispatchGeneric:
+			// The routed dispatch (vm_generic.go): the descriptor drives a live
+			// collection and match; the committed unit is entered exactly as
+			// OpCallUserPoly enters a matched arm, a native result lands on
+			// the stack, and every other outcome is a designed defer.
+			if int(in.Arg) >= len(p.Generics) {
+				return nil, vmErrAt(curDebug, pc, "DISPATCH_GENERIC index out of range")
+			}
+			fb := 0
+			if len(frames) > 0 {
+				fb = frames[len(frames)-1].stackBase
+			}
+			ns, unit, sigArgs, err := vc.dispatchGeneric(p, &p.Generics[in.Arg], stack, locals, fb, curReg, curDebug, pc)
+			if err != nil {
+				return nil, err
+			}
+			stack = ns
+			if unit < 0 {
+				break
+			}
+			fn := &p.Fns[unit]
+			nl := make([]core.Value, fn.NLocals)
+			copy(nl, sigArgs)
+			for i := 0; i < fn.NParams && i < len(nl); i++ {
+				nl[i] = core.StripAscribed(nl[i])
+				if nl[i].Parent.Equal(core.TList) && !nl[i].Quoted {
+					nl[i].Quoted = true
+				}
+			}
+			if err := checkParamContract(r, fn, nl); err != nil { //covergate:allow the live match (PlanMatch, then unitMatchesSig) already proved each arg against the SAME declared types and the same signature patterns the unit's contract re-checks, and a stripped ascription still conforms where its widened view did; the guard is kept for the entry's symmetry with OpCallUserPoly, whose subset match can admit what the unit's contract rejects (§compiler)
+				return nil, stampAt(err, curDebug, pc, r)
+			}
+			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
+			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
+			nameFrameFns(fn, nl)
+			vc.pushFrameArgs(nl, fn.NArgs)
+			locals = nl
+			enterUnit(unit)
+			pc = -1
 		case compiler.OpPushClosure:
 			nc := p.Fns[in.Arg].NCaptures
 			if len(stack) < nc {

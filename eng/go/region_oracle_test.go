@@ -337,3 +337,18 @@ func TestRegionOracleDeclinesAtACompoundStop(t *testing.T) {
 		t.Errorf("a claim past a compound stop is the host's limit, not the record's error: %+v", ev)
 	}
 }
+
+// The lead's modifiers ride the descriptor (RegionDesc.Mods, review of
+// #460) and the oracle hands them to the walk as the record's own walk had
+// them: the `k` pair with `/f` on the lead reproduces exactly as the plain
+// lead does (TestRegionOracleReproducesTheKPair). The collection walk the
+// oracle runs reads the lead's NAME; the modifiers decide the plan-level
+// match, which the routed op runs and pins the contrast of
+// (TestDispatchGenericReviewGuards, "the lead's modifiers are honoured").
+func TestRegionOracleWalksWithTheLeadModifiers(t *testing.T) {
+	vc, reg, d, stack := oracleWorld(t)
+	d.Mods = &core.WordInfo{Name: "w", ArgCount: -1, ForceForward: true}
+	if ev := oracleRun(t, vc, reg, d, stack); ev.Outcome != "reproduced" {
+		t.Fatalf("`w/f k 1` over an all-forward overload reproduces the two-slot claim: %+v", ev)
+	}
+}
