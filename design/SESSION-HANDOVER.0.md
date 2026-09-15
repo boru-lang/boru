@@ -99,7 +99,10 @@ with no new parameter. Inert and measured inert: differential 6556 rows,
 record-time tally by seat says the native POLY seat (66331 claims) is as
 large as the mono seat (65400) while the user-poly seat claims 2 in the
 whole corpus. Narrative and table: the sixty-first-increment section of
-FULL-COMPILATION-HANDOFF.0.md.
+FULL-COMPILATION-HANDOFF.0.md. Review correction (Codex on #457): a held
+offer belongs to its HOLDER — a nested native record under the same
+(word, row, col) completes from the pool alone, never the outer user
+call's held offer; pinned at the seam and over a two-source program.
 
 **Increment 60, the generic lane's first slice (2026-09-14, in review as
 #456).** Phase B's `completeRegion` claims at the USER-CALL seat as well
