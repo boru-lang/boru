@@ -8069,7 +8069,7 @@ bakes by design. The stored-handler latch, family L and NUR037 are
 untouched — the binder half. None of this is hidden: each is a defer site
 with a name, or a shape the census counted.
 
-## The native seat routes: 677 corpus dispatches through their descriptors (2026-09-15, the sixty-fifth increment)
+## The native seat routes: 676 corpus dispatches through their descriptors (2026-09-15, the sixty-fifth increment)
 
 The sixty-fourth increment built the op and proved it on two corpus
 sites; this one gives it the seat the census said carries the volume.
@@ -8089,8 +8089,9 @@ table (`GenericSpec.LiveSet` — the check pass committed to no overload,
 so any overload the live match selects runs and its result count is
 checked after, exactly CALL_NATIVE_POLY's discipline, `vm:poly-nout-drift`
 there and `vm:generic-nout-drift` here). The poly record is where the
-volume is — 660 of the 677 routed dispatches — and the routed op is no
-weaker than the seat it replaces at either. A boru signature the live
+volume is — 660 of the 677 routed dispatches as first measured, 676 at
+the head — and the routed op is no weaker than the seat it replaces at
+either. A boru signature the live
 lookup returns instead is the foreign-unit defer.
 
 ### The drivability rule tightened, and why
@@ -8102,13 +8103,15 @@ token over as it stands. The COLLECT oracle had already named the shape
 ("declined at a compound stop"); `regionDrivable` now refuses any
 container token in the span (`core.HasContainerIdentity`), and the census
 moved accordingly: 708 native and 2 user sites were live-and-drivable
-under the looser rule, 677 route under this one. Pinned both ways (`size
-[k 1]` keeps its committed call; `add k 1` routes).
+under the looser rule, 677 routed under this one as first built, and 676
+route at the head (the review's declines, below, keep one corpus site on
+its committed call). Pinned both ways (`size [k 1]` keeps its committed
+call; `add k 1` routes).
 
 ### Measured, whole corpus
 
 	                          before (64)      after (65)
-	routed dispatches                2             677   (TestRegionTableWellFormed, floor 600)
+	routed dispatches                2             676   (TestRegionTableWellFormed, floor 600; 677 before the review's declines)
 	differential          6556 rows, 0 mismatches    unchanged
 	coverage              7475 / 0 / 0               unchanged
 	region table          124401                     unchanged
@@ -8223,8 +8226,9 @@ reproduced; the fixes:
    registry the dispatch resolved in (`RegionDesc.Reg`, as `PolyRef.Reg`
    does) for the op's lookup.
 
-None of the three changes a corpus gate; the routed count is unchanged at
-677. Pinned at the seam (`TestRouteRegionRetiresOnlyTheRoutedReads` — the
+None of the three moves a corpus gate; the routed count moves by one,
+677 to 676 — a corpus site one of the declines keeps on its committed
+call. Pinned at the seam (`TestRouteRegionRetiresOnlyTheRoutedReads` — the
 key kept, `TestValueDivergingWordDeclines`,
 `TestCompletionMarksAnUnheldLeadLocal`, the descriptor-registry lookup in
 `TestDispatchGenericGatesAndDeliveries`) and end to end over the three

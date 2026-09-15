@@ -96,9 +96,10 @@ native dispatch with a live word slot over a drivable span lowers
 the live handler when it is in the record's own set — the mono record's
 one signature (`GenericSpec.Impl`) or the poly record's live table
 (`GenericSpec.LiveSet`, CALL_NATIVE_POLY's discipline, where 660 of the
-677 live). Drivability tightened — no list or map literal in the span,
-whose contents the interpreter evaluates on arrival. 677 corpus
-dispatches route (floor 600 in `TestRegionTableWellFormed`), every gate
+677 first measured live). Drivability tightened — no list or map literal
+in the span, whose contents the interpreter evaluates on arrival. 676
+corpus dispatches route at the head (677 before the review's declines;
+floor 600 in `TestRegionTableWellFormed`), every gate
 unchanged, and no defer site fired over the corpus. Found off the corpus
 and closed in the same PR: a routed slot is a dynamic-scope read, so a
 routed name joins `routedNames` (the binder's channel beside
@@ -285,7 +286,7 @@ as #455 (`6ea8ac1`).
    live read no longer meets a model. The first ROUTED dispatch is 64:
    `OpDispatchGeneric` at the user seat inside fn units, the escaping-unit
    `k` pair answered by the same bytecode across a rebind; 65 gives the
-   op the native seat (677 corpus dispatches routed, no defer fired).
+   op the native seat (676 corpus dispatches routed, no defer fired).
    Next on the same op: the diagnostics it still defers (the
    strict-barrier strand, the no-match) by extracting their builders from
    tape state as PlanMatch was extracted; then the binder half.

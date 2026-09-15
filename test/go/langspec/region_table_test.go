@@ -51,7 +51,7 @@ import (
 // corpus dispatches lower THROUGH their descriptor (OpDispatchGeneric). UP
 // only — a fall means a seat stopped routing or the drivability rule
 // narrowed without a measurement saying so.
-const routedFloor = 600 // 677 measured (2026-09-15, the sixty-fifth increment: the user seat's 2 and the native seat's 675)
+const routedFloor = 600 // 676 measured at the head (2026-09-15, the sixty-fifth increment: the user seat's 2 and the native seat's 674; 677 as first built, before the review of #461's declines kept one corpus site on its committed call)
 
 type regionTally struct {
 	rows, withRegions, descs int
