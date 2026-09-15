@@ -49,15 +49,6 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 // ledger entry the walk no longer produces fails it too (the entry is stale
 // and must be retired with the fix that retired it). The two kinds:
 //
-//   - the twin-carrier class: a top-level `def` of a COMPUTED value whose
-//     twin replays the check-pass binding — the analysis's carrier or
-//     prototype (`[Integer]`, a Log.logger prototype with empty fields) —
-//     where the lowering pushed the runtime value. IsConcrete reads the
-//     compound as concrete, so no OpBindGlobal partner is emitted and the
-//     registry holds the prototype for the rest of the run. Unobservable
-//     today only because every read of such a def is baked; a LIVE read
-//     (the generic lane's, a dynamic body's) would see the prototype. Filed
-//     for the twin lowering, not this lane.
 //   - a predicate-typed param the check pass claims optimistically and the
 //     runtime scan rejects (`f 5` with n:Even): an ERROR row on both lanes,
 //     and the descriptor records the plan the check pass made (NUR141).
@@ -70,15 +61,19 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 //     materialisation guard); the operand is still not the object the
 //     interpreter reads (NUR143). Found the moment the agreement test
 //     became identity (review of #458).
+//
+// RETIRED (the sixty-third increment, NUR140 resolved): the twin-carrier
+// class — six rows where a top-level `def` of a COMPUTED compound (`def b
+// [add 1 2]`, `def l (Log.logger "http")`, the span and counter handles)
+// replayed the check pass's MODEL of the value (`[Integer]`, a module
+// prototype) because IsConcrete read the model as a real value and no
+// OpBindGlobal write-back was emitted. The write-back is now decided by
+// provenance (compiler/go/lower.go's rootBindWritesBack), every one of the
+// six reproduces, and the class is pinned across requests in
+// lang/go/bytecode_globalbind_test.go.
 var regionOracleFindings = map[string]string{
 	"module-sift.tsv:L69 keys@1078:16": "module-flex snapshot: `keys sift-path-detect` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
 	"module-sift.tsv:L74 keys@1042:55": "module-flex snapshot: `keys sift-catalog` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
-	"edge-quote-1.tsv:L64 size@1:17":   "twin-carrier: def b [add 1 2] replays [Integer]",
-	"module-log.tsv:L52 typeof@1:49":   "twin-carrier: def l (Log.logger \"http\") replays the logger prototype",
-	"module-log.tsv:L65 typeof@1:45":   "twin-carrier: def s (Log.span \"op\") replays the span prototype",
-	"module-log.tsv:L71 log-end@1:96":  "twin-carrier: def s (Log.span \"m\") replays the span prototype",
-	"module-log.tsv:L76 typeof@1:47":   "twin-carrier: def c (Log.counter \"x\") replays the counter prototype",
-	"module-log.tsv:L84 log-end@1:67":  "twin-carrier: def a (Log.span \"a\") replays the span prototype",
 	"fnpred.tsv:L50 f@1:80":            "a predicate param (n:Even) claimed by the check pass, rejected by the runtime scan; an ERROR row on both lanes",
 }
 

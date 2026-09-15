@@ -227,6 +227,56 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 	return ""
 }
 
+// rootBindWritesBack reports whether a ROOT-unit `def` needs the
+// cross-request write-back (OpBindGlobal): whether the binding the run
+// holds — the check pass's install, kept or replayed by its twin — is NOT
+// the value the program computes. Its binding persists past the run via
+// keep-on-compile, so a stale one is what the next request (or any live
+// read) resolves: `def h (Model.new …)` then `Model.stop h` raised
+// model_bad_handle over a kept CARRIER, and the COLLECT oracle's first
+// corpus walk found the twin-carrier class beside it — `def b [add 1 2]`
+// kept `[Integer]` where the lowering pushed `[3]`, and `def l (Log.logger
+// "http")` kept the module's PROTOTYPE, empty fields and all, because the
+// check pass MODELS a computed compound rather than computing it, and
+// IsConcrete read each model as a real value.
+//
+// The question is therefore not whether the recorded value is concrete but
+// where it came from:
+//
+//   - a bare type node (`def x None`) is self-representing in both engines;
+//   - a LITERAL binding (no producing event) is the value itself, and only
+//     a carrier stripped from it (`def x <a/>`) needs the write-back;
+//   - a COMPUTED value (a producing event) is the runtime producer's
+//     result, and the check pass's binding is that producer's MODEL of it —
+//     exact only for an inert SCALAR, where the recorder's fold parity
+//     holds (the fold IS the value the run pushes); a compound, a
+//     carrier, a handle, an instance is the model, and the write-back
+//     replaces it with what the run computed. "Scalar" is the payload
+//     kinds with no interior — a Micron is inert (immutable) but has
+//     FIELDS, and a computed field is a carrier the model kept (`make
+//     Stampton {n:(TimeUtil.now …)}`, review of #459), so it writes back.
+//
+// collectRootBindConsumes mirrors this exactly (it decides whose producer
+// keeps its value on the stack for the bind to pop), so both read one rule.
+func rootBindWritesBack(d *emitDynBind) bool {
+	if !d.root || core.IsBareTypeNode(d.val) {
+		return false
+	}
+	if d.srcSeq < 0 {
+		return !core.IsConcrete(d.val)
+	}
+	switch d.val.Data.(type) {
+	case core.IntPayload, core.FloatPayload, core.StrPayload, core.BoolPayload, core.AtomPayload,
+		core.PathonPayload, core.NonePayload, core.BigIntPayload, core.DecimalPayload,
+		core.TimePayload, core.DurationPayload, core.TimezonePayload:
+		// A concrete scalar payload: the fold IS the value the run pushes.
+		// (A carrier of a scalar type has no payload and does not reach
+		// this arm — it writes back below, as it always did.)
+		return false
+	}
+	return true
+}
+
 // lowerDynBind emits the registry-visible twin of a `def` whose name some
 // OpLookupDynScope reads (the DynScopeNames set): push the bound value's
 // operand, then OpBindDynScope pops it into r.Defs under the name (the VM
@@ -246,17 +296,16 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// fire.
 		return ""
 	}
+	// This def's twin, taken now — before any early return — so a later def
+	// of the same name pairs with its own; marked below wherever a
+	// write-back is emitted, because the twin's replay must then leave the
+	// install to the op that has the runtime value (core.ApplyBindTwin).
+	twin := lw.takeTwin(d.name)
 	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]))
-	// A ROOT-unit def of a NON-concrete value additionally needs the
-	// cross-request write-back (OpBindGlobal): its binding persists past the
-	// run via keep-on-compile, and the kept check-pass value is a CARRIER —
-	// the next request (or any interpreter read) would resolve a type
-	// literal where the interpreter binds the runtime value (`def h
-	// (Model.new …)` then `Model.stop h` raised model_bad_handle). A
-	// concrete bound value IS the runtime value (const-fold parity), and a
-	// bare type node (`def x None`) is self-representing in both engines —
-	// each keeps today's faithful binding with no op emitted.
-	needGlobal := lw.es != nil && d.root && !core.IsConcrete(d.val) && !core.IsBareTypeNode(d.val)
+	// A ROOT-unit def whose kept binding is NOT the runtime value
+	// additionally needs the cross-request write-back (OpBindGlobal): see
+	// rootBindWritesBack for the rule.
+	needGlobal := lw.es != nil && rootBindWritesBack(d)
 	if !needDyn && !needGlobal {
 		// DynEnv mode (a dynamic code body compiled — tryRecordDynBody)
 		// widens to EVERY def: the body's runtime sub-run may read any name,
@@ -292,6 +341,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 				Name: d.name, Depth: d.depth, Splice: true, SpliceFromTop: d.spliceDepth,
 			})
 			lw.emit(OpBindGlobal, gi, d.pos)
+			lw.markTwinWrittenBack(twin)
 			lw.note()
 			return ""
 		case d.srcSeq >= 0 && !lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal:
@@ -307,6 +357,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 				Name: d.name, Depth: d.depth, Splice: true, SpliceFromTop: d.spliceDepth,
 			})
 			lw.emit(OpBindGlobal, gi, d.pos)
+			lw.markTwinWrittenBack(twin)
 			for i := len(lw.vm) - 1; i >= 0; i-- {
 				if lw.vm[i].seq == d.srcSeq && lw.vm[i].idx == 0 {
 					lw.vm = append(lw.vm[:i], lw.vm[i+1:]...)
@@ -382,11 +433,49 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.pushOperand(src, d.pos)
 		}
 		lw.emit(OpBindGlobal, gi, d.pos)
+		lw.markTwinWrittenBack(twin)
 		if pop {
 			lw.vm = lw.vm[:len(lw.vm)-1]
 		}
 	}
 	return ""
+}
+
+// noteTwin records a just-lowered PUSH-kind twin as the pending pair for
+// its name; an undef or sig-undef twin pairs with no def and is ignored.
+func (lw *lowerer) noteTwin(idx int) {
+	if idx < 0 || idx >= len(lw.p.BindTwins) {
+		return
+	}
+	tr := &lw.p.BindTwins[idx]
+	if tr.Kind != core.BindDef && tr.Kind != core.BindDefReplace {
+		return
+	}
+	if lw.twinFor == nil {
+		lw.twinFor = map[string]int{}
+	}
+	lw.twinFor[tr.Name] = idx
+}
+
+// takeTwin hands a def its pending twin (-1 for none — a def whose twin
+// was never placed, or a name no twin was lowered under) and clears the
+// pairing.
+func (lw *lowerer) takeTwin(name string) int {
+	idx, ok := lw.twinFor[name]
+	if !ok {
+		return -1
+	}
+	delete(lw.twinFor, name)
+	return idx
+}
+
+// markTwinWrittenBack pairs a def's twin with the OpBindGlobal just
+// emitted for it (core.BindTransition.WrittenBack): the twin's replay then
+// leaves the install to the write-back, which has the runtime value.
+func (lw *lowerer) markTwinWrittenBack(idx int) {
+	if idx >= 0 && idx < len(lw.p.BindTwins) {
+		lw.p.BindTwins[idx].WrittenBack = true
+	}
 }
 
 // seatStoreName seats, on the promoted STORE_LOCAL about to be emitted, the
@@ -460,8 +549,13 @@ type lowerer struct {
 	sigIdx     map[*core.Signature]int
 	vm         []vmSlot
 	variadic   map[int]bool // loop seqs: N runtime values, not one
-	promoted   map[int]int  // value-def locals: producing event seq → frame local slot
-	dead       map[int]bool // single-result value-defs referenced zero times: drop the result
+	// twinFor pairs a root def with its bind twin: the most recent PUSH-kind
+	// twin lowered under each name, taken by the def's own lowering
+	// (takeTwin) so a write-back can mark it (markTwinWrittenBack) and a
+	// later def of the same name pairs with its own twin, never this one.
+	twinFor  map[string]int
+	promoted map[int]int  // value-def locals: producing event seq → frame local slot
+	dead     map[int]bool // single-result value-defs referenced zero times: drop the result
 	// bindConsumes marks DEAD producers whose result a root OpBindGlobal
 	// write-back consumes (Pop mode) instead of the producer-site dead-drop:
 	// the value stays live through the immediately-following evDynBind, which
@@ -935,6 +1029,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 			// transition's stream position (inert until the flip), so neither
 			// the sim nor the residual accounting moves.
 			lw.emit(OpBindTwin, ev.twin.idx, ev.twin.pos)
+			lw.noteTwin(ev.twin.idx)
 		default:
 			reason = "unknown event kind"
 		}
@@ -2365,8 +2460,7 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 			continue
 		}
 		d := ev.dyn
-		if d.root && d.srcSeq >= 0 && dead[d.srcSeq] &&
-			!core.IsConcrete(d.val) && !core.IsBareTypeNode(d.val) {
+		if d.srcSeq >= 0 && dead[d.srcSeq] && rootBindWritesBack(d) {
 			out[d.srcSeq] = true
 		}
 	}

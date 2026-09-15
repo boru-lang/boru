@@ -1803,6 +1803,14 @@ type BindTransition struct {
 	Name  string
 	Pos   SrcPos
 	Depth int
+	// WrittenBack marks a push-kind twin whose def ALSO emitted an
+	// OpBindGlobal (the compiler's lowerDynBind pairs the two): the
+	// write-back installs the RUNTIME value where the interpreter's `def`
+	// would, so the twin's replay must not push the check pass's capture
+	// beside it (ApplyBindTwin). Set by the lowering, never by the ledger —
+	// the ledger records what the check pass did, the flag what the
+	// program will do about it.
+	WrittenBack bool
 }
 
 // NoteBindTransition appends to the ledger.

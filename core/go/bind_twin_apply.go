@@ -13,19 +13,31 @@ package core
 // (test/go/langspec/bind_replay_sandbox_test.go) — is exactly the stack
 // the check pass saw at that moment.
 //
-// THE CARRIER-CLASS SKIP is the one deliberate divergence from a verbatim
-// replay, and it is a PAIRING, not an omission. A top-level def of a
-// non-concrete, non-bare-node value (the captured entry is the check
-// pass's CARRIER, not the runtime value) is exactly lowerDynBind's
-// needGlobal class: that def also emitted an OpBindGlobal, which under the
-// regime runs in Push mode (GlobalBindSpec.Push) and installs the RUNTIME
-// value where the interpreter's `def` would. Twin-then-bind is the stream
-// order (InstallDef notes before RecordDynBind stamps), so the skip leaves
-// the push to the op that has the real value — replaying the carrier AND
-// pushing the runtime value would double-install, and replaying the
-// carrier alone would resurrect the very keep-the-installs staleness the
-// flip exists to remove. The same predicate on the same entry decides both
-// sides, so the pair cannot drift apart.
+// THE WRITE-BACK PAIRING is the one deliberate divergence from a verbatim
+// replay, and it is a PAIRING, not an omission. A top-level def whose kept
+// binding is not the runtime value — a carrier, and since the sixty-third
+// increment any computed compound (rootBindWritesBack, compiler/go/lower.go)
+// — also emitted an OpBindGlobal, which under the regime runs in Push mode
+// (GlobalBindSpec.Push) and installs the RUNTIME value where the
+// interpreter's `def` would. Twin-then-bind is the stream order (InstallDef
+// notes before RecordDynBind stamps), so the skip leaves the push to the op
+// that has the real value — replaying the capture AND pushing the runtime
+// value would double-install (measured in review of #459: `def b [add 1 2]`
+// left two levels, and `undef b` then resolved `b` to the replayed
+// `[Integer]`), and replaying the capture alone would resurrect the very
+// keep-the-installs staleness the flip exists to remove. The pairing is
+// carried on the twin itself (BindTransition.WrittenBack, set by the
+// lowering that emitted the write-back), so the compiler's ONE decision
+// drives both sides where a write-back exists; a predicate re-derived here
+// from the captured entry's shape was how the two drifted apart.
+//
+// THE CARRIER SKIP stands beside it, and it is a different fact: a captured
+// CARRIER is not a value at all — the check pass's placeholder for one —
+// and it is never what the run binds, whether the real install is a
+// write-back, a BIND_DYN_SCOPE inside a loop body (`for 2 [ f  def k 9 ]`,
+// whose body twin captures a carrier and is placed before the loop), or
+// nothing. Replaying it would bind the placeholder; the arm that binds the
+// real value is elsewhere by construction.
 func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 	if r == nil {
 		return
@@ -48,29 +60,29 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 		// own Push-mode OpBindGlobal via the carrier-class skip above, so
 		// a computed replacement still nets zero: twin pops, bind pushes.
 		r.Defs.PopEntry(tr.Name)
-		applyTwinPush(r, tr.Name, entry)
+		applyTwinPush(r, tr, entry)
 	default: // BindDef, BindTypeInstall
-		applyTwinPush(r, tr.Name, entry)
+		applyTwinPush(r, tr, entry)
 	}
 }
 
 // applyTwinPush re-installs one captured push entry, honouring the
-// carrier-class skip documented on ApplyBindTwin. The three install arms
+// write-back pairing documented on ApplyBindTwin. The three install arms
 // are the sandbox harness's proven replay verbatim: a plain value pushes,
 // a minted type binding re-pushes its node (the mint itself was retained
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
-func applyTwinPush(r *Registry, name string, entry DefEntry) {
-	if entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body) {
+func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) {
+	if entry.TypeDef == nil && (tr.WrittenBack || (!IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body))) {
 		return
 	}
 	switch {
 	case entry.TypeDef == nil:
-		r.Defs.Push(name, entry.Body)
+		r.Defs.Push(tr.Name, entry.Body)
 	case entry.Minted:
-		r.Defs.PushType(name, entry.TypeDef, entry.Body)
+		r.Defs.PushType(tr.Name, entry.TypeDef, entry.Body)
 	default:
-		r.Defs.PushTypeAdopted(name, entry.TypeDef, entry.Body)
+		r.Defs.PushTypeAdopted(tr.Name, entry.TypeDef, entry.Body)
 	}
 }
 

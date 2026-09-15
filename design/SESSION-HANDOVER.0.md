@@ -9,9 +9,10 @@ today". Update this file at the end of every increment.
 
 Last updated: **2026-09-15**, when the maintainer ruled the definition of
 done (below, 2026-09-14), the assessment note merged (#453), the disposition census
-merged (#455) and the generic lane's first slice merged (#456); the poly
-seats (increment 61, #457) are in review and the COLLECT oracle
-(increment 62) is built on them. Increments 1–60 are on `main`.
+merged (#455), the generic lane's first slice merged (#456) and the poly
+seats merged (#457); the COLLECT oracle (increment 62, #458) is in review
+and the twin-carrier fix (increment 63) is built on it. Increments 1–61
+are on `main`.
 
 ---
 
@@ -78,18 +79,38 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
-| collect oracle (`TestRegionCollectOracle`) | **47627 reproduced** of 72490 executed (floor 47000; 47464 before review counted the zero-arg claim); 9 findings ledgered by name (NUR140 ×6, NUR141, NUR143 ×2) | floor up only; the ledger pinned in BOTH directions |
+| collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–60 are on `main`; increment 61 is in review (#457) and 62
+Increments 1–61 are on `main`; increment 62 is in review (#458) and 63
 is stacked on it. The most recent
-landings: #451 (increment 58 — measurement and a negative result, no
-graduation), increment 59 (`c34a2fb`, pushed to `main` directly on
-2026-09-11), #453 (the assessment note, 2026-09-14) and #455 (the
-disposition census, 2026-09-14).
+landings: #455 (the disposition census, 2026-09-14), #456 (increment 60,
+the user-call seat, 2026-09-15) and #457 (increment 61, the poly seats,
+2026-09-15).
 
 ## What is in flight
 
-**Increment 62, the COLLECT oracle (2026-09-15, up next, after 61).** The
+**Increment 63, the twin-carrier fix (2026-09-15, built on 62).** The
+oracle's first finding that was not the oracle's own, closed before
+anything is routed: a root `def` of a COMPUTED compound (`def b [add 1
+2]`, `def s (Log.span "m")`) replayed the check pass's MODEL of the
+value because the `OpBindGlobal` write-back was gated on the shallow
+`IsConcrete`. The gate is now `rootBindWritesBack` (compiler/go/lower.go),
+read by both mirrors, and it asks PROVENANCE: a computed value's binding
+is exact only for an inert scalar fold; a compound, a carrier, a handle
+writes back. The six twin-carrier divergences are gone (their ledger
+entries retired; the lane pins the ledger both ways — what remains is
+NUR143's two), the differential and the coverage triple are unchanged,
+and the class is pinned ACROSS
+REQUESTS (`def s (Log.span "m")` compiled, then `Log.end-span s` in the
+next request raised span-mismatch before). Review corrected two edges:
+the twin's replay skip is now the write-back's own PAIRING
+(`BindTransition.WrittenBack`, set by the lowering) rather than a shape
+re-derived in core — a written-back compound had been installed twice —
+and the scalar exemption is the payload kinds with no interior (a Micron
+is inert but has fields). Narrative and table: the sixty-third-increment
+section of FULL-COMPILATION-HANDOFF.0.md.
+
+**Increment 62, the COLLECT oracle (2026-09-15, in review as #458).** The
 first EXECUTION of the region table: `OpCollect`, emitted under
 `compiler.RegionOracle` (off by default, byte-identical bytecode), walks
 every descriptor live in the VM with the kernel's own collection routine
@@ -100,7 +121,7 @@ tallies 72492 executed descriptors — 47464 reproduced, 16110 declined
 name in both directions. The first walk found and fixed a latent host
 defect (the paren span without markers, an infinite loop) and a Phase B
 misdescription (top-level loop iterators as live words), and found the
-TWIN-CARRIER class (below, item 1c). Review (#458) corrected the oracle
+TWIN-CARRIER class (item 1c, closed by 63 — NUR140 resolved). Review (#458) corrected the oracle
 three ways — a zero-arg candidate is a zero-length claim, the lane rejects
 an error the interpreter does not raise, and agreement is IDENTITY (the
 `eq` word's rule) rather than structure — and identity surfaced two more
@@ -170,19 +191,20 @@ as #455 (`6ea8ac1`).
      Stage 7 owns 11. Only one site is a trap (an `if` condition that
      nets no value) and four delete (an internal invariant, the recorder
      method itself, two fixtures).
-   - **1c, OPEN, found by the oracle: the twin-carrier class.** A
+   - **1c, CLOSED by increment 63: the twin-carrier class.** A
      top-level `def` of a COMPUTED value (`def b [add 1 2]`, `def l
-     (Log.logger "http")`) lowers to `STORE_LOCAL` + `BIND_TWIN`, and the
-     twin replays the CHECK-PASS binding — a carrier `[Integer]`, a module
-     prototype with empty fields — because `IsConcrete` reads the compound
-     as concrete and no `OpBindGlobal` partner is emitted. The registry
-     holds the prototype for the rest of the run. Parity holds today only
-     because every read of such a def is baked; a LIVE read — the generic
-     lane's, a dynamic body's — reads the prototype. Six corpus rows,
-     ledgered in `test/go/langspec/region_oracle_test.go`. The fix is the
-     twin lowering's (`needGlobal` must ask whether the INSTALLED binding
-     is the runtime value, not whether the recorded value is concrete)
-     and it precedes the first routed dispatch.
+     (Log.logger "http")`) lowered to `STORE_LOCAL` + `BIND_TWIN`, and the
+     twin replayed the CHECK-PASS binding — a carrier `[Integer]`, a module
+     prototype with empty fields — because `IsConcrete` read the compound
+     as concrete and no `OpBindGlobal` partner was emitted. The write-back
+     is now decided by provenance (`rootBindWritesBack`: a computed
+     value's binding is exact only for an inert scalar fold), the six
+     corpus rows reproduce (NUR140 resolved; the two `diverged-value`
+     left are NUR143's), and the class is pinned across requests in
+     `lang/go/bytecode_globalbind_test.go`.
+     One residual trust: a native that MODELS a scalar result over
+     concrete args would keep the model; none is in the corpus, and a
+     live read of one diverges by value under the oracle.
    - **1b, OPEN: the lowerer and `Finalize` decline census.** Those
      declines are a different mechanism (a decline reason returned from
      a lowering, not a recorder latch): the site census deliberately does
@@ -210,10 +232,10 @@ as #455 (`6ea8ac1`).
    **Progress:** the inert widening is increments 60 and 61, and the
    first EXECUTION is 62 (above): `OpCollect` walks every descriptor live
    as an oracle and 65% of the corpus's executed descriptors reproduce
-   exactly, the rest classified. Next is the first ROUTED dispatch:
+   exactly, the rest classified; the twin-carrier fix (1c) is 63, so a
+   live read no longer meets a model. Next is the first ROUTED dispatch:
    `OpCollect` + `OpDispatchGeneric` for one shape, the escaping-unit `k`
-   pair as the acceptance test, judged by the differential — after the
-   twin-carrier fix (1c), which any live read meets at once.
+   pair as the acceptance test, judged by the differential.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.

@@ -139,10 +139,15 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	mustRefuseWithParity(t,
 		`def m {a:1} def x (do [(m getr "zz") "a" "b"] error [dot code]) x`, "variadic result promoted")
 	// The fallibility scan descends into NESTED lists: the fallible call
-	// buried in the inner list marks the region exactly as a top-level one
-	// (here the refusal surfaces at the reorder stage, same sound fallback).
+	// buried in the inner list marks the region exactly as a top-level one.
+	// The refusal used to surface at the reorder stage ("residual shape
+	// beyond Stage 1") because the def's value, `[Integer]`, read as
+	// concrete and the def lowered to nothing; since the write-back is
+	// decided by provenance (rootBindWritesBack, the sixty-third
+	// increment) a computed compound writes back like its scalar siblings
+	// above, and the def refuses first — the same sound fallback.
 	mustRefuseWithParity(t,
-		`def x (do [[1 add 2] "x"] error [dot code]) x`, "residual shape beyond Stage 1")
+		`def x (do [[1 add 2] "x"] error [dot code]) x`, "unpromoted computed value")
 	// The RAISING region rides the catch path: the compiled run defers and
 	// the interpreter owns the catch — value parity through the defer.
 	{
