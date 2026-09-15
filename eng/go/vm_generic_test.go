@@ -121,6 +121,18 @@ func TestDispatchGenericDefers(t *testing.T) {
 		}}}))
 		defer_(t, p, reg, "vm:generic-foreign-unit", "not the committed unit")
 	})
+	t.Run("a live signature with no implementation", func(t *testing.T) {
+		// An fnsig DECLARATION (`undef w (fnsig …)` leaves one): the live
+		// match has no dispatch handler, so the native arm passes it by, and
+		// it is not a boru signature either — not the committed unit. In a
+		// program the check pass meets the rebind first (the memo re-records
+		// the caller); the seam's window reaches the arm directly.
+		p, reg := genericWorld(t)
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TInteger, core.TInteger}, BarrierPos: 2,
+		}}}))
+		defer_(t, p, reg, "vm:generic-foreign-unit", "not the committed unit")
+	})
 	t.Run("the recorded native's result count drifts from the claim", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
