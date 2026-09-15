@@ -336,7 +336,14 @@ branch too — one `MarkUncompilable` site, two shapes, the same
 disposition): "undef of the enclosing binding `k` inside a conditional,
 loop or fn body: no transition the compiled program can place (the binder
 half)". The arm runs even while recording is suspended (a `do` body inside
-a loop), as the frozen-read latch does. Every row above falls back to the
+a loop), as the frozen-read latch does. A code body compiled as a CLOSURE
+unit (`do`, `each` — `fnUnitRec.closure`) is exempt: its transitions are
+the enclosing run's (a keep-defs body's undef is ledgered by the top-level
+run and adopted as a twin after the call, `AdoptBodyTwins`; a rolled-back
+body's is refused by the outer analysis that runs it first), so the
+closure compile's own view — a fn-body baseline, every enclosing binding
+speculative — is not the program's; `do [undef T]` keeps refusing on the
+check pass's diagnostics, not on its body unit. Every row above falls back to the
 interpreter with parity; an undef of a binding made INSIDE the region (a
 body def, a fn-local) is untouched and still compiles. Measured: no corpus
 row carries the shape (7475 compiled, 0 refused; the refusal-site census

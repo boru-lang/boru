@@ -4977,6 +4977,21 @@ func (es *EmitState) carriedSlot(name string) (int, bool) {
 	return -1, false
 }
 
+// inClosureBodyCompile reports whether the innermost open unit is a code
+// body compiled as a closure (a `do` / `each` / … body unit,
+// fnUnitRec.closure). Such a compile re-analyses the body under a fn-body
+// baseline, where every enclosing binding reads as speculative — but the
+// body's transitions are the ENCLOSING run's, not the closure's: a
+// keep-defs body's undef (`do [undef T]`) is ledgered by the top-level run
+// and adopted as a twin after the call (AdoptBodyTwins), and a rolled-back
+// body's is refused by the outer analysis that runs it first. So the
+// speculative-undef refusal reads the enclosing run's verdict and stays out
+// of the closure compile's; a real fn body (closure false) keeps it.
+func (es *EmitState) inClosureBodyCompile() bool {
+	n := len(es.openUnitRecs)
+	return n > 0 && es.fnRecs[es.openUnitRecs[n-1]].closure
+}
+
 // RefuseCarriedUndef marks the program uncompilable when an `undef` is one
 // the compiled lane cannot place — one site, two shapes, both the binder
 // half's:
@@ -5003,7 +5018,7 @@ func (es *EmitState) RefuseCarriedUndef(name string) {
 	}
 	reason := ""
 	switch {
-	case es.reg != nil && es.reg.SpecUndefBlocked(name):
+	case es.reg != nil && es.reg.SpecUndefBlocked(name) && !es.inClosureBodyCompile():
 		reason = "undef of the enclosing binding `" + name + "` inside a conditional, loop or fn body: no transition the compiled program can place (the binder half)"
 	case es.Active():
 		for i := len(es.loopCarried) - 1; i >= 0; i-- {
