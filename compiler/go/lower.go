@@ -227,6 +227,51 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 	return ""
 }
 
+// rootBindWritesBack reports whether a ROOT-unit `def` needs the
+// cross-request write-back (OpBindGlobal): whether the binding the run
+// holds — the check pass's install, kept or replayed by its twin — is NOT
+// the value the program computes. Its binding persists past the run via
+// keep-on-compile, so a stale one is what the next request (or any live
+// read) resolves: `def h (Model.new …)` then `Model.stop h` raised
+// model_bad_handle over a kept CARRIER, and the COLLECT oracle's first
+// corpus walk found the twin-carrier class beside it — `def b [add 1 2]`
+// kept `[Integer]` where the lowering pushed `[3]`, and `def l (Log.logger
+// "http")` kept the module's PROTOTYPE, empty fields and all, because the
+// check pass MODELS a computed compound rather than computing it, and
+// IsConcrete read each model as a real value.
+//
+// The question is therefore not whether the recorded value is concrete but
+// where it came from:
+//
+//   - a bare type node (`def x None`) is self-representing in both engines;
+//   - a LITERAL binding (no producing event) is the value itself, and only
+//     a carrier stripped from it (`def x <a/>`) needs the write-back;
+//   - a COMPUTED value (a producing event) is the runtime producer's
+//     result, and the check pass's binding is that producer's MODEL of it —
+//     exact only for an inert SCALAR, where the recorder's fold parity
+//     holds (the fold IS the value the run pushes); a compound, a
+//     carrier, a handle, an instance is the model, and the write-back
+//     replaces it with what the run computed.
+//
+// collectRootBindConsumes mirrors this exactly (it decides whose producer
+// keeps its value on the stack for the bind to pop), so both read one rule.
+func rootBindWritesBack(d *emitDynBind) bool {
+	if !d.root || core.IsBareTypeNode(d.val) {
+		return false
+	}
+	if d.srcSeq < 0 {
+		return !core.IsConcrete(d.val)
+	}
+	if !core.IsInertConst(d.val) {
+		return true
+	}
+	switch d.val.Data.(type) {
+	case core.ListPayload, core.MapPayload:
+		return true
+	}
+	return false
+}
+
 // lowerDynBind emits the registry-visible twin of a `def` whose name some
 // OpLookupDynScope reads (the DynScopeNames set): push the bound value's
 // operand, then OpBindDynScope pops it into r.Defs under the name (the VM
@@ -247,16 +292,10 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		return ""
 	}
 	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]))
-	// A ROOT-unit def of a NON-concrete value additionally needs the
-	// cross-request write-back (OpBindGlobal): its binding persists past the
-	// run via keep-on-compile, and the kept check-pass value is a CARRIER —
-	// the next request (or any interpreter read) would resolve a type
-	// literal where the interpreter binds the runtime value (`def h
-	// (Model.new …)` then `Model.stop h` raised model_bad_handle). A
-	// concrete bound value IS the runtime value (const-fold parity), and a
-	// bare type node (`def x None`) is self-representing in both engines —
-	// each keeps today's faithful binding with no op emitted.
-	needGlobal := lw.es != nil && d.root && !core.IsConcrete(d.val) && !core.IsBareTypeNode(d.val)
+	// A ROOT-unit def whose kept binding is NOT the runtime value
+	// additionally needs the cross-request write-back (OpBindGlobal): see
+	// rootBindWritesBack for the rule.
+	needGlobal := lw.es != nil && rootBindWritesBack(d)
 	if !needDyn && !needGlobal {
 		// DynEnv mode (a dynamic code body compiled — tryRecordDynBody)
 		// widens to EVERY def: the body's runtime sub-run may read any name,
@@ -2365,8 +2404,7 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 			continue
 		}
 		d := ev.dyn
-		if d.root && d.srcSeq >= 0 && dead[d.srcSeq] &&
-			!core.IsConcrete(d.val) && !core.IsBareTypeNode(d.val) {
+		if d.srcSeq >= 0 && dead[d.srcSeq] && rootBindWritesBack(d) {
 			out[d.srcSeq] = true
 		}
 	}

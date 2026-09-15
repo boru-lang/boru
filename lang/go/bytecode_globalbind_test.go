@@ -180,3 +180,46 @@ func TestGlobalBindEnvelope(t *testing.T) {
 		t.Errorf("S5 parity: compiled=%v interp=%v, want [1 1 1] both", gotC, out)
 	}
 }
+
+// The TWIN-CARRIER class (the COLLECT oracle's first corpus walk, the
+// sixty-second increment; fixed in the sixty-third): a root def of a
+// COMPUTED COMPOUND whose check-pass binding is the analysis's MODEL of the
+// value — `[Integer]` for `[add 1 2]`, a module prototype with empty fields
+// for `Log.counter "x"` — read as concrete by IsConcrete, so no write-back
+// was emitted and the twin replayed the model for the rest of the run. The
+// bakes hid it (every read of such a def in the corpus resolved to the
+// lowering's own value); a LIVE read — the next request's — sees the
+// binding itself. The write-back is now decided by provenance
+// (rootBindWritesBack): a computed value's binding is exact only for a
+// scalar fold.
+func TestGlobalBindTwinCarrierClass(t *testing.T) {
+	// The list: the lowering pushes the folded [3]; the kept binding was
+	// [Integer], and the next request's `get 0` returned the type node.
+	dis := compileDisasm(t, `def b [add 1 2] size b`)
+	if !strings.Contains(dis, "global bind b @depth 1") {
+		t.Errorf("a computed list def must write its runtime value back:\n%s", dis)
+	}
+	a := mustNew(t)
+	runCompiledRequest(t, a, `def b [add 1 2] size b`)
+	if got := readBack(t, a, `b get 0 add 1`); got != "[4]" {
+		t.Errorf("computed list def: next request = %v, want [4] (the folded element, not its carrier)", got)
+	}
+
+	// The module handle: Log.span's check-pass result is the span the
+	// ANALYSIS started; the run starts its own, which is the active one. The
+	// kept binding was the analysis's, so ending it from the next request
+	// was a span-mismatch — the live read the corpus never made (its row
+	// ends the span in the same request, through the lowering's own value).
+	b := mustNew(t)
+	runCompiledRequest(t, b, `import "boru:log" ; Log.add-sink memory/q ; Log.remove-sink console/q ; def s (Log.span "m")`)
+	if got := readBack(t, b, `Log.end-span s ; Log.traces size`); got != "[1]" {
+		t.Errorf("computed module handle: next request = %v, want [1] (the run's own span, not the analysis's)", got)
+	}
+
+	// A computed SCALAR fold stays exact with no write-back needed beyond
+	// what the carrier rule already emits: `def n (add 1 2)` is pinned
+	// above (TestGlobalBindEnvelope); a literal compound is the value itself.
+	if dis := compileDisasm(t, `def xs [1 2] size xs`); strings.Contains(dis, "BIND_GLOBAL") {
+		t.Errorf("a literal list def is already faithful — no write-back:\n%s", dis)
+	}
+}
