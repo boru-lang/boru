@@ -344,6 +344,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// check mode — interpretation is untouched.
 		restoreCheck := shareCheckStateFrom(r, caller)
 		defer restoreCheck()
+		// The dispatching WORD token, as the check pass published it for this
+		// ReturnsFn (declaredReturnCarriers), read at ENTRY: the body analysis
+		// below dispatches inside the callee and overwrites both cursors. It
+		// is the (word, position) the region capture was offered under
+		// (compiler/go/region_record.go) — the word's own position, which is
+		// not args[0]'s, the blame position the call event carries.
+		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
@@ -400,6 +407,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// The memo key mirrors AnalyseFnBody's so the unit is compiled
 		// exactly when the body is analysed.
 		es := r.Check.Recorder()
+		// Take this call's Phase-A offer out of the pool NOW, before the body
+		// analysis below can re-offer under the same (word, row, col) from
+		// another source and consume it (compiler/go/region_record.go,
+		// heldRegion). The record at the end of this closure completes the
+		// held offer; the release runs on every exit.
+		releaseRegion := es.HoldRegion(call.word, call.pos)
+		defer releaseRegion()
 		fnUnit := -1
 		var finishFn func([]core.Value)
 		polyPlan, polyBarred := dispatchPlanUserPoly(r, es, nameCopy, args, declaredReturns)
@@ -717,7 +731,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				out[i] = c
 			}
 			if fnUnit >= 0 {
-				out = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, args, out)
+				out = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, out)
 			} else if polyPlan != nil {
 				// Ambiguous multi-overload dispatch with every arm baked: record
 				// the runtime-re-matched poly call (OpCallUserPoly). Positions
@@ -753,7 +767,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure uses it: the snapshot at the top of
 				// BuildFnBodyReturnsFn is what the closure is entitled to read.
 				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, args, nil, pos)
+				es.RecordUserCall(fnUnit, call.word, args, nil, pos, call.pos)
 				return nil
 			}
 			// A ZERO-declared-return POLY set (REFUSAL-CLOSURE.0 §6a): every
@@ -790,7 +804,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
 		if fnUnit >= 0 {
-			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, args, stk)
+			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, stk)
 		}
 		return stk
 	}
@@ -904,7 +918,7 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 // record site: the §4.3 fn-value apply fallback where the call qualifies
 // (the outs slice is then COPIED with the freshened carrier in slot 0),
 // else the ordinary RecordUserCall. Returns the outs to hand downstream.
-func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, body []core.Value, fnUnit int, args, outs []core.Value) []core.Value {
+func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, body []core.Value, fnUnit int, call callSite, args, outs []core.Value) []core.Value {
 	pos := core.SrcPos{}
 	if len(args) > 0 {
 		pos = args[0].Pos()
@@ -925,8 +939,16 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		return outs
 	}
 	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, args, outs, pos)
+	es.RecordUserCall(fnUnit, call.word, args, outs, pos, call.pos)
 	return outs
+}
+
+// callSite is the dispatching word token of one user-fn call — its name as
+// dispatched and its own position — captured at the ReturnsFn's entry and
+// carried to the record, where it keys the region claim.
+type callSite struct {
+	word string
+	pos  core.SrcPos
 }
 
 // recordPendingClosureApply routes the re-step dispatch of a closure this

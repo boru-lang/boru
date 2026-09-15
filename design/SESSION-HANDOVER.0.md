@@ -8,8 +8,9 @@ which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
 Last updated: **2026-09-14**, when the maintainer ruled the definition of
-done (below) and the assessment note merged (#453). Increments 1–59 are on
-`main`.
+done (below), the assessment note merged (#453), the disposition census
+merged (#455) and the generic lane's first slice (increment 60) went up
+for review. Increments 1–59 are on `main`.
 
 ---
 
@@ -75,17 +76,39 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | `refusalSiteCeiling` | **92** (lowered from 93 to the live value, 2026-09-14) | down only |
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
+| region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **76280** descriptors with increment 60 and its review corrections (51372 before it); the floor is unchanged | floor, up only |
 
-Increments 1–59 are on `main`. The most recent landings: #451 (increment
-58 — measurement and a negative result, no graduation), increment 59
-(`c34a2fb`, pushed to `main` directly on 2026-09-11), and #453 (the
-assessment note, 2026-09-14).
+Increments 1–59 are on `main`; increment 60 is in review. The most recent
+landings: #451 (increment 58 — measurement and a negative result, no
+graduation), increment 59 (`c34a2fb`, pushed to `main` directly on
+2026-09-11), #453 (the assessment note, 2026-09-14) and #455 (the
+disposition census, 2026-09-14).
 
 ## What is in flight
 
-Nothing, as of 2026-09-14. Increment 59 (the region-suffix seat: the
-whole-residual dispatch takes `do [for 3 [1] 7]`, census 29 -> 28) merged
-to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
+**Increment 60, the generic lane's first slice (2026-09-14, in review).**
+Phase B's `completeRegion` now claims at the USER-CALL seat as well as
+the mono-native one: `RecordUserCall` carries the dispatching word and
+its token position (a new `CurCallWord` beside `CurCallPos` in the check
+state, captured at `BuildFnBodyReturnsFn` entry before body analysis
+overwrites the cursor), and `lowerUserCall` appends the claimed
+descriptor to `Program.Regions`. The join-key finding that made it
+necessary: the event's `pos` is `args[0].Pos()`, not the word's, so the
+seat could not have looked its offer up. Inert by construction (no
+opcode reads the descriptors), and measured inert: differential 6556
+rows, 0 mismatches; coverage 7475 compiled, 0 islanded, 0 refused,
+unchanged. The region table goes 51372 -> 76277 descriptors (claimed
+28324/84454 -> 55976/143676 slots). The narrative and the full tally
+are the sixtieth-increment section of FULL-COMPILATION-HANDOFF.0.md.
+Review corrections landed the same day (Codex on #456): the recovery
+hook now publishes the word cursor, and the user-fn ReturnsFn HOLDS its
+offer at entry (`EmitRecorder.HoldRegion`) because the offer pool is
+keyed by row and column only and cannot tell two sources apart; both
+pinned; the corpus table moved by three descriptors (76277 -> 76280),
+so the seams are real and rare.
+Increment 59 (the region-suffix seat, census 29 -> 28) merged on
+2026-09-11 as `c34a2fb`; the assessment merged as #453; the census
+as #455 (`6ea8ac1`).
 
 **Next, under the ruling above, in order:**
 
@@ -129,6 +152,14 @@ to `main` on 2026-09-11 as `c34a2fb`; the assessment merged as #453.
    twins did. (This item was first written against the 4a-2 order and
    corrected in review the same day: a "next increment" sentence
    inherits its author's last reading, which is process rule 3 below.)
+   **Progress:** the inert widening's first step is increment 60 (above):
+   user-fn calls now claim their forward captures, so the descriptor
+   table describes the family the lane dispatches through. Still to do
+   before the first executing arm: the same seat for `RecordUserPolyCall`
+   (same `args[0]` join-key defect), then `OpCollect` and
+   `OpDispatchGeneric` against one of the four acceptance pairs, with the
+   `CollectHost` in `eng/go/region_host.go` given its first evaluating
+   arm.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.

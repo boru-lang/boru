@@ -15,11 +15,14 @@
 // silent wrong answer one step later.
 //
 // WHAT THE TABLE COVERS, stated because a census that does not say what it
-// omits reads as covering everything. Phase B is seated on RecordCall alone —
-// the mono native dispatch. A user-fn call records through RecordUserCall, and
-// the poly, dyn-apply and dyn-method families have their own entry points;
-// none of them claims a capture, so their regions are captured by Phase A and
-// never completed. Widening the seat is follow-on work, and
+// omits reads as covering everything. Phase B is seated on RecordCall — the
+// mono native dispatch — and, since 2026-09-14 (the first slice of the
+// generic lane's line), on RecordUserCall — the committed user-fn call,
+// claimed under the dispatching word's own name and position, which the
+// check pass publishes as CheckState.CurCallWord/CurCallPos. The poly,
+// dyn-apply and dyn-method families still have their own entry points and
+// claim nothing, so their regions are captured by Phase A and never
+// completed. Widening those seats is follow-on work, and
 // lang/go/region_capture_e2e_test.go fails if a seat lands without this note
 // being updated.
 package langspec

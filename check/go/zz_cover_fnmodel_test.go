@@ -60,7 +60,7 @@ func (f *fmRec) SetUnitParamTypes(_ int, pts []*core.Type, _ []*core.Value) { f.
 func (f *fmRec) SetUnitReturnPatterns(int, []*core.Value)                   { f.retPats = true }
 func (f *fmRec) SetUnitDecl(int, core.DeclSite)                             { f.declSet = true }
 
-func (f *fmRec) RecordUserCall(unit int, _ []core.Value, outs []core.Value, pos core.SrcPos) {
+func (f *fmRec) RecordUserCall(unit int, _ string, _, outs []core.Value, pos, _ core.SrcPos) {
 	f.userUnits = append(f.userUnits, unit)
 	f.userOuts = append(f.userOuts, outs)
 	f.userPos = append(f.userPos, pos)

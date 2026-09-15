@@ -47,6 +47,8 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"Mode":       "set true by Begin itself; cleared by the returned done()",
 		"StepBudget": "configuration with the -1 sentinel, resolved per run",
 		"CurCallPos": "transient cursor overwritten per dispatch",
+		"CurCallWord": "transient cursor overwritten per dispatch, CurCallPos's twin: written " +
+			"beside it by declaredReturnCarriers and read only at a user-fn ReturnsFn's entry",
 		"CurWordPos": "transient cursor overwritten per dispatch, and the write is " +
 			"unconditional and immediately adjacent: execMatch sets it from " +
 			"e.currentPos() on the line above the handler call, and a handler is the " +

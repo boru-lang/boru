@@ -787,6 +787,13 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 }
 
 func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fallback *core.Signature, pos core.SrcPos) error {
+	// Publish the dispatching word token for every ReturnsFn this recovery
+	// can invoke — the disjunct-partition combos, TryRecordRecoveredUserFn,
+	// the poly arms. The matched path publishes it in declaredReturnCarriers;
+	// this is the unmatched twin, reached with pos = val.Pos(), the word's
+	// own position. Without it a recovered user call's ReturnsFn read the
+	// PREVIOUS dispatch's cursor and keyed its region claim by that.
+	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
 	// with (or at least not contradicted by) the actual carrier

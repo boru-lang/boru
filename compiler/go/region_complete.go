@@ -47,7 +47,7 @@ func (es *EmitState) completeRegion(word string, pos core.SrcPos, args []core.Va
 	if es == nil {
 		return nil
 	}
-	off, ok := es.takePendingRegion(word, pos)
+	off, ok := es.claimRegion(word, pos)
 	d := off.desc
 	if !ok || d == nil || len(d.Slots) == 0 {
 		return nil

@@ -106,12 +106,12 @@ func TestRecordUserCallOrApplyPendingFirst(t *testing.T) {
 	args := []core.Value{core.NewInteger(3)}
 	outs := []core.Value{core.NewCarrier(core.TInteger)}
 	rec := &fakeOrderRec{fakePendingRec: fakePendingRec{EmitRecorder: core.TheInactiveEmit, fn: top, has: true, applyOK: true}}
-	got := recordUserCallOrApply(rec, r, "p", captures, body, 0, args, outs)
+	got := recordUserCallOrApply(rec, r, "p", captures, body, 0, callSite{}, args, outs)
 	if rec.named || len(rec.window) != 1 || got[0].ID == outs[0].ID {
 		t.Errorf("the pending route runs first: named=%v window=%v", rec.named, rec.window)
 	}
 	rec.has, rec.window = false, nil
-	got = recordUserCallOrApply(rec, r, "p", captures, body, 0, args, outs)
+	got = recordUserCallOrApply(rec, r, "p", captures, body, 0, callSite{}, args, outs)
 	if !rec.named || rec.window != nil || got[0].ID == outs[0].ID {
 		t.Errorf("with no pending entry the name fallback takes the dispatch: named=%v window=%v", rec.named, rec.window)
 	}

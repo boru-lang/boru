@@ -430,6 +430,11 @@ type emitUserCall struct {
 	// evCallUser consumer (promotion, provenance, fragment residuals) works
 	// unchanged. A poly call is never tail-marked (markTailCalls skips it).
 	poly *emitUserPolySpec
+	// region is the COMPLETED region descriptor for this call, when the
+	// dispatch had a Phase-A capture to claim — the user-call twin of
+	// emitCall.region, riding the event for the same rollback reason, and
+	// appended to Program.Regions at lowerUserCall.
+	region *RegionDesc
 }
 
 // emitUserPolySpec is the recorded arm table of one poly user call — the
@@ -655,6 +660,12 @@ type EmitState struct {
 	// every execution of the region", its own doc), so the extent at one
 	// position does not vary, and the last capture equals the first.
 	pendingRegions map[regionKey]pendingRegion
+	// heldRegions is the stack of offers taken out of pendingRegions EARLY,
+	// at a user-fn ReturnsFn's entry, so that the callee's body analysis
+	// cannot re-offer over them from another source — region_record.go,
+	// heldRegion. Pushed by HoldRegion, popped by its release, completed by
+	// the call's record in between.
+	heldRegions []heldRegion
 
 	// pendingLoopBind carries a SplitLoopRegionBind verdict to the
 	// RecordDynBind of the same installAndRecordDef call (S5).
@@ -5426,7 +5437,7 @@ func (es *EmitState) SetUnitDecl(unit int, decl core.DeclSite) {
 	es.fnRecs[unit].decl = decl
 }
 
-func (es *EmitState) RecordUserCall(unit int, args []core.Value, outs []core.Value, pos core.SrcPos) {
+func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Value, pos, wordPos core.SrcPos) {
 	if !es.Active() || unit < 0 {
 		return
 	}
@@ -5440,6 +5451,17 @@ func (es *EmitState) RecordUserCall(unit int, args []core.Value, outs []core.Val
 		}
 		ops[i] = op
 	}
+	// Phase B for the USER-call family — the seat RecordCall has had since
+	// Stage 4a, widened here: claim the capture the interpreter offered for
+	// this dispatch and fill the sources of the slots it took forward. The
+	// operands are the call's ARGS alone, in signature order and index for
+	// index with args (completeRegion's contract); the captures appended
+	// below are frame plumbing, not tape slots. Inert — nothing reads
+	// Program.Regions yet — and keyed by the dispatching word's own name and
+	// position, which is why RecordUserCall now takes them: the event's pos
+	// is the first argument's, and a claim keyed by it would miss every
+	// offer.
+	region := es.completeRegion(word, wordPos, args, ops)
 	for _, cb := range rec.caps {
 		op, ok := es.resolveOperand(cb.Value)
 		if !ok {
@@ -5448,7 +5470,7 @@ func (es *EmitState) RecordUserCall(unit int, args []core.Value, outs []core.Val
 		}
 		ops = append(ops, op)
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos}})
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region}})
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
 	// the result propagates variadic (a branch arm / body residual carrying it is

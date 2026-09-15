@@ -119,6 +119,82 @@ func (es *EmitState) PendingRegionCount() int {
 	return len(es.pendingRegions)
 }
 
+// heldRegion is a Phase-A offer taken out of the pool EARLY — at the entry
+// of a user-fn ReturnsFn, before the callee's body is analysed — and parked
+// until that call's record completes it.
+//
+// It exists because the pool is keyed by (word, row, col) and NOT by source:
+// SrcPos.Src is the token's TEXT, so two sources cannot be told apart by a
+// position at all. A user call's record runs at the END of its ReturnsFn,
+// after the callee's body has been analysed, and that body can dispatch the
+// same word at the same row and column of ANOTHER source — a module file's
+// recursive `f 0` at 2:1 under a main program's `Ns.f 1` at 2:1, pinned in
+// lang/go/region_capture_e2e_test.go. With the claim deferred to the record,
+// the inner capture overwrote the outer's offer and the inner record
+// consumed it; the outer call then had no descriptor, which is exactly the
+// near-invisible miss regionKey's doc warns about. Holding the offer at
+// entry closes the window: nothing analysed inside the callee can reach an
+// offer that is no longer in the pool.
+//
+// The holds are a STACK released in defer order, so nesting is exact: an
+// inner call's hold sits above the outer's and is popped before the outer's
+// record runs. A hold that found NO offer is still pushed, and it BLOCKS the
+// record from falling back to the pool: by record time the pool may carry an
+// inner call's re-offer under the same key, and a stack-fed dispatch must
+// not claim a capture it never walked.
+type heldRegion struct {
+	key      regionKey
+	off      pendingRegion
+	ok       bool // an offer was in the pool at hold time
+	consumed bool // the record has completed it
+}
+
+// HoldRegion takes the Phase-A offer for the dispatching word token out of
+// the pool now and parks it for this call's record (core.EmitRecorder's
+// contract). The release truncates the stack back to this hold's depth and
+// must be deferred by the caller. A nil or inactive state returns a no-op.
+func (es *EmitState) HoldRegion(word string, pos core.SrcPos) func() {
+	if es == nil || !es.Active() {
+		return func() {}
+	}
+	off, ok := es.takePendingRegion(word, pos)
+	depth := len(es.heldRegions)
+	es.heldRegions = append(es.heldRegions, heldRegion{key: keyOf(word, pos), off: off, ok: ok})
+	return func() {
+		if len(es.heldRegions) > depth {
+			es.heldRegions = es.heldRegions[:depth]
+		}
+	}
+}
+
+// HeldRegionCount reports how many offers are parked under a hold. Tests
+// only, for the same reason as PendingRegionCount.
+func (es *EmitState) HeldRegionCount() int {
+	if es == nil {
+		return 0
+	}
+	return len(es.heldRegions)
+}
+
+// claimRegion hands completion the offer for (word, pos): the HELD offer when
+// the record runs under a hold for that key — the innermost open hold is the
+// top of the stack, and a user call's record runs inside its own ReturnsFn
+// after every nested hold has released — else the pool's. A hold that found
+// nothing yields nothing, deliberately (heldRegion); a hold completes once.
+func (es *EmitState) claimRegion(word string, pos core.SrcPos) (pendingRegion, bool) {
+	if n := len(es.heldRegions); n > 0 {
+		h := &es.heldRegions[n-1]
+		if h.key == keyOf(word, pos) {
+			if h.consumed || !h.ok {
+				return pendingRegion{}, false
+			}
+			h.consumed = true
+			return h.off, true
+		}
+	}
+	return es.takePendingRegion(word, pos)
+}
+
 // TakePendingRegion claims the Phase-A capture for (word, pos), reporting
 // whether one existed. Phase B calls it to complete a descriptor; a miss is
 // ordinary, not an error, per the asymmetries above.
