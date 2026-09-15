@@ -99,9 +99,13 @@ fenced into an internal error. Measured after the review of #461 put the
 memo's key back, no program reaches these arms today — every such rebind
 is diagnosed at check first, the escaped unit's included — so the raise
 stands for the shape the check pass cannot see, pinned at the seam and
-by the seven shapes that now refuse at check. Every gate unchanged.
-Narrative: the sixty-sixth-increment section of
-FULL-COMPILATION-HANDOFF.0.md.
+by the seven shapes that now refuse at check. Every gate unchanged. The
+review of #462 found the VM's errors never named the FILE the
+interpreter's do (`stampAt` had no file arm, and every stamp site handed
+it the program's registry rather than the unit's): every VM error inside
+an imported module rendered a bare position; fixed under the
+interpreter's rule, pinned on both lanes. Narrative: the
+sixty-sixth-increment section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 65, the native seat routes (2026-09-15, built on 64).** The
 same routing decision at `RecordCall` and `RecordPolyCall`: a fn-unit

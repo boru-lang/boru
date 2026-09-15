@@ -195,10 +195,21 @@ func raised(t *testing.T, p *compiler.Program, reg *core.Registry, code, sub str
 	var bails []string
 	disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { bails = append(bails, ev.Site) })
 	defer disarm()
+	// A file-backed registry: the raised diagnostic names the file, as the
+	// interpreter's stampErrPos names it (review of #462 — the window's
+	// diagnostic is built AT its position, so stampAt's file arm must not
+	// hide behind its row arm).
+	reg.BaseFile = "routed.boru"
 	_, err := RunProgram(p, reg)
 	var ae *core.BoruError
 	if err == nil || !errors.As(err, &ae) || ae.Code != code || !strings.Contains(err.Error(), sub) {
 		t.Fatalf("want a raised %s containing %q, got %v", code, sub, err)
+	}
+	// The interpreter's rule, both halves: a positioned diagnostic names the
+	// file; one with no position (a hand-built window's unplaced token)
+	// names none.
+	if (ae.Row != 0 && ae.File != "routed.boru") || (ae.Row == 0 && ae.File != "") {
+		t.Errorf("a raised diagnostic names the registry's file exactly when it has a position: file=%q row=%d", ae.File, ae.Row)
 	}
 	if len(bails) != 0 {
 		t.Errorf("a raised diagnostic defers nothing, got %v", bails)

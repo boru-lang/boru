@@ -8318,6 +8318,33 @@ which programs would have reached them and that the check pass now
 diagnoses each first. The arity census moved one comparison from
 engine.go to region_diag.go.
 
+### The review's one (#462): the VM's errors name the file the interpreter names
+
+Codex read the raise sites and asked where the FILE goes: the window's
+diagnostic is built AT its position (`d.Pos`), so `stampAt`'s row arm —
+the only arm that ran — never fired, and `BoruError.File` stayed empty
+where the interpreter's `stampErrPos` fills it from the registry's
+`BaseFile`. Measured, the gap is older and wider than the three raises:
+EVERY VM error inside an imported module rendered `--> 2:57` where the
+interpreter renders `--> ./mod.boru:2:57` — `stampAt` had no file arm at
+all, and every stamp site handed it the PROGRAM's registry (`vc.r`, whose
+`BaseFile` the CLI never sets) rather than the registry the unit runs on.
+No gate saw it: the differential compares values and the error taxonomy,
+not the rendered position, and the module fixture rows never rendered.
+
+Two changes, one rule — the interpreter's: a positioned error names the
+file of the registry its engine runs on. `stampAt` gains the file arm
+(`File == "" && Row != 0 → r.BaseFile`, exactly `stampErrPos`), and its
+source and file arms no longer hide behind the row stamp's need for a
+debug entry; and every stamp site inside the run loop and its helpers
+hands it the registry the UNIT runs on (`curReg` / the helper's `reg` —
+a module fn's own; `callPolyIn` and the routed op already did). Pinned
+at the seam (`raised`: a positioned raise names `routed.boru`, an
+unpositioned one names nothing) and end to end on both lanes
+(`TestCompiledModuleErrorNamesItsFile`: a `raise` inside an imported
+module conditioned on a value the check pass cannot fold — the same
+file, row and column compiled and interpreted).
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8589,4 +8616,4 @@ position than the construct that produced the binding.
 | `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
-| `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first |
+| `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
