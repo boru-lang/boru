@@ -8372,12 +8372,14 @@ not terminate where the interpreter errors.
 A refusal, not a lowering — the sound answer the `each` body's
 transitions already had, at the site that already refuses an undef the
 compiled lane cannot place. `undefHandler`'s blocked branch now notifies
-the recorder, and `EmitState.RefuseCarriedUndef` refuses two shapes
-through one `MarkUncompilable` (the census counts sites; the disposition
-row covers both): the undef of a carried def (as before) and the undef of
-an enclosing binding from a speculative region ("undef of the enclosing
-binding `k` inside a conditional, loop or fn body: no transition the
-compiled program can place (the binder half)"). The blocked arm runs
+the recorder through its own hook, and the two undef hooks
+(`RefuseCarriedUndef`, `RefuseSpeculativeUndef`) refuse through one
+`MarkUncompilable` (`refuseUndef` — the census counts sites, and the
+disposition row, re-keyed to it, covers both shapes): the undef of a
+carried def (as before) and the undef of an enclosing binding from a
+speculative region ("undef of the enclosing binding `k` inside a
+conditional, loop or fn body: no transition the compiled program can
+place (the binder half)"). The blocked arm runs
 even while recording is suspended (a `do` inside a loop), as the
 frozen-read latch does: the refusal is the program's, not the
 fragment's. A code body compiled as a CLOSURE unit (`do`, `each` —
@@ -8400,8 +8402,26 @@ and falls back with the same answer. Every row of the class — NUR144's
 two, the branch arm, the each and while bodies, the `do` inside a loop,
 the fn body — refuses and answers as the interpreter does under the
 hatch (`TestSpeculativeUndefOfEnclosingBindingRefuses`, which replaces
-NUR144's fence). NUR145 records the class as resolved by refusal; NUR144
-is resolved under it.
+NUR144's fence). The register's contract is that a Resolved record is
+deleted and its number retired: NUR144 is deleted, and the class was
+recorded as NUR145 on the PR for one commit and retired with the fix the
+same day — the divergence is gone, and what the binder half still owes is
+the disposition census's row, not a register entry.
+
+### The review's four (#463)
+
+Codex found four things on the first cut, each reproduced: a module call
+before the undef in the same body (`if true [M.m drop undef k 1] [1] k`)
+slipped through, because the recorder re-derived the block from ITS
+registry — the last-bound one, a module sub-registry after `M.m` — so the
+handler now passes the fact through its own hook
+(`RefuseSpeculativeUndef`, one refusal site behind both hooks); a
+never-bound name (`undef nope` in a fn body) refused, because the gate
+also silences the speculative diagnostic for a name with nothing to pop —
+the handler notifies only for a real pre-region depth; the `do [undef T]`
+frozen row refused on its body unit instead of the check pass's
+diagnostics, which is the closure-compile exemption above; and the
+register's contract, which the retirement above follows.
 
 ### What the binder half owes
 

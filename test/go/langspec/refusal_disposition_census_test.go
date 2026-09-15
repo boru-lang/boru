@@ -105,7 +105,7 @@ var refusalDispositions = map[string]refusalDisposition{
 	"compiler/go/emit.go:NoteLoopCarried#1":                           {dispGeneric, 4, "a pre-loop value that no longer resolves: a live lookup of the carried binding"},
 	"compiler/go/emit.go:RecordDefRebind#1":                           {dispGeneric, 3, "a fn value in a loop-carried slot: universal fn values"},
 	"compiler/go/emit.go:RecordDefRebind#2":                           {dispGeneric, 5, "a carried rebind of unknown provenance: a region"},
-	"compiler/go/emit.go:RefuseCarriedUndef#1":                        {dispGeneric, 4, "an undef of a carried def inside the loop, or of an enclosing binding from a speculative region (NUR145): an undef twin at that point, and the name's reads made live"},
+	"compiler/go/emit.go:refuseUndef#1":                               {dispGeneric, 4, "the undef hooks' one site (RefuseCarriedUndef, RefuseSpeculativeUndef): an undef of a carried def inside the loop, or of an enclosing binding from a speculative region (the sixty-seventh increment) — an undef twin at that point, and the name's reads made live"},
 	"compiler/go/emit.go:StartFnCompile#1":                            {dispGeneric, 3, "a closure capturing a runtime-minted value: the capture rides by value at construction"},
 	"compiler/go/emit.go:StartFnCompile#2":                            {dispGeneric, 3, "an apply of a dynamic fn value mid-body: the Apply kernel at that point, section 6.4"},
 	"compiler/go/emit.go:StartFnCompile#3":                            {dispGeneric, 5, "a body count the model cannot settle: a region; a definite mismatch is the RET contract's own raise"},

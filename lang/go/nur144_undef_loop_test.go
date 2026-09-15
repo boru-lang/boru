@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// NUR144 and NUR145, resolved by refusal (the sixty-seventh increment): an
+// NUR144, resolved by refusal and retired (the sixty-seventh increment): an
 // `undef` of an ENCLOSING binding from inside a speculative region — a loop
 // body, a branch arm, an each or while body, an error handler, a `do` inside
 // a loop, a fn body — is one the check pass keeps in its model (the
@@ -20,7 +20,11 @@ import (
 // binder half places the transition and makes the reads live; until then a
 // refusal is the sound answer, as the `each` body's transitions already had.
 // An undef of a binding made INSIDE the region (a body def, a fn-local) is
-// untouched and still compiles.
+// untouched and still compiles, and so is an undef of a name never bound at
+// all (the gate silences the speculative diagnostic; nothing pops on either
+// lane). The handler passes the fact to the recorder, whose own registry a
+// module call in the same body can leave bound to the module (review of
+// #463: the `M.m` row).
 func TestSpeculativeUndefOfEnclosingBindingRefuses(t *testing.T) {
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const reason = "undef of the enclosing binding `"
@@ -40,6 +44,8 @@ func TestSpeculativeUndefOfEnclosingBindingRefuses(t *testing.T) {
 		`def k 5 end while [k eq 5] [undef k] 9`,
 		`def k 5 end def f fn [[][Integer][undef k 1]] end f k`,
 		`def x 1 end do [7] error [undef x 9] x`,
+		// A module call before the undef, in the same body (review of #463).
+		`import module [def m fn [[] [Integer] [1]] export "M" {m:m/v}] end def k 5 end if true [M.m drop undef k 1] [1] k`,
 	}
 	for _, src := range refused {
 		a, err := New()
@@ -62,6 +68,9 @@ func TestSpeculativeUndefOfEnclosingBindingRefuses(t *testing.T) {
 		{`def f fn [[][Integer][def j 1 undef j 2]] end f`, "[2]"},
 		{`def k 5 end for 2 [ def j 1 undef j ] 9`, "[9]"},
 		{`def k 5 end undef k end def k 6 end k`, "[6]"},
+		// A name never bound: nothing to pop on either lane.
+		{`def f fn [[][Integer][undef nope 1]] end f`, "[1]"},
+		{`def k 5 end if true [undef nope 1] [2] k`, "[1 5]"},
 	}
 	for _, c := range compiled {
 		gotC, ran, errC, gotI, errI := runBothEngines(t, c.src)

@@ -66,7 +66,6 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR145](#nur145) | RESOLVED by refusal (2026-09-15, the sixty-seventh increment); the binder half owes the lowering. An `undef` of an ENCLOSING binding from inside ANY speculative region — a branch arm, a loop, each or while body, an error handler, a `do` inside a loop, a fn body — is DROPPED by the compiled program: the check pass keeps the binding in its model so a region that never runs raises nothing (`core.Registry.SpecUndefBlocked`, the wrapped-undef FP class), which means no transition is ever placed and every later read stays the pass's bake. `def k 5  if true [undef k] []  k` answered `5` for the interpreter's `undefined_word`; `def k 5  while [k eq 5] [undef k]` never terminated (evaluation_limit) where the interpreter fails on `k`; `[1 2] each [undef k] k`, a fn body's `undef k`, and NUR144's loop-body rows the same. The recorder now refuses at the carried-undef site (one site, two shapes: `undef of the enclosing binding … inside a conditional, loop or fn body`), the interpreter owns every row, and no corpus row is touched (7475 compiled, 0 refused). An undef of a binding made INSIDE the region still compiles | the sixty-seventh increment, probing NUR144's neighbours (2026-09-15) |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
@@ -299,101 +298,6 @@ Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
 
 ---
-
-## NUR145 — a speculative undef of an enclosing binding is dropped by the compiled program {#nur145}
-
-**Status:** RESOLVED by refusal (2026-09-15, the sixty-seventh increment);
-the binder half owes the lowering.
-
-**Rule:** one binding store. A transition the program writes — a `def`, an
-`undef` — happens on the compiled lane exactly where the interpreter makes
-it, or the program refuses.
-
-**Divergence.** NUR144's loop-body undef was one member of a class: an
-`undef` of a binding that PREDATES a speculative check region, from inside
-that region. The check pass deliberately keeps the binding in its model
-there (`core.Registry.SpecUndefBlocked` — a branch arm, a loop, each or
-while body, an error handler, a fn body: the region may never run, and
-leaking the pop raised `undefined_word` on clean programs, the
-wrapped-undef FP class), and the bind ledger records nothing inside a
-rolled-back body. So the compiled program never popped the binding and
-every later read stayed the pass's bake:
-
-```
-def k 5  if true [undef k] []  k          interpreted -> undefined_word: k      compiled -> 5
-def k 5  [1 2] each [undef k]  k          interpreted -> undefined_word: k      compiled -> [1 2] 5
-def k 5  while [k eq 5] [undef k]  9      interpreted -> undefined_word: k      compiled -> evaluation_limit (never terminates)
-def k 5  def f fn [[][Integer][undef k 1]]  f  k
-                                          interpreted -> undefined_word: k      compiled -> 1 5
-```
-
-The never-running handler the leniency exists for (`def x 1  do [7] error
-[undef x 9]  x`) agreed by luck: the region did not run on either lane.
-
-**Fix.** The recorder refuses the program at the carried-undef site
-(`EmitState.RefuseCarriedUndef`, now called from `undefHandler`'s blocked
-branch too — one `MarkUncompilable` site, two shapes, the same
-disposition): "undef of the enclosing binding `k` inside a conditional,
-loop or fn body: no transition the compiled program can place (the binder
-half)". The arm runs even while recording is suspended (a `do` body inside
-a loop), as the frozen-read latch does. A code body compiled as a CLOSURE
-unit (`do`, `each` — `fnUnitRec.closure`) is exempt: its transitions are
-the enclosing run's (a keep-defs body's undef is ledgered by the top-level
-run and adopted as a twin after the call, `AdoptBodyTwins`; a rolled-back
-body's is refused by the outer analysis that runs it first), so the
-closure compile's own view — a fn-body baseline, every enclosing binding
-speculative — is not the program's; `do [undef T]` keeps refusing on the
-check pass's diagnostics, not on its body unit. Every row above falls back to the
-interpreter with parity; an undef of a binding made INSIDE the region (a
-body def, a fn-local) is untouched and still compiles. Measured: no corpus
-row carries the shape (7475 compiled, 0 refused; the refusal-site census
-stays at 92). Pinned in `lang/go/nur144_undef_loop_test.go`
-(`TestSpeculativeUndefOfEnclosingBindingRefuses`).
-
-**What the binder half owes.** A placed `BindUndef` twin inside the region
-(per execution, as the loop-carried store is placed) AND live reads of the
-name after it — a top-level read through the registry, a fn unit's read
-routed or dyn-scoped — since a bake is sound only while the check pass
-sees every transition. The refusal retires with that lowering, under the
-disposition census's row for the site.
-
-## NUR144 — an undef inside a top-level loop body is dropped by the compiled program {#nur144}
-
-**Status:** RESOLVED by refusal (2026-09-15, the sixty-seventh increment),
-as one member of NUR145's class — see NUR145 for the fix, the measurement
-and what the binder half still owes. Recorded 2026-09-15, found on the
-sixty-fifth increment's tree while probing the loop-carried class, off the
-corpus.
-
-**Rule:** one binding store. A transition the program writes — a `def`, an
-`undef` — happens on the compiled lane exactly where the interpreter makes
-it, or the program refuses.
-
-**Divergence.** An `undef` of a pre-loop MODULE binding inside a top-level
-loop body records no twin and lowers to no op:
-
-```
-def k 5  def f fn [[][Integer][k add 2]]  for 2 [ f  undef k ]
-  interpreted -> 7, then undefined_word: k (the second iteration's read)
-  compiled    -> 7 7
-```
-
-The `for` body's `f` and the loop are lowered (FOR_SETUP / FOR_NEXT /
-CALL_USER), the `undef k` is not: the twin table carries `def k` and `def
-f` only. The same for a routed forward slot (`add k 1`). Its two siblings
-are handled: an `undef` of a name the loop CARRIES (a rebind in the same
-body) refuses (`RefuseCarriedUndef`, "undef of the loop-carried def"),
-and an `each` body's transitions refuse ("a bind transition has no stream
-placement"); the plain `for`-body undef of an un-carried name falls
-between the two.
-
-**Fence, retired.** `lang/go/nur144_undef_loop_test.go` pinned the
-divergence both ways; it now pins the refusal and the parity of every row
-in the class (`TestSpeculativeUndefOfEnclosingBindingRefuses`).
-
-**Verdict:** resolved by refusal, as the `each` body's transitions were;
-the binder half places the transition per iteration as the loop-carried
-store is placed, and makes the reads live.
 
 ## NUR143 — a fn-body read of a module-scope flex is a snapshot clone, not the binding {#nur143}
 

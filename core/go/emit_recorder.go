@@ -309,6 +309,14 @@ type EmitRecorder interface {
 	// Gen(name) is still g there.
 	NoteFrozenRead(name string, bake FrozenBake, gen int64)
 	RefuseCarriedUndef(name string)
+	// RefuseSpeculativeUndef is undefHandler's blocked branch: an `undef` of
+	// an ENCLOSING binding — one with a real pre-region depth — from inside
+	// a speculative region (Registry.SpecUndefBlocked), which the check pass
+	// keeps in its model and the compiled lane cannot place. The handler
+	// passes the fact rather than the recorder re-deriving it: the
+	// recorder's registry is the LAST-BOUND one and can be a module
+	// sub-registry after a module call in the same body (review of #463).
+	RefuseSpeculativeUndef(name string)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
 	RememberOriginal(v Value)
@@ -482,6 +490,7 @@ func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)    {}
 func (inactiveEmit) MarkValueDef(Value)                         {}
 func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
 func (inactiveEmit) RefuseCarriedUndef(string)                  {}
+func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }

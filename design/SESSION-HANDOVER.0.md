@@ -97,11 +97,13 @@ handler, a `do` inside a loop, a fn body) is one the check pass keeps in
 its model (the wrapped-undef FP class), so the compiled program never
 popped the binding and every later read stayed the pass's bake; a `while`
 whose condition read the name never terminated. The recorder now refuses
-at the carried-undef site (one site, two shapes; NUR145 records the class,
-NUR144 is resolved under it), every row falls back with parity, in-region
-undefs still compile, and no corpus row is touched. What the binder half
-owes — the placed transition and the live reads — is stated on NUR145 and
-the site's disposition row.
+at the carried-undef site (one site, two hooks — the handler passes the
+fact, since the recorder's registry can be a module's; NUR144 is resolved
+and retired per the register's contract, the class having been NUR145 for
+one commit), every row falls back with parity, in-region undefs and
+never-bound names still compile, and no corpus row is touched. What the
+binder half owes — the placed transition and the live reads — is stated in
+the handoff's section and the site's disposition row.
 
 **Increment 66, the routed dispatch raises its own diagnostics (2026-09-15,
 built on 65).** A no match, a strict-barrier strand and an unbound slot

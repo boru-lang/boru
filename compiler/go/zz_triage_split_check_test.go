@@ -145,6 +145,7 @@ package compiler
 // Test blocks re-homed by compiler-driven triage at the carve.
 
 import (
+	"strings"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -580,6 +581,45 @@ func TestRefuseCarriedUndefFound(t *testing.T) {
 	if es.Compilable {
 		t.Fatal("undef of a loop-carried name should refuse")
 	}
+}
+
+// The undef handler's blocked branch refuses through the same site: an
+// undef of an enclosing binding from a speculative region refuses whether
+// or not recording is live (the fact is the handler's, not re-derived from
+// the recorder's registry), stays out of a closure body compile (the
+// body's transitions are the enclosing run's), and a carried-only call
+// never takes the speculative arm.
+func TestRefuseSpeculativeUndefArms(t *testing.T) {
+	es := NewEmitState()
+	es.RefuseSpeculativeUndef("k")
+	if es.Compilable || !strings.Contains(es.Reason, "undef of the enclosing binding `k`") {
+		t.Fatalf("a speculative undef refuses: compilable=%v reason=%q", es.Compilable, es.Reason)
+	}
+	// Suspended recording still refuses: the refusal is the program's.
+	es2 := NewEmitState()
+	resume := es2.Suspend()
+	es2.RefuseSpeculativeUndef("k")
+	resume()
+	if es2.Compilable {
+		t.Fatal("a speculative undef under a suspended recorder still refuses")
+	}
+	// Inside a closure body compile the enclosing run owns the transition.
+	es3 := NewEmitState()
+	es3.fnRecs = append(es3.fnRecs, &fnUnitRec{closure: true})
+	es3.openUnitRecs = append(es3.openUnitRecs, 0)
+	es3.RefuseSpeculativeUndef("k")
+	if !es3.Compilable {
+		t.Fatalf("a closure body compile keeps compiling: %q", es3.Reason)
+	}
+	// The carried hook never takes the speculative arm, and a nil recorder
+	// is a no-op.
+	es4 := NewEmitState()
+	es4.RefuseCarriedUndef("k")
+	if !es4.Compilable {
+		t.Fatalf("an uncarried undef through the carried hook compiles: %q", es4.Reason)
+	}
+	var none *EmitState
+	none.RefuseSpeculativeUndef("k")
 }
 
 func TestMixedDynamicApplyShape(t *testing.T) {
