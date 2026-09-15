@@ -141,33 +141,42 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 // is per-element, or absent at zero iterations). Each refusal's fallback is
 // parity with the interpreter; a row that starts compiling has graduated and
 // moves to the parity test with its interpreter answer.
+//
+// The `5 is T` rows are ROUTED forward slots since the sixty-fifth
+// increment (`is` dispatches through its descriptor, region_route.go), and
+// they still refuse here: routing retires the escaping latch's note, not
+// the memo's key, so the undef re-records the unit and the check pass
+// reports the undefined name exactly as before (review of #461). The
+// routed op meets a live rebind only where no call site can re-record.
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
 	// to compile_refused; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const armRead = "twin regime: read of `k` after a multi-run body binds it"
-	cases := []struct{ src, reason string }{
+	// defer names the op's defer site for a row that compiles and hands the
+	// RUN to the interpreter; empty for a row that refuses at check.
+	cases := []struct{ src, reason, defer_ string }{
 		// The UNDEF twins: `undef` reaches the same rebind notification as
 		// `def`, and the re-recorded unit reads a name the pass no longer
 		// binds. Before the discipline's arms: `7 7` where the interpreter
 		// raises undefined_word; `true true` for the type; `1 1` for the
 		// sig-undef of a call target.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  undef k  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "check diagnostics"},
-		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  undef g (fnsig [[] [Integer]])  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T/v]]  f  undef T  f`, "check diagnostics"},
-		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics"},
-		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  undef k  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`, "check diagnostics", ""},
+		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  undef g (fnsig [[] [Integer]])  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T/v]]  f  undef T  f`, "check diagnostics", ""},
+		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics", ""},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics", ""},
+		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics", ""},
 		// The MULTI-RUN twin of the rebind-site axis: an each body leaks its
 		// LAST iteration's def to module scope, and the top-level read after
 		// it is the arm-residency gate's. Measured `7 [9] 11` interpreted
 		// against `7 [9] 7` compiled before the arm.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, armRead},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, armRead},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, armRead, ""},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, armRead, ""},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  [1] each [def T String  1]  f`,
-			"twin regime: a bind transition has no stream placement"},
+			"twin regime: a bind transition has no stream placement", ""},
 	}
 	for _, c := range cases {
 		src := c.src
@@ -179,12 +188,30 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", src, cerr)
 		}
-		if prog != nil {
-			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", src, c.reason, reason)
+		if c.defer_ != "" {
+			if prog == nil {
+				t.Errorf("%q: the routed read compiles; refused with %q", src, reason)
+				continue
+			}
+			b, err := New()
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			var bails []string
+			disarm := b.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
+			_, compiled, _ := b.RunCompiled(src)
+			disarm()
+			if compiled || len(bails) != 1 || bails[0] != c.defer_ {
+				t.Errorf("%q: want the run deferred at %s, got compiled=%v bails=%v", src, c.defer_, compiled, bails)
+			}
+		} else {
+			if prog != nil {
+				t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
+				continue
+			}
+			if !strings.Contains(reason, c.reason) {
+				t.Errorf("%q: refusal drifted: want %q in %q", src, c.reason, reason)
+			}
 		}
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if compiled {

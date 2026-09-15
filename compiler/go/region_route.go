@@ -12,25 +12,54 @@ import core "github.com/boru-lang/boru/core/go"
 //
 // The shape is chosen by what the VM's descriptor host can DRIVE without an
 // evaluation (region_host.go declines every evaluation): every slot in the
-// span must be a plain value token or a PLAIN word, so the live walk meets
-// no group, no interpolation, no sugar, and no dispatch modifier on a slot
-// (`k/v`, `k/s` — syntax the host does not model, and a `/v` slot is one
-// the op defers on unconditionally); and no slot beyond the record's claim
-// may be a prior event's result, whose value is not on the stack when the
-// live claim reaches it. Measured on the corpus before this landed: at the
-// user seat inside units, 2 sites qualify and 24241 carry no live slot;
-// the native seat's 708 are the next slice's.
+// span must be a plain SCALAR value token or a PLAIN word, so the live walk
+// meets no group, no interpolation, no sugar, no dispatch modifier on a
+// slot (`k/v`, `k/s` — syntax the host does not model, and a `/v` slot is
+// one the op defers on unconditionally) — and no list or map literal,
+// whose contents the interpreter EVALUATES on arrival (a data list's words
+// and groups run then; the COLLECT oracle's "declined at a compound stop"
+// is this limit seen from the scan's side); and no slot beyond the
+// record's claim may be a prior event's result, whose value is not on the
+// stack when the live claim reaches it. Measured on the corpus before the
+// user seat landed (the sixty-fourth increment): 2 user-seat sites inside
+// units and 708 native-seat ones qualified, 24241 and 90018 carried no live
+// slot. The native seat's MONO records route since the sixty-fifth
+// increment: the op's native arm calls the live handler when it is the
+// record's own (GenericSpec.Impl carries the recorded signature's
+// implementation) and there is no committed unit to enter
+// (GenericSpec.Unit is -1). A POLY native record keeps CALL_NATIVE_POLY:
+// it commits to no one implementation the op could name as the record's.
 //
 // Two more declines are the CALL's, not the span's (both found in review of
 // #460): a lead the run-time def stack does not hold (RegionDesc.LeadLocal —
 // a body-local callee the committed CALL_USER reaches by index), and a
 // callee with captures (RecordUserCall — they ride as trailing operands the
-// routed op has no plumbing for).
+// routed op has no plumbing for). A third is the NAME's: a loop-carried
+// name lives in a frame slot for the rest of the run, not in the registry
+// the routed op reads, so a read of one keeps its bake
+// (EmitState.carriedNames, found on the sixty-fifth increment's tree).
 //
-// A routed read is no longer a BAKE the unit depends on: unfreezeRead
-// retires the note NoteFrozenRead made when the operand was resolved, so the
-// memo does not re-record the unit for a rebind the dispatch already
-// honours, and the escaping latch does not refuse it.
+// A routed slot is a DYNAMIC-SCOPE read — the registry at the moment of
+// the dispatch, which is where the interpreter resolves it — so its name
+// joins routedNames, and every binding of the name the compiled program
+// makes in a FRAME (a fn body's `def k 9` before the call, a loop-carried
+// rebind's store, a param of the name) lowers the registry-visible
+// BIND_DYN_SCOPE twin the dyn-scope binder installs (routedBindsDyn),
+// torn down with the frame as the interpreter's def-cleanup tears its
+// binding down; a root def's bind twin already replays it. Without the
+// twin the routed read saw the module binding through a frame that had
+// shadowed it (`def f fn [[][Any][def k 9  go]]  go f go` answered `5 5 5`
+// for the interpreter's `5 9 5`, and the loop-carried `for 2 [ go  def k
+// 9 ]` `5 5` for `5 9`; both found on the sixty-fifth increment's tree,
+// off the corpus).
+//
+// A routed read is no longer a bake an ESCAPED unit holds stale: unfreezeRead
+// retires the escaping latch's note NoteFrozenRead made when the operand was
+// resolved, so the latch does not refuse it. The MEMO's staleness key stays
+// (review of #461): a rebind the check pass sees re-records the unit, so
+// the record's own overload, result count and arity follow the binding,
+// and the routed op meets a live rebind only where no call site could
+// re-record.
 
 // routeRegion decides whether a completed descriptor drives its dispatch,
 // retiring the frozen notes of the word slots it makes live. Nil for a
@@ -41,17 +70,33 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	if d == nil || d.LeadLocal || !es.Active() || len(es.openUnitRecs) == 0 || !regionDrivable(d) {
 		return false
 	}
-	live := false
+	var names []string
 	for i := 0; i < d.NFwd && i < len(d.Slots); i++ {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
 		if wi, err := core.AsWord(d.Slots[i].Token); err == nil {
-			es.unfreezeRead(wi.Name)
-			live = true
+			// A name a loop carries lives in a frame slot, not in the
+			// registry the routed op reads (EmitState.carriedNames): the
+			// committed call and its bake stay, decided before any note is
+			// retired.
+			if es.carriedNames[wi.Name] {
+				return false
+			}
+			names = append(names, wi.Name)
 		}
 	}
-	return live
+	if len(names) == 0 {
+		return false
+	}
+	if es.routedNames == nil {
+		es.routedNames = map[string]bool{}
+	}
+	for _, name := range names {
+		es.unfreezeRead(name)
+		es.routedNames[name] = true
+	}
+	return true
 }
 
 // regionDrivable reports whether the VM's descriptor host can walk d
@@ -63,6 +108,9 @@ func regionDrivable(d *RegionDesc) bool {
 			return false
 		}
 		if wi, err := core.AsWord(tok); err == nil && !plainWord(wi) {
+			return false
+		}
+		if core.HasContainerIdentity(tok) {
 			return false
 		}
 		if i >= d.NFwd && d.Slots[i].Source == SlotEvent {

@@ -121,6 +121,18 @@ func TestDispatchGenericDefers(t *testing.T) {
 		}}}))
 		defer_(t, p, reg, "vm:generic-foreign-unit", "not the committed unit")
 	})
+	t.Run("a live signature with no implementation", func(t *testing.T) {
+		// An fnsig DECLARATION (`undef w (fnsig …)` leaves one): the live
+		// match has no dispatch handler, so the native arm passes it by, and
+		// it is not a boru signature either — not the committed unit. In a
+		// program the check pass meets the rebind first (the memo re-records
+		// the caller); the seam's window reaches the arm directly.
+		p, reg := genericWorld(t)
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TInteger, core.TInteger}, BarrierPos: 2,
+		}}}))
+		defer_(t, p, reg, "vm:generic-foreign-unit", "not the committed unit")
+	})
 	t.Run("the recorded native's result count drifts from the claim", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
@@ -271,6 +283,22 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 			t.Errorf("want the claim-drift defer, got %v", bails)
 		}
 	})
+	t.Run("the lead resolves in the descriptor's registry", func(t *testing.T) {
+		// A module native reached through its wrapper dispatches in the
+		// module's sub-registry: the running registry has no `w` at all,
+		// the descriptor's does (review of #461).
+		p, reg := genericWorld(t)
+		other := seam7Reg(t)
+		other.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}),
+		}}}))
+		reg.Defs.Pop("w")
+		p.Regions[0].Reg = other
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(5)) {
+			t.Errorf("the lead is looked up where the record dispatched it, the operands where the unit runs: out=%v err=%v", out, err)
+		}
+	})
 	t.Run("a list operand enters the unit quoted", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		reg.Defs.Push("k", core.NewList([]core.Value{core.NewInteger(4)}))
@@ -383,6 +411,29 @@ func TestDispatchGenericReviewGuards(t *testing.T) {
 		})
 		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-foreign-native" || ran {
 			t.Errorf("want the foreign-native defer before the handler, got %v ran=%v", got, ran)
+		}
+	})
+	t.Run("a poly record's live table is its set", func(t *testing.T) {
+		// The record was a poly native dispatch (LiveSet): any overload the
+		// live match selects runs, as CALL_NATIVE_POLY would run it, and the
+		// result count is checked after — the seat's own discipline.
+		p, reg := genericWorld(t)
+		p.Generics[0].LiveSet = true
+		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			a, _ := core.AsInteger(args[0])
+			return []core.Value{core.NewInteger(a * 2)}, nil
+		})
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(10)) {
+			t.Errorf("a live overload of a poly record runs over the live operands: out=%v err=%v", out, err)
+		}
+		p, reg = genericWorld(t)
+		p.Generics[0].LiveSet = true
+		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return nil, nil
+		})
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-nout-drift" {
+			t.Errorf("its result count is checked after it runs: got %v", got)
 		}
 	})
 	t.Run("a pure native overload runs and is checked after", func(t *testing.T) {

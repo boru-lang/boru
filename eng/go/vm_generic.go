@@ -53,9 +53,11 @@ import (
 // handler reads the whole resolved stack, which this op does not present),
 // a native overload the record did not take (its result count is unknown
 // before it runs, and an effect it performs would fence the fallback —
-// unless the word is declared pure, when the count is checked after). A
-// defer is slow, never wrong — and each is a named site the census counts,
-// so the slice's remaining shapes are measured, not guessed.
+// unless the word is declared pure, or the record was a POLY native
+// dispatch whose set is the live table (GenericSpec.LiveSet), when the
+// count is checked after, as CALL_NATIVE_POLY checks it). A defer is slow,
+// never wrong — and each is a named site the census counts, so the slice's
+// remaining shapes are measured, not guessed.
 //
 // UNIT IDENTITY, stated. The live matched signature is taken to be the
 // committed unit's when it is a boru body of the unit's shape — the same
@@ -88,7 +90,15 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	if err := vc.gateWord(reg, d.Word); err != nil {
 		return nil, -1, nil, err
 	}
-	fn := reg.Lookup(d.Word)
+	// The lead resolves in the registry the record dispatched it in
+	// (RegionDesc.Reg — a module's sub-registry for a native reached through
+	// its wrapper), as CALL_NATIVE_POLY resolves its word in PolyRef.Reg;
+	// the operands and the handler's registry are the running one's.
+	lookup := reg
+	if d.Reg != nil {
+		lookup = d.Reg
+	}
+	fn := lookup.Lookup(d.Word)
 	if fn == nil {
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; deferring to the interpreter")
 	}
@@ -163,7 +173,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		if sig.FullStack() {
 			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-full-stack", "DISPATCH_GENERIC at "+d.Word+": the live signature reads the full stack; deferring to the interpreter")
 		}
-		if (gs.Impl == nil || sig.Impl != gs.Impl) && !pureNative(sig) {
+		if !gs.LiveSet && (gs.Impl == nil || sig.Impl != gs.Impl) && !pureNative(sig) {
 			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-native", "DISPATCH_GENERIC at "+d.Word+": a native overload the record did not take; deferring to the interpreter before it runs")
 		}
 		if err := vc.gateModuleCall(reg, sig.ModuleCall); err != nil {

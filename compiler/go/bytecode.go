@@ -1092,13 +1092,22 @@ type GenericSpec struct {
 	// review of #460).
 	NArgs int
 	// Impl is the recorded signature's run implementation when the record
-	// knew it — the native seat's; nil at the user seat, whose target the
-	// call-target bake guards. A live native match of this identity runs
-	// with CALL_NATIVE's own guarantee (the check pass observed its result
-	// count); any other native overload defers before its handler runs,
-	// unless the word is declared pure (found in review of #460).
+	// knew it — the mono native seat's; nil at the user seat, whose target
+	// the call-target bake guards. A live native match of this identity
+	// runs with CALL_NATIVE's own guarantee (the check pass observed its
+	// result count); any other native overload defers before its handler
+	// runs, unless the word is declared pure (found in review of #460) or
+	// LiveSet holds.
 	Impl core.SigImpl
-	Pos  core.SrcPos
+	// LiveSet marks a record that was a POLY native dispatch
+	// (RecordPolyCall): the check pass committed to no one overload, so the
+	// word's LIVE table is the record's set, exactly as CALL_NATIVE_POLY
+	// re-matches over it — any overload the live match selects runs, and
+	// the result count is checked after the handler as vm:poly-nout-drift
+	// checks it. The routed dispatch inherits the seat's discipline, no
+	// more and no less.
+	LiveSet bool
+	Pos     core.SrcPos
 }
 
 // DynMethodSpec is one OpCallDynMethod's shape claim (Stage M2c): the member
@@ -1559,7 +1568,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " r%-3d ; collect oracle over %s", in.Arg, p.Regions[in.Arg].Word)
 		case OpDispatchGeneric:
 			gs := p.Generics[in.Arg]
-			fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (unit f%d)", in.Arg, p.Regions[gs.Region].Word, gs.Region, gs.Unit)
+			if gs.Unit < 0 {
+				fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (native)", in.Arg, p.Regions[gs.Region].Word, gs.Region)
+			} else {
+				fmt.Fprintf(sb, " q%-3d ; generic dispatch of %s over region r%d (unit f%d)", in.Arg, p.Regions[gs.Region].Word, gs.Region, gs.Unit)
+			}
 		case OpReverse:
 			fmt.Fprintf(sb, " n%-3d ; reverse top %d", in.Arg, in.Arg)
 		case OpInterp:

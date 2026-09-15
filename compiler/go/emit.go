@@ -226,6 +226,7 @@ type emitCall struct {
 	nout              int // number of results the call pushes (0 for a side-effect word, N for multi-result)
 	pos               core.SrcPos
 	poly              bool                  // dispatch via OpCallNativePoly (runtime MatchSignature)
+	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -525,6 +526,10 @@ type emitBindTwin struct {
 // otherwise the event lowers to nothing.
 type emitDynBind struct {
 	name string
+	// carried marks a rebind of a name the enclosing armed loop carries
+	// (RecordDefRebind's store into the frame slot): at the root such a def
+	// has no replayed twin, so the routed-read channel lowers one.
+	carried bool
 	// spliceDepth >= 0 marks the S5 first-value loop bind: the bound value
 	// sits spliceDepth entries below the region top at bind time, and the
 	// lowering emits the splice-at-depth OpBindGlobal (-1 = a normal bind).
@@ -1127,6 +1132,42 @@ type EmitState struct {
 	// pendingCarried is the just-closed loop analysis's carried-slot init
 	// list (EndLoopCarried), consumed by the RecordLoop that follows.
 	pendingCarried []carriedInit
+	// carriedNames is every name an armed loop has carried so far (found on
+	// the sixty-fifth increment's tree, off the corpus). A loop-carried name
+	// lives in a FRAME SLOT for the rest of the run — its rebinds are
+	// stores, and the registry keeps the pre-loop binding — while a ROUTED
+	// dispatch (region_route.go) reads the registry live. So a routed read
+	// of a carried name would see the pre-loop value on every iteration
+	// (`def go fn [[][Any][w k 1]]  for 2 [ go  def k 9 ]` answered `5 5`
+	// for the interpreter's `5 9`): routeRegion declines it and the
+	// committed call keeps its bake. The other order — a loop carrying a
+	// name a dispatch already routed — needs no refusal: a routed name is
+	// in routedNames, so the carried rebind's store is paired with the
+	// BIND_DYN_SCOPE twin that keeps the registry current. Nil until first
+	// use.
+	carriedNames map[string]bool
+	// routedNames is every name a routed dispatch reads live (routeRegion)
+	// — the dyn-scope binder's SECOND channel, beside dynScopeNames (the
+	// names OpLookupDynScope reads). A routed slot resolves in the registry
+	// at the dispatch, where the interpreter resolves it, so a binding of
+	// the name the compiled program makes in a FRAME — a fn body's def, a
+	// top-level loop's carried rebind (a frame slot, the registry keeping
+	// the pre-loop binding) — lowers the registry-visible BIND_DYN_SCOPE
+	// twin beside its store (routedBindsDyn), and a param of the name binds
+	// at entry as a dyn-read param does. A ROOT def needs no twin: its bind
+	// twin already replays it at its position. Kept apart from
+	// dynScopeNames so the const-stamp site's decline (a stamp that GROWS
+	// the rescue set is not taken) does not fire for a stamped unit that
+	// merely routes. Nil until first use.
+	routedNames map[string]bool
+}
+
+// routedBindsDyn reports whether a def event owes the routed-read channel a
+// BIND_DYN_SCOPE twin: a def of a routed name made in a frame — any def in a
+// fn unit, or a root def the enclosing loop carries (its store is a frame
+// slot the registry never sees). A plain root def's bind twin replays it.
+func (es *EmitState) routedBindsDyn(d *emitDynBind) bool {
+	return es.routedNames[d.name] && (!d.root || d.carried)
 }
 
 // loopCarriedScope is one armed loop's carried-def registrations: the unit
@@ -4382,6 +4423,10 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 	if scope.unitDepth != len(es.units) {
 		return
 	}
+	if es.carriedNames == nil {
+		es.carriedNames = map[string]bool{}
+	}
+	es.carriedNames[name] = true
 	u := es.units[len(es.units)-1]
 	slot, seen := scope.slots[name]
 	if !seen {
@@ -4899,17 +4944,7 @@ func (es *EmitState) RecordDefRebind(name string, v core.Value, pos core.SrcPos)
 	if !es.Active() || len(es.loopCarried) == 0 {
 		return
 	}
-	slot, found := -1, false
-	for i := len(es.loopCarried) - 1; i >= 0; i-- {
-		scope := es.loopCarried[i]
-		if scope.unitDepth != len(es.units) {
-			continue
-		}
-		if s, ok := scope.slots[name]; ok {
-			slot, found = s, true
-			break
-		}
-	}
+	slot, found := es.carriedSlot(name)
 	if !found {
 		return
 	}
@@ -4924,6 +4959,22 @@ func (es *EmitState) RecordDefRebind(name string, v core.Value, pos core.SrcPos)
 	}
 	es.appendEvent(EmitEvent{kind: evStore, store: &emitStore{src: src, slot: slot, pos: pos}})
 	es.noteStoreHazard(name, slot)
+}
+
+// carriedSlot is the frame slot an active armed loop of THIS unit carries
+// name in, innermost first — the cell RecordDefRebind stores into and the
+// mark RecordDynBind stamps on the def's event.
+func (es *EmitState) carriedSlot(name string) (int, bool) {
+	for i := len(es.loopCarried) - 1; i >= 0; i-- {
+		scope := es.loopCarried[i]
+		if scope.unitDepth != len(es.units) {
+			continue
+		}
+		if s, ok := scope.slots[name]; ok {
+			return s, true
+		}
+	}
+	return -1, false
 }
 
 // RefuseCarriedUndef marks the program uncompilable when `undef` targets a
@@ -6632,6 +6683,11 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// Program.Regions yet; what it buys now is that the descriptor model is
 	// exercised and gated over the whole corpus before OpCollect executes one.
 	region := es.completeRegion(word, pos, args, ops)
+	// A value-dependent divergent word (div / mod) is never routed: its
+	// result count is the VALUE's (a check-time raise recorded no result),
+	// and a routed spec freezes one count for every execution (review of
+	// #461). The committed call keeps the recorder's own handling below.
+	generic := !sig.CompileEffect.Has(core.CompileValueDiverges) && es.routeRegion(region)
 	es.SiteCounts[SiteMono]++
 	// A CompileValueDiverges word (div/mod) raises value-dependently: its
 	// check-mode ReturnsFn drops the declared result (len(outs)==0) exactly on
@@ -6640,7 +6696,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// and the catching word wraps the raised error, instead of islanding.
 	diverges := sig.CompileEffect.Has(core.CompileDiverges) ||
 		(sig.CompileEffect.Has(core.CompileValueDiverges) && len(outs) == 0)
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, diverges: diverges, region: region}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, diverges: diverges, region: region, generic: generic}})
 	// A fallible multi-value catch body reaching the generic path (the
 	// closure probe declined): same variadic mark as RecordClosureCall —
 	// the caught path nets 1 where the static seat expects N (L-DO).
@@ -7378,6 +7434,30 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 	return ops, true
 }
 
+// valueDivergingWord reports whether any overload of word in the registry
+// the dispatch resolves in (owner, or running when the word is a core one)
+// is CompileValueDiverges — the poly seat's twin of RecordCall's test on its
+// one signature, for the same decline (review of #461).
+func valueDivergingWord(owner, running *core.Registry, word string) bool {
+	reg := owner
+	if reg == nil {
+		reg = running
+	}
+	if reg == nil {
+		return false
+	}
+	fd := reg.Lookup(word)
+	if fd == nil {
+		return false
+	}
+	for i := range fd.Signatures {
+		if fd.Signatures[i].CompileEffect.Has(core.CompileValueDiverges) {
+			return true
+		}
+	}
+	return false
+}
+
 // RecordPolyCall records a native dispatch the checker could not commit to
 // one overload for (a dynamic operand widened to Any): the call lowers to
 // OpCallNativePoly, which re-matches the word's signatures at run time (plan
@@ -7439,8 +7519,14 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// sites), completeRegion's contract; a type-name token rewritten above
 	// is checked against its RAW form, so the claim stops there, which is
 	// the prefix rule and the safe direction.
+	// The poly native record routes under the same rule as the mono one
+	// (region_route.go); its spec carries no single implementation but the
+	// LiveSet mark — the word's live table is the record's set, as
+	// CALL_NATIVE_POLY re-matches over it. The census says this is where
+	// the volume is: 660 of the corpus's 677 routed native dispatches.
 	region := es.completeRegion(word, pos, args, ops)
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region}})
+	generic := !valueDivergingWord(ownerReg, es.reg, word) && es.routeRegion(region)
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's
@@ -8013,10 +8099,11 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 			depth--
 		}
 	}
+	_, carried := es.carriedSlot(name)
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
-		residentTwin: -1,
+		residentTwin: -1, carried: carried,
 	}})
 	es.noteBindHazard(name)
 }
@@ -10631,14 +10718,14 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 			}
 		}
 	}
-	if eventsBindDynScope(rec.frag.events, es.dynScopeNames) {
+	if eventsBindDynScope(rec.frag.events, es.dynScopeNames) || eventsBindDynScope(rec.frag.events, es.routedNames) {
 		return true
 	}
-	if len(es.dynScopeNames) == 0 {
+	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 {
 		return false
 	}
 	for i := 0; i < rec.nParams && i < len(rec.locals); i++ {
-		if es.dynScopeNames[rec.locals[i]] {
+		if es.dynScopeNames[rec.locals[i]] || es.routedNames[rec.locals[i]] {
 			return true
 		}
 	}
@@ -10650,7 +10737,7 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 // where the interpreter's InstallFrameBinding makes them visible; the frame's
 // RET truncates them back.
 func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
-	if len(es.dynScopeNames) == 0 && !es.dynEnv && !rec.deoptEnv {
+	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 && !es.dynEnv && !rec.deoptEnv {
 		return
 	}
 	// A LAMBDA unit's islands read its CAPTURES, not the enclosing frame's
@@ -10668,7 +10755,7 @@ func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
 		// InstallFrameBinding makes all of them registry-visible; a dynamic
 		// code body may read any); a deopt unit binds the params its
 		// islands spell. Unnamed slots have no name to bind.
-		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]]) {
+		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]] && !es.routedNames[rec.locals[i]]) {
 			continue
 		}
 		flw.emit(OpPushLocal, i, rec.pos)

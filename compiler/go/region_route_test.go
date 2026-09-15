@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"strings"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -83,6 +84,9 @@ func TestRecordUserCallDeclinesCapturesAndLocalLeads(t *testing.T) {
 		// operand is a frame slot.
 		kv, b := core.NewInteger(5), core.NewInteger(1)
 		reg.Defs.Push("k", kv)
+		// The lead is a word the dispatch registry holds; the scoped case
+		// shadows it with a body-local binding below.
+		reg.Register("f", core.Signature{Args: []*core.Type{core.TAny, core.TAny}})
 		if scoped {
 			// The lead is bound AFTER the enclosing fn's baseline — a
 			// body-local `def f …`.
@@ -133,8 +137,8 @@ func TestRouteRegionRetiresOnlyTheRoutedReads(t *testing.T) {
 	if !es.routeRegion(d) {
 		t.Fatal("routes again")
 	}
-	if _, frozen := rec.frozen["k"]; frozen || rec.bakes["k"] != 0 {
-		t.Errorf("both reads routed: k is unfrozen and its bake generation dropped, got frozen=%v gen=%d", frozen, rec.bakes["k"])
+	if _, frozen := rec.frozen["k"]; frozen || rec.bakes["k"] != 1 {
+		t.Errorf("both reads routed: k is unfrozen for the escaping latch and its bake generation KEPT for the memo, got frozen=%v gen=%d", frozen, rec.bakes["k"])
 	}
 	if _, frozen := rec.frozen["j"]; !frozen {
 		t.Error("an unrouted name is untouched")
@@ -191,5 +195,142 @@ func TestUnfreezeReadGuards(t *testing.T) {
 	es.unfreezeRead("k")
 	if rec.frozenReads != nil {
 		t.Error("a unit with no notes stays without a table")
+	}
+}
+
+// The native seat's routed lowering (the sixty-fifth increment): a routed
+// evCall lowers to DISPATCH_GENERIC with no committed unit, whether the
+// record was mono or poly; a list literal in the span is not drivable.
+func TestLowerRoutedNativeCall(t *testing.T) {
+	es := NewEmitState()
+	d := RegionDesc{Lead: LeadWord, Word: "add", NFwd: 2, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}, {Source: SlotConst, Token: core.NewInteger(1)}}}
+	for _, poly := range []bool{false, true} {
+		lw := &lowerer{es: es, p: &Program{Consts: []core.Value{core.NewInteger(5), core.NewInteger(1)}}, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+		lw.code, lw.debug = &lw.p.Code, &lw.p.Debug
+		ev := &EmitEvent{kind: evCall, call: emitCall{word: "add", ops: []EmitOperand{ConstOperand(0), ConstOperand(1)}, nout: 1, region: &d, generic: true, poly: poly}}
+		if !poly {
+			ev.call.sig = &core.Signature{Args: []*core.Type{core.TAny, core.TAny}, Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+				return nil, nil
+			})}
+		}
+		if reason := lw.lowerCall(ev); reason != "" {
+			t.Fatalf("poly=%v: lowering refused: %s", poly, reason)
+		}
+		if n := len(lw.p.Code); n == 0 || lw.p.Code[n-1].Op != OpDispatchGeneric {
+			t.Fatalf("poly=%v: a routed native call lowers to DISPATCH_GENERIC, got %v", poly, lw.p.Code)
+		}
+		if len(lw.p.Generics) != 1 || lw.p.Generics[0].Unit != -1 || lw.p.Generics[0].NOut != 1 || lw.p.Generics[0].NArgs != 2 || len(lw.p.Sigs) != 0 || len(lw.p.PolyRefs) != 0 {
+			t.Errorf("poly=%v: the spec is unit-less, carries the record's arity, and no sig or poly ref is baked: %+v sigs=%d polys=%d", poly, lw.p.Generics, len(lw.p.Sigs), len(lw.p.PolyRefs))
+		}
+		// The record's own set: the mono record's one implementation, the
+		// poly record's live table.
+		if gs := lw.p.Generics[0]; gs.LiveSet != poly || (gs.Impl != nil) == poly || (!poly && gs.Impl != ev.call.sig.Impl) {
+			t.Errorf("poly=%v: want Impl for a mono record and LiveSet for a poly one, got %+v", poly, gs)
+		}
+		if !strings.Contains(lw.p.Disassemble(), "(native)") {
+			t.Errorf("poly=%v: the disassembly names the unit-less route:\n%s", poly, lw.p.Disassemble())
+		}
+	}
+	es2 := NewEmitState()
+	openUnit(es2, false)
+	list := &RegionDesc{Lead: LeadWord, Word: "size", NFwd: 1, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}, {Source: SlotConst, Token: core.NewList([]core.Value{core.NewInteger(1)})}}}
+	if es2.routeRegion(list) {
+		t.Error("a list literal in the span is evaluated on arrival — not drivable, no route")
+	}
+}
+
+// A routed read and a loop-carried name (EmitState.carriedNames): a region
+// whose live slot names a carried name keeps its committed call and retires
+// no note; a loop that comes to carry a name a routed dispatch already reads
+// carries it — the route made the name a dynamic-scope name, so the carried
+// store is twinned with the registry bind the routed read resolves.
+func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
+	d := &RegionDesc{Lead: LeadWord, Word: "w", NFwd: 1, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}}}
+	es := NewEmitState()
+	rec := openUnit(es, false)
+	es.NoteFrozenRead("k", core.FrozenBakeValue, 1)
+	es.carriedNames = map[string]bool{"k": true}
+	if es.routeRegion(d) {
+		t.Fatal("a carried name keeps its committed call")
+	}
+	if _, frozen := rec.frozen["k"]; !frozen {
+		t.Error("a declined route retires no note")
+	}
+	// The other order: routed first, then carried. The route made the name
+	// a routed name, so the loop carries it as it carries any other — the
+	// carried store's BIND_DYN_SCOPE twin keeps the registry current.
+	es2 := NewEmitState()
+	openUnit(es2, false)
+	if !es2.routeRegion(d) || !es2.routedNames["k"] || es2.dynScopeNames["k"] {
+		t.Fatal("routes, and makes the name a routed name (not a rescue-read one)")
+	}
+	es2.BeginLoopCarried()
+	es2.NoteLoopCarried("k", core.NewInteger(9), core.NewInteger(5))
+	if !es2.Compilable || !es2.carriedNames["k"] {
+		t.Errorf("a loop carrying a routed name carries it: compilable=%v reason=%q carried=%v", es2.Compilable, es2.Reason, es2.carriedNames)
+	}
+	// The channel's rule: a frame's def of a routed name owes the twin (any
+	// def in a fn unit; a root def the loop carries), a plain root def
+	// does not (its bind twin replays it), and an unrouted name never does.
+	for _, c := range []struct {
+		d    emitDynBind
+		want bool
+	}{
+		{emitDynBind{name: "k", root: false}, true},
+		{emitDynBind{name: "k", root: true, carried: true}, true},
+		{emitDynBind{name: "k", root: true}, false},
+		{emitDynBind{name: "j", root: false}, false},
+	} {
+		if got := es2.routedBindsDyn(&c.d); got != c.want {
+			t.Errorf("routedBindsDyn(%+v) = %v, want %v", c.d, got, c.want)
+		}
+	}
+	// A carried name no dispatch routes registers as before, and is
+	// remembered for the routes that follow.
+	es3 := NewEmitState()
+	es3.BeginLoopCarried()
+	es3.NoteLoopCarried("j", core.NewInteger(9), core.NewInteger(5))
+	if !es3.carriedNames["j"] || !es3.Compilable {
+		t.Errorf("an unrouted name is carried: %v %q", es3.carriedNames, es3.Reason)
+	}
+}
+
+// A value-dependent divergent word (div / mod) is never routed: the poly
+// seat asks the word's table in the registry the dispatch resolves in, the
+// owner's or the running one, and a word with no table or no such overload
+// is not diverging.
+func TestValueDivergingWordDeclines(t *testing.T) {
+	reg, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Register("div", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}, CompileEffect: core.CompileValueDiverges})
+	reg.Register("add", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}})
+	if !valueDivergingWord(nil, reg, "div") || valueDivergingWord(nil, reg, "add") || valueDivergingWord(nil, reg, "nope") {
+		t.Error("div diverges, add does not, an unbound word does not")
+	}
+	owner, _ := core.NewRegistry()
+	owner.Register("div", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}})
+	if valueDivergingWord(owner, reg, "div") || valueDivergingWord(nil, nil, "div") {
+		t.Error("the owner's table wins over the running one; no registry, no verdict")
+	}
+}
+
+// A lead the dispatch registry does not hold — a module native reached
+// through its wrapper, dispatched from the caller's registry — completes
+// LeadLocal and keeps its committed call (review of #461).
+func TestCompletionMarksAnUnheldLeadLocal(t *testing.T) {
+	es, reg, done := beginRegionPass(t)
+	defer done()
+	kv := core.NewInteger(5)
+	reg.Defs.Push("k", kv)
+	pos := capture(t, es, reg, "clone", core.NewWord("k"))
+	d := es.completeRegion("clone", pos, []core.Value{kv}, []EmitOperand{ConstOperand(0)})
+	if d == nil || !d.LeadLocal || d.Reg != reg {
+		t.Fatalf("an unheld lead completes LeadLocal over the dispatch registry: %+v", d)
+	}
+	openUnit(es, false)
+	if es.routeRegion(d) {
+		t.Error("an unheld lead keeps its committed call")
 	}
 }
