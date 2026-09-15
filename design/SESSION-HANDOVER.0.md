@@ -78,7 +78,7 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
-| collect oracle (`TestRegionCollectOracle`) | **47464 reproduced** of 72492 executed (floor 47000); 7 findings ledgered by name | floor up only; the ledger pinned in BOTH directions |
+| collect oracle (`TestRegionCollectOracle`) | **47627 reproduced** of 72490 executed (floor 47000; 47464 before review counted the zero-arg claim); 9 findings ledgered by name (NUR140 ×6, NUR141, NUR143 ×2) | floor up only; the ledger pinned in BOTH directions |
 
 Increments 1–60 are on `main`; increment 61 is in review (#457) and 62
 is stacked on it. The most recent
@@ -100,8 +100,17 @@ tallies 72492 executed descriptors — 47464 reproduced, 16110 declined
 name in both directions. The first walk found and fixed a latent host
 defect (the paren span without markers, an infinite loop) and a Phase B
 misdescription (top-level loop iterators as live words), and found the
-TWIN-CARRIER class (below, item 1c). Narrative and table: the
-sixty-second-increment section of FULL-COMPILATION-HANDOFF.0.md.
+TWIN-CARRIER class (below, item 1c). Review (#458) corrected the oracle
+three ways — a zero-arg candidate is a zero-length claim, the lane rejects
+an error the interpreter does not raise, and agreement is IDENTITY (the
+`eq` word's rule) rather than structure — and identity surfaced two more
+registered divergences: NUR142 (a refined container is `eq` to nothing,
+not even itself; `core.SameContainer` is the identity test exported for
+the oracle) and NUR143 (a fn-body read of a module-scope flex is a fresh
+clone of the check pass's snapshot). Re-measured: 47627 reproduced of
+72490, 8 divergences ledgered (NUR140 ×6, NUR143 ×2), 1 over-claim
+(NUR141). Narrative and table: the sixty-second-increment section of
+FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 61, the poly seats (2026-09-14, in review as #457).**
 `RecordUserPolyCall` and `RecordPolyCall` claim their Phase-A captures:

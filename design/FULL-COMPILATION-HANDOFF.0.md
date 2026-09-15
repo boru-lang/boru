@@ -7645,6 +7645,71 @@ fails it, a ledger entry that stops reproducing fails it) with a floor of
 47000 on `reproduced`. The differential is untouched: the default lane
 carries no `OpCollect`, byte-identical (pinned).
 
+### Corrected in review (#458)
+
+Four findings from Codex, each reproduced, and what they turned up:
+
+1. **A zero-argument candidate is a zero-length claim.** The scan loop
+   skipped it, so a lead whose only signature takes nothing left `maxFwd`
+   at -1 and the miss branch indexed the stop slot with it — a panic the
+   VM would recover as `internal_error` in place of an event. Counted
+   now; and counting it moved the corpus: 167 descriptors recorded as
+   "nothing forward" over leads that carry a zero-arg overload were
+   under-claims only because that overload was never asked — 143 of them
+   reproduce, 22 were something else (below). Pinned
+   (`TestRegionOracleZeroArgCandidate`).
+2. **The lane swallowed execution errors.** A row that errored under the
+   oracle was counted compiled and its descriptors after the fault went
+   uncounted, inside the floor's slack; the default lane never arms the
+   oracle, so nothing else would have noticed an oracle-only fault. The
+   lane now applies the differential's error-parity half to every
+   erroring row (the interpreter must raise too) and rejects an internal
+   error outright. 870 compiled rows error, each the program's own.
+3. **Agreement was structural where the interpreter's is identity.** The
+   value check fell back to `ValuesEqual`, so a live word slot rebound to
+   a DISTINCT container with equal contents read as reproduced although
+   an identity-sensitive word over the pushed one (`set` on a flex, `eq`
+   on any container) would act on the wrong object. The rule is now
+   `oracleSameValue`: identity, then the `eq` word's own rule
+   (`core.ExactEqual`), with the container family asked directly through
+   a new `core.SameContainer`. Making it identity surfaced two things the
+   structural test had hidden:
+   - **NUR142.** 22 descriptors over REFINED flex bindings (`def S
+     (refine FlexMap)  def w:S (flex {a:1})`, `refine-flex.tsv`,
+     `as.tsv`) read as divergent under `ExactEqual` although the pushed
+     operand and the bound value were one store under one tag — because
+     `ExactEqual` reaches its container arms through `nodeFamily`, which
+     folds only the kernel's own flex nodes, and a refined container falls
+     to the terminal false: `w eq w` is FALSE on the interpreter today,
+     as is `m eq m` for `def M (refine Map)`. `SameContainer` is the
+     identity test exported from the arm `ExactEqual` cannot reach; the
+     `eq` word is unchanged (a language-visible fix, its own increment);
+     the 22 reproduce.
+   - **NUR143.** Two descriptors in `module-sift.tsv` where a fn-body
+     read of a MODULE-SCOPE flex (`keys sift-catalog` in `Sift.kinds`) is
+     compiled as `PUSH_CONST_FRESH` — a fresh clone of the check pass's
+     snapshot, not the binding. Probed: within a request the keys agree
+     because the check pass dry-passes the same `set`s before the
+     snapshot is taken; across requests (`Sift.define` in request 2,
+     `Sift.kinds` in request 3) the compile REFUSES rather than reads
+     stale. Ledgered by name; the shape a live read replaces.
+4. **NUR entries for the baselined divergences.** The ledger's twin-carrier
+   class is NUR140 (directed at the twin lowering; the sixty-third
+   increment's fix) and the predicate-param claim is NUR141 (a T4
+   question, unruled). Recorded Pending, as the register requires.
+
+The table, re-measured on the review head:
+
+	rows walked                7798
+	rows compiled              7426   (870 erroring, each the program's own)
+	descriptors executed      72490
+	  reproduced              47627   (47464 before the zero-arg claim counted)
+	  declined                16110
+	  under-claimed            8744   (8911)
+	  diverged-value              8   (6 twin-carrier, NUR140; 2 module-flex snapshot, NUR143)
+	  over-claimed                1   (the predicate param, NUR141)
+	  unbound                     0
+
 ### What this does not do, stated
 
 Nothing is routed. `OpDispatchGeneric` does not exist. The oracle checks
@@ -7924,4 +7989,4 @@ position than the construct that produced the binding.
 | `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |
 | `compiler/go/region_user_call_test.go`, `compiler/go/region_hold_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`, `a user-fn call keeps its offer through a same-position dispatch in another source`, `a recovered user-fn call claims its capture`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment, with its review corrections (the hold at ReturnsFn entry survives a same-key offer from another source, an empty hold blocks the pool, a hold completes once, the inactive state holds nothing; the two-source collision and the recovered call from real programs): RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
 | `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |
-| `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor |
+| `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor ; corrected in review: a zero-arg candidate as a zero-length claim, the container-identity agreement rule over a refined binding (`TestRegionOracleZeroArgCandidate`, `TestRegionOracleContainerIdentity`), `core/go/same_container_test.go` (identity where `ExactEqual` falls through, NUR142), and the lane's error-parity check with the module-flex snapshot rows ledgered (NUR143) |

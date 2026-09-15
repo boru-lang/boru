@@ -394,6 +394,28 @@ func ExactEqual(a, b Value) bool {
 	return false
 }
 
+// SameContainer reports whether a and b are ONE container — the same tag
+// and the same underlying store — which is the identity ExactEqual applies
+// to the list, map and XML families. It is exported for a caller that
+// must ask that question of a REFINED container (`def S (refine FlexMap)
+// def w:S (flex {a:1})`): ExactEqual reaches its container arms through
+// nodeFamily, which folds only the kernel's own flex nodes, so a value
+// whose tag is a refine of Map or List falls past them to the terminal
+// false — not eq to itself (NUR142). The COLLECT oracle (eng) asks "is the
+// pushed operand the bound object" and needs the identity test, not the
+// fold, so it reads this. Two values of the container family with
+// different tags are two values (dispatch tells them apart), so the tag
+// is part of the identity; a non-container answers false.
+func SameContainer(a, b Value) bool {
+	if !HasContainerIdentity(a) || !HasContainerIdentity(b) {
+		return false
+	}
+	if a.Parent == nil || b.Parent == nil || !a.Parent.Equal(b.Parent) {
+		return false
+	}
+	return sameContainer(a.Data, b.Data)
+}
+
 // sameContainer reports whether two non-scalar payloads refer to the
 // same underlying container — the identity test behind ExactEqual for
 // lists and maps. A MapPayload identifies by its *OrderedMap pointer;

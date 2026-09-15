@@ -143,6 +143,30 @@ func oracleStopPresentable(tok core.Value) bool {
 	return !tok.Parent.ConformsTo(core.TList) && !tok.Parent.ConformsTo(core.TMap)
 }
 
+// oracleSameValue is the agreement test for a live word slot: is the value
+// the lowering pushed the OBJECT the name is bound to? Identity first; then
+// the `eq` word's own rule (core.ExactEqual) — a scalar by value, a closure
+// or a handle by identity, a container by identity AND tag — with the
+// container family asked directly (core.SameContainer), because
+// ExactEqual's family fold does not reach a REFINED container (`def S
+// (refine FlexMap) def w:S …` is not eq to itself, NUR142) and the oracle's
+// question about it has an answer. Never by structure: two containers with
+// equal contents are two objects, and an identity-sensitive word over the
+// pushed one (`set` on a flex, `eq` on any) would act on the wrong object
+// where the interpreter's live lookup takes the binding's (found in review
+// of #458 — the first draft fell back to ValuesEqual, which is structural).
+// Never by rendering either, which would walk a container's whole payload
+// on every execution of a loop body that names it.
+func oracleSameValue(live, pushed core.Value) bool {
+	if live.ID != "" && live.ID == pushed.ID {
+		return true
+	}
+	if core.HasContainerIdentity(live) || core.HasContainerIdentity(pushed) {
+		return core.SameContainer(live, pushed)
+	}
+	return core.ExactEqual(live, pushed)
+}
+
 // collectOracle executes one OpCollect: walks the descriptor live and reports
 // the outcome (never an error of the program's; the only errors are the
 // VM's own invariants). code and pc locate the op, so the call after it can
@@ -186,21 +210,27 @@ func (vc *vmContext) collectOracle(p *compiler.Program, code []compiler.Instr, p
 	var claims []string
 	exact, maxFwd := false, -1
 	for _, sig := range sigs {
-		n := sig.TotalArgs()
-		if n == 0 {
-			continue
-		}
-		positions := make([]int, n)
-		fwd, specAt := core.CollectCandidateScan(h, sig, sig.BarrierPos, positions, 0, false, false)
-		// A SPECULATIVE slot — a word bound to a dispatching definition,
-		// which the scan counts optimistically because at run time the
-		// token DISPATCHES rather than arriving as a value (the parked
-		// forward carries it as its stop condition) — ends the live
-		// claim: nothing from that slot on arrives as an operand of this
-		// dispatch. That is the `k` pair's second spelling, where the
-		// record pushed k's value and the interpreter meets a barrier.
-		if specAt >= 0 && specAt < fwd {
-			fwd = specAt
+		// A zero-argument signature claims nothing forward — a ZERO-LENGTH
+		// claim, counted like any other. The first draft skipped it, so a
+		// lead whose only signature takes nothing left maxFwd at -1 and
+		// the miss branch below indexed the stop slot with it (found in
+		// review of #458).
+		fwd := 0
+		if n := sig.TotalArgs(); n > 0 {
+			positions := make([]int, n)
+			var specAt int
+			fwd, specAt = core.CollectCandidateScan(h, sig, sig.BarrierPos, positions, 0, false, false)
+			// A SPECULATIVE slot — a word bound to a dispatching
+			// definition, which the scan counts optimistically because at
+			// run time the token DISPATCHES rather than arriving as a value
+			// (the parked forward carries it as its stop condition) — ends
+			// the live claim: nothing from that slot on arrives as an
+			// operand of this dispatch. That is the `k` pair's second
+			// spelling, where the record pushed k's value and the
+			// interpreter meets a barrier.
+			if specAt >= 0 && specAt < fwd {
+				fwd = specAt
+			}
 		}
 		claims = append(claims, strconv.Itoa(fwd))
 		if fwd == d.NFwd {
@@ -236,13 +266,10 @@ func (vc *vmContext) collectOracle(p *compiler.Program, code []compiler.Instr, p
 		}
 		// A SlotWordRef token is a word by Phase A's construction; an
 		// unbound name resolves to nothing, which is a disagreement too.
-		// Equality is by identity first and structure second — never by
-		// rendering, which would walk a container's whole payload on every
-		// execution of a loop body that names it.
 		wi, _ := core.AsWord(s.Token)
 		pushed := stack[top-i]
 		live, ok := reg.Defs.Top(wi.Name)
-		if ok && (live.ID != "" && live.ID == pushed.ID || core.ValuesEqual(live, pushed)) {
+		if ok && oracleSameValue(live, pushed) {
 			continue
 		}
 		got := "<unbound>"

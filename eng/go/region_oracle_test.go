@@ -246,3 +246,94 @@ func TestRegionOracleWindowPresentsOperands(t *testing.T) {
 		t.Fatalf("window = %v: want [word k, the pushed 1, word tail]", win)
 	}
 }
+
+// A zero-argument candidate is a zero-length claim (found in review of
+// #458): the scan loop skipped it, so a lead whose only signature takes
+// nothing left maxFwd at -1 and the miss branch indexed the stop slot with
+// it — a panic the VM would recover as internal_error in place of an
+// event. A record of nothing forward against it is exact; a record of one
+// slot is an over-claim the scans report as [0].
+func TestRegionOracleZeroArgCandidate(t *testing.T) {
+	vc, reg, d, _ := oracleWorld(t)
+	reg.Register("z", core.Signature{Args: nil, BarrierPos: 0})
+	d.Word, d.NFwd = "z", 0
+	d.Slots = []compiler.SlotDesc{{Source: compiler.SlotConst, Token: core.NewInteger(1)}}
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1)}); ev.Outcome != "reproduced" {
+		t.Errorf("a zero-arg lead claims exactly the recorded nothing: %+v", ev)
+	}
+	d.NFwd = 1
+	ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1)})
+	if ev.Outcome != "over-claimed" || !strings.Contains(ev.Detail, "the scans claimed [0]") {
+		t.Errorf("a record claiming one slot over a zero-arg lead over-claims: %+v", ev)
+	}
+}
+
+// Agreement is the `eq` word's rule, not structure (found in review of
+// #458): a live word slot bound to a DISTINCT container with equal
+// contents diverges — an identity-sensitive word over the pushed one
+// (`set` on a flex, `eq` on any container) would act on the wrong object
+// where the interpreter's live lookup takes the binding's. The same
+// instance, rebound, still reproduces.
+func TestRegionOracleContainerIdentity(t *testing.T) {
+	vc, reg, d, _ := oracleWorld(t)
+	one := core.NewFlexList([]core.Value{core.NewInteger(1)})
+	reg.Defs.Push("k", one)
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), one}); ev.Outcome != "reproduced" {
+		t.Errorf("the same flex instance, pushed and bound, reproduces: %+v", ev)
+	}
+	twin := core.NewFlexList([]core.Value{core.NewInteger(1)})
+	ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), twin})
+	if ev.Outcome != "diverged-value" {
+		t.Errorf("a distinct flex instance with equal contents is a divergence: %+v", ev)
+	}
+	// An immutable list is a container too: `eq` is identity there as well.
+	lit := core.NewList([]core.Value{core.NewInteger(2)})
+	reg.Defs.Push("k", lit)
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), core.NewList([]core.Value{core.NewInteger(2)})}); ev.Outcome != "diverged-value" {
+		t.Errorf("a distinct immutable list with equal contents is a divergence: %+v", ev)
+	}
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), lit}); ev.Outcome != "reproduced" {
+		t.Errorf("the same immutable list reproduces: %+v", ev)
+	}
+	// Identity by ID first: a value that carries one (a carrier's or a
+	// clone's provenance ID) agrees with itself before any equality is
+	// asked.
+	tagged := core.NewInteger(7)
+	tagged.ID = "T_same-provenance"
+	reg.Defs.Push("k", tagged)
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), tagged}); ev.Outcome != "reproduced" {
+		t.Errorf("the same ID is the same value: %+v", ev)
+	}
+	// A REFINED container (`def S (refine FlexMap) def w:S (flex {a:1})`):
+	// ExactEqual does not reach its identity (NUR142), the oracle's rule
+	// does — the same object under the same tag reproduces; the same
+	// store under another tag is another value.
+	sub := reg.Types.MintType("S", core.TFlexList)
+	refined := core.ReparentValue(one, sub)
+	reg.Defs.Push("k", refined)
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), refined}); ev.Outcome != "reproduced" {
+		t.Errorf("a refined flex list, the same object under the same tag, reproduces: %+v", ev)
+	}
+	if ev := oracleRun(t, vc, reg, d, []core.Value{core.NewInteger(1), one}); ev.Outcome != "diverged-value" {
+		t.Errorf("the same store under another tag is another value: %+v", ev)
+	}
+}
+
+// The scan stops short at a slot this host cannot present as the runtime
+// does — a list literal the arrival loop evaluates on delivery — and the
+// record claims past it: the host's limit, reported as a decline, never as
+// an over-claim (the miscompile direction) the host has no evidence for.
+func TestRegionOracleDeclinesAtACompoundStop(t *testing.T) {
+	vc, reg, d, _ := oracleWorld(t)
+	reg.Register("w2", core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}, BarrierPos: 2})
+	lit := core.NewList([]core.Value{core.NewInteger(1), core.NewInteger(2)})
+	d.Word, d.NFwd = "w2", 2
+	d.Slots = []compiler.SlotDesc{
+		{Source: compiler.SlotConst, Token: core.NewInteger(1)},
+		{Source: compiler.SlotConst, Token: lit},
+	}
+	ev := oracleRun(t, vc, reg, d, []core.Value{lit, core.NewInteger(1)})
+	if ev.Outcome != "declined" || !strings.Contains(ev.Detail, "the scans claimed [1]") {
+		t.Errorf("a claim past a compound stop is the host's limit, not the record's error: %+v", ev)
+	}
+}
