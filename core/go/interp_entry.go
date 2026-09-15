@@ -75,6 +75,37 @@ type bailHook struct {
 	fn atomic.Pointer[func(BailEvent)]
 }
 
+// RegionOracleEvent is one execution of the compiled lane's COLLECT oracle
+// (compiler.RegionOracle, eng/go/region_oracle.go): a region descriptor
+// walked LIVE by the VM against the registry the dispatch sees, and checked
+// against the claim the static lowering made for the same dispatch.
+// Observability only — the VM continues to the ordinary call whatever the
+// outcome — so the lane that arms it can count how often the live walk
+// reproduces the recorded claim before any dispatch is routed through one.
+type RegionOracleEvent struct {
+	// Word is the descriptor's lead word; Pos its position; NFwd the claim.
+	Word string
+	Pos  SrcPos
+	NFwd int
+	// Outcome is "reproduced" (a live signature claims exactly NFwd slots and
+	// every live word slot presents the value the lowering pushed),
+	// "declined" (the walk needed an evaluation the descriptor host cannot
+	// perform, so nothing is known), "unbound" (the lead has no live
+	// binding), "under-claimed" (the live walk would claim MORE than the
+	// record — the record stopped early, the safe direction),
+	// "over-claimed" (every live signature claims LESS than the record —
+	// the miscompile direction) or "diverged-value" (a live word slot's
+	// binding is not what the lowering pushed). Detail names the
+	// disagreement.
+	Outcome string
+	Detail  string
+}
+
+// regionOracleHook holds the armed region-oracle callback (same discipline).
+type regionOracleHook struct {
+	fn atomic.Pointer[func(RegionOracleEvent)]
+}
+
 // ArmInterpEntryHook installs fn as the interpreter-entry observer and
 // returns the disarm func (test seam — pair with defer/t.Cleanup). A
 // registry assembled without NewRegistry has no holder and arms nothing
@@ -97,6 +128,28 @@ func (r *Registry) ArmRuntimeBailHook(fn func(BailEvent)) func() {
 	return func() { r.bailHook.fn.Store(nil) }
 }
 
+// ArmRegionOracleHook installs fn as the region-oracle observer and returns
+// the disarm func (test seam). Same holder discipline as ArmInterpEntryHook.
+func (r *Registry) ArmRegionOracleHook(fn func(RegionOracleEvent)) func() {
+	if r.regionOracleHook == nil {
+		return func() {}
+	}
+	r.regionOracleHook.fn.Store(&fn)
+	return func() { r.regionOracleHook.fn.Store(nil) }
+}
+
+// NoteRegionOracle emits one region-oracle observation when the hook is
+// armed. Nil-safe on both the registry and the holder; the emit point is
+// the VM's OpCollect (eng/go), outside this module.
+func (r *Registry) NoteRegionOracle(ev RegionOracleEvent) {
+	if r == nil || r.regionOracleHook == nil {
+		return
+	}
+	if fp := r.regionOracleHook.fn.Load(); fp != nil {
+		(*fp)(ev)
+	}
+}
+
 // InheritObserveHooks shares the parent's hook holders (and nothing else)
 // into a module sub-registry, alongside the writer/effect-ledger threading in
 // RunModuleBody — a module body's interpreter entries and runtime bails must
@@ -104,6 +157,7 @@ func (r *Registry) ArmRuntimeBailHook(fn func(BailEvent)) func() {
 func (r *Registry) InheritObserveHooks(parent *Registry) {
 	r.interpHook = parent.interpHook
 	r.bailHook = parent.bailHook
+	r.regionOracleHook = parent.regionOracleHook
 	r.coverHook = parent.coverHook
 	r.coverSources = parent.coverSources
 }

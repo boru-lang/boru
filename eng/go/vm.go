@@ -2356,6 +2356,16 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		case compiler.OpDispatchRematch:
 			// Terminal either way: the rematch raises or defers (vm_rematch.go).
 			return nil, vc.dispatchRematch(&p.Dispatches[in.Arg], stack, curDebug, pc)
+		case compiler.OpCollect:
+			// The region oracle (region_oracle.go): walks the descriptor live
+			// and reports; stack-neutral, and the call after it runs as it
+			// would have.
+			if int(in.Arg) >= len(p.Regions) {
+				return nil, vmErrAt(curDebug, pc, "COLLECT region index out of range")
+			}
+			if err := vc.collectOracle(p, curCode, pc, &p.Regions[in.Arg], stack, curReg, curDebug); err != nil {
+				return nil, err
+			}
 		case compiler.OpPushClosure:
 			nc := p.Fns[in.Arg].NCaptures
 			if len(stack) < nc {

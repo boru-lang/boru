@@ -405,6 +405,22 @@ const (
 	// leaves every jump target untouched. Only fn units emit it (main-unit literals
 	// evaluate once, straight-line).
 	OpPushConstFreshLocal
+	// OpCollect is the generic lane's first EXECUTING descriptor read, and
+	// today it is an ORACLE: it walks Program.Regions[Arg] live in the VM
+	// (eng/go/region_oracle.go — the kernel's collection routine over the
+	// descriptor host against the registry the dispatch sees) and checks
+	// the claim against the operands the static lowering already pushed for
+	// the call that follows. It pushes and pops nothing and never changes
+	// the run: the outcome goes to core's region-oracle hook, and the call
+	// opcode after it executes as it would have. Emitted only under
+	// compiler.RegionOracle (a lane flag, off by default), immediately
+	// after the descriptor's append and before the call it describes, at
+	// every seat Phase B completes (mono native, poly native, user, poly
+	// user). It is the twins' discipline again — execute the table while
+	// nothing depends on it, and count how often the live walk reproduces
+	// the record over the whole corpus — before OpDispatchGeneric routes a
+	// dispatch through a descriptor instead of beside one.
+	OpCollect
 
 	// OpBindTyped is the runtime validate/reparent step of a typed value-def
 	// (`def x:Pos n`) whose constraint is a REFINEMENT — a predicate type, a
@@ -598,6 +614,7 @@ var opcodeNames = [...]string{
 	OpCallDynFrame:         "CALL_DYN_FRAME",
 	OpPushConstFresh:       "PUSH_CONST_FRESH",
 	OpPushConstFreshLocal:  "PUSH_CONST_FRESH_LOCAL",
+	OpCollect:              "COLLECT",
 	OpBindTyped:            "BIND_TYPED",
 	OpCallDynMethod:        "CALL_DYN_METHOD",
 	OpLookupDynScope:       "LOOKUP_DYN_SCOPE",
@@ -1490,6 +1507,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " m%-3d ; assemble {%s}", in.Arg, strings.Join(mm.Keys, " "))
 		case OpTrap:
 			fmt.Fprintf(sb, " x%-3d ; trap %s", in.Arg, p.Traps[in.Arg].Code)
+		case OpCollect:
+			fmt.Fprintf(sb, " r%-3d ; collect oracle over %s", in.Arg, p.Regions[in.Arg].Word)
 		case OpReverse:
 			fmt.Fprintf(sb, " n%-3d ; reverse top %d", in.Arg, in.Arg)
 		case OpInterp:

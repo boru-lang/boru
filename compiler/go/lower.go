@@ -2617,6 +2617,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// TestRegionTableWellFormed before anything executes one.
 	if c.region != nil {
 		lw.p.Regions = append(lw.p.Regions, *c.region)
+		lw.emitRegionOracle(len(lw.p.Regions)-1, c.pos)
 	}
 	if c.typedBind != nil {
 		// A typed value-def's runtime validate/reparent step: pop the body
@@ -3143,6 +3144,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	// for it. Nothing reads Program.Regions yet.
 	if uc.region != nil {
 		lw.p.Regions = append(lw.p.Regions, *uc.region)
+		lw.emitRegionOracle(len(lw.p.Regions)-1, uc.pos)
 	}
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.pos)
@@ -3230,6 +3232,7 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 	// lowerUserCall's and lowerCall's do. Nothing reads Program.Regions yet.
 	if uc.region != nil {
 		lw.p.Regions = append(lw.p.Regions, *uc.region)
+		lw.emitRegionOracle(len(lw.p.Regions)-1, uc.pos)
 	}
 	pi := len(lw.p.UserPolys)
 	lw.p.UserPolys = append(lw.p.UserPolys, UserPolyRef{

@@ -114,15 +114,23 @@ func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitO
 		// A MODULE-scope name read from inside a fn body is not in that class
 		// and must stay live: it is exactly region_desc.go's `k` pair, the
 		// shape OpCollect exists to answer.
+		//
+		// AND a word whose operand is a FRAME SLOT lives in the frame at run
+		// time whatever scope its name has. The fn-scoped test alone missed a
+		// class the COLLECT oracle found on its first corpus run
+		// (eng/go/region_oracle.go): a TOP-LEVEL loop iterator — `for 6 [if
+		// (eq i 3) …]` — is bound by the loop's analysis so it resolves here,
+		// has no enclosing fn so it is not fn-scoped, and is never replayed by
+		// a twin, so the run-time def stack holds no `i` at all; a live
+		// re-derivation would miss where the emitted code reads the slot.
+		// The operand says where the value lives, so the slot says the same.
 		if out.Slots[i].Source == SlotWordRef {
-			if fnScopedWord(off.reg, out.Slots[i].Token) {
-				// A frame-bound name: describable only if the operand says
-				// which slot, which a param or loop iterator does and a
-				// body-local `def` does not.
-				if src != SlotLocal {
-					break
-				}
+			if src == SlotLocal {
 				out.Slots[i].Source, out.Slots[i].Idx, out.Slots[i].ResIdx = src, idx, resIdx
+			} else if fnScopedWord(off.reg, out.Slots[i].Token) {
+				// A frame-bound name whose operand does not say which slot —
+				// a body-local `def`, promoted only after completion: stop.
+				break
 			}
 		} else {
 			out.Slots[i].Source, out.Slots[i].Idx, out.Slots[i].ResIdx = src, idx, resIdx

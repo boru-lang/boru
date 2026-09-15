@@ -7,11 +7,11 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-14**, when the maintainer ruled the definition of
-done (below), the assessment note merged (#453), the disposition census
-merged (#455), the generic lane's first slice (increment 60, #456) went
-up for review and the poly seats (increment 61) were built on it.
-Increments 1–59 are on `main`.
+Last updated: **2026-09-15**, when the maintainer ruled the definition of
+done (below, 2026-09-14), the assessment note merged (#453), the disposition census
+merged (#455) and the generic lane's first slice merged (#456); the poly
+seats (increment 61, #457) are in review and the COLLECT oracle
+(increment 62) is built on them. Increments 1–60 are on `main`.
 
 ---
 
@@ -78,8 +78,9 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
 | `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
+| collect oracle (`TestRegionCollectOracle`) | **47464 reproduced** of 72492 executed (floor 47000); 7 findings ledgered by name | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–59 are on `main`; increment 60 is in review (#456) and 61
+Increments 1–60 are on `main`; increment 61 is in review (#457) and 62
 is stacked on it. The most recent
 landings: #451 (increment 58 — measurement and a negative result, no
 graduation), increment 59 (`c34a2fb`, pushed to `main` directly on
@@ -88,7 +89,21 @@ disposition census, 2026-09-14).
 
 ## What is in flight
 
-**Increment 61, the poly seats (2026-09-14, up next, stacked on 60).**
+**Increment 62, the COLLECT oracle (2026-09-15, up next, after 61).** The
+first EXECUTION of the region table: `OpCollect`, emitted under
+`compiler.RegionOracle` (off by default, byte-identical bytecode), walks
+every descriptor live in the VM with the kernel's own collection routine
+and reports through `Registry.ArmRegionOracleHook` whether the walk
+reproduces the record; the corpus lane (`TestRegionCollectOracle`, 64s)
+tallies 72492 executed descriptors — 47464 reproduced, 16110 declined
+(the host's limit), 8911 under-claimed (safe), 7 findings ledgered by
+name in both directions. The first walk found and fixed a latent host
+defect (the paren span without markers, an infinite loop) and a Phase B
+misdescription (top-level loop iterators as live words), and found the
+TWIN-CARRIER class (below, item 1c). Narrative and table: the
+sixty-second-increment section of FULL-COMPILATION-HANDOFF.0.md.
+
+**Increment 61, the poly seats (2026-09-14, in review as #457).**
 `RecordUserPolyCall` and `RecordPolyCall` claim their Phase-A captures:
 the user poly takes the published `(callWord, wordPos)` pair beside the
 `(word, pos)` it carried (its `word` is the VM's re-match name, not the
@@ -146,6 +161,19 @@ as #455 (`6ea8ac1`).
      Stage 7 owns 11. Only one site is a trap (an `if` condition that
      nets no value) and four delete (an internal invariant, the recorder
      method itself, two fixtures).
+   - **1c, OPEN, found by the oracle: the twin-carrier class.** A
+     top-level `def` of a COMPUTED value (`def b [add 1 2]`, `def l
+     (Log.logger "http")`) lowers to `STORE_LOCAL` + `BIND_TWIN`, and the
+     twin replays the CHECK-PASS binding — a carrier `[Integer]`, a module
+     prototype with empty fields — because `IsConcrete` reads the compound
+     as concrete and no `OpBindGlobal` partner is emitted. The registry
+     holds the prototype for the rest of the run. Parity holds today only
+     because every read of such a def is baked; a LIVE read — the generic
+     lane's, a dynamic body's — reads the prototype. Six corpus rows,
+     ledgered in `test/go/langspec/region_oracle_test.go`. The fix is the
+     twin lowering's (`needGlobal` must ask whether the INSTALLED binding
+     is the runtime value, not whether the recorded value is concrete)
+     and it precedes the first routed dispatch.
    - **1b, OPEN: the lowerer and `Finalize` decline census.** Those
      declines are a different mechanism (a decline reason returned from
      a lowering, not a recorder latch): the site census deliberately does
@@ -170,13 +198,13 @@ as #455 (`6ea8ac1`).
    twins did. (This item was first written against the 4a-2 order and
    corrected in review the same day: a "next increment" sentence
    inherits its author's last reading, which is process rule 3 below.)
-   **Progress:** the inert widening is increments 60 and 61 (above):
-   user-fn calls and both poly families now claim their forward captures,
-   so the descriptor table describes every family the lane dispatches
-   through except dyn-apply and dyn-method. Next is the first executing
-   arm: `OpCollect` and `OpDispatchGeneric` against one of the four
-   acceptance pairs, with the `CollectHost` in `eng/go/region_host.go`
-   given its first evaluating arm.
+   **Progress:** the inert widening is increments 60 and 61, and the
+   first EXECUTION is 62 (above): `OpCollect` walks every descriptor live
+   as an oracle and 65% of the corpus's executed descriptors reproduce
+   exactly, the rest classified. Next is the first ROUTED dispatch:
+   `OpCollect` + `OpDispatchGeneric` for one shape, the escaping-unit `k`
+   pair as the acceptance test, judged by the differential — after the
+   twin-carrier fix (1c), which any live read meets at once.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.

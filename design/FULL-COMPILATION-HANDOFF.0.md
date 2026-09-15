@@ -7532,6 +7532,131 @@ one: pick one of the four shapes Stage 4b left filed under
 `CollectHost` adapter (`eng/go/region_host.go`, every evaluation
 declining today) its first evaluating arm.
 
+## The COLLECT oracle: the first descriptor executes (2026-09-15, the sixty-second increment)
+
+Sixty increments built a table nothing read. This one reads it — the way
+the twins were read first: an opcode that EXECUTES every descriptor and
+changes nothing, reporting whether the live walk agrees with the record,
+counted over the whole corpus, before any dispatch is routed through a
+descriptor instead of beside one.
+
+`OpCollect` (Arg: a `Program.Regions` index) is emitted under
+`compiler.RegionOracle` — a package flag, off by default, set by the lane
+for its walk — immediately after each descriptor's append and before the
+call it describes, at all four seats Phase B completes. The VM
+(`eng/go/region_oracle.go`) builds the descriptor host's window from the
+operand stack the lowering left: a claimed slot presents the VALUE the
+lowering pushed for it (`stack[top-i]` is signature position `i`, and over
+the claim slot `i` IS position `i` — the index rule), except a live word
+slot, which keeps its token so the walk resolves it against the live def
+stack; a slot beyond the claim keeps its token. Then the kernel's own
+collection routine runs — `CollectForward`, the per-candidate scan — and
+two things are checked independently: the EXTENT (some candidate signature
+claims exactly `NFwd` forward slots) and the VALUES (every live word slot
+inside the claim resolves to what the lowering pushed). The outcome goes
+to a new observability seam, `core.RegionOracleEvent` through
+`Registry.ArmRegionOracleHook`, the bail hook's twin, and the call after
+the op runs as it would have.
+
+The candidate signatures come from the CALL the oracle precedes, not from
+a lookup by name: the baked `SigRef` of a `CALL_NATIVE`, a poly ref's word
+in its owner registry, a user unit's word in the unit's registry — or,
+for a fn-LOCAL fn the run-time registry never holds, the unit's own params
+as one forward signature — and a user poly's stored arm table. A lookup by
+the descriptor's word alone was the first version, and the corpus showed
+what it costs: 3705 "unbound" (a namespaced member records under its
+member name, which the running registry does not bind) and 23 false
+over-claims (`BinUtil.reverse` resolving to core's `reverse`).
+
+### The outcomes, and what the first walk found
+
+Six outcomes. `reproduced` is the one that matters. `declined` is the
+host's own limit — a paren group or an interpolation the walk asks it to
+evaluate, and it declines every evaluation; also a scan that stops short
+at a compound literal the arrival loop would evaluate or convert on
+delivery, which is the same limit seen from the scan's side. `unbound` is
+a lead no candidate source names. `under-claimed` is the record stopping
+where the live walk continues — Phase B's prefix rule at a type name or a
+list literal — the safe direction. `over-claimed` is every candidate
+claiming LESS than the record: the miscompile direction. `diverged-value`
+is a live word slot whose binding is not what the lowering pushed.
+
+A speculative slot ends the live claim. The scan counts a word bound to a
+dispatching definition OPTIMISTICALLY (`specAt`: at run time the token
+dispatches rather than arriving), so the claim the runtime would deliver
+ends there; without that rule the `k` pair's second spelling — `k`
+rebound to a fn — reproduced, and it must over-claim.
+
+The first corpus walk hung. The fifth finished in 64 seconds. In between,
+four findings, each pinned:
+
+1. **The region host spun on a data-splice word.** `def vs word [2,3] add
+   vs`: the kernel rewrites a word bound to a data splice to
+   `ParenExpr([w])`, splices the host's paren span in its place and expects
+   to meet the OpenParen next. `regionHost.ScratchParenSpan` returned the
+   bare items — no markers — so the span was `w` again, rewritten again,
+   forever. The seam's contract is the interpreter's shape
+   (`expandParenExprScratch`), marker for marker; the host now wraps, and
+   its pin asserts the markers. A latent host defect the first real walk
+   exposed.
+2. **Top-level loop iterators were described as live word references.**
+   `for 6 [if (eq i 3) [continue] [i]]`: `i` is bound by the loop's
+   analysis so it resolves at record time, has no enclosing fn so it is not
+   fn-scoped, and is never replayed by a twin — the run-time def stack
+   holds no `i`, and a live re-derivation would miss where the emitted code
+   reads the slot. Phase B now takes `SlotLocal` for any word slot whose
+   operand is a frame slot, whatever scope the name has (the operand says
+   where the value lives). Ten slots moved: wordRef 1652 -> 1642, local
+   30998 -> 31008.
+3. **The twin-carrier class.** `def b [add 1 2] size b`: the def's twin
+   replays the check-pass binding — `[Integer]`, the analysis's carrier —
+   where the lowering pushed the folded `[3]` (`STORE_LOCAL l0; BIND_TWIN
+   def b`, no `OpBindGlobal`: `IsConcrete` reads the compound as concrete,
+   so no value partner is emitted). Five more in `module-log.tsv`: a
+   `Log.logger`/`span`/`counter` result whose twin replays the module's
+   PROTOTYPE, empty fields and all. The registry holds the prototype for
+   the rest of the run. Unobservable today because every read of such a
+   def is baked (parity holds on all four spellings probed); a LIVE read —
+   the generic lane's, a dynamic body's — would see the prototype. Six rows
+   ledgered by name and mechanism; the fix is the twin lowering's, filed in
+   the handover.
+4. **A predicate-typed param claimed by the check pass and rejected by the
+   runtime scan** (`f 5` with `n:Even`): the record describes the plan the
+   check pass made; the row is an ERROR row on both lanes. One row,
+   ledgered.
+
+### Measured, whole corpus (`TestRegionCollectOracle`, 64s)
+
+	rows walked                7798
+	rows compiled              7426
+	descriptors executed      72492
+	  reproduced              47464
+	  declined                16110
+	  under-claimed            8911
+	  diverged-value              6   (ledgered: the twin-carrier class)
+	  over-claimed                1   (ledgered: the predicate param)
+	  unbound                     0
+
+Sixty-five percent of every descriptor the corpus executes is reproduced
+by the live walk exactly; a further 22% the host cannot judge; 12% the
+record stops short of, safely. The seven findings are named, and the lane
+is pinned in both directions on them (a finding the ledger does not know
+fails it, a ledger entry that stops reproducing fails it) with a floor of
+47000 on `reproduced`. The differential is untouched: the default lane
+carries no `OpCollect`, byte-identical (pinned).
+
+### What this does not do, stated
+
+Nothing is routed. `OpDispatchGeneric` does not exist. The oracle checks
+the extent existentially over the candidate set (which signature the
+lowering baked is known for `CALL_NATIVE` and used; for the others it is
+the set). The host still declines every evaluation, so a paren beyond the
+claim is unknown, not wrong. The next slice is the one this measurement
+was taken for: give one shape's dispatch to `OpCollect` + `OpDispatchGeneric`
+FOR REAL — the escaping-unit `k` pair is the acceptance test — and let
+the differential, not the oracle, judge it. Before that, or beside it: the
+twin-carrier fix, because a live read under the lane meets it at once.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -7799,3 +7924,4 @@ position than the construct that produced the binding.
 | `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |
 | `compiler/go/region_user_call_test.go`, `compiler/go/region_hold_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`, `a user-fn call keeps its offer through a same-position dispatch in another source`, `a recovered user-fn call claims its capture`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment, with its review corrections (the hold at ReturnsFn entry survives a same-key offer from another source, an empty hold blocks the pool, a hold completes once, the inactive state holds nothing; the two-source collision and the recovered call from real programs): RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
 | `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |
+| `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor |

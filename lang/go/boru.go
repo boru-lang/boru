@@ -389,6 +389,18 @@ func (a *Boru) ArmRuntimeBailHook(fn func(BailEvent)) func() {
 	return a.registry.ArmRuntimeBailHook(fn)
 }
 
+// RegionOracleEvent is one execution of the compiled lane's COLLECT oracle
+// (core.RegionOracleEvent), re-exported for the corpus lane.
+type RegionOracleEvent = core.RegionOracleEvent
+
+// ArmRegionOracleHook forwards to the registry's region-oracle observability
+// seam (a TEST seam, not API): fn fires on every OpCollect a program
+// compiled under compiler.RegionOracle executes, until the returned disarm
+// func runs.
+func (a *Boru) ArmRegionOracleHook(fn func(RegionOracleEvent)) func() {
+	return a.registry.ArmRegionOracleHook(fn)
+}
+
 // ArmRuntimeStamping arms detached fn-unit stamping (compiler.StampDetachedFn) on
 // this instance and returns the restoring disarm func. RunCompiled /
 // RunAutoValues arm it themselves for the duration of the call; this is the

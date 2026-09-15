@@ -132,6 +132,16 @@ var pinnedAritySites = map[string]int{
 	// types — the argument rule's input, not a decision about what a closure
 	// of a given arity may do; a closure of any arity takes the same path.
 	"eng/go/vm_dyn_words.go": 1,
+	// The COLLECT oracle's candidate table (oracleCandidates, the
+	// sixty-second increment): a FN-LOCAL fn is a frame binding the run-time
+	// registry never holds, so the oracle DECLARES the callee's signature
+	// from the unit's own param count — `fn.Params[:fn.NArgs]`, all of them
+	// forward — exactly as closureAsWord does above, and the two comparisons
+	// are the bounds guards on that slice (`NArgs > 0`, `len(Params) >=
+	// NArgs`). The argument rule's input, not a decision about what a fn of
+	// a given arity may do; a fn-local fn of any arity is scanned the same
+	// way against the synthetic signature.
+	"eng/go/region_oracle.go": 2,
 
 	// ── NUR100 §1, a NAMED DIVERGENCE: RunPredicate decides whether a
 	//    function may act as a predicate at all by counting its parameters.

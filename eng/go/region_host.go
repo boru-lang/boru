@@ -100,6 +100,13 @@ func newRegionHost(reg *core.Registry, d *compiler.RegionDesc) *regionHost {
 	for i := range d.Slots {
 		toks = append(toks, d.Slots[i].Token)
 	}
+	return newRegionHostOver(reg, toks)
+}
+
+// newRegionHostOver seats a host on a window the caller has already built —
+// the oracle's, where a claimed slot presents the operand the lowering
+// pushed rather than its token (region_oracle.go).
+func newRegionHostOver(reg *core.Registry, toks []core.Value) *regionHost {
 	return &regionHost{reg: reg, win: core.NewTape(toks, core.StackHeadroom)}
 }
 
@@ -155,8 +162,18 @@ func (h *regionHost) ExpandSugarAt(core.Value, int, int, []core.ViableSig) (bool
 // real flag costs nothing and cannot go stale if that changes.
 func (h *regionHost) FlowInterrupted() bool { return h.reg.FlowCtrl != core.FlowNone }
 
+// ScratchParenSpan wraps items in paren markers, exactly as the
+// interpreter's expandParenExprScratch does — the kernel splices the span
+// in place of a ParenExpr and expects to meet the OpenParen on its next
+// step. The first draft returned the bare items, and the COLLECT oracle's
+// first corpus walk found what that does: a word bound to a data splice is
+// rewritten to ParenExpr([w]), spliced back to the bare `w`, rewritten
+// again, forever (`def vs word [2,3] add vs`). The seam's contract is the
+// interpreter's shape, marker for marker.
 func (h *regionHost) ScratchParenSpan(items []core.Value) []core.Value {
-	h.span = append(h.span[:0], items...)
+	h.span = append(h.span[:0], core.NewOpenParen())
+	h.span = append(h.span, items...)
+	h.span = append(h.span, core.NewCloseParen())
 	return h.span
 }
 
