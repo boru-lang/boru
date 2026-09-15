@@ -5472,7 +5472,11 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// is the first argument's, and a claim keyed by it would miss every
 	// offer.
 	region := es.completeHeldRegion(word, wordPos, args, ops)
-	generic := es.routeRegion(region)
+	// A callee with captures keeps its committed call: the captures ride as
+	// trailing CALL_USER operands the routed op has no plumbing for (it pops
+	// the record's claim and nothing else). Decided before routeRegion so a
+	// declined route retires no read.
+	generic := len(rec.caps) == 0 && es.routeRegion(region)
 	for _, cb := range rec.caps {
 		op, ok := es.resolveOperand(cb.Value)
 		if !ok {

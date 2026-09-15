@@ -43,6 +43,74 @@ func TestRouteRegionDecidesByShape(t *testing.T) {
 	if !es.routeRegion(live(1, word, one)) {
 		t.Error("a const slot beyond the claim is materialisable: routes")
 	}
+	// The review of #460's declines. A modified word in the claim (`k/v`,
+	// `k/s`) is dispatch control the descriptor host does not model — and
+	// the op defers on a `/v` slot unconditionally, so routing it would
+	// route a guaranteed defer.
+	if es.routeRegion(live(2, SlotDesc{Source: SlotWordRef, Token: core.NewWordRef("k")}, one)) {
+		t.Error("a /v word in the claim: no route")
+	}
+	if es.routeRegion(live(2, SlotDesc{Source: SlotWordRef, Token: core.NewWordModified("k", -1, true, false)}, one)) {
+		t.Error("a /s word in the claim: no route")
+	}
+	// A lead the run-time def stack does not hold — a body-local callee —
+	// keeps the CALL_USER that reaches its unit by index.
+	local := live(2, word, one)
+	local.LeadLocal = true
+	if es.routeRegion(local) {
+		t.Error("a body-local lead: no route")
+	}
+}
+
+// The two declines that are the CALL's rather than the span's, driven
+// through RecordUserCall over a real capture: a callee with captures keeps
+// its committed call (the captures ride as trailing operands the routed op
+// has no plumbing for), and a lead bound inside the enclosing fn completes
+// with LeadLocal set and keeps it too. The control routes.
+func TestRecordUserCallDeclinesCapturesAndLocalLeads(t *testing.T) {
+	record := func(t *testing.T, scoped, captures bool) emitUserCall {
+		t.Helper()
+		es, reg, done := beginRegionPass(t)
+		defer done()
+		// A capture is minted inside the pass, like every value the unit
+		// compile registers by identity.
+		var caps []core.CapturedBinding
+		if captures {
+			caps = []core.CapturedBinding{{Name: "c", Value: core.NewInteger(3)}}
+		}
+		// k is a module-scope value the call's first operand resolves to (a
+		// LIVE slot); the unit's own params are other values, so neither
+		// operand is a frame slot.
+		kv, b := core.NewInteger(5), core.NewInteger(1)
+		reg.Defs.Push("k", kv)
+		if scoped {
+			// The lead is bound AFTER the enclosing fn's baseline — a
+			// body-local `def f …`.
+			reg.FnBaselines = append(reg.FnBaselines, map[string]int{"k": 1})
+			reg.Defs.Push("f", core.NewInteger(0))
+		}
+		pos := capture(t, es, reg, "f", core.NewWord("k"), b)
+		unit, _, ok := es.StartFnCompile("f", "f", nil, []core.Value{core.NewInteger(0), core.NewInteger(0)},
+			[]*core.Type{core.TAny, core.TAny}, []string{"x", "y"}, caps, false, core.SrcPos{})
+		if !ok || unit < 0 {
+			t.Fatalf("StartFnCompile declined: %d %v", unit, ok)
+		}
+		es.RecordUserCall(unit, "f", []core.Value{kv, b}, nil, core.SrcPos{Row: 1, Col: 3}, pos)
+		frame := es.frames[len(es.frames)-1]
+		if len(frame) == 0 || frame[len(frame)-1].kind != evCallUser {
+			t.Fatalf("RecordUserCall recorded no user-call event (reason %q)", es.Reason)
+		}
+		return frame[len(frame)-1].uc
+	}
+	if uc := record(t, false, false); !uc.generic || uc.region == nil || uc.region.LeadLocal {
+		t.Errorf("the control — a module-scope lead over a live slot, no captures — routes: generic=%v region=%v", uc.generic, uc.region)
+	}
+	if uc := record(t, false, true); uc.generic {
+		t.Error("a callee with captures keeps its committed call")
+	}
+	if uc := record(t, true, false); uc.generic || uc.region == nil || !uc.region.LeadLocal {
+		t.Errorf("a lead bound inside the enclosing fn completes LeadLocal and keeps its committed call: generic=%v region=%+v", uc.generic, uc.region)
+	}
 }
 
 // Routing retires exactly the reads it makes live: a name read twice in a
@@ -100,8 +168,8 @@ func TestLowerRoutedUserCall(t *testing.T) {
 	if len(lw.p.Code) == 0 || lw.p.Code[len(lw.p.Code)-1].Op != OpDispatchGeneric {
 		t.Fatalf("a routed call lowers to DISPATCH_GENERIC, got %v", lw.p.Code)
 	}
-	if len(lw.p.Generics) != 1 || lw.p.Generics[0].Region != 0 || lw.p.Generics[0].Unit != 0 || lw.p.Generics[0].NOut != 1 {
-		t.Errorf("the spec names the region, the unit and the result count: %+v", lw.p.Generics)
+	if len(lw.p.Generics) != 1 || lw.p.Generics[0].Region != 0 || lw.p.Generics[0].Unit != 0 || lw.p.Generics[0].NOut != 1 || lw.p.Generics[0].NArgs != 2 {
+		t.Errorf("the spec names the region, the unit, the result count and the record's arity: %+v", lw.p.Generics)
 	}
 	if len(lw.p.Regions) != 1 || len(lw.vm) != 1 {
 		t.Errorf("the region is appended, the two pushed operands consumed and the one result produced: regions=%d sim=%d", len(lw.p.Regions), len(lw.vm))

@@ -159,8 +159,17 @@ var pinnedAritySites = map[string]int{
 	// declared types position by position. Reading a matched signature's
 	// shape is the argument rule's own output (the same reading
 	// callDynApply and dynApplyEnter make above); a fn of any arity takes
-	// the same path.
-	"eng/go/vm_generic.go": 3,
+	// the same path. 3 -> 4 (review of #460): the claim guard compares the
+	// live plan's arity with the record's (`len(positions) != gs.NArgs`) —
+	// the argument rule's output on both sides, and a plan of another
+	// extent defers whatever the arity.
+	"eng/go/vm_generic.go": 4,
+	// The region capture (review of #460): plainWord reads the lead's `/N`
+	// modifier (`w.ArgCount == -1`) to know whether the tape wrote ANY
+	// modifier, so the WordInfo rides the descriptor and the live walk
+	// honours it exactly as the record did. Syntax carried, not a decision
+	// by arity: a modified lead of any arity routes the same way.
+	"compiler/go/region_record.go": 1,
 
 	// ── NUR100 §1, a NAMED DIVERGENCE: RunPredicate decides whether a
 	//    function may act as a predicate at all by counting its parameters.

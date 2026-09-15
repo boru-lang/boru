@@ -190,6 +190,9 @@ func (vc *vmContext) collectOracle(p *compiler.Program, code []compiler.Instr, p
 	}
 	h := newRegionHostOver(reg, regionOracleWindow(d, stack))
 	w := core.WordInfo{Name: d.Word, ArgCount: -1}
+	if d.Mods != nil {
+		w = *d.Mods
+	}
 	if err := h.Collected(core.CollectForward(h, fn, w, 0)); err != nil {
 		// A decline (the host cannot evaluate a group or an interpolation,
 		// or the window hit its ceiling) and a kernel raise are the same

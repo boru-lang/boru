@@ -62,3 +62,45 @@ func TestRoutedDispatchKeepsTheCommittedCallElsewhere(t *testing.T) {
 		}
 	}
 }
+
+// The shapes the review of #460 found, each judged against the interpreter.
+// The first two keep their committed call — a body-local callee (its unit
+// is reached by index; a live lookup finds no binding) and a `/v` operand
+// (the op defers on it unconditionally) — so they compile and run compiled
+// as before the route existed. (The third decline, a callee with captures,
+// is pinned at the seam: no def-bound closure call over a live slot
+// compiles today, refusing earlier on its read window.) The next two route
+// WITH the lead's modifiers: `w/f` over
+// a mixed barrier claims both operands forward live as it did at the
+// record, and `w/1` selects the one-operand overload live as the record
+// did. The last is the pattern pair — overloads `[0]` and `[n:Integer]`
+// differ only in the pattern — where the unit compiled for `[0]` must not
+// answer the live match of `[n:Integer]`: the op defers rather than
+// raising the other arm's argument, and the fallback answers the
+// interpreter's 7.
+func TestRoutedDispatchReviewShapes(t *testing.T) {
+	rows := []struct {
+		src, want string
+		routed    bool
+		compiled  bool
+	}{
+		{`def k 5 end def zzouter fn [[x:Integer][Integer][def zzinner fn [[a:Any b:Any][Integer][x]] end zzinner k 1]] end zzouter 42`, "[42]", false, true},
+		{`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k/v 1]] end go`, "[5]", false, true},
+		{`def w fn [[a:Any | b:Any][Any][a]] end def k 5 end def go fn [[][Any][w/f k 1]] end go`, "[5]", true, true},
+		{`def w fn [[a:Any][Any][a] [a:Any b:Any][Any][b]] end def k 5 end def go fn [[][Any][w/1 k 1 drop]] end go`, "[5]", true, true},
+		{`def w fn [[0][Integer][100] [n:Integer][Integer][n]] end def k 0 end def go fn [[][Integer][w k]] end go def k 7 end go`, "[100 7]", true, false},
+	}
+	for _, c := range rows {
+		dis := compileDisasm(t, c.src)
+		if strings.Contains(dis, "DISPATCH_GENERIC") != c.routed {
+			t.Errorf("%q: routed=%v, want %v:\n%s", c.src, !c.routed, c.routed, dis)
+		}
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if errC != nil || errI != nil || fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: compiled=%v/%v interp=%v/%v, want %s", c.src, gotC, errC, gotI, errI, c.want)
+		}
+		if compiled != c.compiled {
+			t.Errorf("%q: ran compiled=%v, want %v", c.src, compiled, c.compiled)
+		}
+	}
+}

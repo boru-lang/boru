@@ -1084,7 +1084,21 @@ type GenericSpec struct {
 	Region int
 	Unit   int
 	NOut   int
-	Pos    core.SrcPos
+	// NArgs is the recorded signature's arity. The live plan must claim
+	// exactly the record's forward slots (RegionDesc.NFwd) and exactly this
+	// many positions in all: the code after the op was lowered for the
+	// record's stack effect, and a plan of another extent would leave
+	// tokens to run twice, or take values the interpreter leaves (found in
+	// review of #460).
+	NArgs int
+	// Impl is the recorded signature's run implementation when the record
+	// knew it — the native seat's; nil at the user seat, whose target the
+	// call-target bake guards. A live native match of this identity runs
+	// with CALL_NATIVE's own guarantee (the check pass observed its result
+	// count); any other native overload defers before its handler runs,
+	// unless the word is declared pure (found in review of #460).
+	Impl core.SigImpl
+	Pos  core.SrcPos
 }
 
 // DynMethodSpec is one OpCallDynMethod's shape claim (Stage M2c): the member

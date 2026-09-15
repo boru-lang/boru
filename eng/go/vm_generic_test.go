@@ -35,7 +35,7 @@ func genericWorld(t *testing.T) (*compiler.Program, *core.Registry) {
 		Code:     []compiler.Instr{{Op: compiler.OpCallUser, Arg: 0}},
 		Consts:   []core.Value{core.NewInteger(1), core.NewInteger(5)},
 		Regions:  []compiler.RegionDesc{d},
-		Generics: []compiler.GenericSpec{{Region: 0, Unit: 1, NOut: 1}},
+		Generics: []compiler.GenericSpec{{Region: 0, Unit: 1, NOut: 1, NArgs: 2}},
 		Fns: []compiler.CompiledFn{
 			{Name: "go", Code: []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpPushConst, Arg: 1}, {Op: compiler.OpDispatchGeneric, Arg: 0}, {Op: compiler.OpRet}}},
 			{Name: "w", NParams: 2, NArgs: 2, NLocals: 2, Params: []*core.Type{core.TAny, core.TAny}, Code: []compiler.Instr{{Op: compiler.OpPushLocal, Arg: 0}, {Op: compiler.OpRet}}},
@@ -64,8 +64,10 @@ func TestDispatchGenericCallsALiveNative(t *testing.T) {
 	p, reg := genericWorld(t)
 	// w rebound to a NATIVE of the same arity (a shadowing binding, so the
 	// boru overload is gone): the live match is a Go handler, called
-	// directly with the live operands.
-	rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+	// directly with the live operands. The spec names the handler as the
+	// record's own (the native seat's identity), so it runs with
+	// CALL_NATIVE's guarantee.
+	p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		a, _ := core.AsInteger(args[0])
 		b, _ := core.AsInteger(args[1])
 		return []core.Value{core.NewInteger(a*10 + b)}, nil
@@ -119,9 +121,9 @@ func TestDispatchGenericDefers(t *testing.T) {
 		}}}))
 		defer_(t, p, reg, "vm:generic-foreign-unit", "not the committed unit")
 	})
-	t.Run("a native whose result count drifts from the claim", func(t *testing.T) {
+	t.Run("the recorded native's result count drifts from the claim", func(t *testing.T) {
 		p, reg := genericWorld(t)
-		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+		p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 			return nil, nil
 		})
 		defer_(t, p, reg, "vm:generic-nout-drift", "result count")
@@ -175,11 +177,14 @@ func TestDispatchGenericDefers(t *testing.T) {
 
 // rebindNative shadows w with a binding holding ONE native signature of the
 // given parameter types, so the live lookup sees the native and nothing
-// else.
-func rebindNative(reg *core.Registry, args []*core.Type, h core.Handler) {
+// else. It returns the signature's run implementation, which a test pins on
+// the spec (GenericSpec.Impl) when the native is to be the record's own.
+func rebindNative(reg *core.Registry, args []*core.Type, h core.Handler) core.SigImpl {
+	impl := core.Go(h)
 	reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
-		Args: args, BarrierPos: len(args), Impl: core.Go(h),
+		Args: args, BarrierPos: len(args), Impl: impl,
 	}}}))
+	return impl
 }
 
 // The arms a rebinding alone does not reach: the word-policy and
@@ -199,11 +204,13 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 	})
 	t.Run("the module-policy gate denies the matched export", func(t *testing.T) {
 		p, reg := genericWorld(t)
+		impl := core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return []core.Value{core.NewInteger(1)}, nil
+		})
+		p.Generics[0].Impl = impl
 		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
 			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, ModuleCall: &core.ModuleCallID{Module: "m", Export: "w"},
-			Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
-				return []core.Value{core.NewInteger(1)}, nil
-			}),
+			Impl: impl,
 		}}}))
 		if err := reg.Capabilities.Set(core.CapPolicy, denyModuleChecker{}); err != nil {
 			t.Fatal(err)
@@ -214,7 +221,7 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 	})
 	t.Run("a live native that errors", func(t *testing.T) {
 		p, reg := genericWorld(t)
-		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+		p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 			return nil, core.MakeBoruError("zz_native", "the handler raised", "w", "", "")
 		})
 		if _, err := RunProgram(p, reg); err == nil || !strings.Contains(err.Error(), "the handler raised") {
@@ -223,7 +230,7 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 	})
 	t.Run("a live native that hands back a token", func(t *testing.T) {
 		p, reg := genericWorld(t)
-		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+		p.Generics[0].Impl = rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 			return []core.Value{core.NewWord("oops")}, nil
 		})
 		if _, err := RunProgram(p, reg); err == nil || !strings.Contains(err.Error(), "generic result at w") {
@@ -242,10 +249,13 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 			t.Errorf("an unbound slot defers at one named site, got %v", bails)
 		}
 	})
-	t.Run("a boru overload of another arity is not the committed unit", func(t *testing.T) {
+	t.Run("a boru overload of another arity is a claim drift", func(t *testing.T) {
 		// A registry where w's ONLY overload takes one operand (a shadowing
 		// push would merge with the two-operand boru overload, which sorts
-		// first and matches).
+		// first and matches). The live plan claims one forward where the
+		// record claimed two: the claim guard defers before the unit's
+		// identity is ever compared (the same-arity foreign unit is pinned
+		// in TestDispatchGenericDefers).
 		p, _ := genericWorld(t)
 		reg := seam7Reg(t)
 		reg.Defs.Push("k", core.NewInteger(5))
@@ -256,9 +266,9 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 		disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { bails = append(bails, ev.Site) })
 		defer disarm()
 		_, err := RunProgram(p, reg)
-		wantInternal(t, err, "not the committed unit")
-		if len(bails) != 1 || bails[0] != "vm:generic-foreign-unit" {
-			t.Errorf("want the foreign-unit defer, got %v", bails)
+		wantInternal(t, err, "claims 1 forward of 1 where the record claimed 2 of 2")
+		if len(bails) != 1 || bails[0] != "vm:generic-claim-drift" {
+			t.Errorf("want the claim-drift defer, got %v", bails)
 		}
 	})
 	t.Run("a list operand enters the unit quoted", func(t *testing.T) {
@@ -276,4 +286,182 @@ type denyModuleChecker struct{}
 func (denyModuleChecker) CheckWord(string) error { return nil }
 func (denyModuleChecker) CheckModuleCall(module, export string) error {
 	return errors.New("zz-policy: module denied " + module + "." + export)
+}
+
+// The guards the review of #460 added, each by the shape that reaches it:
+// the live claim must be the record's (three ways), a full-stack native and
+// a native overload the record did not take defer BEFORE their handlers
+// run, a pure overload runs and is checked after, the lead's modifiers are
+// honoured by the live walk, and the unit's identity includes its parameter
+// patterns.
+func TestDispatchGenericReviewGuards(t *testing.T) {
+	bails := func(t *testing.T, p *compiler.Program, reg *core.Registry) []string {
+		t.Helper()
+		var got []string
+		disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { got = append(got, ev.Site) })
+		defer disarm()
+		_, err := RunProgram(p, reg)
+		if err == nil {
+			t.Fatal("want a deferred run")
+		}
+		return got
+	}
+	// beneath lays a frame value UNDER the claim: go pushes 9, then the
+	// record's two operands, so the live walk's stack half has something
+	// to take.
+	beneath := func(p *compiler.Program) {
+		p.Consts = append(p.Consts, core.NewInteger(9))
+		p.Fns[0].Code = []compiler.Instr{{Op: compiler.OpPushConst, Arg: 2}, {Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpPushConst, Arg: 1}, {Op: compiler.OpDispatchGeneric, Arg: 0}, {Op: compiler.OpRet}}
+	}
+	t.Run("a shorter live claim is a drift", func(t *testing.T) {
+		// The live overload takes its second operand from the STACK
+		// (barrier 1): the walk claims k alone where the record claimed k
+		// and 1 — the 1 the interpreter would leave to run after the call.
+		p, reg := genericWorld(t)
+		beneath(p)
+		ran := false
+		impl := core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			ran = true
+			return []core.Value{core.NewInteger(0)}, nil
+		})
+		p.Generics[0].Impl = impl
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 1, Impl: impl}}}))
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-claim-drift" || ran {
+			t.Errorf("want the claim-drift defer before the handler runs, got %v ran=%v", got, ran)
+		}
+	})
+	t.Run("a longer live claim is a drift", func(t *testing.T) {
+		// The record claimed k alone (NFwd 1; the 1 beyond the claim has its
+		// own lowered code) with its second operand from the stack; the live
+		// all-forward overload claims k AND the 1 — which would then run
+		// twice.
+		p, reg := genericWorld(t)
+		beneath(p)
+		p.Regions[0].NFwd = 1
+		p.Fns[0].Code = []compiler.Instr{{Op: compiler.OpPushConst, Arg: 2}, {Op: compiler.OpPushConst, Arg: 1}, {Op: compiler.OpDispatchGeneric, Arg: 0}, {Op: compiler.OpRet}}
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-claim-drift" {
+			t.Errorf("want the claim-drift defer, got %v", got)
+		}
+	})
+	t.Run("a live plan of another arity is a drift", func(t *testing.T) {
+		// The record's arity is 2 (k forward, one from the stack); the live
+		// overload takes k alone — the same forward claim, a stack half the
+		// following code was lowered to find consumed.
+		p, _ := genericWorld(t)
+		reg := seam7Reg(t)
+		reg.Defs.Push("k", core.NewInteger(5))
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{Args: []*core.Type{core.TAny}, BarrierPos: 1, Impl: core.Boru([]core.Value{core.NewWord("a")})}}}))
+		beneath(p)
+		p.Regions[0].NFwd = 1
+		p.Fns[0].Code = []compiler.Instr{{Op: compiler.OpPushConst, Arg: 2}, {Op: compiler.OpPushConst, Arg: 1}, {Op: compiler.OpDispatchGeneric, Arg: 0}, {Op: compiler.OpRet}}
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-claim-drift" {
+			t.Errorf("want the claim-drift defer, got %v", got)
+		}
+	})
+	t.Run("a full-stack native defers before its handler runs", func(t *testing.T) {
+		p, reg := genericWorld(t)
+		ran := false
+		impl := core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			ran = true
+			return []core.Value{core.NewInteger(0)}, nil
+		}, core.FullStack())
+		p.Generics[0].Impl = impl
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: impl}}}))
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-full-stack" || ran {
+			t.Errorf("a handler that reads the whole resolved stack is never called with a window it did not get: got %v ran=%v", got, ran)
+		}
+	})
+	t.Run("a native overload the record did not take defers before it runs", func(t *testing.T) {
+		// No identity on the spec (the user seat), an ordinary native: its
+		// result count is unknown until it runs, and an effect it performed
+		// would fence the fallback — so it does not run.
+		p, reg := genericWorld(t)
+		ran := false
+		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			ran = true
+			return nil, nil
+		})
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-foreign-native" || ran {
+			t.Errorf("want the foreign-native defer before the handler, got %v ran=%v", got, ran)
+		}
+	})
+	t.Run("a pure native overload runs and is checked after", func(t *testing.T) {
+		pure := func(reg *core.Registry, h core.Handler) {
+			reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+				Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Go(h), CompileEffect: core.CompileIslandPure,
+			}}}))
+		}
+		p, reg := genericWorld(t)
+		pure(reg, func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			a, _ := core.AsInteger(args[0])
+			return []core.Value{core.NewInteger(a + 100)}, nil
+		})
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(105)) {
+			t.Errorf("a pure overload has nothing to fence: it runs over the live operands: out=%v err=%v", out, err)
+		}
+		p, reg = genericWorld(t)
+		pure(reg, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return nil, nil
+		})
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-nout-drift" {
+			t.Errorf("its result count is checked after it runs: got %v", got)
+		}
+	})
+	t.Run("the lead's modifiers are honoured", func(t *testing.T) {
+		// w's only overload takes its second operand from the stack
+		// (barrier 1), a 9 lies beneath the claim, and the record was
+		// `9 w/f k 1`: both operands forward, the 9 left alone. With the
+		// modifier on the descriptor the live walk claims both and enters
+		// the unit over the 9; without it the walk takes the 9 for the
+		// second operand — one forward where the record claimed two, the
+		// claim guard's defer.
+		mixed := func() (*compiler.Program, *core.Registry) {
+			p, reg := genericWorld(t)
+			beneath(p)
+			reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+				Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 1, Impl: core.Boru([]core.Value{core.NewWord("a")}),
+			}}}))
+			return p, reg
+		}
+		p, reg := mixed()
+		p.Regions[0].Mods = &core.WordInfo{Name: "w", ArgCount: -1, ForceForward: true}
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 2 || !core.ValuesEqual(out[0], core.NewInteger(9)) || !core.ValuesEqual(out[1], core.NewInteger(5)) {
+			t.Errorf("`9 w/f k 1` over a mixed barrier claims both forward, as the record did: out=%v err=%v", out, err)
+		}
+		p, reg = mixed()
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-claim-drift" {
+			t.Errorf("the plain lead over the same overload takes the 9 and drifts: %v", got)
+		}
+	})
+	t.Run("the unit's identity includes its parameter patterns", func(t *testing.T) {
+		zero, one := core.NewInteger(0), core.NewInteger(1)
+		with := func(unitPat *core.Value, sigPat map[int]core.Value) (*compiler.Program, *core.Registry) {
+			p, reg := genericWorld(t)
+			p.Fns[1].ParamPatterns = []*core.Value{unitPat, nil}
+			reg.Defs.Push("k", zero)
+			reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+				Args: []*core.Type{core.TAny, core.TAny}, Patterns: sigPat, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}),
+			}}}))
+			return p, reg
+		}
+		p, reg := with(&zero, map[int]core.Value{0: zero})
+		if out, err := RunProgram(p, reg); err != nil || len(out) != 1 || !core.ValuesEqual(out[0], zero) {
+			t.Errorf("the same pattern on both sides is the committed unit: out=%v err=%v", out, err)
+		}
+		for name, c := range map[string]struct {
+			unit *core.Value
+			sig  map[int]core.Value
+		}{
+			"the unit's pattern where the live signature has none": {&zero, nil},
+			"a pattern on the live signature the unit lacks":       {nil, map[int]core.Value{0: zero}},
+			"a different pattern":                                  {&zero, map[int]core.Value{0: one}},
+		} {
+			p, reg := with(c.unit, c.sig)
+			if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-foreign-unit" {
+				t.Errorf("%s: not the committed unit, got %v", name, got)
+			}
+		}
+	})
 }

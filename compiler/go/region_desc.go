@@ -207,6 +207,23 @@ type RegionDesc struct {
 	Word  string
 	Slots []SlotDesc
 	Pos   core.SrcPos
+	// Mods is the lead word as the tape wrote it when it carried a dispatch
+	// modifier — `w/f`, `w/s`, `w/2` — so a live walk over the region reads
+	// the same forward limit and arity the recording walk read. A modifier
+	// is syntax, record-time-final like a slot's Quote. Nil for a plain lead
+	// (the common case, and every hand-built descriptor); when set,
+	// Mods.Name is Word, which Validate checks. A `/v` lead never
+	// dispatches (it is a value read) and `/u` arrives as the `usurp` word,
+	// so neither flag is ever set here.
+	Mods *core.WordInfo
+	// LeadLocal marks a lead whose binding lives inside an enclosing fn — a
+	// body-local `def`, a fn-valued param — which no live lookup where the
+	// body runs can find: the fn-unit hazard fillOffer's slot rule guards,
+	// seen at the lead. The descriptor is still recorded (the COLLECT
+	// oracle counts such a lead as unbound); routing declines it, because
+	// the committed CALL_USER reaches the unit by index where the routed
+	// op would look up a name the run-time def stack does not hold.
+	LeadLocal bool
 	// NFwd is the RECORDED CLAIM: how many leading slots the recording
 	// dispatch actually took forward, in written order. Slots at i >= NFwd
 	// are inside the region's syntactic span but were not this dispatch's

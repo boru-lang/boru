@@ -100,7 +100,12 @@ named designed defer. Routing retires the frozen note of each read it
 makes live, so the memo and the escaping latch stop guarding a bake the
 VM no longer consults. Two corpus sites route; the `k` pair routes in
 every spelling, the escaped unit included, and the differential, the
-coverage triple, the region table and the oracle are unchanged.
+coverage triple, the region table and the oracle are unchanged. The
+review of #460 found seven ways the op trusted the record where the live
+walk could disagree — a body-local callee, a full-stack native, a `/v`
+operand, the lead's modifiers, the claim's extent, unit identity without
+patterns, an effectful native's result count — each reproduced, fixed
+and pinned (the section's "The review's seven"); no corpus gate moved.
 Narrative, the census that chose the shape, and the arms: the
 sixty-fourth-increment section of FULL-COMPILATION-HANDOFF.0.md.
 

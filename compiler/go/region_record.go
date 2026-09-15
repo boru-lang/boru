@@ -98,15 +98,26 @@ func tryRecordRegion(win core.CollectWindow, reg *core.Registry, w core.WordInfo
 		es.pendingRegions = map[regionKey]pendingRegion{}
 	}
 	pos := win.At(at).Pos()
-	es.pendingRegions[keyOf(w.Name, pos)] = pendingRegion{
-		desc: &RegionDesc{
-			Lead:  LeadWord,
-			Word:  w.Name,
-			Slots: slots,
-			Pos:   pos,
-		},
-		reg: reg,
+	desc := &RegionDesc{
+		Lead:  LeadWord,
+		Word:  w.Name,
+		Slots: slots,
+		Pos:   pos,
 	}
+	if !plainWord(w) {
+		mods := w
+		desc.Mods = &mods
+	}
+	es.pendingRegions[keyOf(w.Name, pos)] = pendingRegion{desc: desc, reg: reg}
+}
+
+// plainWord reports whether a word token carries no dispatch modifier: no
+// forced stack or forward split, no exact arity, no value read, no usurp.
+// The lead's modifiers ride the descriptor (RegionDesc.Mods); a modified
+// word in a SLOT is dispatch control the descriptor host does not model, so
+// routing declines the region (regionDrivable).
+func plainWord(w core.WordInfo) bool {
+	return w.ArgCount == -1 && !w.ForceStack && !w.ForceForward && !w.ForceVal && !w.ForceUsurp
 }
 
 // PendingRegionCount reports how many Phase-A captures are held. It exists for

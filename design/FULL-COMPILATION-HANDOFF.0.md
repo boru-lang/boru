@@ -7897,10 +7897,15 @@ native seat's 708 are the next slice's, on the same op.
 ### What routing changes, and what it deliberately does not
 
 A routed call is lowered `DISPATCH_GENERIC q` (a `Program.Generics` entry:
-the region, the committed unit, the result count) in place of `CALL_USER`.
-The operands STAY PUSHED: they are the record's claim, the sim accounting
-is the call's, and the VM pops exactly `NFwd` of them. A routed call is
-never tail-marked.
+the region, the committed unit, the result count, the record's arity) in
+place of `CALL_USER`. The operands STAY PUSHED: they are the record's
+claim, the sim accounting is the call's, and the VM pops exactly `NFwd`
+of them. A routed call is never tail-marked. Three shapes keep their
+committed call although a live slot is in the claim (the review of #460,
+below): a modified word in the claim (`k/v`, `k/s`), a lead the run-time
+def stack does not hold (`RegionDesc.LeadLocal` — a body-local callee,
+reached by index), and a callee with captures (they ride as trailing
+operands the routed op has no plumbing for).
 
 Routing retires the FROZEN NOTE of each read it makes live
 (`unfreezeRead`): `NoteFrozenRead` now counts reads per name, and a name
@@ -7911,10 +7916,12 @@ longer refuses it. The CALL-TARGET bake (`noteBakedCallTarget`) is
 untouched: the route makes the OPERAND side live and leaves the target as
 it was, so a redefinition of the callee between record and run is still
 the memo's to re-record or the latch's to refuse. That is also why the
-VM's unit identity can be SHAPE (the same arity and declared parameter
-types, `unitMatchesSig`) rather than the implementation identity the poly
-seat compares: the target is guarded upstream. The implementation
-identity joins the spec when the escaping shapes route.
+VM's unit identity can be SHAPE (the same arity, declared parameter
+types and parameter patterns, `unitMatchesSig`) rather than the
+implementation identity the poly seat compares: the target is guarded
+upstream, and among one binding's overloads a shape names one signature.
+The implementation identity joins the spec when the escaping shapes
+route; the native seat already carries it (`GenericSpec.Impl`).
 
 ### The plan matcher moves onto the seam
 
@@ -7937,28 +7944,93 @@ decides which signature a call takes.
 
 The window is laid out as the interpreter's tape when stepWord reaches
 the word: the FRAME's resolved values below (`stack[frameBase:]`, minus
-the popped claim), the word at `pointer`, the forward tokens after it — a
+the popped claim), the word at `pointer` — with the modifiers the tape
+wrote on it (`RegionDesc.Mods`: `w/f`, `w/1` read the same forward limit
+and arity live as at the record) — the forward tokens after it — a
 claimed value slot presenting the pushed operand (`stack[top-i]` is
 position i), a live word slot its token, a slot beyond the claim its
 token. `CollectForward` walks it (a decline → defer), `PlanMatch` matches
-it, and the plan's positions resolve as the arrival loop resolves them: a
-forward position's token (a word to its live binding), a stack position's
-value. Then:
+it, the plan's claim is checked against the record's (exactly `NFwd`
+forward positions and exactly `GenericSpec.NArgs` in all — the code after
+the op was lowered for the record's stack effect), and the plan's
+positions resolve as the arrival loop resolves them: a forward position's
+token (a word to its live binding), a stack position's value. Then:
 
 - the committed unit, entered exactly as OpCallUserPoly enters a matched
-  arm, when the live match is a boru signature of its shape;
-- a native handler, called directly, when the live binding is one (the
-  module-call gate, StripAscribed, the result-count claim, screenResults —
-  callPolyIn's discipline);
+  arm, when the live match is a boru signature of its shape — arity,
+  declared types and parameter patterns;
+- a native handler, called directly, when the live binding is one and
+  it is the record's own (`GenericSpec.Impl`) or a declared PURE word
+  (the module-call gate, StripAscribed, the result-count claim after,
+  screenResults — callPolyIn's discipline);
 - a DESIGNED DEFER for every other outcome, each a named site the
   interp-entry census counts: `vm:generic-unbound` (no binding names the
   lead), `vm:generic-declined` (the walk needs an evaluation),
   `vm:generic-no-match` (the interpreter's rich signature_error is built
   from its tape), `vm:generic-speculative` (the strict-barrier strand,
-  likewise), `vm:generic-word-form` (a `/v` or `/u` word in the claim),
-  `vm:generic-unbound-slot`, `vm:generic-nout-drift`,
-  `vm:generic-foreign-unit` (a boru signature the program holds no unit
-  for).
+  likewise), `vm:generic-claim-drift` (a live claim of another extent or
+  arity), `vm:generic-word-form` (a `/v` or `/u` word in the claim),
+  `vm:generic-unbound-slot`, `vm:generic-full-stack` (a handler that
+  reads the whole resolved stack), `vm:generic-foreign-native` (a native
+  overload the record did not take — its result count is unknown before
+  it runs, and an effect it performed would fence the fallback),
+  `vm:generic-nout-drift`, `vm:generic-foreign-unit` (a boru signature
+  the program holds no unit for).
+
+### The review's seven (2026-09-15, #460)
+
+Codex read the op and found seven ways the first slice trusted the
+record where the live walk could disagree, every one reproduced with a
+program before it was fixed, and each fix is a pin now:
+
+1. **A body-local callee routed.** `def zzouter fn [[x:Integer][Integer]
+   [def zzinner fn […] zzinner k 1]]` — the unit is reached by
+   `CALL_USER`'s index, but the routed op looks the name up, and the
+   run-time def stack holds no body-local binding: a guaranteed
+   `vm:generic-unbound`. Completion now stamps `RegionDesc.LeadLocal` by
+   the same rule the slots use (`fnScopedWord` over the dispatch's
+   registry) and routing declines it.
+2. **A full-stack native called with no stack.** The direct call passed
+   nil where `depth`-like handlers read the resolved stack. The op defers
+   (`vm:generic-full-stack`) before such a handler runs.
+3. **A `/v` operand routed.** `w k/v 1` is captured as a word slot, so the
+   region was live — and the op defers on a `/v` word unconditionally.
+   `regionDrivable` declines any modified word in the span
+   (`plainWord`).
+4. **The lead's modifiers dropped.** The op rebuilt the word as
+   `{Name, ArgCount: -1}`, so `w/f k 1` over a mixed barrier was
+   recorded with two forward and re-matched with one; `w/1` lost its
+   arity. Phase A now carries the tape's `WordInfo` on the descriptor
+   (`RegionDesc.Mods`, nil for a plain lead, validated to name the lead)
+   and both the op and the COLLECT oracle walk with it.
+5. **The live claim's extent unchecked.** A shorter live claim dropped
+   the pushed operands the interpreter leaves to run; a longer one would
+   consume tokens whose own lowered code then runs them again; a stack
+   half of another size leaves the frame at a depth the following code
+   was not lowered for. The op counts the plan's forward positions and
+   its arity against `NFwd` and the new `GenericSpec.NArgs` before
+   anything runs (`vm:generic-claim-drift`).
+6. **Unit identity by types alone.** `def w fn [[0][Integer][100]
+   [n:Integer][Integer][n]]  def k 0  def go fn [[][Integer][w k]]  go
+   def k 7  go`: the unit compiled for `[0]` was approved for the live
+   match of `[n:Integer]` and raised its own argument contract where the
+   interpreter answers 7. `unitMatchesSig` compares parameter patterns
+   too.
+7. **The result count checked after an effectful native ran.** A
+   zero-result native selected in place of the recorded call would print
+   before the drift was seen, and the effect fence then blocks the
+   fallback. The op runs a native only when it is the record's own
+   (`GenericSpec.Impl` — CALL_NATIVE's guarantee, the check pass
+   observed the count; the native seat sets it, the user seat's target is
+   bake-guarded) or a declared PURE word; any other overload defers
+   before it runs (`vm:generic-foreign-native`).
+
+A callee with captures was found alongside (the captures ride as trailing
+`CALL_USER` operands the routed op has no plumbing for) and declines at
+`RecordUserCall`. None of the seven changes a corpus gate: the routed
+sites, the differential, the coverage triple, the region table and the
+oracle are unchanged, which is the review's point — the shapes were
+reachable and untested, not measured and failing.
 
 ### Measured
 
@@ -8266,4 +8338,4 @@ position than the construct that produced the binding.
 | `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |
 | `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor ; corrected in review: a zero-arg candidate as a zero-length claim, the container-identity agreement rule over a refined binding (`TestRegionOracleZeroArgCandidate`, `TestRegionOracleContainerIdentity`), `core/go/same_container_test.go` (identity where `ExactEqual` falls through, NUR142), and the lane's error-parity check with the module-flex snapshot rows ledgered (NUR143) |
 | `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |
-| `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
+| `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |

@@ -3247,7 +3247,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		// CALL_USER. The sim accounting is the call's: n consumed, nout
 		// produced, exactly what the record declared and the VM enforces.
 		gi := len(lw.p.Generics)
-		lw.p.Generics = append(lw.p.Generics, GenericSpec{Region: len(lw.p.Regions) - 1, Unit: uc.unit, NOut: uc.nout, Pos: uc.pos})
+		lw.p.Generics = append(lw.p.Generics, GenericSpec{Region: len(lw.p.Regions) - 1, Unit: uc.unit, NOut: uc.nout, NArgs: n, Pos: uc.pos})
 		lw.emit(OpDispatchGeneric, gi, uc.pos)
 		lw.vm = lw.vm[:len(lw.vm)-n]
 		return lw.lowerUserCallResult(ev, uc)

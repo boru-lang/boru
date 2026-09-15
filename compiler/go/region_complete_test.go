@@ -419,3 +419,30 @@ func TestCompleteRegionStopsOnAFnScopedWordWithoutAFrameSlot(t *testing.T) {
 		t.Errorf("slot 0 = %v/%d, want SlotLocal/3", d2.Slots[0].Source, d2.Slots[0].Idx)
 	}
 }
+
+// The lead's modifiers are captured at Phase A — only when the tape wrote
+// one, so a plain lead's descriptor (and every hand-built one) carries nil —
+// and ride the completion unchanged.
+func TestCaptureCarriesTheLeadModifiers(t *testing.T) {
+	es, reg, done := beginRegionPass(t)
+	defer done()
+	a := core.NewInteger(1)
+	pos := core.SrcPos{Row: 1, Col: 1}
+	win := core.NewTape([]core.Value{core.WithPosAt(core.NewWord("f"), pos), a}, 0)
+	tryRecordRegion(win, reg, core.WordInfo{Name: "f", ArgCount: -1}, 0)
+	if off := es.pendingRegions[keyOf("f", pos)]; off.desc == nil || off.desc.Mods != nil {
+		t.Fatalf("a plain lead carries no modifiers: %+v", off.desc)
+	}
+	tryRecordRegion(win, reg, core.WordInfo{Name: "f", ArgCount: 1, ForceForward: true}, 0)
+	off := es.pendingRegions[keyOf("f", pos)]
+	if off.desc == nil || off.desc.Mods == nil || off.desc.Mods.Name != "f" || off.desc.Mods.ArgCount != 1 || !off.desc.Mods.ForceForward {
+		t.Fatalf("a modified lead carries its WordInfo: %+v", off.desc)
+	}
+	d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)})
+	if d == nil || d.Mods == nil || d.Mods != off.desc.Mods || d.LeadLocal {
+		t.Errorf("the completion carries the modifiers and a module-scope lead is not local: %+v", d)
+	}
+	if err := d.Validate(1, 0, 0); err != nil {
+		t.Errorf("the completed descriptor validates: %v", err)
+	}
+}
