@@ -12,14 +12,23 @@ import core "github.com/boru-lang/boru/core/go"
 //
 // The shape is chosen by what the VM's descriptor host can DRIVE without an
 // evaluation (region_host.go declines every evaluation): every slot in the
-// span must be a plain value token or a PLAIN word, so the live walk meets
-// no group, no interpolation, no sugar, and no dispatch modifier on a slot
-// (`k/v`, `k/s` — syntax the host does not model, and a `/v` slot is one
-// the op defers on unconditionally); and no slot beyond the record's claim
-// may be a prior event's result, whose value is not on the stack when the
-// live claim reaches it. Measured on the corpus before this landed: at the
-// user seat inside units, 2 sites qualify and 24241 carry no live slot;
-// the native seat's 708 are the next slice's.
+// span must be a plain SCALAR value token or a PLAIN word, so the live walk
+// meets no group, no interpolation, no sugar, no dispatch modifier on a
+// slot (`k/v`, `k/s` — syntax the host does not model, and a `/v` slot is
+// one the op defers on unconditionally) — and no list or map literal,
+// whose contents the interpreter EVALUATES on arrival (a data list's words
+// and groups run then; the COLLECT oracle's "declined at a compound stop"
+// is this limit seen from the scan's side); and no slot beyond the
+// record's claim may be a prior event's result, whose value is not on the
+// stack when the live claim reaches it. Measured on the corpus before the
+// user seat landed (the sixty-fourth increment): 2 user-seat sites inside
+// units and 708 native-seat ones qualified, 24241 and 90018 carried no live
+// slot. The native seat's MONO records route since the sixty-fifth
+// increment: the op's native arm calls the live handler when it is the
+// record's own (GenericSpec.Impl carries the recorded signature's
+// implementation) and there is no committed unit to enter
+// (GenericSpec.Unit is -1). A POLY native record keeps CALL_NATIVE_POLY:
+// it commits to no one implementation the op could name as the record's.
 //
 // Two more declines are the CALL's, not the span's (both found in review of
 // #460): a lead the run-time def stack does not hold (RegionDesc.LeadLocal —
@@ -63,6 +72,9 @@ func regionDrivable(d *RegionDesc) bool {
 			return false
 		}
 		if wi, err := core.AsWord(tok); err == nil && !plainWord(wi) {
+			return false
+		}
+		if core.HasContainerIdentity(tok) {
 			return false
 		}
 		if i >= d.NFwd && d.Slots[i].Source == SlotEvent {

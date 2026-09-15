@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"strings"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -191,5 +192,46 @@ func TestUnfreezeReadGuards(t *testing.T) {
 	es.unfreezeRead("k")
 	if rec.frozenReads != nil {
 		t.Error("a unit with no notes stays without a table")
+	}
+}
+
+// The native seat's routed lowering (the sixty-fifth increment): a routed
+// evCall lowers to DISPATCH_GENERIC with no committed unit, whether the
+// record was mono or poly; a list literal in the span is not drivable.
+func TestLowerRoutedNativeCall(t *testing.T) {
+	es := NewEmitState()
+	d := RegionDesc{Lead: LeadWord, Word: "add", NFwd: 2, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}, {Source: SlotConst, Token: core.NewInteger(1)}}}
+	for _, poly := range []bool{false, true} {
+		lw := &lowerer{es: es, p: &Program{Consts: []core.Value{core.NewInteger(5), core.NewInteger(1)}}, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+		lw.code, lw.debug = &lw.p.Code, &lw.p.Debug
+		ev := &EmitEvent{kind: evCall, call: emitCall{word: "add", ops: []EmitOperand{ConstOperand(0), ConstOperand(1)}, nout: 1, region: &d, generic: true, poly: poly}}
+		if !poly {
+			ev.call.sig = &core.Signature{Args: []*core.Type{core.TAny, core.TAny}, Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+				return nil, nil
+			})}
+		}
+		if reason := lw.lowerCall(ev); reason != "" {
+			t.Fatalf("poly=%v: lowering refused: %s", poly, reason)
+		}
+		if n := len(lw.p.Code); n == 0 || lw.p.Code[n-1].Op != OpDispatchGeneric {
+			t.Fatalf("poly=%v: a routed native call lowers to DISPATCH_GENERIC, got %v", poly, lw.p.Code)
+		}
+		if len(lw.p.Generics) != 1 || lw.p.Generics[0].Unit != -1 || lw.p.Generics[0].NOut != 1 || lw.p.Generics[0].NArgs != 2 || len(lw.p.Sigs) != 0 || len(lw.p.PolyRefs) != 0 {
+			t.Errorf("poly=%v: the spec is unit-less, carries the record's arity, and no sig or poly ref is baked: %+v sigs=%d polys=%d", poly, lw.p.Generics, len(lw.p.Sigs), len(lw.p.PolyRefs))
+		}
+		// The record's own set: the mono record's one implementation, the
+		// poly record's live table.
+		if gs := lw.p.Generics[0]; gs.LiveSet != poly || (gs.Impl != nil) == poly || (!poly && gs.Impl != ev.call.sig.Impl) {
+			t.Errorf("poly=%v: want Impl for a mono record and LiveSet for a poly one, got %+v", poly, gs)
+		}
+		if !strings.Contains(lw.p.Disassemble(), "(native)") {
+			t.Errorf("poly=%v: the disassembly names the unit-less route:\n%s", poly, lw.p.Disassemble())
+		}
+	}
+	es2 := NewEmitState()
+	openUnit(es2, false)
+	list := &RegionDesc{Lead: LeadWord, Word: "size", NFwd: 1, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}, {Source: SlotConst, Token: core.NewList([]core.Value{core.NewInteger(1)})}}}
+	if es2.routeRegion(list) {
+		t.Error("a list literal in the span is evaluated on arrival — not drivable, no route")
 	}
 }

@@ -47,14 +47,24 @@ import (
 // shape of the model's central claim — a region's extent is its STATEMENT
 // while a dispatch's claim is usually far shorter — so they are counted
 // rather than assumed.
+// routedFloor is the ratchet on the generic lane's executing arm: how many
+// corpus dispatches lower THROUGH their descriptor (OpDispatchGeneric). UP
+// only — a fall means a seat stopped routing or the drivability rule
+// narrowed without a measurement saying so.
+const routedFloor = 600 // 677 measured (2026-09-15, the sixty-fifth increment: the user seat's 2 and the native seat's 675)
+
 type regionTally struct {
 	rows, withRegions, descs int
-	claimedSlots, spanSlots  int
-	nfwdZero, nfwdPartial    int
-	nfwdWhole                int
-	dupSites                 int
-	sources                  map[string]int
-	bad                      []string
+	// routed counts the dispatches lowered THROUGH their descriptor
+	// (Program.Generics, OpDispatchGeneric) — the generic lane's executing
+	// arm, measured beside the table it reads.
+	routed                  int
+	claimedSlots, spanSlots int
+	nfwdZero, nfwdPartial   int
+	nfwdWhole               int
+	dupSites                int
+	sources                 map[string]int
+	bad                     []string
 }
 
 func sourceName(s compiler.SlotSource) string {
@@ -92,6 +102,7 @@ func (tl *regionTally) tallyRow(src, where string) {
 		return
 	}
 	tl.withRegions++
+	tl.routed += len(prog.Generics)
 	// A (word, position) appearing twice in ONE program's table is the shape a
 	// recorder-side table produced when a discarded loop round left its
 	// descriptors behind. The table is built at lowering now, so it shares the
@@ -169,7 +180,10 @@ func TestRegionTableWellFormed(t *testing.T) {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	t.Logf("region table: %d compiled rows, %d carrying regions, %d descriptors", tl.rows, tl.withRegions, tl.descs)
+	t.Logf("region table: %d compiled rows, %d carrying regions, %d descriptors, %d dispatches routed through one", tl.rows, tl.withRegions, tl.descs, tl.routed)
+	if tl.routed < routedFloor {
+		t.Errorf("only %d dispatches route through their descriptor (floor %d) — a seat stopped routing", tl.routed, routedFloor)
+	}
 	t.Logf("   slots: %d claimed of %d in span", tl.claimedSlots, tl.spanSlots)
 	t.Logf("   claim: %d claimed nothing forward, %d a prefix, %d the whole span",
 		tl.nfwdZero, tl.nfwdPartial, tl.nfwdWhole)

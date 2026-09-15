@@ -385,6 +385,29 @@ func TestDispatchGenericReviewGuards(t *testing.T) {
 			t.Errorf("want the foreign-native defer before the handler, got %v ran=%v", got, ran)
 		}
 	})
+	t.Run("a poly record's live table is its set", func(t *testing.T) {
+		// The record was a poly native dispatch (LiveSet): any overload the
+		// live match selects runs, as CALL_NATIVE_POLY would run it, and the
+		// result count is checked after — the seat's own discipline.
+		p, reg := genericWorld(t)
+		p.Generics[0].LiveSet = true
+		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			a, _ := core.AsInteger(args[0])
+			return []core.Value{core.NewInteger(a * 2)}, nil
+		})
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(10)) {
+			t.Errorf("a live overload of a poly record runs over the live operands: out=%v err=%v", out, err)
+		}
+		p, reg = genericWorld(t)
+		p.Generics[0].LiveSet = true
+		rebindNative(reg, []*core.Type{core.TAny, core.TAny}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+			return nil, nil
+		})
+		if got := bails(t, p, reg); len(got) != 1 || got[0] != "vm:generic-nout-drift" {
+			t.Errorf("its result count is checked after it runs: got %v", got)
+		}
+	})
 	t.Run("a pure native overload runs and is checked after", func(t *testing.T) {
 		pure := func(reg *core.Registry, h core.Handler) {
 			reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{

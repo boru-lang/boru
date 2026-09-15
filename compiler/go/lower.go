@@ -2713,7 +2713,24 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.p.Regions = append(lw.p.Regions, *c.region)
 		lw.emitRegionOracle(len(lw.p.Regions)-1, c.pos)
 	}
-	if c.typedBind != nil {
+	if c.generic {
+		// The routed native dispatch (region_route.go): the operands stay
+		// pushed as the record's claim and the descriptor drives the
+		// dispatch in place of CALL_NATIVE / CALL_NATIVE_POLY — no committed
+		// unit (the live binding is a handler, or the op defers), the same
+		// result-count claim and arity the record made, and the record's
+		// own set of implementations: the mono record's one signature
+		// (Impl), which the op runs with CALL_NATIVE's guarantee when the
+		// live match is it, or the poly record's live table (LiveSet), which
+		// the op runs with CALL_NATIVE_POLY's.
+		gi := len(lw.p.Generics)
+		var impl core.SigImpl
+		if c.sig != nil {
+			impl = c.sig.Impl
+		}
+		lw.p.Generics = append(lw.p.Generics, GenericSpec{Region: len(lw.p.Regions) - 1, Unit: -1, NOut: c.nout, NArgs: len(c.ops), Impl: impl, LiveSet: c.poly, Pos: c.pos})
+		lw.emit(OpDispatchGeneric, gi, c.pos)
+	} else if c.typedBind != nil {
 		// A typed value-def's runtime validate/reparent step: pop the body
 		// operand (laid out above), run the interpreter-mirroring RunTypedBind,
 		// push the bound value. The spec rides in TypedBinds like a trap/map spec.

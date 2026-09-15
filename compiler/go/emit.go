@@ -226,6 +226,7 @@ type emitCall struct {
 	nout              int // number of results the call pushes (0 for a side-effect word, N for multi-result)
 	pos               core.SrcPos
 	poly              bool                  // dispatch via OpCallNativePoly (runtime MatchSignature)
+	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -6632,6 +6633,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// Program.Regions yet; what it buys now is that the descriptor model is
 	// exercised and gated over the whole corpus before OpCollect executes one.
 	region := es.completeRegion(word, pos, args, ops)
+	generic := es.routeRegion(region)
 	es.SiteCounts[SiteMono]++
 	// A CompileValueDiverges word (div/mod) raises value-dependently: its
 	// check-mode ReturnsFn drops the declared result (len(outs)==0) exactly on
@@ -6640,7 +6642,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// and the catching word wraps the raised error, instead of islanding.
 	diverges := sig.CompileEffect.Has(core.CompileDiverges) ||
 		(sig.CompileEffect.Has(core.CompileValueDiverges) && len(outs) == 0)
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, diverges: diverges, region: region}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, diverges: diverges, region: region, generic: generic}})
 	// A fallible multi-value catch body reaching the generic path (the
 	// closure probe declined): same variadic mark as RecordClosureCall —
 	// the caught path nets 1 where the static seat expects N (L-DO).
@@ -7439,8 +7441,14 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// sites), completeRegion's contract; a type-name token rewritten above
 	// is checked against its RAW form, so the claim stops there, which is
 	// the prefix rule and the safe direction.
+	// The poly native record routes under the same rule as the mono one
+	// (region_route.go); its spec carries no single implementation but the
+	// LiveSet mark — the word's live table is the record's set, as
+	// CALL_NATIVE_POLY re-matches over it. The census says this is where
+	// the volume is: 660 of the corpus's 677 routed native dispatches.
 	region := es.completeRegion(word, pos, args, ops)
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region}})
+	generic := es.routeRegion(region)
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's

@@ -11,8 +11,9 @@ Last updated: **2026-09-15**, when the maintainer ruled the definition of
 done (below, 2026-09-14), the assessment note merged (#453), the disposition census
 merged (#455), the generic lane's first slice merged (#456), the poly
 seats merged (#457) and the COLLECT oracle merged (#458); the twin-carrier
-fix (increment 63) is in review and the first ROUTED dispatch (increment
-64) is built on it. Increments 1–62 are on `main`.
+fix merged (#459); the first ROUTED dispatch (increment 64, #460) is in
+review and the native seat (increment 65) is built on it. Increments 1–63
+are on `main`.
 
 ---
 
@@ -81,12 +82,25 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–62 are on `main`; increment 63 is in review and 64 is
-stacked on it. The most recent landings: #456 (increment 60, the
-user-call seat, 2026-09-15), #457 (increment 61, the poly seats,
-2026-09-15) and #458 (increment 62, the COLLECT oracle, 2026-09-15).
+Increments 1–63 are on `main`; increment 64 is in review (#460) and 65
+is stacked on it. The most recent landings: #457 (increment 61, the poly
+seats, 2026-09-15), #458 (increment 62, the COLLECT oracle, 2026-09-15)
+and #459 (increment 63, the twin-carrier fix, 2026-09-15).
 
 ## What is in flight
+
+**Increment 65, the native seat routes (2026-09-15, built on 64).** The
+same routing decision at `RecordCall` and `RecordPolyCall`: a fn-unit
+native dispatch with a live word slot over a drivable span lowers
+`DISPATCH_GENERIC` with no committed unit, and the op's native arm calls
+the live handler when it is in the record's own set — the mono record's
+one signature (`GenericSpec.Impl`) or the poly record's live table
+(`GenericSpec.LiveSet`, CALL_NATIVE_POLY's discipline, where 660 of the
+677 live). Drivability tightened — no list or map literal in the span,
+whose contents the interpreter evaluates on arrival. 677 corpus
+dispatches route (floor 600 in `TestRegionTableWellFormed`), every gate
+unchanged, and no defer site fired over the corpus. Narrative: the
+sixty-fifth-increment section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 64, the first ROUTED dispatch (2026-09-15, built on 63).**
 `OpDispatchGeneric` executes a user-fn dispatch inside a fn unit through
@@ -255,11 +269,11 @@ as #455 (`6ea8ac1`).
    exactly, the rest classified; the twin-carrier fix (1c) is 63, so a
    live read no longer meets a model. The first ROUTED dispatch is 64:
    `OpDispatchGeneric` at the user seat inside fn units, the escaping-unit
-   `k` pair answered by the same bytecode across a rebind. Next on the
-   same op: the native seat (708 drivable sites in units, measured), then
-   the diagnostics the op still defers (the strict-barrier strand, the
-   no-match) by extracting their builders from tape state as PlanMatch
-   was extracted.
+   `k` pair answered by the same bytecode across a rebind; 65 gives the
+   op the native seat (677 corpus dispatches routed, no defer fired).
+   Next on the same op: the diagnostics it still defers (the
+   strict-barrier strand, the no-match) by extracting their builders from
+   tape state as PlanMatch was extracted; then the binder half.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.
