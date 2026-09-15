@@ -301,7 +301,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// write-back is emitted, because the twin's replay must then leave the
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
-	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]))
+	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
 	// A ROOT-unit def whose kept binding is NOT the runtime value
 	// additionally needs the cross-request write-back (OpBindGlobal): see
 	// rootBindWritesBack for the rule.
@@ -2489,7 +2489,7 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// event, so the peek fast path reads the live top and every lowering
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
-		if es.dynEnv || deoptNames[events[i].dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[events[i].dyn.name]) ||
+		if es.dynEnv || deoptNames[events[i].dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[events[i].dyn.name]) || es.routedBindsDyn(events[i].dyn) ||
 			// An ARM-RESIDENT body compile (the each-unit bracket, regime
 			// only): every def's computed source is force-promoted so the
 			// resident install can re-push it from a frame slot — a body

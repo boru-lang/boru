@@ -144,16 +144,17 @@ func TestRoutedDispatchAnswersTheNativeSeat(t *testing.T) {
 
 // A routed slot is a DYNAMIC-SCOPE read: the registry at the moment of the
 // dispatch, where the interpreter resolves it. So every binding of the name
-// the compiled program makes in a frame lowers the registry-visible
-// BIND_DYN_SCOPE twin (the name joins dynScopeNames at the route), and the
-// routed read sees the binding the interpreter sees — a fn body's `def k 9`
-// before the call (torn down with the frame: `go f go` is `5 9 5`), and a
-// top-level loop's carried rebind, whose frame-slot STORE alone the registry
-// never saw (`for 2 [ go  def k 9 ]` answered `5 5` for the interpreter's
-// `5 9`). Both found off the corpus on the sixty-fifth increment's tree;
-// the loop shape first refused (the census does not admit a new refusal
-// site), the fn-body shape was found closing that refusal. A read of a
-// name a loop ALREADY carries keeps its committed call (the other order).
+// the compiled program makes in a FRAME lowers the registry-visible
+// BIND_DYN_SCOPE twin (the name joins routedNames at the route; a root def's
+// bind twin replays it already), and the routed read sees the binding the
+// interpreter sees — a fn body's `def k 9` before the call (torn down with
+// the frame: `go f go` is `5 9 5`), a param of the name, and a top-level
+// loop's carried rebind, whose frame-slot STORE alone the registry never
+// saw (`for 2 [ go  def k 9 ]` answered `5 5` for the interpreter's `5 9`).
+// Both found off the corpus on the sixty-fifth increment's tree; the loop
+// shape first refused (the census does not admit a new refusal site), the
+// fn-body shape was found closing that refusal. A read of a name a loop
+// ALREADY carries keeps its committed call (the other order).
 func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 	rows := []struct{ src, want string }{
 		// A fn body shadows the module binding before the routed call.
@@ -164,6 +165,8 @@ func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  def k 9 ] k`, "[6 10 9]"},
 		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  def k (k add 1) ] k`, "[6 7 7]"},
 		{`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end for 2 [ go  def k 9 ]`, "[5 9]"},
+		// A PARAM of the name shadows it for the callee's routed read.
+		{`def k 5 end def w fn [[a:Any b:Any][Any][a]] end def z fn [[][Any][w k 1]] end def go fn [[k:Integer][Any][z]] end z go 9 z`, "[5 9 5]"},
 	}
 	for _, c := range rows {
 		dis := compileDisasm(t, c.src)
@@ -178,6 +181,11 @@ func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 		if fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
 			t.Errorf("%q: compiled=%v interp=%v, want %s", c.src, gotC, gotI, c.want)
 		}
+	}
+	// A ROOT rebind owes no dyn twin: its bind twin replays it at its
+	// position, which is what the k pair has always read.
+	if dis := compileDisasm(t, `def k 5 end def go fn [[][Integer][add k 1]] end go def k 7 end go`); !strings.Contains(dis, "DISPATCH_GENERIC") || strings.Contains(dis, "BIND_DYN_SCOPE") {
+		t.Errorf("a root rebind of a routed name keeps its bind twin alone:\n%s", dis)
 	}
 	// The other order: the loop carries k before any unit reads it, and the
 	// read keeps its committed call.

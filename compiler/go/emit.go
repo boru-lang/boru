@@ -526,6 +526,10 @@ type emitBindTwin struct {
 // otherwise the event lowers to nothing.
 type emitDynBind struct {
 	name string
+	// carried marks a rebind of a name the enclosing armed loop carries
+	// (RecordDefRebind's store into the frame slot): at the root such a def
+	// has no replayed twin, so the routed-read channel lowers one.
+	carried bool
 	// spliceDepth >= 0 marks the S5 first-value loop bind: the bound value
 	// sits spliceDepth entries below the region top at bind time, and the
 	// lowering emits the splice-at-depth OpBindGlobal (-1 = a normal bind).
@@ -1138,10 +1142,32 @@ type EmitState struct {
 	// for the interpreter's `5 9`): routeRegion declines it and the
 	// committed call keeps its bake. The other order — a loop carrying a
 	// name a dispatch already routed — needs no refusal: a routed name is
-	// in dynScopeNames, so the carried rebind's store is paired with the
+	// in routedNames, so the carried rebind's store is paired with the
 	// BIND_DYN_SCOPE twin that keeps the registry current. Nil until first
 	// use.
 	carriedNames map[string]bool
+	// routedNames is every name a routed dispatch reads live (routeRegion)
+	// — the dyn-scope binder's SECOND channel, beside dynScopeNames (the
+	// names OpLookupDynScope reads). A routed slot resolves in the registry
+	// at the dispatch, where the interpreter resolves it, so a binding of
+	// the name the compiled program makes in a FRAME — a fn body's def, a
+	// top-level loop's carried rebind (a frame slot, the registry keeping
+	// the pre-loop binding) — lowers the registry-visible BIND_DYN_SCOPE
+	// twin beside its store (routedBindsDyn), and a param of the name binds
+	// at entry as a dyn-read param does. A ROOT def needs no twin: its bind
+	// twin already replays it at its position. Kept apart from
+	// dynScopeNames so the const-stamp site's decline (a stamp that GROWS
+	// the rescue set is not taken) does not fire for a stamped unit that
+	// merely routes. Nil until first use.
+	routedNames map[string]bool
+}
+
+// routedBindsDyn reports whether a def event owes the routed-read channel a
+// BIND_DYN_SCOPE twin: a def of a routed name made in a frame — any def in a
+// fn unit, or a root def the enclosing loop carries (its store is a frame
+// slot the registry never sees). A plain root def's bind twin replays it.
+func (es *EmitState) routedBindsDyn(d *emitDynBind) bool {
+	return es.routedNames[d.name] && (!d.root || d.carried)
 }
 
 // loopCarriedScope is one armed loop's carried-def registrations: the unit
@@ -4918,17 +4944,7 @@ func (es *EmitState) RecordDefRebind(name string, v core.Value, pos core.SrcPos)
 	if !es.Active() || len(es.loopCarried) == 0 {
 		return
 	}
-	slot, found := -1, false
-	for i := len(es.loopCarried) - 1; i >= 0; i-- {
-		scope := es.loopCarried[i]
-		if scope.unitDepth != len(es.units) {
-			continue
-		}
-		if s, ok := scope.slots[name]; ok {
-			slot, found = s, true
-			break
-		}
-	}
+	slot, found := es.carriedSlot(name)
 	if !found {
 		return
 	}
@@ -4943,6 +4959,22 @@ func (es *EmitState) RecordDefRebind(name string, v core.Value, pos core.SrcPos)
 	}
 	es.appendEvent(EmitEvent{kind: evStore, store: &emitStore{src: src, slot: slot, pos: pos}})
 	es.noteStoreHazard(name, slot)
+}
+
+// carriedSlot is the frame slot an active armed loop of THIS unit carries
+// name in, innermost first — the cell RecordDefRebind stores into and the
+// mark RecordDynBind stamps on the def's event.
+func (es *EmitState) carriedSlot(name string) (int, bool) {
+	for i := len(es.loopCarried) - 1; i >= 0; i-- {
+		scope := es.loopCarried[i]
+		if scope.unitDepth != len(es.units) {
+			continue
+		}
+		if s, ok := scope.slots[name]; ok {
+			return s, true
+		}
+	}
+	return -1, false
 }
 
 // RefuseCarriedUndef marks the program uncompilable when `undef` targets a
@@ -8067,10 +8099,11 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 			depth--
 		}
 	}
+	_, carried := es.carriedSlot(name)
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
-		residentTwin: -1,
+		residentTwin: -1, carried: carried,
 	}})
 	es.noteBindHazard(name)
 }
@@ -10685,14 +10718,14 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 			}
 		}
 	}
-	if eventsBindDynScope(rec.frag.events, es.dynScopeNames) {
+	if eventsBindDynScope(rec.frag.events, es.dynScopeNames) || eventsBindDynScope(rec.frag.events, es.routedNames) {
 		return true
 	}
-	if len(es.dynScopeNames) == 0 {
+	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 {
 		return false
 	}
 	for i := 0; i < rec.nParams && i < len(rec.locals); i++ {
-		if es.dynScopeNames[rec.locals[i]] {
+		if es.dynScopeNames[rec.locals[i]] || es.routedNames[rec.locals[i]] {
 			return true
 		}
 	}
@@ -10704,7 +10737,7 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 // where the interpreter's InstallFrameBinding makes them visible; the frame's
 // RET truncates them back.
 func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
-	if len(es.dynScopeNames) == 0 && !es.dynEnv && !rec.deoptEnv {
+	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 && !es.dynEnv && !rec.deoptEnv {
 		return
 	}
 	// A LAMBDA unit's islands read its CAPTURES, not the enclosing frame's
@@ -10722,7 +10755,7 @@ func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
 		// InstallFrameBinding makes all of them registry-visible; a dynamic
 		// code body may read any); a deopt unit binds the params its
 		// islands spell. Unnamed slots have no name to bind.
-		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]]) {
+		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]] && !es.routedNames[rec.locals[i]]) {
 			continue
 		}
 		flw.emit(OpPushLocal, i, rec.pos)

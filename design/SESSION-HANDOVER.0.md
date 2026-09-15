@@ -101,8 +101,9 @@ whose contents the interpreter evaluates on arrival. 677 corpus
 dispatches route (floor 600 in `TestRegionTableWellFormed`), every gate
 unchanged, and no defer site fired over the corpus. Found off the corpus
 and closed in the same PR: a routed slot is a dynamic-scope read, so a
-routed name joins `dynScopeNames` and every frame binding of it — a fn
-body's `def` before the call, a top-level loop's carried rebind — lowers
+routed name joins `routedNames` (the binder's channel beside
+`dynScopeNames`) and every frame binding of it — a fn body's `def` before
+the call, a param of the name, a top-level loop's carried rebind — lowers
 the registry-visible `BIND_DYN_SCOPE` twin the routed read resolves
 (both shapes answered the module binding through the frame that
 shadowed it); a read of a name a loop already carries keeps its

@@ -257,17 +257,33 @@ func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
 		t.Error("a declined route retires no note")
 	}
 	// The other order: routed first, then carried. The route made the name
-	// a dynamic-scope name, so the loop carries it as it carries any other
-	// — the carried store's BIND_DYN_SCOPE twin keeps the registry current.
+	// a routed name, so the loop carries it as it carries any other — the
+	// carried store's BIND_DYN_SCOPE twin keeps the registry current.
 	es2 := NewEmitState()
 	openUnit(es2, false)
-	if !es2.routeRegion(d) || !es2.dynScopeNames["k"] {
-		t.Fatal("routes, and makes the name a dynamic-scope name")
+	if !es2.routeRegion(d) || !es2.routedNames["k"] || es2.dynScopeNames["k"] {
+		t.Fatal("routes, and makes the name a routed name (not a rescue-read one)")
 	}
 	es2.BeginLoopCarried()
 	es2.NoteLoopCarried("k", core.NewInteger(9), core.NewInteger(5))
 	if !es2.Compilable || !es2.carriedNames["k"] {
 		t.Errorf("a loop carrying a routed name carries it: compilable=%v reason=%q carried=%v", es2.Compilable, es2.Reason, es2.carriedNames)
+	}
+	// The channel's rule: a frame's def of a routed name owes the twin (any
+	// def in a fn unit; a root def the loop carries), a plain root def
+	// does not (its bind twin replays it), and an unrouted name never does.
+	for _, c := range []struct {
+		d    emitDynBind
+		want bool
+	}{
+		{emitDynBind{name: "k", root: false}, true},
+		{emitDynBind{name: "k", root: true, carried: true}, true},
+		{emitDynBind{name: "k", root: true}, false},
+		{emitDynBind{name: "j", root: false}, false},
+	} {
+		if got := es2.routedBindsDyn(&c.d); got != c.want {
+			t.Errorf("routedBindsDyn(%+v) = %v, want %v", c.d, got, c.want)
+		}
 	}
 	// A carried name no dispatch routes registers as before, and is
 	// remembered for the routes that follow.

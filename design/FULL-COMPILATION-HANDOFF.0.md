@@ -8165,13 +8165,17 @@ it to the module binding:
 The rule that closes both: a routed slot is a DYNAMIC-SCOPE read — the
 registry at the moment of the dispatch, which is where the interpreter
 resolves it — and the compiler already has the binder for that class.
-`routeRegion` puts each routed name in `dynScopeNames`, so every `def` of
-it the program makes in a frame lowers the registry-visible
-`BIND_DYN_SCOPE` twin beside its store (`lowerDynBind`), installed through
-the interpreter's own installer and torn down with the frame as the
-interpreter's def-cleanup tears its binding down: `go f go` is `5 9 5`
-and the loop `5 9` on both lanes. One model of a name, not two kept
-apart. What remains of the exclusion is one decline: a region whose live
+`routeRegion` puts each routed name in `routedNames` — the binder's second
+channel beside `dynScopeNames`, kept apart so the const-stamp site's
+decline (a stamp that grows the rescue set is not taken) does not fire
+for a stamped unit that merely routes — and every `def` of it the program
+makes in a FRAME (any def in a fn unit; a root def the enclosing loop
+carries; a param of the name, bound at entry) lowers the registry-visible
+`BIND_DYN_SCOPE` twin beside its store (`routedBindsDyn`, `lowerDynBind`),
+installed through the interpreter's own installer and torn down with the
+frame as the interpreter's def-cleanup tears its binding down; a plain
+root def's bind twin already replays it. `go f go` is `5 9 5` and the
+loop `5 9` on both lanes. One model of a name, not two kept apart. What remains of the exclusion is one decline: a region whose live
 slot names a name a loop ALREADY carries keeps its committed call
 (`EmitState.carriedNames`, `routeRegion` — decided before any note is
 retired, the route never having been the name's binder). The corpus has
