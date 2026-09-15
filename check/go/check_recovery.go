@@ -964,9 +964,18 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// non-plain-param arm sets.
 		if es := e.Registry.Check.Recorder(); es.Active() {
 			sw := core.SigOrderArgs(args, nStack)
+			// The arms' bodies compile before the record — the same window a
+			// user-fn ReturnsFn holds its offer across (HoldRegion), and for
+			// the same reason: a body can re-offer under this call's key from
+			// another source. pos here IS the word token's position (the
+			// engine's hook passes val.Pos() for the dispatched word) and
+			// w.Name the name as dispatched, which is what Phase A offered
+			// under; the pair keys both the hold and the claim.
+			releaseRegion := es.HoldRegion(w.Name, pos)
+			defer releaseRegion()
 			if plan := dispatchCompileUserPolyArms(e.Registry, es, w.Name, sw, sig.Returns); plan != nil {
 				plan.SubstituteJoinedOuts(out)
-				es.RecordUserPolyCall(w.Name, e.Registry, plan.SigIdx(), plan.Units(), plan.Impls(), plan.Sigs(), sw, out, pos)
+				es.RecordUserPolyCall(w.Name, e.Registry, plan.SigIdx(), plan.Units(), plan.Impls(), plan.Sigs(), sw, out, pos, w.Name, pos)
 				spliceCheckResults(e, positions, out)
 				return nil
 			}

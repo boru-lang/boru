@@ -7399,6 +7399,139 @@ executing one: pick one of the four shapes Stage 4b left filed under
 adapter (`eng/go/region_host.go`, every evaluation declining today) its
 first evaluating arm.
 
+## The poly seats: Phase B claims the runtime-re-matched families (2026-09-14, the sixty-first increment)
+
+The sixtieth increment seated Phase B on `RecordUserCall` and stated the
+bound it left: the poly, dyn-apply and dyn-method families still recorded
+no descriptor. This increment takes the two POLY families —
+`RecordUserPolyCall`, the user-fn call the checker could not commit to one
+overload for (`CALL_USER_POLY`, the VM re-runs `MatchSignature` over the
+recorded arm subset), and `RecordPolyCall`, its native twin
+(`CALL_NATIVE_POLY`). Inert, as the two increments before it: nothing
+reads the table, and the differential is the proof.
+
+### One seat needed the published pair; the other already had the key
+
+`RecordUserPolyCall` carries the user call's defect — its `pos` is
+`args[0].Pos()` — and one of its own: its `word` is not the dispatched
+name either. It is the name the VM re-matches in the owner registry
+(`UserPolyRef.Word`, `Reg.Lookup` at run time), which for a namespaced or
+aliased call need not be the token Phase A offered under. So the record
+takes the published pair explicitly, `(callWord, wordPos)` beside the
+`(word, pos)` it always carried, and the two `BuildFnBodyReturnsFn` sites
+pass the `callSite` the sixtieth increment captures at entry. The third
+site, `checkModeAssumeSig`'s disjunct-recovery arm, already had the key:
+the engine's hook passes `val.Pos()` for the dispatched word, so there
+`pos` IS the word's and `w.Name` the name as dispatched; the site says so
+in a comment, because the same variable name means the blame position
+one file over.
+
+`RecordPolyCall` needed no new parameter at all. Every caller passes the
+word token's own position as `pos` — `declaredReturnCarriers`' at the
+straddle site in `carrier.go`, the recovery hook's `val.Pos()` at the
+three `check_recovery.go` sites — so the mono seat's key `(word, pos)` is
+this seat's key, the descriptor rides `emitCall.region` exactly as the
+mono one does, and `lowerCall` appends it without knowing which of the
+two opcodes it is about to emit. The user-poly descriptor rides
+`emitUserCall.region` and lands in `lowerUserPolyCall`.
+
+The prefix rule earned its keep at both seats. A poly call's ambiguous
+operand is a paren RESULT while the captured slots are the paren's raw
+TOKENS (`(`, `id`, `5`, `)` for `g 7 (id 5)`), so the claim stops at the
+paren: NFwd 1 over five slots, the written `7` described and nothing
+invented past it. A type-name slot stops it too (`is y Integer`):
+`Integer` is a word slot whose binding is not on the def stack — the
+interpreter steps a builtin type name to a literal rather than binding
+it — so `slotIsOperand` cannot resolve it and the claim under-claims,
+which is the direction the rule is built to fall to.
+
+### What landed
+
+- `core`: `EmitRecorder.RecordUserPolyCall` takes `(callWord, wordPos)`;
+  its doc names what each of the four name-and-position values is.
+- `check`: the two `BuildFnBodyReturnsFn` poly sites pass the
+  entry-captured `callSite`; the recovery site passes `(w.Name, pos)`.
+- `compiler`: `RecordUserPolyCall` and `RecordPolyCall` call
+  `completeRegion` over the call's args; `lowerUserPolyCall` appends the
+  descriptor (`lowerCall` already did, for every `evCall`).
+- Pins: `compiler/go/region_poly_call_test.go` at the seam — both seats
+  claim and consume the offer; a user-poly claim keyed by the BLAME
+  position misses, pinned so the defect cannot return through this seat;
+  an offer-less native poly carries nothing. `lang/go/region_capture_e2e_test.go`
+  adds four subtests: the user poly's forward const (`g 7 (id 5)`, NFwd 1
+  of 5, at the word's column), the user poly over a live module-scope read
+  (`g k (id 5)`: slot 0 `SlotWordRef`, region_desc.go's `k` pair at a poly
+  site), the native poly's claim (`is y Integer`, NFwd 1 of 2, `SlotWordRef`),
+  and the stack-fed native poly's NFwd 0. The census's stated bound now
+  names the four seated families and the two unseated.
+
+### Measured, whole corpus (`TestRegionTableWellFormed`, 7475 compiled rows)
+
+	                              before      after
+	rows carrying regions           5930       6199
+	descriptors                    76280     124401
+	slots claimed / in span  55979 / 143688   71913 / 218259
+	claimed nothing / prefix / whole   33260 / 13273 / 29747   66625 / 14513 / 43263
+	sites described more than once in one program   9158   15140
+	source const                   29690      39262
+	source local                   25385      30998
+	source wordRef                   903       1652
+	source event                       1          1
+
+48121 descriptors joined — 63% more than the two mono seats described —
+and a record-time tally by seat (a throwaway counter, run once on the
+tree before the sixtieth's review corrections were rebased in, and
+removed before commit) says where from: native 65400,
+native-poly 66331, user 31615, user-poly 2. The native POLY seat is as
+large as the mono seat. That is the measured shape of the corpus's
+dynamic dispatch: a native word over an operand the checker widened to
+`Any` is as common as one it typed, and it is exactly the family the VM
+already re-matches at run time, now described slot by slot. The
+user-poly family is two claims in the whole corpus — the seat is right
+and nearly empty. The live wordRefs grew by 749, and the claimed-nothing
+column doubled: half of the new descriptors describe a dispatch whose
+forward slots the claim could not take (the type-name and paren shapes
+above), which is the honest answer rather than a gap. No descriptor is
+malformed; the claim is still a strict prefix of the span.
+
+Parity: `TestSpecCompiledDifferential` 6556 rows compiled, 0 mismatches;
+coverage unchanged at 7475 compiled, 0 islanded, 0 refused; every
+ceiling holds at its value; the compiler, check, core and lang suites
+green; lint clean; the coverage gate at 100%.
+
+### Corrected in review, the same day
+
+Codex constructed the one collision the hold left open: a poly user call
+`Lib.min 1 (id 5)` at 2:1 of the main source holds its offer across its
+arms' compilation, and the Integer arm's body dispatches the NATIVE
+`MathUtil.min a b` at 2:1 of the module source — the same (word, row,
+col). `claimRegion` told holds apart by that key alone and a native record
+does not hold, so the native record took the outer call's held offer (it
+rode the inner event with NFwd 0, the arm's `a b` being nothing like the
+outer's tokens) and the poly call ended with no descriptor. Measured
+before the fix: one descriptor at 2:1, the inner's, over the outer's
+tokens. Only a HOLDER's record may now complete a held offer —
+`RecordUserCall` and `RecordUserPolyCall` go through
+`completeHeldRegion` (held first, the pool when driven without a hold),
+`RecordCall` and `RecordPolyCall` keep `completeRegion`, the pool alone,
+where a nested native record's own offer is — with the fill factored
+into `fillOffer` so the two paths share one completion. Pinned at the
+seam (the native record completes its own pool offer under a matching
+hold, the held offer untouched, the holder still completing it) and e2e
+over the two-source program, which now yields two descriptors for `min`
+at 2:1.
+
+### What this does not do, stated
+
+The dyn-apply and dyn-method families still record no descriptor; the
+e2e pin's comment is the bound. Nothing executes over a descriptor yet.
+The table now describes every family the generic lane will dispatch
+through except those two, which makes the next slice the first executing
+one: pick one of the four shapes Stage 4b left filed under
+`OpDispatchGeneric` as the acceptance pair, and give the VM's
+`CollectHost` adapter (`eng/go/region_host.go`, every evaluation
+declining today) its first evaluating arm.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -7665,3 +7798,4 @@ position than the construct that produced the binding.
 | `lang/go/codebody_fold_test.go` | the fifty-second increment: the ledger row and its family running NATIVE (no island) with parity, `depth` counting the body's own stack including the element, the top-level rows still folding, and NUR131's callable screen still refusing |
 | `compiler/go/closure_region_residual_test.go` (`TestClosureResidualRegionAdmitsTheSuffixShape`), `lang/go/closure_region_decline_test.go` (`TestRegionSuffixDeclinesKeepTheirAnswer`) | the fifty-ninth increment: the region-SUFFIX arm at the seam (one inert above the run, two above it) and the two declines that keep their answer through the dyn-body strategy (an event above the run, a second region above it) |
 | `compiler/go/region_user_call_test.go`, `compiler/go/region_hold_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`, `a user-fn call keeps its offer through a same-position dispatch in another source`, `a recovered user-fn call claims its capture`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment, with its review corrections (the hold at ReturnsFn entry survives a same-key offer from another source, an empty hold blocks the pool, a hold completes once, the inactive state holds nothing; the two-source collision and the recovered call from real programs): RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
+| `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |

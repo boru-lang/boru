@@ -33,7 +33,7 @@ func TestHoldRegionSurvivesANestedOfferAtTheSameKey(t *testing.T) {
 	if es.HeldRegionCount() != 2 {
 		t.Fatalf("holds stack: held %d, want 2", es.HeldRegionCount())
 	}
-	inner := es.completeRegion("f", pos, []core.Value{zero}, []EmitOperand{ConstOperand(3)})
+	inner := es.completeHeldRegion("f", pos, []core.Value{zero}, []EmitOperand{ConstOperand(3)})
 	if inner == nil || len(inner.Slots) != 1 || inner.Slots[0].Token.ID != zero.ID {
 		t.Fatalf("the inner record must complete the INNER offer: %+v", inner)
 	}
@@ -41,7 +41,7 @@ func TestHoldRegionSurvivesANestedOfferAtTheSameKey(t *testing.T) {
 	if es.HeldRegionCount() != 1 {
 		t.Fatalf("the inner release must pop only its own hold: held %d", es.HeldRegionCount())
 	}
-	outer := es.completeRegion("f", pos, []core.Value{one}, []EmitOperand{ConstOperand(4)})
+	outer := es.completeHeldRegion("f", pos, []core.Value{one}, []EmitOperand{ConstOperand(4)})
 	if outer == nil || len(outer.Slots) != 1 || outer.Slots[0].Token.ID != one.ID {
 		t.Fatalf("the outer record must complete the OUTER offer it held: %+v", outer)
 	}
@@ -69,11 +69,11 @@ func TestHoldRegionWithoutAnOfferBlocksThePool(t *testing.T) {
 		t.Fatalf("an empty hold is still pushed: held %d", es.HeldRegionCount())
 	}
 	capture(t, es, reg, "f", a) // the inner re-offer under the same key
-	if d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d != nil {
+	if d := es.completeHeldRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d != nil {
 		t.Fatalf("a record under an empty hold must not claim the pool's entry: %+v", d)
 	}
 	release()
-	if d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d == nil {
+	if d := es.completeHeldRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d == nil {
 		t.Fatal("with the hold released the pool entry is the ordinary claim again")
 	}
 }
@@ -90,17 +90,17 @@ func TestHoldRegionCompletesOnceAndOtherKeysUseThePool(t *testing.T) {
 	pos := capture(t, es, reg, "f", a)
 	release := es.HoldRegion("f", pos)
 	defer release()
-	if d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d == nil {
+	if d := es.completeHeldRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d == nil {
 		t.Fatal("the first record completes the held offer")
 	}
-	if d := es.completeRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d != nil {
+	if d := es.completeHeldRegion("f", pos, []core.Value{a}, []EmitOperand{ConstOperand(0)}); d != nil {
 		t.Fatalf("a held offer completes once: %+v", d)
 	}
 	// A native dispatch inside the held call's body: its own key, the pool.
 	gpos := core.SrcPos{Row: 1, Col: 9}
 	w := core.WithPosAt(core.NewWord("g"), gpos)
 	tryRecordRegion(core.NewTape([]core.Value{w, b}, 0), reg, core.WordInfo{Name: "g", ArgCount: -1}, 0)
-	if d := es.completeRegion("g", gpos, []core.Value{b}, []EmitOperand{ConstOperand(1)}); d == nil || d.Word != "g" {
+	if d := es.completeHeldRegion("g", gpos, []core.Value{b}, []EmitOperand{ConstOperand(1)}); d == nil || d.Word != "g" {
 		t.Fatalf("a record for another key under a hold claims from the pool: %+v", d)
 	}
 }
@@ -116,5 +116,47 @@ func TestHoldRegionInactiveIsANoop(t *testing.T) {
 	(*EmitState)(nil).HoldRegion("f", core.SrcPos{})()
 	if (*EmitState)(nil).HeldRegionCount() != 0 {
 		t.Error("a nil state reports no holds")
+	}
+}
+
+// A NATIVE record under a hold with the same key — a module arm's
+// `MathUtil.min` beneath a main program's `Lib.min`, both at 2:1 (the
+// review finding on #457) — completes from the POOL, where its own offer
+// is, and never takes the held offer: only the holder's record does.
+func TestHoldRegionIsNotClaimedByANativeRecord(t *testing.T) {
+	es, reg, done := beginRegionPass(t)
+	defer done()
+
+	outer, inner := core.NewInteger(1), core.NewInteger(2)
+	pos := capture(t, es, reg, "min", outer)
+	release := es.HoldRegion("min", pos)
+	defer release()
+	// The nested native dispatch offers under the same key…
+	capture(t, es, reg, "min", inner)
+	// …and its record (RecordCall's completeRegion) claims ITS offer.
+	d := es.completeRegion("min", pos, []core.Value{inner}, []EmitOperand{ConstOperand(2)})
+	if d == nil || d.Slots[0].Token.ID != inner.ID {
+		t.Fatalf("the native record completes its own pool offer: %+v", d)
+	}
+	if es.PendingRegionCount() != 0 || es.HeldRegionCount() != 1 {
+		t.Fatalf("the held offer must be untouched: pending %d held %d", es.PendingRegionCount(), es.HeldRegionCount())
+	}
+	// The holder's record still finds its own offer.
+	h := es.completeHeldRegion("min", pos, []core.Value{outer}, []EmitOperand{ConstOperand(1)})
+	if h == nil || h.Slots[0].Token.ID != outer.ID {
+		t.Fatalf("the holder completes the held offer: %+v", h)
+	}
+	// And with no hold on top at all, the holder path is the pool path.
+	release()
+	capture(t, es, reg, "min", inner)
+	if d := es.completeHeldRegion("min", pos, []core.Value{inner}, []EmitOperand{ConstOperand(2)}); d == nil {
+		t.Fatal("a holder record driven without a hold completes from the pool")
+	}
+}
+
+// A nil state completes nothing on the holder path, as on the pool path.
+func TestCompleteHeldRegionOnNil(t *testing.T) {
+	if d := (*EmitState)(nil).completeHeldRegion("f", core.SrcPos{}, nil, nil); d != nil {
+		t.Fatalf("a nil state must complete nothing, got %+v", d)
 	}
 }

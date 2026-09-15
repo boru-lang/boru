@@ -745,7 +745,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				if len(args) > 0 {
 					pos = args[0].Pos()
 				}
-				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, out, pos)
+				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, out, pos, call.word, call.pos)
 			}
 			return out
 		}
@@ -781,7 +781,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				if len(args) > 0 {
 					pos = args[0].Pos()
 				}
-				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, nil, pos)
+				es.RecordUserPolyCall(nameCopy, r, polyPlan.SigIdx(), polyPlan.Units(), polyPlan.Impls(), polyPlan.Sigs(), args, nil, pos, call.word, call.pos)
 				return nil
 			}
 			// The 0-net / undeclared call whose body unit declined leaves a

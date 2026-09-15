@@ -113,15 +113,17 @@ func TestRegionCaptureFiresOnRealPrograms(t *testing.T) {
 	})
 
 	// The seat is RecordCall's AND RecordUserCall's (the user-call family
-	// joined 2026-09-14, the first slice of the generic lane's line). A user
-	// fn call is offered a capture exactly as a native dispatch is — Phase A
-	// fires in resolveForwardArgs for every forward-collecting word — and
-	// now claims it: `f 1 2` carries its own descriptor, keyed by the WORD's
-	// position (CheckState.CurCallWord/CurCallPos, read at the ReturnsFn's
-	// entry), not by args[0]'s, which is the event's blame position and would
-	// miss every offer. The poly, dyn-apply and dyn-method families still
-	// have their own entry points and claim nothing — that is the stated
-	// bound now, and this pin fails if a seat lands without updating it.
+	// joined 2026-09-14, the first slice of the generic lane's line), and
+	// since the sixty-first increment the two POLY families' as well
+	// (RecordUserPolyCall and RecordPolyCall, pinned below). A user fn call
+	// is offered a capture exactly as a native dispatch is — Phase A fires in
+	// resolveForwardArgs for every forward-collecting word — and now claims
+	// it: `f 1 2` carries its own descriptor, keyed by the WORD's position
+	// (CheckState.CurCallWord/CurCallPos, read at the ReturnsFn's entry),
+	// not by args[0]'s, which is the event's blame position and would miss
+	// every offer. The dyn-apply and dyn-method families still have their
+	// own entry points and claim nothing — that is the stated bound now, and
+	// this pin fails if a seat lands without updating it.
 	t.Run("a user-fn call claims its capture", func(t *testing.T) {
 		prog := compile(t, `def f fn [[a:Integer b:Integer][Integer][add a b]] end f 1 2`)
 		d := findRegion(prog, "f")
@@ -278,6 +280,158 @@ func TestRegionTableIsInLoweringOrder(t *testing.T) {
 }
 
 // findRegion returns the descriptor for word, or nil.
+// TestRegionCapturePolySeats is the e2e pin for the two POLY seats (the
+// sixty-first increment): a runtime-re-matched user call and a
+// runtime-re-matched native call each claim the capture Phase A offered for
+// their dispatch. A separate test from the one above for gocyclo's sake only;
+// the subject and the helpers are the same.
+func TestRegionCapturePolySeats(t *testing.T) {
+	// The POLY user-call seat. `g 7 (id 5)` cannot commit to one overload
+	// (the paren result is Any) and lowers to CALL_USER_POLY; the record is
+	// RecordUserPolyCall's, whose event pos is args[0]'s exactly as the mono
+	// record's is, so the claim is keyed by the (callWord, wordPos) pair the
+	// check pass published. What it claims is the prefix rule at work: slot 0
+	// is the written `7`, a const operand; slot 1 is the paren's OPEN token,
+	// and the dispatch's second operand is the paren's RESULT, not that
+	// token, so the claim stops there — NFwd 1 over five raw slots.
+	t.Run("a poly user-fn call claims its capture", func(t *testing.T) {
+		src := `def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer b:Integer] [Integer] [1] [a:Integer b:String] [Integer] [2]] g 7 (id 5)`
+		prog := compileRegionProgram(t, src)
+		if !strings.Contains(prog.Disassemble(), "CALL_USER_POLY") {
+			t.Fatalf("the pin needs a runtime-re-matched user call:\n%s", prog.Disassemble())
+		}
+		d := findRegion(prog, "g")
+		if d == nil {
+			t.Fatal("`g 7 (id 5)` forward-collects, so the poly user call must claim its region descriptor")
+		}
+		if want := strings.Index(src, "g 7") + 1; d.Pos.Col != want {
+			t.Errorf("descriptor at column %d, want %d — keyed by the WORD token's position, not args[0]'s", d.Pos.Col, want)
+		}
+		if len(d.Slots) != 5 || d.NFwd != 1 || d.Slots[0].Source != compiler.SlotConst {
+			t.Errorf("slots %d, NFwd %d, slot 0 %v — want 5, 1 and SlotConst", len(d.Slots), d.NFwd, d.Slots[0].Source)
+		}
+		if err := d.Validate(len(prog.Consts), len(prog.Fns), len(prog.Types)); err != nil {
+			t.Errorf("the poly user call's descriptor must validate against the program: %v", err)
+		}
+	})
+
+	// The same seat over the generic lane's own shape: a module-scope name
+	// read forward at a poly user call. `k` stays a LIVE word reference in
+	// the descriptor (region_desc.go's `k` pair), which is exactly what
+	// OpCollect exists to re-derive; the paren token stops the claim as above.
+	t.Run("a poly user-fn call keeps a module-scope read live", func(t *testing.T) {
+		prog := compileRegionProgram(t, `def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer b:Integer] [Integer] [1] [a:Integer b:String] [Integer] [2]] def k 7 g k (id 5)`)
+		d := findRegion(prog, "g")
+		if d == nil {
+			t.Fatal("`g k (id 5)` must claim its region under the poly user-call seat")
+		}
+		if len(d.Slots) != 2 || d.NFwd != 1 || d.Slots[0].Source != compiler.SlotWordRef {
+			t.Errorf("slots %d, NFwd %d, slot 0 %v — want 2, 1 and SlotWordRef (a live module-scope read)", len(d.Slots), d.NFwd, d.Slots[0].Source)
+		}
+	})
+
+	// The POLY native seat. `is y Integer` straddles two `is` overloads (`y`
+	// is Integer|String from the two `if` arms) and lowers to
+	// CALL_NATIVE_POLY; RecordPolyCall's pos is the word's at every call
+	// site, so the mono seat's key serves and the descriptor rides emitCall.
+	// Slot 0 is `y`, a live module-scope read; slot 1 is the type name
+	// `Integer`, a word slot whose binding is not on the def stack (a builtin
+	// type name is stepped to a literal, not bound), so the word-slot
+	// comparison cannot resolve it and the claim stops — NFwd 1, the
+	// under-claim the prefix rule is designed to fall to.
+	t.Run("a poly native call claims its capture", func(t *testing.T) {
+		src := `def y (if (1 gt 0) [1] ['s']) is y Integer`
+		prog := compileRegionProgram(t, src)
+		if !strings.Contains(prog.Disassemble(), "CALL_NATIVE_POLY") {
+			t.Fatalf("the pin needs a runtime-re-matched native call:\n%s", prog.Disassemble())
+		}
+		d := findRegion(prog, "is")
+		if d == nil {
+			t.Fatal("`is y Integer` forward-collects, so the poly native call must claim its region descriptor")
+		}
+		if want := strings.Index(src, "is y") + 1; d.Pos.Col != want {
+			t.Errorf("descriptor at column %d, want %d", d.Pos.Col, want)
+		}
+		if len(d.Slots) != 2 || d.NFwd != 1 || d.Slots[0].Source != compiler.SlotWordRef {
+			t.Errorf("slots %d, NFwd %d, slot 0 %v — want 2, 1 and SlotWordRef", len(d.Slots), d.NFwd, d.Slots[0].Source)
+		}
+	})
+
+	// A poly native call fed from the stack claims nothing forward: `y is
+	// Integer` takes `y` from the value stack and only the type name is
+	// written forward, which the word-slot comparison declines as above.
+	t.Run("a stack-fed poly native call claims nothing forward", func(t *testing.T) {
+		prog := compileRegionProgram(t, `def y (if (1 gt 0) [1] ['s']) y is Integer`)
+		if d := findRegion(prog, "is"); d == nil || d.NFwd != 0 {
+			t.Errorf("descriptor %v — want one with NFwd 0", d)
+		}
+	})
+
+	// A held offer belongs to its HOLDER. The poly user call `Lib.min 1
+	// (id 5)` at 2:1 of the main source holds its offer across its arms'
+	// compilation; the Integer arm's body dispatches the NATIVE
+	// `MathUtil.min a b` at 2:1 of the module source, the same
+	// (word, row, col). That native record completes from the pool, where
+	// its own offer is, and never the outer call's (the review finding on
+	// #457, where it took the outer capture and left the poly call with
+	// nothing): two descriptors for `min` at 2:1, the outer's over the
+	// written `1` and the inner's over the frame locals `a b`.
+	t.Run("a nested native record cannot take a poly user call's held offer", func(t *testing.T) {
+		lib := "import \"boru:math-util\" end def min fn [[a:Integer b:Integer][Integer][\nMathUtil.min a b] [a:Integer b:String][Integer][a]]\nexport \"Lib\" { min: min/v }"
+		src := "import \"/lib.boru\" end def id fn [[x:Any][Any][x]]\nLib.min 1 (id 5)"
+		mem := capabilities.NewMem()
+		mem.Files["/lib.boru"] = []byte(lib)
+		b, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.SetFileOps(mem)
+		prog, reason, _, cerr := b.CompileCheck(src)
+		if cerr != nil || prog == nil {
+			t.Fatalf("the two-source program must compile: reason=%q err=%v", reason, cerr)
+		}
+		if !strings.Contains(prog.Disassemble(), "CALL_USER_POLY") {
+			t.Fatalf("the pin needs the outer call to be a poly user call:\n%s", prog.Disassemble())
+		}
+		var outer, inner int
+		for i := range prog.Regions {
+			d := &prog.Regions[i]
+			if d.Word != "min" || d.Pos.Row != 2 || d.Pos.Col != 1 {
+				continue
+			}
+			switch {
+			case d.NFwd == 1 && d.Slots[0].Source == compiler.SlotConst:
+				outer++
+			case d.NFwd == 2 && d.Slots[0].Source == compiler.SlotLocal && d.Slots[1].Source == compiler.SlotLocal:
+				inner++
+			default:
+				t.Errorf("a descriptor for min at 2:1 with neither call's shape: NFwd %d %+v", d.NFwd, d.Slots)
+			}
+		}
+		if outer != 1 || inner != 1 {
+			t.Fatalf("want the outer poly call's descriptor (1) and the inner native's (1), got %d and %d", outer, inner)
+		}
+	})
+}
+
+// compileRegionProgram compiles src on a fresh instance and fails the test
+// unless a Program came back — a region pin needs a Program to read.
+func compileRegionProgram(t *testing.T, src string) *compiler.Program {
+	t.Helper()
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, _, _, cerr := b.CompileCheck(src)
+	if cerr != nil {
+		t.Fatalf("compile %q: %v", src, cerr)
+	}
+	if prog == nil {
+		t.Fatalf("%q did not compile — the pin needs a Program to read", src)
+	}
+	return prog
+}
+
 func findRegion(prog *compiler.Program, word string) *compiler.RegionDesc {
 	for i := range prog.Regions {
 		if prog.Regions[i].Word == word {

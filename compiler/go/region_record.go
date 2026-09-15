@@ -176,12 +176,15 @@ func (es *EmitState) HeldRegionCount() int {
 	return len(es.heldRegions)
 }
 
-// claimRegion hands completion the offer for (word, pos): the HELD offer when
+// claimHeldRegion hands a HOLDER's completion its offer: the held offer when
 // the record runs under a hold for that key — the innermost open hold is the
 // top of the stack, and a user call's record runs inside its own ReturnsFn
-// after every nested hold has released — else the pool's. A hold that found
-// nothing yields nothing, deliberately (heldRegion); a hold completes once.
-func (es *EmitState) claimRegion(word string, pos core.SrcPos) (pendingRegion, bool) {
+// after every nested hold has released — else the pool's (a record driven
+// at the seam without a hold). A hold that found nothing yields nothing,
+// deliberately (heldRegion); a hold completes once. Only the holder kinds
+// call this (completeHeldRegion): a native record completes from the pool
+// alone, so it cannot take a held offer under a key it happens to share.
+func (es *EmitState) claimHeldRegion(word string, pos core.SrcPos) (pendingRegion, bool) {
 	if n := len(es.heldRegions); n > 0 {
 		h := &es.heldRegions[n-1]
 		if h.key == keyOf(word, pos) {

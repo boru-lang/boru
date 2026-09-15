@@ -250,10 +250,10 @@ func TestMaterialiseRebuild(t *testing.T) {
 
 func TestRecordUserPolyCallGuards(t *testing.T) {
 	// Inactive → no-op.
-	inactiveEmitState().RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, core.SrcPos{})
+	inactiveEmitState().RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, core.SrcPos{}, "w", core.SrcPos{})
 	// Active with an unresolvable operand → uncompilable.
 	es := NewEmitState()
-	es.RecordUserPolyCall("w", nil, nil, nil, nil, nil, []core.Value{carrierVal(core.TInteger)}, []core.Value{core.NewInteger(1)}, core.SrcPos{})
+	es.RecordUserPolyCall("w", nil, nil, nil, nil, nil, []core.Value{carrierVal(core.TInteger)}, []core.Value{core.NewInteger(1)}, core.SrcPos{}, "w", core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unresolvable poly operand should refuse")
 	}
