@@ -99,7 +99,12 @@ one signature (`GenericSpec.Impl`) or the poly record's live table
 677 live). Drivability tightened — no list or map literal in the span,
 whose contents the interpreter evaluates on arrival. 677 corpus
 dispatches route (floor 600 in `TestRegionTableWellFormed`), every gate
-unchanged, and no defer site fired over the corpus. Narrative: the
+unchanged, and no defer site fired over the corpus. Found off the corpus
+and closed in the same PR: a loop-carried name (a frame slot) and a
+routed read (the registry) never meet — a read of a carried name keeps
+its committed call, a loop carrying a routed name refuses — and NUR144
+records the neighbour that is the binder half's (an `undef` inside a
+top-level loop body is dropped). Narrative: the
 sixty-fifth-increment section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 64, the first ROUTED dispatch (2026-09-15, built on 63).**

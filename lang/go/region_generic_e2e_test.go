@@ -138,3 +138,45 @@ func TestRoutedDispatchAnswersTheNativeSeat(t *testing.T) {
 		t.Errorf("a list literal in the span keeps the committed call:\n%s", dis)
 	}
 }
+
+// A loop-carried rebind and a routed read never meet (found off the corpus
+// on the sixty-fifth increment's tree). A top-level loop's `def k 9` STORES
+// into a frame slot the registry never sees — the loop-carried discipline —
+// so a routed read of k inside a unit the loop calls answered the pre-loop
+// value on every iteration (`5 5` for the interpreter's `5 9`; the frozen
+// note the route retired used to reach this shape's refusal through the
+// memo's re-record). The loop now refuses when the name is already routed,
+// at either seat; a read of a name a loop already carries keeps its
+// committed call. Either way the interpreter's answer is the answer.
+func TestRoutedReadAndLoopCarriedRebindNeverMeet(t *testing.T) {
+	// The refusal's fallback is judged against the interpreter under the
+	// one-release hatch, as TestModuleReadRebindSoundFallbacks judges its
+	// refused rows.
+	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	const refusal = "loop-carried def `k` rebinds a name a routed dispatch reads live"
+	rows := []struct{ src, reason string }{
+		{`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end for 2 [ go  def k 9 ]`, refusal},
+		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  def k 9 ]`, refusal},
+		{`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end for 2 [ go  def k "x" ]`, refusal},
+		// The other order: the loop carries k before any unit reads it.
+		{`def k 5 end for 2 [ def k 9 ] def go fn [[][Any][add k 1]] end go`, ""},
+	}
+	for _, c := range rows {
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prog, reason, _, cerr := a.CompileCheck(c.src)
+		if cerr != nil {
+			t.Fatalf("%q: %v", c.src, cerr)
+		}
+		if c.reason != "" && (prog != nil || !strings.Contains(reason, c.reason)) {
+			t.Errorf("%q: want the refusal %q, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
+		}
+		if c.reason == "" && prog != nil && strings.Contains(prog.Disassemble(), "DISPATCH_GENERIC") {
+			t.Errorf("%q: a read of a carried name keeps its committed call:\n%s", c.src, prog.Disassemble())
+		}
+		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
+		requireParity(t, c.src, gotC, errC, gotI, errI)
+	}
+}

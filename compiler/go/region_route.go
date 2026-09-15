@@ -34,7 +34,11 @@ import core "github.com/boru-lang/boru/core/go"
 // #460): a lead the run-time def stack does not hold (RegionDesc.LeadLocal —
 // a body-local callee the committed CALL_USER reaches by index), and a
 // callee with captures (RecordUserCall — they ride as trailing operands the
-// routed op has no plumbing for).
+// routed op has no plumbing for). A third is the NAME's: a loop-carried
+// name lives in a frame slot for the rest of the run, not in the registry
+// the routed op reads, so a read of one keeps its bake, and a loop that
+// later carries a routed name refuses (EmitState.carriedNames /
+// routedNames, found on the sixty-fifth increment's tree).
 //
 // A routed read is no longer a BAKE the unit depends on: unfreezeRead
 // retires the note NoteFrozenRead made when the operand was resolved, so the
@@ -50,17 +54,33 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	if d == nil || d.LeadLocal || !es.Active() || len(es.openUnitRecs) == 0 || !regionDrivable(d) {
 		return false
 	}
-	live := false
+	var names []string
 	for i := 0; i < d.NFwd && i < len(d.Slots); i++ {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
 		if wi, err := core.AsWord(d.Slots[i].Token); err == nil {
-			es.unfreezeRead(wi.Name)
-			live = true
+			// A name a loop carries lives in a frame slot, not in the
+			// registry the routed op reads (EmitState.carriedNames): the
+			// committed call and its bake stay, decided before any note is
+			// retired.
+			if es.carriedNames[wi.Name] {
+				return false
+			}
+			names = append(names, wi.Name)
 		}
 	}
-	return live
+	if len(names) == 0 {
+		return false
+	}
+	if es.routedNames == nil {
+		es.routedNames = map[string]bool{}
+	}
+	for _, name := range names {
+		es.unfreezeRead(name)
+		es.routedNames[name] = true
+	}
+	return true
 }
 
 // regionDrivable reports whether the VM's descriptor host can walk d

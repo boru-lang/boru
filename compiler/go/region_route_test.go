@@ -235,3 +235,41 @@ func TestLowerRoutedNativeCall(t *testing.T) {
 		t.Error("a list literal in the span is evaluated on arrival — not drivable, no route")
 	}
 }
+
+// A loop-carried name and a routed read never meet (EmitState.carriedNames /
+// routedNames): a region whose live slot names a carried name keeps its
+// committed call and retires no note, and a loop that comes to carry a name
+// a routed dispatch already reads refuses the program — the two ways the
+// compiled program models one name, kept apart in both orders.
+func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
+	d := &RegionDesc{Lead: LeadWord, Word: "w", NFwd: 1, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}}}
+	es := NewEmitState()
+	rec := openUnit(es, false)
+	es.NoteFrozenRead("k", core.FrozenBakeValue, 1)
+	es.carriedNames = map[string]bool{"k": true}
+	if es.routeRegion(d) {
+		t.Fatal("a carried name keeps its committed call")
+	}
+	if _, frozen := rec.frozen["k"]; !frozen {
+		t.Error("a declined route retires no note")
+	}
+	// The other order: routed first, then carried.
+	es2 := NewEmitState()
+	openUnit(es2, false)
+	if !es2.routeRegion(d) || !es2.routedNames["k"] {
+		t.Fatal("routes, and remembers the name it made live")
+	}
+	es2.BeginLoopCarried()
+	es2.NoteLoopCarried("k", core.NewInteger(9), core.NewInteger(5))
+	if es2.Compilable || !strings.Contains(es2.Reason, "loop-carried def `k` rebinds a name a routed dispatch reads live") {
+		t.Errorf("a loop carrying a routed name refuses: compilable=%v reason=%q", es2.Compilable, es2.Reason)
+	}
+	// A carried name no dispatch routes registers as before, and is
+	// remembered for the routes that follow.
+	es3 := NewEmitState()
+	es3.BeginLoopCarried()
+	es3.NoteLoopCarried("j", core.NewInteger(9), core.NewInteger(5))
+	if !es3.carriedNames["j"] || !es3.Compilable {
+		t.Errorf("an unrouted name is carried: %v %q", es3.carriedNames, es3.Reason)
+	}
+}
