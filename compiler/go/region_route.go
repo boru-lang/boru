@@ -36,9 +36,20 @@ import core "github.com/boru-lang/boru/core/go"
 // callee with captures (RecordUserCall — they ride as trailing operands the
 // routed op has no plumbing for). A third is the NAME's: a loop-carried
 // name lives in a frame slot for the rest of the run, not in the registry
-// the routed op reads, so a read of one keeps its bake, and a loop that
-// later carries a routed name refuses (EmitState.carriedNames /
-// routedNames, found on the sixty-fifth increment's tree).
+// the routed op reads, so a read of one keeps its bake
+// (EmitState.carriedNames, found on the sixty-fifth increment's tree).
+//
+// A routed slot is a DYNAMIC-SCOPE read — the registry at the moment of
+// the dispatch, which is where the interpreter resolves it — so its name
+// joins dynScopeNames, and every binding of the name the compiled program
+// makes in a frame (a fn body's `def k 9` before the call, a loop-carried
+// rebind's store) lowers the registry-visible BIND_DYN_SCOPE twin the
+// dyn-scope binder installs, torn down with the frame as the interpreter's
+// def-cleanup tears its binding down. Without the twin the routed read saw
+// the module binding through a frame that had shadowed it (`def f fn [[][Any]
+// [def k 9  go]]  go f go` answered `5 5 5` for the interpreter's `5 9 5`,
+// and the loop-carried `for 2 [ go  def k 9 ]` `5 5` for `5 9`; both found
+// on the sixty-fifth increment's tree, off the corpus).
 //
 // A routed read is no longer a bake an ESCAPED unit holds stale: unfreezeRead
 // retires the escaping latch's note NoteFrozenRead made when the operand was
@@ -76,12 +87,12 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	if len(names) == 0 {
 		return false
 	}
-	if es.routedNames == nil {
-		es.routedNames = map[string]bool{}
+	if es.dynScopeNames == nil {
+		es.dynScopeNames = map[string]bool{}
 	}
 	for _, name := range names {
 		es.unfreezeRead(name)
-		es.routedNames[name] = true
+		es.dynScopeNames[name] = true
 	}
 	return true
 }

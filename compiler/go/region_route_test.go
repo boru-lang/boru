@@ -239,11 +239,11 @@ func TestLowerRoutedNativeCall(t *testing.T) {
 	}
 }
 
-// A loop-carried name and a routed read never meet (EmitState.carriedNames /
-// routedNames): a region whose live slot names a carried name keeps its
-// committed call and retires no note, and a loop that comes to carry a name
-// a routed dispatch already reads refuses the program — the two ways the
-// compiled program models one name, kept apart in both orders.
+// A routed read and a loop-carried name (EmitState.carriedNames): a region
+// whose live slot names a carried name keeps its committed call and retires
+// no note; a loop that comes to carry a name a routed dispatch already reads
+// carries it — the route made the name a dynamic-scope name, so the carried
+// store is twinned with the registry bind the routed read resolves.
 func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
 	d := &RegionDesc{Lead: LeadWord, Word: "w", NFwd: 1, Slots: []SlotDesc{{Source: SlotWordRef, Token: core.NewWord("k")}}}
 	es := NewEmitState()
@@ -256,16 +256,18 @@ func TestRouteRegionAndLoopCarriedNamesExclude(t *testing.T) {
 	if _, frozen := rec.frozen["k"]; !frozen {
 		t.Error("a declined route retires no note")
 	}
-	// The other order: routed first, then carried.
+	// The other order: routed first, then carried. The route made the name
+	// a dynamic-scope name, so the loop carries it as it carries any other
+	// — the carried store's BIND_DYN_SCOPE twin keeps the registry current.
 	es2 := NewEmitState()
 	openUnit(es2, false)
-	if !es2.routeRegion(d) || !es2.routedNames["k"] {
-		t.Fatal("routes, and remembers the name it made live")
+	if !es2.routeRegion(d) || !es2.dynScopeNames["k"] {
+		t.Fatal("routes, and makes the name a dynamic-scope name")
 	}
 	es2.BeginLoopCarried()
 	es2.NoteLoopCarried("k", core.NewInteger(9), core.NewInteger(5))
-	if es2.Compilable || !strings.Contains(es2.Reason, "loop-carried def `k` rebinds a name a routed dispatch reads live") {
-		t.Errorf("a loop carrying a routed name refuses: compilable=%v reason=%q", es2.Compilable, es2.Reason)
+	if !es2.Compilable || !es2.carriedNames["k"] {
+		t.Errorf("a loop carrying a routed name carries it: compilable=%v reason=%q carried=%v", es2.Compilable, es2.Reason, es2.carriedNames)
 	}
 	// A carried name no dispatch routes registers as before, and is
 	// remembered for the routes that follow.

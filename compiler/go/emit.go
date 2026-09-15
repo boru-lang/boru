@@ -1128,21 +1128,20 @@ type EmitState struct {
 	// pendingCarried is the just-closed loop analysis's carried-slot init
 	// list (EndLoopCarried), consumed by the RecordLoop that follows.
 	pendingCarried []carriedInit
-	// carriedNames / routedNames keep the two ways the compiled program can
-	// model one name apart (found on the sixty-fifth increment's tree, off
-	// the corpus). A loop-carried name lives in a FRAME SLOT for the rest
-	// of the run — its rebinds are stores, and the registry keeps the
-	// pre-loop binding — while a ROUTED dispatch (region_route.go) reads
-	// the registry live. So a routed read of a carried name would see the
-	// pre-loop value on every iteration (`def go fn [[][Any][w k 1]]  for 2
-	// [ go  def k 9 ]` answered `5 5` for the interpreter's `5 9`), and a
-	// loop carrying a routed name is the same fact in the other order.
-	// routeRegion declines the first; NoteLoopCarried refuses the second —
-	// the refusal the frozen-read memo used to reach through its re-record
-	// ("fn call operand of unknown provenance") before the route retired
-	// the note. Nil until first use.
+	// carriedNames is every name an armed loop has carried so far (found on
+	// the sixty-fifth increment's tree, off the corpus). A loop-carried name
+	// lives in a FRAME SLOT for the rest of the run — its rebinds are
+	// stores, and the registry keeps the pre-loop binding — while a ROUTED
+	// dispatch (region_route.go) reads the registry live. So a routed read
+	// of a carried name would see the pre-loop value on every iteration
+	// (`def go fn [[][Any][w k 1]]  for 2 [ go  def k 9 ]` answered `5 5`
+	// for the interpreter's `5 9`): routeRegion declines it and the
+	// committed call keeps its bake. The other order — a loop carrying a
+	// name a dispatch already routed — needs no refusal: a routed name is
+	// in dynScopeNames, so the carried rebind's store is paired with the
+	// BIND_DYN_SCOPE twin that keeps the registry current. Nil until first
+	// use.
 	carriedNames map[string]bool
-	routedNames  map[string]bool
 }
 
 // loopCarriedScope is one armed loop's carried-def registrations: the unit
@@ -4396,12 +4395,6 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 	}
 	scope := es.loopCarried[len(es.loopCarried)-1]
 	if scope.unitDepth != len(es.units) {
-		return
-	}
-	// A name a routed dispatch already reads live cannot move into a frame
-	// slot behind the registry's back (see carriedNames).
-	if es.routedNames[name] {
-		es.MarkUncompilable("loop-carried def `" + name + "` rebinds a name a routed dispatch reads live")
 		return
 	}
 	if es.carriedNames == nil {

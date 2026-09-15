@@ -100,11 +100,14 @@ one signature (`GenericSpec.Impl`) or the poly record's live table
 whose contents the interpreter evaluates on arrival. 677 corpus
 dispatches route (floor 600 in `TestRegionTableWellFormed`), every gate
 unchanged, and no defer site fired over the corpus. Found off the corpus
-and closed in the same PR: a loop-carried name (a frame slot) and a
-routed read (the registry) never meet — a read of a carried name keeps
-its committed call, a loop carrying a routed name refuses — and NUR144
-records the neighbour that is the binder half's (an `undef` inside a
-top-level loop body is dropped). The review of #461 found three more
+and closed in the same PR: a routed slot is a dynamic-scope read, so a
+routed name joins `dynScopeNames` and every frame binding of it — a fn
+body's `def` before the call, a top-level loop's carried rebind — lowers
+the registry-visible `BIND_DYN_SCOPE` twin the routed read resolves
+(both shapes answered the module binding through the frame that
+shadowed it); a read of a name a loop already carries keeps its
+committed call; and NUR144 records the neighbour that is the binder
+half's (an `undef` inside a top-level loop body is dropped). The review of #461 found three more
 defers meeting the effect fence and closed them: routing retires only the
 escaping latch's note, the memo's key stays (a rebind the check pass sees
 re-records the unit); a value-dependent divergent word is never routed;
