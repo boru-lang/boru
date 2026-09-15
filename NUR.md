@@ -66,6 +66,10 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
+| [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
+| [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
+| [NUR140](#nur140) | A top-level `def` of a COMPUTED compound (`def b [add 1 2]`, `def l (Log.logger "http")`, `def s (Log.span "m")`) keeps the CHECK PASS's binding for the rest of the run — the analysis's carrier `[Integer]`, a module prototype with empty fields — where the lowering pushed the runtime value, because the `OpBindGlobal` write-back is gated on the shallow `IsConcrete` and a list, a map, an instance with a payload all read as concrete. Every read of such a def in the corpus is baked, so parity holds today; a LIVE read (the generic lane's, a dynamic body's, the NEXT REQUEST's) sees the model. Six corpus rows, ledgered by name in `test/go/langspec/region_oracle_test.go` (`diverged-value`); the fix is the twin lowering's — the write-back must ask whether the installed binding is the runtime value, not whether the recorded value is concrete (SESSION-HANDOVER item 1c) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
 | [NUR139](#nur139) | RESOLVED (2026-09-11, the fifty-seventh increment). One rule — "an unreachable unit's lowering says nothing about the PROGRAM" — had TWO per-unit refusal sites in Finalize and covered only one. `lowerEvents` refusing took the stamp-only trap-stub recovery; `reconcileResults` refusing returned straight out and killed the program. Invisible while the only unreachable units were fn-value stamps, whose refusals happen to land in the first site; the moment a declined closure dispatch left one, `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went from compiling to "fn do$body: body leaves extra values". Same shape as NUR136 — one invariant, two sites, one of them wrong — and the recovery is now one helper (`unreachableUnitStub`) called from both | the variation lane, on a row this increment added, 2026-09-11 |
 | [NUR138](#nur138) | RESOLVED (2026-09-11, the fifty-seventh increment). Third instance of NUR133's and NUR137's shape — a screen written for the producers that happened to exist, meeting one that did not — and the FIRST in the opposite direction: it cost refusals, not a wrong answer. `regionReadsTheStack` answered "reads the stack" for any `opClosure` operand, but a closure operand is a PUSH (`OpPushClosure` puts captures then closure ABOVE the mark and the call pops what it pushed) and its captures are always promoted to frame locals. Since a body word's own body operand IS an `opClosure`, the blanket answer declined the region plan for every CLOSURE-COMPILED body word — so `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the body took the dyn-body strategy and refused the moment the body compiled. The screen now walks the captures instead of assuming, so an unpromoted capture still declines | widening the whole-residual dispatch's exactness screen, 2026-09-11 |
 | [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal, never a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
@@ -295,6 +299,218 @@ Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
 
 ---
+
+## NUR143 — a fn-body read of a module-scope flex is a snapshot clone, not the binding {#nur143}
+
+**Status:** Pending (recorded 2026-09-15, under review of #458).
+**Found:** by the COLLECT oracle, once its agreement test was identity
+(`oracleSameValue`): two descriptors in `module-sift.tsv` whose live word
+slot resolves to a flex map that RENDERS as the pushed operand and is not
+the same store.
+
+**Rule:** one binding store. A read of a name is the binding — the same
+object the interpreter's lookup hands back — in every lane; a copy is a
+different value the moment anything mutates either.
+
+**Divergence.** `boru:sift` keeps its catalogue in module-scope flex maps
+(`def sift-catalog (flex {})`, `def sift-path-detect (flex {})`,
+sift.boru:29–30) and reads them from exported fn bodies:
+
+```
+def sift-w-kinds fn [[] [List] [ each [convert Atom] (keys sift-catalog) ]]
+```
+
+compiles to
+
+```
+fn f0 sift-w-kinds/0 (locals=0):
+0000 PUSH_CONST_FRESH
+0001 CALL_NATIVE s0   ; keys (Map)
+```
+
+— the catalogue read is a const, and `OpPushConstFresh` pushes a deep clone
+of it (CloneValue) on every call. The interpreter pushes the binding. The
+oracle sees `sameContainer` false with equal contents.
+
+**Why it is not (yet) a wrong answer.** Two accidents, measured:
+
+- Within one request the check pass PERFORMS the mutations the run
+  performs: `Sift.define zz …  Sift.kinds` dry-passes `sift-store-kind`'s
+  `set` on the concrete flex during analysis, so the snapshot taken at
+  record time already holds `zz`, and the run's `keys` over the clone
+  agrees with the interpreter (probed: identical output on both lanes).
+- Across requests the memo REFUSES rather than reads stale: request 1
+  `import "boru:sift"  Sift.kinds`, request 2 `Sift.define zz …`, request
+  3 `Sift.kinds` compiles to "operand of unknown provenance or not
+  statically materialisable at keys" — a sound fallback, where the
+  interpreter answers seven kinds.
+
+A mutation the check pass cannot perform (a `set` whose key is a value the
+analysis widens) followed by a read in the same request is the shape that
+would answer wrong; none is in the corpus.
+
+**Fence.** The two descriptors are ledgered by name in
+`test/go/langspec/region_oracle_test.go` (`regionOracleFindings`), pinned
+in both directions.
+
+**Verdict:** none yet. `OpPushConstFresh`'s own doc says an ENCLOSING
+binding's value read by name keeps the SHARED push; a module preamble's
+def is such a binding to the module's fn bodies, and the freshening did not
+treat it as one. The generic lane's live read (Stage 4) replaces the
+snapshot with the binding for every such site; whether the freshening rule
+should be narrowed before that is the ruling to seek.
+
+## NUR142 — a refined container is eq to nothing, not even itself {#nur142}
+
+**Status:** Pending (recorded 2026-09-15, under review of #458).
+**Found:** by the COLLECT oracle, the moment its agreement test became the
+`eq` word's rule (`core.ExactEqual`) instead of structural equality: 22
+corpus descriptors over refined flex bindings (`refine-flex.tsv`,
+`as.tsv`, two `module-sift.tsv` rows) read as `diverged-value` although
+the pushed operand and the bound value were ONE store under ONE tag.
+
+**Rule:** one equality per family. `eq` is identity for the container
+family — the same store, the same tag — and a value is eq to itself
+whatever its tag's ancestry; `deq` is structure. A refine of a container
+type is a member of the family (dispatch admits it as one, `is` says so).
+
+**Divergence.**
+
+```
+def w (flex {a:1})  w eq w                              true
+def S (refine FlexMap)  def w:S (flex {a:1})  w eq w    false
+def L (refine FlexList)  def v:L (flex [1 2])  v eq v   false
+def M (refine Map)  def m:M {a:1}  m eq m               false
+def S (refine FlexMap)  def w:S (flex {a:1})  [w] deq [w]   false
+```
+
+`ExactEqual` (core/go/compare.go) reaches the container arms through
+`nodeFamily(a.Parent).Equal(TMap)` / `.Equal(TList)`; `nodeFamily`
+(core/go/equal.go) folds exactly the kernel's flex and weak-flex nodes to
+their family root and returns every other type unchanged, so a refined
+tag never equals `TMap` or `TList`, the arms are skipped, the flat-instance
+and opaque-handle arms decline, and the function returns its terminal
+`false`. `DeepEqual` fails the same way for the same reason.
+
+**Why it stayed invisible.** No corpus row compares a refined container
+with `eq`; every refined-container row asks `typeof`, `is`, `size`, a
+method, or dispatch — all of which walk the parent chain. Equality is the
+one family test that folds a fixed set instead of walking.
+
+**What the oracle does meanwhile.** `core.SameContainer` is the identity
+test (same tag, same store) exported from the arm ExactEqual cannot reach,
+and `eng/go/region_oracle.go`'s `oracleSameValue` reads it for the
+container family — so the oracle answers its own question ("is the pushed
+operand the bound object") correctly over a refined binding, and the 22
+descriptors reproduce. The `eq` word is unchanged: fixing it is a
+language-visible change (`w eq w` becomes true) and is its own increment.
+
+**Fence.** `core/go/same_container_test.go` asserts BOTH halves: that
+`SameContainer` holds over a refined flex map, and that `ExactEqual` still
+does not — the second assertion is to be retired with the fix.
+
+**Verdict:** resolve by fix — `nodeFamily` should fold by ANCESTRY
+(`ConformsTo(TMap)` / `ConformsTo(TList)`, the flex fold applied to the
+nearest kernel node), or `ExactEqual`'s container arms should ask
+`SameContainer` after the tag check; either way `m eq m` is true and the
+refined-container `eq`/`deq` rows above become corpus rows.
+
+## NUR141 — the check pass admits a value to a predicate-typed parameter that the runtime rejects {#nur141}
+
+**Status:** Pending (recorded 2026-09-15, the sixty-second increment).
+**Found:** by the COLLECT oracle's first corpus walk (`TestRegionCollectOracle`),
+as the one `over-claimed` descriptor in the corpus.
+
+**Rule:** one matcher. Whether a value matches a signature position is
+decided by `MatchSignature` and the type's own unifier, and every lane —
+the check pass, the interpreter, the VM — gets the same answer for the
+same value and the same declared type.
+
+**Divergence.** `fnpred.tsv:L50`:
+
+```
+def Even fnpred n:Integer [eq 0 (mod 2 n)]
+def f fn [[n:Even] [Integer] [n]]
+f 5
+```
+
+is a `signature_error` on both lanes — dispatch refuses the non-member.
+But the region descriptor Phase B recorded for `f` at `1:80` claims ONE
+forward slot (`5` for `n:Even`): the check pass's dispatch plan matched
+it. The oracle's live candidate scan, running the kernel's own routine
+over the same signature at run time, claims nothing — the predicate is
+run there and `5` fails it. The check pass's matcher admits what the
+runtime's rejects.
+
+**Why the answer still agrees.** The row errors either way: the check
+pass's admission is discarded when the call is executed and the runtime
+refuses. What differs is the MODEL — which signature a value matches — and
+a checker verdict built on that model (an arm reported reachable, a
+result narrowed through the admitted signature) would be wrong where no
+differential can see it. This is T4 territory (FULL-COMPILATION.0.md,
+checker/interpreter agreement), and it is exactly the question the
+maintainer has not yet ruled on.
+
+**Fence.** The row is ledgered by name in
+`test/go/langspec/region_oracle_test.go` (`regionOracleFindings`), pinned
+in both directions: a second row of this class fails the lane, and a
+ledger entry that stops reproducing fails it too, so the fix that removes
+the divergence must retire the entry.
+
+**Verdict:** none yet. The candidate fix is that the check pass's
+`positionalMatch` runs the predicate unifier over a CONCRETE argument
+exactly as the runtime does (a carrier argument stays admitted, which is
+the check pass's proper optimism); whether that is a check-side fix or a
+narrower recording of the plan is the ruling to seek.
+
+## NUR140 — a top-level def of a computed compound keeps the check pass's model for the whole run {#nur140}
+
+**Status:** Pending (recorded 2026-09-15, the sixty-second increment; the
+fix is directed — SESSION-HANDOVER item 1c — and lands in the next
+increment). **Found:** by the COLLECT oracle's first corpus walk
+(`TestRegionCollectOracle`), as six `diverged-value` descriptors.
+
+**Rule:** one binding store, holding what the program computed. A `def`
+binds the value the run produced, in both engines; the compiled lane's
+check-pass install is a placeholder the run replaces (`OpBindGlobal`),
+never the binding a later read resolves.
+
+**Divergence.** A top-level `def` of a COMPUTED value lowers to a frame
+store and the def's bind twin (`STORE_LOCAL l0; BIND_TWIN def b`). The
+twin replays the CHECK PASS's install — the value the analysis bound —
+and for a computed compound that is the producer's MODEL of its result:
+
+```
+def b [add 1 2]          twin replays [Integer]   run pushed [3]
+def l (Log.logger "http") twin replays the logger PROTOTYPE, empty fields
+def s (Log.span "m")     twin replays the analysis's OWN span; the run's is the active one
+```
+
+The write-back that exists for exactly this, `OpBindGlobal`, is gated on
+`!IsConcrete(d.val)` (compiler/go/lower.go, `lowerDynBind`'s `needGlobal`,
+mirrored by `collectRootBindConsumes`), and `IsConcrete` is SHALLOW: a
+list with a payload, a map with a payload, an instance all read as real
+values. So no partner is emitted and the registry holds the model for the
+rest of the run — and, under keep-on-compile, into the next request.
+
+**Why it stayed invisible.** Every read of such a def in the corpus is
+BAKED: the lowering resolves the name to its own frame slot (the folded
+`[3]`, the run's own handle), so parity held on every spelling probed. The
+oracle reads the BINDING — a live word slot resolves against the def
+stack — and saw the model at once. The observable form is a live read:
+request 1 `def b [add 1 2]` compiled, request 2 `b get 0 add 1`; request
+1 `def s (Log.span "m")`, request 2 `Log.end-span s` (span-mismatch: the
+analysis's span is not the active one).
+
+**Fence.** The six rows (`edge-quote-1.tsv:L64`, `module-log.tsv:L52`,
+`L65`, `L71`, `L76`, `L84`) are ledgered by name in
+`test/go/langspec/region_oracle_test.go`, pinned in both directions.
+
+**Verdict:** resolve by fix, in the twin lowering: `needGlobal` must ask
+whether the INSTALLED binding is the runtime value — by PROVENANCE (a
+computed value's binding is exact only for a scalar fold; a compound, a
+carrier, a handle writes back) — not whether the recorded value is
+concrete. The fix retires the six ledger entries and this record.
 
 ## NUR139 — the unreachable-unit recovery covered one of the two per-unit refusal sites {#nur139}
 

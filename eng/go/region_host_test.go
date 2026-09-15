@@ -123,13 +123,18 @@ func TestRegionHostEvaluationsDecline(t *testing.T) {
 // path.
 func TestRegionHostScratchSpanReuses(t *testing.T) {
 	h, _ := newHost(t)
+	// The span is the interpreter's shape: the items BETWEEN paren markers.
+	// A span without them is what the kernel splices in for a ParenExpr, so
+	// it would never meet an OpenParen on its next step — the first corpus
+	// walk of the COLLECT oracle spun forever on exactly that.
 	first := h.ScratchParenSpan([]core.Value{core.NewInteger(1), core.NewInteger(2)})
-	if len(first) != 2 {
-		t.Fatalf("span length %d, want 2", len(first))
+	if len(first) != 4 || !core.IsOpenParen(first[0]) || !core.IsCloseParen(first[3]) ||
+		core.CanonValue(first[1]) != "1" || core.CanonValue(first[2]) != "2" {
+		t.Fatalf("span = %v, want ( 1 2 )", first)
 	}
 	second := h.ScratchParenSpan([]core.Value{core.NewInteger(3)})
-	if len(second) != 1 || core.CanonValue(second[0]) != "3" {
-		t.Fatalf("second span = %v", second)
+	if len(second) != 3 || core.CanonValue(second[1]) != "3" {
+		t.Fatalf("second span = %v, want ( 3 )", second)
 	}
 	if &first[:1][0] != &second[0] {
 		t.Error("the span buffer must be reused, not reallocated per call")

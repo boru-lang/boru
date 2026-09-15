@@ -7,6 +7,7 @@
 collect_seam_host_test.go	eng	foreign-host proof for core's exported collection seam (Stage 4)
 compiled_runtime_vm.go	eng	
 region_host.go	eng	
+region_oracle.go	eng	
 vm.go	eng	
 vm_args_debug.go	eng	
 vm_args_release.go	eng	

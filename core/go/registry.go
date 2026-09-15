@@ -81,6 +81,9 @@ type Registry struct {
 	// InheritObserveHooks. Inert (one atomic load) unless a test arms them.
 	interpHook *interpEntryHook
 	bailHook   *bailHook
+	// regionOracleHook is the arm-able region-oracle seam (interp_entry.go),
+	// the compiled lane's COLLECT check reporting to a lane that counts it.
+	regionOracleHook *regionOracleHook
 	// coverHook is the arm-able boru-source line-coverage seam (coverage.go),
 	// powering boru:test's coverage feature. Pointer-shared into forks and
 	// inherited by module sub-registries via InheritObserveHooks; inert (one
@@ -793,22 +796,23 @@ func NewRegistry() (*Registry, error) {
 		return nil, err
 	}
 	r := &Registry{
-		Defs:         NewDefTable(),
-		Contexts:     NewContextStack(),
-		Args:         NewArgsStack(),
-		Types:        NewDynamicTypeTable(),
-		Capabilities: NewCapabilityRegistry(),
-		Ideals:       NewIdealRegistry(),
-		Modules:      NewModuleRegistry(),
-		Output:       os.Stdout,
-		ErrOutput:    os.Stderr,
-		Input:        os.Stdin,
-		Effects:      &EffectLedger{},
-		interpHook:   &interpEntryHook{},
-		bailHook:     &bailHook{},
-		coverHook:    &coverHook{},
-		coverSources: &coverSources{},
-		SDKCache:     make(map[string]any),
+		Defs:             NewDefTable(),
+		Contexts:         NewContextStack(),
+		Args:             NewArgsStack(),
+		Types:            NewDynamicTypeTable(),
+		Capabilities:     NewCapabilityRegistry(),
+		Ideals:           NewIdealRegistry(),
+		Modules:          NewModuleRegistry(),
+		Output:           os.Stdout,
+		ErrOutput:        os.Stderr,
+		Input:            os.Stdin,
+		Effects:          &EffectLedger{},
+		interpHook:       &interpEntryHook{},
+		bailHook:         &bailHook{},
+		regionOracleHook: &regionOracleHook{},
+		coverHook:        &coverHook{},
+		coverSources:     &coverSources{},
+		SDKCache:         make(map[string]any),
 		// StepBudget uses -1 as the "unset, use the project default"
 		// sentinel. The Go zero (0) is honored as "abort on the first
 		// step" so callers who want that have an unambiguous way to
