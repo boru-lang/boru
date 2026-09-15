@@ -46,11 +46,10 @@ import (
 // check pass chose) when the live match is a signature of that shape, and a
 // native handler when the live binding is one. Every other outcome is a
 // DESIGNED DEFER (vmDefer, the interp-entry census's choke point): a lead no
-// binding names, a walk the host cannot drive, no match (the interpreter's
-// rich signature_error is built from its tape), a speculative slot (the
-// strict-barrier strand, likewise), a claim of another extent, a matched
-// boru signature the program holds no unit for, a full-stack native (its
-// handler reads the whole resolved stack, which this op does not present),
+// binding names, a walk the host cannot drive, a claim of another extent, a
+// matched boru signature the program holds no unit for, a full-stack native
+// (its handler reads the whole resolved stack, which this op does not
+// present),
 // a native overload the record did not take (its result count is unknown
 // before it runs, and an effect it performs would fence the fallback —
 // unless the word is declared pure, or the record was a POLY native
@@ -58,6 +57,18 @@ import (
 // count is checked after, as CALL_NATIVE_POLY checks it). A defer is slow,
 // never wrong — and each is a named site the census counts, so the slice's
 // remaining shapes are measured, not guessed.
+//
+// THE DIAGNOSTICS ARE THE INTERPRETER'S (the sixty-sixth increment). A no
+// match, a strict-barrier strand and an unbound slot are RAISED from the
+// window, not deferred: the interpreter builds each from its tape at the
+// word, and the window is that tape (core/go/region_diag.go —
+// NoMatchOverWindow, StrandedForwardDiag, UndefinedWordDiag, the seats the
+// engine's own sigError / strandedForwardError / undefinedWordError sit on),
+// so the error is byte-identical. The defer was slow and never wrong only
+// while the interpreter could be re-run; an effect already performed
+// fences that re-run, and the user saw the defer's internal error. The one
+// tape-only layer a drivable window could owe is the pending-`def` hint on
+// an unbound slot, so a routed `def` lead keeps the defer there.
 //
 // UNIT IDENTITY, stated. The live matched signature is taken to be the
 // committed unit's when it is a boru body of the unit's shape — the same
@@ -130,16 +141,32 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	}
 	sig, positions, specAt := core.PlanMatch(h, h.win, reg, fn, w, resolved, pointer, false, false, false)
 	if sig == nil || sig.Fallback {
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-no-match", "DISPATCH_GENERIC at "+d.Word+": no live signature matches; deferring to the interpreter for the canonical signature_error")
-	}
-	if specAt >= 0 {
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-speculative", "DISPATCH_GENERIC at "+d.Word+": a claimed slot dispatches at run time (the strict barrier); deferring to the interpreter")
+		// The interpreter's sigError over the window (the sixty-sixth
+		// increment): the same failing tuple, the same reorder probe, the
+		// shared builder — raised here, byte for byte, where a defer would
+		// hand the program back and an effect already performed would fence
+		// the hand-back into an internal error.
+		return nil, -1, nil, stampAt(core.NoMatchOverWindow(reg.Source, h.win, pointer, d.Word, fn, d.Pos), curDebug, pc, reg)
 	}
 	nf := 0
 	for _, at := range positions {
 		if at > pointer {
 			nf++
 		}
+	}
+	if specAt >= 0 {
+		// The strict barrier, as the interpreter raises it when the barrier
+		// word arrives: the routed word still waiting for the forward
+		// positions the plan claimed from the barrier on. The speculative
+		// slot is a word (PlanMatch marks a slot speculative only for a
+		// word bound to a dispatching definition) at the written position
+		// the sig-order index names (the index rule).
+		if specAt < len(d.Slots) {
+			if wi, err := core.AsWord(d.Slots[specAt].Token); err == nil {
+				return nil, -1, nil, stampAt(core.StrandedForwardDiag(reg.Source, d.Word, nf-specAt, wi.Name, core.BarrierReceiverWord(reg, wi.Name), d.Pos), curDebug, pc, reg)
+			}
+		}
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-speculative", "DISPATCH_GENERIC at "+d.Word+": a claimed slot dispatches at run time (the strict barrier); deferring to the interpreter") //covergate:allow PlanMatch marks a slot speculative only for a WORD token of the window, and the window's forward tokens are the descriptor's slots, so the arms above always answer; kept as the honest defer for a kernel change (§compiler)
 	}
 	if nf != d.NFwd || len(positions) != gs.NArgs {
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-claim-drift", "DISPATCH_GENERIC at "+d.Word+": the live plan claims "+strconv.Itoa(nf)+" forward of "+strconv.Itoa(len(positions))+" where the record claimed "+strconv.Itoa(d.NFwd)+" of "+strconv.Itoa(gs.NArgs)+"; deferring to the interpreter")
@@ -158,7 +185,15 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 				}
 				v, ok := reg.Defs.Top(wi.Name)
 				if !ok {
-					return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound-slot", "DISPATCH_GENERIC at "+d.Word+": no binding for the slot `"+wi.Name+"`; deferring to the interpreter")
+					// The interpreter's undefined_word at the token (the
+					// sixty-sixth increment). Its one tape-only hint the window
+					// could carry is the pending-`def` hint, which fires when
+					// the collecting word is `def` itself — that lead keeps the
+					// defer.
+					if d.Word == "def" {
+						return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound-slot", "DISPATCH_GENERIC at "+d.Word+": no binding for the slot `"+wi.Name+"`; deferring to the interpreter")
+					}
+					return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, wi.Name, tok.Pos()), curDebug, pc, reg)
 				}
 				tok = v
 			}

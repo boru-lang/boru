@@ -189,7 +189,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	}
 	results, err := runIslandResolved(reg, prefix, tokens)
 	if err != nil {
-		return nil, true, stampAt(err, curDebug, pc, vc.r)
+		return nil, true, stampAt(err, curDebug, pc, reg)
 	}
 	if err := vc.screenResults(results, "dynamic frame result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the replay island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
 		return nil, true, err

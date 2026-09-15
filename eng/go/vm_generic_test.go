@@ -97,12 +97,12 @@ func TestDispatchGenericDefers(t *testing.T) {
 		p.Regions[0].Word = "nope"
 		defer_(t, p, reg, "vm:generic-unbound", "no binding for nope")
 	})
-	t.Run("the strict barrier: a claimed slot dispatches", func(t *testing.T) {
+	t.Run("the strict barrier: a claimed slot dispatches — raised, not deferred", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		reg.Defs.Push("k", core.NewFunction(core.FnDefInfo{Name: "k", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(9)})}}}))
-		defer_(t, p, reg, "vm:generic-speculative", "strict barrier")
+		raised(t, p, reg, "signature_error", "w is still waiting for 2 argument(s) when `k` begins its own dispatch")
 	})
-	t.Run("no live match", func(t *testing.T) {
+	t.Run("no live match — raised, not deferred", func(t *testing.T) {
 		// A registry where w's ONLY overload takes strings: the aggregate
 		// dispatch merges every stacked binding, so a shadowing push cannot
 		// take the boru overload away — a fresh registry can.
@@ -112,7 +112,7 @@ func TestDispatchGenericDefers(t *testing.T) {
 		rebindNative(reg, []*core.Type{core.TString, core.TString}, func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
 			return nil, nil
 		})
-		defer_(t, p, reg, "vm:generic-no-match", "no live signature matches")
+		raised(t, p, reg, "signature_error", "cannot call `w` — no signature matches the arguments")
 	})
 	t.Run("a boru signature the program holds no unit for", func(t *testing.T) {
 		p, reg := genericWorld(t)
@@ -187,6 +187,35 @@ func TestDispatchGenericDefers(t *testing.T) {
 	})
 }
 
+// raised asserts the run fails with the interpreter's own diagnostic —
+// the given code, the given text — and that NO defer fired: the routed op
+// raised it from the window (the sixty-sixth increment).
+func raised(t *testing.T, p *compiler.Program, reg *core.Registry, code, sub string) {
+	t.Helper()
+	var bails []string
+	disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { bails = append(bails, ev.Site) })
+	defer disarm()
+	// A file-backed registry: the raised diagnostic names the file, as the
+	// interpreter's stampErrPos names it (review of #462 — the window's
+	// diagnostic is built AT its position, so stampAt's file arm must not
+	// hide behind its row arm).
+	reg.BaseFile = "routed.boru"
+	_, err := RunProgram(p, reg)
+	var ae *core.BoruError
+	if err == nil || !errors.As(err, &ae) || ae.Code != code || !strings.Contains(err.Error(), sub) {
+		t.Fatalf("want a raised %s containing %q, got %v", code, sub, err)
+	}
+	// The interpreter's rule, both halves: a positioned diagnostic names the
+	// file; one with no position (a hand-built window's unplaced token)
+	// names none.
+	if (ae.Row != 0 && ae.File != "routed.boru") || (ae.Row == 0 && ae.File != "") {
+		t.Errorf("a raised diagnostic names the registry's file exactly when it has a position: file=%q row=%d", ae.File, ae.Row)
+	}
+	if len(bails) != 0 {
+		t.Errorf("a raised diagnostic defers nothing, got %v", bails)
+	}
+}
+
 // rebindNative shadows w with a binding holding ONE native signature of the
 // given parameter types, so the live lookup sees the native and nothing
 // else. It returns the signature's run implementation, which a test pins on
@@ -249,16 +278,28 @@ func TestDispatchGenericGatesAndDeliveries(t *testing.T) {
 			t.Errorf("a token result is screened, never pushed as data: %v", err)
 		}
 	})
-	t.Run("a claimed word slot no binding names", func(t *testing.T) {
+	t.Run("a claimed word slot no binding names — raised, not deferred", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		p.Regions[0].Slots[0].Token = core.NewWord("nobody")
+		raised(t, p, reg, "undefined_word", "undefined word: nobody")
+	})
+	t.Run("a routed `def` lead keeps the unbound-slot defer", func(t *testing.T) {
+		// The interpreter's pending-`def` hint is the one tape-only layer an
+		// unbound slot could owe; a `def` lead defers rather than raise
+		// without it. A stub `def` in the seam registry, the same shape as w.
+		p, reg := genericWorld(t)
+		p.Regions[0].Word = "def"
+		p.Regions[0].Slots[0].Token = core.NewWord("nobody")
+		reg.Defs.Push("def", core.NewFunction(core.FnDefInfo{Name: "def", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}),
+		}}}))
 		var bails []string
 		disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { bails = append(bails, ev.Site) })
 		defer disarm()
 		_, err := RunProgram(p, reg)
 		wantInternal(t, err, "nobody")
-		if len(bails) != 1 || (bails[0] != "vm:generic-unbound-slot" && bails[0] != "vm:generic-no-match" && bails[0] != "vm:generic-declined") {
-			t.Errorf("an unbound slot defers at one named site, got %v", bails)
+		if len(bails) != 1 || bails[0] != "vm:generic-unbound-slot" {
+			t.Errorf("want the unbound-slot defer, got %v", bails)
 		}
 	})
 	t.Run("a boru overload of another arity is a claim drift", func(t *testing.T) {

@@ -232,3 +232,47 @@ func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
 		t.Errorf("a value-dependent divergent word is never routed:\n%s", dis)
 	}
 }
+
+// The routed op RAISES the interpreter's own diagnostics from its window
+// (the sixty-sixth increment) — and no program reaches them today: every
+// rebind that would leave a routed dispatch with no match, a strict-barrier
+// strand or an unbound slot is one the check pass sees first, because the
+// memo keeps its key on a routed read (review of #461) and re-records the
+// unit — the escaped unit included, whose apply is analysed too. So each
+// shape below fails at CHECK with the interpreter's own error (or refuses
+// and falls back to it), and no `vm:generic-*` site fires. The raise is
+// pinned at the seam (`TestDispatchGenericDefers`), where a hand-built
+// window reaches it; this pins that the corpus of shapes has no program
+// for it, which is the measured state, not a guarantee.
+func TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck(t *testing.T) {
+	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	rows := []string{
+		`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end go def k "x" end go`,
+		`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end go def k fn [[][Integer][9]] end go`,
+		`def k 5 end def go fn [[][Integer][add k 1]] end go def k fn [[][Integer][9]] end go`,
+		`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  undef T  f`,
+		`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end def h go/v end (h) def k "x" end (h)`,
+		`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end def h go/v end (h) def k fn [[][Integer][9]] end (h)`,
+		`print 1 def T Integer end def f fn [[] [Boolean] [5 is T]] end def h f/v end (h) undef T end (h)`,
+	}
+	for _, src := range rows {
+		c, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bails []string
+		disarm := c.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
+		gotC, _, errC := c.RunCompiled(src)
+		disarm()
+		d, _ := New()
+		gotI, errI := d.RunInterp(src)
+		if errC == nil || errI == nil || errC.Error() != errI.Error() || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+			t.Errorf("%q: want the interpreter's error on both lanes:\n  C=%v/%v\n  I=%v/%v", src, gotC, errC, gotI, errI)
+		}
+		for _, b := range bails {
+			if strings.HasPrefix(b, "vm:generic-") {
+				t.Errorf("%q: the check pass diagnosed first, no routed defer fires: %v", src, bails)
+			}
+		}
+	}
+}

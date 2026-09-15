@@ -353,49 +353,13 @@ func (e *Engine) effectiveSource() string {
 // no patterns), 2–4 args, first matching signature wins. Returns ""
 // when no reorder explains the failure.
 func (e *Engine) reorderHint(name string, fn *FnDefInfo) string {
-	return ReorderHintFor(name, fn, reorderCandidates(e.Tape.Prefix(e.Pointer)))
+	return ReorderHintFor(name, fn, ReorderCandidates(e.Tape.Prefix(e.Pointer)))
 }
 
-// reorderCandidates collects up to 4 plain values from the top of the
-// stack (walking down, stopping at engine markers / words) — the tuple
-// a failed STACK dispatch saw, in the assignment order matchSignature
-// uses (top-first: sig[i] ↔ vals[i]).
-func reorderCandidates(stack []Value) []Value {
-	var vals []Value
-	for i := len(stack) - 1; i >= 0 && len(vals) < 4; i-- {
-		v := stack[i]
-		if IsOpenParen(v) || IsForward(v) || IsWord(v) || IsEnd(v) ||
-			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
-			v.Parent.ConformsTo(TInternal) {
-			break
-		}
-		vals = append(vals, v)
-	}
-	return vals
-}
-
-// reorderForwardCandidates collects up to 4 UNCLAIMED forward value
-// tokens after the word — concrete literals only; words, parens, and
-// markers stop the scan. The result is in SOURCE order, which is the
-// assignment order the forward plan would have used (sig[i] ↔
-// token[i]) — exactly the failing-tuple view reorderHintFor wants.
-func reorderForwardCandidates(tape *Tape, pointer int) []Value {
-	var written []Value
-	for i := pointer + 1; i < tape.Len() && len(written) < 4; i++ {
-		v := tape.At(i)
-		// An engine marker ends the written tuple exactly as it ends the
-		// stack one below: a fn frame's tail markers (the DefCleanup `__dc`,
-		// the pop-args `__pa`) sit right after the body's last token, and a
-		// no-match there used to list `__dc (a __DC)` as the argument the
-		// caller supplied — a marker no one wrote, in a user-facing note.
-		if !IsConcrete(v) || IsWord(v) || IsParenExpr(v) || IsForward(v) ||
-			IsOpenParen(v) || IsEnd(v) || isEngineMarker(v) {
-			break
-		}
-		written = append(written, v)
-	}
-	return written
-}
+// reorderCandidates and reorderForwardCandidates moved to region_diag.go as
+// ReorderCandidates / ReorderForwardCandidates (the sixty-sixth increment):
+// the failing-tuple derivations are read over a window, and the routed
+// dispatch's window is one.
 
 // isEngineMarker reports whether v is one of the engine's own control values
 // — a Mark, a Move, or an internal marker (`Word/__IN/…`: DefCleanup,
@@ -474,7 +438,7 @@ func (e *Engine) PolyNoMatchProbe(name string, pos SrcPos) polyNoMatchProbe {
 	}
 	p.ok = true
 	p.written = e.rematchWritten()
-	p.stackVals = reorderCandidates(e.Tape.Prefix(e.Pointer))
+	p.stackVals = ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	p.reach, p.reachOK = e.polyReachBound()
 	return p
 }
@@ -739,9 +703,9 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 	// The failing tuple in assignment order: unclaimed forward tokens
 	// (source order) when present, else the stack prefix (top-first) —
 	// the same two views the swap probe reads.
-	written := reorderForwardCandidates(e.Tape, e.Pointer)
+	written := ReorderForwardCandidates(e.Tape, e.Pointer)
 	if len(written) == 0 {
-		written = reorderCandidates(e.Tape.Prefix(e.Pointer))
+		written = ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	}
 	// Reorder probe: when the actual argument types match some declared
 	// signature under a PERMUTATION, the arguments are almost certainly
@@ -884,18 +848,10 @@ func (e *Engine) undefinedWordHint(name string) string {
 // the did-you-mean near-miss over everything nameable in this registry,
 // and the describe pointer when the nearest miss is a builtin word.
 func (e *Engine) undefinedWordError(name string, pos SrcPos) *BoruError {
-	ae := &BoruError{
-		Code:       "undefined_word",
-		Detail:     UndefinedWordDetail(name),
-		Src:        name,
-		Row:        pos.Row,
-		Col:        pos.Col,
-		FullSource: e.effectiveSource(),
-	}
+	ae := UndefinedWordDiag(e.Registry, e.effectiveSource(), name, pos)
 	if hint := e.undefinedWordHint(name); hint != "" {
-		ae.Suggestions = append(ae.Suggestions, DiagSuggestion{Message: hint})
+		ae.Suggestions = append([]DiagSuggestion{{Message: hint}}, ae.Suggestions...)
 	}
-	ae.Suggestions = append(ae.Suggestions, e.DidYouMeanSuggestions(name)...)
 	return ae
 }
 
@@ -905,15 +861,7 @@ func (e *Engine) undefinedWordError(name string, pos SrcPos) *BoruError {
 // arrive together). Failure-path only — the candidate enumeration is
 // never paid on a successful step.
 func (e *Engine) DidYouMeanSuggestions(name string) []DiagSuggestion {
-	matches := SuggestNames(name, e.Registry.SuggestionCandidates())
-	if len(matches) == 0 {
-		return nil
-	}
-	out := []DiagSuggestion{{Message: didYouMeanMessage(matches)}}
-	if e.Registry.IsBuiltinWord(matches[0]) {
-		out = append(out, DiagSuggestion{Message: describeSuggestion(matches[0])})
-	}
-	return out
+	return DidYouMeanOver(e.Registry, name)
 }
 
 // voidArgErrorFor reports the §3 "argument expression produced no
@@ -7200,27 +7148,8 @@ func (e *Engine) strandedForwardError(boundary string) *BoruError {
 		return nil
 	}
 	fwd, _ := AsForward(e.Tape.At(fwdIdx))
-	missing := fwd.ExpectedArgs - fwd.CollectedArgs
-	detail := fmt.Sprintf(
-		"%s is still waiting for %d argument(s) when `%s` begins its own dispatch — "+
-			"a function word is a barrier and never feeds forward collection (strict rule); "+
-			"group the call in parens so its RESULT becomes the argument: %s (%s …)",
-		fwd.FuncName, missing, boundary, fwd.FuncName, boundary)
-	// A boundary word with a stack-barrier slot (`dot` and the accessor
-	// family: the receiver sits beyond BarrierPos, readable only from the
-	// ENCLOSING stack) may not work grouped — a paren seals the stack the
-	// barrier slot must reach (NUR049: `def why (dot message)` starves every
-	// candidate where the sequential form works). Offer the sequential
-	// spelling alongside, so the help never names only a dead form.
-	if e.barrierReceiverWord(boundary) {
-		detail += fmt.Sprintf(
-			"; note `%s` reads its receiver from the enclosing stack, which a paren "+
-				"group seals off — if the grouped form cannot match, run it first and "+
-				"bind its result in sequence instead: %s … %s",
-			boundary, boundary, fwd.FuncName)
-	}
-	return makeBoruErrorAt("signature_error", detail, fwd.FuncName,
-		e.effectiveSource(), "", fwd.Pos)
+	return StrandedForwardDiag(e.effectiveSource(), fwd.FuncName, fwd.ExpectedArgs-fwd.CollectedArgs,
+		boundary, e.barrierReceiverWord(boundary), fwd.Pos)
 }
 
 // barrierReceiverWord reports whether any registered signature of word
@@ -7229,17 +7158,7 @@ func (e *Engine) strandedForwardError(boundary string) *BoruError {
 // the paren seals the enclosing stack (NUR049) — so suggestions offer the
 // sequential spelling too.
 func (e *Engine) barrierReceiverWord(name string) bool {
-	fd := e.Registry.Lookup(name)
-	if fd == nil {
-		return false
-	}
-	for i := range fd.Signatures {
-		s := &fd.Signatures[i]
-		if s.BarrierPos >= 0 && s.BarrierPos < s.TotalArgs() {
-			return true
-		}
-	}
-	return false
+	return BarrierReceiverWord(e.Registry, name)
 }
 
 // stepEnd handles the "end" keyword.
