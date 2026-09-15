@@ -35,6 +35,10 @@ func TestRootBindWritesBackByProvenance(t *testing.T) {
 		{"computed list of a type node — the twin-carrier class", emitDynBind{root: true, srcSeq: 1, val: listOfNode}, true},
 		{"computed list, concrete to the bottom", emitDynBind{root: true, srcSeq: 1, val: listOfInts}, true},
 		{"computed map — a module prototype's shape", emitDynBind{root: true, srcSeq: 1, val: m}, true},
+		// A Micron is inert (immutable) but has FIELDS: a computed one is a
+		// compound whose model may keep a carrier field (review of #459).
+		{"computed micron — inert, but a compound", emitDynBind{root: true, srcSeq: 1, val: core.Value{Parent: core.TInteger, Data: core.MicronPayload{Fields: core.NewOrderedMap()}}}, true},
+		{"computed carrier of a scalar type", emitDynBind{root: true, srcSeq: 1, val: core.NewCarrier(core.TString)}, true},
 	}
 	for _, c := range cases {
 		d := c.d

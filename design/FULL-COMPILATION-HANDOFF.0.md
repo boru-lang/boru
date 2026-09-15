@@ -7820,6 +7820,39 @@ This resolves **NUR140**, recorded in review of #458 with the verdict
 NUR.md, as a resolved record is, and this section is where its rationale
 lives.
 
+### Corrected in review (#459)
+
+Two Codex findings, both reproduced, both about the rule's EDGES rather
+than its centre:
+
+1. **The twin's skip must be the write-back's pairing, not a re-derived
+   shape.** `applyTwinPush` skipped its replay for a NON-CONCRETE capture
+   — the old `needGlobal` class re-derived from the entry's shape — so a
+   computed compound, now written back, was ALSO replayed by its twin:
+   `def b [add 1 2]` left two levels under `b`, and `undef b` in the next
+   request uncovered the model (`b` → `[[Integer]]` where the interpreter
+   raises undefined_word). The pairing now rides the twin itself:
+   `core.BindTransition.WrittenBack`, set by the lowering that emitted the
+   def's `OpBindGlobal` (`lowerDynBind` pairs each root def with the
+   push-kind twin lowered under its name, `noteTwin`/`takeTwin`, and
+   marks it at all three write-back sites), and `ApplyBindTwin` skips on
+   the flag alone. One decision, the compiler's, drives both sides; the
+   shape-derived predicate is gone from core. Pinned at the seam (a marked
+   carrier and a marked concrete compound both skip; an unmarked carrier
+   replays) and across requests (one install, one undef, unbound).
+2. **"Scalar" is the payload kinds with no interior.** The exemption read
+   `IsInertConst`, which is true of a MICRON — inert because immutable,
+   but a compound with FIELDS — so `def x (make Stampton {n:(TimeUtil.now
+   …)})` kept the model with its carrier field, and the next request's
+   `(x.n) add 1` raised signature_error where the interpreter adds. The
+   exemption is now the twelve scalar payload kinds by type; everything
+   else computed writes back. Pinned in the rule's table (a Micron, a
+   carrier of a scalar type) and across requests.
+
+Both are the same lesson as the increment itself: a rule about what a
+binding IS must not be re-derived from what the value LOOKS like at
+another site.
+
 ### What this does not do
 
 The write-back replaces the binding AFTER the producer runs; between the
@@ -8097,4 +8130,4 @@ position than the construct that produced the binding.
 | `compiler/go/region_user_call_test.go`, `compiler/go/region_hold_test.go`, `lang/go/region_capture_e2e_test.go` (`a user-fn call claims its capture`, `a namespaced user-fn call claims its capture at the dispatching token`, `a stack-fed user-fn call claims nothing forward`, `a user-fn call keeps its offer through a same-position dispatch in another source`, `a recovered user-fn call claims its capture`), `eng/go/checkstate_lifecycle_test.go` (`CurCallWord`) | the sixtieth increment, with its review corrections (the hold at ReturnsFn entry survives a same-key offer from another source, an empty hold blocks the pool, a hold completes once, the inactive state holds nothing; the two-source collision and the recovered call from real programs): RecordUserCall claims the Phase-A capture and rides it on the event, the offer is consumed, an offer-less call carries no descriptor; from a real program the user call's descriptor validates with both slots sourced, the namespaced call is claimed under the dispatched member name at the WORD token's column (not args[0]'s), a stack-fed call claims nothing forward; and the published word cursor is classified as CurCallPos's twin |
 | `compiler/go/region_poly_call_test.go`, `compiler/go/region_hold_test.go` (`TestHoldRegionIsNotClaimedByANativeRecord`), `lang/go/region_capture_e2e_test.go` (`a poly user-fn call claims its capture`, `a poly user-fn call keeps a module-scope read live`, `a poly native call claims its capture`, `a stack-fed poly native call claims nothing forward`, `a nested native record cannot take a poly user call's held offer`) | the sixty-first increment, with its review correction (a held offer belongs to its holder; a nested native record completes from the pool): RecordUserPolyCall and RecordPolyCall claim the Phase-A capture and ride it on their events, a user-poly claim keyed by the blame position misses, an offer-less native poly carries nothing; from a real program the poly user call claims its forward const and stops at the paren, keeps a module-scope read live as a word reference, the poly native call claims at the word's column and stops at the type name, a stack-fed poly native call claims nothing forward |
 | `eng/go/region_oracle_test.go`, `core/go/interp_entry_test.go` (`TestRegionOracleHook`), `lang/go/region_oracle_e2e_test.go`, `test/go/langspec/region_oracle_test.go` | the sixty-second increment: the COLLECT oracle at the seam (the `k` pair reproduces; a rebound value diverges by value; a rebind to a fn over-claims through the speculative slot; an under-claim, a decline, an unbound lead; the VM invariants; the candidate set follows the call it precedes, a fn-local unit's params serving; the stop-token rule), the hook's holder discipline, the wiring from real programs at every seat with the default lane byte-identical, and the corpus lane with its two-way findings ledger and reproduced floor ; corrected in review: a zero-arg candidate as a zero-length claim, the container-identity agreement rule over a refined binding (`TestRegionOracleZeroArgCandidate`, `TestRegionOracleContainerIdentity`), `core/go/same_container_test.go` (identity where `ExactEqual` falls through, NUR142), and the lane's error-parity check with the module-flex snapshot rows ledgered (NUR143) |
-| `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; `diverged-value` zero over the corpus |
+| `compiler/go/root_bind_writeback_test.go` (`TestRootBindWritesBackByProvenance`), `lang/go/bytecode_globalbind_test.go` (`TestGlobalBindTwinCarrierClass`), `lang/go/bytecode_s9_landing_test.go` (the moved refusal), `test/go/langspec/region_oracle_test.go` (the retired ledger entries), `core/go/bind_twin_apply_test.go` (the write-back pairing) | the sixty-third increment: the write-back rule by provenance, case for case (a bare node, a literal, a stripped literal, a scalar fold, a computed compound, a computed map, a Micron, a carrier of a scalar type); the twin-carrier class across requests (`def b [add 1 2]` then `b get 0 add 1`; `def s (Log.span "m")` then `Log.end-span s`) — both fail on the pre-fix tree and pass on it; the nested-list catch row's refusal moving from the reorder stage to the def; the six twin-carrier `diverged-value`s gone over the corpus; corrected in review: the twin pairing carried on the twin (a marked twin skips whatever its capture's shape, an unmarked one replays; one install, one undef, unbound across requests) and the Micron compound writing back |

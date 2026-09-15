@@ -222,4 +222,30 @@ func TestGlobalBindTwinCarrierClass(t *testing.T) {
 	if dis := compileDisasm(t, `def xs [1 2] size xs`); strings.Contains(dis, "BIND_GLOBAL") {
 		t.Errorf("a literal list def is already faithful — no write-back:\n%s", dis)
 	}
+
+	// THE PAIRING, across requests (review of #459): the write-back INSTALLS
+	// the runtime value, so the def's twin must not replay the model beside
+	// it — or the name holds two levels and an `undef` uncovers the model.
+	// Measured before the twin carried the pairing: request 3 answered
+	// `[[Integer]]` where the interpreter raises undefined_word.
+	c := mustNew(t)
+	runCompiledRequest(t, c, `def b [add 1 2] size b`)
+	if _, err := c.RunInterp(`undef b`); err != nil {
+		t.Fatalf("undef: %v", err)
+	}
+	if _, err := c.RunInterp(`b`); err == nil || !strings.Contains(err.Error(), "undefined_word") {
+		t.Errorf("one install, one undef: b must be unbound, got err=%v", err)
+	}
+
+	// A MICRON is inert (immutable) but has fields, and a computed one
+	// whose field the check pass could not fold keeps a carrier there
+	// (review of #459): `IsInertConst` reads the whole instance as inert, so
+	// the scalar exemption must be the payload kinds with no interior.
+	// Measured before: request 3 raised signature_error over the carrier
+	// field where the interpreter adds.
+	d := mustNew(t)
+	runCompiledRequest(t, d, `import "boru:time-util" def Stampton refine Micron {n:Integer} def x (make Stampton {n:(TimeUtil.now TimeUtil.to-unix-ms)})`)
+	if out, err := d.RunInterp(`(x.n) add 1`); err != nil || len(out) != 1 {
+		t.Errorf("computed micron def: next request reads the run's field, got out=%v err=%v", out, err)
+	}
 }

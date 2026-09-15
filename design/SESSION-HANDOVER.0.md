@@ -102,8 +102,13 @@ entries retired; the lane pins the ledger both ways — what remains is
 NUR143's two), the differential and the coverage triple are unchanged,
 and the class is pinned ACROSS
 REQUESTS (`def s (Log.span "m")` compiled, then `Log.end-span s` in the
-next request raised span-mismatch before). Narrative and table: the
-sixty-third-increment section of FULL-COMPILATION-HANDOFF.0.md.
+next request raised span-mismatch before). Review corrected two edges:
+the twin's replay skip is now the write-back's own PAIRING
+(`BindTransition.WrittenBack`, set by the lowering) rather than a shape
+re-derived in core — a written-back compound had been installed twice —
+and the scalar exemption is the payload kinds with no interior (a Micron
+is inert but has fields). Narrative and table: the sixty-third-increment
+section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 62, the COLLECT oracle (2026-09-15, in review as #458).** The
 first EXECUTION of the region table: `OpCollect`, emitted under
