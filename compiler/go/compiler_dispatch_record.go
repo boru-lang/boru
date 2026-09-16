@@ -114,9 +114,17 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// scope rule.
 	if es := r.Check.Recorder(); es.Active() && !(len(out) == 1 && es.AlreadyProduced(out[0].ID)) {
 		if name, hit := check.BodyRefsFnLocalFn(r, sig, args); hit {
-			es.MarkUncompilable("code-body names fn-local fn `" + name + "` at `" + word +
-				"` (a compiled unit cannot resolve an enclosing fn's local fn binding)")
-			return
+			// The seventy-second increment: a capture-free local fn's def is
+			// placed as a registry-visible install for the frame
+			// (placeFnLocalDef), and the body resolves it where the
+			// interpreter does; a capturing one, or a def the unit's frames
+			// do not hold, keeps the refusal.
+			v, _ := r.Defs.Top(name)
+			if ems, isEmit := es.(*EmitState); !isEmit || !ems.placeFnLocalDef(name, v) {
+				es.MarkUncompilable("code-body names fn-local fn `" + name + "` at `" + word +
+					"` (a compiled unit cannot resolve an enclosing fn's local fn binding)")
+				return
+			}
 		}
 	}
 	// NUR054 refusal, AT THE MINT: `context` INSIDE an inline-lowered region
