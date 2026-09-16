@@ -14,21 +14,29 @@ import (
 // mode — the compile pass admitted the body (the check-time registry
 // resolves `step`) and baked the NAME, which the VM's runtime registry
 // never binds (the enclosing body's `def step fn` is compiled away).
-// The resolution is a REFUSAL: bodyRefsFnLocalFn (eng/go/carrier.go)
-// detects the shape at compile admission and marks the program
-// uncompilable, so the interpreter owns the whole run — "slow, not
-// wrong" restored. Closure capture of fn-local fn bindings remains a
-// possible future widening.
+// The first resolution was a REFUSAL: bodyRefsFnLocalFn (check/go's
+// carrier.go) detects the shape at compile admission and marked the
+// program uncompilable, so the interpreter owned the whole run — "slow,
+// not wrong" restored.
 //
-// These cases live here rather than in lang/spec because the fn-local
-// shapes deliberately REFUSE compilation and the spec corpus enforces
-// refusalCeiling = 0 (every spec value row must compile) — the same
-// placement precedent as fn_triple_compiled_test.go. The module-scope
-// twins (which must KEEP compiling) are pinned in lang/spec/fn-value.tsv
-// §7 where the differential gate holds both engines to them.
+// The seventy-second increment narrowed the refusal to a CAPTURING local
+// fn: a capture-free local fn's def is PLACED as a registry-visible
+// install for the frame (compiler/go's placeFnLocalDef — `PUSH_CONST fn;
+// BIND_DYN_SCOPE step`, torn down at RET), so the body resolves it where
+// the interpreter does and the program compiles. The recorded repro's
+// `step` captures `acc`, a closure the placement cannot bake, and keeps
+// the refusal; the `each` variant below is capture-free and compiles.
+//
+// The refusing case lives here rather than in lang/spec because the
+// spec corpus enforces refusalCeiling = 0 (every spec value row must
+// compile) — the same placement precedent as fn_triple_compiled_test.go.
+// The module-scope twins (which must KEEP compiling) are pinned in
+// lang/spec/fn-value.tsv §7 where the differential gate holds both
+// engines to them.
 
 // nur037Repro is the recorded repro: a fn-local fn as a for-each body
-// word, accumulating into a captured flex map.
+// word, accumulating into a captured flex map — the CAPTURING shape,
+// which still refuses.
 const nur037Repro = `
 def collect fn [[xs:List] [Any] [
   def acc (flex {})
@@ -41,7 +49,9 @@ collect ["x" "y"]
 
 // nur037Each is the `each` variant — the same fn-local-fn shape across
 // the higher-order family (it leaked through the island path where
-// for-each leaked through the CALL_NATIVE const-bake).
+// for-each leaked through the CALL_NATIVE const-bake). Its `step` is
+// capture-free, so the seventy-second increment places its def and the
+// program compiles.
 const nur037Each = `
 def collect fn [[xs:List] [Any] [
   def step fn [[e:Integer] [Integer] [e add 1]]
@@ -91,7 +101,7 @@ func runBothEngines(t *testing.T, src string) (string, bool, string) {
 func TestNur037FnLocalFnForEachAgrees(t *testing.T) {
 	comp, wasCompiled, interp := runBothEngines(t, nur037Repro)
 	if wasCompiled {
-		t.Error("the fn-local-fn for-each shape must REFUSE compilation (the bake leaks the name)")
+		t.Error("the CAPTURING fn-local-fn for-each shape must REFUSE compilation (a closure the frame placement cannot bake)")
 	}
 	if comp != interp {
 		t.Errorf("default mode = %q diverges from interpreter = %q", comp, interp)
@@ -103,8 +113,8 @@ func TestNur037FnLocalFnForEachAgrees(t *testing.T) {
 
 func TestNur037FnLocalFnEachAgrees(t *testing.T) {
 	comp, wasCompiled, interp := runBothEngines(t, nur037Each)
-	if wasCompiled {
-		t.Error("the fn-local-fn each shape must REFUSE compilation (the island bakes the name)")
+	if !wasCompiled {
+		t.Error("the capture-free fn-local-fn each shape must COMPILE (the seventy-second increment places its def for the frame)")
 	}
 	if comp != interp {
 		t.Errorf("default mode = %q diverges from interpreter = %q", comp, interp)
@@ -121,7 +131,7 @@ func TestNur037RefusalReasonNamesTheShape(t *testing.T) {
 	}
 	_, wasCompiled, reason, rerr := a.RunCompiledReason(nur037Repro)
 	if wasCompiled {
-		t.Fatal("the repro must refuse compilation")
+		t.Fatal("the capturing repro must refuse compilation")
 	}
 	// Stage J: a genuine performance refusal surfaces as compile_refused
 	// (the CLI warns and falls back); the reason names the shape.
@@ -134,8 +144,9 @@ func TestNur037RefusalReasonNamesTheShape(t *testing.T) {
 }
 
 func TestNur037CheckStaysClean(t *testing.T) {
-	// The refusal is a compile-admission decision, not a check error:
-	// the program is valid and `boru check` must stay clean on it.
+	// The refusal (and the placement) is a compile-admission decision,
+	// not a check error: both programs are valid and `boru check` must
+	// stay clean on them.
 	for _, src := range []string{nur037Repro, nur037Each} {
 		a, err := lang.New()
 		if err != nil {

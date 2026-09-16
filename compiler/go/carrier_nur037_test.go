@@ -170,3 +170,41 @@ func TestBodyRefsFnLocalFnLambdaBodyOpaque(t *testing.T) {
 }
 
 // --- recordDispatchOutcome wiring -------------------------------------------
+
+// BodyRefsFnLocalFns (review of #468): every fn-local fn the bodies name,
+// each once, in walk order; a `/v` or `/u` reference marks a value read;
+// the same gates as the single-name form.
+func TestBodyRefsFnLocalFnsAllNamesAndValueReads(t *testing.T) {
+	r := newTestRegistry(t)
+	fnLocalBind(r, "f", core.NewFunction(core.FnDefInfo{Name: "f"}))
+	r.Defs.Push("h", core.NewFunction(core.FnDefInfo{Name: "h"}))
+	r.Defs.Push("n", core.NewInteger(3))
+	sig := bodySig(core.CompileFallbackBody, nil)
+	names, valueRead := check.BodyRefsFnLocalFns(r, sig, bodyArgs("f", "n", "h", "f", "nosuch"))
+	if len(names) != 2 || names[0] != "f" || names[1] != "h" || valueRead {
+		t.Fatalf("names=%v valueRead=%v; want [f h] and no value read", names, valueRead)
+	}
+	if name, hit := check.BodyRefsFnLocalFn(r, sig, bodyArgs("h", "f")); !hit || name != "h" {
+		t.Fatalf("the single-name form reports the first: %q %v", name, hit)
+	}
+	body := []core.Value{core.NewList([]core.Value{core.NewWord("f"), core.NewWordRef("h")}), core.NewList(nil)}
+	if names, valueRead := check.BodyRefsFnLocalFns(r, sig, body); len(names) != 2 || !valueRead {
+		t.Fatalf("a /v read of a local: names=%v valueRead=%v", names, valueRead)
+	}
+	body = []core.Value{core.NewList([]core.Value{core.NewWordUsurp("f", false)}), core.NewList(nil)}
+	if names, valueRead := check.BodyRefsFnLocalFns(r, sig, body); len(names) != 1 || !valueRead {
+		t.Fatalf("a /u read of a local: names=%v valueRead=%v", names, valueRead)
+	}
+	body = []core.Value{core.NewList([]core.Value{core.NewWordRef("n")}), core.NewList(nil)}
+	if names, valueRead := check.BodyRefsFnLocalFns(r, sig, body); len(names) != 0 || valueRead {
+		t.Fatalf("a /v read of a VALUE local is not a fn-local read: names=%v valueRead=%v", names, valueRead)
+	}
+	if names, valueRead := check.BodyRefsFnLocalFns(r, nil, bodyArgs("f")); names != nil || valueRead {
+		t.Fatalf("nil sig: names=%v valueRead=%v", names, valueRead)
+	}
+	r2 := newTestRegistry(t)
+	r2.Defs.Push("f", core.NewFunction(core.FnDefInfo{Name: "f"}))
+	if names, _ := check.BodyRefsFnLocalFns(r2, sig, bodyArgs("f")); names != nil {
+		t.Fatalf("module scope: names=%v", names)
+	}
+}

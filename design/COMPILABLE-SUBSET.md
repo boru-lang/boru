@@ -163,11 +163,15 @@ the interpreter then owns the whole program:
   (the ComputeCaptures scope rule: `Depth(name) > TopFnBaseline()[name]`),
   e.g. `def step fn […]` followed by `for-each [step] xs` in the same body.
   The interpreter resolves the name per run through the def stack; a compiled
-  program never executes the enclosing body's def, so any admission that
-  bakes the NAME — the island span, the CALL_NATIVE const-bake, the closure
-  probe — turns a working program into `undefined_word`. `bodyRefsFnLocalFn`
-  (carrier.go) refuses at the `recordDispatchOutcome` seam, gating all three
-  paths at once. Deliberately narrow: module-scope callbacks (`TopFnBaseline`
+  program never executed the enclosing body's def, so any admission that
+  baked the NAME — the island span, the CALL_NATIVE const-bake, the closure
+  probe — turned a working program into `undefined_word`. `bodyRefsFnLocalFn`
+  (carrier.go) refused at the `recordDispatchOutcome` seam, gating all three
+  paths at once. Since the seventy-second increment the def is PLACED there
+  instead (`placeFnLocalDef`: a registry-visible install for the frame, the
+  seventieth increment's lowering), so a capture-free local fn compiles on
+  every path; a CAPTURING local fn — a closure the placement cannot bake —
+  keeps the refusal. Deliberately narrow: module-scope callbacks (`TopFnBaseline`
   nil, or depth ≤ baseline) and fn-local VALUE defs (the closure path's
   lexical captures) keep compiling, as do structured-lowering words (if /
   for) and structurally-desugared dispatches (case's branch chain), whose

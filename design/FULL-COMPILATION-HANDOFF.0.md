@@ -9056,6 +9056,100 @@ residual, NUR147, not this increment's: the F1 pin is revised to say the
 program compiles and the run matches the interpreter by fallback, and
 flips knowingly when the seat retires the bail.
 
+## A code body's fn-local fn is placed for the frame (2026-09-16, the seventy-second increment)
+
+Picked by measurement from the handover's two remaining binder-half
+shapes after #467. NUR037: a code body — a `do` body, an `each` body —
+naming a fn the ENCLOSING fn's body defined refused the whole program
+("code-body names fn-local fn `f` at `do` (a compiled unit cannot resolve
+an enclosing fn's local fn binding)"): `def g fn [[][Integer][def f fn
+[[x:Integer][Integer][x add 1]] end  do [f 5]]] end  g` for the
+interpreter's 6, `[1 2] each [f]` for `[2 3]`, `each [f 1 add]` for `[3
+4]`. Loop bodies refused three shapes (the seventieth's declines). The
+disassembly says why the refusal stood: inside `g`'s unit `def f fn […]`
+lowers to NOTHING — the unit reaches `f` by index (`CALL_USER f1`) — so
+every path a code body can take resolved the NAME in the VM's registry,
+which never held the local: the closure unit's dispatch, the island's
+re-run, the const-baked list the handler interprets.
+
+**The placement.** The lookup half binds it instead of refusing:
+`placeFnLocalDef` (compiler/go/fn_local.go), at the NUR037 site in
+`recordDispatchOutcome`, finds the innermost open unit's recorded def
+event of the name — the current frame's or an outer frame's of the same
+unit — and stamps it as a placed install, the seventieth increment's
+lowering for a fn def inside a unit: `PUSH_CONST fn; BIND_DYN_SCOPE f`,
+registry-visible for the frame and torn down at its RET as the
+interpreter's def-cleanup pops it. The body then finds `f` where the
+interpreter does, on every path: the closure unit's dispatch stays the
+committed call by index (`f` is the frame's own local to it), the island
+and the interpreted list read the registry. A name the seventieth
+increment placed already (a def inside an arm the model cannot decide,
+`specFnNames`) counts as placed, and the family's dispatch routes.
+
+**What still refuses**, with the site's own text: a CAPTURING local fn
+(`def f fn [[x:Integer][Integer][x add k]]` over `g`'s param — its value
+is a closure the placement cannot bake, the seventieth's own limit), a
+lambda (no declaration site), and a def the unit's open frames do not
+hold. The predicate `BodyRefsFnLocalFn` is unchanged; only the site's
+action is.
+
+**Measured** (`lang/go/fn_local_placed_test.go`): the `do` body, the
+`each` body with and without a trailing dispatch, two locals in one
+body, two bodies over one install, a nested body, a loop around the
+body, the fn called twice (the install is the frame's), a module-scope
+`f` of a DISJOINT signature shadowed for the frame and restored after it
+(`6 a`, whichever side is defined first, and across two calls), and the
+arm-defined family — all compile, the disassembly carrying the placed
+install, and answer the interpreter. Two rows compile with NOTHING placed,
+by the interpreter's own rule: a module-scope `f` of an OVERLAPPING
+signature is not shadowed but REPLACED in place by the in-body def
+(`InstallDef`'s overlap filter — the seventieth's family L), so the body's
+`f` is the module binding and the module-level read after `g` sees the
+replacement (`101 6 2`); and an in-body undef of the local — before any
+read (`5`) or after it (`6`: the pass's registry holds no `f` when the
+body's dispatch is recorded, so the predicate does not fire, the call
+commits by index and the undef compiles away, as on `main`). A unit-level
+redefinition of the local between two bodies is placed at each site
+(`21`). A local whose name is ALSO a
+speculative family's at module scope (the seventieth's), of a DISJOINT
+signature, is placed itself — the unit's frames are searched before the
+family shortcut — and the body's routed dispatch resolves the frame's
+local while the module read after `g` resolves the family's (`a 101`).
+The mark-window row that carried NUR037's refusal
+(`bytecode_markwindow_test.go`) falls to its hoisted sibling's refusal
+now (NUR120's count contract), its fifth diagnosis. Two shapes that
+raise a return-contract error from the body agree on the error and blame
+different positions — NUR118's, recorded, not this increment's.
+
+**The finding: NUR149.** The same collision with an OVERLAPPING signature
+answers wrongly on the default lane, and did on `main` at e252e81 with the
+identical listing: the body's `def f` is `InstallDef`'s in-place
+replacement of the family's binding (the depth never exceeds the frame's
+baseline, so the fn-local predicate does not fire and the placement is
+never asked), the def lowers to nothing, and the body's routed dispatch
+resolves its lead live in the VM's registry — the arm's `f`, whose unit
+the pass never compiled, or nothing — where the interpreter resolves the
+body's own def; and the foreign-unit defer raised inside `g`'s frame is
+caught by `g`'s return contract and typed as an Error value rather than
+unwinding to the fallback. Recorded as NUR149 (the seventieth's family L
+inside a fn body, and the defer's landing), the next binder-half slice
+by measurement.
+
+**The review's three (NUR150).** Codex's three on the first cut, all
+reproduced. **Only the first local placed**: the predicate reported one
+name, so an islanded handler naming two locals resolved the second in the
+registry (`undefined word: h` for `[6 'b']`) — `BodyRefsFnLocalFns`
+reports every local the bodies name and the site places each or refuses.
+**A stale def event stamped**: the placement matched the unit's latest
+event by name, so a closed body's redefinition (`do [def f …]` before an
+islanded `error [f 5]`) had the ORIGINAL installed (6 for 15) — the event
+must be the current binding's own declaration (`sameFnDecls`), or the
+site refuses; two first-cut rows that answered by index (the redefining
+body reading its own redefinition, `55` and `111`) refuse under the rule
+with parity. **A value read admitted**: `do [f/v]` returned the fn as
+data where the interpreter dispatches the returned value
+(`uncalled_function`) — a `/v` or `/u` reference keeps the refusal.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -9333,3 +9427,4 @@ position than the construct that produced the binding.
 | `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnRefusingSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
 | `compiler/go/stored_live_test.go` (`TestStoredLiveSeats`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn/liveLead`), `lang/go/stored_handler_live_test.go` (`TestStoredHandlerReadsLiveBinding`), `lang/go/bytecode_stored_handler_freeze_test.go` (revised: the data case compiles, the F1 pin compiles and matches by fallback) | the seventy-first increment: a stored handler reads its module-scope deps live — a bare read seated as a live lookup, a slot routed, a declared fn dispatched by name routed with a live lead and every transition of it compiled to units — so the latch refuses only what a unit baked (a lambda original; a live lead rebound to a lambda or a data value) |
+| `compiler/go/fn_local_test.go` (`TestPlaceFnLocalDef`), `lang/go/fn_local_placed_test.go` (`TestFnLocalFnPlacedForCodeBodies`), `lang/go/bytecode_markwindow_test.go` (the NUR037 row re-diagnosed) | the seventy-second increment: a code body naming the enclosing fn's local fn compiles — the def placed as a registry-visible install for the frame (the seventieth's lowering), the body resolving it on every path; a capturing local fn keeps the refusal |

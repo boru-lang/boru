@@ -122,14 +122,20 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	//
 	// Re-diagnosed 2026-08-02 (NUR037): this row's `f` is a fn-local fn —
 	// declared inside the `wrap` lambda's body and then named from the `do`
-	// code body — which a compiled unit cannot resolve at all, so the
-	// admission predicate refuses one stage before the mark window ever arms.
-	// Same sound refusal, earlier and truer diagnosis (the third such
-	// re-diagnosis of this row). Parity is what this test guards and it holds:
-	// the program falls back whole and answers exactly as the interpreter does.
+	// code body — which a compiled unit could not resolve at all, so the
+	// admission predicate refused one stage before the mark window ever
+	// armed. Same sound refusal, earlier and truer diagnosis (the third such
+	// re-diagnosis of this row).
+	//
+	// Re-diagnosed 2026-09-16 (the seventy-second increment): the local fn's
+	// def is placed as a registry-visible install for the frame now, so the
+	// body resolves it and this row falls to the SAME refusal as its hoisted
+	// sibling below (NUR120's count contract) — the fifth diagnosis, one
+	// stage later. Parity is what this test guards and it holds: the program
+	// falls back whole and answers exactly as the interpreter does.
 	mwRefusedWithParity(t,
 		`def wrap ([] => [def f fn [[x:Any] [Any] [raise bad_input "nope"]]  do [(f 5) 2] error [dot code]]) wrap`,
-		"code-body names fn-local fn `f` at `do` (a compiled unit cannot resolve an enclosing fn's local fn binding)")
+		"fn wrap: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)")
 
 	// The same shape with `f` hoisted to MODULE scope: NUR037's admission
 	// predicate does not fire (a module-scope callback compiles fine), so

@@ -87,7 +87,7 @@ var refusalDispositions = map[string]refusalDisposition{
 
 	// compiler/go — the recorder.
 	"compiler/go/callable_words.go:tryRecordClosure#1":                {dispGeneric, 4, "a gradual-Any collection's List-versus-Map overload: a runtime re-match"},
-	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#1": {dispGeneric, 4, "a code body naming a fn-local fn (NUR037): the lookup half for escaping units"},
+	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#1": {dispGeneric, 4, "a code body naming a fn-local fn (NUR037), narrowed by the seventy-second increment to a CAPTURING local fn (a closure the frame placement cannot bake) or a def the unit's frames do not hold: a capture-free local fn's def is placed as a registry-visible install for the frame and the body resolves it on every path"},
 	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#2": {dispGeneric, 6, "a context read inside an inline-lowered body: a per-region context frame (family K)"},
 	"compiler/go/emit.go:resolveOperand#1":                            {dispGeneric, 5, "a body literal embedding an enclosing container: construct the spine per call over a live member read"},
 	"compiler/go/emit.go:NotifyNameRebound#1":                         {dispGeneric, 4, "a frozen read in an ESCAPING unit (the memo re-records the rest, Stage 4b): the lookup half"},

@@ -6359,3 +6359,109 @@ body-local row, `TestStoredHandlerLiveNamesDoNotRestoreBase`),
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
+
+## NUR149 — a fn body's redefinition of a speculative family's name compiles away, and the family's live lead misses it {#nur149}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-second increment).
+**Found:** by the fn-local placement's collision measurement
+(`lang/go/fn_local_placed_test.go`'s disjoint-signature row is the
+compiled twin). Reproduced on `main` at e252e81 with the identical
+listing, so it is the seventieth increment's family, not the
+seventy-second's:
+
+```
+def m {e: true} end
+if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end
+def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end
+g f 1
+  interpreter: 6 2     compiled (default lane): [boru/type_error] g: return value 1: expected Integer, got Error
+                       (= error(bytecode: internal: DISPATCH_GENERIC at f: the live signature has no unit; deferring …))
+```
+
+With `e: false` the interpreter answers `6` for `g` (and `undefined_word`
+at the module-level `f 1`); the compiled `g` raises `type_error … got
+Error(undefined word: f)` at the body's dispatch.
+
+**Rule:** a compiled program answers as the interpreter does, and a bail
+is a defer the interpreter finishes — slow, never wrong.
+
+**Divergence, in two halves.** The module-scope `f` is a speculative
+family (the seventieth increment: the arm's install is placed at its
+site, the family's dispatches route with a live lead). Inside `g`'s
+unit the body's `def f` OVERLAPS it, so the check pass's install is
+`InstallDef`'s in-place replacement (the standing entry dropped, the new
+one pushed at the same depth): the binding's depth never exceeds the
+frame's baseline, `BodyRefsFnLocalFn` does not fire, the seventy-second
+increment's placement is never asked, and the def lowers to NOTHING —
+the listing's `g/0` is `PUSH_CLOSURE; CALL_NATIVE do; RET`. The body's
+`f 5` routes (the family's name) and resolves its lead LIVE in the VM's
+registry, which holds the arm's `f` (`x add 100`, whose unit the pass
+never compiled once the body's def replaced it) or nothing at all; the
+interpreter resolves the body's own def either way. A DISJOINT signature
+takes the other path — a fresh push above the family's, the placement
+asked and taken, the routed lead resolving the frame's local — and
+answers as the interpreter does (`a 101`, the compiled row). The second
+half is the bail's landing: the foreign-unit defer raised inside `g`'s
+frame is caught by `g`'s return contract at RET and becomes an Error
+VALUE the contract then rejects (`expected Integer, got Error`), so the
+default lane reports a type error where the defer census counts a
+fallback; the interpreter is never reached.
+
+**Fence.** None pins the wrong answer; the disjoint row pins the twin
+that compiles, and names this entry.
+
+**Verdict:** none yet. The first half's shape is the seventieth's family
+L inside a fn body — an in-place redefinition of a module-scope name
+that the interpreter keeps after the frame (the row `101 6 2` of the
+seventy-second's test shows the same replacement compiling correctly
+when the name is NOT a live-lead family: the calls commit by index) —
+so the fix is the family's: a unit's in-place redefinition of a
+live-lead name must be placed as the transition it is (a twin the frame
+does NOT unwind) with its units compiled, or the family must refuse
+the redefinition inside a unit as it refuses a capturing closure. The
+second half is the defer's: a `vmDefer` raised inside a compiled frame
+must unwind to the program's fallback, not be typed against the frame's
+return contract.
+
+## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-second increment;
+fixed in the same PR).
+**Found:** review of #468's first cut (286a6c9), all three reproduced on
+that tree.
+
+**Rule:** a compiled program answers as the interpreter does, and a
+refusal is a slow path, never a wrong answer.
+
+**Divergences and fixes.**
+
+1. *Only the first local placed.* `BodyRefsFnLocalFn` reported the FIRST
+   fn-local fn a body named, so a body naming two — `def f …  def h …
+   do [raise x "e"] error [[f 5 h "b"]]` — placed `f` alone; the islanded
+   handler resolved `h` in the registry and raised `undefined word: h`
+   for the interpreter's `[6 'b']`. Fix: `BodyRefsFnLocalFns` reports
+   every local the bodies name, each once, and the site places each or
+   refuses.
+2. *A stale def event stamped.* The placement matched the unit's latest
+   def event by NAME alone; a closed body's redefinition — `do [def f fn
+   [… x add 10 …] end]` before an islanded `error [f 5]` — leaves the
+   current binding with no event of the unit's, and stamping the
+   original's installed the original: 6 for the interpreter's 15. Fix:
+   the event must be the current binding's own declaration
+   (`sameFnDecls`: the same signature count and declaration sites), or
+   the site refuses. Two first-cut rows that answered by index — the
+   redefining body reading its own redefinition (`55`, `111`) — refuse
+   under the rule and fall back with parity.
+3. *A value read admitted.* `do [f/v]` returned the fn as data from the
+   compiled closure where the interpreter dispatches the returned value
+   and raises `uncalled_function`; the guard had refused it. Fix: a
+   `/v` or `/u` reference to a local keeps the refusal
+   (`BodyRefsFnLocalFns`'s value-read report).
+
+**Fence.** `lang/go/fn_local_placed_test.go` (the islanded two-name row,
+the unit-level redefinition row, the four refused rows),
+`compiler/go/fn_local_test.go`, `compiler/go/carrier_nur037_test.go`
+(`TestBodyRefsFnLocalFnsAllNamesAndValueReads`).
+
+**Verdict:** closed with the fixes; recorded because the rule says every
+divergence surfaced in review is recorded, fixed or not.
