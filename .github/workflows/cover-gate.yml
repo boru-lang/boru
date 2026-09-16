@@ -40,6 +40,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: lang/go/go.mod
+          # The action's own cache is OFF: see the cache step below.
+          cache: false
+
+      # Go module + build cache, keyed PER RUN, restored by prefix — the
+      # same design as ci.yml's build-and-test job, whose comment says why
+      # setup-go's own cache is off (no root go.sum in this go.work
+      # workspace: it cached nothing) and why the run id tails the key
+      # (every run saves; setup-go would save once per go.sum and go
+      # stale). Its own prefix: this job's cache is not the CI job's.
+      - name: Go module and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-cover-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-cover-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-
+            go-cover-${{ runner.os }}-
 
       - name: Merged coverage gate (ADR-008, floor 100)
         run: make cover-gate
