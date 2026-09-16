@@ -50,6 +50,18 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] (f 1) add 1`, "[102]"},
 		{`def m {e: false} end if (m "e" get) ` + arm + ` [] (f 1)`, "undefined_word@1:90"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] [1 2] each [f]`, ""},
+		// A window the host cannot drive — a group, a list literal among the
+		// forward tokens — takes the slot-less descriptor the stack form
+		// takes: the operands are compiled and pushed as the claim (the
+		// corpus's finding on #466, third half: sift's `cloop (opts get
+		// "cols") 0 []`).
+		{`def m {e: true} end if (m "e" get) ` + arm + ` [] f (1 add 1)`, "[102]"},
+		{`def m {e: false} end if (m "e" get) ` + arm + ` [] f (1 add 1)`, "undefined_word@1:89"},
+		{`def m {e: true} end if (m "e" get) [def h fn [[xs:List n:Integer][Integer][(size xs) add n]] end] [] h [1 2] (1 add 1)`, "[4]"},
+		{`def m {e: false} end if (m "e" get) [def h fn [[xs:List n:Integer][Integer][(size xs) add n]] end] [] h [1 2] (1 add 1)`, "undefined_word@1:103"},
+		// A gradual operand's value is matched live, as the stack form's is.
+		{`def id fn [[x:Any][Any][x]] end def m {e: true} end if (m "e" get) ` + arm + ` [] f (id 5)`, "[105]"},
+		{`def id fn [[x:Any][Any][x]] end def m {e: false} end if (m "e" get) ` + arm + ` [] f (id 5)`, "undefined_word@1:121"},
 		// Inside a fn body the fresh def is a FRAME binding: the placed
 		// install is OpBindDynScope, unwound at the unit's RET as the
 		// interpreter's teardown pops it, and the routed lead — frame-local,
@@ -123,9 +135,8 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 	// interpreter's drop-then-push leaves the frame's depth unchanged, so
 	// its replacement outlives the call, which no frame-scoped install
 	// reproduces; an each body and a `do` body — the resident bridge's and
-	// the closure compile's), a dispatch the op cannot drive (a paren group
-	// in the window, a rematch over a gradual operand), and a `/v` read of
-	// the value. A CAPTURING closure's conditional def is not a const the
+	// the closure compile's), a dispatch the op cannot drive (the user-poly
+	// and rematch seats), and a `/v` read of the value. A CAPTURING closure's conditional def is not a const the
 	// placement can bake: it keeps the closure machinery and family L's own
 	// refusal. A fresh def in BOTH arms keeps the join's older fn-carrier
 	// refusal.
@@ -142,9 +153,11 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{`def f (x:Integer => [x add 1]) end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "fn 'f' redefined inside a conditional body"},
 		{`def m {e: true} end if (m "e" get) [def f (x:Integer => [x add 100]) end] [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: false} end [1 2] each [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
-		{`def m {e: true} end if (m "e" get) ` + arm + ` [] f (1 add 1)`, "dispatch of the conditionally-defined fn `f` cannot route"},
-		{`def id fn [[x:Any][Any][x]] end def m {e: true} end if (m "e" get) ` + arm + ` [] f (id 5)`, "conditionally-defined fn `f`"},
 		{`def m {e: false} end if (m "e" get) ` + arm + ` [] f/v`, "value read of the conditionally-defined fn `f`"},
+		// An undrivable window keeps one refusal: a slot naming a value a
+		// placed speculative undef generalised owes a live lookup the
+		// compiled operand baked.
+		{`def k 5 end def m {e: false} end if (m "e" get) [undef k] [] if (m "e" get) [def f fn [[x:Integer y:Integer][Integer][x add y]] end] [] f (1 add 1) k`, "forward-slot read of `k` after a placed undef"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] 1 f/v apply`, "value read of the conditionally-defined fn `f`"},
 		{`def m {e: false} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "def-bound computed fn apply"},
 	}

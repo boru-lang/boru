@@ -19,7 +19,7 @@ func NoteSpecFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool {
 	if r == nil || r.Check == nil || name == "" {
 		return false
 	}
-	if !r.analysisRecorder().RecordSpeculativeFnDef(name, outer, fn, pos) {
+	if !r.analysisRecorder().RecordSpeculativeFnDef(r, name, outer, fn, pos) {
 		return false
 	}
 	if r.Check.SpecFnNames == nil {

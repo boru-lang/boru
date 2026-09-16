@@ -8808,8 +8808,10 @@ What refuses, through `refuseUndef`'s one site, and answers as the
 interpreter does under the hatch: a def the recorder cannot place — a loop
 body (it re-rounds and carries its defs by slot), a fn body's replace, an
 each body and a `do` body (the resident bridge's and the closure compile's)
-— a dispatch the op cannot drive (a paren group in the window; the
-user-poly and rematch seats), and a `/v` read of the value (`NoteValRead`:
+— a dispatch the op cannot drive (the user-poly and rematch seats; a
+window with a group or a list literal takes the slot-less descriptor the
+stack form takes, since the operands are compiled and pushed as the
+claim), and a `/v` read of the value (`NoteValRead`:
 the bake would answer where the interpreter has no binding). A capturing
 closure's conditional def keeps family L's own refusal, and a fresh def in
 BOTH arms the join's older fn-carrier one. The refusal-site census stays
@@ -8877,7 +8879,35 @@ all five are in.
   enters at zero and restores the caller's on exit. And a module's
   registry keeps its own machinery — a module body runs interpreted at
   load and its fns' bodies are the module's — so the recorder declines a
-  def offered under a sub-registry (`es.reg != es.progReg`).
+  def offered under a sub-registry. The third half was measured after
+  the second landed: the corpus compiled every row again, but three
+  sift rows (`Sift.check {family:'kv'}` and its two neighbours) had lost
+  their units — 1375 descriptors and 10 routed each fell to 83 and 0,
+  the table from 124401 to 120522, and one of them ran a `do` body
+  through `RunResolved`, the interp-entry census's 29th row against its
+  ceiling of 28. Traced with the recorder instrumented: `sift-fixed-spans`
+  defines `cloop` and `wloop` (fixed-width spans) fn-locally inside
+  undecidable arms; in the probe passes that compile the module's fns
+  the defs were placed — the decline read `es.reg`, which is the LAST
+  registry bound, not a stack, and after a nested run of the program's
+  registry a module fn's body reads as the program's — and `cloop`'s
+  first call, `cloop (opts get "cols") 0 []`, then refused as a window
+  the host cannot drive (a group and a list literal), which marked the
+  sub-compile uncompilable and cost the enclosing units. Two facts fix
+  it. The decline keys on the registry the def installs into
+  (installDef's own `r`, handed through `RecordSpeculativeFnDef`); the
+  stale `es.reg` is a finding for the ledger, not this increment's to
+  fix. And an undrivable window needs no driving: the operands are
+  compiled and pushed as the record's claim, with signature position 0
+  on top (`lowerUserCall`'s contract), which is exactly where the live
+  plan of a slot-less descriptor claims from — so a speculative family's
+  forward call with a group or a list literal among its tokens takes the
+  slot-less descriptor the stack form takes (`RecordUserCall`), and only
+  a generalised undef name among the window's slots keeps a refusal. The
+  sift rows are the base's again (1375 and 10 each; the table 124401 and
+  676, the census 28), and the rows that refused as undrivable compile
+  with parity (`f (1 add 1)`, `h [1 2] (1 add 1)`, `f (id 5)` over a
+  gradual operand — the value is matched live, as the stack form's is).
 
 ## What the ledger excludes, and why each exclusion was measured
 

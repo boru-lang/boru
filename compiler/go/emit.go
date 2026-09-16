@@ -5182,13 +5182,18 @@ type pendingSpecFnDef struct {
 // install cannot be placed: a suspended recording, an arm-resident
 // bracket, a live armed loop (its body re-rounds and its defs are carried
 // by slot), a closure body compile.
-func (es *EmitState) RecordSpeculativeFnDef(name string, outer, fn core.Value, pos core.SrcPos) bool {
-	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && es.reg != es.progReg) {
+func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, outer, fn core.Value, pos core.SrcPos) bool {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && reg != es.progReg) {
 		// A closure body compile's transitions are the enclosing run's; a
-		// MODULE's registry (es.reg is the sub-registry a module body or
-		// fn is analysed in) keeps its own machinery — a module body runs
+		// MODULE's registry keeps its own machinery — a module body runs
 		// interpreted at load, and its fns' bodies are the module's, not
-		// this program's to place a transition in.
+		// this program's to place a transition in. The registry is the one
+		// the def INSTALLS into (installDef's own), not es.reg: that field
+		// is the last one bound, and a module fn's body analysed after a
+		// nested run of the program's registry reads as the program's
+		// (sift's fn-local `cloop`, placed in the module and refused on its
+		// recursive call, cost three corpus rows their units — the
+		// corpus's finding on #466, third half).
 		return false
 	}
 	replace := core.IsAppliableFn(outer)
@@ -5359,9 +5364,9 @@ const (
 	// compile).
 	specFnUnplaced
 	// specFnUnrouted: a dispatch of a speculative fn family that does not
-	// route (an undrivable window, a captured callee, a poly or rematch
-	// seat): a committed call would run the arm's unit whether or not the
-	// arm ran.
+	// route (a captured callee, a poly or rematch seat; an undrivable
+	// window takes the slot-less descriptor instead): a committed call
+	// would run the arm's unit whether or not the arm ran.
 	specFnUnrouted
 	// specFnValueRead: a bare read of a speculative fn family's value
 	// (`f/v`), which a bake would answer where the interpreter has no
@@ -6021,7 +6026,25 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	}
 	// A speculative fn family's dispatch (RecordSpeculativeFnDef) must
 	// resolve its lead live: a committed call would run the arm's unit
-	// whether or not the arm ran.
+	// whether or not the arm ran. A window the host cannot drive — a
+	// group, a list literal, a modified word among the forward tokens —
+	// does not need driving: the operands are compiled and pushed as the
+	// record's claim (lowerUserCall seats sig position 0 on top, which is
+	// where the live plan claims from), so the dispatch takes the
+	// slot-less descriptor the stack form takes. Measured on the corpus
+	// (the corpus's finding on #466, third half): sift's `cloop (opts get
+	// "cols") 0 []` refused here, and the refusal inside the unit's
+	// sub-compile cost three rows their units. Only a generalised undef
+	// name among the window's slots keeps a refusal — the slot owes a
+	// live lookup the compiled operand baked (fwdReadAfterSpecUndef).
+	if !generic && es.Active() && es.specFnNames[word] && region != nil {
+		if n := es.specUndefUnroutedSlot(region, false); n != "" {
+			es.refuseUndef(n, fwdReadAfterSpecUndef)
+			return
+		}
+		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg}
+		generic = len(rec.caps) == 0 && es.routeRegion(region)
+	}
 	if !generic && es.specFnNames[word] {
 		es.refuseUndef(word, specFnUnrouted)
 		return

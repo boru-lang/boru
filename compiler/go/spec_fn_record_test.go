@@ -18,14 +18,14 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	fnv := core.NewFunction(core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)}), Decl: decl}}})
 	lambda := core.NewFunction(core.FnDefInfo{Name: "f", Anonymous: true, Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
 	var nilES *EmitState
-	if nilES.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) {
+	if nilES.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos) {
 		t.Fatal("a nil recorder places nothing")
 	}
 	es := NewEmitState()
-	if es.RecordSpeculativeFnDef("", core.Value{}, fnv, pos) || es.pendingSpecFn != nil || len(es.specFnNames) != 0 {
+	if es.RecordSpeculativeFnDef(nil, "", core.Value{}, fnv, pos) || es.pendingSpecFn != nil || len(es.specFnNames) != 0 {
 		t.Fatal("an empty name records nothing")
 	}
-	if !es.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) || !es.specFnNames["f"] || es.pendingSpecFn == nil || es.pendingSpecFn.name != "f" || es.pendingSpecFn.replace {
+	if !es.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos) || !es.specFnNames["f"] || es.pendingSpecFn == nil || es.pendingSpecFn.name != "f" || es.pendingSpecFn.replace {
 		t.Fatalf("a fresh def: placed, marked, pending, no replace: %v %+v", es.specFnNames, es.pendingSpecFn)
 	}
 	es.RecordDynBind("g", core.NewInteger(1), pos)
@@ -47,7 +47,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	}
 	// An overlapping redefinition: replace (the outer's units compile only
 	// against a registry — the lang rows pin that; without one, nothing).
-	if !es.RecordSpeculativeFnDef("f", fnv, fnv, pos) || es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
+	if !es.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) || es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
 		t.Fatal("an outer fn value makes the install a replace")
 	}
 	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 {
@@ -75,7 +75,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	}
 	es2 := NewEmitState()
 	resume := es2.Suspend()
-	placed := es2.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos)
+	placed := es2.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos)
 	resume()
 	if placed {
 		t.Fatal("a suspended recording places nothing")
@@ -83,36 +83,52 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	refuses(t, es2, "a suspended recording's fresh def")
 	es3 := NewEmitState()
 	es3.armResidentDepth = 1
-	if es3.RecordSpeculativeFnDef("f", fnv, fnv, pos) {
+	if es3.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) {
 		t.Fatal("an arm-resident bracket places nothing")
 	}
 	declined(t, es3, "an arm-resident bracket's replace")
 	es4 := NewEmitState()
 	es4.loopCarried = append(es4.loopCarried, &loopCarriedScope{})
-	if es4.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) {
+	if es4.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos) {
 		t.Fatal("an armed loop places nothing")
 	}
 	refuses(t, es4, "an armed loop's fresh def")
 	es5 := NewEmitState()
 	es5.reg, _ = core.NewRegistry()
 	es5.reg.Check.FnBodyDepth = 1
-	if !es5.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) || !es5.specFnNames["f"] {
+	if !es5.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos) || !es5.specFnNames["f"] {
 		t.Fatalf("a fn body's FRESH def is placed (a frame binding the unit's RET unwinds): %q", es5.Reason)
 	}
 	es5.pendingSpecFn = nil
-	if es5.RecordSpeculativeFnDef("f", fnv, fnv, pos) || !es5.Compilable {
+	if es5.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) || !es5.Compilable {
 		t.Fatalf("a fn body's replace declines without refusing: %q", es5.Reason)
 	}
 	esL := NewEmitState()
-	if esL.RecordSpeculativeFnDef("f", core.Value{}, lambda, pos) {
+	if esL.RecordSpeculativeFnDef(nil, "f", core.Value{}, lambda, pos) {
 		t.Fatal("a conditional lambda def places nothing")
 	}
 	refuses(t, esL, "a conditional lambda def")
 	esL2 := NewEmitState()
-	if esL2.RecordSpeculativeFnDef("f", lambda, fnv, pos) {
+	if esL2.RecordSpeculativeFnDef(nil, "f", lambda, fnv, pos) {
 		t.Fatal("a lambda-valued outer places nothing")
 	}
 	declined(t, esL2, "a lambda-valued outer's replace")
+	// A MODULE's def declines: the registry the def installs into is not
+	// the program's (the corpus's finding on #466, third half — es.reg is
+	// the last one bound, so it is not the test).
+	esM := NewEmitState()
+	progReg, _ := core.NewRegistry()
+	modReg, _ := core.NewRegistry()
+	esM.BindRegistry(progReg)
+	esM.BindRegistry(modReg)
+	if esM.RecordSpeculativeFnDef(modReg, "f", core.Value{}, fnv, pos) {
+		t.Fatal("a module registry's def places nothing")
+	}
+	declined(t, esM, "a module registry's fresh def")
+	esM.reg = modReg
+	if !esM.RecordSpeculativeFnDef(progReg, "f", core.Value{}, fnv, pos) || !esM.specFnNames["f"] {
+		t.Fatalf("the program registry's def is placed whatever es.reg last bound: %q", esM.Reason)
+	}
 	// The other two kinds read through the one site.
 	es6 := NewEmitState()
 	es6.refuseUndef("f", specFnUnrouted)
@@ -123,6 +139,31 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	es7.refuseUndef("f", specFnValueRead)
 	if es7.Compilable || !strings.Contains(es7.Reason, "value read of the conditionally-defined fn `f`") {
 		t.Fatalf("the value-read refusal: %q", es7.Reason)
+	}
+}
+
+// The one dispatch of a speculative fn family RecordUserCall still refuses
+// after an undrivable window takes the slot-less descriptor: a callee with
+// captures (the captures ride as trailing CALL_USER operands the routed op
+// has no plumbing for) — driven over a real capture as
+// TestRecordUserCallDeclinesCapturesAndLocalLeads drives its decline.
+func TestRecordUserCallRefusesCapturedSpecCallee(t *testing.T) {
+	es, reg, done := beginRegionPass(t)
+	defer done()
+	caps := []core.CapturedBinding{{Name: "c", Value: core.NewInteger(3)}}
+	kv, b := core.NewInteger(5), core.NewInteger(1)
+	reg.Defs.Push("k", kv)
+	reg.Register("f", core.Signature{Args: []*core.Type{core.TAny, core.TAny}})
+	pos := capture(t, es, reg, "f", core.NewWord("k"), b)
+	unit, _, ok := es.StartFnCompile("f", "f", nil, []core.Value{core.NewInteger(0), core.NewInteger(0)},
+		[]*core.Type{core.TAny, core.TAny}, []string{"x", "y"}, caps, false, core.SrcPos{})
+	if !ok || unit < 0 {
+		t.Fatalf("StartFnCompile declined: %d %v", unit, ok)
+	}
+	es.specFnNames = map[string]bool{"f": true}
+	es.RecordUserCall(unit, "f", []core.Value{kv, b}, nil, core.SrcPos{Row: 1, Col: 3}, pos)
+	if es.Compilable || !strings.Contains(es.Reason, "dispatch of the conditionally-defined fn `f` cannot route") {
+		t.Fatalf("a captured speculative callee refuses: %v %q", es.Compilable, es.Reason)
 	}
 }
 
