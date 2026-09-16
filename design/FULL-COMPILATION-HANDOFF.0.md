@@ -8909,6 +8909,153 @@ all five are in.
   with parity (`f (1 add 1)`, `h [1 2] (1 add 1)`, `f (id 5)` over a
   gradual operand — the value is matched live, as the stack form's is).
 
+## A stored handler reads the live binding (2026-09-16, the seventy-first increment)
+
+Picked by measurement from the handover's three remaining binder-half
+shapes. On `main` after #466 the stored-handler latch refused every
+module-scope rebind of a name a stored service handler reads — a helper
+fn rebound between the `add` and the `call` (7 for the interpreter's 7,
+refused), a data def read bare (`[k]`, 11) or in a slot (`[k add 1]`,
+12), an undef-then-redef, and the F1 shape of
+`design/RELOAD-INVALIDATION.0.md` §3 (calls before and after each of two
+rebinds: `6 105 12`) — five shapes, each answered by the interpreter's
+call-time binding. NUR037's fn-local fn refused two shapes (a `do` and an
+`each` body naming it), loop bodies three (the seventieth's declines).
+The latch was chosen: it is the handover's first-named shape, its
+disposition row already reads "a stored handler reads the live binding,
+the lookup half", and the machinery is the sixty-fourth increment's — a
+unit the memo cannot re-record, whose reads of a rebound name must be
+live — plus the seventieth's live lead.
+
+**What the latch was answering.** A stored handler's unit is compiled at
+its STORE site (`compileStoredFnUnit`, `compileClosureBody` under the
+synthetic word `storedfn`; spawn's body likewise) and invoked by the host
+at CALL time through `InvokeCallback` → `RunUnit`, so the binding-
+sensitive memo that re-records every other unit at its next call site
+never sees it again. Whatever the unit baked of a module-scope binding —
+a data def's value as a `PUSH_CONST`, a helper as a committed
+`CALL_USER` — stayed frozen while the interpreter resolves the same names
+when the handler runs. `NotifyNameRebound`'s stored-ref arm poisoned any
+ref whose `depNames` (every module-level word the body reads, computed
+at the store) held the rebound name and refused the whole program, for
+the F1 reason: module-scope def sites execute only in the check pass, so
+a poisoned ref's CallBoru fallback would read the PASS-FINAL binding for
+every call, calls before the rebind included. That reason is the twin
+regime's to answer now — a root def's bind twin replays the install in
+program order at VM time — so the lookup half removes the bake instead
+of refusing the rebind.
+
+**The lookup half**, in three seats, all inside a stored-ref unit
+(`storedUnitOpen`: the innermost open unit is one; a closure body nested
+inside the handler is its own unit and keeps its bake and the latch):
+
+- **A bare read of a module-scope value is seated live.** `NoteLiveRead`
+  — the tag hook the sixty-eighth increment gave the speculative undef's
+  generalised names — takes a second arm (`storedDepRead`): a read of a
+  module-scope binding (`core.ModuleScopeBinding`) inside a stored-ref
+  unit, whatever the pass's value — concrete included, since a def-bound
+  const is exactly the bake the latch refused over — becomes its own
+  identity and a live one-result event, lowering to `OpLookupDynScope`
+  at the read's token. A read the check pass already tagged dynamic (a
+  flex map, a store, a module namespace) is live by that machinery and is
+  only noted so; a binding the op would DISPATCH rather than push (a fn,
+  a class) or an active token is not seated (the fn read is the lead
+  seat's). The names join `Program.LiveReadNames`, and a miss on the read
+  raises the interpreter's undefined_word as `SpecUndefNames`' does.
+- **A word slot routes**, as it has since the sixty-fifth increment
+  (`routeRegion` inside a unit) — nothing new, except that the routing
+  now records itself on the unit (`noteUnitLive`), which is what the
+  latch needed to know.
+- **A fn dispatched by name routes with a live lead** (`markLiveLead` at
+  `RecordUserCall`): a module-scope binding with declared signatures
+  (`fnSigsDeclared` — the identity the routed op locates a unit by) joins
+  `liveLeadNames`, and the dispatch takes the seventieth increment's
+  path — the descriptor when drivable, the slot-less one otherwise — with
+  `routeRegion`'s admission widened from `specFnNames` to
+  `liveLeadWord`. The VM's `dispatchGeneric` reads the union
+  (`Program.LiveLeadNames` beside `SpecFnNames`): the lead resolves in
+  the registry at the call, the live signature's own unit is located by
+  its declaration site (`specFnUnit`), a miss raises undefined_word at
+  the word. Every module-scope transition of such a name
+  (`RecordBindTwin`, after the install — the notification itself fires
+  before it) compiles the binding it leaves to units
+  (`compileLiveLeadUnits` → `check.CompileFnSigUnit`, the seventieth's
+  outer compile), so the routed op always has the live signature's unit;
+  a transition to a value with no declared signature — a lambda, a data
+  value — or one made while the recorder was suspended is one the op
+  could not run, refused through the undef site (`liveLeadUndeclared`,
+  no new refusal site: the census stays at 92).
+
+**The latch narrows to what a unit baked.** `fnUnitRec.liveNames`
+collects the three seats' names per unit; a stored ref carries its
+unit's (`CompiledFnRef.liveNames`), and `NotifyNameRebound` poisons and
+refuses only for `depNames[name] && !liveNames[name]`. So a lambda
+helper as the ORIGINAL binding (no declaration site: never a live lead)
+keeps the latch's own text, and every real handler over stable deps
+(todo-api's live-todos, mini-redis's arg-at/kv-read) keeps its stamp as
+before — the positive guard `TestCompiledStoredHandlerStableDepCompiles`
+holds.
+
+**The trade.** A stored unit now pays one registry lookup per read of a
+module-scope value where it paid a const push before — the interpreter's
+own cost for the same read, and the price of honouring a rebind. The
+transition ledger knows which names never move after the store, so a
+later increment may bake exactly those and read the rest live; nothing
+here forecloses it. Two pins moved with the seat: the const stamp's
+dyn-scope decline (`TestStampConstDynScopeDeclineKeepsEnclosingCompile`)
+now sits on a nested lambda's read, since a mount handler's own read of
+`files` is seated live and that stamp is taken — which is also the
+interp-entry census's 28 → 27 and the engine-entry census's 281 → 277
+(module-io.tsv's mount handlers stamp instead of falling to CallBoru);
+and `BytesBehavior.BakeableConst`, which mini-s3's delimiter used to
+reach through its stored unit's bake, is pinned directly.
+
+**Measured** (`lang/go/stored_handler_live_test.go`,
+`bytecode_stored_handler_freeze_test.go` revised): a named helper
+rebound, undef'd and redefined, or never rebound; a data dep read bare or
+in a slot, undef'd and redefined — all compile, the ref stamped, the
+disassembly showing the routed lead or the live lookup, and answer the
+interpreter's binding. Refused with parity: a lambda original (the
+latch), a live lead rebound to a lambda or to a data value.
+
+**The review's four** (Codex on the first cut, 4f5fee1; NUR148 records
+them): a live READ rebound to a fn — `undef k  def k fn [[][Integer][11]]
+end` after a handler printed and read `k` — met the lookup op's defer
+past the print where the interpreter dispatches it, so a transition of a
+live-read name to a dispatching value refuses through the undef site
+(`liveReadDispatching`); a name read BOTH ways — `helper 5` routed beside
+a baked `helper/v` — had been marked live and skipped the latch (6 for
+7), so a stored unit now counts its frozen notes against its live seats
+(`noteUnitBaked` from `NoteFrozenRead`'s stored arm, `unitLiveNames`
+keeping only names whose seats cover their bakes); the live-lead
+admission had been keyed by WORD, so a body-local `helper` in another fn
+routed as the module lead (6 for 15) — it rides on the descriptor now
+(`RegionDesc.LiveLead`); and the two live-name sets had joined the
+restore predicate, rolling the registry back to `ReplayBase` for a
+program with no transition to replay (a later request's rebind undone,
+7 back to 6) — they leave it, since a live read implies no transition. A
+live lead rebound to another ARITY, which the review expected to defer,
+answers as the interpreter does: the live plan claims what the live
+signature takes (a compiled row).
+
+**The finding: the second `call` bails.** The F1 shape compiles now —
+the latch lifts — but its RUN falls back to the interpreter at the
+second `call {op:"go"} svc`, and so does every program that calls a
+service twice, deps or none: `def svc (service {}) add {} ([r:Map
+state:Any] => [1]) svc  call {} svc  call {} svc` answers `1 1` on the
+default lane by fallback and an internal error under force-compile, on
+`main` before this increment. Traced with the poly window printed: the
+check pass matched the second `call` against its three-operand overload
+`[Map Service Map]`, the first call's gradual residual standing in for
+the third Map, and committed the record to three operands; at run time
+the third value is the Integer the first call produced, the
+three-operand overload does not match, and `CALL_NATIVE_POLY` re-matches
+only at the recorded count — `vm:poly-no-match`, one of the defer
+census's two. That is the poly native seat's arity commit over a gradual
+residual, NUR147, not this increment's: the F1 pin is revised to say the
+program compiles and the run matches the interpreter by fallback, and
+flips knowingly when the seat retires the bail.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -9185,3 +9332,4 @@ position than the construct that produced the binding.
 | `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindRefusesDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveRead`, `TestTwinInstallsAndRootDynBindSkip`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`, `TestSpeculativeUndefAcrossRequests`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live events at their tokens, the miss raising the interpreter's undefined_word there; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
 | `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnRefusingSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
+| `compiler/go/stored_live_test.go` (`TestStoredLiveSeats`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn/liveLead`), `lang/go/stored_handler_live_test.go` (`TestStoredHandlerReadsLiveBinding`), `lang/go/bytecode_stored_handler_freeze_test.go` (revised: the data case compiles, the F1 pin compiles and matches by fallback) | the seventy-first increment: a stored handler reads its module-scope deps live — a bare read seated as a live lookup, a slot routed, a declared fn dispatched by name routed with a live lead and every transition of it compiled to units — so the latch refuses only what a unit baked (a lambda original; a live lead rebound to a lambda or a data value) |

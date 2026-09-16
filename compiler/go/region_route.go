@@ -71,7 +71,7 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	// (LeadLocal) but registry-visible all the same — its placed install is
 	// OpBindDynScope — so the routed lookup finds it where the frame holds
 	// it (the seventieth increment).
-	spec := d != nil && es != nil && es.specFnNames[d.Word]
+	spec := d != nil && es != nil && (es.specFnNames[d.Word] || d.LiveLead)
 	if d == nil || (d.LeadLocal && !spec) || !es.Active() || !regionDrivable(d) {
 		return false
 	}
@@ -113,6 +113,7 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	for _, name := range names {
 		es.unfreezeRead(name)
 		es.routedNames[name] = true
+		es.noteUnitLive(name)
 	}
 	return true
 }

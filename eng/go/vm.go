@@ -2866,7 +2866,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// undefined_word, raised from the read's own position —
 				// never deferred, since an effect performed before the read
 				// fences the re-run into an internal error.
-				if p.SpecUndefNames[name] {
+				if p.SpecUndefNames[name] || p.LiveReadNames[name] {
 					return nil, stampAt(core.UndefinedWordDiag(curReg, curReg.Source, name, debugPosAt(curDebug, pc)), curDebug, pc, curReg)
 				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; deferring to the interpreter")

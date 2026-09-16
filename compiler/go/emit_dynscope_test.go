@@ -166,3 +166,33 @@ func TestBearsActiveTokensArms(t *testing.T) {
 		t.Error("an all-data map bears no active tokens")
 	}
 }
+
+// The rescue's ID-ELIDED enclosing read: a detached stamp forked the
+// runtime def table, so the mutable ref's ID was never minted, and the read
+// arrives with an empty ID and a DynFrom tag. It commits by NAME against the
+// unit's enclosingBindNames snapshot (the by-name twin of enclosingBindIDs);
+// a name absent from the snapshot falls to the reachability model as
+// before. Driven directly since the seventy-first increment: a stored-ref
+// unit's own read of the module value is seated live before it could reach
+// this arm, and the elided-ID shape is the detached stamp's alone.
+func TestDynScopeRescueElidedIDByName(t *testing.T) {
+	r := seam7Reg(t)
+	r.Check.Mode = true
+	es := NewEmitState()
+	es.BindRegistry(r)
+	es.units = append(es.units, &emitUnit{localByID: map[string]int{}},
+		&emitUnit{localByID: map[string]int{}, enclosingBindIDs: map[string]bool{}, enclosingBindNames: map[string]bool{"files": true}})
+	v := core.NewCarrier(core.TAny)
+	v.ID = ""
+	v.SetDynFrom("files")
+	op, ok := es.dynScopeRescue(v)
+	if !ok || op.kind != opDynScope || !es.dynScopeNames["files"] {
+		t.Fatalf("an elided-ID DynFrom read commits by name: op=%+v ok=%v names=%v", op, ok, es.dynScopeNames)
+	}
+	w := core.NewCarrier(core.TAny)
+	w.ID = ""
+	w.SetDynFrom("other")
+	if _, ok := es.dynScopeRescue(w); ok {
+		t.Fatal("a name outside the snapshot, with no fn binder, is refused as before")
+	}
+}

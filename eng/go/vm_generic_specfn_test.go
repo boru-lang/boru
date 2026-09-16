@@ -52,6 +52,38 @@ func TestDispatchGenericSpecFn(t *testing.T) {
 			t.Fatalf("the live signature's unit (w2, returning its second operand) runs: out=%v err=%v", out, err)
 		}
 	})
+	// A stored handler's live lead (Program.LiveLeadNames — the
+	// seventy-first increment) takes the same path: the miss raises the
+	// word, a bound lead runs the live signature's own unit by its
+	// declaration site.
+	t.Run("liveLead: the miss raises the word", func(t *testing.T) {
+		p, reg := genericWorld(t)
+		p.Regions[0].Word = "nope"
+		p.LiveLeadNames = map[string]bool{"nope": true}
+		_, err := RunProgram(p, reg)
+		var be *core.BoruError
+		if !errors.As(err, &be) || be.Code != "undefined_word" || be.Row != 1 || be.Col != 1 {
+			t.Fatalf("undefined_word at the word, not a defer: %v", err)
+		}
+	})
+	t.Run("liveLead: the live signature's own unit", func(t *testing.T) {
+		p, reg := genericWorld(t)
+		p.LiveLeadNames = map[string]bool{"w": true}
+		decl := core.DeclSite{Pos: core.SrcPos{Row: 5, Col: 2}, File: "w.boru"}
+		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
+			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}), Decl: decl,
+		}}}))
+		p.Generics[0].Unit = 0
+		p.Fns = append(p.Fns, compiler.CompiledFn{Name: "w2", NParams: 2, NArgs: 2, NLocals: 2, Decl: decl,
+			Code: []compiler.Instr{{Op: compiler.OpPushLocal, Arg: 1}, {Op: compiler.OpRet}}})
+		out, err := RunProgram(p, reg)
+		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(1)) {
+			t.Fatalf("the live signature's unit runs for a live lead: out=%v err=%v", out, err)
+		}
+		if !liveLeadWord(p, "w") || liveLeadWord(p, "x") {
+			t.Fatal("liveLeadWord reads the union")
+		}
+	})
 	t.Run("specFnUnit", func(t *testing.T) {
 		decl := core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 2}, File: "a.boru"}
 		p := &compiler.Program{Fns: []compiler.CompiledFn{{Name: "a", Decl: decl}}}

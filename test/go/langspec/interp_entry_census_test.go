@@ -740,7 +740,17 @@ import (
 // It also graduated a refusal the census cannot see: a NO-CONTRACT fn whose
 // body leaves the same shape (`def f fn [[] [] [for 3 [1] 7]]  f`) refused
 // outright, and the pin that held it wrote the wrong reason out in full.
-const interpEntryRowCeiling = 28
+//
+// 28 -> 27 (2026-09-16, the seventy-first increment): a stored handler's
+// bare read of a module-scope value is seated live at its token
+// (NoteLiveRead's stored-dep arm), so the const stamp of a mount handler
+// reading a flex map no longer grows dynScopeNames and is TAKEN instead of
+// declined. The row is module-io.tsv's `def files (flex {})  IO.mount
+// {read: (p:Pathon => [files get `${p}`]) …}`: both handlers stamp, and
+// the row's reads and writes run on the VM where they went through
+// CallBoru before. The stamp's decline keeps its pin on a nested lambda's
+// read (TestStampConstDynScopeDeclineKeepsEnclosingCompile).
+const interpEntryRowCeiling = 27
 
 func TestInterpEntryCensus(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")

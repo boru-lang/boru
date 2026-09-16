@@ -71,23 +71,24 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | gate | value | direction |
 |---|---|---|
 | `frontierCompileLedger` rows | **29** | down only |
-| interp-entry census rows | **28** | down only, fails in BOTH directions |
+| interp-entry census rows | **27** (28 until increment 71) | down only, fails in BOTH directions |
 | refusal ceiling / island ceiling / type-soundness pin | 0 / 0 / 0 | pinned |
 | `minCompiledRows` | 6410 | up only |
 | `diagnosticParityCeiling` / `armedOnlyCeiling` | 320 / 4 | down only |
 | twin-placement frontier shapes | **2** (1 and 2; 3 and 4 graduated) | — |
 | `refusalSiteCeiling` | **92** (lowered from 93 to the live value, 2026-09-14) | down only |
 | refusal-disposition census (`TestRefusalDispositionCensus`, ceiling 92) | **92 sites: generic 87, trap 1, delete 4**; by retiring stage 3×21, 4×19, 5×26, 6×9, 7×11, 8×2, 9×4 | every site has a one-line row; pinned in BOTH directions, so a retired site lowers the ceiling |
-| `engineEntryCeiling` / `deferCeiling` | **281** (was 505, lowered 2026-09-14) / 5 | down only |
+| `engineEntryCeiling` / `deferCeiling` | **277** (was 505, lowered to 281 on 2026-09-14 and to 277 by increment 71) / 5 | down only |
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–69 are on `main`. The most recent landings: #463 (increment
-67, the speculative undef refuses), #464 (increment 68, the speculative
-undef is placed) and #465 (increment 69, a forward slot of a generalised
-name routes), all 2026-09-16. Increment 70 (a conditional fn def is
-speculative — family L's conditional-body arm placed at module scope) is
-in flight.
+Increments 1–70 are on `main`. The most recent landings: #464 (increment
+68, the speculative undef is placed), #465 (increment 69, a forward slot
+of a generalised name routes) and #466 (increment 70, a conditional fn
+def is speculative — family L's conditional-body arm placed at module
+scope, dispatched on a live lead), all 2026-09-16. Increment 71 (the
+stored-handler latch's lookup half: a stored handler reads its
+module-scope deps live) is in flight.
 
 ## What is in flight
 
@@ -375,10 +376,15 @@ as #455 (`6ea8ac1`).
    diagnostics are 66; the binder half is 67–70: a speculative undef
    refuses (67), is placed with live reads (68), its forward slot routes
    (69), and a conditional fn def — family L's conditional-body arm — is
-   placed at module scope with its dispatches routed on a live lead (70,
-   in flight). Still the binder half's: the stored-handler latch, NUR037's
-   fn-local fn (and the same family inside a fn body, refused since 70),
-   loop bodies.
+   placed at module scope with its dispatches routed on a live lead (70).
+   The stored-handler latch's lookup half is 71 (in flight): a stored
+   handler's bare reads are seated live, its slots route, its declared
+   fn leads route with every transition compiled to units, and the latch
+   refuses only what a unit baked; its measurement found the poly native
+   seat's arity commit over a gradual residual (NUR147: a second `call`
+   of a service bails at run time), which is the next bail to retire.
+   Still the binder half's: NUR037's fn-local fn (and the same family
+   inside a fn body, refused since 70), loop bodies.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.
@@ -423,7 +429,7 @@ Rejected, with reasons on the PR: minting a fresh module instance per element
   READS the element. Needs an op that REBUILDS the type per element rather
   than re-installing one captured body (`typeInstallElementIndependent` is
   the screen that currently declines it).
-- **The remaining 28 interp-entry census rows.** The census header in
+- **The remaining 27 interp-entry census rows.** The census header in
   `test/go/langspec/interp_entry_census_test.go` carries its own seam table
   saying where they sit and which are ATTRIBUTED (specified interpretation,
   e.g. `boru:debug`) rather than debt.
