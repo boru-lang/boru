@@ -6268,3 +6268,44 @@ analysed — a different route (the map's values evaluate in a sub-engine).
 It is the never-called position, so nothing raises at run time, but the
 record's rule is about where the body was WRITTEN, and one position still
 decides the answer.
+
+## NUR147 — the poly native seat commits an arity over a gradual residual, and the run refutes it {#nur147}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-first increment).
+**Found:** by the stored-handler latch's F1 measurement
+(`lang/go/bytecode_stored_handler_freeze_test.go`,
+`TestStoredHandlerMidProgramRebindCompilesAndMatches`): the program
+compiles once the latch lifts, and its run falls back to the interpreter
+at the second `call`. Reproduced on `main` with no dependency at all:
+`def svc (service {})  add {} ([r:Map state:Any] => [1]) svc  call {} svc
+call {} svc` answers `1 1` on the default lane by whole-program fallback
+and raises an internal error under `-force-compile`.
+
+**Rule:** a program that compiles runs compiled; a runtime bail is a
+defer the census counts (`vm:poly-no-match`, one of its two), slow and
+not wrong, and every one is owed a retirement.
+
+**Divergence.** `call` has two overloads, `[Map Service]` and `[Map
+Service Map]`. The first `call` leaves its handler's residual on the
+stack as a GRADUAL carrier (the handler's return is not declared). The
+check pass matches the second `call {} svc` with that carrier standing
+in for the third Map: `MatchSignature` takes the three-operand overload,
+and the poly record commits to three operands (`CALL_NATIVE_POLY call/2`
+in the listing names the word; the record's `NArgs` is 3). At run time
+the third value is the Integer the first call produced; the
+three-operand overload does not match, and the seat re-matches only at
+the recorded count (`window` is built from `n` stack values with
+`WordInfo{ArgCount: n}`), so the two-operand overload the interpreter
+takes is never tried: `vmDeferAlt(... "vm:poly-no-match")`.
+
+**Fence.** The F1 pin asserts the program compiles and the run matches
+the interpreter by fallback, and names this entry at the site.
+
+**Verdict:** none yet. The seat's own: a poly record whose matched
+overload consumed a GRADUAL operand at a position a shorter overload
+would not consume is a speculative count, and the op must be able to
+re-match at the shorter count — the value-stack claim is the run's, not
+the pass's — with the stack sim's consumption reconciled as the generic
+op's claim-drift check reconciles it, or the record must carry the
+overloads' counts and let the run choose. Until then the second call of
+any service is the interpreter's.

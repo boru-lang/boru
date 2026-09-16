@@ -265,7 +265,7 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 	// live entry holds the pass's carrier until the base is put back
 	// (review of #464: `def k 5` then `if false [undef k] [] k` answered
 	// the carrier for the interpreter's 5).
-	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0 || len(p.SpecFnNames) > 0) {
+	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0 || len(p.SpecFnNames) > 0 || len(p.LiveLeadNames) > 0 || len(p.LiveReadNames) > 0) {
 		r.RestoreBindingsForReplay(p.ReplayBase)
 	}
 	return runVMEntry(p, r, stepLimit, func(vc *vmContext) ([]core.Value, error) {
@@ -2866,7 +2866,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// undefined_word, raised from the read's own position —
 				// never deferred, since an effect performed before the read
 				// fences the re-run into an internal error.
-				if p.SpecUndefNames[name] {
+				if p.SpecUndefNames[name] || p.LiveReadNames[name] {
 					return nil, stampAt(core.UndefinedWordDiag(curReg, curReg.Source, name, debugPosAt(curDebug, pc)), curDebug, pc, curReg)
 				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; deferring to the interpreter")

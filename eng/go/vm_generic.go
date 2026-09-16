@@ -111,7 +111,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	}
 	fn := lookup.Lookup(d.Word)
 	if fn == nil {
-		if p.SpecFnNames[d.Word] {
+		if liveLeadWord(p, d.Word) {
 			// A fn family a conditional body defines (Program.SpecFnNames)
 			// is unbound exactly when the arm did not run: the miss IS the
 			// interpreter's undefined_word at the word, raised — a defer
@@ -236,7 +236,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		}
 		return append(out, results...), -1, nil, nil
 	}
-	if p.SpecFnNames[d.Word] {
+	if liveLeadWord(p, d.Word) {
 		// A speculative fn family's live binding is the outer overload or
 		// the arm's shadow — the same shape, a different body — so the unit
 		// is the LIVE signature's own, located by its declaration site (the
@@ -252,6 +252,13 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature is not the committed unit's; deferring to the interpreter")
 	}
 	return out, gs.Unit, args, nil
+}
+
+// liveLeadWord reports whether a routed dispatch of word resolves its lead
+// live: a speculative fn family's (Program.SpecFnNames) or a stored
+// handler's dep (Program.LiveLeadNames — the seventy-first increment).
+func liveLeadWord(p *compiler.Program, word string) bool {
+	return p.SpecFnNames[word] || p.LiveLeadNames[word]
 }
 
 // specFnUnit locates the unit compiled for sig itself — the one stamped

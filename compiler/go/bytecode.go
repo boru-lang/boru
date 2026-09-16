@@ -829,7 +829,12 @@ type CompiledFnRef struct {
 	// exactly as the interpreter does. Compile-time only; unused at run time (a
 	// stamped ref always has poisoned=false).
 	depNames map[string]bool
-	poisoned bool
+	// liveNames are the module-level names the unit reads LIVE (a routed
+	// slot, a seated live read, a routed lead — the seventy-first
+	// increment): a rebind of one leaves no bake stale, so the latch
+	// (NotifyNameRebound) passes it over.
+	liveNames map[string]bool
+	poisoned  bool
 	// optional marks a ref that exists ONLY as an optimisation — stampFnConst's
 	// fn-value consts, whose fallback is the island the program used before
 	// anything stamped them. It changes what a dep REBIND costs: poisoning
@@ -1213,6 +1218,17 @@ type Program struct {
 	// raised at the word — the arm did not run, so the name is unbound
 	// (the seventieth increment).
 	SpecFnNames map[string]bool
+	// LiveLeadNames is every fn a stored handler's unit dispatches by name
+	// (the seventy-first increment): its routed dispatches resolve the lead
+	// live exactly as a speculative family's do — the live signature's own
+	// unit by its declaration site, the interpreter's undefined_word on a
+	// miss.
+	LiveLeadNames map[string]bool
+	// LiveReadNames is every module-scope value a stored handler's unit
+	// reads bare (seated live, the seventy-first increment): a miss on the
+	// read is the interpreter's undefined_word, raised as SpecUndefNames'
+	// is.
+	LiveReadNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass

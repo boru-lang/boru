@@ -57,6 +57,16 @@ func TestVMUndefDynScope(t *testing.T) {
 		t.Fatalf("a miss outside the set keeps the defer: %v", err)
 	}
 
+	// A stored handler's live read (Program.LiveReadNames — the
+	// seventy-first increment) raises the same way on a miss.
+	r = newReg()
+	live := prog(false)
+	live.LiveReadNames = map[string]bool{"k": true}
+	_, err = RunProgram(live, r)
+	if !errors.As(err, &ae) || ae.Code != "undefined_word" || ae.Row != readAt.Row || ae.Col != readAt.Col {
+		t.Fatalf("a live-read name's miss raises undefined_word at the read: %v", err)
+	}
+
 	// A second undef of a popped name is the interpreter's no-op.
 	r = newReg()
 	p := prog(true)

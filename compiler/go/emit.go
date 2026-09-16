@@ -1205,7 +1205,15 @@ type EmitState struct {
 	// read lowers to an inert placeholder push the op pops unread, not to a
 	// lookup that would raise before the op's own plan could (the
 	// sixty-ninth increment). Nil until first use.
-	liveReadIDs      map[string]bool
+	liveReadIDs map[string]bool
+	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
+	// name with declared signatures (markLiveLead): its routed dispatches
+	// resolve the lead live, and every rebind compiles the new binding's
+	// units (compileLiveLeadUnits) — the seventy-first increment.
+	liveLeadNames map[string]bool
+	// liveReadNames is every module-scope value a stored-ref unit reads
+	// bare, seated live (NoteLiveRead's stored-dep arm).
+	liveReadNames    map[string]bool
 	livePlaceholders map[int]bool
 }
 
@@ -1397,6 +1405,11 @@ type fnUnitRec struct {
 	// program frozen-read hammer is for ordinary CALL_USER units, which
 	// have no per-unit fallback.
 	storedRefUnit bool
+	// liveNames are the module-scope names this unit reads LIVE — a routed
+	// slot, a seated live read, a routed lead (noteUnitLive) — so a stored
+	// ref made over it can tell the latch which of its deps hold no bake
+	// (the seventy-first increment).
+	liveNames map[string]bool
 	// bakes / frozen are the unit's baked enclosing-scope reads (unit_memo.go):
 	// bakes maps each name to the binding's DefTable generation at the read —
 	// the memo's staleness key — and frozen to WHAT was baked (the escaping
@@ -3297,7 +3310,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 		// itself compiles perfectly well.
 		es.storedBodyFnResidual = true
 	}
-	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens)}
+	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens), liveNames: es.unitLiveNames(unit)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
 	carrier := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
 		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: tokens, Compiled: ref}}},
@@ -3387,7 +3400,7 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 		// raw list rides and the handler interprets it.
 		return core.Value{}, false
 	}
-	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens)}
+	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens), liveNames: es.unitLiveNames(unit)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
 	carrier := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
 		Signatures: []core.Signature{{
@@ -3656,7 +3669,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 			es.recordStamp(core.StampEvent{Name: fd.Name, Pos: v.Pos(), Reason: es.storedFnProbeReason})
 			continue
 		}
-		ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), optional: true}
+		ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), liveNames: es.unitLiveNames(unit), optional: true}
 		impl.Compiled = ref
 		es.storedFnRefs = append(es.storedFnRefs, ref)
 		if es.stampImpls == nil {
@@ -3769,7 +3782,9 @@ func (es *EmitState) NotifyNameRebound(name string) {
 	}
 	depHit := false
 	for _, ref := range es.storedFnRefs {
-		if ref.depNames[name] {
+		// A dep the unit reads LIVE holds no bake the rebind could stale
+		// (the seventy-first increment): the latch passes it over.
+		if ref.depNames[name] && !ref.liveNames[name] {
 			ref.poisoned = true
 			// An OPTIONAL ref (stampFnConst's) does not escalate to the
 			// program-level refusal below. Poisoning already dropped it, and
@@ -4555,6 +4570,10 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 	}
 	es.bindTwins = append(es.bindTwins, tr)
 	es.bindTwinEntries = append(es.bindTwinEntries, entry)
+	// A transition of a live-lead name (a stored handler dispatches it by
+	// name) gives the binding it leaves its units, so the routed op has the
+	// live signature's own (the seventy-first increment).
+	es.compileLiveLeadUnits(tr.Name)
 	// STREAM PLACEMENT, the narrower half: an evBindTwin event marks where in
 	// production order the transition happened, so the lowering emits an
 	// (inert) OpBindTwin there. Recorded only while the recorder is LIVE —
@@ -5274,7 +5293,21 @@ func (es *EmitState) compileSpecOuterUnit(fd core.FnDefInfo, sigIdx int) int {
 // caret). Nothing for any other name, for a concrete read (below), or when
 // inactive.
 func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
-	if !es.Active() || v == nil || name == "" || !es.specUndefNames[name] || core.IsConcrete(*v) {
+	if !es.Active() || v == nil || name == "" {
+		return
+	}
+	// A stored-ref unit's bare read of a module-scope value is live too
+	// (the seventy-first increment): the unit is invoked by the host after
+	// the store, when the binding may have moved, so the read is seated
+	// at its token whatever the pass's value — concrete included, since a
+	// def-bound const is exactly the bake the latch refused over.
+	if es.storedDepRead(name, *v) {
+		if es.liveReadNames == nil {
+			es.liveReadNames = map[string]bool{}
+		}
+		es.liveReadNames[name] = true
+		es.noteUnitLive(name)
+	} else if !es.specUndefNames[name] || core.IsConcrete(*v) {
 		// A CONCRETE read of the name is a binding a later `def` made after
 		// the region (`if c [undef k] []  def k 6  k`): program order is
 		// analysis order at root, the region has run, and the bake is the
@@ -5372,6 +5405,12 @@ const (
 	// (`f/v`), which a bake would answer where the interpreter has no
 	// binding.
 	specFnValueRead
+	// liveLeadUndeclared: a module-scope rebind of a name a stored handler
+	// dispatches live (compileLiveLeadUnits) to a binding the routed op
+	// cannot run — a lambda, a data value (no declaration site to locate a
+	// unit by), or one made while the recorder was suspended (no unit
+	// compiled) — the seventy-first increment.
+	liveLeadUndeclared
 )
 
 // refuseUndef is the one refusal site behind the undef hooks and the
@@ -5397,6 +5436,8 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 		reason = "dispatch of the conditionally-defined fn `" + name + "` cannot route (the binder half)"
 	case kind == specFnValueRead:
 		reason = "value read of the conditionally-defined fn `" + name + "`: no live home for the read (the binder half)"
+	case kind == liveLeadUndeclared:
+		reason = "module binding " + name + " rebound to a value with no declared signature after a stored handler dispatched it live (the binder half)"
 	case kind == undefCarried && es.Active() && es.nameCarried(name):
 		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
@@ -6009,7 +6050,12 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// is the first argument's, and a claim keyed by it would miss every
 	// offer.
 	region := es.completeHeldRegion(word, wordPos, args, ops)
-	if region == nil && es.Active() && es.specFnNames[word] {
+	// A stored-ref unit's dispatch of a module-scope fn resolves its lead
+	// live (markLiveLead — the seventy-first increment): the unit runs
+	// after the store, when the binding may have moved, and the op runs
+	// the live signature's own unit.
+	es.markLiveLead(word)
+	if region == nil && es.Active() && es.liveLeadWord(word) {
 		// A stack-form dispatch offers no window (completeOffer declines an
 		// empty one); a speculative fn family's needs the op all the same,
 		// for its live lead — a descriptor with no slots, drivable by
@@ -6037,7 +6083,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// sub-compile cost three rows their units. Only a generalised undef
 	// name among the window's slots keeps a refusal — the slot owes a
 	// live lookup the compiled operand baked (fwdReadAfterSpecUndef).
-	if !generic && es.Active() && es.specFnNames[word] && region != nil {
+	if !generic && es.Active() && es.liveLeadWord(word) && region != nil {
 		if n := es.specUndefUnroutedSlot(region, false); n != "" {
 			es.refuseUndef(n, fwdReadAfterSpecUndef)
 			return
@@ -6048,6 +6094,9 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	if !generic && es.specFnNames[word] {
 		es.refuseUndef(word, specFnUnrouted)
 		return
+	}
+	if generic && es.liveLeadNames[word] {
+		es.noteUnitLive(word)
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
@@ -7864,7 +7913,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 						continue // first stamp wins
 					}
 					if unit, cOK := es.compileStoredFnUnit(fd, si, a.Pos()); cOK {
-						ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body())}
+						ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), liveNames: es.unitLiveNames(unit)}
 						aImpl.Compiled = ref
 						es.storedFnRefs = append(es.storedFnRefs, ref)
 					}
@@ -11422,7 +11471,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		ReplayBase:      es.bindSnap,
 		ReplayReg:       es.progReg,
 		SpecUndefNames:  maps.Clone(es.specUndefNames),
-		SpecFnNames:     maps.Clone(es.specFnNames)}
+		SpecFnNames:     maps.Clone(es.specFnNames),
+		LiveLeadNames:   maps.Clone(es.liveLeadNames),
+		LiveReadNames:   maps.Clone(es.liveReadNames)}
 	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
