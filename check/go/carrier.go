@@ -2791,6 +2791,16 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// fragment). Mirrors how captureArm/loopArm are consumed at the top
 	// of their analysis functions.
 	defer r.Check.Recorder().FnBodyGuard()()
+	// A callee's body is its OWN control flow: an undecidable arm the
+	// CALLER is inside (CheckState.SpecArmDepth) says nothing about a def
+	// in the callee — `sift-spec-from-map`'s fn-local `check-keys`, defined
+	// at the top of its body, was taken as conditional because the caller
+	// dispatched it inside `if (v is Map) […]`, and 73 corpus rows refused
+	// (the seventieth increment's corpus finding). The depth is the body's:
+	// zero on entry, the caller's again on exit.
+	savedSpecArm := r.Check.SpecArmDepth
+	r.Check.SpecArmDepth = 0
+	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
 		return nil
 	}

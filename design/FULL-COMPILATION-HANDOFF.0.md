@@ -8869,7 +8869,15 @@ all five are in.
   only a fresh def the join would model wrongly (an undecidable arm
   inside a loop or each body, a lambda, a suspended recording). The
   edge-finding pins that hold family L's refusal under a literal
-  condition hold it still.
+  condition hold it still. The narrowing alone left 73 rows refused, all
+  on one fn: `sift-spec-from-map`'s fn-local `check-keys`, defined at the
+  top of its body, was taken as conditional because its CALLER dispatched
+  it inside `if (v is Map) […]` and the callee's body was analysed with
+  the caller's arm open. The depth is the body's own: `AnalyseFnBody`
+  enters at zero and restores the caller's on exit. And a module's
+  registry keeps its own machinery — a module body runs interpreted at
+  load and its fns' bodies are the module's — so the recorder declines a
+  def offered under a sub-registry (`es.reg != es.progReg`).
 
 ## What the ledger excludes, and why each exclusion was measured
 

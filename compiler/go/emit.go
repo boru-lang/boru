@@ -5183,8 +5183,12 @@ type pendingSpecFnDef struct {
 // bracket, a live armed loop (its body re-rounds and its defs are carried
 // by slot), a closure body compile.
 func (es *EmitState) RecordSpeculativeFnDef(name string, outer, fn core.Value, pos core.SrcPos) bool {
-	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() {
-		// A closure body compile's transitions are the enclosing run's.
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && es.reg != es.progReg) {
+		// A closure body compile's transitions are the enclosing run's; a
+		// MODULE's registry (es.reg is the sub-registry a module body or
+		// fn is analysed in) keeps its own machinery — a module body runs
+		// interpreted at load, and its fns' bodies are the module's, not
+		// this program's to place a transition in.
 		return false
 	}
 	replace := core.IsAppliableFn(outer)
