@@ -591,6 +591,13 @@ type emitDynBind struct {
 	// an undef the compiled program drops is the miscompile the
 	// sixty-seventh increment measured.
 	speculative bool
+	// specFn marks the PLACED install of a fn def a rolled-back conditional
+	// body made (RecordSpeculativeFnDef, the seventieth increment): the fn
+	// value and OpBindResident at its site, through the interpreter's own
+	// installer — replace for an overlapping redefinition, whose install
+	// drops the standing overload as installDef's filter does.
+	specFn  bool
+	replace bool
 }
 
 // bindsValue reports whether this def-site event installs a RUNTIME value
@@ -1182,6 +1189,13 @@ type EmitState struct {
 	// and files it under routedNames — a live read whose root binding is
 	// the bind twin's replay, with frame twins only. Nil until first use.
 	specUndefNames map[string]bool
+	// specFnNames is every fn family a rolled-back conditional body defined
+	// or replaced (RecordSpeculativeFnDef): its dispatches route with a
+	// live lead, at root too, and a dispatch that cannot route refuses.
+	specFnNames map[string]bool
+	// pendingSpecFn is the speculative fn def the next RecordDynBind of its
+	// name stamps as a placed install (emitDynBind.specFn / replace).
+	pendingSpecFn *pendingSpecFnDef
 	// liveReadIDs is every value identity NoteLiveRead minted — a read of a
 	// generalised name seated as its own event — so a region completion can
 	// recognise the read as the WORD slot's operand (slotIsOperand), and
@@ -5112,6 +5126,140 @@ func (es *EmitState) RecordSpeculativeUndef(name string, pos core.SrcPos) {
 	es.routedNames[name] = true
 }
 
+// RecordSpecFnUndef places the in-region `undef` of a speculative fn
+// family (the undef handler's ordinary pop, taken for a binding the same
+// region made): an undef-half dyn-bind event lowering to OpUndefDynScope at
+// its site, so the placed install does not outlive the arm — measured in
+// review of #466 as `if true [def f fn […] undef f 1] []` leaving f bound
+// for the next request. Nothing for any other name, or when inactive.
+func (es *EmitState) RecordSpecFnUndef(name string, pos core.SrcPos) {
+	if es == nil || !es.Active() || !es.specFnNames[name] {
+		return
+	}
+	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
+		name: name, srcSeq: -1, pos: pos, residentTwin: -1, undef: true, speculative: true,
+	}})
+	es.noteBindHazard(name)
+}
+
+// fnSigsDeclared reports whether every signature of fn value v is a boru
+// body with a DECLARATION SITE (core.Signature.Decl — the output-sig token
+// plus the declaring source and file): the identity the routed op locates a
+// speculative family's unit by (eng: specFnUnit). A lambda (`x => […]`)
+// declares no output signature and a Go-implemented alias has no body, so
+// neither can be placed — the placement refuses them (review of #466: the
+// identity was the body's first-token position, which carries no file).
+func fnSigsDeclared(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok || len(fd.Signatures) == 0 {
+		return false
+	}
+	for i := range fd.Signatures {
+		s := &fd.Signatures[i]
+		if _, boru := s.Impl.(*core.BoruImpl); !boru || s.Fallback || s.Decl == (core.DeclSite{}) {
+			return false
+		}
+	}
+	return true
+}
+
+// pendingSpecFnDef is RecordSpeculativeFnDef's hand-off to the def site's
+// RecordDynBind, which records the event the install lowers from.
+type pendingSpecFnDef struct {
+	name    string
+	replace bool
+}
+
+// RecordSpeculativeFnDef places the fn def a rolled-back CONDITIONAL body
+// made (core.NoteSpecFnDef — the seventieth increment): the def site's
+// RecordDynBind that follows is stamped a placed install (specFn; replace
+// for an overlapping redefinition), lowering to the fn value and
+// OpBindResident at its site — the interpreter's own installer, so the
+// binding exists at run time exactly when the arm ran, and an overlap
+// drops the standing overload as installDef does. The family's dispatches
+// route with a live lead (routeRegion), at root too; a miss raises the
+// word (Program.SpecFnNames). Refused through the undef site where the
+// install cannot be placed: a suspended recording, an arm-resident
+// bracket, a live armed loop (its body re-rounds and its defs are carried
+// by slot), a closure body compile.
+func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, outer, fn core.Value, pos core.SrcPos) bool {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && reg != es.progReg) {
+		// A closure body compile's transitions are the enclosing run's; a
+		// MODULE's registry keeps its own machinery — a module body runs
+		// interpreted at load, and its fns' bodies are the module's, not
+		// this program's to place a transition in. The registry is the one
+		// the def INSTALLS into (installDef's own), not es.reg: that field
+		// is the last one bound, and a module fn's body analysed after a
+		// nested run of the program's registry reads as the program's
+		// (sift's fn-local `cloop`, placed in the module and refused on its
+		// recursive call, cost three corpus rows their units — the
+		// corpus's finding on #466, third half).
+		return false
+	}
+	replace := core.IsAppliableFn(outer)
+	inFnBody := es.reg != nil && es.reg.Check != nil && es.reg.Check.FnBodyDepth > 0
+	if !es.Active() || es.armResidentDepth > 0 || len(es.loopCarried) > 0 || !fnSigsDeclared(fn) || (replace && (inFnBody || !fnSigsDeclared(outer))) {
+		// Not placeable: a suspended recording; an arm inside an each body
+		// (the resident bridge's) or an armed loop (its body re-rounds and
+		// carries its defs by slot); a placed value with no declaration
+		// site (a lambda) for the routed op to locate its unit by; a fn
+		// body's REPLACE — a fresh def there is a FRAME binding the
+		// frame's RET unwinds (OpBindDynScope), but installDef's
+		// drop-then-push leaves the frame's depth unchanged, so the
+		// interpreter's replacement outlives the call (the guard's own
+		// finding, the thirty-first increment), which no frame-scoped
+		// install reproduces; an outer with no declaration site. A REPLACE
+		// declined keeps installDef's own refusal (family L's); a FRESH
+		// def declined would keep the join's model, which is exactly the
+		// bug the placement exists for, so it refuses here.
+		if !replace {
+			es.refuseUndef(name, specFnUnplaced)
+		}
+		return false
+	}
+	if es.specFnNames == nil {
+		es.specFnNames = map[string]bool{}
+	}
+	es.specFnNames[name] = true
+	es.pendingSpecFn = &pendingSpecFnDef{name: name, replace: replace}
+	if replace {
+		// The OUTER overload the arm replaces is the live binding when the
+		// arm did not run, and the check pass's model — which holds the
+		// shadow from the clobber on — never dispatches it, so no call site
+		// compiles its unit. Compile every own body now as an ORDINARY fn
+		// unit — in the fn's home registry, with its declared params,
+		// returns and declaration site (review of #466: a stored-handler
+		// compile is count-agnostic and resolves free names in the
+		// recorder's registry) — so the routed op runs the live
+		// signature's own unit, located by its declaration site
+		// (CompiledFn.Decl). A body that refuses refuses the program.
+		if fd, ok := outer.Data.(core.FnDefInfo); ok {
+			for i := range fd.Signatures {
+				es.compileSpecOuterUnit(fd, i)
+			}
+		}
+	}
+	return true
+}
+
+// compileSpecOuterUnit compiles one own signature of the outer overload a
+// speculative fn def replaces (RecordSpeculativeFnDef) exactly as a
+// dispatch of it would (check.CompileFnSigUnit: the body analysed in the
+// fn's own registry with this pass's check state shared into it, the unit
+// stamped with its declared params, patterns, returns and declaration
+// site), so the VM enforces at CALL_USER and RET what the interpreter's
+// dispatch and ReturnCheck enforce, and the routed op locates the unit by
+// the site (specFnUnit). A Go-implemented or fallback signature compiles
+// nothing and is left to the op's foreign-unit defer; a body that refuses
+// refuses the program (review of #466: a stored-handler compile was
+// count-agnostic and resolved an exported module fn's free names in main).
+func (es *EmitState) compileSpecOuterUnit(fd core.FnDefInfo, sigIdx int) int {
+	if es == nil || es.reg == nil {
+		return -1
+	}
+	return check.CompileFnSigUnit(es.reg, fd, sigIdx)
+}
+
 // NoteLiveRead seats a bare read of a generalised name AT ITS TOKEN (the
 // tag hook, core.EmitRecorder): the read's value gets an identity of its
 // own — every read of the binding is otherwise the one carrier, and one ID
@@ -5210,6 +5358,20 @@ const (
 	// rescue instead of NoteLiveRead's event — a read path the tag hook does
 	// not cover, whose lookup would otherwise execute at the consumer.
 	unseatedRead
+	// specFnUnplaced: RecordSpeculativeFnDef — a fn def inside a rolled-back
+	// conditional body the recorder cannot place at its site (a suspended
+	// recording, an arm-resident bracket, a live armed loop, a closure body
+	// compile).
+	specFnUnplaced
+	// specFnUnrouted: a dispatch of a speculative fn family that does not
+	// route (a captured callee, a poly or rematch seat; an undrivable
+	// window takes the slot-less descriptor instead): a committed call
+	// would run the arm's unit whether or not the arm ran.
+	specFnUnrouted
+	// specFnValueRead: a bare read of a speculative fn family's value
+	// (`f/v`), which a bake would answer where the interpreter has no
+	// binding.
+	specFnValueRead
 )
 
 // refuseUndef is the one refusal site behind the undef hooks and the
@@ -5229,6 +5391,12 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 		reason = "forward-slot read of `" + name + "` after a placed undef: an unbound slot's collection is the routed dispatch's (the binder half)"
 	case kind == unseatedRead:
 		reason = "read of `" + name + "` after a placed undef the placement did not seat at its token (the binder half)"
+	case kind == specFnUnplaced:
+		reason = "fn `" + name + "` defined inside a conditional body where the compiled program cannot place the install (the binder half)"
+	case kind == specFnUnrouted:
+		reason = "dispatch of the conditionally-defined fn `" + name + "` cannot route (the binder half)"
+	case kind == specFnValueRead:
+		reason = "value read of the conditionally-defined fn `" + name + "`: no live home for the read (the binder half)"
 	case kind == undefCarried && es.Active() && es.nameCarried(name):
 		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
@@ -5841,6 +6009,13 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// is the first argument's, and a claim keyed by it would miss every
 	// offer.
 	region := es.completeHeldRegion(word, wordPos, args, ops)
+	if region == nil && es.Active() && es.specFnNames[word] {
+		// A stack-form dispatch offers no window (completeOffer declines an
+		// empty one); a speculative fn family's needs the op all the same,
+		// for its live lead — a descriptor with no slots, drivable by
+		// construction, over the frame's resolved values.
+		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg}
+	}
 	// A callee with captures keeps its committed call: the captures ride as
 	// trailing CALL_USER operands the routed op has no plumbing for (it pops
 	// the record's claim and nothing else). Decided before routeRegion so a
@@ -5848,6 +6023,31 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	generic := len(rec.caps) == 0 && es.routeRegion(region)
 	if generic {
 		es.placeRoutedLiveSlots(region, args)
+	}
+	// A speculative fn family's dispatch (RecordSpeculativeFnDef) must
+	// resolve its lead live: a committed call would run the arm's unit
+	// whether or not the arm ran. A window the host cannot drive — a
+	// group, a list literal, a modified word among the forward tokens —
+	// does not need driving: the operands are compiled and pushed as the
+	// record's claim (lowerUserCall seats sig position 0 on top, which is
+	// where the live plan claims from), so the dispatch takes the
+	// slot-less descriptor the stack form takes. Measured on the corpus
+	// (the corpus's finding on #466, third half): sift's `cloop (opts get
+	// "cols") 0 []` refused here, and the refusal inside the unit's
+	// sub-compile cost three rows their units. Only a generalised undef
+	// name among the window's slots keeps a refusal — the slot owes a
+	// live lookup the compiled operand baked (fwdReadAfterSpecUndef).
+	if !generic && es.Active() && es.specFnNames[word] && region != nil {
+		if n := es.specUndefUnroutedSlot(region, false); n != "" {
+			es.refuseUndef(n, fwdReadAfterSpecUndef)
+			return
+		}
+		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg}
+		generic = len(rec.caps) == 0 && es.routeRegion(region)
+	}
+	if !generic && es.specFnNames[word] {
+		es.refuseUndef(word, specFnUnrouted)
+		return
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
@@ -5909,6 +6109,12 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 		ops[i] = op
 	}
 	region := es.completeHeldRegion(callWord, wordPos, args, ops)
+	// The user-poly seat re-matches its baked arms; a speculative fn
+	// family's arms are the live binding's (RecordSpeculativeFnDef).
+	if es.specFnNames[word] {
+		es.refuseUndef(word, specFnUnrouted)
+		return
+	}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
 		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region,
 		poly: &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs},
@@ -6846,6 +7052,13 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 // vals slice forming the written tuple the interpreter's error renders.
 func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value, writtenOff, nWritten int, pos core.SrcPos) bool {
 	if !es.Active() || len(vals) == 0 {
+		return false
+	}
+	// A rematch over a speculative fn family (RecordSpeculativeFnDef)
+	// re-matches the pass's binding; the live one may be absent or the
+	// outer overload.
+	if es.specFnNames[word] {
+		es.refuseUndef(word, specFnUnrouted)
 		return false
 	}
 	ops := make([]EmitOperand, len(vals))
@@ -8446,10 +8659,17 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		}
 	}
 	_, carried := es.carriedSlot(name)
+	// The def site of a speculative fn def (RecordSpeculativeFnDef's
+	// hand-off): the event is its placed install.
+	specFn, replace := false, false
+	if p := es.pendingSpecFn; p != nil && p.name == name {
+		specFn, replace = true, p.replace
+		es.pendingSpecFn = nil
+	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
-		residentTwin: -1, carried: carried,
+		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
 	}})
 	es.noteBindHazard(name)
 }
@@ -11201,7 +11421,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		BindTwinEntries: append([]core.DefEntry(nil), es.bindTwinEntries...),
 		ReplayBase:      es.bindSnap,
 		ReplayReg:       es.progReg,
-		SpecUndefNames:  maps.Clone(es.specUndefNames)}
+		SpecUndefNames:  maps.Clone(es.specUndefNames),
+		SpecFnNames:     maps.Clone(es.specFnNames)}
 	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
@@ -11790,6 +12011,13 @@ func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
 
 // NoteValRead counts a `/v` read on the innermost open unit (EmitRecorder).
 func (es *EmitState) NoteValRead(id, name string) {
+	// A `/v` read of a speculative fn family's value (a conditional def —
+	// RecordSpeculativeFnDef) would bake the fn where the interpreter may
+	// have no binding at all: its dispatches route, its value has no live
+	// home. Refused through the undef site.
+	if es != nil && es.specFnNames[name] {
+		es.refuseUndef(name, specFnValueRead)
+	}
 	if !es.Active() || id == "" {
 		return
 	}

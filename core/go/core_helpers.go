@@ -147,7 +147,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// path (BuildWordExtension) intercepts fn defs over locked-bearing
 		// words before InstallDef, so this guard is defence in depth for
 		// direct InstallDef callers.
+		// A FRESH def (no standing entry) inside a rolled-back conditional
+		// body is speculative exactly as an overlapping redefinition is
+		// (below): bound at run time only if the arm runs.
+		fresh := !shadow && len(r.Defs.Stack(name)) == 0
 		replaced := false
+		var dropped Value
 		if stack := r.Defs.Stack(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
@@ -155,6 +160,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				oldFn, ok := entry.Data.(FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
 					changed = true
+					dropped = entry
 					continue
 				}
 				filtered = append(filtered, entry)
@@ -185,7 +191,16 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// increment). A capture-free literal takes the compiled twin and
 				// agrees; the closure's payload has no twin, so it refuses.
 				refusal := ""
-				if r.analysisInCondBody() {
+				if r.analysisInSpecArm() && len(fnDef.Captured) == 0 && NoteSpecFnDef(r, name, dropped, body, body.Pos()) {
+					// The seventieth increment: a CAPTURE-FREE replace inside
+					// a branch arm the model cannot decide is SPECULATIVE —
+					// placed at its site, the family's dispatches routed with
+					// a live lead (NoteSpecFnDef). The recorder declines what
+					// it cannot place (a loop or each body around the arm, a
+					// fn body, a signature with no declaration site), and a
+					// capturing closure's value is not a const the placement
+					// can bake: those keep the refusal below.
+				} else if r.analysisInCondBody() {
 					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
 					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
@@ -202,6 +217,13 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
+			// A FRESH capture-free def inside a branch arm the model cannot
+			// decide is speculative too (bound at run time only if the arm
+			// runs); declined, it keeps the join's model — the recorder
+			// refuses where that model is known wrong.
+			NoteSpecFnDef(r, name, Value{}, body, body.Pos())
+		}
 		if !shadow {
 			// A REDEFINITION whose overlap filter dropped the colliding entry
 			// is a drop-then-push: the net depth is unchanged, so a twin that

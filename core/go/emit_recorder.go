@@ -325,6 +325,20 @@ type EmitRecorder interface {
 	// a frame binding of an enclosing fn.
 	RecordSpeculativeUndef(name string, pos SrcPos)
 	RefuseSpeculativeUndef(name string)
+	// RecordSpeculativeFnDef places the fn def fn a branch arm the model
+	// cannot decide made (core.NoteSpecFnDef): fresh (a zero outer), or
+	// replacing the overlapping overload outer in place. True when placed:
+	// the def site's RecordDynBind that follows carries the install, the
+	// family's dispatches route with a live lead, and outer's body
+	// compiles to a unit of its own. False when declined — the caller
+	// keeps its model, and the recorder has refused where that model is
+	// known wrong. r is the registry the def installs into: a module's
+	// declines (its fns' bodies are the module's to run).
+	RecordSpeculativeFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool
+	// RecordSpecFnUndef places an `undef` of a speculative fn family made
+	// in the same region (the undef handler's in-region pop): the placed
+	// install would otherwise outlive the arm.
+	RecordSpecFnUndef(name string, pos SrcPos)
 	// NoteLiveRead seats a bare read of a name a PLACED speculative undef
 	// generalised (the tag hook, at the read token): the read gets its own
 	// value identity and a one-result event lowering to the live lookup at
@@ -502,11 +516,15 @@ func (inactiveEmit) Materialise(v Value) (Value, bool)                      { re
 func (inactiveEmit) ZeroOutProduced(string) bool                            { return false }
 func (inactiveEmit) AlreadyProduced(string) bool                            { return false }
 
-func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)    {}
-func (inactiveEmit) MarkValueDef(Value)                         {}
-func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
-func (inactiveEmit) RefuseCarriedUndef(string)                  {}
-func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)      {}
+func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry) {}
+func (inactiveEmit) MarkValueDef(Value)                      {}
+func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)   {}
+func (inactiveEmit) RefuseCarriedUndef(string)               {}
+func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)   {}
+func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcPos) bool {
+	return false
+}
+func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
 func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}

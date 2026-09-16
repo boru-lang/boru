@@ -674,10 +674,21 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	var thenStk []Value
 	var thenDefs map[string]Value
 	var thenValue *Value
+	// Both arms of a condition the model cannot decide are bracketed
+	// (EnterSpecArm): a fn def inside one is speculative (core.NoteSpecFnDef,
+	// the seventieth increment). A LITERAL condition takes no bracket — the
+	// model knows which arm runs, and its join is exact for both.
+	_, condKnown := LiteralCondValue(args[0])
+	if IsConcrete(args[0]) && args[0].Parent.Equal(TBoolean) {
+		condKnown = true // a def-bound or folded Boolean: the model has it
+	}
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
-		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+		func() {
+			defer r.EnterSpecArm(condKnown)()
+			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
 		thenFrag = recorderState(es).TakeFragment()
 		restoreThen()
@@ -691,7 +702,10 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		// value-arm surface unchanged).
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
-		thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
+		func() {
+			defer r.EnterSpecArm(condKnown)()
+			thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
+		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
 		thenFrag = recorderState(es).TakeFragment()
 		restoreThen()
@@ -713,7 +727,10 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	if elseIsBody {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
-		elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
+		func() {
+			defer r.EnterSpecArm(condKnown)()
+			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
+		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
 		elseFrag = recorderState(es).TakeFragment()
 		restoreElse()
@@ -721,7 +738,10 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		// §4 — the else-arm twin of the then-arm synthesis above.
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
-		elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
+		func() {
+			defer r.EnterSpecArm(condKnown)()
+			elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
+		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
 		elseFrag = recorderState(es).TakeFragment()
 		restoreElse()

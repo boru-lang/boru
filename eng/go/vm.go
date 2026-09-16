@@ -265,7 +265,7 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 	// live entry holds the pass's carrier until the base is put back
 	// (review of #464: `def k 5` then `if false [undef k] [] k` answered
 	// the carrier for the interpreter's 5).
-	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0) {
+	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0 || len(p.SpecFnNames) > 0) {
 		r.RestoreBindingsForReplay(p.ReplayBase)
 	}
 	return runVMEntry(p, r, stepLimit, func(vc *vmContext) ([]core.Value, error) {

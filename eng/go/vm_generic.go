@@ -111,6 +111,13 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	}
 	fn := lookup.Lookup(d.Word)
 	if fn == nil {
+		if p.SpecFnNames[d.Word] {
+			// A fn family a conditional body defines (Program.SpecFnNames)
+			// is unbound exactly when the arm did not run: the miss IS the
+			// interpreter's undefined_word at the word, raised — a defer
+			// would re-run past the arm's effects (the seventieth increment).
+			return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, d.Word, d.Pos), curDebug, pc, reg)
+		}
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; deferring to the interpreter")
 	}
 	// The window: the frame's resolved values, the word, the forward tokens.
@@ -229,10 +236,39 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		}
 		return append(out, results...), -1, nil, nil
 	}
+	if p.SpecFnNames[d.Word] {
+		// A speculative fn family's live binding is the outer overload or
+		// the arm's shadow — the same shape, a different body — so the unit
+		// is the LIVE signature's own, located by its declaration site (the
+		// seventieth increment): an identity the shape rule below cannot
+		// give. None compiled for the signature leaves the foreign-unit
+		// defer.
+		if u := specFnUnit(p, sig); u >= 0 {
+			return out, u, args, nil
+		}
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature has no unit; deferring to the interpreter")
+	}
 	if gs.Unit < 0 || gs.Unit >= len(p.Fns) || !unitMatchesSig(&p.Fns[gs.Unit], sig) {
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature is not the committed unit's; deferring to the interpreter")
 	}
 	return out, gs.Unit, args, nil
+}
+
+// specFnUnit locates the unit compiled for sig itself — the one stamped
+// with sig's declaration site (CompiledFn.Decl: the output-sig token of
+// the triple plus the declaring source and file, which is unique per
+// signature, across files, and present for an empty body) — or -1 for a
+// signature no pass compiled, or a Go-registered one (no site).
+func specFnUnit(p *compiler.Program, sig *core.Signature) int {
+	if sig.Decl == (core.DeclSite{}) {
+		return -1
+	}
+	for i := range p.Fns {
+		if p.Fns[i].Decl == sig.Decl {
+			return i
+		}
+	}
+	return -1
 }
 
 // isBoruSig reports whether sig runs a boru body — the shape a compiled

@@ -8709,6 +8709,206 @@ a unit, the paren group at the mono record inside a unit, and at the
 poly record a container literal in the window and a slot a loop's
 carried name declines.
 
+## A conditional fn def is speculative (2026-09-16, the seventieth increment)
+
+The binder half's next shape, picked by measurement from the handover's
+three (the stored-handler latch, family L's conditional fn shadow, NUR037's
+fn-local fn): each was measured on both lanes, and family L's measurement
+found a soundness bug on `main` before any refusal — a fn defined inside a
+RUNTIME-conditional arm, with no prior binding, compiled to a root twin
+replayed BEFORE the branch and a committed `CALL_USER` after it:
+
+	def m {e: false}  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]]] []  f 1
+	  interpreter: undefined_word at f (1:89)      compiled (main): 101
+
+The join (`InstallJoinedDefs`) pushed the arm's fn as a definite binding
+and noted a ledger transition for it; the twin replayed the install whether
+or not the arm ran. Family L's own shape — the arm REDEFINES an existing
+overload in place (installDef's same-scope overlap filter: a drop-then-push
+at unchanged depth, which the arm's depth rollback cannot revert) — refused
+through `core_helpers.go:installDef#1`. Both are one fact: a fn def inside a
+rolled-back conditional body binds at run time exactly when the arm runs,
+and the check pass's model, which keeps the fn for typing, cannot say which
+of two bindings the run leaves — bound or unbound, the outer overload or
+the shadow. So the family is SPECULATIVE, and three halves follow:
+
+- **The model** (`core/go/spec_fn.go`, `NoteSpecFnDef`): installDef offers
+  the recorder a fresh def or an overlapping redefinition inside a branch
+  arm whose CONDITION the model cannot decide (`CheckState.SpecArmDepth`,
+  bracketed by the `if` native around each arm it analyses under a
+  condition the model does not have as a concrete Boolean — a literal or
+  a def-bound constant is known: the model runs the one arm or both with
+  an exact join; a loop or each body is the twin machinery's) with the
+  DROPPED outer
+  entry, if any, and marks the name (`SpecFnNames`) only when the
+  recorder PLACES it. The join pushes the model's binding for such a name
+  and notes NO transition (`specFnJoin`): the install is the arm's own,
+  placed at its site. Declined, the family keeps the model it had — the
+  join's, and installDef's own refusal for a replace (family L's text,
+  the vary ledger's bucket).
+- **The recorder** (`RecordSpeculativeFnDef` → the def site's
+  `RecordDynBind`, stamped `specFn` / `replace`): the event lowers to the
+  fn value and, at root, `OpBindResident` at its site — the interpreter's
+  OWN installer (`ApplyResidentBind` → `InstallDef`), so an overlapping
+  redefinition drops the standing overload exactly as the arm's run does,
+  and the install persists past the arm as the interpreter's module-scope
+  def does. Inside a unit the def is a FRAME binding, so the install is
+  `OpBindDynScope`, unwound at the unit's RET as the interpreter's
+  teardown pops it — and a fn body's REPLACE stays refused: installDef's
+  drop-then-push leaves the frame's depth unchanged, so the interpreter's
+  replacement outlives the call (the guard's own finding), which no
+  frame-scoped install reproduces. Only a CAPTURE-FREE fn value takes the
+  placement: a capturing closure's value is not a const the placement can
+  bake (the CPS factorial's `def kk (fn …)` inside an arm is the
+  closure machinery's, and stays so), and only a fn whose every signature
+  carries a DECLARATION SITE (a `fn […]` literal's output signature; a
+  lambda declares none, a Go alias has no body) — the identity the routed
+  op locates its unit by. The outer overload's every own body compiles to
+  a unit at the replace site (`compileSpecOuterUnit` →
+  `check.CompileFnSigUnit`), because the model holds the shadow from the
+  clobber on and no call site would compile the outer — an ORDINARY fn
+  unit, compiled as a dispatch of it would compile it: in the fn's own
+  registry (an exported module fn's body resolves its module's names)
+  with this pass's check state shared into it, and stamped with its
+  declared params, returns, patterns and declaration site, so the VM
+  enforces at CALL_USER and RET what the interpreter's dispatch and
+  ReturnCheck enforce.
+- **The dispatch** routes with a LIVE lead: `routeRegion` admits a
+  speculative lead at root, with no word slot at all, and frame-local
+  (`LeadLocal` — registry-visible all the same, through the placed
+  `OpBindDynScope`); a stack-form call, which offers no window
+  (`completeOffer` declines an empty one), gets a slot-less descriptor
+  synthesised at the user record, drivable by construction over the
+  frame's resolved values. The op resolves the lead
+  in the running registry and runs the LIVE signature's own unit
+  (`specFnUnit`: the signature's DECLARATION SITE locates it —
+  `CompiledFn.Decl`, the output-sig token plus the declaring source and
+  file, unique per signature across files and present for an empty body;
+  an identity the shape rule cannot give, since the outer and the shadow
+  share a shape), and a miss is the interpreter's `undefined_word` at
+  the word, RAISED
+  (`Program.SpecFnNames`) — a defer would re-run past the arm's effects,
+  the sixty-eighth increment's lesson. A program that placed one restores
+  the base before it runs, as a placed undef's does, so a long-lived
+  registry's next request finds what the run left, not what the check
+  pass's join pushed.
+
+Every shape measured answers as the interpreter does on BOTH paths: a
+fresh def and an overlapping one, the forward and the stack form, an effect
+before the call, an undef or a root redefinition after the arm, the family
+dispatched from a unit, a nested arm, a paren group and an each body, both
+arms redefining, and a fresh def inside a fn body — the same bug, measured
+on main inside a unit — placed frame-scoped and called twice
+(`TestConditionalFnDefIsSpeculative`, 23 compiled rows;
+`TestConditionalFnDefAcrossRequests` on one instance). The edge-finding
+pins that held family L's refusal (`TestEdgeFindingConditionalFnShadowRefuses`,
+`TestEdgeFindingCondFragmentRedefCompiles`) hold the placement now.
+
+What refuses, through `refuseUndef`'s one site, and answers as the
+interpreter does under the hatch: a def the recorder cannot place — a loop
+body (it re-rounds and carries its defs by slot), a fn body's replace, an
+each body and a `do` body (the resident bridge's and the closure compile's)
+— a dispatch the op cannot drive (the user-poly and rematch seats; a
+window with a group or a list literal takes the slot-less descriptor the
+stack form takes, since the operands are compiled and pushed as the
+claim), and a `/v` read of the value (`NoteValRead`:
+the bake would answer where the interpreter has no binding). A capturing
+closure's conditional def keeps family L's own refusal, and a fresh def in
+BOTH arms the join's older fn-carrier one. The refusal-site census stays
+at 92 (installDef's site keeps its capturing and frame arms; the three new
+kinds read through `refuseUndef`); the disposition rows name the arms.
+
+### The review's five
+
+Codex read the first cut and raised five things; three reproduced, and
+all five are in.
+
+- **Unit identity by source position alone** (`CompiledFn.BodyPos`): a
+  position carries no file, so two separately parsed modules with the
+  same layout could hand the wrong unit to a speculative alias. The
+  identity is the signature's DECLARATION SITE now (`Decl`: position plus
+  source and file), which the memo stamps on every unit it compiles and
+  the outer compile stamps from the signature.
+- **An empty body** had no first token and so no identity: a taken
+  conditional `def f fn [[][][]]` followed by `(print "x") f` deferred
+  after the print, an internal error. The declaration site exists for an
+  empty body; the row compiles and prints once on both lanes.
+- **An in-arm undef of the family** (`if true [def f fn […] undef f 1] []`)
+  lowered to nothing, so the placed install outlived the arm and the next
+  request on the same instance answered the arm's 101. The undef
+  handler's in-region pop notes it (`RecordSpecFnUndef`), placed as
+  `OpUndefDynScope` at its site; pinned across requests.
+- **The outer's contract** — a stored-handler compile is count-agnostic
+  and stamps no declared returns, patterns or declaration site — and
+  **the outer's registry** — the stored-handler compile resolved the body's
+  free names in the recorder's registry, so an alias of an exported
+  module fn read main's `k` (51) for the module's (11). Both are one
+  change: the outer compiles exactly as a dispatch of it would
+  (`check.CompileFnSigUnit`, the ReturnsFn closure's compile half without
+  its call record: the body analysed in the fn's own registry with this
+  pass's check state shared into it — a recorder-only swap left the
+  module's check state out of check mode and folded the body to its
+  module's constant — and the unit stamped with its declared params,
+  patterns, returns and site). The contract shapes the review named were
+  caught statically here (`for n [1]` under a declared Integer is a check
+  error on both lanes), so the row that pins it is the module alias's, on
+  both paths. The site identity also decides what can be placed at all:
+  a lambda-valued outer or a conditional lambda def carries no site, so
+  both refuse (`fnSigsDeclared`) rather than meet a fenced defer.
+- **The corpus's finding** (CI on the first cut, not the review's): the
+  placement was offered for every capture-free fn def in ANY conditional
+  body — loop bodies, each bodies, arms under a literal condition — and
+  its declines REFUSED, so 73 corpus rows that the twin machinery already
+  answered (`for 2 [def inc …]`, `[10 20] each [drop def inc …]`, the
+  parselang seed under `if true`) stopped compiling, the region table
+  fell from 124401 descriptors to 35074 and the collect oracle below its
+  floor, and the vary census reported new refusal classes beside a stale
+  family-L bucket. The rule is narrowed to what the measurement said: a
+  fn def is speculative only inside an arm whose condition the model
+  cannot decide (`SpecArmDepth`), and a decline hands the def back to
+  the machinery that had it — the join for a known arm, the twins for a
+  loop or each body, installDef's own refusal for a replace — refusing
+  only a fresh def the join would model wrongly (an undecidable arm
+  inside a loop or each body, a lambda, a suspended recording). The
+  edge-finding pins that hold family L's refusal under a literal
+  condition hold it still. The narrowing alone left 73 rows refused, all
+  on one fn: `sift-spec-from-map`'s fn-local `check-keys`, defined at the
+  top of its body, was taken as conditional because its CALLER dispatched
+  it inside `if (v is Map) […]` and the callee's body was analysed with
+  the caller's arm open. The depth is the body's own: `AnalyseFnBody`
+  enters at zero and restores the caller's on exit. And a module's
+  registry keeps its own machinery — a module body runs interpreted at
+  load and its fns' bodies are the module's — so the recorder declines a
+  def offered under a sub-registry. The third half was measured after
+  the second landed: the corpus compiled every row again, but three
+  sift rows (`Sift.check {family:'kv'}` and its two neighbours) had lost
+  their units — 1375 descriptors and 10 routed each fell to 83 and 0,
+  the table from 124401 to 120522, and one of them ran a `do` body
+  through `RunResolved`, the interp-entry census's 29th row against its
+  ceiling of 28. Traced with the recorder instrumented: `sift-fixed-spans`
+  defines `cloop` and `wloop` (fixed-width spans) fn-locally inside
+  undecidable arms; in the probe passes that compile the module's fns
+  the defs were placed — the decline read `es.reg`, which is the LAST
+  registry bound, not a stack, and after a nested run of the program's
+  registry a module fn's body reads as the program's — and `cloop`'s
+  first call, `cloop (opts get "cols") 0 []`, then refused as a window
+  the host cannot drive (a group and a list literal), which marked the
+  sub-compile uncompilable and cost the enclosing units. Two facts fix
+  it. The decline keys on the registry the def installs into
+  (installDef's own `r`, handed through `RecordSpeculativeFnDef`); the
+  stale `es.reg` is a finding for the ledger, not this increment's to
+  fix. And an undrivable window needs no driving: the operands are
+  compiled and pushed as the record's claim, with signature position 0
+  on top (`lowerUserCall`'s contract), which is exactly where the live
+  plan of a slot-less descriptor claims from — so a speculative family's
+  forward call with a group or a list literal among its tokens takes the
+  slot-less descriptor the stack form takes (`RecordUserCall`), and only
+  a generalised undef name among the window's slots keeps a refusal. The
+  sift rows are the base's again (1375 and 10 each; the table 124401 and
+  676, the census 28), and the rows that refused as undrivable compile
+  with parity (`f (1 add 1)`, `h [1 2] (1 add 1)`, `f (id 5)` over a
+  gradual operand — the value is matched live, as the stack form's is).
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8984,3 +9184,4 @@ position than the construct that produced the binding.
 | `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
 | `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindRefusesDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveRead`, `TestTwinInstallsAndRootDynBindSkip`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`, `TestSpeculativeUndefAcrossRequests`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live events at their tokens, the miss raising the interpreter's undefined_word there; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
 | `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |
+| `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnRefusingSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |

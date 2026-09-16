@@ -42,6 +42,23 @@ func (r *Registry) noteAnalysisFnBinder(name string) { r.Check.RecordFnBinder(na
 // overload redefinition.
 func (r *Registry) analysisInCondBody() bool { return r.Check.CondBodyDepth > 0 }
 
+// analysisInSpecArm reports analysis inside a branch arm whose condition
+// the model cannot decide (CheckState.SpecArmDepth): the arms a fn def is
+// speculative in (the seventieth increment).
+func (r *Registry) analysisInSpecArm() bool { return r.Check.SpecArmDepth > 0 }
+
+// EnterSpecArm brackets the analysis of a branch arm; the returned func
+// leaves it. known is whether the model decides the condition (a literal
+// Boolean — the arm runs or not, exactly as the model has it): a known
+// arm takes no bracket, an undecidable one raises SpecArmDepth.
+func (r *Registry) EnterSpecArm(known bool) func() {
+	if known {
+		return func() {}
+	}
+	r.Check.SpecArmDepth++
+	return func() { r.Check.SpecArmDepth-- }
+}
+
 // analysisSnapshot captures the checker's per-call state for the
 // predicate sandbox; restoreAnalysisSnapshot rolls it back IN PLACE
 // (not by swapping the pointer) so a module sub-registry transiently

@@ -271,6 +271,9 @@ func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
 			r.Defs.Push(k, joinBranchDef(tv, pre))
 		} else {
 			r.Defs.Push(k, tv)
+			if specFnJoin(r, k) {
+				continue
+			}
 		}
 		r.NoteBindTransition(BindDef, k, tv.Pos())
 	}
@@ -286,6 +289,9 @@ func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
 			r.Defs.Push(k, joinBranchDef(ev, pre))
 		} else {
 			r.Defs.Push(k, ev)
+			if specFnJoin(r, k) {
+				continue
+			}
 		}
 		r.NoteBindTransition(BindDef, k, ev.Pos())
 	}

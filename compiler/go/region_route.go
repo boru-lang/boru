@@ -67,7 +67,12 @@ import core "github.com/boru-lang/boru/core/go"
 // and false outside a fn unit — at top level analysis order is program order
 // and the bake IS the read.
 func (es *EmitState) routeRegion(d *RegionDesc) bool {
-	if d == nil || d.LeadLocal || !es.Active() || !regionDrivable(d) {
+	// A speculative fn family's lead inside a unit is frame-scoped
+	// (LeadLocal) but registry-visible all the same — its placed install is
+	// OpBindDynScope — so the routed lookup finds it where the frame holds
+	// it (the seventieth increment).
+	spec := d != nil && es != nil && es.specFnNames[d.Word]
+	if d == nil || (d.LeadLocal && !spec) || !es.Active() || !regionDrivable(d) {
 		return false
 	}
 	// At top level analysis order is program order and the bake IS the
@@ -77,7 +82,10 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	// unbound word as a Word value and no-match, or claim it into an Any
 	// slot and raise the word — only the routed op reproduces, at root as
 	// in a unit (the sixty-ninth increment).
-	if len(es.openUnitRecs) == 0 && es.specUndefFwdSlot(d, 0, d.NFwd) == "" {
+	// A speculative fn family's dispatch (specFnNames) routes wherever it
+	// is drivable, at root too and with no word slot at all: the routed op
+	// resolves the lead live and raises the miss (the seventieth increment).
+	if len(es.openUnitRecs) == 0 && es.specUndefFwdSlot(d, 0, d.NFwd) == "" && !spec {
 		return false
 	}
 	var names []string
@@ -96,7 +104,7 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 			names = append(names, wi.Name)
 		}
 	}
-	if len(names) == 0 {
+	if len(names) == 0 && !spec {
 		return false
 	}
 	if es.routedNames == nil {

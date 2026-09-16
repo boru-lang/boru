@@ -522,11 +522,14 @@ func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	mustCompileWithParity(t,
 		`def g `+fnA+` case [def g `+fnB+` 5] [5 88 99] g 1`, "[88 2]")
 
-	// Negative — a redefinition in an ARM (conditionally reached) must STILL
-	// refuse, even with a non-constant condition.
-	mustRefuseWithParity(t,
-		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`,
-		"redefined inside a conditional body")
+	// A redefinition in an ARM under a condition the model cannot decide
+	// (a code-body condition) is PLACED since the seventieth increment:
+	// the arm's install at its site through the interpreter's own
+	// installer, the dispatch routed on the live lead — parity on the
+	// taken path here, and on the not-taken path in
+	// TestConditionalFnDefIsSpeculative.
+	mustCompileWithParity(t,
+		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`, "[0 2]")
 }
 
 // §5 (REFUSAL-CLOSURE, landed 2026-07-17) — a def of a STATICALLY-COUNTED

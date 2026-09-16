@@ -82,10 +82,12 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–68 are on `main`. The most recent landings: #462 (increment
-66, the routed dispatch raises its own diagnostics), 2026-09-15, #463
-(increment 67, the speculative undef refuses) and #464 (increment 68, the
-speculative undef is placed), both 2026-09-16.
+Increments 1–69 are on `main`. The most recent landings: #463 (increment
+67, the speculative undef refuses), #464 (increment 68, the speculative
+undef is placed) and #465 (increment 69, a forward slot of a generalised
+name routes), all 2026-09-16. Increment 70 (a conditional fn def is
+speculative — family L's conditional-body arm placed at module scope) is
+in flight.
 
 ## What is in flight
 
@@ -369,7 +371,14 @@ as #455 (`6ea8ac1`).
    op the native seat (676 corpus dispatches routed, no defer fired).
    Next on the same op: the diagnostics it still defers (the
    strict-barrier strand, the no-match) by extracting their builders from
-   tape state as PlanMatch was extracted; then the binder half.
+   tape state as PlanMatch was extracted; then the binder half. The
+   diagnostics are 66; the binder half is 67–70: a speculative undef
+   refuses (67), is placed with live reads (68), its forward slot routes
+   (69), and a conditional fn def — family L's conditional-body arm — is
+   placed at module scope with its dispatches routed on a live lead (70,
+   in flight). Still the binder half's: the stored-handler latch, NUR037's
+   fn-local fn (and the same family inside a fn body, refused since 70),
+   loop bodies.
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.

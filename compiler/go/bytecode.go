@@ -1207,6 +1207,12 @@ type Program struct {
 	// where the interpreter raises the word. Nil for a program that placed
 	// none.
 	SpecUndefNames map[string]bool
+	// SpecFnNames is every fn family a rolled-back conditional body defined
+	// or replaced (RecordSpeculativeFnDef): its dispatches route, and the
+	// routed op's miss on such a lead is the interpreter's undefined_word,
+	// raised at the word — the arm did not run, so the name is unbound
+	// (the seventieth increment).
+	SpecFnNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass

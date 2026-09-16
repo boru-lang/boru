@@ -104,6 +104,11 @@ var pinnedAritySites = map[string]int{
 	"check/go/carrier.go":        13,
 	"check/go/method_shape.go":   1,
 	"check/go/check_recovery.go": 1,
+	// A bounds check on a signature INDEX, not a decision about a function's
+	// shape (CompileFnSigUnit guarding fnDef.Signatures[sigIdx] before it
+	// compiles that one signature's body as a dispatch of it would — the
+	// seventieth increment's replaced outer).
+	"check/go/spec_fn_unit.go": 1,
 	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
 	// NAMED PARAM slots of a frame — which slots are params, so a fn value
 	// bound for one takes the binding's name as the interpreter's frame
@@ -208,7 +213,13 @@ var pinnedAritySites = map[string]int{
 	// the signature holds the slot, not a decision about a function's
 	// shape; the declared slot type is the argument rule's own input —
 	// the thirtieth increment.
-	"compiler/go/emit.go":           6,
+	// 6 -> 7: fnSigsDeclared reads whether a fn value carries ANY signature
+	// (`len(fd.Signatures) == 0`) before asking each for a boru body with a
+	// declaration site — the identity a speculative family's routed op
+	// locates its unit by. A lambda or a Go alias declares none, so the
+	// placement refuses it; the count of PARAMS never enters — the
+	// seventieth increment.
+	"compiler/go/emit.go":           7,
 	"compiler/go/user_poly.go":      1,
 	"compiler/go/callable_words.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's
