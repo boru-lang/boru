@@ -141,6 +141,11 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def k 5 end if true [undef k] [] add k 1`, "forward-slot read of `k` after a placed undef"},
 		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  undef k ]`, "forward-slot read of `k` after a placed undef"},
 		{`def k 5 end def go fn [[][Integer][sub 1 k]] end if true [undef k] [] go`, "forward-slot read of `k` after a placed undef"},
+		// The same slot at a USER call and at a POLY native dispatch (a `get`
+		// over a gradual operand re-matches at run time): each record refuses it.
+		{`def k 5 end def g fn [[x:Integer][Integer][x add 1]] end if true [undef k] [] g k`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def f fn [[x:Any][Any][add x k]] end if true [undef k] [] f 1`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def f fn [[x:Any][Any][x get k]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
 	}
 	for _, c := range refused {
 		a, err := New()

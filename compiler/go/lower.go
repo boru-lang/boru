@@ -318,7 +318,9 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// (review of #464: `def k 5  if true [undef k] []  do [k]` answered
 		// 5 where the interpreter's body raises). A twin the replay skips —
 		// a carrier's, a written-back one — leaves the install to this op,
-		// as before.
+		// as before. This subsumes the root MODULE-FAMILY def's own arm
+		// (`def m (module […])`, whose descriptor the twin replays), which
+		// used to answer the same question one level down.
 		needDyn = false
 	}
 	// A ROOT-unit def whose kept binding is NOT the runtime value
@@ -401,16 +403,6 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 				return "dynamic-scope def `" + d.name + "` of unpromoted computed value"
 			}
 			src = localOperand(slot)
-		case src.kind == opNone && d.root && core.IsModuleFamilyValue(d.val):
-			// A ROOT def of a MODULE-FAMILY value with no producing event —
-			// `def m (module […])`, the descriptor a compile-time word built —
-			// needs no OpBindDynScope: the check pass installed the binding
-			// and it survives to run time (kept, or replayed by its twin,
-			// which re-installs a concrete captured entry), so the live
-			// OpLookupDynScope that dynScopeNames promised resolves it as
-			// the interpreter does. A frame-local def of one keeps the
-			// refusal below: its binding is popped with the frame.
-			return ""
 		case src.kind == opNone:
 			// A literal binding: bake the recorded value verbatim, UNPOOLED (it
 			// may carry a reparented tag a same-canon source literal must not
