@@ -234,6 +234,14 @@ type CheckState struct {
 	SpecUndefCarriers map[string]string
 	SpecUndefGen      int
 
+	// SpecFnNames is every fn family a rolled-back CONDITIONAL body defined
+	// fresh or redefined in place (an overlapping overload — family L): the
+	// model keeps the fn for typing, but the binding is SPECULATIVE — bound
+	// or unbound, outer or shadow, by the arm's own run — so its dispatches
+	// route with a live lead and the join notes no root twin for the arm's
+	// install, which is placed at its site (spec_fn.go, carrier_join.go).
+	SpecFnNames map[string]bool
+
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
 	// gated on its provenTrips arg AND a sentinel-free body). Unlike the
@@ -945,6 +953,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
 	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
+	cp.SpecFnNames = cloneMap(c.SpecFnNames)
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
 	}
@@ -1032,6 +1041,7 @@ func (c *CheckState) Begin() func() {
 	c.SpecBaselines = nil
 	c.SpecUndefCarriers = nil
 	c.SpecUndefGen = 0
+	c.SpecFnNames = nil
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is

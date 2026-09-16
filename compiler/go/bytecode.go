@@ -1207,6 +1207,12 @@ type Program struct {
 	// where the interpreter raises the word. Nil for a program that placed
 	// none.
 	SpecUndefNames map[string]bool
+	// SpecFnNames is every fn family a rolled-back conditional body defined
+	// or replaced (RecordSpeculativeFnDef): its dispatches route, and the
+	// routed op's miss on such a lead is the interpreter's undefined_word,
+	// raised at the word — the arm did not run, so the name is unbound
+	// (the seventieth increment).
+	SpecFnNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass
@@ -1284,7 +1290,13 @@ type DynApplyHead struct {
 }
 
 type CompiledFn struct {
-	Name    string
+	Name string
+	// BodyPos is the body's first-token position — the unit's identity for
+	// a speculative fn family's routed dispatch (Program.SpecFnNames): the
+	// live binding may be the outer overload or the arm's shadow, the same
+	// shape with a different body, so the op runs the live signature's own
+	// unit, located by its body (eng: specFnUnit). Zero for an empty body.
+	BodyPos core.SrcPos
 	NParams int
 	// NCaptures is how many of the NParams leading slots are CAPTURES (for a
 	// closure body unit): the per-invocation inputs fill slots

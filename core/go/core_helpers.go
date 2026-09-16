@@ -147,7 +147,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// path (BuildWordExtension) intercepts fn defs over locked-bearing
 		// words before InstallDef, so this guard is defence in depth for
 		// direct InstallDef callers.
+		// A FRESH def (no standing entry) inside a rolled-back conditional
+		// body is speculative exactly as an overlapping redefinition is
+		// (below): bound at run time only if the arm runs.
+		fresh := !shadow && len(r.Defs.Stack(name)) == 0
 		replaced := false
+		var dropped Value
 		if stack := r.Defs.Stack(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
@@ -155,6 +160,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				oldFn, ok := entry.Data.(FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
 					changed = true
+					dropped = entry
 					continue
 				}
 				filtered = append(filtered, entry)
@@ -185,7 +191,16 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// increment). A capture-free literal takes the compiled twin and
 				// agrees; the closure's payload has no twin, so it refuses.
 				refusal := ""
-				if r.analysisInCondBody() {
+				if r.analysisInCondBody() && len(fnDef.Captured) == 0 {
+					// The seventieth increment: a CAPTURE-FREE replace is
+					// SPECULATIVE — placed at its site, the family's
+					// dispatches routed with a live lead (NoteSpecFnDef); the
+					// recorder refuses what it cannot place (a loop body, a fn
+					// body, an each body). A capturing closure's value is not
+					// a const the placement can bake: it keeps the closure
+					// machinery and this refusal.
+					NoteSpecFnDef(r, name, dropped, body.Pos())
+				} else if r.analysisInCondBody() {
 					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
 					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
@@ -202,6 +217,9 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		if fresh && r.analysisInCondBody() && len(fnDef.Captured) == 0 {
+			NoteSpecFnDef(r, name, Value{}, body.Pos())
+		}
 		if !shadow {
 			// A REDEFINITION whose overlap filter dropped the colliding entry
 			// is a drop-then-push: the net depth is unchanged, so a twin that

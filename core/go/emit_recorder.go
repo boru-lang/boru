@@ -325,6 +325,12 @@ type EmitRecorder interface {
 	// a frame binding of an enclosing fn.
 	RecordSpeculativeUndef(name string, pos SrcPos)
 	RefuseSpeculativeUndef(name string)
+	// RecordSpeculativeFnDef places a fn def a rolled-back conditional body
+	// made (core.NoteSpecFnDef): fresh (a zero outer), or replacing the
+	// overlapping overload outer in place. The def site's RecordDynBind that
+	// follows carries the install; the family's dispatches route with a
+	// live lead, and outer's body compiles to a unit of its own.
+	RecordSpeculativeFnDef(name string, outer Value, pos SrcPos)
 	// NoteLiveRead seats a bare read of a name a PLACED speculative undef
 	// generalised (the tag hook, at the read token): the read gets its own
 	// value identity and a one-result event lowering to the live lookup at
@@ -502,18 +508,19 @@ func (inactiveEmit) Materialise(v Value) (Value, bool)                      { re
 func (inactiveEmit) ZeroOutProduced(string) bool                            { return false }
 func (inactiveEmit) AlreadyProduced(string) bool                            { return false }
 
-func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)    {}
-func (inactiveEmit) MarkValueDef(Value)                         {}
-func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
-func (inactiveEmit) RefuseCarriedUndef(string)                  {}
-func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)      {}
-func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
-func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
-func (inactiveEmit) NotifyNameRebound(string)                   {}
-func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
-func (inactiveEmit) RegisterLocal(string) int                   { return -1 }
-func (inactiveEmit) RememberOriginal(Value)                     {}
-func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
+func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)      {}
+func (inactiveEmit) MarkValueDef(Value)                           {}
+func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)        {}
+func (inactiveEmit) RefuseCarriedUndef(string)                    {}
+func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)        {}
+func (inactiveEmit) RecordSpeculativeFnDef(string, Value, SrcPos) {}
+func (inactiveEmit) RefuseSpeculativeUndef(string)                {}
+func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)          {}
+func (inactiveEmit) NotifyNameRebound(string)                     {}
+func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)     {}
+func (inactiveEmit) RegisterLocal(string) int                     { return -1 }
+func (inactiveEmit) RememberOriginal(Value)                       {}
+func (inactiveEmit) RememberStrippedOriginals([]Value, []Value)   {}
 
 func (inactiveEmit) ArmBranchCapture()                                {}
 func (inactiveEmit) PeekCaptureArm() bool                             { return false }

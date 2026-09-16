@@ -296,6 +296,28 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		lw.emit(OpUndefDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
 		return ""
 	}
+	if d.specFn {
+		// The PLACED install of a speculative fn def (the seventieth
+		// increment): the fn value bakes unpooled and is installed at its
+		// site — inside the arm, so it binds exactly when the arm runs. At
+		// root, OpBindResident installs through the interpreter's own
+		// installer (an overlapping redefinition drops the standing
+		// overload as installDef's filter does) and persists, as the
+		// interpreter's module-scope def does; inside a unit the def is a
+		// FRAME binding, so OpBindDynScope installs it and the frame's RET
+		// unwinds it, as the interpreter's teardown pops it. Never left
+		// unlowered.
+		lw.pushOperand(ConstOperand(lw.es.internUnpooled(d.val)), d.pos)
+		if d.root {
+			idx := len(lw.p.ResidentBinds)
+			lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{Name: d.name, Twin: -1, Pop: true})
+			lw.emit(OpBindResident, idx, d.pos)
+		} else {
+			lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		}
+		lw.vm = lw.vm[:len(lw.vm)-1]
+		return ""
+	}
 	if !d.bindsValue() {
 		// An unstamped operand-less event — a teardown whose var pair the
 		// bridge declined, a type install outside an adopted unit, or either

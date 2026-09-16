@@ -32,6 +32,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"SpecBaselines":            true,
 		"SpecUndefCarriers":        true,
 		"SpecUndefGen":             true,
+		"SpecFnNames":              true,
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,
