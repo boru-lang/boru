@@ -8604,6 +8604,60 @@ row of NUR144 (`add k 1`) refuses, above.
 - The disposition row for `refuseUndef#1` names every arm; no register
   entry is owed for the carried post-loop undef (refused, as NUR144 was).
 
+## The forward slot of a generalised name routes (2026-09-16, the sixty-ninth increment)
+
+The routed op's unbound-slot arm, measured against the interpreter before
+anything was built. The sixty-eighth increment refused a FORWARD-slot read
+of a name a placed undef generalised (`add k 1` after `undef k`) because a
+committed call's lookup raises the wrong error there: the interpreter does
+not READ an unbound word in a forward window, it COLLECTS it, and what
+happens next is the slot's:
+
+	def k 5  if true [undef k] []  add k 1        signature_error at add (1:34): got (Word, Integer)
+	def k 5  if true [undef k] []  [1 2] get k    undefined_word at k (1:44)
+	def k 5  if true [undef k] []  size k         undefined_word at k (1:39)
+	def k 5  if true [undef k] []  g k            g's x:Integer → no-match at g; g's x:Any → undefined_word at k
+
+A TYPED slot takes the unbound word as a Word value and no signature
+matches, raised at the dispatching word; an ANY slot claims it, the plan
+matches, and the token then dispatches — undefined_word at the token.
+`DISPATCH_GENERIC` already does both: its window carries the word token
+for every word slot, `PlanMatch` over that window no-matches a typed slot
+(`NoMatchOverWindow`, the sixty-sixth increment's builder) and claims an
+Any one, whose resolution loop finds no binding and raises
+`UndefinedWordDiag` at the token (the sixty-sixth's arm — right, for
+exactly this shape). So the increment is a ROUTING change and one
+placeholder:
+
+- **The live read is the slot's operand.** A generalised name's read is
+  an event with its own identity (the sixty-eighth), so the region
+  completion's `slotIsOperand` — "the operand is the binding the word had
+  during the pass" — no longer matched the word slot by ID, the claim
+  stopped short, and `routeRegion` saw no word slot. It now accepts a live
+  read of exactly that word (`liveReadIDs`, `defReads`).
+- **Routing admits the region at root for such a slot.** "At top level
+  the bake IS the read" is the rule that keeps root dispatches committed;
+  for a generalised name the bake is not the read, so a root region with a
+  generalised word slot routes as a unit's does — the op runs with frame
+  base 0 and the program's registry, nothing else differs.
+- **The read's event lowers to a placeholder.** The routed op pops its
+  claim's forward values unread for word slots (it takes the token from
+  its window), but a live read's LOOKUP would MISS first and raise
+  undefined_word where the interpreter's typed slot no-matches. For a
+  claimed forward word slot of a routed dispatch, the read's event is
+  marked (`placeRoutedLiveSlots`, at the three call records) and lowers
+  to `PUSH_CONST` of the name — one inert stack value the op pops.
+- **The refusal narrows to what cannot route:** a region the op cannot
+  drive (a paren group in the window), and a `/v` read the tag hook does
+  not seat (the unseated-read arm). `specUndefFwdSlot` scans the CLAIMED
+  slots now, since the claim no longer stops short.
+
+Every shape above compiles and answers as the interpreter does, position
+and error kind included, at root and in a unit, at the mono, poly and user
+records (`TestSpeculativeUndefIsPlacedAndReadLive`'s routed rows;
+`TestForwardSlotOfGeneralisedNameRoutes` on the seam). No corpus row is
+touched; the routed count stays 676.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8877,4 +8931,5 @@ position than the construct that produced the binding.
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
 | `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
 | `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
-| `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindRefusesDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveReadPosition`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live, the miss raising the interpreter's undefined_word at the read token; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
+| `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindRefusesDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveRead`, `TestTwinInstallsAndRootDynBindSkip`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`, `TestSpeculativeUndefAcrossRequests`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live events at their tokens, the miss raising the interpreter's undefined_word there; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
+| `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |

@@ -192,6 +192,13 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 		if err != nil {
 			return false
 		}
+		// A LIVE READ of the word (NoteLiveRead — a generalised name's read
+		// seated with its own identity) is the slot's operand as surely as
+		// the binding itself: it is a read of exactly this word, minted at
+		// this token.
+		if es.liveReadIDs[arg.ID] && es.defReads[arg.ID] == wi.Name {
+			return true
+		}
 		top, ok := reg.Defs.Top(wi.Name)
 		return ok && top.ID == arg.ID
 	}

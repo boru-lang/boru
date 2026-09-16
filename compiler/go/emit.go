@@ -1182,6 +1182,17 @@ type EmitState struct {
 	// and files it under routedNames — a live read whose root binding is
 	// the bind twin's replay, with frame twins only. Nil until first use.
 	specUndefNames map[string]bool
+	// liveReadIDs is every value identity NoteLiveRead minted — a read of a
+	// generalised name seated as its own event — so a region completion can
+	// recognise the read as the WORD slot's operand (slotIsOperand), and
+	// livePlaceholders is the seq of every such event whose read is a
+	// forward word slot of a dispatch that ROUTES (placeRoutedLiveSlots):
+	// the routed op collects that slot from its window at run time, so the
+	// read lowers to an inert placeholder push the op pops unread, not to a
+	// lookup that would raise before the op's own plan could (the
+	// sixty-ninth increment). Nil until first use.
+	liveReadIDs      map[string]bool
+	livePlaceholders map[int]bool
 }
 
 // routedBindsDyn reports whether a def event owes the routed-read channel a
@@ -5127,10 +5138,40 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		es.defReads = map[string]string{}
 	}
 	es.defReads[v.ID] = name
+	if es.liveReadIDs == nil {
+		es.liveReadIDs = map[string]bool{}
+	}
+	es.liveReadIDs[v.ID] = true
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)),
 	}})
 	es.setProduced(*v, seq)
+}
+
+// placeRoutedLiveSlots marks, for a dispatch that ROUTES, every claimed
+// forward WORD slot whose operand is a live read (NoteLiveRead) of a
+// generalised name: the routed op resolves that slot from its window at
+// run time — the binding when the region did not run, the interpreter's
+// own no-match (a typed slot collects the unbound word as a Word value)
+// or undefined_word (an Any slot claims it, then the token dispatches)
+// when it did — so the read's event lowers to a placeholder the op pops
+// unread (livePlaceholders), never to a lookup that would raise the wrong
+// error first. args are in signature order, slot for slot with the claim.
+func (es *EmitState) placeRoutedLiveSlots(d *RegionDesc, args []core.Value) {
+	if d == nil {
+		return
+	}
+	for i := 0; i < d.NFwd && i < len(d.Slots) && i < len(args); i++ {
+		if d.Slots[i].Source != SlotWordRef || !es.liveReadIDs[args[i].ID] {
+			continue
+		}
+		if pr, ok := es.producedBy[args[i].ID]; ok {
+			if es.livePlaceholders == nil {
+				es.livePlaceholders = map[int]bool{}
+			}
+			es.livePlaceholders[pr.seq] = true
+		}
+	}
 }
 
 // undefRefusal names the shape refuseUndef is asked about.
@@ -5154,15 +5195,16 @@ const (
 	// every later read looks the name up live — the compiled registry
 	// missing the binding the interpreter holds.
 	defAfterSpecUndef
-	// fwdReadAfterSpecUndef: a dispatch whose FORWARD window names a
-	// generalised name (`add k 1` after a placed `undef k`). A stack read
-	// of a popped name is the interpreter's undefined_word at the token,
-	// which the live lookup raises; a forward-slot read is the interpreter's
-	// COLLECTION of the unbound word as a Word value — `cannot call add —
-	// no signature matches; got (Word, Integer)` at the dispatching word —
-	// which neither the committed call's lookup nor the routed op's
-	// unbound-slot arm (the sixty-sixth increment's undefined_word) raises.
-	// The routed dispatch owns that arm; until it does, the shape refuses.
+	// fwdReadAfterSpecUndef: a dispatch whose claimed FORWARD window names
+	// a generalised name (`add k 1` after a placed `undef k`) and does NOT
+	// route. A stack read of a popped name is the interpreter's
+	// undefined_word at the token, which the live lookup raises; a
+	// forward-slot read is the interpreter's COLLECTION of the unbound
+	// word — a typed slot takes it as a Word value and no signature matches
+	// (`cannot call add — no signature matches; got (Word, Integer)` at the
+	// dispatching word), an Any slot claims it and the token then
+	// dispatches to undefined_word — which the routed op reproduces from
+	// its window (the sixty-ninth increment) and a committed call cannot.
 	fwdReadAfterSpecUndef
 	// unseatedRead: a read of a generalised name that reached the dyn-scope
 	// rescue instead of NoteLiveRead's event — a read path the tag hook does
@@ -5195,16 +5237,19 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 	}
 }
 
-// specUndefFwdSlot names the first FORWARD word slot of a descriptor that
-// reads a name a placed speculative undef generalised (specUndefNames), or
-// "" — every slot is scanned, not only the record's claim, because the
-// live operand the read lowered to is exactly what stops the claim short
-// (regionSourceOf knows no dyn-scope source). See fwdReadAfterSpecUndef.
+// specUndefFwdSlot names the first CLAIMED forward word slot of a
+// descriptor that reads a name a placed speculative undef generalised
+// (specUndefNames), or "". A dispatch that ROUTES resolves such a slot from
+// its window (placeRoutedLiveSlots); one that does not — an undrivable
+// region, a routing the call's own shape declines — refuses it
+// (fwdReadAfterSpecUndef), since neither the committed call's lookup nor
+// its bake raises what the interpreter's collection of the unbound word
+// raises.
 func (es *EmitState) specUndefFwdSlot(d *RegionDesc) string {
 	if d == nil || len(es.specUndefNames) == 0 {
 		return ""
 	}
-	for i := range d.Slots {
+	for i := 0; i < d.NFwd && i < len(d.Slots); i++ {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
@@ -5769,7 +5814,9 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// the record's claim and nothing else). Decided before routeRegion so a
 	// declined route retires no read.
 	generic := len(rec.caps) == 0 && es.routeRegion(region)
-	if n := es.specUndefFwdSlot(region); n != "" {
+	if generic {
+		es.placeRoutedLiveSlots(region, args)
+	} else if n := es.specUndefFwdSlot(region); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
@@ -6933,7 +6980,9 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// and a routed spec freezes one count for every execution (review of
 	// #461). The committed call keeps the recorder's own handling below.
 	generic := !sig.CompileEffect.Has(core.CompileValueDiverges) && es.routeRegion(region)
-	if n := es.specUndefFwdSlot(region); n != "" {
+	if generic {
+		es.placeRoutedLiveSlots(region, args)
+	} else if n := es.specUndefFwdSlot(region); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
@@ -7775,7 +7824,9 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// the volume is: 660 of the corpus's 677 routed native dispatches.
 	region := es.completeRegion(word, pos, args, ops)
 	generic := !valueDivergingWord(ownerReg, es.reg, word) && es.routeRegion(region)
-	if n := es.specUndefFwdSlot(region); n != "" {
+	if generic {
+		es.placeRoutedLiveSlots(region, args)
+	} else if n := es.specUndefFwdSlot(region); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}

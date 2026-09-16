@@ -28,48 +28,66 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	compiled := []struct {
 		src, want string
 		live      bool // a read of the name follows the region: lowered as a live lookup
+		routed    bool // the read is a forward word slot of a dispatch that routes (DISPATCH_GENERIC resolves it from its window)
 	}{
 		// NUR144's stack-operand row: the fn unit re-records its read live.
-		{`def k 5 end def f fn [[][Integer][k add 2]] end for 2 [ f  undef k ]`, "undefined_word@1:35", true},
-		{`def k 5 end if true [undef k] [] k`, "undefined_word@1:34", true},
-		{`def k 5 end if false [undef k] [] k`, "[5]", true},
-		{`def k 5 end for 2 [ undef k ] k`, "undefined_word@1:31", true},
+		{`def k 5 end def f fn [[][Integer][k add 2]] end for 2 [ f  undef k ]`, "undefined_word@1:35", true, false},
+		{`def k 5 end if true [undef k] [] k`, "undefined_word@1:34", true, false},
+		{`def k 5 end if false [undef k] [] k`, "[5]", true, false},
+		{`def k 5 end for 2 [ undef k ] k`, "undefined_word@1:31", true, false},
 		// The compiled program looped for ever before the sixty-seventh.
-		{`def k 5 end while [k eq 5] [undef k] 9`, "undefined_word@1:20", true},
-		{`def k 5 end def f fn [[][Integer][undef k 1]] end f k`, "undefined_word@1:53", true},
-		{`def k 5 end def f fn [[][Integer][if true [undef k] [] k]] end f`, "undefined_word@1:56", true},
-		{`def k 5 end for 2 [ if (k eq 5) [undef k] [] ] 9`, "undefined_word@1:25", true},
-		{`def k [1 2] end if true [undef k] [] k`, "undefined_word@1:38", true},
-		{`import module [def m fn [[] [Integer] [1]] export "M" {m:m/v}] end def k 5 end if true [M.m drop undef k 1] [1] k`, "undefined_word@1:113", true},
+		{`def k 5 end while [k eq 5] [undef k] 9`, "undefined_word@1:20", true, false},
+		{`def k 5 end def f fn [[][Integer][undef k 1]] end f k`, "undefined_word@1:53", true, false},
+		{`def k 5 end def f fn [[][Integer][if true [undef k] [] k]] end f`, "undefined_word@1:56", true, false},
+		{`def k 5 end for 2 [ if (k eq 5) [undef k] [] ] 9`, "undefined_word@1:25", true, false},
+		{`def k [1 2] end if true [undef k] [] k`, "undefined_word@1:38", true, false},
+		{`import module [def m fn [[] [Integer] [1]] export "M" {m:m/v}] end def k 5 end if true [M.m drop undef k 1] [1] k`, "undefined_word@1:113", true, false},
 		// An effect before the undef: a defer's re-run would be fenced into
 		// an internal error; the miss raises the word instead.
-		{`def k 5 end if true [(print "x") undef k] [] k`, "undefined_word@1:46", true},
-		{`def k 5 end for 2 [ (print "x") undef k ] k`, "undefined_word@1:43", true},
-		{`def k 5 end if true [undef k] [] (print "z") k`, "undefined_word@1:46", true},
+		{`def k 5 end if true [(print "x") undef k] [] k`, "undefined_word@1:46", true, false},
+		{`def k 5 end for 2 [ (print "x") undef k ] k`, "undefined_word@1:43", true, false},
+		{`def k 5 end if true [undef k] [] (print "z") k`, "undefined_word@1:46", true, false},
 		// A root def after the region re-binds the name: the twin replays it,
 		// and the read after it bakes the new binding.
-		{`def k 5 end if true [undef k] [] def k 6 end k`, "[6]", false},
-		{`def k 5 end for 2 [ undef k ] def k 7 end k`, "[7]", false},
+		{`def k 5 end if true [undef k] [] def k 6 end k`, "[6]", false, false},
+		{`def k 5 end for 2 [ undef k ] def k 7 end k`, "[7]", false, false},
 		// Two undefs of one binding: the second pops nothing on either lane.
-		{`def k 5 end if true [undef k undef k] [] 1`, "[1]", false},
+		{`def k 5 end if true [undef k undef k] [] 1`, "[1]", false, false},
 		// A read BEFORE the region keeps its bake, routed or const.
-		{`def k 5 end k for 2 [ undef k ] 9`, "[5 9]", false},
-		{`def k 5 end def go fn [[][Integer][add k 1]] end go if true [undef k] [] 9`, "[6 9]", false},
+		{`def k 5 end k for 2 [ undef k ] 9`, "[5 9]", false, false},
+		{`def k 5 end def go fn [[][Integer][add k 1]] end go if true [undef k] [] 9`, "[6 9]", false, true},
 		// Every read is seated AT ITS TOKEN (review of #464): the lookup, and
 		// the undefined_word it raises, executes before a later effect and
 		// before the value is consumed — at the first k, with nothing printed;
 		// two reads in one statement each carry their own caret; a read the
 		// undef follows in the same loop body raises on the second pass.
-		{`def k 5 end if true [undef k] [] k (print "x") k`, "undefined_word@1:34", true},
-		{`def k 5 end if true [undef k] [] k k add`, "undefined_word@1:34", true},
-		{`def k 5 end for 2 [ k undef k ] 9`, "undefined_word@1:21", true},
-		{`def k 5 end if false [undef k] [] k k add`, "[10]", true},
-		{`def k 5 end if false [undef k] [] k drop 9`, "[9]", true},
+		{`def k 5 end if true [undef k] [] k (print "x") k`, "undefined_word@1:34", true, false},
+		{`def k 5 end if true [undef k] [] k k add`, "undefined_word@1:34", true, false},
+		{`def k 5 end for 2 [ k undef k ] 9`, "undefined_word@1:21", true, false},
+		{`def k 5 end if false [undef k] [] k k add`, "[10]", true, false},
+		{`def k 5 end if false [undef k] [] k drop 9`, "[9]", true, false},
 		// A dynamic code body's read after the region (review of #464): the
 		// root def is installed ONCE — its twin's replay — so the placed undef
 		// pops the binding the body then misses, and `do` catches the raise on
 		// both lanes.
-		{`def k 5 end if true [undef k] [] do [k]`, "", false},
+		{`def k 5 end if true [undef k] [] do [k]`, "", false, false},
+		// A FORWARD-slot read of the popped name ROUTES (the sixty-ninth
+		// increment): the op resolves the slot from its window as the
+		// interpreter collects it — a typed slot takes the unbound word as a
+		// Word value and no signature matches, at the dispatching word; an Any
+		// slot claims it and the token then dispatches, undefined_word at the
+		// token — at root and in a unit, at the mono, poly and user records.
+		{`def k 5 end if true [undef k] [] add k 1`, "signature_error@1:34", false, true},
+		{`def k 5 end if false [undef k] [] add k 1`, "[6]", false, true},
+		{`def k 5 end if true [undef k] [] [1 2] get k`, "undefined_word@1:44", false, true},
+		{`def k 5 end if true [undef k] [] size k`, "undefined_word@1:39", false, true},
+		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  undef k ]`, "signature_error@1:36", false, true},
+		{`def k 5 end def go fn [[][Integer][add k 1]] end if true [undef k] [] go`, "signature_error@1:36", false, true},
+		{`def k 5 end def go fn [[][Integer][sub 1 k]] end if true [undef k] [] go`, "signature_error@1:36", false, true},
+		{`def k 5 end def g fn [[x:Integer][Integer][x add 1]] end if true [undef k] [] g k`, "signature_error@1:79", false, true},
+		{`def k 5 end def g fn [[x:Any][Any][x]] end if true [undef k] [] g k`, "undefined_word@1:67", false, true},
+		{`def k 5 end def f fn [[x:Any][Any][x get k]] end if true [undef k] [] f {k:1}`, "undefined_word@1:42", false, true},
+		{`def k 5 end def f fn [[x:Any][Any][add x k]] end if true [undef k] [] f 1`, "signature_error@1:36", false, true},
 	}
 	for _, c := range compiled {
 		a, err := New()
@@ -81,8 +99,8 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 			t.Errorf("%q: must compile, got reason=%q err=%v", c.src, reason, cerr)
 			continue
 		}
-		if dis := prog.Disassemble(); !strings.Contains(dis, "UNDEF_DYN_SCOPE") || strings.Contains(dis, "LOOKUP_DYN_SCOPE") != c.live {
-			t.Errorf("%q: the undef is placed and the read after it is live:\n%s", c.src, dis)
+		if dis := prog.Disassemble(); !strings.Contains(dis, "UNDEF_DYN_SCOPE") || strings.Contains(dis, "LOOKUP_DYN_SCOPE") != c.live || strings.Contains(dis, "DISPATCH_GENERIC") != c.routed {
+			t.Errorf("%q: the undef is placed and the read after it is live or routed:\n%s", c.src, dis)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		// The first line — code, detail, position — is the parity; the
@@ -90,15 +108,15 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		// suggests over the registry, the interpreter's over a registry
 		// that holds the frame's loop iterator as a def binding too.
 		requireParityHead(t, c.src, gotC, errC, gotI, errI)
-		if strings.HasPrefix(c.want, "undefined_word@") {
+		if code, _, isErr := strings.Cut(c.want, "@"); isErr {
 			var ce, ie *core.BoruError
-			if !errors.As(errC, &ce) || !errors.As(errI, &ie) || ce.Code != "undefined_word" || ie.Code != "undefined_word" {
-				t.Errorf("%q: both lanes raise undefined_word: compiled=%v interp=%v", c.src, errC, errI)
+			if !errors.As(errC, &ce) || !errors.As(errI, &ie) || ce.Code != code || ie.Code != code {
+				t.Errorf("%q: both lanes raise %s: compiled=%v interp=%v", c.src, code, errC, errI)
 				continue
 			}
-			at := fmt.Sprintf("undefined_word@%d:%d", ce.Row, ce.Col)
+			at := fmt.Sprintf("%s@%d:%d", code, ce.Row, ce.Col)
 			if at != c.want || ce.Row != ie.Row || ce.Col != ie.Col {
-				t.Errorf("%q: the compiled raise sits at the read token: compiled %d:%d interp %d:%d want %s", c.src, ce.Row, ce.Col, ie.Row, ie.Col, c.want)
+				t.Errorf("%q: the compiled raise sits where the interpreter's does: compiled %d:%d interp %d:%d want %s", c.src, ce.Row, ce.Col, ie.Row, ie.Col, c.want)
 			}
 			continue
 		}
@@ -119,11 +137,11 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	// to generalise (a fn-family value, a type, a param, a fn-local), a name
 	// a loop carries (its reads are slot reads — the loop's joined twin
 	// replays one install for N iterations, so `for 2 [ def k 6 ] undef k k`
-	// answered the pre-loop 5 for the interpreter's 6 on main), a `def` of
-	// the name inside the region that undefs it, and a FORWARD-slot read of
-	// the popped name (the interpreter
-	// collects the unbound word as a Word value and raises the no-match at
-	// the dispatching word — the routed dispatch's arm, not the lookup's).
+	// answered the pre-loop 5 for the interpreter's 6 on main), and a `def`
+	// of the name inside the region that undefs it. A FORWARD-slot read of
+	// the popped name routes since the sixty-ninth increment (the compiled
+	// rows above); one whose dispatch cannot route — a region the op cannot
+	// drive, here a paren group in the window — still refuses.
 	refused := []struct{ src, reason string }{
 		{`def k 5 end [1 2] each [undef k] k`, "undef of the enclosing binding `k`"},
 		{`def k 5 end def f fn [[][Integer][k add 2]] end for 2 [ f  do [undef k] ]`, "undef of the enclosing binding `k`"},
@@ -138,14 +156,10 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def k 5 end if true [undef k def k 6] [] k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end for 2 [ undef k def k 6 ] k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end def f fn [[][Integer][if true [undef k] [] def k 6 end k]] end f k`, "def of `k` inside the region that undefs it"},
-		{`def k 5 end if true [undef k] [] add k 1`, "forward-slot read of `k` after a placed undef"},
-		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  undef k ]`, "forward-slot read of `k` after a placed undef"},
-		{`def k 5 end def go fn [[][Integer][sub 1 k]] end if true [undef k] [] go`, "forward-slot read of `k` after a placed undef"},
-		// The same slot at a USER call and at a POLY native dispatch (a `get`
-		// over a gradual operand re-matches at run time): each record refuses it.
-		{`def k 5 end def g fn [[x:Integer][Integer][x add 1]] end if true [undef k] [] g k`, "forward-slot read of `k` after a placed undef"},
-		{`def k 5 end def f fn [[x:Any][Any][add x k]] end if true [undef k] [] f 1`, "forward-slot read of `k` after a placed undef"},
-		{`def k 5 end def f fn [[x:Any][Any][x get k]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end if true [undef k] [] add k (1 add 1)`, "forward-slot read of `k` after a placed undef"},
+		// A `/v` read takes no tag hook: the rescue refuses it rather than seat
+		// it late.
+		{`def k 5 end if true [undef k] [] add k k/v`, "read of `k` after a placed undef the placement did not seat"},
 	}
 	for _, c := range refused {
 		a, err := New()

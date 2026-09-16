@@ -131,7 +131,7 @@ func TestRecordDynBindRefusesDefAfterSpecUndef(t *testing.T) {
 // nothing for a nil descriptor, an empty set, or slots that are not words.
 func TestSpecUndefFwdSlot(t *testing.T) {
 	es := NewEmitState()
-	d := &RegionDesc{Slots: []SlotDesc{
+	d := &RegionDesc{NFwd: 3, Slots: []SlotDesc{
 		{Token: core.NewInteger(1)},
 		{Source: SlotWordRef, Token: core.NewWord("j")},
 		{Source: SlotWordRef, Token: core.NewWord("k")},
@@ -143,6 +143,13 @@ func TestSpecUndefFwdSlot(t *testing.T) {
 	if got := es.specUndefFwdSlot(d); got != "k" {
 		t.Fatalf("the generalised word slot is named: %q", got)
 	}
+	// Only a CLAIMED slot counts: beyond the claim the token is not this
+	// dispatch's.
+	d.NFwd = 2
+	if got := es.specUndefFwdSlot(d); got != "" {
+		t.Fatalf("a slot beyond the claim is not named: %q", got)
+	}
+	d.NFwd = 3
 	if es.specUndefFwdSlot(nil) != "" {
 		t.Fatal("a nil descriptor names nothing")
 	}

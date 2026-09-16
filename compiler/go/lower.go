@@ -2714,8 +2714,15 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
 		// A live read seated as an event (NoteLiveRead): the lookup at the
-		// read's own token, its one result seated as any call's.
-		lw.emit(OpLookupDynScope, c.liveName, c.pos)
+		// read's own token, its one result seated as any call's — or, for a
+		// read that is a ROUTED dispatch's forward word slot, an inert
+		// placeholder the op pops unread (it resolves the slot from its own
+		// window; EmitState.livePlaceholders).
+		if lw.es != nil && lw.es.livePlaceholders[ev.seq] {
+			lw.emit(OpPushConst, c.liveName, c.pos)
+		} else {
+			lw.emit(OpLookupDynScope, c.liveName, c.pos)
+		}
 		return lw.seatCallResults(ev, c)
 	}
 	if lw.collectRegionTop(ev) {
