@@ -9150,6 +9150,68 @@ with parity. **A value read admitted**: `do [f/v]` returned the fn as
 data where the interpreter dispatches the returned value
 (`uncalled_function`) — a `/v` or `/u` reference keeps the refusal.
 
+## NUR149: a fn body's redefinition of a speculative family refuses, and a `do` defer falls back (2026-09-16, the seventy-third increment)
+
+Picked by measurement — NUR149, the finding the seventy-second increment
+recorded on `main`. Two halves, both wrong answers on the default lane,
+both restored to parity here.
+
+**The miscompile (first half).** `def m {e: true}  if (m "e" get) [def f
+fn [[x:Integer][Integer][x add 100]] end] []  def g fn [[][Integer][def f
+fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  g f 1` answers `6
+2` interpreted and, on `main`, `type_error: g: return value 1: expected
+Integer, got Error` compiled. The module `f` is a speculative family (the
+seventieth increment: a fn defined in an arm the model cannot decide,
+`SpecFnNames`, whose dispatches route with a live lead). Inside `g`'s unit
+the body's `def f` OVERLAPS it, so `InstallDef` replaces in place — the
+drop-then-push leaves the frame's def depth unchanged, so `g`'s RET cannot
+revert it (the interpreter's `f 1` = 2 confirms the shadow leaks past the
+call), and the def lowers to NOTHING. The body's `f 5` routes and resolves
+its lead LIVE in the VM's registry, which holds the arm's `f` (whose unit
+no call site compiled) or nothing — never `g`'s local. This is the
+seventieth's family L inside a fn body, and no compiled twin reproduces a
+frame-local shadow the interpreter does not tear down. `InstallDef` refuses
+it now (core_helpers.go's family-L block gains a fourth arm: `FnBodyDepth >
+0 && capture-free && specFnJoin(name)`), so the whole program falls back —
+slow, not wrong. A DISJOINT signature (a fresh push, placed for the frame
+by the seventy-second increment) and a NON-family overlap (the compiled
+`BindDefReplace` twin) never enter the arm and keep compiling.
+
+**The defer stranding (second half).** `def svc (service {})  add {}
+([r:Map state:Any] => [1]) svc  do [call {} svc call {} svc]` answers `1 1`
+interpreted and, on `main`, printed `error(bytecode: internal:
+CALL_NATIVE_POLY no match …)` compiled — the internal message as DATA. A
+designed defer (an internal_error the compiled VM raises to request
+whole-program fallback — a poly no-match, NUR147; `DISPATCH_GENERIC` with
+no live unit; …) raised inside a `do` body was TRAPPED as an Error value by
+the escape hatch (`DoListHandler` / `DoEvalList`), which exempted only an
+`IO.exit` request. Stranded, the defer never reached the top-level run that
+re-runs interpreted: the internal message surfaced as data at top level, or
+an enclosing fn's return contract rejected the Error (`type_error … got
+Error`) where the interpreter answered cleanly. `bodyErrorPropagates` now
+re-raises a defer exactly as it re-raises an exit request, so the fallback
+completes. The interpreter never raises internal_error, so on the
+interpreter lane the arm is dead and the escape hatch is unchanged — a
+genuine `raise` inside `do` is still trapped as an Error value (`do [raise
+bad_input "nope"] error [dot code]` → `bad_input`, compiled). This is a
+GENERAL fix: any runtime bail inside a `do`/`eval` body falls back now, the
+NUR147-in-`do` symptom included (NUR147's own top-level `call {} svc call
+{} svc` was already outside a `do` and already fell back; its arity
+over-commit root cause is unchanged).
+
+The two halves are complementary: the first refuses a shape whose failure
+is a GENUINE undefined_word (the `e: false` case, where the compiled-away
+local leaves `f` unbound and `do` correctly traps the miss); the second
+re-raises a DESIGNED defer (the `e: true` case's internal_error, and every
+NUR147-in-`do`). Measured: `lang/go/do_defer_fallback_test.go`
+(`TestDoDeferFallsBackNotTrapped`, `TestFnBodySpecFamilyRedefRefuses`),
+`core/go/check_fncarrier_test.go`
+(`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`) — the do-wrapped
+bail and its nested and fn-body shapes fall back with parity; the genuine
+error stays trapped; the family-L-in-fn-body redefinition refuses with
+parity while the disjoint and non-family shapes compile. No new refusal
+site (the family-L `MarkUncompilable` is reused, the census stays at 92).
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -9428,3 +9490,4 @@ position than the construct that produced the binding.
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnRefusingSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
 | `compiler/go/stored_live_test.go` (`TestStoredLiveSeats`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn/liveLead`), `lang/go/stored_handler_live_test.go` (`TestStoredHandlerReadsLiveBinding`), `lang/go/bytecode_stored_handler_freeze_test.go` (revised: the data case compiles, the F1 pin compiles and matches by fallback) | the seventy-first increment: a stored handler reads its module-scope deps live — a bare read seated as a live lookup, a slot routed, a declared fn dispatched by name routed with a live lead and every transition of it compiled to units — so the latch refuses only what a unit baked (a lambda original; a live lead rebound to a lambda or a data value) |
 | `compiler/go/fn_local_test.go` (`TestPlaceFnLocalDef`), `lang/go/fn_local_placed_test.go` (`TestFnLocalFnPlacedForCodeBodies`), `lang/go/bytecode_markwindow_test.go` (the NUR037 row re-diagnosed) | the seventy-second increment: a code body naming the enclosing fn's local fn compiles — the def placed as a registry-visible install for the frame (the seventieth's lowering), the body resolving it on every path; a capturing local fn keeps the refusal |
+| `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`), `lang/go/do_defer_fallback_test.go` (`TestFnBodySpecFamilyRedefRefuses`, `TestDoDeferFallsBackNotTrapped`) | the seventy-third increment (NUR149): a fn body's capture-free redefinition of a speculative-family name refuses (the family-L leak inside a fn body has no compiled twin, so the program falls back); a designed defer raised inside a `do`/`eval` body is re-raised instead of trapped as an Error value, so the whole-program fallback completes (NUR147-in-`do` included), while a genuine error stays trapped |

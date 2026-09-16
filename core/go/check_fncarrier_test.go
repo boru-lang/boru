@@ -230,6 +230,43 @@ func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
 	}
 }
 
+// TestInstallDefRefusesSpecFamilyRedefinitionInFnBody pins installDef's
+// fn-body arm for NUR149 (the seventy-third increment): a CAPTURE-FREE
+// redefinition inside a fn body of a SPECULATIVE-FAMILY name (a fn a branch
+// arm the model could not decide defined — SpecFnNames, the seventieth
+// increment) is the family-L leak. The drop-then-push leaves the frame's def
+// depth unchanged, so the interpreter keeps the shadow past the call while the
+// compiled def lowers to nothing and the family's live-lead dispatch resolves
+// the wrong binding; no compiled twin reproduces it, so it refuses. The same
+// capture-free redefinition of a NON-family name takes the compiled replace
+// twin and is not refused.
+func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
+	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
+	lit := func() Value { return NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}) }
+
+	r := compileCheckRegistry(t)
+	es := newS5BEmit()
+	r.Check.Emit = es
+	installDef(r, "p", lit(), false)
+	r.Check.SpecFnNames = map[string]bool{"p": true}
+	r.Check.FnBodyDepth = 1
+	installDef(r, "p", lit(), false)
+	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a speculative-family overload") {
+		t.Errorf("a spec-family capture-free redefinition inside a fn body refuses: %v", es.uncompilable)
+	}
+
+	// Not a speculative family: the compiled replace twin agrees, so no refusal.
+	r2 := compileCheckRegistry(t)
+	es2 := newS5BEmit()
+	r2.Check.Emit = es2
+	installDef(r2, "p", lit(), false)
+	r2.Check.FnBodyDepth = 1
+	installDef(r2, "p", lit(), false)
+	if len(es2.uncompilable) != 0 {
+		t.Errorf("a non-family capture-free redefinition in a fn body is not refused: %v", es2.uncompilable)
+	}
+}
+
 // TestStepWordNestedBodySubstitutesCarrier — the substitution fires inside
 // a NESTED body too (the thirty-eighth increment): a branch arm / loop body
 // / `do` body's read of a name in the side table reads as its fn carrier.

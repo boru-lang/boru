@@ -204,6 +204,24 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
 					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
+				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) == 0 && specFnJoin(r, name) {
+					// NUR149: a CAPTURE-FREE redefinition inside a fn body of a
+					// SPECULATIVE-FAMILY name (a fn defined in a branch arm the
+					// model could not decide — SpecFnNames, the seventieth
+					// increment). A capture-free replace normally takes the
+					// compiled BindDefReplace twin and agrees, so it is not
+					// refused above; but the family's dispatches ROUTE with a
+					// live lead (the routed op resolves the word in the running
+					// registry), and this in-place replace is the family-L
+					// leak — the drop-then-push leaves the frame's def depth
+					// unchanged, so the interpreter keeps the shadow past the
+					// call while the compiled def lowered to nothing. The live
+					// lead then resolves the arm's binding (whose unit no call
+					// site compiled) or an unbound name, diverging from the
+					// interpreter's frame-local shadow. No compiled twin
+					// reproduces a frame-local shadow the interpreter does not
+					// tear down, so refuse — slow, not wrong.
+					refusal = "fn '" + name + "' redefined inside a fn body replaces a speculative-family overload whose dispatch resolves live (the frame-local shadow the interpreter keeps past the call has no compiled twin)"
 				}
 				if refusal != "" {
 					r.analysisRecorder().MarkUncompilable(refusal)

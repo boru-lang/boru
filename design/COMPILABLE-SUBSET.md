@@ -177,6 +177,21 @@ the interpreter then owns the whole program:
   for) and structurally-desugared dispatches (case's branch chain), whose
   bodies record as inline events with no name bake. Closure capture of
   fn-local fn bindings remains a possible future widening.
+- **Fn body redefining a SPECULATIVE-FAMILY name** (NUR149, the
+  seventy-third increment) — a capture-free `def NAME fn […]` inside a fn
+  body whose NAME is a speculative fn family (a fn a branch arm the model
+  could not decide defined — the seventieth increment). A capture-free
+  redefinition is normally sound (it takes the compiled `BindDefReplace`
+  twin), but the family's dispatches route with a LIVE LEAD, and this
+  in-place overlap replace is the family-L leak inside a fn body: the
+  drop-then-push leaves the frame's def depth unchanged, so the interpreter
+  keeps the shadow past the call while the compiled def lowers to nothing
+  and the live lead resolves the arm's binding (whose unit no call site
+  compiled) or an unbound name. No compiled twin reproduces a frame-local
+  shadow the interpreter does not tear down, so `InstallDef` refuses (the
+  family-L block's fourth arm, `specFnJoin`). A DISJOINT signature (a fresh
+  frame push, placed by the seventy-second increment) and a NON-family
+  overlap keep compiling.
 - **Dynamic input / opaque output** — a dynamic carrier reached the site, or the
   checker could not type the result (unannotated / opaque wrapper) — except a
   concrete-args core builtin whose dynamic result is merely a declared-`Any`

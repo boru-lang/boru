@@ -82,13 +82,15 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–71 are on `main`. The most recent landings: #465 (increment
-69, a forward slot of a generalised name routes), #466 (increment 70, a
-conditional fn def is speculative — family L's conditional-body arm placed
-at module scope, dispatched on a live lead) and #467 (increment 71, the
-stored-handler latch's lookup half: a stored handler reads its
-module-scope deps live), all 2026-09-16. Increment 72 (NUR037's fn-local
-fn: a code body's local fn is placed for the frame) is in flight.
+Increments 1–72 are on `main`. The most recent landings: #466 (increment
+70, a conditional fn def is speculative — family L's conditional-body arm
+placed at module scope, dispatched on a live lead), #467 (increment 71,
+the stored-handler latch's lookup half: a stored handler reads its
+module-scope deps live) and #468 (increment 72, NUR037's fn-local fn: a
+code body's local fn is placed for the frame — plus a per-run Go build
+cache in CI), all 2026-09-16. Increment 73 (NUR149: a fn body's redefinition
+of a speculative family's name refuses, and a designed defer inside a `do`
+body falls back instead of trapping) is in flight.
 
 ## What is in flight
 
@@ -387,14 +389,17 @@ as #455 (`6ea8ac1`).
    registry-visible install for the frame, so the body resolves it on
    every path; a capturing local fn, a value read of it, and a closed
    body's redefinition of it keep the refusal (the review's three,
-   NUR150). Its measurement found NUR149 (pre-existing on `main`): a fn body's in-place
-   redefinition of a speculative family's name compiles away while the
-   family's live lead resolves the module binding, and the resulting
-   defer is typed against the frame's return contract instead of
-   unwinding to the fallback — a wrong answer, the next binder-half
-   slice. Still the binder half's after it: loop bodies (and the
-   capturing local fn, with family L's capturing closure — one limit,
-   the seventieth's).
+   NUR150). Its measurement found NUR149 (pre-existing on `main`), which
+   73 fixes in two halves: a fn body's in-place redefinition of a
+   speculative family's name compiled away while the family's live lead
+   resolved the module binding (now REFUSED — the family-L leak inside a
+   fn body has no compiled twin, so the program falls back), and a
+   designed defer raised inside a `do` body was TRAPPED as an Error value
+   by the escape hatch instead of propagating to whole-program fallback
+   (now re-raised, so the fallback completes — a general fix, the
+   NUR147-in-`do` symptom included). Still the binder half's after it:
+   loop bodies (and the capturing local fn, with family L's capturing
+   closure — one limit, the seventieth's).
 3. The row-level remainder in parallel only where a row exposes a
    mechanism the lane needs; a row whose fix is a Stage 5 or Stage 7
    slice waits for the slice.
