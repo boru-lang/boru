@@ -3535,9 +3535,11 @@ func vmErrAt(debug []core.SrcPos, pc int, msg string) error {
 	if pc >= 0 && pc < len(debug) {
 		pos = debug[pc]
 	}
-	return core.MakeBoruErrorAt("internal_error",
+	e := core.MakeBoruErrorAt("internal_error",
 		fmt.Sprintf("bytecode: internal: %s (pc=%d, src %d:%d)", msg, pc, pos.Row, pos.Col),
 		"", "", "", pos)
+	e.VMDefer = true
+	return e
 }
 
 // vmEvalLimitAt mirrors the interpreter's evalLimitError: the

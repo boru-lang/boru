@@ -46,6 +46,11 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 		{`do [raise bad_input "nope"] error [dot code]`, "[bad_input]"},
 		{`do [raise bad_input "nope"]`, "[error(nope)]"},
 		{`do [1 add 2]`, "[3]"},
+		// A user `raise internal_error` shares the public code with a VM
+		// defer but carries no VMDefer marker, so it stays CAUGHT (Codex P2
+		// on #469): the marker, not the code, distinguishes a defer.
+		{`do [raise internal_error "boom"] error [dot code]`, "[internal_error]"},
+		{`do [raise internal_error "boom"]`, "[error(boom)]"},
 	}
 	for _, c := range trapped {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -89,7 +94,7 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 		if cerr != nil {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
-		if prog != nil || !strings.Contains(reason, "redefined inside a fn body replaces a speculative-family overload") {
+		if prog != nil || !strings.Contains(reason, "redefined inside a fn body replaces a module-scope speculative-family overload") {
 			t.Errorf("%q: want the family-L-in-fn-body refusal, got compiled=%v reason=%q", c.src, prog != nil, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
@@ -122,6 +127,28 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 		}
 		if got := fmt.Sprint(gotC); got != c.want {
 			t.Errorf("%q = %s, want %s", c.src, got, c.want)
+		}
+	}
+	// An IN-FUNCTION speculative family (f absent at fn entry, created in an
+	// undecidable in-fn branch) redefined later in the SAME fn is NOT the
+	// module-family leak: the baseline gate keeps it off the refusal (Codex
+	// P2 on #469). It COMPILES (no refusal); its routed live-lead dispatch
+	// may still defer to the interpreter at run time, which falls back with
+	// the same answer — slow, not wrong.
+	{
+		src := `def m {e: true} end  def g fn [[][Integer][if (m "e" get) [def f fn [[x:Integer][Integer][x add 1]] end] [] def f fn [[x:Integer][Integer][x add 2]] end  f 5]] end  g`
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prog, reason, _, cerr := a.CompileCheck(src)
+		if cerr != nil || prog == nil {
+			t.Errorf("the in-function family must NOT be refused: reason=%q err=%v", reason, cerr)
+		}
+		gotC, _, errC, gotI, errI := runBothEngines(t, src)
+		requireParity(t, src, gotC, errC, gotI, errI)
+		if got := fmt.Sprint(gotC); got != "[7]" {
+			t.Errorf("in-function family = %s, want [7]", got)
 		}
 	}
 }

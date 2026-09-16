@@ -274,23 +274,26 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 //
 //   - an IO.exit request — a control transfer, not a failure (trapping it
 //     as data would demote `IO.exit 4` to exit 0);
-//   - a designed defer (an internal_error the compiled VM raises to request
-//     whole-program fallback: DISPATCH_GENERIC with no live unit, a poly
-//     no-match, …). Trapping it as an Error value STRANDS the fallback —
-//     the defer never reaches the top-level run that re-runs interpreted,
-//     so the internal message surfaces as data (a top-level `do [risky]`
-//     printed it) or an enclosing fn's return contract rejects the Error
-//     (`type_error … got Error`) where the interpreter answers cleanly.
-//     The interpreter never raises internal_error, so on the interpreter
-//     lane this arm is dead and the escape hatch is unchanged.
+//   - a designed VM defer (IsVMDefer: an internal_error the compiled VM
+//     raises to request whole-program fallback — DISPATCH_GENERIC with no
+//     live unit, a poly no-match, a recovered lowering panic). Trapping it
+//     as an Error value STRANDS the fallback — the defer never reaches the
+//     top-level run that re-runs interpreted, so the internal message
+//     surfaces as data (a top-level `do [risky]` printed it) or an enclosing
+//     fn's return contract rejects the Error (`type_error … got Error`)
+//     where the interpreter answers cleanly.
 //
-// A genuine boru error (type_error, undefined_word, a user `raise`) is
-// trapped as the escape-hatch semantics intend.
+// The marker (not the public `internal_error` code) is what distinguishes a
+// defer: a user `raise internal_error "…"` carries the same code but no
+// VMDefer marker, so it stays trapped and `do [raise internal_error …] error
+// […]` still catches it — as does every other genuine boru error
+// (type_error, undefined_word, a user `raise`), the escape-hatch semantics
+// intend.
 func bodyErrorPropagates(err error) bool {
 	if _, isExit := ExitCode(err); isExit {
 		return true
 	}
-	return IsInternalError(err)
+	return IsVMDefer(err)
 }
 
 func DoListReturnsFn(args []Value, r *Registry) []Value {

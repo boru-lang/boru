@@ -9203,7 +9203,25 @@ The two halves are complementary: the first refuses a shape whose failure
 is a GENUINE undefined_word (the `e: false` case, where the compiled-away
 local leaves `f` unbound and `do` correctly traps the miss); the second
 re-raises a DESIGNED defer (the `e: true` case's internal_error, and every
-NUR147-in-`do`). Measured: `lang/go/do_defer_fallback_test.go`
+NUR147-in-`do`).
+
+**The review's two (NUR151).** Codex's two P2s on the first cut, both
+reproduced. **A user `raise internal_error` no longer caught**: the escape
+hatch keyed the re-raise on the public `internal_error` code, which a user
+`raise internal_error` shares — so `do [raise internal_error …] error […]`
+re-raised instead of catching, in both lanes. Fix: a designed VM defer now
+carries a distinct `BoruError.VMDefer` marker (set by `vmErrAt` and the
+panic guards); `IsVMDefer` keys the hatch on the marker, not the code, so a
+user error stays trapped and a real defer propagates. **An in-function
+speculative family over-refused**: the family-L-in-fn-body refusal keyed on
+`specFnJoin(name)` alone, refusing even a family created and redefined
+INSIDE the fn (absent at the baseline, popped by RET — not the leak). Fix:
+`specFamilyAtFnBaseline` gates the refusal on the dropped binding existing
+at the enclosing fn's baseline, so only a MODULE-scope family refuses; an
+in-function family compiles (its routed dispatch may still defer at run
+time and fall back). Recorded as NUR151.
+
+Measured: `lang/go/do_defer_fallback_test.go`
 (`TestDoDeferFallsBackNotTrapped`, `TestFnBodySpecFamilyRedefRefuses`),
 `core/go/check_fncarrier_test.go`
 (`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`) — the do-wrapped
@@ -9490,4 +9508,4 @@ position than the construct that produced the binding.
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnRefusingSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
 | `compiler/go/stored_live_test.go` (`TestStoredLiveSeats`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn/liveLead`), `lang/go/stored_handler_live_test.go` (`TestStoredHandlerReadsLiveBinding`), `lang/go/bytecode_stored_handler_freeze_test.go` (revised: the data case compiles, the F1 pin compiles and matches by fallback) | the seventy-first increment: a stored handler reads its module-scope deps live — a bare read seated as a live lookup, a slot routed, a declared fn dispatched by name routed with a live lead and every transition of it compiled to units — so the latch refuses only what a unit baked (a lambda original; a live lead rebound to a lambda or a data value) |
 | `compiler/go/fn_local_test.go` (`TestPlaceFnLocalDef`), `lang/go/fn_local_placed_test.go` (`TestFnLocalFnPlacedForCodeBodies`), `lang/go/bytecode_markwindow_test.go` (the NUR037 row re-diagnosed) | the seventy-second increment: a code body naming the enclosing fn's local fn compiles — the def placed as a registry-visible install for the frame (the seventieth's lowering), the body resolving it on every path; a capturing local fn keeps the refusal |
-| `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`), `lang/go/do_defer_fallback_test.go` (`TestFnBodySpecFamilyRedefRefuses`, `TestDoDeferFallsBackNotTrapped`) | the seventy-third increment (NUR149): a fn body's capture-free redefinition of a speculative-family name refuses (the family-L leak inside a fn body has no compiled twin, so the program falls back); a designed defer raised inside a `do`/`eval` body is re-raised instead of trapped as an Error value, so the whole-program fallback completes (NUR147-in-`do` included), while a genuine error stays trapped |
+| `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`), `core/go/rununit_test.go` (`TestIsVMDefer`), `lang/go/do_defer_fallback_test.go` (`TestFnBodySpecFamilyRedefRefuses`, `TestDoDeferFallsBackNotTrapped`) | the seventy-third increment (NUR149): a fn body's capture-free redefinition of a MODULE-scope speculative-family name refuses (the family-L leak has no compiled twin, so the program falls back — an in-function family, absent at the fn baseline, is not refused); a designed VM defer (marked `VMDefer`, distinct from a user `raise internal_error`) raised inside a `do` body is re-raised instead of trapped, so the whole-program fallback completes (NUR147-in-`do` included), while a genuine error stays trapped (NUR151: the review's two) |

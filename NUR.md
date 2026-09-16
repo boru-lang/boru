@@ -6402,3 +6402,46 @@ the unit-level redefinition row, the four refused rows),
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
+
+## NUR151 — the seventy-third increment's first cut: two divergences found in review {#nur151}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-third increment;
+fixed in the same PR).
+**Found:** review of #469's first cut (ea3ac11), both reproduced on that
+tree.
+
+**Rule:** a compiled program answers as the interpreter does, and a
+refusal is a slow path, never a wrong answer.
+
+**Divergences and fixes.**
+
+1. *A user `raise internal_error` no longer caught.* `bodyErrorPropagates`
+   keyed the re-raise on the public `internal_error` code (`IsInternalError`),
+   but a user `raise internal_error "boom"` carries that same code — so
+   `do [raise internal_error "boom"] error [dot code]` re-raised instead of
+   catching and returning the code, in BOTH lanes (the shared `do` handler),
+   and the comment's claim "the interpreter never raises internal_error" was
+   false. Fix: a designed VM defer now carries a distinct marker
+   (`BoruError.VMDefer`, set by `vmErrAt` and the panic guards); `IsVMDefer`
+   keys the escape hatch on the marker, not the code, so a user error stays
+   trapped and a real defer propagates.
+2. *An in-function speculative family over-refused.* The family-L-in-fn-body
+   refusal keyed on `specFnJoin(name)` alone, so a fn that creates `f` in an
+   undecidable in-fn branch and then unconditionally redefines it LATER in
+   the same fn was refused too — but that family is absent at the fn's
+   baseline, its install and replacement stay above it, and RET pops them
+   (no leak past the call). Refusing it rejected a shape that is not the
+   NUR149 leak. Fix: `specFamilyAtFnBaseline` gates the refusal on the
+   dropped binding existing at the enclosing fn's baseline (a MODULE-scope
+   family), so an in-function family is not refused (it compiles; its routed
+   dispatch may still defer at run time and fall back — slow, not wrong).
+
+**Fence.** `lang/go/do_defer_fallback_test.go` (the user-internal-error
+trapped rows, the in-function-family not-refused row),
+`core/go/check_fncarrier_test.go`
+(`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody` — the baseline gate
+and `specFamilyAtFnBaseline`'s arms), `core/go/rununit_test.go`
+(`TestIsVMDefer`).
+
+**Verdict:** closed with the fixes; recorded because the rule says every
+divergence surfaced in review is recorded, fixed or not.

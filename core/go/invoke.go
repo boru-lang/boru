@@ -199,6 +199,16 @@ func IsInternalErr(err error) bool {
 // unit's result (await's per-branch fork runs — native_temporal_await.go).
 func IsInternalError(err error) bool { return IsInternalErr(err) }
 
+// IsVMDefer reports whether err is a DESIGNED VM defer-to-interpreter (its
+// BoruError carries VMDefer), as opposed to a user `raise internal_error …`
+// carrying the same public code. The `do` escape hatch keys catch-or-re-raise
+// on this: a defer must propagate to complete the whole-program fallback, a
+// user error stays trapped as an Error value.
+func IsVMDefer(err error) bool {
+	var ae *BoruError
+	return errors.As(err, &ae) && ae.VMDefer
+}
+
 // runPooledSub runs input on a pooled reusable sub-engine and returns a
 // caller-owned COPY of the results. It is the shared seam behind every
 // per-element sub-evaluation (higher-order bodies, list/paren/interp-hole

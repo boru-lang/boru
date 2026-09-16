@@ -12,8 +12,10 @@ import (
 // InvokeCompiled both key their degrade-to-interpreter decision on the
 // internal_error CLASS, so the two guards must not drift apart.
 func vmInternalError(rec any, src string) error {
-	return core.MakeBoruError("internal_error",
+	e := core.MakeBoruError("internal_error",
 		fmt.Sprintf("internal bytecode VM error: %v", rec), "", src, "")
+	e.VMDefer = true
+	return e
 }
 
 // Foreign (detached) unit hosting — the half of InvokeCallback's contract that

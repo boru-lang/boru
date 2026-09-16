@@ -244,26 +244,66 @@ func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
 	lit := func() Value { return NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}) }
 
+	// A MODULE-scope speculative family (p installed, then the fn baseline
+	// snapshotted so p sits AT the baseline) redefined capture-free inside a
+	// fn body is the family-L leak — refused.
 	r := compileCheckRegistry(t)
 	es := newS5BEmit()
 	r.Check.Emit = es
 	installDef(r, "p", lit(), false)
 	r.Check.SpecFnNames = map[string]bool{"p": true}
+	r.PushFnBaseline(r.Defs.Snapshot())
 	r.Check.FnBodyDepth = 1
 	installDef(r, "p", lit(), false)
-	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a speculative-family overload") {
-		t.Errorf("a spec-family capture-free redefinition inside a fn body refuses: %v", es.uncompilable)
+	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a module-scope speculative-family overload") {
+		t.Errorf("a module-scope spec-family redefinition inside a fn body refuses: %v", es.uncompilable)
 	}
 
-	// Not a speculative family: the compiled replace twin agrees, so no refusal.
+	// An IN-FUNCTION family (p created INSIDE the fn, above the baseline) is
+	// torn down by RET — NOT the leak, so NOT refused (the baseline gate,
+	// Codex P2 on #469).
 	r2 := compileCheckRegistry(t)
 	es2 := newS5BEmit()
 	r2.Check.Emit = es2
-	installDef(r2, "p", lit(), false)
+	r2.PushFnBaseline(r2.Defs.Snapshot()) // p absent at the baseline
+	r2.Check.SpecFnNames = map[string]bool{"p": true}
 	r2.Check.FnBodyDepth = 1
-	installDef(r2, "p", lit(), false)
+	installDef(r2, "p", lit(), false) // created in-fn
+	installDef(r2, "p", lit(), false) // redefined in-fn
 	if len(es2.uncompilable) != 0 {
-		t.Errorf("a non-family capture-free redefinition in a fn body is not refused: %v", es2.uncompilable)
+		t.Errorf("an in-function spec family is not refused (the baseline gate): %v", es2.uncompilable)
+	}
+
+	// Not a speculative family: the compiled replace twin agrees, so no refusal.
+	r3 := compileCheckRegistry(t)
+	es3 := newS5BEmit()
+	r3.Check.Emit = es3
+	installDef(r3, "p", lit(), false)
+	r3.PushFnBaseline(r3.Defs.Snapshot())
+	r3.Check.FnBodyDepth = 1
+	installDef(r3, "p", lit(), false)
+	if len(es3.uncompilable) != 0 {
+		t.Errorf("a non-family capture-free redefinition in a fn body is not refused: %v", es3.uncompilable)
+	}
+
+	// specFamilyAtFnBaseline: false with no enclosing baseline, true when the
+	// binding sits at/below it, false above it.
+	r4 := compileCheckRegistry(t)
+	installDef(r4, "p", lit(), false)
+	if specFamilyAtFnBaseline(r4, "p") {
+		t.Error("no enclosing fn baseline: not baseline-scoped")
+	}
+	r4.PushFnBaseline(r4.Defs.Snapshot())
+	if !specFamilyAtFnBaseline(r4, "p") {
+		t.Error("a binding at the baseline is baseline-scoped")
+	}
+	installDef(r4, "q", lit(), false) // q created above the baseline
+	if specFamilyAtFnBaseline(r4, "q") {
+		t.Error("a binding above the baseline is not baseline-scoped")
+	}
+	var nilR *Registry
+	if specFamilyAtFnBaseline(nilR, "p") {
+		t.Error("a nil registry is not baseline-scoped")
 	}
 }
 
