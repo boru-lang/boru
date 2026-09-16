@@ -1290,13 +1290,7 @@ type DynApplyHead struct {
 }
 
 type CompiledFn struct {
-	Name string
-	// BodyPos is the body's first-token position — the unit's identity for
-	// a speculative fn family's routed dispatch (Program.SpecFnNames): the
-	// live binding may be the outer overload or the arm's shadow, the same
-	// shape with a different body, so the op runs the live signature's own
-	// unit, located by its body (eng: specFnUnit). Zero for an empty body.
-	BodyPos core.SrcPos
+	Name    string
 	NParams int
 	// NCaptures is how many of the NParams leading slots are CAPTURES (for a
 	// closure body unit): the per-invocation inputs fill slots

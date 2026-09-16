@@ -331,6 +331,10 @@ type EmitRecorder interface {
 	// follows carries the install; the family's dispatches route with a
 	// live lead, and outer's body compiles to a unit of its own.
 	RecordSpeculativeFnDef(name string, outer Value, pos SrcPos)
+	// RecordSpecFnUndef places an `undef` of a speculative fn family made
+	// in the same region (the undef handler's in-region pop): the placed
+	// install would otherwise outlive the arm.
+	RecordSpecFnUndef(name string, pos SrcPos)
 	// NoteLiveRead seats a bare read of a name a PLACED speculative undef
 	// generalised (the tag hook, at the read token): the read gets its own
 	// value identity and a one-result event lowering to the live lookup at
@@ -514,6 +518,7 @@ func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)        {}
 func (inactiveEmit) RefuseCarriedUndef(string)                    {}
 func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)        {}
 func (inactiveEmit) RecordSpeculativeFnDef(string, Value, SrcPos) {}
+func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)             {}
 func (inactiveEmit) RefuseSpeculativeUndef(string)                {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)          {}
 func (inactiveEmit) NotifyNameRebound(string)                     {}

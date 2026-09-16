@@ -239,15 +239,14 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	if p.SpecFnNames[d.Word] {
 		// A speculative fn family's live binding is the outer overload or
 		// the arm's shadow — the same shape, a different body — so the unit
-		// is the LIVE signature's own, located by its body (the seventieth
-		// increment): an identity stronger than the shape rule below, which
-		// a stored-fn unit (the outer's, compiled at the replace site with
-		// no declared-param table) does not pass. None compiled for the
-		// body leaves the foreign-unit defer.
+		// is the LIVE signature's own, located by its declaration site (the
+		// seventieth increment): an identity the shape rule below cannot
+		// give. None compiled for the signature leaves the foreign-unit
+		// defer.
 		if u := specFnUnit(p, sig); u >= 0 {
 			return out, u, args, nil
 		}
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature's body has no unit; deferring to the interpreter")
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature has no unit; deferring to the interpreter")
 	}
 	if gs.Unit < 0 || gs.Unit >= len(p.Fns) || !unitMatchesSig(&p.Fns[gs.Unit], sig) {
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature is not the committed unit's; deferring to the interpreter")
@@ -255,17 +254,17 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	return out, gs.Unit, args, nil
 }
 
-// specFnUnit locates the unit compiled for sig's own body — the one whose
-// BodyPos is the body's first token's position — or -1 (an empty body, or
-// a body no pass compiled).
+// specFnUnit locates the unit compiled for sig itself — the one stamped
+// with sig's declaration site (CompiledFn.Decl: the output-sig token of
+// the triple plus the declaring source and file, which is unique per
+// signature, across files, and present for an empty body) — or -1 for a
+// signature no pass compiled, or a Go-registered one (no site).
 func specFnUnit(p *compiler.Program, sig *core.Signature) int {
-	body := sig.Body()
-	if len(body) == 0 {
+	if sig.Decl == (core.DeclSite{}) {
 		return -1
 	}
-	pos := body[0].Pos()
 	for i := range p.Fns {
-		if p.Fns[i].BodyPos == pos && pos.Row != 0 {
+		if p.Fns[i].Decl == sig.Decl {
 			return i
 		}
 	}

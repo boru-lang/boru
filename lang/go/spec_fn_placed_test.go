@@ -58,6 +58,15 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{`def m {e: true} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] f 1]] end g`, "[101]"},
 		{`def m {e: true} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] f 1]] end g g`, "[101 101]"},
 		{`def m {e: false} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] (print "x") f 1]] end g`, "undefined_word@1:123"},
+		// Review of #466: an EMPTY body's unit is located too (the identity
+		// is the signature's declaration site); the replaced outer is an
+		// exported module fn, compiled in ITS module's registry (k is the
+		// module's 10, not main's 50) with its contract; an in-arm undef of
+		// the family is placed with the install.
+		{`def m {e: true} end if (m "e" get) [def f fn [[][][]] end] [] (print "x") f`, ""},
+		{`import module [def k 10 end def q fn [[x:Integer][Integer][x add k]] end export "A" {q:q/v}] end def k 50 end def f A.q/v end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "[11]"},
+		{`import module [def k 10 end def q fn [[x:Integer][Integer][x add k]] end export "A" {q:q/v}] end def k 50 end def f A.q/v end def m {e: true} end if (m "e" get) ` + arm + ` [] f 1`, "[101]"},
+		{`def m {e: true} end if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end undef f 1] [] 9`, "[1 9]"},
 	}
 	for _, c := range compiled {
 		a, err := New()
@@ -70,10 +79,11 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 			continue
 		}
 		// The arm's install is placed, the dispatch routes, and the only
-		// root twin of f is the OUTER def's (none for a fresh family).
+		// root twins of f are the OUTER defs' before the branch (none for a
+		// fresh family).
 		twins := 0
-		if strings.HasPrefix(c.src, outer) {
-			twins = 1
+		if i := strings.Index(c.src, " if "); i >= 0 {
+			twins = strings.Count(c.src[:i], "def f ")
 		}
 		dispatched := !strings.Contains(c.src, "undef f") // the undef rows dispatch nothing
 		install := "BIND_RESIDENT"                        // at root; inside a unit the frame-scoped install
@@ -125,6 +135,11 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{outer + `def m {e: false} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] f 1]] end g`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: true} end do [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "fn 'p' redefined inside a conditional body"},
+		// A LAMBDA declares no output signature, so it carries no
+		// declaration site for the routed op to locate its unit by: as the
+		// outer and as the placed value, the placement refuses.
+		{`def f (x:Integer => [x add 1]) end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
+		{`def m {e: true} end if (m "e" get) [def f (x:Integer => [x add 100]) end] [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: false} end [1 2] each [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] f (1 add 1)`, "dispatch of the conditionally-defined fn `f` cannot route"},
 		{`def id fn [[x:Any][Any][x]] end def m {e: true} end if (m "e" get) ` + arm + ` [] f (id 5)`, "conditionally-defined fn `f`"},
@@ -163,7 +178,10 @@ func TestConditionalFnDefAcrossRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	const arm = `if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] 1`
-	for _, src := range []string{`def m {e: false}`, arm, `f 1`, `def m {e: true}`, arm, `f 1`, `undef f 2`, `f 1`} {
+	// The last three: an in-arm undef of the family is placed with its
+	// install (review of #466), so the taken arm leaves nothing behind.
+	const armUndef = `if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end undef f 1] [] 2`
+	for _, src := range []string{`def m {e: false}`, arm, `f 1`, `def m {e: true}`, arm, `f 1`, `undef f 2`, `f 1`, armUndef, `f 1`} {
 		gotC, ran, errC := a.RunCompiled(src)
 		gotI, errI := b.RunInterp(src)
 		if !ran && errI == nil {

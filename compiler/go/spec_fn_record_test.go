@@ -15,6 +15,13 @@ import (
 func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	pos := core.SrcPos{Row: 2, Col: 4}
 	var nilES *EmitState
+	// Refused where it cannot be placed.
+	refuses := func(t *testing.T, es *EmitState, what string) {
+		t.Helper()
+		if es.Compilable || !strings.Contains(es.Reason, "fn `f` defined inside a conditional body where the compiled program cannot place the install") {
+			t.Fatalf("%s refuses: %v %q", what, es.Compilable, es.Reason)
+		}
+	}
 	nilES.RecordSpeculativeFnDef("f", core.Value{}, pos)
 	es := NewEmitState()
 	es.RecordSpeculativeFnDef("", core.Value{}, pos)
@@ -25,7 +32,8 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if !es.specFnNames["f"] || es.pendingSpecFn == nil || es.pendingSpecFn.name != "f" || es.pendingSpecFn.replace {
 		t.Fatalf("a fresh def: marked, pending, no replace: %v %+v", es.specFnNames, es.pendingSpecFn)
 	}
-	fnv := core.NewFunction(core.FnDefInfo{Name: "f"})
+	decl := core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 9}, File: "f.boru"}
+	fnv := core.NewFunction(core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)}), Decl: decl}}})
 	es.RecordDynBind("g", core.NewInteger(1), pos)
 	if es.pendingSpecFn == nil {
 		t.Fatal("another name's def leaves the hand-off pending")
@@ -44,18 +52,31 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 		t.Fatalf("the def site's event is the placed install: %+v", d)
 	}
 	// An overlapping redefinition: replace (the outer's units compile only
-	// against a registry — the lang rows pin that).
+	// against a registry — the lang rows pin that; without one, nothing).
 	es.RecordSpeculativeFnDef("f", fnv, pos)
 	if es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
 		t.Fatal("an outer fn value makes the install a replace")
 	}
-	// Refused where it cannot be placed.
-	refuses := func(t *testing.T, es *EmitState, what string) {
-		t.Helper()
-		if es.Compilable || !strings.Contains(es.Reason, "fn `f` defined inside a conditional body where the compiled program cannot place the install") {
-			t.Fatalf("%s refuses: %v %q", what, es.Compilable, es.Reason)
-		}
+	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 {
+		t.Fatal("no recorder or no registry compiles nothing")
 	}
+	// A fn value with no declaration site — a lambda, a Go alias, no
+	// signature at all — cannot be located at run time: as the outer, the
+	// replace refuses; as the placed value, the def site refuses.
+	lambda := core.NewFunction(core.FnDefInfo{Name: "f", Anonymous: true, Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
+	if fnSigsDeclared(lambda) || fnSigsDeclared(core.NewInteger(1)) || fnSigsDeclared(core.NewFunction(core.FnDefInfo{Name: "n", Signatures: []core.Signature{{}}})) || !fnSigsDeclared(fnv) {
+		t.Fatal("only a boru signature with a declaration site is declared")
+	}
+	esL := NewEmitState()
+	esL.RecordSpeculativeFnDef("f", lambda, pos)
+	refuses(t, esL, "a lambda-valued outer")
+	esL2 := NewEmitState()
+	esL2.RecordSpeculativeFnDef("f", core.Value{}, pos)
+	esL2.RecordDynBind("f", lambda, pos)
+	if esL2.pendingSpecFn != nil {
+		t.Fatal("the def site consumes the hand-off before deciding")
+	}
+	refuses(t, esL2, "a conditional lambda def")
 	es2 := NewEmitState()
 	resume := es2.Suspend()
 	es2.RecordSpeculativeFnDef("f", core.Value{}, pos)

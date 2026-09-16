@@ -8754,11 +8754,19 @@ the shadow. So the family is SPECULATIVE, and three halves follow:
   frame-scoped install reproduces. Only a CAPTURE-FREE fn value takes the
   placement: a capturing closure's value is not a const the placement can
   bake (the CPS factorial's `def kk (fn …)` inside an arm is the
-  closure machinery's, and stays so). The outer overload's every own body
-  compiles to a unit at the replace site (`compileStoredFnUnit`, keyed by
-  its body's first-token position — `CompiledFn.BodyPos`), because the
-  model holds the shadow from the clobber on and no call site would
-  compile the outer.
+  closure machinery's, and stays so), and only a fn whose every signature
+  carries a DECLARATION SITE (a `fn […]` literal's output signature; a
+  lambda declares none, a Go alias has no body) — the identity the routed
+  op locates its unit by. The outer overload's every own body compiles to
+  a unit at the replace site (`compileSpecOuterUnit` →
+  `check.CompileFnSigUnit`), because the model holds the shadow from the
+  clobber on and no call site would compile the outer — an ORDINARY fn
+  unit, compiled as a dispatch of it would compile it: in the fn's own
+  registry (an exported module fn's body resolves its module's names)
+  with this pass's check state shared into it, and stamped with its
+  declared params, returns, patterns and declaration site, so the VM
+  enforces at CALL_USER and RET what the interpreter's dispatch and
+  ReturnCheck enforce.
 - **The dispatch** routes with a LIVE lead: `routeRegion` admits a
   speculative lead at root, with no word slot at all, and frame-local
   (`LeadLocal` — registry-visible all the same, through the placed
@@ -8767,9 +8775,12 @@ the shadow. So the family is SPECULATIVE, and three halves follow:
   synthesised at the user record, drivable by construction over the
   frame's resolved values. The op resolves the lead
   in the running registry and runs the LIVE signature's own unit
-  (`specFnUnit`: the body's first token locates it — an identity the
-  shape rule cannot give, since the outer and the shadow share a shape),
-  and a miss is the interpreter's `undefined_word` at the word, RAISED
+  (`specFnUnit`: the signature's DECLARATION SITE locates it —
+  `CompiledFn.Decl`, the output-sig token plus the declaring source and
+  file, unique per signature across files and present for an empty body;
+  an identity the shape rule cannot give, since the outer and the shadow
+  share a shape), and a miss is the interpreter's `undefined_word` at
+  the word, RAISED
   (`Program.SpecFnNames`) — a defer would re-run past the arm's effects,
   the sixty-eighth increment's lesson. A program that placed one restores
   the base before it runs, as a placed undef's does, so a long-lived
@@ -8798,6 +8809,44 @@ closure's conditional def keeps family L's own refusal, and a fresh def in
 BOTH arms the join's older fn-carrier one. The refusal-site census stays
 at 92 (installDef's site keeps its capturing and frame arms; the three new
 kinds read through `refuseUndef`); the disposition rows name the arms.
+
+### The review's five
+
+Codex read the first cut and raised five things; three reproduced, and
+all five are in.
+
+- **Unit identity by source position alone** (`CompiledFn.BodyPos`): a
+  position carries no file, so two separately parsed modules with the
+  same layout could hand the wrong unit to a speculative alias. The
+  identity is the signature's DECLARATION SITE now (`Decl`: position plus
+  source and file), which the memo stamps on every unit it compiles and
+  the outer compile stamps from the signature.
+- **An empty body** had no first token and so no identity: a taken
+  conditional `def f fn [[][][]]` followed by `(print "x") f` deferred
+  after the print, an internal error. The declaration site exists for an
+  empty body; the row compiles and prints once on both lanes.
+- **An in-arm undef of the family** (`if true [def f fn […] undef f 1] []`)
+  lowered to nothing, so the placed install outlived the arm and the next
+  request on the same instance answered the arm's 101. The undef
+  handler's in-region pop notes it (`RecordSpecFnUndef`), placed as
+  `OpUndefDynScope` at its site; pinned across requests.
+- **The outer's contract** — a stored-handler compile is count-agnostic
+  and stamps no declared returns, patterns or declaration site — and
+  **the outer's registry** — the stored-handler compile resolved the body's
+  free names in the recorder's registry, so an alias of an exported
+  module fn read main's `k` (51) for the module's (11). Both are one
+  change: the outer compiles exactly as a dispatch of it would
+  (`check.CompileFnSigUnit`, the ReturnsFn closure's compile half without
+  its call record: the body analysed in the fn's own registry with this
+  pass's check state shared into it — a recorder-only swap left the
+  module's check state out of check mode and folded the body to its
+  module's constant — and the unit stamped with its declared params,
+  patterns, returns and site). The contract shapes the review named were
+  caught statically here (`for n [1]` under a declared Integer is a check
+  error on both lanes), so the row that pins it is the module alias's, on
+  both paths. The site identity also decides what can be placed at all:
+  a lambda-valued outer or a conditional lambda def carries no site, so
+  both refuse (`fnSigsDeclared`) rather than meet a fenced defer.
 
 ## What the ledger excludes, and why each exclusion was measured
 

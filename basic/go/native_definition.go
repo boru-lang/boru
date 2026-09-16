@@ -1462,6 +1462,10 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// and a later read resolves a stale carrier — see
 	// core.DropCheckFnCarrierBind for the two shapes that diverged.
 	DropCheckFnCarrierBind(r, name)
+	// An undef of a fn a conditional body defined in THIS region: the
+	// placed install has a placed pop (RecordSpecFnUndef — review of #466:
+	// the binding leaked past the arm into the next request).
+	r.Check.Recorder().RecordSpecFnUndef(name, args[0].Pos())
 	UninstallDef(r, name)
 	return nil, nil
 }

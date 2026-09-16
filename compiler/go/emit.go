@@ -5126,6 +5126,43 @@ func (es *EmitState) RecordSpeculativeUndef(name string, pos core.SrcPos) {
 	es.routedNames[name] = true
 }
 
+// RecordSpecFnUndef places the in-region `undef` of a speculative fn
+// family (the undef handler's ordinary pop, taken for a binding the same
+// region made): an undef-half dyn-bind event lowering to OpUndefDynScope at
+// its site, so the placed install does not outlive the arm — measured in
+// review of #466 as `if true [def f fn […] undef f 1] []` leaving f bound
+// for the next request. Nothing for any other name, or when inactive.
+func (es *EmitState) RecordSpecFnUndef(name string, pos core.SrcPos) {
+	if es == nil || !es.Active() || !es.specFnNames[name] {
+		return
+	}
+	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
+		name: name, srcSeq: -1, pos: pos, residentTwin: -1, undef: true, speculative: true,
+	}})
+	es.noteBindHazard(name)
+}
+
+// fnSigsDeclared reports whether every signature of fn value v is a boru
+// body with a DECLARATION SITE (core.Signature.Decl — the output-sig token
+// plus the declaring source and file): the identity the routed op locates a
+// speculative family's unit by (eng: specFnUnit). A lambda (`x => […]`)
+// declares no output signature and a Go-implemented alias has no body, so
+// neither can be placed — the placement refuses them (review of #466: the
+// identity was the body's first-token position, which carries no file).
+func fnSigsDeclared(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok || len(fd.Signatures) == 0 {
+		return false
+	}
+	for i := range fd.Signatures {
+		s := &fd.Signatures[i]
+		if _, boru := s.Impl.(*core.BoruImpl); !boru || s.Fallback || s.Decl == (core.DeclSite{}) {
+			return false
+		}
+	}
+	return true
+}
+
 // pendingSpecFnDef is RecordSpeculativeFnDef's hand-off to the def site's
 // RecordDynBind, which records the event the install lowers from.
 type pendingSpecFnDef struct {
@@ -5151,7 +5188,7 @@ func (es *EmitState) RecordSpeculativeFnDef(name string, outer core.Value, pos c
 	}
 	replace := core.IsAppliableFn(outer)
 	inFnBody := es.reg != nil && es.reg.Check != nil && es.reg.Check.FnBodyDepth > 0
-	if !es.Active() || es.armResidentDepth > 0 || len(es.loopCarried) > 0 || es.inClosureBodyCompile() || (replace && inFnBody) {
+	if !es.Active() || es.armResidentDepth > 0 || len(es.loopCarried) > 0 || es.inClosureBodyCompile() || (replace && inFnBody) || (replace && !fnSigsDeclared(outer)) {
 		// A fn body's fresh def is a FRAME binding its teardown pops, and
 		// the placed install inside a unit is OpBindDynScope, which the
 		// frame's RET unwinds — but a fn body's REPLACE is not: installDef's
@@ -5172,18 +5209,37 @@ func (es *EmitState) RecordSpeculativeFnDef(name string, outer core.Value, pos c
 		// The OUTER overload the arm replaces is the live binding when the
 		// arm did not run, and the check pass's model — which holds the
 		// shadow from the clobber on — never dispatches it, so no call site
-		// compiles its unit. Compile every own body now, keyed by its
-		// first token's position (CompiledFn.BodyPos), so the routed op runs
-		// the live signature's own unit; a body the stored-fn compile
-		// declines leaves the op's foreign-unit defer for that path.
+		// compiles its unit. Compile every own body now as an ORDINARY fn
+		// unit — in the fn's home registry, with its declared params,
+		// returns and declaration site (review of #466: a stored-handler
+		// compile is count-agnostic and resolves free names in the
+		// recorder's registry) — so the routed op runs the live
+		// signature's own unit, located by its declaration site
+		// (CompiledFn.Decl). A body that refuses refuses the program.
 		if fd, ok := outer.Data.(core.FnDefInfo); ok {
 			for i := range fd.Signatures {
-				if body := fd.Signatures[i].Body(); len(body) > 0 {
-					es.compileStoredFnUnit(fd, i, body[0].Pos())
-				}
+				es.compileSpecOuterUnit(fd, i)
 			}
 		}
 	}
+}
+
+// compileSpecOuterUnit compiles one own signature of the outer overload a
+// speculative fn def replaces (RecordSpeculativeFnDef) exactly as a
+// dispatch of it would (check.CompileFnSigUnit: the body analysed in the
+// fn's own registry with this pass's check state shared into it, the unit
+// stamped with its declared params, patterns, returns and declaration
+// site), so the VM enforces at CALL_USER and RET what the interpreter's
+// dispatch and ReturnCheck enforce, and the routed op locates the unit by
+// the site (specFnUnit). A Go-implemented or fallback signature compiles
+// nothing and is left to the op's foreign-unit defer; a body that refuses
+// refuses the program (review of #466: a stored-handler compile was
+// count-agnostic and resolved an exported module fn's free names in main).
+func (es *EmitState) compileSpecOuterUnit(fd core.FnDefInfo, sigIdx int) int {
+	if es == nil || es.reg == nil {
+		return -1
+	}
+	return check.CompileFnSigUnit(es.reg, fd, sigIdx)
 }
 
 // NoteLiveRead seats a bare read of a generalised name AT ITS TOKEN (the
@@ -8571,8 +8627,14 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// hand-off): the event is its placed install.
 	specFn, replace := false, false
 	if p := es.pendingSpecFn; p != nil && p.name == name {
-		specFn, replace = true, p.replace
 		es.pendingSpecFn = nil
+		if !fnSigsDeclared(v) {
+			// The placed fn's own signatures must carry the site the routed
+			// op locates its unit by: a conditional lambda def refuses.
+			es.refuseUndef(name, specFnUnplaced)
+			return
+		}
+		specFn, replace = true, p.replace
 	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
@@ -11533,7 +11595,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// (added during loop lowering) stay anonymous.
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
-		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, BodyPos: rec.pos}
+		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit}
 		if rec.reg != nil && rec.reg != es.progReg {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):

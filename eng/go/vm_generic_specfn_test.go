@@ -25,46 +25,45 @@ func TestDispatchGenericSpecFn(t *testing.T) {
 			t.Fatalf("undefined_word at the word, not a defer: %v", err)
 		}
 	})
-	t.Run("the live signature's own unit, by body", func(t *testing.T) {
+	t.Run("the live signature's own unit, by declaration site", func(t *testing.T) {
 		p, reg := genericWorld(t)
 		p.SpecFnNames = map[string]bool{"w": true}
-		// w's body token carries no position: no unit is located, and the
-		// dispatch defers.
+		// w's signature carries no declaration site: no unit is located,
+		// and the dispatch defers.
 		var bails []string
 		disarm := reg.ArmRuntimeBailHook(func(ev core.BailEvent) { bails = append(bails, ev.Site) })
 		_, err := RunProgram(p, reg)
 		disarm()
-		wantInternal(t, err, "body has no unit")
+		wantInternal(t, err, "has no unit")
 		if len(bails) != 1 || bails[0] != "vm:generic-foreign-unit" {
 			t.Fatalf("one designed defer: %v", bails)
 		}
-		// A positioned body whose unit the program holds: that unit runs,
-		// whatever the committed one was.
-		at := core.SrcPos{Row: 4, Col: 2}
+		// A declared signature whose unit the program holds: that unit
+		// runs, whatever the committed one was.
+		decl := core.DeclSite{Pos: core.SrcPos{Row: 4, Col: 2}, File: "w.boru"}
 		reg.Defs.Push("w", core.NewFunction(core.FnDefInfo{Name: "w", Signatures: []core.Signature{{
-			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.WithPosAt(core.NewWord("a"), at)}),
+			Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 2, Impl: core.Boru([]core.Value{core.NewWord("a")}), Decl: decl,
 		}}}))
 		p.Generics[0].Unit = 0 // the committed unit is wrong on purpose
-		p.Fns = append(p.Fns, compiler.CompiledFn{Name: "w2", NParams: 2, NArgs: 2, NLocals: 2, BodyPos: at,
+		p.Fns = append(p.Fns, compiler.CompiledFn{Name: "w2", NParams: 2, NArgs: 2, NLocals: 2, Decl: decl,
 			Code: []compiler.Instr{{Op: compiler.OpPushLocal, Arg: 1}, {Op: compiler.OpRet}}})
 		out, err := RunProgram(p, reg)
 		if err != nil || len(out) != 1 || !core.ValuesEqual(out[0], core.NewInteger(1)) {
-			t.Fatalf("the live body's unit (w2, returning its second operand) runs: out=%v err=%v", out, err)
+			t.Fatalf("the live signature's unit (w2, returning its second operand) runs: out=%v err=%v", out, err)
 		}
 	})
 	t.Run("specFnUnit", func(t *testing.T) {
-		p := &compiler.Program{Fns: []compiler.CompiledFn{{Name: "a", BodyPos: core.SrcPos{Row: 2, Col: 2}}}}
-		empty := &core.Signature{Impl: core.Boru(nil)}
-		if specFnUnit(p, empty) != -1 {
-			t.Fatal("an empty body has no unit")
+		decl := core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 2}, File: "a.boru"}
+		p := &compiler.Program{Fns: []compiler.CompiledFn{{Name: "a", Decl: decl}}}
+		if specFnUnit(p, &core.Signature{Impl: core.Boru(nil)}) != -1 {
+			t.Fatal("a signature with no declaration site has no unit")
 		}
-		zero := &core.Signature{Impl: core.Boru([]core.Value{core.NewWord("x")})}
-		if specFnUnit(p, zero) != -1 {
-			t.Fatal("an unpositioned body locates nothing")
+		other := core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 2}, File: "b.boru"}
+		if specFnUnit(p, &core.Signature{Impl: core.Boru(nil), Decl: other}) != -1 {
+			t.Fatal("the same position in another file locates nothing")
 		}
-		hit := &core.Signature{Impl: core.Boru([]core.Value{core.WithPosAt(core.NewWord("x"), core.SrcPos{Row: 2, Col: 2})})}
-		if specFnUnit(p, hit) != 0 {
-			t.Fatal("the body's unit is located by its first token")
+		if specFnUnit(p, &core.Signature{Impl: core.Boru(nil), Decl: decl}) != 0 {
+			t.Fatal("the signature's unit is located by its declaration site")
 		}
 	})
 }
