@@ -107,7 +107,15 @@ through the one undef site: a `def` of the name inside its region, a name
 a loop carries (a post-loop `undef` of one answered the pre-loop value on
 main), and a forward-slot read of the popped name (the interpreter
 collects the unbound word as a Word and raises the no-match — the routed
-op's unbound-slot arm, the next slice on that op). NUR146 records the
+op's unbound-slot arm, the next slice on that op). The review of #464
+found three more, each fixed: a read lowered as an operand was delayed
+past a later effect (every read of a generalised name is now an EVENT at
+its token — `NoteLiveRead`, from the def-read tag hook — so the lookup
+executes where the interpreter reads), a root def under a dynamic code
+body was installed twice (its twin's replay and a BIND_DYN_SCOPE; a root
+def whose twin replays now emits no second install), and the generalised
+entry leaked into a long-lived registry (a program that placed an undef
+restores the rollback base, twins or not). NUR146 records the
 did-you-mean pool's divergence. Narrative: the sixty-eighth-increment
 section of FULL-COMPILATION-HANDOFF.0.md.
 

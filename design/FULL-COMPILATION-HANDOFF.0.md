@@ -8487,14 +8487,36 @@ defers on a miss — "slow, not wrong" while the interpreter can be re-run
 performed before the read (`for 2 [ (print "x") undef k ] k`) fences the
 re-run, and the user saw `internal_error` where the interpreter raises
 the word. So a miss of a name in `Program.SpecUndefNames` raises
-`core.UndefinedWordDiag` from the seam, at the READ's own token: the live
-operand carries its position (`EmitOperand.pos`, from `NoteLocalRead`'s
-program-wide note of the latest read of each generalised value ID), where
-every other push takes the consumer's — `k add 2` raises at `k`, a root
-residual at its token, not at `0:0`. Positions agree on every row of the
-class. The did-you-mean line below the first does not always: the
-interpreter's registry holds a loop iterator as a def, the VM's holds it
-in a slot — NUR146, recorded, fenced by comparing the head.
+`core.UndefinedWordDiag` from the seam, at the READ's own token — and the
+read IS an event at that token (below), so the lookup executes where the
+interpreter reads. Positions agree on every row of the class. The
+did-you-mean line below the first does not always: the interpreter's
+registry holds a loop iterator as a def, the VM's holds it in a slot —
+NUR146, recorded, fenced by comparing the head.
+
+**Every read is seated at its token (review of #464).** The first cut
+lowered a generalised name's read as a dyn-scope OPERAND — resolved when
+its consumer resolved it, or re-pushed as a residual at the fragment's
+end — with the read's position carried on the operand. Codex measured
+the delay: `if true [undef k] []  k (print "x") k` printed `x` and raised
+at the SECOND `k` where the interpreter raises at the first and prints
+nothing, and two reads in one statement shared the latest caret. The
+read is now an EVENT: the tag hook the engine runs at every def read
+(`TagCheckModeDefRead`, which now carries the token's position) calls
+`NoteLiveRead`, which gives the read's value an identity of its own —
+every read of the binding is otherwise the one carrier, and one ID is
+one stack value to the recorder — and appends a one-result `evCall`
+marked `live`, lowering to `OpLookupDynScope` at the read's position
+(`seatCallResults`, the call tail every evCall shares, seats it). The
+value then flows by the ordinary stack discipline: consumed where it is
+consumed, promoted when referenced twice, dropped when never, a residual
+otherwise. A CONCRETE read of the name — a binding a later `def` made
+after the region — keeps its bake: program order is analysis order at
+root, and the region has run. A read that reaches the dyn-scope rescue
+instead (a read path the hook does not cover) refuses through the undef
+site rather than seat late. The change also let `for 2 [ k  undef k ]`
+compile — the residual-order hazard was about a re-push, and there is
+none now — raising on the second pass as the interpreter does.
 
 ### Three shapes measured wrong on the way, each refused through the one site
 
@@ -8537,11 +8559,33 @@ an each body's first run, a `do` inside a loop, the never-running error
 handler the leniency exists for (all suspended; an undef event with no
 stream home is the dropped undef the sixty-seventh measured) and an
 arm-resident bracket (the residency bridge pairs events to ledger twins
-one to one, and this transition has no twin) — and a residual read the
-undef follows in the same body (`for 2 [ k  undef k ]`, the Stage 4b
-hazard's own row). Every refusal goes through `refuseUndef`, now keyed by
-shape (`undefRefusal`), so the refusal-site census is unchanged at 92 and
-the disposition row names every arm.
+one to one, and this transition has no twin). Every refusal goes through
+`refuseUndef`, now keyed by shape (`undefRefusal`), so the refusal-site
+census is unchanged at 92 and the disposition row names every arm.
+
+### The review's other two (#464)
+
+- **A root def installed twice.** `def k 5  if true [undef k] []  do [k]`
+  answered 5 where the interpreter's body raises: the dynamic code body
+  puts every root def in the dyn-scope set, so `k` lowered BOTH its bind
+  twin (replayed at its site) and a `BIND_DYN_SCOPE` beside it — two
+  levels — and the placed undef popped one and the body found the other.
+  Latent before this increment (nothing popped a level between the two),
+  and general: a root def whose twin REPLAYS at that very site (a
+  concrete captured entry, not written back — `twinInstalls`, the push
+  rule `ApplyBindTwin` applies) is registry-visible by the replay, so
+  `lowerDynBind` emits no second install for it; a twin the replay skips
+  (a carrier's, a written-back one) leaves the install to the op, as
+  before.
+- **The base restored after a placed undef.** On a long-lived registry
+  where the binding predates the request (`def k 5`, then `if false
+  [undef k] [] k`), the check pass generalised the LIVE entry with no
+  ledger entry and no twin, and `RunProgram` restores the rollback base
+  only for a program with twins — so the run read the carrier for the
+  interpreter's 5, and the request after it refused. A program that placed
+  a speculative undef (`Program.SpecUndefNames`) now restores the base
+  too; the refused-compile and plain-check paths were already restored by
+  the wide sandbox. Pinned across five requests on one instance.
 
 ### Measured
 

@@ -325,6 +325,14 @@ type EmitRecorder interface {
 	// a frame binding of an enclosing fn.
 	RecordSpeculativeUndef(name string, pos SrcPos)
 	RefuseSpeculativeUndef(name string)
+	// NoteLiveRead seats a bare read of a name a PLACED speculative undef
+	// generalised (the tag hook, at the read token): the read gets its own
+	// value identity and a one-result event lowering to the live lookup at
+	// exactly that position, so the lookup — and the undefined_word a miss
+	// raises — executes where the interpreter reads, never delayed to the
+	// consumer or a residual re-push after a later effect (review of #464).
+	// A no-op for every other name, and when inactive.
+	NoteLiveRead(v *Value, name string, pos SrcPos)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
 	RememberOriginal(v Value)
@@ -500,6 +508,7 @@ func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
 func (inactiveEmit) RefuseCarriedUndef(string)                  {}
 func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)      {}
 func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
+func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }

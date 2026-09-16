@@ -258,7 +258,14 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 	// table means the pass moved no binding and the registry already stands
 	// at the base — the restore would clone the whole def table for nothing,
 	// on every run (the compiled-mode alloc guard runs one program 65 times).
-	if p.ReplayReg == r && len(p.BindTwins) > 0 {
+	// A program that PLACED a speculative undef restores too, twins or
+	// not: the check pass generalised the binding IN PLACE
+	// (core.GeneraliseSpecUndef — no ledger entry, no twin), so on a
+	// long-lived registry where the binding predates this request the
+	// live entry holds the pass's carrier until the base is put back
+	// (review of #464: `def k 5` then `if false [undef k] [] k` answered
+	// the carrier for the interpreter's 5).
+	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0) {
 		r.RestoreBindingsForReplay(p.ReplayBase)
 	}
 	return runVMEntry(p, r, stepLimit, func(vc *vmContext) ([]core.Value, error) {

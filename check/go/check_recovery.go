@@ -79,7 +79,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 //
 // Extracted from stepWord so the hot dispatch path stays under the cyclomatic-
 // complexity gate.
-func tagCheckModeDefRead(e *core.Engine, top *core.Value, name string) {
+func tagCheckModeDefRead(e *core.Engine, top *core.Value, name string, pos core.SrcPos) {
 	switch {
 	case top.Dynamic:
 		top.SetDynFrom(name)
@@ -87,6 +87,12 @@ func tagCheckModeDefRead(e *core.Engine, top *core.Value, name string) {
 		core.IsModuleFamilyValue(*top)) && core.ModuleScopeBinding(e.Registry, name):
 		top.SetDynFrom(name)
 	}
+	// A read of a name a placed speculative undef generalised is seated at
+	// its read token as a live lookup (the sixty-eighth increment): the
+	// recorder gives this read its own identity and event, so the lookup —
+	// and the undefined_word it raises on a miss — executes here, not where
+	// the value is consumed or re-pushed after a later effect.
+	e.Registry.Check.Recorder().NoteLiveRead(top, name, pos)
 }
 
 // checkMixedFormAdvisories emits the two check-mode forward-greediness

@@ -310,6 +310,17 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
 	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
+	if needDyn && d.root && lw.twinInstalls(twin) {
+		// A ROOT def whose bind twin REPLAYS at this very site (a concrete
+		// captured entry, not written back) is registry-visible by that
+		// replay: a BIND_DYN_SCOPE beside it installed the binding TWICE,
+		// and a placed undef then popped one level and found the other
+		// (review of #464: `def k 5  if true [undef k] []  do [k]` answered
+		// 5 where the interpreter's body raises). A twin the replay skips —
+		// a carrier's, a written-back one — leaves the install to this op,
+		// as before.
+		needDyn = false
+	}
 	// A ROOT-unit def whose kept binding is NOT the runtime value
 	// additionally needs the cross-request write-back (OpBindGlobal): see
 	// rootBindWritesBack for the rule.
@@ -447,6 +458,18 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		}
 	}
 	return ""
+}
+
+// twinInstalls reports whether the replay of twin idx INSTALLS its captured
+// entry — the push rule core.ApplyBindTwin applies: a value entry that is
+// concrete (or a bare type node) and not written back. A carrier's entry is
+// skipped there, and so is a written-back one; -1 is no twin.
+func (lw *lowerer) twinInstalls(idx int) bool {
+	if idx < 0 || idx >= len(lw.p.BindTwins) || idx >= len(lw.p.BindTwinEntries) || lw.p.BindTwins[idx].WrittenBack {
+		return false
+	}
+	e := lw.p.BindTwinEntries[idx]
+	return e.TypeDef == nil && (core.IsConcrete(e.Body) || core.IsBareTypeNode(e.Body))
 }
 
 // noteTwin records a just-lowered PUSH-kind twin as the pending pair for
@@ -760,12 +783,6 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 	case opType:
 		lw.emit(OpPushType, op.idx, pos)
 	case opDynScope:
-		// A live read a placed speculative undef made carries its own token
-		// position (EmitOperand.pos): the miss raises there, where the
-		// interpreter stamps its undefined_word.
-		if op.pos.Row != 0 {
-			pos = op.pos
-		}
 		lw.emit(OpLookupDynScope, op.idx, pos)
 	case opDataScope:
 		lw.emit(OpLookupDynScopeData, op.idx, pos)
@@ -2703,6 +2720,12 @@ func (lw *lowerer) opsHaveVariadicResult(ops []EmitOperand) bool {
 
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
+	if c.live {
+		// A live read seated as an event (NoteLiveRead): the lookup at the
+		// read's own token, its one result seated as any call's.
+		lw.emit(OpLookupDynScope, c.liveName, c.pos)
+		return lw.seatCallResults(ev, c)
+	}
 	if lw.collectRegionTop(ev) {
 		return ""
 	}
@@ -2865,6 +2888,14 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.note()
 		return ""
 	}
+	return lw.seatCallResults(ev, c)
+}
+
+// seatCallResults seats a call's results on the simulated stack: a promoted
+// result is stored into its frame slot(s) now, a dead one dropped, and any
+// other pushed as one slot per result. Shared by every evCall lowering,
+// the live read included.
+func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 	// A promoted result: store it into a frame slot now and re-push it per
 	// reference / per residual position (the references were rewritten to local
 	// operands). A single-result value-def stores one slot; a multi-output stack

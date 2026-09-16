@@ -40,7 +40,7 @@ func TestInactiveCheckBraid(t *testing.T) {
 	if err := inactiveSpliceFnValueCheckResult(nil, 0, 0, FnDefInfo{}, nil, nil); err != nil {
 		t.Fatal("inactive spliceFnValue must be nil error")
 	}
-	inactiveTagCheckModeDefRead(nil, nil, "x")
+	inactiveTagCheckModeDefRead(nil, nil, "x", SrcPos{})
 	if inactiveTryDynamicFnValueDispatch(nil, 0) {
 		t.Fatal("inactive dynamicFnValue must decline")
 	}

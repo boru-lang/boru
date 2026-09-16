@@ -2602,7 +2602,7 @@ func (e *Engine) stepWord(val Value) error {
 				// escape analysis) — the one measured regression of the
 				// slot conversion (TestInterpAllocCeilings).
 				tagged := top
-				CheckBraid.TagCheckModeDefRead(e, &tagged, w.Name)
+				CheckBraid.TagCheckModeDefRead(e, &tagged, w.Name, val.Pos())
 				top = tagged
 			}
 			e.Tape.Set(e.Pointer, top)

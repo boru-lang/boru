@@ -154,12 +154,12 @@ func TestSpecUndefFwdSlot(t *testing.T) {
 }
 
 // The lowering of a placed speculative undef is OpUndefDynScope at its
-// site, consuming nothing; a live operand carrying its read position is
-// pushed at that position, and one without it at the consumer's.
-func TestLowerSpeculativeUndefAndLiveReadPosition(t *testing.T) {
+// site, consuming nothing; a live read seated as an event lowers to the
+// lookup at the read's own token with one result on the sim; and a read
+// the placement did not seat refuses at the rescue.
+func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	undefAt := core.SrcPos{Row: 2, Col: 3}
 	readAt := core.SrcPos{Row: 4, Col: 5}
-	consumerAt := core.SrcPos{Row: 4, Col: 9}
 	cf := &CompiledFn{}
 	es := NewEmitState()
 	lw := &lowerer{es: es, p: &Program{}, code: &cf.Code, debug: &cf.Debug,
@@ -173,13 +173,46 @@ func TestLowerSpeculativeUndefAndLiveReadPosition(t *testing.T) {
 	if name, err := es.consts[cf.Code[0].Arg].AsConcreteString(); err != nil || name != "k" {
 		t.Fatalf("the op names the binding: %v %v", name, err)
 	}
-	idx := es.intern(core.NewString("k"))
-	op := dynScopeOperand(idx)
-	op.pos = readAt
-	lw.pushOperand(op, consumerAt)
-	lw.pushOperand(dynScopeOperand(idx), consumerAt)
-	if len(cf.Code) != 3 || cf.Code[1].Op != OpLookupDynScope || cf.Debug[1] != readAt || cf.Code[2].Op != OpLookupDynScope || cf.Debug[2] != consumerAt {
-		t.Fatalf("a live read carries its own position, a plain one the consumer's: code=%v debug=%v", cf.Code, cf.Debug)
+	// The live read: the recorder seats it with its own identity and event.
+	es.specUndefNames = map[string]bool{"k": true}
+	v := core.NewCarrier(core.TInteger)
+	before := v.ID
+	es.NoteLiveRead(&v, "k", readAt)
+	pr, ok := es.producedBy[v.ID]
+	if v.ID == before || !ok || es.defReads[v.ID] != "k" || len(es.frames[0]) != 1 || !es.frames[0][0].call.live || es.frames[0][0].call.nout != 1 {
+		t.Fatalf("a live read gets its own identity and a one-result live event: id changed=%v produced=%v events=%d", v.ID != before, ok, len(es.frames[0]))
+	}
+	ev := es.frames[0][len(es.frames[0])-1]
+	if ev.seq != pr.seq {
+		t.Fatalf("the read's producer is the live event: %d vs %d", ev.seq, pr.seq)
+	}
+	if reason := lw.lowerCall(&ev); reason != "" {
+		t.Fatalf("the live event lowers: %s", reason)
+	}
+	if len(cf.Code) != 2 || cf.Code[1].Op != OpLookupDynScope || cf.Debug[1] != readAt || len(lw.vm) != 1 || lw.vm[0].seq != ev.seq {
+		t.Fatalf("the lookup sits at the read token with one result on the sim: code=%v debug=%v vm=%v", cf.Code, cf.Debug, lw.vm)
+	}
+	if op, ok := es.resolveOperand(v); !ok || op.kind != opEvent {
+		t.Fatalf("the read resolves to its event: %+v %v", op, ok)
+	}
+	// Other names, a nil value and an inactive recorder: nothing seated.
+	w := core.NewCarrier(core.TInteger)
+	es.NoteLiveRead(&w, "z", readAt)
+	es.NoteLiveRead(nil, "k", readAt)
+	resume := es.Suspend()
+	es.NoteLiveRead(&w, "k", readAt)
+	resume()
+	if len(es.frames[0]) != 1 {
+		t.Fatalf("only a generalised name's live read is seated: events=%d", len(es.frames[0]))
+	}
+	// A read of the name that reaches the rescue instead refuses.
+	es3 := NewEmitState()
+	es3.reg, _ = core.NewRegistry()
+	es3.specUndefNames = map[string]bool{"k": true}
+	c := core.NewCarrier(core.TInteger)
+	es3.defReads = map[string]string{c.ID: "k"}
+	if _, ok := es3.dynScopeRescue(c); ok || es3.Compilable || !strings.Contains(es3.Reason, "read of `k` after a placed undef the placement did not seat") {
+		t.Fatalf("an unseated read refuses: ok=%v %q", ok, es3.Reason)
 	}
 	// Finalize hands the placed names to the Program.
 	es2 := NewEmitState()
@@ -188,7 +221,38 @@ func TestLowerSpeculativeUndefAndLiveReadPosition(t *testing.T) {
 	if !ok || p == nil || !p.SpecUndefNames["k"] {
 		t.Fatalf("the program carries the placed names: ok=%v reason=%q", ok, reason)
 	}
-	if _, ok := p.Disassemble(), true; !ok || !strings.Contains(cf.Code[0].Op.String(), "UNDEF_DYN_SCOPE") {
+	if !strings.Contains(cf.Code[0].Op.String(), "UNDEF_DYN_SCOPE") {
 		t.Fatal("the opcode names itself")
+	}
+}
+
+// twinInstalls mirrors core.ApplyBindTwin's push rule: a concrete (or bare
+// type node) value entry that is not written back installs; a carrier's
+// entry, a written-back one, a type entry and no twin at all do not. A root
+// def whose twin installs emits no BIND_DYN_SCOPE beside the replay.
+func TestTwinInstallsAndRootDynBindSkip(t *testing.T) {
+	es := NewEmitState()
+	es.dynScopeNames = map[string]bool{"k": true}
+	cf := &CompiledFn{}
+	p := &Program{
+		BindTwins:       []core.BindTransition{{Kind: core.BindDef, Name: "k"}, {Kind: core.BindDef, Name: "c"}, {Kind: core.BindDef, Name: "w", WrittenBack: true}, {Kind: core.BindTypeInstall, Name: "T"}},
+		BindTwinEntries: []core.DefEntry{{Body: core.NewInteger(5)}, {Body: core.NewCarrier(core.TInteger)}, {Body: core.NewInteger(5)}, {Body: core.NewTypeLiteral(core.TInteger), TypeDef: core.TInteger}},
+	}
+	lw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug,
+		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, promoted: map[int]int{}}
+	if !lw.twinInstalls(0) || lw.twinInstalls(1) || lw.twinInstalls(2) || lw.twinInstalls(3) || lw.twinInstalls(-1) || lw.twinInstalls(9) {
+		t.Fatal("twinInstalls: concrete yes; carrier, written-back, type, none: no")
+	}
+	pos := core.SrcPos{Row: 1, Col: 5}
+	// The root def of k, paired with its concrete twin: no second install.
+	lw.noteTwin(0)
+	if reason := lw.lowerDynBind(&EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "k", srcSeq: -1, residentTwin: -1, root: true, depth: 1, val: core.NewInteger(5), pos: pos}}); reason != "" || len(cf.Code) != 0 {
+		t.Fatalf("a root def its twin replays emits nothing: %q code=%v", reason, cf.Code)
+	}
+	// The same def with a CARRIER twin keeps its BIND_DYN_SCOPE.
+	es.dynScopeNames["c"] = true
+	lw.noteTwin(1)
+	if reason := lw.lowerDynBind(&EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "c", srcSeq: -1, residentTwin: -1, root: true, depth: 1, val: core.NewInteger(5), pos: pos}}); reason != "" || len(cf.Code) != 2 || cf.Code[1].Op != OpBindDynScope {
+		t.Fatalf("a root def whose twin is skipped keeps the install: %q code=%v", reason, cf.Code)
 	}
 }

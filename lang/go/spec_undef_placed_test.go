@@ -55,6 +55,21 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		// A read BEFORE the region keeps its bake, routed or const.
 		{`def k 5 end k for 2 [ undef k ] 9`, "[5 9]", false},
 		{`def k 5 end def go fn [[][Integer][add k 1]] end go if true [undef k] [] 9`, "[6 9]", false},
+		// Every read is seated AT ITS TOKEN (review of #464): the lookup, and
+		// the undefined_word it raises, executes before a later effect and
+		// before the value is consumed — at the first k, with nothing printed;
+		// two reads in one statement each carry their own caret; a read the
+		// undef follows in the same loop body raises on the second pass.
+		{`def k 5 end if true [undef k] [] k (print "x") k`, "undefined_word@1:34", true},
+		{`def k 5 end if true [undef k] [] k k add`, "undefined_word@1:34", true},
+		{`def k 5 end for 2 [ k undef k ] 9`, "undefined_word@1:21", true},
+		{`def k 5 end if false [undef k] [] k k add`, "[10]", true},
+		{`def k 5 end if false [undef k] [] k drop 9`, "[9]", true},
+		// A dynamic code body's read after the region (review of #464): the
+		// root def is installed ONCE — its twin's replay — so the placed undef
+		// pops the binding the body then misses, and `do` catches the raise on
+		// both lanes.
+		{`def k 5 end if true [undef k] [] do [k]`, "", false},
 	}
 	for _, c := range compiled {
 		a, err := New()
@@ -87,6 +102,12 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 			}
 			continue
 		}
+		if c.want == "" {
+			if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+				t.Errorf("%q: both lanes answer alike: compiled=%v/%v interp=%v/%v", c.src, gotC, errC, gotI, errI)
+			}
+			continue
+		}
 		if errC != nil || fmt.Sprint(gotC) != c.want {
 			t.Errorf("%q: compiled=%v/%v, want %s", c.src, gotC, errC, c.want)
 		}
@@ -99,8 +120,8 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	// a loop carries (its reads are slot reads — the loop's joined twin
 	// replays one install for N iterations, so `for 2 [ def k 6 ] undef k k`
 	// answered the pre-loop 5 for the interpreter's 6 on main), a `def` of
-	// the name inside the region that undefs it, a residual read the undef
-	// follows, and a FORWARD-slot read of the popped name (the interpreter
+	// the name inside the region that undefs it, and a FORWARD-slot read of
+	// the popped name (the interpreter
 	// collects the unbound word as a Word value and raises the no-match at
 	// the dispatching word — the routed dispatch's arm, not the lookup's).
 	refused := []struct{ src, reason string }{
@@ -117,7 +138,6 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def k 5 end if true [undef k def k 6] [] k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end for 2 [ undef k def k 6 ] k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end def f fn [[][Integer][if true [undef k] [] def k 6 end k]] end f k`, "def of `k` inside the region that undefs it"},
-		{`def k 5 end for 2 [ k undef k ] 9`, "residual read of `k` precedes its rebind"},
 		{`def k 5 end if true [undef k] [] add k 1`, "forward-slot read of `k` after a placed undef"},
 		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  undef k ]`, "forward-slot read of `k` after a placed undef"},
 		{`def k 5 end def go fn [[][Integer][sub 1 k]] end if true [undef k] [] go`, "forward-slot read of `k` after a placed undef"},
@@ -155,6 +175,34 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		}
 		if fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
 			t.Errorf("%q: compiled=%v interp=%v, want %s", c.src, gotC, gotI, c.want)
+		}
+	}
+}
+
+// The binding predates the compiled request (a long-lived registry, review
+// of #464): the check pass generalised it in place with no twin to trigger
+// the replay's restore, so the live entry held the pass's carrier — the
+// program answered the carrier for the interpreter's 5. A program that
+// placed a speculative undef restores the base before it runs, twins or
+// not, and the request after it reads the binding the base holds.
+func TestSpeculativeUndefAcrossRequests(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range []string{`def k 5`, `if false [undef k] [] k`, `k`, `if true [undef k] [] 1`, `k`} {
+		gotC, ran, errC := a.RunCompiled(src)
+		gotI, errI := b.RunInterp(src)
+		if !ran && src != `k` {
+			t.Errorf("%q: compiles on the long-lived registry: %v", src, errC)
+		}
+		requireParityHead(t, src, gotC, errC, gotI, errI)
+		if src == `k` && errI == nil && (errC != nil || fmt.Sprint(gotC) != "[5]") {
+			t.Errorf("%q: the base binding stands after the request: %v %v", src, gotC, errC)
 		}
 	}
 }

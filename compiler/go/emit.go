@@ -106,14 +106,6 @@ type EmitOperand struct {
 	// pushed closure VALUE (core.ClosurePayload) rather than to the shared
 	// unit — see that type's field comment for why the unit is the wrong home.
 	closureRet *ClosureRetSpec
-	// pos is the READ's own token position, carried only by a dyn-scope
-	// operand a placed speculative undef made live (dynScopeRescue): the
-	// VM raises the interpreter's undefined_word from it on a miss, and the
-	// interpreter stamps that error at the read token, not at the word
-	// that consumes the value (`k add 2` raises at `k`) nor at the region
-	// whose residual re-pushes it. Zero for every other operand, whose
-	// push takes the consumer's position as before.
-	pos core.SrcPos
 }
 
 // ConstOperand / EventOperand / localOperand / typeOperand build the indexed
@@ -252,6 +244,8 @@ type emitCall struct {
 	xmlTmpl           *core.XmlTmpl // assemble len(ops) hole operands into an XML element (OpInterpXml, §9.2c)
 	spliceDyn         bool          // spread the ONE laid-out payload operand at run time (OpSpliceDyn, §9.2b)
 	diverges          bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
+	live              bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
+	liveName          int           // the read name's const index, meaningful only when live
 	// typedBind, when non-nil, marks this event as a typed value-def's runtime
 	// validate/reparent step (OpBindTyped over the single operand) instead of a
 	// word dispatch — recorded by RecordTypedBind from the def handler's
@@ -1188,15 +1182,6 @@ type EmitState struct {
 	// and files it under routedNames — a live read whose root binding is
 	// the bind twin's replay, with frame twins only. Nil until first use.
 	specUndefNames map[string]bool
-	// liveReadPos is the token position of the latest bare read of each
-	// value ID whose name a placed speculative undef generalised
-	// (NoteLocalRead, program-wide — the per-unit localReads table stops
-	// at the root). The live operand the read lowers to carries it
-	// (EmitOperand.pos), so the VM's undefined_word on a miss sits where
-	// the interpreter's does: at the read token. The latest read wins,
-	// so two reads of one name in one statement share the later's caret.
-	// Nil until first use.
-	liveReadPos map[string]core.SrcPos
 }
 
 // routedBindsDyn reports whether a def event owes the routed-read channel a
@@ -5107,6 +5092,45 @@ func (es *EmitState) RecordSpeculativeUndef(name string, pos core.SrcPos) {
 		es.specUndefNames = map[string]bool{}
 	}
 	es.specUndefNames[name] = true
+	// The name's reads are dynamic-scope reads from here (NoteLiveRead):
+	// frame twins for a unit's own binding of the name, none for the root
+	// def its bind twin already replays — routedNames' channel.
+	if es.routedNames == nil {
+		es.routedNames = map[string]bool{}
+	}
+	es.routedNames[name] = true
+}
+
+// NoteLiveRead seats a bare read of a generalised name AT ITS TOKEN (the
+// tag hook, core.EmitRecorder): the read's value gets an identity of its
+// own — every read of the binding is otherwise the one carrier, and one ID
+// is one stack value to the recorder — and a one-result evCall marked live
+// that lowers to OpLookupDynScope at the read's position. The value then
+// flows by the ordinary stack discipline: consumed where it is consumed,
+// promoted when referenced twice, dropped when never, re-pushed as a
+// residual — and the lookup, with the undefined_word a miss raises, has
+// already executed where the interpreter reads (review of #464: `if true
+// [undef k] []  k (print "x") k` printed x before raising at the second k
+// where the interpreter raises at the first, and two reads shared one
+// caret). Nothing for any other name, for a concrete read (below), or when
+// inactive.
+func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
+	if !es.Active() || v == nil || name == "" || !es.specUndefNames[name] || core.IsConcrete(*v) {
+		// A CONCRETE read of the name is a binding a later `def` made after
+		// the region (`if c [undef k] []  def k 6  k`): program order is
+		// analysis order at root, the region has run, and the bake is the
+		// read — as it was before this name was ever generalised.
+		return
+	}
+	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
+	if es.defReads == nil {
+		es.defReads = map[string]string{}
+	}
+	es.defReads[v.ID] = name
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
+		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)),
+	}})
+	es.setProduced(*v, seq)
 }
 
 // undefRefusal names the shape refuseUndef is asked about.
@@ -5140,6 +5164,10 @@ const (
 	// unbound-slot arm (the sixty-sixth increment's undefined_word) raises.
 	// The routed dispatch owns that arm; until it does, the shape refuses.
 	fwdReadAfterSpecUndef
+	// unseatedRead: a read of a generalised name that reached the dyn-scope
+	// rescue instead of NoteLiveRead's event — a read path the tag hook does
+	// not cover, whose lookup would otherwise execute at the consumer.
+	unseatedRead
 )
 
 // refuseUndef is the one refusal site behind the undef hooks and the
@@ -5157,6 +5185,8 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 		reason = "def of `" + name + "` inside the region that undefs it: the compiled program cannot place the install after the placed undef (the binder half)"
 	case kind == fwdReadAfterSpecUndef:
 		reason = "forward-slot read of `" + name + "` after a placed undef: an unbound slot's collection is the routed dispatch's (the binder half)"
+	case kind == unseatedRead:
+		reason = "read of `" + name + "` after a placed undef the placement did not seat at its token (the binder half)"
 	case kind == undefCarried && es.Active() && es.nameCarried(name):
 		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
@@ -8359,20 +8389,14 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 		return EmitOperand{}, false
 	}
 	if es.specUndefNames[name] {
-		// A read of a name a PLACED speculative undef may have popped
-		// (RecordSpeculativeUndef): the model holds a carrier with no
-		// compiled home, at any depth, and the live lookup is the one
-		// reading the interpreter does — it finds the binding when the
-		// region did not run and misses (deferring, to the undefined_word
-		// the interpreter raises) when it did. Filed under routedNames:
-		// frame twins only; the root binding is the bind twin's replay.
-		if es.routedNames == nil {
-			es.routedNames = map[string]bool{}
-		}
-		es.routedNames[name] = true
-		op := dynScopeOperand(es.intern(core.NewString(name)))
-		op.pos = es.liveReadPos[v.ID]
-		return op, true
+		// A read of a name a PLACED speculative undef generalised is seated
+		// at its read token as its own event (NoteLiveRead), so it never
+		// reaches this rescue. One that does — a read path the tag hook does
+		// not cover — would lower to a lookup delayed to its consumer or a
+		// residual re-push, past any effect in between (review of #464):
+		// refuse it through the undef site rather than seat it late.
+		es.refuseUndef(name, unseatedRead)
+		return EmitOperand{}, false
 	}
 	if len(es.units) <= 1 {
 		// Top level: an S5 first-value loop bind reads through the registry
@@ -11668,16 +11692,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // comes after it is a value the interpreter's stack holds at the
 // statement and the compiled stack does not yet.
 func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
-	if !es.Active() || id == "" || pos.Row == 0 {
-		return
-	}
-	if name := es.defReads[id]; name != "" && es.specUndefNames[name] {
-		if es.liveReadPos == nil {
-			es.liveReadPos = map[string]core.SrcPos{}
-		}
-		es.liveReadPos[id] = pos
-	}
-	if len(es.openUnitRecs) == 0 {
+	if !es.Active() || id == "" || pos.Row == 0 || len(es.openUnitRecs) == 0 {
 		return
 	}
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]

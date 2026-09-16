@@ -25,6 +25,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.RecordDynUndef("x", SrcPos{})
 	e.RefuseSpeculativeUndef("x")
 	e.RecordSpeculativeUndef("x", SrcPos{})
+	e.NoteLiveRead(nil, "x", SrcPos{})
 	e.FnBodyGuard()()
 
 	// --- refusal + site accounting.
