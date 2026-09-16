@@ -8658,6 +8658,39 @@ records (`TestSpeculativeUndefIsPlacedAndReadLive`'s routed rows;
 `TestForwardSlotOfGeneralisedNameRoutes` on the seam). No corpus row is
 touched; the routed count stays 676.
 
+### The review's three
+
+Codex read the first cut and raised three things; one reproduced.
+
+- **A placeholder mark outlives the round that made it.** The mark is
+  keyed by event seq, and a discarded loop-analysis round's seqs are
+  reissued by the round that stabilises — so after `def k 5  if false
+  [undef k] []  def a 1  for 2 [def a (a add 0.5)  k add k 1 drop]` the
+  first round's mark landed on the second round's stack read of `k` and
+  lowered it to a placeholder push where a lookup was owed. `Rollback`
+  prunes the marks above its checkpoint with the rest of the round
+  (`TestRollbackPrunesLivePlaceholders`; the row is a compiled row now).
+- **A root region led by a conditional fn.** The concern was a routed
+  root region whose word is a fn defined inside a branch. Measured: the
+  CLI's check gate flags the read as `undefined_word` before any run, and
+  `RunCompiled` refuses it through family L's guard (a fn redefined inside
+  a conditional body shadows an outer overload); only the check-and-emit
+  program routes it — exactly as the committed call did before this
+  increment. Nothing here changes; the shape is family L's, the next
+  slice's.
+- **The user-poly seat.** The concern was a claimed forward slot reading
+  a generalised name at `CALL_USER_POLY`, which has no window to collect
+  a word from. Measured across the shapes that reach a multi-arm user fn
+  — a generalised Any (`def k (id 5)`), a generalised disjunct join, a
+  generalised Integer beside a disjunct — none reaches that seat: a plain
+  carrier of the generalised type fails the static match and lands in the
+  rematch trap, whose operand layout refuses (the read's identity is its
+  event's, the window resolves the binding's), or in the recovery, whose
+  arm plan declines. Two refusals drafted at the user-poly record and the
+  rematch record fired for no shape and were dropped; the three shapes
+  are refused rows (`TestSpeculativeUndefIsPlacedAndReadLive`), answering
+  as the interpreter does under the hatch.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

@@ -263,3 +263,21 @@ func TestTwinInstallsAndRootDynBindSkip(t *testing.T) {
 		t.Fatalf("a root def whose twin is skipped keeps the install: %q code=%v", reason, cf.Code)
 	}
 }
+
+// Rollback prunes the placeholder marks above its checkpoint (review of
+// #465): a mark is keyed by event seq, and the seqs a discarded loop round
+// issued are reissued by the round that stabilises — an unpruned mark would
+// land on that round's live read and lower it to a placeholder push where a
+// lookup is owed. Marks at or below the checkpoint stay.
+func TestRollbackPrunesLivePlaceholders(t *testing.T) {
+	es := NewEmitState()
+	es.RecordSpeculativeUndef("k", core.SrcPos{Row: 1, Col: 1})
+	cp := es.Checkpoint()
+	es.RecordSpeculativeUndef("j", core.SrcPos{Row: 1, Col: 9})
+	kept := cp.(emitCheckpoint).seq // the undef of k's own seq: at the checkpoint, kept
+	es.livePlaceholders = map[int]bool{kept: true, es.seq: true, es.seq + 3: true}
+	es.Rollback(cp)
+	if len(es.livePlaceholders) != 1 || !es.livePlaceholders[kept] {
+		t.Fatalf("Rollback keeps the marks at or below its checkpoint and drops the rest: %v", es.livePlaceholders)
+	}
+}

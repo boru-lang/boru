@@ -88,6 +88,10 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def k 5 end def g fn [[x:Any][Any][x]] end if true [undef k] [] g k`, "undefined_word@1:67", false, true},
 		{`def k 5 end def f fn [[x:Any][Any][x get k]] end if true [undef k] [] f {k:1}`, "undefined_word@1:42", false, true},
 		{`def k 5 end def f fn [[x:Any][Any][add x k]] end if true [undef k] [] f 1`, "signature_error@1:36", false, true},
+		// A routed slot inside a loop the analysis re-rounds (review of
+		// #465): the discarded round's placeholder mark is pruned with its
+		// events, so the stabilised round's read keeps its lookup.
+		{`def k 5 end if false [undef k] [] (print "x") def a 1 end for 2 [def a (a add 0.5) end k add k 1 drop]`, "[5 5]", true, true},
 	}
 	for _, c := range compiled {
 		a, err := New()
@@ -161,6 +165,18 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		// it late.
 		{`def k 5 end if true [undef k] [] add k k/v`, "read of `k` after a placed undef the placement did not seat"},
 	}
+	// A dispatch the static match cannot commit — a multi-arm user fn over a
+	// generalised Any or disjunct binding, or beside one — never reaches the
+	// generic seat: the rematch trap's operand layout refuses it (the read's
+	// identity is its event's, not the binding's the window resolves), and
+	// the recovery's arm plan declines a plain carrier (review of #465). Both
+	// are upstream of the undef site, and the hatch answers as the
+	// interpreter does.
+	refused = append(refused, []struct{ src, reason string }{
+		{`def c false end def id fn [[x:Any][Any][x]] end def k (id 5) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
+		{`def c false end def m {e: true} end def k (if (m "e" get) [7] ["s"]) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
+		{`def c false end def m {e: true} end def v (if (m "e" get) [7] ["s"]) end def k 5 end def g2 fn [[a:Integer x:Integer][Integer][a] [a:Integer x:String][Integer][a add 1]] end if c [undef k] [] g2 k v`, "unmatched dispatch recovered at g2"},
+	}...)
 	for _, c := range refused {
 		a, err := New()
 		if err != nil {

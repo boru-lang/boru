@@ -5377,6 +5377,17 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 			delete(es.producedBy, id)
 		}
 	}
+	// A placeholder mark is keyed by event seq, and the seqs above the
+	// checkpoint are reissued by the next round: a discarded round's mark
+	// would otherwise land on whatever live read the stabilised round
+	// records under the same seq, lowering it to a placeholder push where
+	// a lookup is owed (review of #465: `for 2 [def a (a add 0.5)  k add k
+	// 1 drop]` after a placed undef drifted the routed claim).
+	for seq := range es.livePlaceholders {
+		if seq > cp.seq {
+			delete(es.livePlaceholders, seq)
+		}
+	}
 	es.SiteCounts = cp.siteCounts
 	es.seq = cp.seq
 	es.captured = nil
