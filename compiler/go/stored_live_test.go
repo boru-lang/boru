@@ -64,6 +64,16 @@ func TestStoredLiveSeats(t *testing.T) {
 	if !es.unitLiveNames(unit)["k"] || es.unitLiveNames(unit)[""] {
 		t.Fatalf("noted live on the unit: %v", es.unitLiveNames(unit))
 	}
+	// NoteFrozenRead over an open index whose record is nil notes nothing
+	// (the guard ahead of the stored arm).
+	es.fnRecs = append(es.fnRecs, nil)
+	es.openUnitRecs = append(es.openUnitRecs, len(es.fnRecs)-1)
+	es.NoteFrozenRead("k", core.FrozenBakeValue, 1)
+	es.openUnitRecs = es.openUnitRecs[:len(es.openUnitRecs)-1]
+	es.fnRecs = es.fnRecs[:len(es.fnRecs)-1]
+	if es.fnRecs[unit].storedBakes["k"] != 0 {
+		t.Fatal("a nil record takes no bake note")
+	}
 	// Seats against bakes: a name read both ways — one seat, two bake
 	// notes (a `/v` beside the seated read) — is not live for the ref.
 	es.noteUnitBaked("k")
