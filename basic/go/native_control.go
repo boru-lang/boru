@@ -268,7 +268,7 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	return result, nil
 }
 
-// bodyErrorPropagates reports whether a `do` / `eval` body error must be
+// bodyErrorPropagates reports whether a `do` body error must be
 // RE-RAISED rather than trapped as an Error value. Two kinds cross the
 // escape hatch unchanged:
 //
@@ -520,9 +520,6 @@ func DoEvalList(r *Registry, elems []Value) ([]Value, error) {
 	copy(input, elems)
 	result, err := sub.Run(input)
 	if err != nil {
-		if bodyErrorPropagates(err) {
-			return nil, err
-		}
 		return []Value{NewError(err)}, nil
 	}
 	return result, nil

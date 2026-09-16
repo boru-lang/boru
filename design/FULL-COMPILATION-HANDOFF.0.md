@@ -9184,7 +9184,7 @@ CALL_NATIVE_POLY no match …)` compiled — the internal message as DATA. A
 designed defer (an internal_error the compiled VM raises to request
 whole-program fallback — a poly no-match, NUR147; `DISPATCH_GENERIC` with
 no live unit; …) raised inside a `do` body was TRAPPED as an Error value by
-the escape hatch (`DoListHandler` / `DoEvalList`), which exempted only an
+the escape hatch (`DoListHandler`), which exempted only an
 `IO.exit` request. Stranded, the defer never reached the top-level run that
 re-runs interpreted: the internal message surfaced as data at top level, or
 an enclosing fn's return contract rejected the Error (`type_error … got
