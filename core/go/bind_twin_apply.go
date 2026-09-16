@@ -48,9 +48,7 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 		// deliberately zero (check_state.go). Retirement mirrors basic's
 		// undef: only a node THIS binding minted; an adopted alias node
 		// stays in the lattice.
-		if e, ok := r.Defs.PopEntry(tr.Name); ok && e.TypeDef != nil && e.Minted {
-			r.Types.Retire(e.TypeDef)
-		}
+		PopLiveBinding(r, tr.Name)
 	case BindSigUndef:
 		applyTwinSigUndef(r, tr.Name, entry.Body)
 	case BindDefReplace:

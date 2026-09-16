@@ -62,13 +62,13 @@ func TestTagCheckModeDefRead(t *testing.T) {
 	// A dynamic bound value tags the def it came from, so a later
 	// diagnostic can name its origin.
 	dyn := core.NewDynamicCarrier(core.TAny)
-	tagCheckModeDefRead(e, &dyn, "srcdef")
+	tagCheckModeDefRead(e, &dyn, "srcdef", core.SrcPos{})
 	if dyn.DynFrom() != "srcdef" {
 		t.Errorf("a dynamic def read must tag its origin, got %q", dyn.DynFrom())
 	}
 	// A concrete read is left untagged.
 	conc := core.NewInteger(3)
-	tagCheckModeDefRead(e, &conc, "srcdef")
+	tagCheckModeDefRead(e, &conc, "srcdef", core.SrcPos{})
 	if conc.DynFrom() != "" {
 		t.Error("a concrete def read must stay untagged")
 	}
@@ -219,7 +219,7 @@ func TestTagCheckModeDefReadFlexArm(t *testing.T) {
 	if !core.IsFlexMap(flex) {
 		t.Fatal("construction must satisfy IsFlexMap")
 	}
-	tagCheckModeDefRead(e, &flex, "fm")
+	tagCheckModeDefRead(e, &flex, "fm", core.SrcPos{})
 	if flex.DynFrom() != "fm" {
 		t.Errorf("a module-scope flex read must tag its def, got %q", flex.DynFrom())
 	}

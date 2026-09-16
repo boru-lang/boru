@@ -24,9 +24,7 @@ func ApplyResidentBind(r *Registry, name string, undef bool, v Value) {
 		return
 	}
 	if undef {
-		if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted {
-			r.Types.Retire(e.TypeDef)
-		}
+		PopLiveBinding(r, name)
 		return
 	}
 	InstallDef(r, name, v)

@@ -69,7 +69,7 @@ var CheckBraid = struct {
 	SpliceAnonCheckResult        func(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error
 	SpliceCheckResults           func(e *Engine, positions []int, results []Value)
 	SpliceFnValueCheckResult     func(e *Engine, valIdx, nArgs int, fnDef FnDefInfo, sig *FnSig, args []Value) error
-	TagCheckModeDefRead          func(e *Engine, top *Value, name string)
+	TagCheckModeDefRead          func(e *Engine, top *Value, name string, pos SrcPos)
 	TryDynamicFnValueDispatch    func(e *Engine, valIdx int) bool
 	TryMemberFnArrivalDispatch   func(e *Engine, valIdx int) bool
 	// ParenPlacedFnCarrier reports whether the value at idx is an
@@ -158,7 +158,7 @@ func inactiveSpliceFnValueCheckResult(e *Engine, valIdx, nArgs int, fnDef FnDefI
 	return nil
 }
 
-func inactiveTagCheckModeDefRead(e *Engine, top *Value, name string) {}
+func inactiveTagCheckModeDefRead(e *Engine, top *Value, name string, pos SrcPos) {}
 
 func inactiveTryDynamicFnValueDispatch(e *Engine, valIdx int) bool { return false }
 

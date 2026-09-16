@@ -223,6 +223,17 @@ type CheckState struct {
 	// design (leak fidelity), matching the runtime.
 	SpecBaselines []map[string]int
 
+	// SpecUndefCarriers maps a name to the ID of the carrier
+	// GeneraliseSpecUndef put in place of its binding's value after a
+	// speculative undef (spec_undef.go): the model keeps the binding, its
+	// value is unknown from that point, and a second undef of the same
+	// generalised binding re-mints nothing. SpecUndefGen counts the
+	// generalisations; the loop analysis re-rounds when it moves inside a
+	// round, so reads recorded before the undef in the same body are
+	// re-recorded against the carrier.
+	SpecUndefCarriers map[string]string
+	SpecUndefGen      int
+
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
 	// gated on its provenTrips arg AND a sentinel-free body). Unlike the
@@ -933,6 +944,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnShapes = cloneMap(c.FnShapes)
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
+	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
 	}
@@ -1018,6 +1030,8 @@ func (c *CheckState) Begin() func() {
 	c.RolledBackBodyDepth = 0
 	c.LoopBodyDepth = 0
 	c.SpecBaselines = nil
+	c.SpecUndefCarriers = nil
+	c.SpecUndefGen = 0
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is

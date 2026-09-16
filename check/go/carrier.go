@@ -2326,6 +2326,14 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	prev := map[string]core.Value{}
 	for round := 0; round < loopAnalysisRounds; round++ {
 		r.Check.TruncateDiagnostics(diagBase)
+		// A speculative undef inside the body generalises an enclosing
+		// binding IN PLACE (core.GeneraliseSpecUndef): no depth grows, so
+		// the join below sees nothing, yet every read of the name recorded
+		// BEFORE the undef in this round baked the value the next iteration
+		// no longer has (`for 2 [ k  undef k ]`). A round that moved the
+		// generation is not stable; the next round reads the carrier from
+		// its first token and re-mints nothing, so it settles.
+		specGen := r.Check.SpecUndefGen
 		for i, n := range bindNames {
 			r.Defs.Push(n, bindVals[i])
 		}
@@ -2417,6 +2425,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				}
 			}
 			prev = joined
+		}
+		if r.Check.SpecUndefGen != specGen {
+			stable = false
 		}
 		if loopCapture && !stable && round < loopAnalysisRounds-1 {
 			es.Rollback(cp)

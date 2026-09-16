@@ -30,6 +30,8 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CaughtBodyDepth": true, "NestedBodyDepth": true, "CondBodyDepth": true,
 		"RolledBackBodyDepth":      true,
 		"SpecBaselines":            true,
+		"SpecUndefCarriers":        true,
+		"SpecUndefGen":             true,
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,

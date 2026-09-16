@@ -258,7 +258,14 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 	// table means the pass moved no binding and the registry already stands
 	// at the base — the restore would clone the whole def table for nothing,
 	// on every run (the compiled-mode alloc guard runs one program 65 times).
-	if p.ReplayReg == r && len(p.BindTwins) > 0 {
+	// A program that PLACED a speculative undef restores too, twins or
+	// not: the check pass generalised the binding IN PLACE
+	// (core.GeneraliseSpecUndef — no ledger entry, no twin), so on a
+	// long-lived registry where the binding predates this request the
+	// live entry holds the pass's carrier until the base is put back
+	// (review of #464: `def k 5` then `if false [undef k] [] k` answered
+	// the carrier for the interpreter's 5).
+	if p.ReplayReg == r && (len(p.BindTwins) > 0 || len(p.SpecUndefNames) > 0) {
 		r.RestoreBindingsForReplay(p.ReplayBase)
 	}
 	return runVMEntry(p, r, stepLimit, func(vc *vmContext) ([]core.Value, error) {
@@ -2832,6 +2839,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if rb.Pop {
 				stack = stack[:len(stack)-1]
 			}
+		case compiler.OpUndefDynScope:
+			// The placed transition of a speculative undef: pop the name's
+			// live top binding in the current registry — the interpreter's
+			// `undef` at this site — consuming nothing and riding no unwind
+			// trail (a binding popped stays popped, as the interpreter's
+			// does). A missing binding is the interpreter's no-op too.
+			name, nerr := p.Consts[in.Arg].AsConcreteString()
+			if nerr != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+				return nil, vmErrAt(curDebug, pc, "UNDEF_DYN_SCOPE bad name const")
+			}
+			core.PopLiveBinding(curReg, name)
 		case compiler.OpLookupDynScope:
 			// The interpreter's stepWord simple-value substitution, at run
 			// time: read the name's live binding. A miss, or a binding the
@@ -2843,6 +2861,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			v, ok := curReg.Defs.Top(name)
 			if !ok {
+				// A name a placed speculative undef may have popped
+				// (Program.SpecUndefNames): the miss IS the interpreter's
+				// undefined_word, raised from the read's own position —
+				// never deferred, since an effect performed before the read
+				// fences the re-run into an internal error.
+				if p.SpecUndefNames[name] {
+					return nil, stampAt(core.UndefinedWordDiag(curReg, curReg.Source, name, debugPosAt(curDebug, pc)), curDebug, pc, curReg)
+				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; deferring to the interpreter")
 			}
 			switch v.Data.(type) {
@@ -3058,6 +3084,15 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 
 // stampAt / vmErrAt are the per-unit debug-table variants of the
 // program-level error helpers.
+// debugPosAt is the debug table's position for pc — the zero position when
+// the table does not cover it, which stampAt then leaves unstamped.
+func debugPosAt(debug []core.SrcPos, pc int) core.SrcPos {
+	if pc >= 0 && pc < len(debug) {
+		return debug[pc]
+	}
+	return core.SrcPos{}
+}
+
 func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
 	ae, ok := err.(*core.BoruError)
 	if !ok {

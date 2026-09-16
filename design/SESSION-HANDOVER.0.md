@@ -82,12 +82,42 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–66 are on `main`. The most recent landings: #460 (increment
-64, the first routed dispatch), #461 (increment 65, the native seat routes)
-and #462 (increment 66, the routed dispatch raises its own diagnostics),
-all 2026-09-15.
+Increments 1–67 are on `main`. The most recent landings: #461 (increment
+65, the native seat routes), #462 (increment 66, the routed dispatch raises
+its own diagnostics), both 2026-09-15, and #463 (increment 67, the
+speculative undef refuses), 2026-09-16.
 
 ## What is in flight
+
+**Increment 68, the speculative undef is placed (2026-09-16, built on 67).**
+The binder half's lowering for the shape 67 refused: a speculative undef of
+a module-scope VALUE binding compiles. The model generalises the binding's
+value in place (`core.GeneraliseSpecUndef` — a carrier at the same depth,
+the generation moved, so no join, ledger or rollback sees a transition and
+every later read is non-concrete), the recorder seats the pop at its site
+(`OpUndefDynScope`, `core.PopLiveBinding`) and files the name's reads as
+live lookups under `routedNames`, the loop analysis re-rounds on a
+generalisation (`SpecUndefGen`), and a miss of such a name raises the
+interpreter's `undefined_word` at the read's own token (the live operand
+carries its position) instead of deferring — an effect before the read
+would fence the re-run. NUR144's stack-operand row, the branch arm, the
+loop, the `while`, the fn body and the module-call row compile with
+parity, positions included. Three shapes measured wrong on the way refuse
+through the one undef site: a `def` of the name inside its region, a name
+a loop carries (a post-loop `undef` of one answered the pre-loop value on
+main), and a forward-slot read of the popped name (the interpreter
+collects the unbound word as a Word and raises the no-match — the routed
+op's unbound-slot arm, the next slice on that op). The review of #464
+found three more, each fixed: a read lowered as an operand was delayed
+past a later effect (every read of a generalised name is now an EVENT at
+its token — `NoteLiveRead`, from the def-read tag hook — so the lookup
+executes where the interpreter reads), a root def under a dynamic code
+body was installed twice (its twin's replay and a BIND_DYN_SCOPE; a root
+def whose twin replays now emits no second install), and the generalised
+entry leaked into a long-lived registry (a program that placed an undef
+restores the rollback base, twins or not). NUR146 records the
+did-you-mean pool's divergence. Narrative: the sixty-eighth-increment
+section of FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 67, the speculative undef refuses (2026-09-15, built on 66).**
 The binder half's first slice, by measurement: NUR144's loop-body undef

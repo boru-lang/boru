@@ -567,6 +567,22 @@ const (
 	// either; the bridge proves the type expression element-independent
 	// before stamping the site (typeInstallElementIndependent).
 	OpBindResident
+	// OpUndefDynScope is the PLACED transition of a SPECULATIVE undef (the
+	// sixty-eighth increment): an `undef` of an enclosing binding inside a
+	// region the runtime may never execute — a branch arm, a loop body, a
+	// fn body — which the check pass keeps in its model (the wrapped-undef
+	// leniency, core.Registry.SpecUndefBlocked) and the bind ledger never
+	// notes. Arg indexes Program.Consts (a String holding the name); the op
+	// pops the name's live top binding in the CURRENT registry
+	// (core.PopLiveBinding — the same pop a replayed undef twin performs),
+	// consuming no stack and riding no unwind trail: it executes exactly
+	// when its site does, and a binding popped stays popped, as the
+	// interpreter's does. A missing binding is a no-op (a loop's second
+	// pass over the name). The model generalised the binding's value at
+	// the same site (core.GeneraliseSpecUndef), so every later read of the
+	// name is an OpLookupDynScope whose miss defers to the interpreter that
+	// raises the undefined_word.
+	OpUndefDynScope
 	// OpDeoptIfFn is the per-read DEOPT of a gradual word read (NUR123): a
 	// bare read of a frame binding the pass types dynamic(Any) — a body-
 	// local bound to a container element — that the model consumed as a
@@ -644,6 +660,7 @@ var opcodeNames = [...]string{
 	OpBindTwin:             "BIND_TWIN",
 	OpDeoptIfFn:            "DEOPT_IF_FN",
 	OpBindResident:         "BIND_RESIDENT",
+	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 }
 
 func (o Opcode) String() string {
@@ -1180,6 +1197,16 @@ type Program struct {
 	// replayed (the op carries the runtime value instead, which is the
 	// whole point). Only a twin-regime program carries entries.
 	ResidentBinds []ResidentBindSpec
+	// SpecUndefNames is every name a PLACED speculative undef may pop
+	// (OpUndefDynScope — the sixty-eighth increment). A dynamic-scope read
+	// of one of these that MISSES is the interpreter's own undefined_word
+	// — the binding was popped by a region that ran — so the VM raises it
+	// from the read's position instead of deferring: an effect performed
+	// before the read (a print inside the loop) fences the interpreter
+	// re-run a defer asks for, and the user saw the defer's internal error
+	// where the interpreter raises the word. Nil for a program that placed
+	// none.
+	SpecUndefNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass
@@ -1518,7 +1545,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope, OpUndefDynScope:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:
