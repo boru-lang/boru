@@ -326,25 +326,18 @@ func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 // conditional shadow while the interpreter keeps the outer fn when the branch
 // is not taken (or the loop runs zero times), so `if false [def g …] g 1`
 // returned the shadow's value compiled but the ORIGINAL interpreted. The fix
-// refused to compile the redefinition (CondBodyDepth-gated) so the
-// interpreter owned the shape — slow, not wrong. Since the seventieth
-// increment a BRANCH-arm redefinition at module scope is PLACED instead
-// (the family is speculative: the install at its site through the
-// interpreter's own installer, the dispatch routed with a live lead running
-// the live signature's own unit), so those rows compile with parity on both
-// paths; a loop or each body still refuses, through the placement's own
-// decline.
+// refuses to compile the redefinition (CondBodyDepth-gated) so the interpreter
+// owns the shape — slow, not wrong.
 func TestEdgeFindingConditionalFnShadowRefuses(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
-	want := "fn `g` defined inside a conditional body where the compiled program cannot place the install"
+	want := "redefined inside a conditional body"
 
-	// PLACED: a branch-arm redefinition of an outer fn, taken or not.
-	mustCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, "[101]") // branch not taken
-	mustCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, "[101]")
-	mustCompileWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, "[2]") // taken
-	// REFUSE: a loop or each body's redefinition.
-	mustRefuseWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want) // loop body
+	// REFUSE: every conditionally-reached redefinition of an outer fn.
+	mustRefuseWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, want) // branch not taken
+	mustRefuseWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, want)
+	mustRefuseWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want) // taken, still unsound-at-shape
+	mustRefuseWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)   // loop body
 	mustRefuseWithParity(t, `def g `+fnA+` ([1 2] each [def g `+fnB+`]) g 1`, want)
 
 	// COMPILE (must NOT over-refuse): the redefinition is UNCONDITIONAL.
@@ -529,9 +522,12 @@ func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	mustCompileWithParity(t,
 		`def g `+fnA+` case [def g `+fnB+` 5] [5 88 99] g 1`, "[88 2]")
 
-	// A redefinition in an ARM (conditionally reached) under a
-	// non-constant condition is PLACED since the seventieth increment: the
-	// arm's install at its site, the dispatch routed on the live lead.
+	// A redefinition in an ARM under a condition the model cannot decide
+	// (a code-body condition) is PLACED since the seventieth increment:
+	// the arm's install at its site through the interpreter's own
+	// installer, the dispatch routed on the live lead — parity on the
+	// taken path here, and on the not-taken path in
+	// TestConditionalFnDefIsSpeculative.
 	mustCompileWithParity(t,
 		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`, "[0 2]")
 }

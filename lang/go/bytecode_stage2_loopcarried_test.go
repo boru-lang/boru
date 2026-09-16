@@ -142,14 +142,12 @@ func TestLoopCarriedUndefStaysSound(t *testing.T) {
 // `add 1` when the loop runs ZERO times, so `(pickfn 0)` silently miscompiled
 // to 12 (should be 11) before this refusal landed; `(pickfn 2)` coincidentally
 // agreed at 12 because the loop runs. Refuse — compiled == interpreter at every
-// n (slow, not wrong). See the conditional-fn-shadow divergence fix; since
-// the seventieth increment the refusal is the placement's own decline of a
-// loop body (a branch arm's redefinition is placed instead).
+// n (slow, not wrong). See the conditional-fn-shadow divergence fix.
 func TestLoopCarriedFnValueRebindStaysSound(t *testing.T) {
 	base := `def pickfn fn [[n:Integer] [Integer] [def h ([x:Integer] => [x add 1]) for n [def h ([x:Integer] => [x add 2])] end (h 10)]]`
 	// The DEFINITION carries the unsound loop rebind, so every call refuses.
-	mustRefuseWithParity(t, base+"\n(pickfn 0)", "defined inside a conditional body where the compiled program cannot place")
-	mustRefuseWithParity(t, base+"\n(pickfn 2)", "defined inside a conditional body where the compiled program cannot place")
+	mustRefuseWithParity(t, base+"\n(pickfn 0)", "redefined inside a conditional body")
+	mustRefuseWithParity(t, base+"\n(pickfn 2)", "redefined inside a conditional body")
 	// The interpreter is the source of truth the refusal falls back to: the
 	// zero-iteration case (11) is exactly what the compiled bake got wrong.
 	for _, tc := range []struct {

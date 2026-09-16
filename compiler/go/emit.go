@@ -5182,23 +5182,31 @@ type pendingSpecFnDef struct {
 // install cannot be placed: a suspended recording, an arm-resident
 // bracket, a live armed loop (its body re-rounds and its defs are carried
 // by slot), a closure body compile.
-func (es *EmitState) RecordSpeculativeFnDef(name string, outer core.Value, pos core.SrcPos) {
-	if es == nil || !es.Compilable || name == "" {
-		return
+func (es *EmitState) RecordSpeculativeFnDef(name string, outer, fn core.Value, pos core.SrcPos) bool {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() {
+		// A closure body compile's transitions are the enclosing run's.
+		return false
 	}
 	replace := core.IsAppliableFn(outer)
 	inFnBody := es.reg != nil && es.reg.Check != nil && es.reg.Check.FnBodyDepth > 0
-	if !es.Active() || es.armResidentDepth > 0 || len(es.loopCarried) > 0 || es.inClosureBodyCompile() || (replace && inFnBody) || (replace && !fnSigsDeclared(outer)) {
-		// A fn body's fresh def is a FRAME binding its teardown pops, and
-		// the placed install inside a unit is OpBindDynScope, which the
-		// frame's RET unwinds — but a fn body's REPLACE is not: installDef's
+	if !es.Active() || es.armResidentDepth > 0 || len(es.loopCarried) > 0 || !fnSigsDeclared(fn) || (replace && (inFnBody || !fnSigsDeclared(outer))) {
+		// Not placeable: a suspended recording; an arm inside an each body
+		// (the resident bridge's) or an armed loop (its body re-rounds and
+		// carries its defs by slot); a placed value with no declaration
+		// site (a lambda) for the routed op to locate its unit by; a fn
+		// body's REPLACE — a fresh def there is a FRAME binding the
+		// frame's RET unwinds (OpBindDynScope), but installDef's
 		// drop-then-push leaves the frame's depth unchanged, so the
 		// interpreter's replacement outlives the call (the guard's own
 		// finding, the thirty-first increment), which no frame-scoped
-		// install reproduces. Refused, as a loop body's, an each body's and
-		// a suspended recording's are.
-		es.refuseUndef(name, specFnUnplaced)
-		return
+		// install reproduces; an outer with no declaration site. A REPLACE
+		// declined keeps installDef's own refusal (family L's); a FRESH
+		// def declined would keep the join's model, which is exactly the
+		// bug the placement exists for, so it refuses here.
+		if !replace {
+			es.refuseUndef(name, specFnUnplaced)
+		}
+		return false
 	}
 	if es.specFnNames == nil {
 		es.specFnNames = map[string]bool{}
@@ -5222,6 +5230,7 @@ func (es *EmitState) RecordSpeculativeFnDef(name string, outer core.Value, pos c
 			}
 		}
 	}
+	return true
 }
 
 // compileSpecOuterUnit compiles one own signature of the outer overload a
@@ -8627,14 +8636,8 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// hand-off): the event is its placed install.
 	specFn, replace := false, false
 	if p := es.pendingSpecFn; p != nil && p.name == name {
-		es.pendingSpecFn = nil
-		if !fnSigsDeclared(v) {
-			// The placed fn's own signatures must carry the site the routed
-			// op locates its unit by: a conditional lambda def refuses.
-			es.refuseUndef(name, specFnUnplaced)
-			return
-		}
 		specFn, replace = true, p.replace
+		es.pendingSpecFn = nil
 	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,

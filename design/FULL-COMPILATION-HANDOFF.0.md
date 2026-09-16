@@ -8732,14 +8732,20 @@ and the check pass's model, which keeps the fn for typing, cannot say which
 of two bindings the run leaves — bound or unbound, the outer overload or
 the shadow. So the family is SPECULATIVE, and three halves follow:
 
-- **The model** (`core/go/spec_fn.go`, `NoteSpecFnDef`): installDef marks
-  the name (`CheckState.SpecFnNames`) for a fresh def or an overlapping
-  redefinition inside a conditional body, and hands the recorder the
-  placed install with the DROPPED outer entry, if any. The join pushes the
-  model's binding for such a name and notes NO transition
-  (`specFnJoin`): the install is the arm's own, placed at its site. The
-  installDef guard keeps its fn-body arm (a capturing fn value's
-  redefinition past the call); its conditional-body arm is the placement.
+- **The model** (`core/go/spec_fn.go`, `NoteSpecFnDef`): installDef offers
+  the recorder a fresh def or an overlapping redefinition inside a branch
+  arm whose CONDITION the model cannot decide (`CheckState.SpecArmDepth`,
+  bracketed by the `if` native around each arm it analyses under a
+  condition the model does not have as a concrete Boolean — a literal or
+  a def-bound constant is known: the model runs the one arm or both with
+  an exact join; a loop or each body is the twin machinery's) with the
+  DROPPED outer
+  entry, if any, and marks the name (`SpecFnNames`) only when the
+  recorder PLACES it. The join pushes the model's binding for such a name
+  and notes NO transition (`specFnJoin`): the install is the arm's own,
+  placed at its site. Declined, the family keeps the model it had — the
+  join's, and installDef's own refusal for a replace (family L's text,
+  the vary ledger's bucket).
 - **The recorder** (`RecordSpeculativeFnDef` → the def site's
   `RecordDynBind`, stamped `specFn` / `replace`): the event lowers to the
   fn value and, at root, `OpBindResident` at its site — the interpreter's
@@ -8847,6 +8853,23 @@ all five are in.
   both paths. The site identity also decides what can be placed at all:
   a lambda-valued outer or a conditional lambda def carries no site, so
   both refuse (`fnSigsDeclared`) rather than meet a fenced defer.
+- **The corpus's finding** (CI on the first cut, not the review's): the
+  placement was offered for every capture-free fn def in ANY conditional
+  body — loop bodies, each bodies, arms under a literal condition — and
+  its declines REFUSED, so 73 corpus rows that the twin machinery already
+  answered (`for 2 [def inc …]`, `[10 20] each [drop def inc …]`, the
+  parselang seed under `if true`) stopped compiling, the region table
+  fell from 124401 descriptors to 35074 and the collect oracle below its
+  floor, and the vary census reported new refusal classes beside a stale
+  family-L bucket. The rule is narrowed to what the measurement said: a
+  fn def is speculative only inside an arm whose condition the model
+  cannot decide (`SpecArmDepth`), and a decline hands the def back to
+  the machinery that had it — the join for a known arm, the twins for a
+  loop or each body, installDef's own refusal for a replace — refusing
+  only a fresh def the join would model wrongly (an undecidable arm
+  inside a loop or each body, a lambda, a suspended recording). The
+  edge-finding pins that hold family L's refusal under a literal
+  condition hold it still.
 
 ## What the ledger excludes, and why each exclusion was measured
 

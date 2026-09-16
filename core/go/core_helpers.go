@@ -191,15 +191,15 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// increment). A capture-free literal takes the compiled twin and
 				// agrees; the closure's payload has no twin, so it refuses.
 				refusal := ""
-				if r.analysisInCondBody() && len(fnDef.Captured) == 0 {
-					// The seventieth increment: a CAPTURE-FREE replace is
-					// SPECULATIVE — placed at its site, the family's
-					// dispatches routed with a live lead (NoteSpecFnDef); the
-					// recorder refuses what it cannot place (a loop body, a fn
-					// body, an each body). A capturing closure's value is not
-					// a const the placement can bake: it keeps the closure
-					// machinery and this refusal.
-					NoteSpecFnDef(r, name, dropped, body.Pos())
+				if r.analysisInSpecArm() && len(fnDef.Captured) == 0 && NoteSpecFnDef(r, name, dropped, body, body.Pos()) {
+					// The seventieth increment: a CAPTURE-FREE replace inside
+					// a branch arm the model cannot decide is SPECULATIVE —
+					// placed at its site, the family's dispatches routed with
+					// a live lead (NoteSpecFnDef). The recorder declines what
+					// it cannot place (a loop or each body around the arm, a
+					// fn body, a signature with no declaration site), and a
+					// capturing closure's value is not a const the placement
+					// can bake: those keep the refusal below.
 				} else if r.analysisInCondBody() {
 					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
@@ -217,8 +217,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, fnDef, !shadow, isStackOnly)
-		if fresh && r.analysisInCondBody() && len(fnDef.Captured) == 0 {
-			NoteSpecFnDef(r, name, Value{}, body.Pos())
+		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
+			// A FRESH capture-free def inside a branch arm the model cannot
+			// decide is speculative too (bound at run time only if the arm
+			// runs); declined, it keeps the join's model — the recorder
+			// refuses where that model is known wrong.
+			NoteSpecFnDef(r, name, Value{}, body, body.Pos())
 		}
 		if !shadow {
 			// A REDEFINITION whose overlap filter dropped the colliding entry

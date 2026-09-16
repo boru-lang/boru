@@ -1,32 +1,32 @@
 package core
 
-// NoteSpecFnDef marks name a SPECULATIVE fn family (CheckState.SpecFnNames)
-// and hands the recorder its placed install — the seventieth increment. A
-// fn def inside a rolled-back CONDITIONAL body binds at run time exactly
-// when the arm runs: a fresh def leaves the name bound or unbound, an
-// overlapping redefinition (installDef's same-scope filter, family L)
-// leaves the outer overload or the shadow — and the check pass's model,
-// which keeps the fn for typing, cannot say which. So the binding's
-// dispatches route with a live lead (the routed op resolves the word in
-// the running registry and raises the interpreter's undefined_word on a
-// miss), the join notes no root twin for the arm's install
-// (InstallJoinedDefs), and the install itself is placed at its site by the
-// recorder (EmitRecorder.RecordSpeculativeFnDef, which refuses what it
-// cannot place). outer is the overlap case's DROPPED entry — the outer
-// overload the arm's run replaces: the placed install goes through the
-// interpreter's own installer, which drops it as the arm's run does, and
-// the recorder compiles its body to a unit of its own so the routed op can
-// run whichever fn is live (CompiledFn.BodyPos). A fresh def passes a zero
-// Value.
-func NoteSpecFnDef(r *Registry, name string, outer Value, pos SrcPos) {
+// NoteSpecFnDef offers the recorder a fn def made inside a branch arm the
+// model cannot decide (CheckState.SpecArmDepth) — fresh (a zero outer), or
+// replacing the overlapping overload outer in place (family L) — and, if
+// the recorder places it (EmitRecorder.RecordSpeculativeFnDef), marks the
+// family SPECULATIVE (SpecFnNames): the seventieth increment. Such a def
+// binds at run time exactly when the arm runs: a fresh def leaves the name
+// bound or unbound, a replace leaves the outer overload or the shadow —
+// and the check pass's model, which keeps the fn for typing, cannot say
+// which. So the binding's dispatches route with a live lead (the routed
+// op resolves the word in the running registry and raises the
+// interpreter's undefined_word on a miss), the join notes no root twin for
+// the arm's install (InstallJoinedDefs), and the install is placed at its
+// site. Declined — a recorder that cannot place it, or none — the family
+// keeps the model it had: the join's, and installDef's own refusal for a
+// replace. Nothing for a nil registry or an empty name.
+func NoteSpecFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool {
 	if r == nil || r.Check == nil || name == "" {
-		return
+		return false
+	}
+	if !r.analysisRecorder().RecordSpeculativeFnDef(name, outer, fn, pos) {
+		return false
 	}
 	if r.Check.SpecFnNames == nil {
 		r.Check.SpecFnNames = map[string]bool{}
 	}
 	r.Check.SpecFnNames[name] = true
-	r.analysisRecorder().RecordSpeculativeFnDef(name, outer, pos)
+	return true
 }
 
 // specFnJoin reports whether k is a speculative fn family: the branch join

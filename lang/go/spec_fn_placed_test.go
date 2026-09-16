@@ -130,15 +130,16 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 	// refusal. A fresh def in BOTH arms keeps the join's older fn-carrier
 	// refusal.
 	refused := []struct{ src, reason string }{
-		{outer + `for 2 ` + arm + ` f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
-		{outer + `def m {e: true} end while [m "e" get] [def f fn [[x:Integer][Integer][x add 100]] end def m {e: false} end] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
-		{outer + `def m {e: false} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] f 1]] end g`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
-		{`def m {e: true} end do [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
+		{outer + `for 2 ` + arm + ` f 1`, "fn 'f' redefined inside a conditional body"},
+		{outer + `def m {e: true} end while [m "e" get] [def f fn [[x:Integer][Integer][x add 100]] end def m {e: false} end] f 1`, "fn 'f' redefined inside a conditional body"},
+		{outer + `def m {e: true} end for 2 [if (m "e" get) ` + arm + ` []] f 1`, "fn 'f' redefined inside a conditional body"},
+		{`def m {e: false} end for 2 [if (m "e" get) ` + arm + ` []] 9`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
+		{outer + `def m {e: false} end def g fn [[][Integer][if (m "e" get) ` + arm + ` [] f 1]] end g`, "fn 'f' redefined inside a conditional body"},
 		{`def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "fn 'p' redefined inside a conditional body"},
 		// A LAMBDA declares no output signature, so it carries no
 		// declaration site for the routed op to locate its unit by: as the
 		// outer and as the placed value, the placement refuses.
-		{`def f (x:Integer => [x add 1]) end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
+		{`def f (x:Integer => [x add 1]) end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "fn 'f' redefined inside a conditional body"},
 		{`def m {e: true} end if (m "e" get) [def f (x:Integer => [x add 100]) end] [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: false} end [1 2] each [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] f (1 add 1)`, "dispatch of the conditionally-defined fn `f` cannot route"},

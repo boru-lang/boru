@@ -234,13 +234,21 @@ type CheckState struct {
 	SpecUndefCarriers map[string]string
 	SpecUndefGen      int
 
-	// SpecFnNames is every fn family a rolled-back CONDITIONAL body defined
-	// fresh or redefined in place (an overlapping overload — family L): the
-	// model keeps the fn for typing, but the binding is SPECULATIVE — bound
-	// or unbound, outer or shadow, by the arm's own run — so its dispatches
-	// route with a live lead and the join notes no root twin for the arm's
-	// install, which is placed at its site (spec_fn.go, carrier_join.go).
+	// SpecFnNames is every fn family a branch arm the model cannot decide
+	// (SpecArmDepth) defined fresh or redefined in place (an overlapping
+	// overload — family L): the model keeps the fn for typing, but the
+	// binding is SPECULATIVE — bound or unbound, outer or shadow, by the
+	// arm's own run — so its dispatches route with a live lead and the
+	// join notes no root twin for the arm's install, which is placed at its
+	// site (spec_fn.go, carrier_join.go).
 	SpecFnNames map[string]bool
+	// SpecArmDepth, when > 0, marks analysis running inside a branch arm
+	// whose CONDITION the model cannot decide (the `if` native's dynamic
+	// path; a literal or folded condition takes the static path, whose
+	// arm the model knows to run or not). Only such an arm makes a fn def
+	// speculative: a loop or each body, a known arm and a `do` body keep
+	// the twin machinery that already answers them.
+	SpecArmDepth int
 
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
@@ -954,6 +962,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
 	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
 	cp.SpecFnNames = cloneMap(c.SpecFnNames)
+	cp.SpecArmDepth = c.SpecArmDepth
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
 	}
@@ -1042,6 +1051,7 @@ func (c *CheckState) Begin() func() {
 	c.SpecUndefCarriers = nil
 	c.SpecUndefGen = 0
 	c.SpecFnNames = nil
+	c.SpecArmDepth = 0
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is

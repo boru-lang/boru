@@ -14,26 +14,20 @@ import (
 // a suspended recording, an arm-resident bracket, an armed loop, a fn body.
 func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	pos := core.SrcPos{Row: 2, Col: 4}
-	var nilES *EmitState
-	// Refused where it cannot be placed.
-	refuses := func(t *testing.T, es *EmitState, what string) {
-		t.Helper()
-		if es.Compilable || !strings.Contains(es.Reason, "fn `f` defined inside a conditional body where the compiled program cannot place the install") {
-			t.Fatalf("%s refuses: %v %q", what, es.Compilable, es.Reason)
-		}
-	}
-	nilES.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	es := NewEmitState()
-	es.RecordSpeculativeFnDef("", core.Value{}, pos)
-	if es.pendingSpecFn != nil || len(es.specFnNames) != 0 {
-		t.Fatal("an empty name records nothing")
-	}
-	es.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	if !es.specFnNames["f"] || es.pendingSpecFn == nil || es.pendingSpecFn.name != "f" || es.pendingSpecFn.replace {
-		t.Fatalf("a fresh def: marked, pending, no replace: %v %+v", es.specFnNames, es.pendingSpecFn)
-	}
 	decl := core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 9}, File: "f.boru"}
 	fnv := core.NewFunction(core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)}), Decl: decl}}})
+	lambda := core.NewFunction(core.FnDefInfo{Name: "f", Anonymous: true, Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
+	var nilES *EmitState
+	if nilES.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) {
+		t.Fatal("a nil recorder places nothing")
+	}
+	es := NewEmitState()
+	if es.RecordSpeculativeFnDef("", core.Value{}, fnv, pos) || es.pendingSpecFn != nil || len(es.specFnNames) != 0 {
+		t.Fatal("an empty name records nothing")
+	}
+	if !es.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) || !es.specFnNames["f"] || es.pendingSpecFn == nil || es.pendingSpecFn.name != "f" || es.pendingSpecFn.replace {
+		t.Fatalf("a fresh def: placed, marked, pending, no replace: %v %+v", es.specFnNames, es.pendingSpecFn)
+	}
 	es.RecordDynBind("g", core.NewInteger(1), pos)
 	if es.pendingSpecFn == nil {
 		t.Fatal("another name's def leaves the hand-off pending")
@@ -53,52 +47,72 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	}
 	// An overlapping redefinition: replace (the outer's units compile only
 	// against a registry — the lang rows pin that; without one, nothing).
-	es.RecordSpeculativeFnDef("f", fnv, pos)
-	if es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
+	if !es.RecordSpeculativeFnDef("f", fnv, fnv, pos) || es.pendingSpecFn == nil || !es.pendingSpecFn.replace {
 		t.Fatal("an outer fn value makes the install a replace")
 	}
 	if nilES.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 || es.compileSpecOuterUnit(core.FnDefInfo{}, 0) != -1 {
 		t.Fatal("no recorder or no registry compiles nothing")
 	}
-	// A fn value with no declaration site — a lambda, a Go alias, no
-	// signature at all — cannot be located at run time: as the outer, the
-	// replace refuses; as the placed value, the def site refuses.
-	lambda := core.NewFunction(core.FnDefInfo{Name: "f", Anonymous: true, Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(1)})}}})
 	if fnSigsDeclared(lambda) || fnSigsDeclared(core.NewInteger(1)) || fnSigsDeclared(core.NewFunction(core.FnDefInfo{Name: "n", Signatures: []core.Signature{{}}})) || !fnSigsDeclared(fnv) {
 		t.Fatal("only a boru signature with a declaration site is declared")
 	}
-	esL := NewEmitState()
-	esL.RecordSpeculativeFnDef("f", lambda, pos)
-	refuses(t, esL, "a lambda-valued outer")
-	esL2 := NewEmitState()
-	esL2.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	esL2.RecordDynBind("f", lambda, pos)
-	if esL2.pendingSpecFn != nil {
-		t.Fatal("the def site consumes the hand-off before deciding")
+	// Declined: a FRESH def refuses (the join's model is the bug), a
+	// REPLACE keeps installDef's own refusal — for a suspended recording, an
+	// arm-resident bracket, an armed loop, a fn body's replace, a lambda as
+	// the placed value or as the outer; a closure body compile declines
+	// silently either way.
+	refuses := func(t *testing.T, es *EmitState, what string) {
+		t.Helper()
+		if es.Compilable || !strings.Contains(es.Reason, "fn `f` defined inside a conditional body where the compiled program cannot place the install") {
+			t.Fatalf("%s refuses: %v %q", what, es.Compilable, es.Reason)
+		}
 	}
-	refuses(t, esL2, "a conditional lambda def")
+	declined := func(t *testing.T, es *EmitState, what string) {
+		t.Helper()
+		if !es.Compilable || es.specFnNames["f"] || es.pendingSpecFn != nil {
+			t.Fatalf("%s declines without refusing: %v %q", what, es.Compilable, es.Reason)
+		}
+	}
 	es2 := NewEmitState()
 	resume := es2.Suspend()
-	es2.RecordSpeculativeFnDef("f", core.Value{}, pos)
+	placed := es2.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos)
 	resume()
-	refuses(t, es2, "a suspended recording")
+	if placed {
+		t.Fatal("a suspended recording places nothing")
+	}
+	refuses(t, es2, "a suspended recording's fresh def")
 	es3 := NewEmitState()
 	es3.armResidentDepth = 1
-	es3.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	refuses(t, es3, "an arm-resident bracket")
+	if es3.RecordSpeculativeFnDef("f", fnv, fnv, pos) {
+		t.Fatal("an arm-resident bracket places nothing")
+	}
+	declined(t, es3, "an arm-resident bracket's replace")
 	es4 := NewEmitState()
 	es4.loopCarried = append(es4.loopCarried, &loopCarriedScope{})
-	es4.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	refuses(t, es4, "an armed loop")
+	if es4.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) {
+		t.Fatal("an armed loop places nothing")
+	}
+	refuses(t, es4, "an armed loop's fresh def")
 	es5 := NewEmitState()
 	es5.reg, _ = core.NewRegistry()
 	es5.reg.Check.FnBodyDepth = 1
-	es5.RecordSpeculativeFnDef("f", core.Value{}, pos)
-	if !es5.Compilable || !es5.specFnNames["f"] {
+	if !es5.RecordSpeculativeFnDef("f", core.Value{}, fnv, pos) || !es5.specFnNames["f"] {
 		t.Fatalf("a fn body's FRESH def is placed (a frame binding the unit's RET unwinds): %q", es5.Reason)
 	}
-	es5.RecordSpeculativeFnDef("f", fnv, pos)
-	refuses(t, es5, "a fn body's replace")
+	es5.pendingSpecFn = nil
+	if es5.RecordSpeculativeFnDef("f", fnv, fnv, pos) || !es5.Compilable {
+		t.Fatalf("a fn body's replace declines without refusing: %q", es5.Reason)
+	}
+	esL := NewEmitState()
+	if esL.RecordSpeculativeFnDef("f", core.Value{}, lambda, pos) {
+		t.Fatal("a conditional lambda def places nothing")
+	}
+	refuses(t, esL, "a conditional lambda def")
+	esL2 := NewEmitState()
+	if esL2.RecordSpeculativeFnDef("f", lambda, fnv, pos) {
+		t.Fatal("a lambda-valued outer places nothing")
+	}
+	declined(t, esL2, "a lambda-valued outer's replace")
 	// The other two kinds read through the one site.
 	es6 := NewEmitState()
 	es6.refuseUndef("f", specFnUnrouted)
