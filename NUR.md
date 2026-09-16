@@ -6422,3 +6422,46 @@ the redefinition inside a unit as it refuses a capturing closure. The
 second half is the defer's: a `vmDefer` raised inside a compiled frame
 must unwind to the program's fallback, not be typed against the frame's
 return contract.
+
+## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-second increment;
+fixed in the same PR).
+**Found:** review of #468's first cut (286a6c9), all three reproduced on
+that tree.
+
+**Rule:** a compiled program answers as the interpreter does, and a
+refusal is a slow path, never a wrong answer.
+
+**Divergences and fixes.**
+
+1. *Only the first local placed.* `BodyRefsFnLocalFn` reported the FIRST
+   fn-local fn a body named, so a body naming two — `def f …  def h …
+   do [raise x "e"] error [[f 5 h "b"]]` — placed `f` alone; the islanded
+   handler resolved `h` in the registry and raised `undefined word: h`
+   for the interpreter's `[6 'b']`. Fix: `BodyRefsFnLocalFns` reports
+   every local the bodies name, each once, and the site places each or
+   refuses.
+2. *A stale def event stamped.* The placement matched the unit's latest
+   def event by NAME alone; a closed body's redefinition — `do [def f fn
+   [… x add 10 …] end]` before an islanded `error [f 5]` — leaves the
+   current binding with no event of the unit's, and stamping the
+   original's installed the original: 6 for the interpreter's 15. Fix:
+   the event must be the current binding's own declaration
+   (`sameFnDecls`: the same signature count and declaration sites), or
+   the site refuses. Two first-cut rows that answered by index — the
+   redefining body reading its own redefinition (`55`, `111`) — refuse
+   under the rule and fall back with parity.
+3. *A value read admitted.* `do [f/v]` returned the fn as data from the
+   compiled closure where the interpreter dispatches the returned value
+   and raises `uncalled_function`; the guard had refused it. Fix: a
+   `/v` or `/u` reference to a local keeps the refusal
+   (`BodyRefsFnLocalFns`'s value-read report).
+
+**Fence.** `lang/go/fn_local_placed_test.go` (the islanded two-name row,
+the unit-level redefinition row, the four refused rows),
+`compiler/go/fn_local_test.go`, `compiler/go/carrier_nur037_test.go`
+(`TestBodyRefsFnLocalFnsAllNamesAndValueReads`).
+
+**Verdict:** closed with the fixes; recorded because the rule says every
+divergence surfaced in review is recorded, fixed or not.

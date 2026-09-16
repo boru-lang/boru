@@ -57,14 +57,15 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 		// does not fire — the body's call commits by index and the undef
 		// compiles away, as on main before this increment.
 		{local + "do [f 5 undef f]]] end g", "[6]", false},
-		// An in-body REDEFINITION of the placed local (the body's def replaces
-		// it in place — the overlap rule again — and the unit's own later
-		// read sees the replacement).
-		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5]]] end g", "[55]", true},
-		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5] f 6 add]] end g", "[111]", true},
 		// Defined inside an arm the model cannot decide: the seventieth
 		// increment placed it already, and the body's dispatch routes.
 		{"def m {e: true} end def g fn [[][Integer][if (m \"e\" get) [def f fn [[x:Integer][Integer][x add 1]] end] [] do [f 5]]] end g", "[6]", true},
+		// Two locals named by one ISLANDED body (an error handler's), both
+		// placed (review of #468: only the first was, and the island raised
+		// undefined_word for the second); a unit-level redefinition of the
+		// local between two bodies, each placed at its site.
+		{"def g fn [[][List][def f fn [[x:Integer][Integer][x add 1]] end def h fn [[s:String][String][s]] end do [raise x \"e\"] error [[f 5 h \"b\"]]]] end g", "[[6 'b']]", true},
+		{local + "do [f 5] def f fn [[x:Integer][Integer][x add 10]] end do [f 5] add]] end g", "[21]", true},
 		// The local's name is ALSO a speculative family's at module scope
 		// (the seventieth's), of a DISJOINT signature: the local is placed
 		// itself (the frames are searched before the family shortcut), the
@@ -98,6 +99,22 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 		// A capturing local fn: its value is a closure the placement cannot
 		// bake.
 		{"def g fn [[k:Integer][Integer][def f fn [[x:Integer][Integer][x add k]] end do [f 5]]] end g 10", "code-body names fn-local fn `f` at `do`"},
+		// The current binding is a CLOSED body's redefinition (review of
+		// #468): the unit's def event is the original's, not the current
+		// binding's, so there is no install to place — refused, where
+		// stamping the stale event installed the original (6 for 15).
+		{local + "do [def f fn [[x:Integer][Integer][x add 10]] end] do [raise x \"e\"] error [f 5]]] end g", "code-body names fn-local fn `f` at `do`"},
+		// The same rule where the redefining body is the reading one: the
+		// body's def replaces the local in place (the overlap rule) before
+		// the site records, so the current binding is the closed body's
+		// (55 and 111 answered by index before the review; refused now).
+		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5]]] end g", "code-body names fn-local fn `f` at `do`"},
+		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5] f 6 add]] end g", "code-body names fn-local fn `f` at `do`"},
+		// A VALUE read of the local (review of #468): the closure returned
+		// the fn as data where the interpreter dispatches the returned
+		// value (uncalled_function); `/u` the same.
+		{"def g fn [[][Any][def f fn [[x:Integer][Integer][x add 1]] end do [f/v]]] end g", "code-body names fn-local fn `f` at `do`"},
+		{"def g fn [[][Any][def f fn [[x:Integer][Integer][x add 1]] end do [f/u 5]]] end g", "code-body names fn-local fn `f` at `do`"},
 	}
 	for _, c := range refused {
 		a, err := New()

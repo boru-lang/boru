@@ -19,8 +19,14 @@ import core "github.com/boru-lang/boru/core/go"
 // def the current unit's frames do not hold keeps it too.
 
 // placeFnLocalDef stamps the innermost open unit's recorded def of name —
-// a capture-free fn with declared signatures — as a placed install, so the
-// binding is registry-visible for the frame. Reports whether it did.
+// a capture-free fn with declared signatures, the CURRENT binding v — as a
+// placed install, so the binding is registry-visible for the frame.
+// Reports whether it did. The unit's latest def event of the name must be
+// v's own (sameFnDecls): a current binding no event of the unit made — a
+// closed body's redefinition, `do [def f …]` before an islanded read
+// (review of #468) — has no install to place, and stamping the stale
+// event would install the ORIGINAL where the interpreter runs the
+// redefinition; it refuses.
 func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 	if es == nil || !es.Active() || name == "" || len(es.openUnitRecs) == 0 || !fnSigsDeclared(v) {
 		return false
@@ -35,6 +41,9 @@ func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 			if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || ev.dyn.root {
 				continue
 			}
+			if !sameFnDecls(ev.dyn.val, v) {
+				return false
+			}
 			ev.dyn.specFn = true
 			return true
 		}
@@ -47,4 +56,23 @@ func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 	// body's routed dispatch resolves the module binding where the
 	// interpreter resolves the local.
 	return es.specFnNames[name]
+}
+
+// sameFnDecls reports whether two fn values are the same declaration: the
+// same signature count and, position by position, the same declaration
+// site (Signature.Decl — the output-sig token of the triple plus the
+// declaring source and file, unique per signature; empty for a lambda or
+// a Go-registered fn, which never matches).
+func sameFnDecls(a, b core.Value) bool {
+	fa, oka := a.Data.(core.FnDefInfo)
+	fb, okb := b.Data.(core.FnDefInfo)
+	if !oka || !okb || len(fa.Signatures) != len(fb.Signatures) {
+		return false
+	}
+	for i := range fa.Signatures {
+		if fa.Signatures[i].Decl == (core.DeclSite{}) || fa.Signatures[i].Decl != fb.Signatures[i].Decl {
+			return false
+		}
+	}
+	return true
 }

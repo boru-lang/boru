@@ -1013,36 +1013,53 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 //     events (a fn-local dispatch lowers to CALL_USER by unit ref, no
 //     name bake), so the family gate excludes them.
 func BodyRefsFnLocalFn(r *core.Registry, sig *core.Signature, args []core.Value) (string, bool) {
+	names, _ := BodyRefsFnLocalFns(r, sig, args)
+	if len(names) == 0 {
+		return "", false
+	}
+	return names[0], true
+}
+
+// BodyRefsFnLocalFns is BodyRefsFnLocalFn over EVERY fn-local fn the code
+// bodies name — in walk order, each once — and reports whether any such
+// reference is a VALUE read (`f/v`, `f/u`: the modified word resolves to
+// the fn value instead of dispatching it). The seventy-second increment
+// places each named local for the frame, so a body naming two locals
+// needs both placed, and a value read — whose result the closure returns
+// as data where the interpreter dispatches it (review of #468) — keeps
+// the refusal.
+func BodyRefsFnLocalFns(r *core.Registry, sig *core.Signature, args []core.Value) (names []string, valueRead bool) {
 	if sig == nil || len(sig.NoEvalArgs) == 0 ||
 		(!sig.CompileEffect.Has(core.CompileFallbackBody) && sig.Callable == nil) {
-		return "", false
+		return nil, false
 	}
 	baseline := r.TopFnBaseline()
 	if baseline == nil {
-		return "", false // module scope: no enclosing fn, nothing is fn-local
+		return nil, false // module scope: no enclosing fn, nothing is fn-local
 	}
+	seen := map[string]bool{}
 	for i := range args {
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		name := ""
 		core.WalkBodyWords([]core.Value{args[i]}, func(w core.WordInfo, _ core.Value) {
-			if name != "" {
-				return
-			}
 			v, bound := r.Defs.Top(w.Name)
 			if !bound || r.Defs.Depth(w.Name) <= baseline[w.Name] {
 				return
 			}
-			if _, isFn := v.Data.(core.FnDefInfo); isFn {
-				name = w.Name
+			if _, isFn := v.Data.(core.FnDefInfo); !isFn {
+				return
+			}
+			if w.ForceVal || w.ForceUsurp {
+				valueRead = true
+			}
+			if !seen[w.Name] {
+				seen[w.Name] = true
+				names = append(names, w.Name)
 			}
 		})
-		if name != "" {
-			return name, true
-		}
 	}
-	return "", false
+	return names, valueRead
 }
 
 // bodyHasSentinel reports whether a code body contains a flow-control

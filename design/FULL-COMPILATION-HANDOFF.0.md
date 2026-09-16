@@ -9108,10 +9108,9 @@ signature is not shadowed but REPLACED in place by the in-body def
 replacement (`101 6 2`); and an in-body undef of the local — before any
 read (`5`) or after it (`6`: the pass's registry holds no `f` when the
 body's dispatch is recorded, so the predicate does not fire, the call
-commits by index and the undef compiles away, as on `main`). An in-body
-REDEFINITION of the placed local replaces it in place and the unit's own
-later read sees the replacement (`55`, `111`) — placed, and answering the
-interpreter. A local whose name is ALSO a
+commits by index and the undef compiles away, as on `main`). A unit-level
+redefinition of the local between two bodies is placed at each site
+(`21`). A local whose name is ALSO a
 speculative family's at module scope (the seventieth's), of a DISJOINT
 signature, is placed itself — the unit's frames are searched before the
 family shortcut — and the body's routed dispatch resolves the frame's
@@ -9135,6 +9134,21 @@ caught by `g`'s return contract and typed as an Error value rather than
 unwinding to the fallback. Recorded as NUR149 (the seventieth's family L
 inside a fn body, and the defer's landing), the next binder-half slice
 by measurement.
+
+**The review's three (NUR150).** Codex's three on the first cut, all
+reproduced. **Only the first local placed**: the predicate reported one
+name, so an islanded handler naming two locals resolved the second in the
+registry (`undefined word: h` for `[6 'b']`) — `BodyRefsFnLocalFns`
+reports every local the bodies name and the site places each or refuses.
+**A stale def event stamped**: the placement matched the unit's latest
+event by name, so a closed body's redefinition (`do [def f …]` before an
+islanded `error [f 5]`) had the ORIGINAL installed (6 for 15) — the event
+must be the current binding's own declaration (`sameFnDecls`), or the
+site refuses; two first-cut rows that answered by index (the redefining
+body reading its own redefinition, `55` and `111`) refuse under the rule
+with parity. **A value read admitted**: `do [f/v]` returned the fn as
+data where the interpreter dispatches the returned value
+(`uncalled_function`) — a `/v` or `/u` reference keeps the refusal.
 
 ## What the ledger excludes, and why each exclusion was measured
 

@@ -385,8 +385,9 @@ as #455 (`6ea8ac1`).
    bails at run time), which is the next bail to retire. NUR037's
    fn-local fn is 72 (in flight): a code body's local fn is placed as a
    registry-visible install for the frame, so the body resolves it on
-   every path; a capturing local fn keeps the refusal. Its measurement
-   found NUR149 (pre-existing on `main`): a fn body's in-place
+   every path; a capturing local fn, a value read of it, and a closed
+   body's redefinition of it keep the refusal (the review's three,
+   NUR150). Its measurement found NUR149 (pre-existing on `main`): a fn body's in-place
    redefinition of a speculative family's name compiles away while the
    family's live lead resolves the module binding, and the resulting
    defer is typed against the frame's return contract instead of

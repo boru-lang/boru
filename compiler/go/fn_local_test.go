@@ -35,6 +35,24 @@ func TestPlaceFnLocalDef(t *testing.T) {
 	if es.placeFnLocalDef("f", fnv) {
 		t.Fatal("no def of f in the unit's frames: not placed")
 	}
+	// The unit's latest def of the name is NOT the current binding (a
+	// closed body redefined it — review of #468): refused, whatever the
+	// family says.
+	other := core.NewFunction(core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Impl: core.Boru([]core.Value{core.NewInteger(2)}), Decl: core.DeclSite{Pos: core.SrcPos{Row: 2, Col: 9}, File: "g.boru"}}}})
+	es.frames[len(es.frames)-1] = append(es.frames[len(es.frames)-1], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "f", srcSeq: -1, residentTwin: -1, val: other}})
+	es.specFnNames = map[string]bool{"f": true}
+	if es.placeFnLocalDef("f", fnv) {
+		t.Fatal("a def event that is not the current binding's is not stamped")
+	}
+	if fr := es.frames[len(es.frames)-1]; fr[len(fr)-1].dyn.specFn {
+		t.Fatal("the stale event stays unstamped")
+	}
+	es.frames[len(es.frames)-1] = es.frames[len(es.frames)-1][:len(es.frames[len(es.frames)-1])-1]
+	es.specFnNames = nil
+	two := core.NewFunction(core.FnDefInfo{Name: "f", Signatures: []core.Signature{{Impl: core.Boru(nil), Decl: decl}, {Impl: core.Boru(nil), Decl: decl}}})
+	if sameFnDecls(fnv, two) || sameFnDecls(fnv, lam) || sameFnDecls(lam, lam) || sameFnDecls(fnv, core.NewInteger(1)) || !sameFnDecls(fnv, cap) {
+		t.Fatal("sameFnDecls: the count, an empty site and a data value differ; the same sites agree")
+	}
 	// A ROOT def event of the name is not the unit's.
 	es.frames[len(es.frames)-1] = append(es.frames[len(es.frames)-1], EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "f", root: true, srcSeq: -1, residentTwin: -1}})
 	if es.placeFnLocalDef("f", fnv) {
