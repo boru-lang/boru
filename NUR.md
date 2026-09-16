@@ -66,7 +66,6 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR144](#nur144) | An `undef` of a pre-loop module binding inside a TOP-LEVEL loop body is DROPPED by the compiled program — no twin, no op — so the binding survives the loop where the interpreter pops it: `def k 5  def f fn [[][Integer][k add 2]]  for 2 [ f  undef k ]` answers `7 7` compiled and `undefined_word` interpreted. Found off the corpus on the sixty-fifth increment's tree; the sibling `undef` of a loop-CARRIED name refuses (RefuseCarriedUndef), the `each` body's transitions refuse (no stream placement), and this one falls between. Verdict: resolve by fix in the binder half (place the transition per iteration, or refuse it). | the sixty-fifth increment, probing the loop-carried class |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
@@ -299,41 +298,6 @@ Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
 
 ---
-
-## NUR144 — an undef inside a top-level loop body is dropped by the compiled program {#nur144}
-
-**Status:** Pending (recorded 2026-09-15, found on the sixty-fifth
-increment's tree while probing the loop-carried class, off the corpus).
-
-**Rule:** one binding store. A transition the program writes — a `def`, an
-`undef` — happens on the compiled lane exactly where the interpreter makes
-it, or the program refuses.
-
-**Divergence.** An `undef` of a pre-loop MODULE binding inside a top-level
-loop body records no twin and lowers to no op:
-
-```
-def k 5  def f fn [[][Integer][k add 2]]  for 2 [ f  undef k ]
-  interpreted -> 7, then undefined_word: k (the second iteration's read)
-  compiled    -> 7 7
-```
-
-The `for` body's `f` and the loop are lowered (FOR_SETUP / FOR_NEXT /
-CALL_USER), the `undef k` is not: the twin table carries `def k` and `def
-f` only. The same for a routed forward slot (`add k 1`). Its two siblings
-are handled: an `undef` of a name the loop CARRIES (a rebind in the same
-body) refuses (`RefuseCarriedUndef`, "undef of the loop-carried def"),
-and an `each` body's transitions refuse ("a bind transition has no stream
-placement"); the plain `for`-body undef of an un-carried name falls
-between the two.
-
-**Fence.** `lang/go/nur144_undef_loop_test.go` pins the divergence both
-ways — the compiled run answers twice, the interpreter fails on `k` — so
-the fix retires the test with this entry.
-
-**Verdict:** resolve by fix in the binder half (the stored-handler latch,
-family L, NUR037): place the transition per iteration as the loop-carried
-store is placed, or refuse it as the `each` body's are.
 
 ## NUR143 — a fn-body read of a module-scope flex is a snapshot clone, not the binding {#nur143}
 

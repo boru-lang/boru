@@ -1402,6 +1402,18 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// allowed to be. In-region bindings still pop (teardown untouched);
 	// top-level and `do`-body undefs still commit (leak fidelity).
 	if r.SpecUndefBlocked(name) {
+		// The model keeps the binding; the compiled lane cannot place a
+		// transition it never modelled, and its reads of the name stay the
+		// pass's bakes where the interpreter's would fail — so the recorder
+		// refuses the program and the interpreter owns the shape. Only for a
+		// binding that EXISTS before the region: for a never-bound name the
+		// gate merely silences the speculative diagnostic, and there is
+		// nothing to pop on either lane (review of #463). The handler passes
+		// the fact — this registry's — rather than the recorder re-deriving
+		// it from a registry a module call may have left bound.
+		if r.Defs.Depth(name) > 0 {
+			r.Check.Recorder().RefuseSpeculativeUndef(name)
+		}
 		return nil, nil
 	}
 	if r.IsBuiltinWord(name) {

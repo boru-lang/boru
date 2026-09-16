@@ -8345,6 +8345,94 @@ unpositioned one names nothing) and end to end on both lanes
 module conditioned on a value the check pass cannot fold — the same
 file, row and column compiled and interpreted).
 
+## The speculative undef refuses (2026-09-15, the sixty-seventh increment)
+
+The binder half's first slice, and a measurement before a mechanism.
+NUR144 (an `undef` inside a top-level loop body dropped by the compiled
+program) was probed for its neighbours before anything was built, and the
+neighbours were the class:
+
+	def k 5  if true [undef k] []  k          interpreted undefined_word    compiled 5
+	def k 5  [1 2] each [undef k]  k          interpreted undefined_word    compiled [1 2] 5
+	def k 5  while [k eq 5] [undef k]  9      interpreted undefined_word    compiled: never terminates
+	def k 5  def f fn [[][Integer][undef k 1]]  f  k
+	                                          interpreted undefined_word    compiled 1 5
+
+One cause: the check pass keeps an enclosing binding in its model when a
+speculative region undefs it (`core.Registry.SpecUndefBlocked` — the
+wrapped-undef FP class: a region that never runs must raise nothing), and
+the bind ledger records nothing inside a rolled-back body. So no
+transition is placed, and every later read — a top-level read, a fn
+unit's bake, a `while` condition — is the pass's, where the interpreter's
+fails. The `while` row is the worst face: a compiled program that does
+not terminate where the interpreter errors.
+
+### What lands
+
+A refusal, not a lowering — the sound answer the `each` body's
+transitions already had, at the site that already refuses an undef the
+compiled lane cannot place. `undefHandler`'s blocked branch now notifies
+the recorder through its own hook, and the two undef hooks
+(`RefuseCarriedUndef`, `RefuseSpeculativeUndef`) refuse through one
+`MarkUncompilable` (`refuseUndef` — the census counts sites, and the
+disposition row, re-keyed to it, covers both shapes): the undef of a
+carried def (as before) and the undef of an enclosing binding from a
+speculative region ("undef of the enclosing binding `k` inside a
+conditional, loop or fn body: no transition the compiled program can
+place (the binder half)"). The blocked arm runs
+even while recording is suspended (a `do` inside a loop), as the
+frozen-read latch does: the refusal is the program's, not the
+fragment's. A code body compiled as a CLOSURE unit (`do`, `each` —
+`fnUnitRec.closure`) is exempt, because its transitions are the enclosing
+run's: a keep-defs body's undef is ledgered by the top-level run and
+adopted as a twin after the call (`AdoptBodyTwins`), a rolled-back body's
+is refused by the outer analysis that runs it first, and the closure
+compile's own view — a fn-body baseline, every enclosing binding
+speculative — is not the program's. Found by the frozen-read rows: `do
+[undef T]` must keep refusing on the check pass's diagnostics, not on its
+body unit. An undef of a binding made inside the region — a body def, a
+fn-local — is untouched and still compiles.
+
+### Measured
+
+No corpus row carries the shape: 7475 compiled, 0 refused, the
+refusal-site and disposition censuses at 92; the never-running error
+handler the leniency exists for (`do [7] error [undef x 9] x`) refuses
+and falls back with the same answer. Every row of the class — NUR144's
+two, the branch arm, the each and while bodies, the `do` inside a loop,
+the fn body — refuses and answers as the interpreter does under the
+hatch (`TestSpeculativeUndefOfEnclosingBindingRefuses`, which replaces
+NUR144's fence). The register's contract is that a Resolved record is
+deleted and its number retired: NUR144 is deleted, and the class was
+recorded as NUR145 on the PR for one commit and retired with the fix the
+same day — the divergence is gone, and what the binder half still owes is
+the disposition census's row, not a register entry.
+
+### The review's four (#463)
+
+Codex found four things on the first cut, each reproduced: a module call
+before the undef in the same body (`if true [M.m drop undef k 1] [1] k`)
+slipped through, because the recorder re-derived the block from ITS
+registry — the last-bound one, a module sub-registry after `M.m` — so the
+handler now passes the fact through its own hook
+(`RefuseSpeculativeUndef`, one refusal site behind both hooks); a
+never-bound name (`undef nope` in a fn body) refused, because the gate
+also silences the speculative diagnostic for a name with nothing to pop —
+the handler notifies only for a real pre-region depth; the `do [undef T]`
+frozen row refused on its body unit instead of the check pass's
+diagnostics, which is the closure-compile exemption above; and the
+register's contract, which the retirement above follows.
+
+### What the binder half owes
+
+The lowering the disposition row names: a placed `BindUndef` twin inside
+the region, per execution, as the loop-carried store is placed — and live
+reads of the name after it, since a bake is sound only while the check
+pass sees every transition: a top-level read through the registry
+(`OpLookupDynScope`, as the S5 first-value loop bind's reads already go),
+a fn unit's read routed or dyn-scoped. The refusal retires with that
+lowering.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.
@@ -8617,3 +8705,4 @@ position than the construct that produced the binding.
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
 | `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
+| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |

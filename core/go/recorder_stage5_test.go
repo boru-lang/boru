@@ -23,6 +23,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.KeepDefsBodyGuard(nil, "")()
 	e.MultiRunBodyGuard(nil, "b")()
 	e.RecordDynUndef("x", SrcPos{})
+	e.RefuseSpeculativeUndef("x")
 	e.FnBodyGuard()()
 
 	// --- refusal + site accounting.

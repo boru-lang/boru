@@ -110,6 +110,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.MarkValueDef(in)
 	e.RecordDefRebind("n", in, core.SrcPos{})
 	e.RefuseCarriedUndef("n")
+	e.RefuseSpeculativeUndef("n")
 	if e.RegisterLocal("id") != -1 {
 		t.Fatal("inactive RegisterLocal should be -1")
 	}

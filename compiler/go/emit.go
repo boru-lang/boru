@@ -4977,20 +4977,67 @@ func (es *EmitState) carriedSlot(name string) (int, bool) {
 	return -1, false
 }
 
-// RefuseCarriedUndef marks the program uncompilable when `undef` targets a
-// name an active armed loop carries: the undef exposes the PREVIOUS binding
-// while the carried slot still holds the rebound value, so compiled reads
-// would diverge from the interpreter. An undef of any other name is
-// untouched.
-func (es *EmitState) RefuseCarriedUndef(name string) {
-	if !es.Active() {
+// inClosureBodyCompile reports whether the innermost open unit is a code
+// body compiled as a closure (a `do` / `each` / … body unit,
+// fnUnitRec.closure). Such a compile re-analyses the body under a fn-body
+// baseline, where every enclosing binding reads as speculative — but the
+// body's transitions are the ENCLOSING run's, not the closure's: a
+// keep-defs body's undef (`do [undef T]`) is ledgered by the top-level run
+// and adopted as a twin after the call (AdoptBodyTwins), and a rolled-back
+// body's is refused by the outer analysis that runs it first. So the
+// speculative-undef refusal reads the enclosing run's verdict and stays out
+// of the closure compile's; a real fn body (closure false) keeps it.
+func (es *EmitState) inClosureBodyCompile() bool {
+	n := len(es.openUnitRecs)
+	return n > 0 && es.fnRecs[es.openUnitRecs[n-1]].closure
+}
+
+// RefuseCarriedUndef is the undef handler's teardown hook: an `undef` of a
+// name an active armed loop carries exposes the PREVIOUS binding while the
+// carried slot still holds the rebound value, so compiled reads would
+// diverge from the interpreter — the program refuses. Any other name is
+// untouched here; the speculative shape has its own hook below, and both
+// refuse through refuseUndef's one site.
+func (es *EmitState) RefuseCarriedUndef(name string) { es.refuseUndef(name, false) }
+
+// RefuseSpeculativeUndef is the undef handler's BLOCKED branch: an `undef`
+// of an ENCLOSING binding from inside a speculative region (a branch arm, a
+// loop or each body, an error handler, a fn body — core.Registry.
+// SpecUndefBlocked with a real pre-region depth). The check pass keeps the
+// binding in its model so a region that never runs raises nothing (the
+// wrapped-undef FP class), which means the compiled program never pops it
+// and every later read stays the pass's bake: `def k 5  if true [undef k]
+// []  k` answered 5 for the interpreter's undefined_word, a `while [k eq
+// 5] [undef k]` never terminated, and NUR144's loop-body undef answered
+// twice. The handler passes the fact (review of #463): es.reg is the
+// LAST-BOUND registry and can be a module sub-registry after a module call
+// in the same body, so the recorder must not re-derive it. The refusal
+// runs even while recording is suspended (a `do` body inside a loop), as
+// the frozen-read latch does — the refusal is the program's, not the
+// fragment's — and stays out of a closure body compile
+// (inClosureBodyCompile), whose transitions are the enclosing run's.
+func (es *EmitState) RefuseSpeculativeUndef(name string) { es.refuseUndef(name, true) }
+
+// refuseUndef is the one refusal site behind both undef hooks — the
+// census counts sites, and the disposition row covers both shapes.
+func (es *EmitState) refuseUndef(name string, speculative bool) {
+	if es == nil || !es.Compilable {
 		return
 	}
-	for i := len(es.loopCarried) - 1; i >= 0; i-- {
-		if _, ok := es.loopCarried[i].slots[name]; ok {
-			es.MarkUncompilable("undef of the loop-carried def `" + name + "` (Stage 3)")
-			return
+	reason := ""
+	switch {
+	case speculative && !es.inClosureBodyCompile():
+		reason = "undef of the enclosing binding `" + name + "` inside a conditional, loop or fn body: no transition the compiled program can place (the binder half)"
+	case !speculative && es.Active():
+		for i := len(es.loopCarried) - 1; i >= 0; i-- {
+			if _, ok := es.loopCarried[i].slots[name]; ok {
+				reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
+				break
+			}
 		}
+	}
+	if reason != "" {
+		es.MarkUncompilable(reason)
 	}
 }
 
