@@ -219,7 +219,14 @@ var pinnedAritySites = map[string]int{
 	// locates its unit by. A lambda or a Go alias declares none, so the
 	// placement refuses it; the count of PARAMS never enters — the
 	// seventieth increment.
-	"compiler/go/emit.go":           7,
+	"compiler/go/emit.go": 7,
+	// sameFnDecls compares two fn VALUES for declaration identity — the
+	// same signature list: the same count, then each position's declaration
+	// site (Signature.Decl). It decides whether a unit's recorded def event
+	// IS the current binding (a closed body's redefinition is not), never
+	// what a function of a given arity may do; every arity takes the path —
+	// the seventy-second increment (review of #468).
+	"compiler/go/fn_local.go":       1,
 	"compiler/go/user_poly.go":      1,
 	"compiler/go/callable_words.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's
