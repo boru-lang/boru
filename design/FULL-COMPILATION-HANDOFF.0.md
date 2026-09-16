@@ -8431,7 +8431,134 @@ reads of the name after it, since a bake is sound only while the check
 pass sees every transition: a top-level read through the registry
 (`OpLookupDynScope`, as the S5 first-value loop bind's reads already go),
 a fn unit's read routed or dyn-scoped. The refusal retires with that
-lowering.
+lowering — which is the sixty-eighth increment, below.
+
+## The speculative undef is placed (2026-09-16, the sixty-eighth increment)
+
+The binder half's lowering, for the shape the sixty-seventh refused: a
+speculative undef of a MODULE-SCOPE VALUE binding compiles, the transition
+placed at its site and every later read of the name live. Three pieces,
+each the smallest that is sound.
+
+**The model's half (`core/go/spec_undef.go`, `GeneraliseSpecUndef`).** The
+check pass keeps the binding — a region that never runs must raise nothing
+— but from the undef its VALUE is unknown, and a model that still says `5`
+is what every bake and fold read. So the handler's blocked branch
+generalises the binding IN PLACE: a fresh carrier of its type replaces the
+body at the same depth (`DefTable.Replace`). In place is the whole point.
+The region's rollback truncates depth GROWTH, the loop join collects depth
+growth and the ledger notes pushes and pops — none sees a transition, so
+no twin is minted and no join is disturbed; the generation moves, so a
+unit that baked the binding re-records at its next call site (the memo's
+staleness key) and `NotifyNameRebound` runs, so an escaping unit's bake
+refuses as it does for a `def`; and every later read is NON-CONCRETE — no
+fold, no const bake, a live lookup. The carrier is minted once per binding
+(`CheckState.SpecUndefCarriers`): a loop's second round re-mints nothing,
+which is what lets the rounds settle. Declined, with the model untouched:
+a type binding, a fn-family value (its reads are DISPATCHES, the routed
+half's), the fn-carrier side table's, an active token, and a FRAME binding
+of an enclosing fn (`Depth(name) > TopFnBaseline()[name]` — a param or
+body-local, whose reads are slots). The handler asks the model first and
+the recorder second (`RecordSpeculativeUndef` for the placeable shape,
+`RefuseSpeculativeUndef` for the declined), the #463 lesson kept: the
+fact is the handler's registry's.
+
+**The recorder's half.** Where recording is LIVE at the site — a branch
+arm or loop body recording into its fragment, a fn unit's body — the pop
+is an undef-half dyn-bind event (`emitDynBind.speculative`) that lowers to
+`OpUndefDynScope` exactly there: `core.PopLiveBinding` on the current
+registry, consuming nothing and riding no unwind trail (a binding popped
+stays popped, as the interpreter's does; a second pass over the name is
+the interpreter's no-op). The name joins `specUndefNames`, and every
+later read of it — a carrier with no compiled home, at any depth —
+resolves through `dynScopeRescue`'s first arm as a live lookup filed under
+`routedNames`: frame twins for a fn unit's own binding of the name, none
+for the root def its bind twin already replays (a `dynScopeNames` entry
+would have installed the root def a second time — BIND_TWIN and
+BIND_DYN_SCOPE — and the undef would then pop the wrong level). The
+loop analysis re-rounds when a generalisation happened inside a round
+(`CheckState.SpecUndefGen`): the join sees no add, so without it the
+recorded round was the one whose reads before the undef baked `5` (`for 2
+[ k  undef k ]` compiled its second iteration's read as a const).
+
+**The miss is the interpreter's undefined_word, raised.** `OpLookupDynScope`
+defers on a miss — "slow, not wrong" while the interpreter can be re-run
+— and the sixty-sixth increment's reason applies here in full: an effect
+performed before the read (`for 2 [ (print "x") undef k ] k`) fences the
+re-run, and the user saw `internal_error` where the interpreter raises
+the word. So a miss of a name in `Program.SpecUndefNames` raises
+`core.UndefinedWordDiag` from the seam, at the READ's own token: the live
+operand carries its position (`EmitOperand.pos`, from `NoteLocalRead`'s
+program-wide note of the latest read of each generalised value ID), where
+every other push takes the consumer's — `k add 2` raises at `k`, a root
+residual at its token, not at `0:0`. Positions agree on every row of the
+class. The did-you-mean line below the first does not always: the
+interpreter's registry holds a loop iterator as a def, the VM's holds it
+in a slot — NUR146, recorded, fenced by comparing the head.
+
+### Three shapes measured wrong on the way, each refused through the one site
+
+- **A `def` of the name inside the region that undefs it** (`for 2 [ undef
+  k  def k 6 ] k`, `if c [undef k  def k 6] [] k`, and the same inside a fn
+  body). The region's install is never ledgered, the join's twin captures a
+  carrier the replay skips, and the def lowered to NOTHING while the read
+  after looked the name up live — the compiled registry missing the `6` the
+  interpreter holds (the default lane's whole-program fallback masked it; a
+  forced compile deferred). `RecordDynBind` refuses it when the name is
+  generalised and the recorder is inside a fragment THIS unit opened
+  (`fragUnits`, beside `fragIDs` — a fragment an enclosing unit's call site
+  sits in is not this unit's region).
+- **A name a loop carries.** The undef inside a region after the loop
+  (`for 2 [ def k 6 ]  if true [undef k] [] k`) pops the registry's one
+  joined level where the slot holds the value; and — found on main, before
+  this increment — a TOP-LEVEL undef after the loop (`for 2 [ def k 6 ]
+  undef k  k`) answered the pre-loop `5` for the interpreter's `6`: the
+  joined twin replays ONE install for N iterations, so the registry's
+  depth is not the interpreter's, and the undef exposes the level below.
+  `nameCarried` (a live loop's slot, or any loop's so far —
+  `carriedNames`) refuses both through the carried arm.
+- **A FORWARD-slot read of the popped name** (`add k 1` after the undef,
+  at top level or in a fn unit). A stack read of a popped name is the
+  interpreter's undefined_word at the token, which the live lookup raises;
+  a forward-slot read is the interpreter's COLLECTION of the unbound word
+  as a Word value — `cannot call add — no signature matches; got (Word,
+  Integer)` at the dispatching word — which neither the committed call's
+  lookup nor the routed op's unbound-slot arm (the sixty-sixth increment's
+  undefined_word) raises. The three call records refuse it
+  (`specUndefFwdSlot`, every slot scanned — the live operand is exactly
+  what stops the record's claim short, since `regionSourceOf` knows no
+  dyn-scope source). The routed dispatch owns that arm: the next slice on
+  this op is the unbound slot collected as a Word and matched over the
+  window, which is what the interpreter does and what
+  `NoMatchOverWindow` already renders.
+
+What still refuses besides those: a recording the placement cannot seat —
+an each body's first run, a `do` inside a loop, the never-running error
+handler the leniency exists for (all suspended; an undef event with no
+stream home is the dropped undef the sixty-seventh measured) and an
+arm-resident bracket (the residency bridge pairs events to ledger twins
+one to one, and this transition has no twin) — and a residual read the
+undef follows in the same body (`for 2 [ k  undef k ]`, the Stage 4b
+hazard's own row). Every refusal goes through `refuseUndef`, now keyed by
+shape (`undefRefusal`), so the refusal-site census is unchanged at 92 and
+the disposition row names every arm.
+
+### Measured
+
+No corpus row carries the shape: the lanes are unchanged (see the PR).
+Every row of the class the sixty-seventh listed compiles and answers as
+the interpreter does, position included — NUR144's stack-operand row, the
+branch arm (taken and not), the loop, the `while` that never terminated,
+the fn body, the module-call row, a list-valued binding, the effect rows
+— plus a root re-def after the region (the twin replays it, the read after
+bakes the new binding) and a double undef in one arm. The forward-slot
+row of NUR144 (`add k 1`) refuses, above.
+
+### Records
+
+- NUR146 (the did-you-mean pool), recorded.
+- The disposition row for `refuseUndef#1` names every arm; no register
+  entry is owed for the carried post-loop undef (refused, as NUR144 was).
 
 ## What the ledger excludes, and why each exclusion was measured
 
@@ -8705,4 +8832,5 @@ position than the construct that produced the binding.
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
 | `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
-| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
+| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
+| `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindRefusesDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveReadPosition`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live, the miss raising the interpreter's undefined_word at the read token; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |

@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
@@ -298,6 +299,41 @@ Recorded so the divergence between an accepted ADR and the code is not lost;
 the fix is the maintainer's to direct.
 
 ---
+
+## NUR146 — the compiled undefined_word's did-you-mean pool has no frame bindings {#nur146}
+
+**Status:** Pending (recorded 2026-09-16, the sixty-eighth increment).
+**Found:** by the placed speculative undef's parity rows
+(`lang/go/spec_undef_placed_test.go`): the first row raising inside a loop
+agreed on its first line and disagreed on the help line.
+
+**Rule:** one diagnostic. An error the two lanes both raise renders the
+same, suggestions included — the did-you-mean is part of the message a
+user reads.
+
+**Divergence.** The VM raises the interpreter's `undefined_word` from the
+seam (`core.UndefinedWordDiag`, the sixty-sixth increment's builder — the
+routed dispatch's unbound slot and, since the sixty-eighth, a live read a
+placed undef made miss), and the builder's near-miss pool is the
+registry's `SuggestionCandidates()`. The interpreter's registry at the
+raise holds every frame binding as a def — a loop iterator, a fn's
+params, its body-locals — because that is how the interpreter binds them;
+the compiled program holds them in FRAME SLOTS the registry never sees
+(`def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9`: `i` is `l0`). So the
+interpreter says ``did you mean `i`?`` and the VM says nothing; with a
+fn in scope, ``did you mean `f` or `i`?`` against ``did you mean `f`?``.
+Code, detail and position agree.
+
+**Fence.** The placed-undef rows compare the error's first line
+(`requireParityHead`) and the position, and say so at the site.
+
+**Verdict:** none yet. The candidates are the VM's to supply: a unit knows
+its slot names (`CompiledFn`'s local table), and a raise from inside a
+unit could pass them to the builder as extra candidates — an over-supply
+where the interpreter's binding was already torn down, an under-supply
+for a name bound only in an ENCLOSING frame. Whether the pool should be
+the frame's or the message should drop the suggestion on both lanes is
+the ruling to seek; either is small.
 
 ## NUR143 — a fn-body read of a module-scope flex is a snapshot clone, not the binding {#nur143}
 

@@ -309,13 +309,21 @@ type EmitRecorder interface {
 	// Gen(name) is still g there.
 	NoteFrozenRead(name string, bake FrozenBake, gen int64)
 	RefuseCarriedUndef(name string)
-	// RefuseSpeculativeUndef is undefHandler's blocked branch: an `undef` of
-	// an ENCLOSING binding — one with a real pre-region depth — from inside
-	// a speculative region (Registry.SpecUndefBlocked), which the check pass
-	// keeps in its model and the compiled lane cannot place. The handler
-	// passes the fact rather than the recorder re-deriving it: the
-	// recorder's registry is the LAST-BOUND one and can be a module
+	// RecordSpeculativeUndef and RefuseSpeculativeUndef are undefHandler's
+	// blocked branch: an `undef` of an ENCLOSING binding — one with a real
+	// pre-region depth — from inside a speculative region
+	// (Registry.SpecUndefBlocked), which the check pass keeps in its model.
+	// The handler passes the fact rather than the recorder re-deriving it:
+	// the recorder's registry is the LAST-BOUND one and can be a module
 	// sub-registry after a module call in the same body (review of #463).
+	// Record is the placeable shape — the model generalised the binding's
+	// value in place (GeneraliseSpecUndef, spec_undef.go), so the recorder
+	// places the pop at its site (OpUndefDynScope) and the name's later
+	// reads go live; it still refuses where it cannot place (a suspended
+	// recording, an arm-resident bracket, a carried slot). Refuse is the
+	// shape the model declined to generalise: a type or fn-family binding,
+	// a frame binding of an enclosing fn.
+	RecordSpeculativeUndef(name string, pos SrcPos)
 	RefuseSpeculativeUndef(name string)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
@@ -490,6 +498,7 @@ func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry)    {}
 func (inactiveEmit) MarkValueDef(Value)                         {}
 func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)      {}
 func (inactiveEmit) RefuseCarriedUndef(string)                  {}
+func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)      {}
 func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}

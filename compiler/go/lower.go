@@ -288,6 +288,14 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	if d.residentTwin >= 0 {
 		return lw.lowerResidentBind(d)
 	}
+	if d.speculative {
+		// The PLACED transition of a speculative undef: the pop executes
+		// at its site, in the current registry, and consumes nothing
+		// (OpUndefDynScope). Never left unlowered — the recorder that placed
+		// it is the one lowering it, so the name const is always at hand.
+		lw.emit(OpUndefDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		return ""
+	}
 	if !d.bindsValue() {
 		// An unstamped operand-less event — a teardown whose var pair the
 		// bridge declined, a type install outside an adopted unit, or either
@@ -752,6 +760,12 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 	case opType:
 		lw.emit(OpPushType, op.idx, pos)
 	case opDynScope:
+		// A live read a placed speculative undef made carries its own token
+		// position (EmitOperand.pos): the miss raises there, where the
+		// interpreter stamps its undefined_word.
+		if op.pos.Row != 0 {
+			pos = op.pos
+		}
 		lw.emit(OpLookupDynScope, op.idx, pos)
 	case opDataScope:
 		lw.emit(OpLookupDynScopeData, op.idx, pos)

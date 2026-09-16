@@ -106,6 +106,14 @@ type EmitOperand struct {
 	// pushed closure VALUE (core.ClosurePayload) rather than to the shared
 	// unit — see that type's field comment for why the unit is the wrong home.
 	closureRet *ClosureRetSpec
+	// pos is the READ's own token position, carried only by a dyn-scope
+	// operand a placed speculative undef made live (dynScopeRescue): the
+	// VM raises the interpreter's undefined_word from it on a miss, and the
+	// interpreter stamps that error at the read token, not at the word
+	// that consumes the value (`k add 2` raises at `k`) nor at the region
+	// whose residual re-pushes it. Zero for every other operand, whose
+	// push takes the consumer's position as before.
+	pos core.SrcPos
 }
 
 // ConstOperand / EventOperand / localOperand / typeOperand build the indexed
@@ -581,6 +589,14 @@ type emitDynBind struct {
 	// lowers to nothing, and the name-keyed walks skip it exactly as they
 	// skip an undef — a type install binds no runtime value.
 	typeInstall bool
+	// speculative marks the PLACED transition of a speculative undef
+	// (RecordSpeculativeUndef's event, riding the undef half): the pop of
+	// an enclosing binding at its site inside a branch arm, a loop body or
+	// a fn unit. No value operand and no stack effect; it lowers to
+	// OpUndefDynScope wherever it sits, and it is never left unlowered —
+	// an undef the compiled program drops is the miscompile the
+	// sixty-seventh increment measured.
+	speculative bool
 }
 
 // bindsValue reports whether this def-site event installs a RUNTIME value
@@ -1058,6 +1074,11 @@ type EmitState struct {
 	// id 0 and is never on the stack). See beginFragment.
 	fragSeq int
 	fragIDs []int
+	// fragUnits parallels fragIDs with the UNIT depth (len(units)) each open
+	// fragment was opened at, so a recorder can tell a rolled-back region of
+	// the CURRENT unit (a branch arm or loop body being recorded here) from
+	// one an enclosing unit's call site sits in. See inRolledBackRegion.
+	fragUnits []int
 	// fragReads / bindHazard / storeHazard drive the residual-order hazard
 	// (unit_memo.go residualReadHazard), keyed by fragment id: the names a
 	// fragment has read, and the names (by name) or loop-carried slots (by
@@ -1160,6 +1181,22 @@ type EmitState struct {
 	// the rescue set is not taken) does not fire for a stamped unit that
 	// merely routes. Nil until first use.
 	routedNames map[string]bool
+	// specUndefNames is every name a PLACED speculative undef may pop
+	// (RecordSpeculativeUndef): the model generalised the binding's value
+	// in place, so every read of the name from that point is non-concrete
+	// and resolves through dynScopeRescue, which admits it at any depth
+	// and files it under routedNames — a live read whose root binding is
+	// the bind twin's replay, with frame twins only. Nil until first use.
+	specUndefNames map[string]bool
+	// liveReadPos is the token position of the latest bare read of each
+	// value ID whose name a placed speculative undef generalised
+	// (NoteLocalRead, program-wide — the per-unit localReads table stops
+	// at the root). The live operand the read lowers to carries it
+	// (EmitOperand.pos), so the VM's undefined_word on a miss sits where
+	// the interpreter's does: at the read token. The latest read wins,
+	// so two reads of one name in one statement share the later's caret.
+	// Nil until first use.
+	liveReadPos map[string]core.SrcPos
 }
 
 // routedBindsDyn reports whether a def event owes the routed-read channel a
@@ -1709,6 +1746,7 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// fragments continue the counter past the real state's.
 	p.fragSeq = es.fragSeq
 	p.fragIDs = append([]int(nil), es.fragIDs...)
+	p.fragUnits = append([]int(nil), es.fragUnits...)
 	p.fragReads = make(map[readKey]bool, len(es.fragReads))
 	for k, v := range es.fragReads {
 		p.fragReads[k] = v
@@ -2044,6 +2082,7 @@ func (es *EmitState) beginFragment() func() {
 	// separates them, so the seq is not an identity.
 	es.fragSeq++
 	es.fragIDs = append(es.fragIDs, es.fragSeq)
+	es.fragUnits = append(es.fragUnits, len(es.units))
 	return func() {
 		n := len(es.frames) - 1
 		es.captured = &EmitFragment{
@@ -2054,7 +2093,18 @@ func (es *EmitState) beginFragment() func() {
 		es.frames = es.frames[:n]
 		es.fragFloors = es.fragFloors[:len(es.fragFloors)-1]
 		es.fragIDs = es.fragIDs[:len(es.fragIDs)-1]
+		es.fragUnits = es.fragUnits[:len(es.fragUnits)-1]
 	}
+}
+
+// inRolledBackRegion reports whether the recorder is inside a fragment the
+// CURRENT unit opened — a branch arm or loop body being recorded into this
+// unit's stream, whose check-pass installs are rolled back and never
+// ledgered. A fragment an enclosing unit's call site sits in does not
+// count: this unit's body is not that region.
+func (es *EmitState) inRolledBackRegion() bool {
+	n := len(es.fragUnits)
+	return n > 0 && es.fragUnits[n-1] == len(es.units)
 }
 
 // bodyAnalysisGuard is called by RunCarrierBodyWithDefs: capture a
@@ -4998,47 +5048,161 @@ func (es *EmitState) inClosureBodyCompile() bool {
 // diverge from the interpreter — the program refuses. Any other name is
 // untouched here; the speculative shape has its own hook below, and both
 // refuse through refuseUndef's one site.
-func (es *EmitState) RefuseCarriedUndef(name string) { es.refuseUndef(name, false) }
+func (es *EmitState) RefuseCarriedUndef(name string) { es.refuseUndef(name, undefCarried) }
 
-// RefuseSpeculativeUndef is the undef handler's BLOCKED branch: an `undef`
-// of an ENCLOSING binding from inside a speculative region (a branch arm, a
-// loop or each body, an error handler, a fn body — core.Registry.
-// SpecUndefBlocked with a real pre-region depth). The check pass keeps the
-// binding in its model so a region that never runs raises nothing (the
-// wrapped-undef FP class), which means the compiled program never pops it
-// and every later read stays the pass's bake: `def k 5  if true [undef k]
-// []  k` answered 5 for the interpreter's undefined_word, a `while [k eq
-// 5] [undef k]` never terminated, and NUR144's loop-body undef answered
-// twice. The handler passes the fact (review of #463): es.reg is the
-// LAST-BOUND registry and can be a module sub-registry after a module call
-// in the same body, so the recorder must not re-derive it. The refusal
-// runs even while recording is suspended (a `do` body inside a loop), as
-// the frozen-read latch does — the refusal is the program's, not the
-// fragment's — and stays out of a closure body compile
-// (inClosureBodyCompile), whose transitions are the enclosing run's.
-func (es *EmitState) RefuseSpeculativeUndef(name string) { es.refuseUndef(name, true) }
+// RefuseSpeculativeUndef is the undef handler's BLOCKED branch for a
+// binding the model declined to generalise: an `undef` of an ENCLOSING
+// binding from inside a speculative region (a branch arm, a loop or each
+// body, an error handler, a fn body — core.Registry.SpecUndefBlocked with
+// a real pre-region depth) where the binding is a type, a fn-family value
+// or a frame binding of an enclosing fn (core.GeneraliseSpecUndef). The
+// check pass keeps the binding in its model so a region that never runs
+// raises nothing (the wrapped-undef FP class), which means the compiled
+// program never pops it and every later read stays the pass's bake: `def
+// k 5  if true [undef k] []  k` answered 5 for the interpreter's
+// undefined_word, a `while [k eq 5] [undef k]` never terminated, and
+// NUR144's loop-body undef answered twice. The handler passes the fact
+// (review of #463): es.reg is the LAST-BOUND registry and can be a module
+// sub-registry after a module call in the same body, so the recorder must
+// not re-derive it. The refusal runs even while recording is suspended (a
+// `do` body inside a loop), as the frozen-read latch does — the refusal is
+// the program's, not the fragment's — and stays out of a closure body
+// compile (inClosureBodyCompile), whose transitions are the enclosing
+// run's.
+func (es *EmitState) RefuseSpeculativeUndef(name string) { es.refuseUndef(name, undefSpeculative) }
 
-// refuseUndef is the one refusal site behind both undef hooks — the
-// census counts sites, and the disposition row covers both shapes.
-func (es *EmitState) refuseUndef(name string, speculative bool) {
+// RecordSpeculativeUndef is the blocked branch's PLACEABLE shape (the
+// sixty-eighth increment): the model generalised the binding's value in
+// place, so the transition can be placed and the reads made live. Placed
+// where the recorder is LIVE at the site — a branch arm or loop body
+// recording into its fragment, a fn unit's body — as an undef-half dyn-bind
+// event that lowers to OpUndefDynScope exactly there: the pop executes when
+// the site does, in the current registry, and stays popped. The name joins
+// specUndefNames, so dynScopeRescue admits every later read of it (the
+// carrier the model now holds has no compiled home) as a live lookup filed
+// under routedNames: frame twins for a fn unit's own binding of the name,
+// none for the root def its bind twin already replays — the double install
+// a dynScopeNames entry would make, whose undef then pops the wrong level.
+// Refused, through the one undef site, where it cannot be placed: a
+// SUSPENDED recording (an each body's first run, a handler probe, a `do`
+// inside a loop — the event would have no stream home, and an undef
+// silently dropped is the miscompile), an ARM-RESIDENT bracket (the
+// residency bridge pairs events against ledger twins one to one, and this
+// transition has no twin), and a name a live loop CARRIES (its reads are
+// slot reads, the carried refusal's own case). A closure body compile is
+// exempt as before: its transitions are the enclosing run's.
+func (es *EmitState) RecordSpeculativeUndef(name string, pos core.SrcPos) {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() {
+		return
+	}
+	if !es.Active() || es.armResidentDepth > 0 || es.nameCarried(name) {
+		es.refuseUndef(name, undefSpeculative)
+		return
+	}
+	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
+		name: name, srcSeq: -1, pos: pos, residentTwin: -1, undef: true, speculative: true,
+	}})
+	es.noteBindHazard(name)
+	if es.specUndefNames == nil {
+		es.specUndefNames = map[string]bool{}
+	}
+	es.specUndefNames[name] = true
+}
+
+// undefRefusal names the shape refuseUndef is asked about.
+type undefRefusal uint8
+
+const (
+	// undefCarried: RefuseCarriedUndef — an undef of a name a live armed
+	// loop carries in a frame slot (the slot still holds the rebound
+	// value while the registry exposes the previous binding).
+	undefCarried undefRefusal = iota
+	// undefSpeculative: an undef of an enclosing binding from a
+	// speculative region the compiled lane cannot place — the model
+	// declined to generalise it (RefuseSpeculativeUndef), or the recorder
+	// cannot seat the transition (RecordSpeculativeUndef's declines).
+	undefSpeculative
+	// defAfterSpecUndef: RecordDynBind — a `def` of a name a placed
+	// speculative undef generalised, inside a rolled-back region of the
+	// same unit (`for 2 [ undef k  def k 6 ]`, `if c [undef k  def k 6]`):
+	// the region's install is never ledgered, the join's twin captures a
+	// carrier the replay skips, and the def would lower to NOTHING while
+	// every later read looks the name up live — the compiled registry
+	// missing the binding the interpreter holds.
+	defAfterSpecUndef
+	// fwdReadAfterSpecUndef: a dispatch whose FORWARD window names a
+	// generalised name (`add k 1` after a placed `undef k`). A stack read
+	// of a popped name is the interpreter's undefined_word at the token,
+	// which the live lookup raises; a forward-slot read is the interpreter's
+	// COLLECTION of the unbound word as a Word value — `cannot call add —
+	// no signature matches; got (Word, Integer)` at the dispatching word —
+	// which neither the committed call's lookup nor the routed op's
+	// unbound-slot arm (the sixty-sixth increment's undefined_word) raises.
+	// The routed dispatch owns that arm; until it does, the shape refuses.
+	fwdReadAfterSpecUndef
+)
+
+// refuseUndef is the one refusal site behind the undef hooks and the
+// def-after-undef guard — the census counts sites, and the disposition row
+// covers every shape.
+func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 	if es == nil || !es.Compilable {
 		return
 	}
 	reason := ""
 	switch {
-	case speculative && !es.inClosureBodyCompile():
+	case kind == undefSpeculative && !es.inClosureBodyCompile():
 		reason = "undef of the enclosing binding `" + name + "` inside a conditional, loop or fn body: no transition the compiled program can place (the binder half)"
-	case !speculative && es.Active():
-		for i := len(es.loopCarried) - 1; i >= 0; i-- {
-			if _, ok := es.loopCarried[i].slots[name]; ok {
-				reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
-				break
-			}
-		}
+	case kind == defAfterSpecUndef:
+		reason = "def of `" + name + "` inside the region that undefs it: the compiled program cannot place the install after the placed undef (the binder half)"
+	case kind == fwdReadAfterSpecUndef:
+		reason = "forward-slot read of `" + name + "` after a placed undef: an unbound slot's collection is the routed dispatch's (the binder half)"
+	case kind == undefCarried && es.Active() && es.nameCarried(name):
+		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
 	if reason != "" {
 		es.MarkUncompilable(reason)
 	}
+}
+
+// specUndefFwdSlot names the first FORWARD word slot of a descriptor that
+// reads a name a placed speculative undef generalised (specUndefNames), or
+// "" — every slot is scanned, not only the record's claim, because the
+// live operand the read lowered to is exactly what stops the claim short
+// (regionSourceOf knows no dyn-scope source). See fwdReadAfterSpecUndef.
+func (es *EmitState) specUndefFwdSlot(d *RegionDesc) string {
+	if d == nil || len(es.specUndefNames) == 0 {
+		return ""
+	}
+	for i := range d.Slots {
+		if d.Slots[i].Source != SlotWordRef {
+			continue
+		}
+		if wi, err := core.AsWord(d.Slots[i].Token); err == nil && es.specUndefNames[wi.Name] {
+			return wi.Name
+		}
+	}
+	return ""
+}
+
+// nameCarried reports whether an armed loop carries, or has carried, name
+// in a frame slot: a live loop's slot, or any loop's so far (carriedNames).
+// An undef of such a name pops a registry level while the slot keeps the
+// rebound value — and the loop's joined twin replays ONE install for its
+// N iterations, so even after the loop the registry's depth is not the
+// interpreter's (`for 2 [ def k 6 ]  undef k  k` answered the pre-loop 5
+// for the interpreter's 6 — the sixty-eighth increment's measurement on
+// main, refused here through the carried arm).
+func (es *EmitState) nameCarried(name string) bool {
+	if es.carriedNames[name] {
+		return true
+	}
+	for i := len(es.loopCarried) - 1; i >= 0; i-- {
+		if _, ok := es.loopCarried[i].slots[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // emitCheckpoint snapshots the append-only recording pools and counters so a
@@ -5575,6 +5739,10 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// the record's claim and nothing else). Decided before routeRegion so a
 	// declined route retires no read.
 	generic := len(rec.caps) == 0 && es.routeRegion(region)
+	if n := es.specUndefFwdSlot(region); n != "" {
+		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		return
+	}
 	for _, cb := range rec.caps {
 		op, ok := es.resolveOperand(cb.Value)
 		if !ok {
@@ -6735,6 +6903,10 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	// and a routed spec freezes one count for every execution (review of
 	// #461). The committed call keeps the recorder's own handling below.
 	generic := !sig.CompileEffect.Has(core.CompileValueDiverges) && es.routeRegion(region)
+	if n := es.specUndefFwdSlot(region); n != "" {
+		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		return
+	}
 	es.SiteCounts[SiteMono]++
 	// A CompileValueDiverges word (div/mod) raises value-dependently: its
 	// check-mode ReturnsFn drops the declared result (len(outs)==0) exactly on
@@ -7573,6 +7745,10 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// the volume is: 660 of the corpus's 677 routed native dispatches.
 	region := es.completeRegion(word, pos, args, ops)
 	generic := !valueDivergingWord(ownerReg, es.reg, word) && es.routeRegion(region)
+	if n := es.specUndefFwdSlot(region); n != "" {
+		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		return true
+	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
 	switch len(outs) {
 	case 0:
@@ -8015,6 +8191,13 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if !es.Active() || name == "" || core.IsCapitalisedName(name) {
 		return
 	}
+	// A def of a name a PLACED speculative undef generalised, inside a
+	// rolled-back region of this unit, cannot be placed after the undef
+	// (defAfterSpecUndef) — refuse before recording anything for it.
+	if es.specUndefNames[name] && es.inRolledBackRegion() {
+		es.refuseUndef(name, defAfterSpecUndef)
+		return
+	}
 	if es.valBindEpoch == nil {
 		es.valBindEpoch = map[string]int{}
 	}
@@ -8174,6 +8357,22 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 	}
 	if name == "" {
 		return EmitOperand{}, false
+	}
+	if es.specUndefNames[name] {
+		// A read of a name a PLACED speculative undef may have popped
+		// (RecordSpeculativeUndef): the model holds a carrier with no
+		// compiled home, at any depth, and the live lookup is the one
+		// reading the interpreter does — it finds the binding when the
+		// region did not run and misses (deferring, to the undefined_word
+		// the interpreter raises) when it did. Filed under routedNames:
+		// frame twins only; the root binding is the bind twin's replay.
+		if es.routedNames == nil {
+			es.routedNames = map[string]bool{}
+		}
+		es.routedNames[name] = true
+		op := dynScopeOperand(es.intern(core.NewString(name)))
+		op.pos = es.liveReadPos[v.ID]
+		return op, true
 	}
 	if len(es.units) <= 1 {
 		// Top level: an S5 first-value loop bind reads through the registry
@@ -10891,7 +11090,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		BindTwins:       append([]core.BindTransition(nil), es.bindTwins...),
 		BindTwinEntries: append([]core.DefEntry(nil), es.bindTwinEntries...),
 		ReplayBase:      es.bindSnap,
-		ReplayReg:       es.progReg}
+		ReplayReg:       es.progReg,
+		SpecUndefNames:  maps.Clone(es.specUndefNames)}
 	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
@@ -11468,7 +11668,16 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // comes after it is a value the interpreter's stack holds at the
 // statement and the compiled stack does not yet.
 func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
-	if !es.Active() || id == "" || pos.Row == 0 || len(es.openUnitRecs) == 0 {
+	if !es.Active() || id == "" || pos.Row == 0 {
+		return
+	}
+	if name := es.defReads[id]; name != "" && es.specUndefNames[name] {
+		if es.liveReadPos == nil {
+			es.liveReadPos = map[string]core.SrcPos{}
+		}
+		es.liveReadPos[id] = pos
+	}
+	if len(es.openUnitRecs) == 0 {
 		return
 	}
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
