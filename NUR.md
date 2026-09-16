@@ -6309,3 +6309,53 @@ the pass's — with the stack sim's consumption reconciled as the generic
 op's claim-drift check reconciles it, or the record must carry the
 overloads' counts and let the run choose. Until then the second call of
 any service is the interpreter's.
+
+## NUR148 — the stored-handler lookup half's first cut: four divergences found in review {#nur148}
+
+**Status:** Fixed (recorded and closed 2026-09-16, the seventy-first
+increment, #467 — the first cut's review by Codex; each fixed in the same
+PR).
+**Found:** review of #467's first cut (4f5fee1), three reproduced on that
+tree, the fourth on the restore predicate.
+
+**Rule:** a compiled program answers as the interpreter does, and a
+refusal is a slow path, never a wrong answer.
+
+**Divergences and fixes.**
+
+1. *A live READ rebound to a dispatching value.* `def k 6  def svc
+   (service {})  add {} ([r:Map state:Any] => [print "x" k]) svc  undef k
+   def k fn [[][Integer][11]] end  call {} svc`: the interpreter prints
+   `x` and returns 11 (a bare word bound to a fn dispatches it); the
+   compiled handler's live lookup (`OpLookupDynScope`) met a fn, deferred
+   past the print, and raised an internal error. Fix: a module-scope
+   transition of a name a stored unit reads live to a binding the lookup
+   op would DISPATCH — a fn, a class, an active token — refuses through
+   the undef site (`liveReadDispatching`, at `RecordBindTwin`).
+2. *A name read both ways.* `add {} (… => [helper 5 drop def h helper/v 5
+   h/v apply]) svc  def helper fn [[x:Integer][Integer][x add 2]] end
+   call {} svc`: the routed lead was live, the `/v` read a bake, and
+   marking the name live skipped the latch — 6 for the interpreter's 7.
+   Fix: a stored unit counts its frozen notes (`NoteFrozenRead`'s stored
+   arm: a value const, a type identity, a committed call target) against
+   its live seats; a name whose bakes outnumber its seats is not live for
+   the ref, and the latch keeps it.
+3. *The admission by word.* After a stored handler dispatched `helper`,
+   `def f fn [[x:Integer][Integer][def helper fn [[y:Integer][Integer][y add
+   10]] end  helper x]] end  f 5` routed the body-local helper's call as a
+   live module lead — 6 for the interpreter's 15. Fix: the admission rides
+   on the dispatch's descriptor (`RegionDesc.LiveLead`, set by the stored
+   unit's own record), never on the word.
+4. *The restore predicate.* `Program.LiveLeadNames`/`LiveReadNames` had
+   joined the condition that rolls the registry back to `ReplayBase`
+   before a run; a program with a live lead and no transition, re-run
+   after a later request rebound the name, undid that rebind (7 back to
+   6) and left the registry rolled back. Fix: the sets leave the
+   predicate — a live read implies no transition to replay.
+
+**Fence.** `lang/go/stored_handler_live_test.go` (the refused rows, the
+body-local row, `TestStoredHandlerLiveNamesDoNotRestoreBase`),
+`compiler/go/stored_live_test.go`, `eng/go/vm_replay_base_test.go`.
+
+**Verdict:** closed with the fixes; recorded because the rule says every
+divergence surfaced in review is recorded, fixed or not.

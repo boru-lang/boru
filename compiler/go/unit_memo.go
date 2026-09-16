@@ -78,7 +78,15 @@ func (es *EmitState) NoteFrozenRead(name string, bake core.FrozenBake, gen int64
 		return
 	}
 	rec := es.fnRecs[idx]
-	if rec == nil || rec.storedRefUnit {
+	if rec == nil {
+		return
+	}
+	if rec.storedRefUnit {
+		// A stored-ref unit's rebind safety is the per-ref latch, not the
+		// escaping-unit discipline; the note is counted against the unit's
+		// live seats instead (the seventy-first increment), so a name read
+		// both ways stays the latch's.
+		es.noteUnitBaked(name)
 		return
 	}
 	if rec.frozen == nil {

@@ -95,4 +95,28 @@ func TestRunProgramRollsBackToReplayBase(t *testing.T) {
 	if d := r4.Defs.Depth("Y"); d != 1 {
 		t.Fatalf("a twin-less program must not roll the registry back: depth %d, want 1", d)
 	}
+
+	// A program that reads a stored handler's deps live (LiveLeadNames,
+	// LiveReadNames — the seventy-first increment) but recorded no
+	// transition restores nothing either: a live read implies nothing to
+	// replay (review of #467, where the sets had joined the predicate and a
+	// later request's rebind was undone by a re-run).
+	r5 := newReg()
+	base5 := r5.SnapshotBindings()
+	r5.Defs.Push("Y", core.NewInteger(9))
+	p5 := &compiler.Program{
+		Code:          []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}},
+		Debug:         []core.SrcPos{{Row: 1, Col: 1}},
+		Consts:        []core.Value{core.NewInteger(1)},
+		ReplayBase:    base5,
+		ReplayReg:     r5,
+		LiveLeadNames: map[string]bool{"helper": true},
+		LiveReadNames: map[string]bool{"k": true},
+	}
+	if _, err := RunProgram(p5, r5); err != nil {
+		t.Fatal(err)
+	}
+	if d := r5.Defs.Depth("Y"); d != 1 {
+		t.Fatalf("a live-read program with no transition must not roll the registry back: depth %d, want 1", d)
+	}
 }

@@ -9018,6 +9018,26 @@ disassembly showing the routed lead or the live lookup, and answer the
 interpreter's binding. Refused with parity: a lambda original (the
 latch), a live lead rebound to a lambda or to a data value.
 
+**The review's four** (Codex on the first cut, 4f5fee1; NUR148 records
+them): a live READ rebound to a fn — `undef k  def k fn [[][Integer][11]]
+end` after a handler printed and read `k` — met the lookup op's defer
+past the print where the interpreter dispatches it, so a transition of a
+live-read name to a dispatching value refuses through the undef site
+(`liveReadDispatching`); a name read BOTH ways — `helper 5` routed beside
+a baked `helper/v` — had been marked live and skipped the latch (6 for
+7), so a stored unit now counts its frozen notes against its live seats
+(`noteUnitBaked` from `NoteFrozenRead`'s stored arm, `unitLiveNames`
+keeping only names whose seats cover their bakes); the live-lead
+admission had been keyed by WORD, so a body-local `helper` in another fn
+routed as the module lead (6 for 15) — it rides on the descriptor now
+(`RegionDesc.LiveLead`); and the two live-name sets had joined the
+restore predicate, rolling the registry back to `ReplayBase` for a
+program with no transition to replay (a later request's rebind undone,
+7 back to 6) — they leave it, since a live read implies no transition. A
+live lead rebound to another ARITY, which the review expected to defer,
+answers as the interpreter does: the live plan claims what the live
+signature takes (a compiled row).
+
 **The finding: the second `call` bails.** The F1 shape compiles now —
 the latch lifts — but its RUN falls back to the interpreter at the
 second `call {op:"go"} svc`, and so does every program that calls a

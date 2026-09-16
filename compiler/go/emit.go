@@ -1408,8 +1408,14 @@ type fnUnitRec struct {
 	// liveNames are the module-scope names this unit reads LIVE — a routed
 	// slot, a seated live read, a routed lead (noteUnitLive) — so a stored
 	// ref made over it can tell the latch which of its deps hold no bake
-	// (the seventy-first increment).
-	liveNames map[string]bool
+	// (the seventy-first increment). storedSeats counts those seats and
+	// storedBakes the frozen notes the unit's reads made (NoteFrozenRead's
+	// stored arm: a value const, a type identity, a committed call target);
+	// a name whose bakes outnumber its seats is read BOTH ways — a `/v`
+	// beside a routed lead (review of #467) — and stays the latch's.
+	liveNames   map[string]bool
+	storedSeats map[string]int
+	storedBakes map[string]int
 	// bakes / frozen are the unit's baked enclosing-scope reads (unit_memo.go):
 	// bakes maps each name to the binding's DefTable generation at the read —
 	// the memo's staleness key — and frozen to WHAT was baked (the escaping
@@ -4570,10 +4576,11 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 	}
 	es.bindTwins = append(es.bindTwins, tr)
 	es.bindTwinEntries = append(es.bindTwinEntries, entry)
-	// A transition of a live-lead name (a stored handler dispatches it by
-	// name) gives the binding it leaves its units, so the routed op has the
-	// live signature's own (the seventy-first increment).
-	es.compileLiveLeadUnits(tr.Name)
+	// A transition of a name a stored handler reads live: a live LEAD's
+	// new binding gets its units, so the routed op has the live
+	// signature's own; a live READ's new binding must be one the lookup
+	// op can push (the seventy-first increment, review of #467).
+	es.noteLiveNameTransition(tr.Name)
 	// STREAM PLACEMENT, the narrower half: an evBindTwin event marks where in
 	// production order the transition happened, so the lowering emits an
 	// (inert) OpBindTwin there. Recorded only while the recorder is LIVE —
@@ -5411,6 +5418,13 @@ const (
 	// unit by), or one made while the recorder was suspended (no unit
 	// compiled) — the seventy-first increment.
 	liveLeadUndeclared
+	// liveReadDispatching: a module-scope rebind of a value a stored
+	// handler reads live (NoteLiveRead's stored arm) to a binding the
+	// lookup op DISPATCHES rather than pushes — a fn, a class, an active
+	// token — which the interpreter runs where OpLookupDynScope would defer
+	// past the handler's effects (review of #467: `undef k  def k fn
+	// [[][Integer][11]] end` after a handler printed and read k).
+	liveReadDispatching
 )
 
 // refuseUndef is the one refusal site behind the undef hooks and the
@@ -5438,6 +5452,8 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 		reason = "value read of the conditionally-defined fn `" + name + "`: no live home for the read (the binder half)"
 	case kind == liveLeadUndeclared:
 		reason = "module binding " + name + " rebound to a value with no declared signature after a stored handler dispatched it live (the binder half)"
+	case kind == liveReadDispatching:
+		reason = "module binding " + name + " rebound to a dispatching value after a stored handler read it live (the binder half)"
 	case kind == undefCarried && es.Active() && es.nameCarried(name):
 		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
@@ -6053,14 +6069,21 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// A stored-ref unit's dispatch of a module-scope fn resolves its lead
 	// live (markLiveLead — the seventy-first increment): the unit runs
 	// after the store, when the binding may have moved, and the op runs
-	// the live signature's own unit.
-	es.markLiveLead(word)
-	if region == nil && es.Active() && es.liveLeadWord(word) {
+	// the live signature's own unit. The admission rides on THIS
+	// descriptor (RegionDesc.LiveLead), never on the word: a body-local
+	// fn of the same name in another unit keeps its committed call
+	// (review of #467: `f 5` answered the module helper's 6 for the
+	// interpreter's 15).
+	live := es.markLiveLead(word)
+	if region != nil {
+		region.LiveLead = live
+	}
+	if region == nil && es.Active() && (es.specFnNames[word] || live) {
 		// A stack-form dispatch offers no window (completeOffer declines an
 		// empty one); a speculative fn family's needs the op all the same,
 		// for its live lead — a descriptor with no slots, drivable by
 		// construction, over the frame's resolved values.
-		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg}
+		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg, LiveLead: live}
 	}
 	// A callee with captures keeps its committed call: the captures ride as
 	// trailing CALL_USER operands the routed op has no plumbing for (it pops
@@ -6083,19 +6106,19 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// sub-compile cost three rows their units. Only a generalised undef
 	// name among the window's slots keeps a refusal — the slot owes a
 	// live lookup the compiled operand baked (fwdReadAfterSpecUndef).
-	if !generic && es.Active() && es.liveLeadWord(word) && region != nil {
+	if !generic && es.Active() && (es.specFnNames[word] || live) && region != nil {
 		if n := es.specUndefUnroutedSlot(region, false); n != "" {
 			es.refuseUndef(n, fwdReadAfterSpecUndef)
 			return
 		}
-		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg}
+		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg, LiveLead: live}
 		generic = len(rec.caps) == 0 && es.routeRegion(region)
 	}
 	if !generic && es.specFnNames[word] {
 		es.refuseUndef(word, specFnUnrouted)
 		return
 	}
-	if generic && es.liveLeadNames[word] {
+	if generic && live {
 		es.noteUnitLive(word)
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {

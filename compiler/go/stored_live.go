@@ -49,31 +49,73 @@ func (es *EmitState) storedUnitOpen() *fnUnitRec {
 	return es.fnRecs[idx]
 }
 
-// noteUnitLive records that the innermost open unit reads name LIVE — a
-// routed slot, a seated live read, a routed lead — so the stored-ref latch
-// (NotifyNameRebound) knows the unit holds no bake of it.
-func (es *EmitState) noteUnitLive(name string) {
-	if es == nil || name == "" || len(es.openUnitRecs) == 0 {
-		return
+// openUnitRecSafe is openUnitRec with a nil recorder and an index outside
+// the table answered nil rather than a fault (the seats below are reached
+// from hooks that run on an inactive recorder too).
+func (es *EmitState) openUnitRecSafe() *fnUnitRec {
+	if es == nil || len(es.openUnitRecs) == 0 {
+		return nil
 	}
 	idx := es.openUnitRecs[len(es.openUnitRecs)-1]
-	if idx < 0 || idx >= len(es.fnRecs) || es.fnRecs[idx] == nil {
-		return
+	if idx < 0 || idx >= len(es.fnRecs) {
+		return nil
 	}
-	rec := es.fnRecs[idx]
-	if rec.liveNames == nil {
-		rec.liveNames = map[string]bool{}
-	}
-	rec.liveNames[name] = true
+	return es.fnRecs[idx]
 }
 
-// unitLiveNames returns the names unit reads live, for a stored ref made
-// over it.
+// noteUnitLive records that the innermost open unit reads name LIVE — a
+// routed slot, a seated live read, a routed lead — so the stored-ref latch
+// (NotifyNameRebound) knows the unit holds no bake of it. Each seat counts,
+// against the bake notes the same reads made (noteUnitBaked).
+func (es *EmitState) noteUnitLive(name string) {
+	rec := es.openUnitRecSafe()
+	if rec == nil || name == "" {
+		return
+	}
+	if rec.liveNames == nil {
+		rec.liveNames = map[string]bool{}
+		rec.storedSeats = map[string]int{}
+	}
+	rec.liveNames[name] = true
+	rec.storedSeats[name]++
+}
+
+// noteUnitBaked counts a frozen note (NoteFrozenRead) a stored-ref unit's
+// read made — the engine notes a concrete module-scope value read, a type
+// read and a committed call target BEFORE the read is tagged, so a read the
+// seat then takes is one seat against one bake, and a read no seat takes —
+// a `/v` read, a call the op could not route — is a bake the latch keeps.
+func (es *EmitState) noteUnitBaked(name string) {
+	rec := es.openUnitRecSafe()
+	if rec == nil || name == "" {
+		return
+	}
+	if rec.storedBakes == nil {
+		rec.storedBakes = map[string]int{}
+	}
+	rec.storedBakes[name]++
+}
+
+// unitLiveNames returns the names unit reads live AND nowhere baked — the
+// names a rebind leaves nothing stale in — for a stored ref made over it. A
+// name whose bakes outnumber its seats (review of #467: `helper 5` routed
+// beside a baked `helper/v`) is left to the latch.
 func (es *EmitState) unitLiveNames(unit int) map[string]bool {
 	if es == nil || unit < 0 || unit >= len(es.fnRecs) || es.fnRecs[unit] == nil {
 		return nil
 	}
-	return es.fnRecs[unit].liveNames
+	rec := es.fnRecs[unit]
+	var live map[string]bool
+	for name := range rec.liveNames {
+		if rec.storedBakes[name] > rec.storedSeats[name] {
+			continue
+		}
+		if live == nil {
+			live = map[string]bool{}
+		}
+		live[name] = true
+	}
+	return live
 }
 
 // storedDepRead reports whether a bare read of name, inside the open
@@ -93,14 +135,7 @@ func (es *EmitState) storedDepRead(name string, v core.Value) bool {
 		es.noteUnitLive(name)
 		return false
 	}
-	switch v.Data.(type) {
-	case core.FnDefInfo, *core.ClassTypeInfo:
-		return false
-	}
-	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
-		return false
-	}
-	return true
+	return !dispatchingBinding(v)
 }
 
 // markLiveLead marks word a live lead when a stored-ref unit dispatches it
@@ -121,29 +156,48 @@ func (es *EmitState) markLiveLead(word string) bool {
 	return true
 }
 
-// liveLeadWord reports whether word's routed dispatches resolve their lead
-// live: a speculative fn family's, or a stored handler's dep.
-func (es *EmitState) liveLeadWord(word string) bool {
-	return es != nil && (es.specFnNames[word] || es.liveLeadNames[word])
-}
-
-// compileLiveLeadUnits gives every own signature of name's CURRENT binding
-// a unit, after a module-scope transition of a live-lead name: the routed
-// op runs the live signature's unit by its declaration site, and a
-// binding the pass never dispatched elsewhere has none. A binding with no
-// declared signature — a lambda's, a data value's — is one the op cannot
-// run: refused through the undef site. Nothing while suspended (a
-// transition inside a body the recorder does not record has no unit to
-// compile against) — the name is then refused the same way.
-func (es *EmitState) compileLiveLeadUnits(name string) {
-	if es == nil || !es.Compilable || !es.liveLeadNames[name] || es.reg == nil {
+// noteLiveNameTransition follows a module-scope transition of a name a
+// stored handler reads live, after the install (RecordBindTwin). A live
+// LEAD's new binding gets every own signature a unit (compileLiveLeadUnits):
+// the routed op runs the live signature's unit by its declaration site, and
+// a binding the pass never dispatched elsewhere has none. A live READ's new
+// binding must be one OpLookupDynScope pushes: a fn, a class or an active
+// token it would DISPATCH — deferring past the handler's effects where the
+// interpreter runs it — is refused through the undef site (review of
+// #467). An unbound name is the miss the ops raise as undefined_word.
+func (es *EmitState) noteLiveNameTransition(name string) {
+	if es == nil || !es.Compilable || es.reg == nil || (!es.liveLeadNames[name] && !es.liveReadNames[name]) {
 		return
 	}
 	v, ok := es.reg.Defs.Top(name)
 	if !ok {
-		// Unbound: the live lookup raises the interpreter's undefined_word.
 		return
 	}
+	if es.liveReadNames[name] && dispatchingBinding(v) {
+		es.refuseUndef(name, liveReadDispatching)
+		return
+	}
+	if es.liveLeadNames[name] {
+		es.compileLiveLeadUnits(name, v)
+	}
+}
+
+// dispatchingBinding reports whether a binding is one the lookup op cannot
+// push — the arms OpLookupDynScope defers on.
+func dispatchingBinding(v core.Value) bool {
+	switch v.Data.(type) {
+	case core.FnDefInfo, *core.ClassTypeInfo:
+		return true
+	}
+	return core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v)
+}
+
+// compileLiveLeadUnits gives every own signature of v, name's current
+// binding, a unit. A binding with no declared signature — a lambda's, a
+// data value's — is one the op cannot run: refused through the undef site.
+// Nothing while suspended (a transition inside a body the recorder does
+// not record has no unit to compile against) — refused the same way.
+func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 	if !es.Active() || !fnSigsDeclared(v) {
 		es.refuseUndef(name, liveLeadUndeclared)
 		return

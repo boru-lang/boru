@@ -225,6 +225,12 @@ type RegionDesc struct {
 	// execution (found in review of #461). Nil in a hand-built descriptor
 	// means the running registry.
 	Reg *core.Registry
+	// LiveLead marks a dispatch whose lead resolves LIVE for the stored-ref
+	// unit that made it (RecordUserCall's markLiveLead — the seventy-first
+	// increment): the admission is the descriptor's, not the word's, so a
+	// body-local fn of the same name elsewhere keeps its committed call
+	// (review of #467).
+	LiveLead bool
 	// LeadLocal marks a lead no live lookup in Reg finds where the body
 	// runs: a binding that lives inside an enclosing fn — a body-local
 	// `def`, a fn-valued param — the fn-unit hazard fillOffer's slot rule

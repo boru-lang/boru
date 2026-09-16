@@ -14,11 +14,12 @@ import (
 // name compiles or refuses.
 func TestStoredLiveSeats(t *testing.T) {
 	var nilES *EmitState
-	if nilES.storedUnitOpen() != nil || nilES.unitLiveNames(0) != nil || nilES.liveLeadWord("f") || nilES.markLiveLead("f") || nilES.storedDepRead("k", core.NewInteger(1)) {
+	if nilES.storedUnitOpen() != nil || nilES.unitLiveNames(0) != nil || nilES.markLiveLead("f") || nilES.storedDepRead("k", core.NewInteger(1)) {
 		t.Fatal("a nil recorder has no stored unit, no live names, no live lead")
 	}
 	nilES.noteUnitLive("k")
-	nilES.compileLiveLeadUnits("f")
+	nilES.noteUnitBaked("k")
+	nilES.noteLiveNameTransition("f")
 
 	es, reg, done := beginRegionPass(t)
 	defer done()
@@ -26,6 +27,7 @@ func TestStoredLiveSeats(t *testing.T) {
 		t.Fatal("no open unit: no stored unit, no live names out of range")
 	}
 	es.noteUnitLive("k") // no open unit: nothing to note
+	es.noteUnitBaked("k")
 	if es.storedDepRead("k", core.NewInteger(1)) || es.markLiveLead("f") {
 		t.Fatal("outside a stored unit nothing is seated or marked")
 	}
@@ -50,8 +52,10 @@ func TestStoredLiveSeats(t *testing.T) {
 		t.Fatal("the open stored unit")
 	}
 	es.noteUnitLive("")
+	es.noteUnitBaked("")
 	es.openUnitRecs = append(es.openUnitRecs, 99) // an index outside the table notes nothing
 	es.noteUnitLive("k")
+	es.noteUnitBaked("k")
 	es.openUnitRecs = es.openUnitRecs[:len(es.openUnitRecs)-1]
 	if es.unitLiveNames(unit)["k"] {
 		t.Fatal("a bad open index noted nothing")
@@ -60,6 +64,17 @@ func TestStoredLiveSeats(t *testing.T) {
 	if !es.unitLiveNames(unit)["k"] || es.unitLiveNames(unit)[""] {
 		t.Fatalf("noted live on the unit: %v", es.unitLiveNames(unit))
 	}
+	// Seats against bakes: a name read both ways — one seat, two bake
+	// notes (a `/v` beside the seated read) — is not live for the ref.
+	es.noteUnitBaked("k")
+	if !es.unitLiveNames(unit)["k"] {
+		t.Fatal("one bake against one seat: the seat took it")
+	}
+	es.noteUnitBaked("k")
+	if es.unitLiveNames(unit)["k"] {
+		t.Fatal("a second bake with no seat: the latch's")
+	}
+	es.noteUnitLive("k")
 	// The stored-dep arm: a module-scope value seats; an unbound name, a
 	// fn-local name, a fn or class value, an active token do not; a
 	// dynamic-tagged read is noted live and seated nowhere new.
@@ -88,7 +103,7 @@ func TestStoredLiveSeats(t *testing.T) {
 	}
 	// The live lead: a declared module-scope fn marks; a lambda, an
 	// unbound name, a data value do not.
-	if !es.markLiveLead("helper") || !es.liveLeadWord("helper") || es.liveLeadWord("k") {
+	if !es.markLiveLead("helper") || !es.liveLeadNames["helper"] || es.liveLeadNames["k"] {
 		t.Fatal("a declared module-scope fn is a live lead")
 	}
 	if es.markLiveLead("lam") || es.markLiveLead("nope") || es.markLiveLead("k") || es.markLiveLead("") {
@@ -97,19 +112,19 @@ func TestStoredLiveSeats(t *testing.T) {
 	// A transition of a live-lead name: not live → nothing; unbound → the
 	// miss raises at run time, nothing; declared → its units; a lambda or
 	// a data value → refused; suspended → refused.
-	es.compileLiveLeadUnits("k")
+	es.noteLiveNameTransition("nope")
 	reg.Defs.Pop("helper")
-	es.compileLiveLeadUnits("helper") // unbound: nothing
+	es.noteLiveNameTransition("helper") // unbound: nothing
 	if !es.Compilable {
 		t.Fatalf("an unbound live lead compiles nothing and refuses nothing: %q", es.Reason)
 	}
 	reg.Defs.Push("helper", fnv)
-	es.compileLiveLeadUnits("helper")
+	es.noteLiveNameTransition("helper")
 	if !es.Compilable {
 		t.Fatalf("a declared binding compiles its units: %q", es.Reason)
 	}
 	resume := es.Suspend()
-	es.compileLiveLeadUnits("helper")
+	es.noteLiveNameTransition("helper")
 	resume()
 	if es.Compilable || !strings.Contains(es.Reason, "module binding helper rebound to a value with no declared signature after a stored handler dispatched it live") {
 		t.Fatalf("a transition while suspended refuses: %v %q", es.Compilable, es.Reason)
@@ -118,9 +133,27 @@ func TestStoredLiveSeats(t *testing.T) {
 	defer done2()
 	es2.liveLeadNames = map[string]bool{"helper": true}
 	reg2.Defs.Push("helper", lam)
-	es2.compileLiveLeadUnits("helper")
+	es2.noteLiveNameTransition("helper")
 	if es2.Compilable || !strings.Contains(es2.Reason, "no declared signature") {
 		t.Fatalf("a lambda rebind of a live lead refuses: %v %q", es2.Compilable, es2.Reason)
 	}
-	es2.compileLiveLeadUnits("helper") // already uncompilable: nothing more
+	es2.noteLiveNameTransition("helper") // already uncompilable: nothing more
+	// A live READ's transition to a dispatching value refuses (review of
+	// #467); to a value it does not.
+	es3, reg3, done3 := beginRegionPass(t)
+	defer done3()
+	es3.liveReadNames = map[string]bool{"k": true}
+	reg3.Defs.Push("k", core.NewInteger(11))
+	es3.noteLiveNameTransition("k")
+	if !es3.Compilable {
+		t.Fatalf("a value rebind of a live read is the lookup's: %q", es3.Reason)
+	}
+	reg3.Defs.Push("k", fnv)
+	es3.noteLiveNameTransition("k")
+	if es3.Compilable || !strings.Contains(es3.Reason, "module binding k rebound to a dispatching value after a stored handler read it live") {
+		t.Fatalf("a fn rebind of a live read refuses: %v %q", es3.Compilable, es3.Reason)
+	}
+	if !dispatchingBinding(core.NewWord("w")) || dispatchingBinding(core.NewInteger(1)) {
+		t.Fatal("dispatchingBinding: an active token is, a value is not")
+	}
 }
