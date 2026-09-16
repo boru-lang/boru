@@ -6360,69 +6360,6 @@ body-local row, `TestStoredHandlerLiveNamesDoNotRestoreBase`),
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
 
-## NUR149 — a fn body's redefinition of a speculative family's name compiles away, and the family's live lead misses it {#nur149}
-
-**Status:** Pending (recorded 2026-09-16, the seventy-second increment).
-**Found:** by the fn-local placement's collision measurement
-(`lang/go/fn_local_placed_test.go`'s disjoint-signature row is the
-compiled twin). Reproduced on `main` at e252e81 with the identical
-listing, so it is the seventieth increment's family, not the
-seventy-second's:
-
-```
-def m {e: true} end
-if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end
-def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end
-g f 1
-  interpreter: 6 2     compiled (default lane): [boru/type_error] g: return value 1: expected Integer, got Error
-                       (= error(bytecode: internal: DISPATCH_GENERIC at f: the live signature has no unit; deferring …))
-```
-
-With `e: false` the interpreter answers `6` for `g` (and `undefined_word`
-at the module-level `f 1`); the compiled `g` raises `type_error … got
-Error(undefined word: f)` at the body's dispatch.
-
-**Rule:** a compiled program answers as the interpreter does, and a bail
-is a defer the interpreter finishes — slow, never wrong.
-
-**Divergence, in two halves.** The module-scope `f` is a speculative
-family (the seventieth increment: the arm's install is placed at its
-site, the family's dispatches route with a live lead). Inside `g`'s
-unit the body's `def f` OVERLAPS it, so the check pass's install is
-`InstallDef`'s in-place replacement (the standing entry dropped, the new
-one pushed at the same depth): the binding's depth never exceeds the
-frame's baseline, `BodyRefsFnLocalFn` does not fire, the seventy-second
-increment's placement is never asked, and the def lowers to NOTHING —
-the listing's `g/0` is `PUSH_CLOSURE; CALL_NATIVE do; RET`. The body's
-`f 5` routes (the family's name) and resolves its lead LIVE in the VM's
-registry, which holds the arm's `f` (`x add 100`, whose unit the pass
-never compiled once the body's def replaced it) or nothing at all; the
-interpreter resolves the body's own def either way. A DISJOINT signature
-takes the other path — a fresh push above the family's, the placement
-asked and taken, the routed lead resolving the frame's local — and
-answers as the interpreter does (`a 101`, the compiled row). The second
-half is the bail's landing: the foreign-unit defer raised inside `g`'s
-frame is caught by `g`'s return contract at RET and becomes an Error
-VALUE the contract then rejects (`expected Integer, got Error`), so the
-default lane reports a type error where the defer census counts a
-fallback; the interpreter is never reached.
-
-**Fence.** None pins the wrong answer; the disjoint row pins the twin
-that compiles, and names this entry.
-
-**Verdict:** none yet. The first half's shape is the seventieth's family
-L inside a fn body — an in-place redefinition of a module-scope name
-that the interpreter keeps after the frame (the row `101 6 2` of the
-seventy-second's test shows the same replacement compiling correctly
-when the name is NOT a live-lead family: the calls commit by index) —
-so the fix is the family's: a unit's in-place redefinition of a
-live-lead name must be placed as the transition it is (a twin the frame
-does NOT unwind) with its units compiled, or the family must refuse
-the redefinition inside a unit as it refuses a capturing closure. The
-second half is the defer's: a `vmDefer` raised inside a compiled frame
-must unwind to the program's fallback, not be typed against the frame's
-return contract.
-
 ## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
 
 **Status:** Pending (recorded 2026-09-16, the seventy-second increment;
@@ -6462,6 +6399,49 @@ refusal is a slow path, never a wrong answer.
 the unit-level redefinition row, the four refused rows),
 `compiler/go/fn_local_test.go`, `compiler/go/carrier_nur037_test.go`
 (`TestBodyRefsFnLocalFnsAllNamesAndValueReads`).
+
+**Verdict:** closed with the fixes; recorded because the rule says every
+divergence surfaced in review is recorded, fixed or not.
+
+## NUR151 — the seventy-third increment's first cut: two divergences found in review {#nur151}
+
+**Status:** Pending (recorded 2026-09-16, the seventy-third increment;
+fixed in the same PR).
+**Found:** review of #469's first cut (ea3ac11), both reproduced on that
+tree.
+
+**Rule:** a compiled program answers as the interpreter does, and a
+refusal is a slow path, never a wrong answer.
+
+**Divergences and fixes.**
+
+1. *A user `raise internal_error` no longer caught.* `bodyErrorPropagates`
+   keyed the re-raise on the public `internal_error` code (`IsInternalError`),
+   but a user `raise internal_error "boom"` carries that same code — so
+   `do [raise internal_error "boom"] error [dot code]` re-raised instead of
+   catching and returning the code, in BOTH lanes (the shared `do` handler),
+   and the comment's claim "the interpreter never raises internal_error" was
+   false. Fix: a designed VM defer now carries a distinct marker
+   (`BoruError.VMDefer`, set by `vmErrAt` and the panic guards); `IsVMDefer`
+   keys the escape hatch on the marker, not the code, so a user error stays
+   trapped and a real defer propagates.
+2. *An in-function speculative family over-refused.* The family-L-in-fn-body
+   refusal keyed on `specFnJoin(name)` alone, so a fn that creates `f` in an
+   undecidable in-fn branch and then unconditionally redefines it LATER in
+   the same fn was refused too — but that family is absent at the fn's
+   baseline, its install and replacement stay above it, and RET pops them
+   (no leak past the call). Refusing it rejected a shape that is not the
+   NUR149 leak. Fix: `specFamilyAtFnBaseline` gates the refusal on the
+   dropped binding existing at the enclosing fn's baseline (a MODULE-scope
+   family), so an in-function family is not refused (it compiles; its routed
+   dispatch may still defer at run time and fall back — slow, not wrong).
+
+**Fence.** `lang/go/do_defer_fallback_test.go` (the user-internal-error
+trapped rows, the in-function-family not-refused row),
+`core/go/check_fncarrier_test.go`
+(`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody` — the baseline gate
+and `specFamilyAtFnBaseline`'s arms), `core/go/rununit_test.go`
+(`TestIsVMDefer`).
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.

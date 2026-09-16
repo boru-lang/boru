@@ -38,3 +38,19 @@ func NoteSpecFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool {
 func specFnJoin(r *Registry, k string) bool {
 	return r != nil && r.Check != nil && r.Check.SpecFnNames[k]
 }
+
+// specFamilyAtFnBaseline reports whether name's standing binding — the one an
+// in-fn-body redefinition would drop — existed at the enclosing fn's baseline,
+// i.e. a MODULE-scope (or outer-fn) family whose in-place replacement leaks
+// past the call (family L, NUR149). An IN-FUNCTION family, created inside this
+// fn above the baseline, is torn down by the frame's RET and compiles soundly,
+// so it is NOT one (Codex P2 on #469). Uses the ComputeCaptures depth rule:
+// Depth(name) <= baseline[name] means the binding predates the fn. Off any
+// enclosing-fn baseline (a nil map) nothing is baseline-scoped.
+func specFamilyAtFnBaseline(r *Registry, name string) bool {
+	if r == nil || r.Defs == nil {
+		return false
+	}
+	base := r.TopFnBaseline()
+	return base != nil && r.Defs.Depth(name) <= base[name]
+}

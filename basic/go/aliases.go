@@ -461,6 +461,8 @@ var (
 	FoldVariadicArms         = core.FoldVariadicArms
 	MakeBoruError            = core.MakeBoruError
 	ExitCode                 = core.ExitCode
+	IsInternalError          = core.IsInternalError
+	IsVMDefer                = core.IsVMDefer
 	NewExitError             = core.NewExitError
 	RenderCheckDiagnostic    = core.RenderCheckDiagnostic
 	MapFieldBoolean          = core.MapFieldBoolean

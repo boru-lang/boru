@@ -258,13 +258,42 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		// observes it (an exit IS an error value there, and a handler that
 		// does not recognise a foreign error must re-raise it —
 		// design/CLI-PROGRAMS.0.md §4); this arm has no handler to observe
-		// it with.
-		if _, isExit := ExitCode(err); isExit {
+		// it with. A designed defer crosses unchanged for the same reason,
+		// one layer down (bodyErrorPropagates / NUR149's second half).
+		if bodyErrorPropagates(err) {
 			return nil, err
 		}
 		return []Value{NewError(err)}, nil
 	}
 	return result, nil
+}
+
+// bodyErrorPropagates reports whether a `do` body error must be
+// RE-RAISED rather than trapped as an Error value. Two kinds cross the
+// escape hatch unchanged:
+//
+//   - an IO.exit request — a control transfer, not a failure (trapping it
+//     as data would demote `IO.exit 4` to exit 0);
+//   - a designed VM defer (IsVMDefer: an internal_error the compiled VM
+//     raises to request whole-program fallback — DISPATCH_GENERIC with no
+//     live unit, a poly no-match, a recovered lowering panic). Trapping it
+//     as an Error value STRANDS the fallback — the defer never reaches the
+//     top-level run that re-runs interpreted, so the internal message
+//     surfaces as data (a top-level `do [risky]` printed it) or an enclosing
+//     fn's return contract rejects the Error (`type_error … got Error`)
+//     where the interpreter answers cleanly.
+//
+// The marker (not the public `internal_error` code) is what distinguishes a
+// defer: a user `raise internal_error "…"` carries the same code but no
+// VMDefer marker, so it stays trapped and `do [raise internal_error …] error
+// […]` still catches it — as does every other genuine boru error
+// (type_error, undefined_word, a user `raise`), the escape-hatch semantics
+// intend.
+func bodyErrorPropagates(err error) bool {
+	if _, isExit := ExitCode(err); isExit {
+		return true
+	}
+	return IsVMDefer(err)
 }
 
 func DoListReturnsFn(args []Value, r *Registry) []Value {

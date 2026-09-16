@@ -69,6 +69,14 @@ type BoruError struct {
 	// else.
 	DeferAlt *BoruError
 
+	// VMDefer marks a DESIGNED VM defer-to-interpreter (vmErrAt / the panic
+	// guards), as opposed to a user `raise internal_error …` — the two share
+	// the public `internal_error` code, so a consumer that must catch the
+	// user error but re-raise the defer (the `do` escape hatch,
+	// bodyErrorPropagates) keys on this marker, not the code. Set only by the
+	// eng VM's internal_error mints; false on every user-raised error.
+	VMDefer bool
+
 	// fullSource is the complete source text for generating context extracts.
 	FullSource string
 }
