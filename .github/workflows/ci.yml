@@ -44,11 +44,9 @@ jobs:
       #      golangci-lint and govulncheck from source, and ran every test
       #      package cold.
       #   2. setup-go saves only on an exact-key miss, and its key changes
-      #      only with go.sum — so once saved, the build cache goes stale
+      #      only with go.sum — so once saved its build cache goes stale
       #      until the next dependency bump: nothing compiled since is in
-      #      it, and `go test`'s result cache (`make test` runs without
-      #      -count=1, so an unchanged package's result is served as
-      #      "(cached)") would cover only packages untouched since then.
+      #      it. The per-run key below fixes that.
       #
       # The run id is the key's tail, so the exact key never hits and every
       # run SAVES its fresh state; the restore-keys prefixes RESTORE the
@@ -57,7 +55,20 @@ jobs:
       # the merged coverage gate's -coverprofile builds and the wasm build's
       # GOOS=js objects are different caches. Entries age out under the
       # repository's 10 GB cache budget (least recently used first), which
-      # is the cost of saving every run.
+      # is the cost of saving every run. A save happens only on a job that
+      # reaches its post step, so a RED run seeds nothing — the next green
+      # run does.
+      #
+      # Measured, the cold run that seeds the cache vs a warm re-run of the
+      # same commit (attempts 1 and 2 of run 35129625972): the gain is
+      # COMPILATION and tool reuse — the golangci-lint + govulncheck
+      # installs 72s -> 7s, the CLI build 38s -> 2s, vet 21s -> 6s, the
+      # whole build-and-test job ~39min -> ~31min. The Test step is NOT sped
+      # up (~28min either way): `go test`'s decision to skip a package keys
+      # on the mtime of the files a test OPENS at run time (the spec corpora
+      # it reads from disk), and actions/checkout rewrites every mtime on a
+      # fresh checkout, so no test RESULT is reused across runs — only the
+      # compiled objects behind them are.
       - name: Go module and build cache
         uses: actions/cache@v4
         with:
