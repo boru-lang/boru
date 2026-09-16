@@ -136,21 +136,33 @@ func TestSpecUndefFwdSlot(t *testing.T) {
 		{Source: SlotWordRef, Token: core.NewWord("j")},
 		{Source: SlotWordRef, Token: core.NewWord("k")},
 	}}
-	if es.specUndefFwdSlot(d) != "" || es.specUndefFwdSlot(nil) != "" {
+	if es.specUndefFwdSlot(d, 0, 3) != "" || es.specUndefFwdSlot(nil, 0, 3) != "" || es.specUndefUnroutedSlot(d, false) != "" {
 		t.Fatal("no generalised name: nothing")
 	}
 	es.specUndefNames = map[string]bool{"k": true}
-	if got := es.specUndefFwdSlot(d); got != "k" {
+	if got := es.specUndefFwdSlot(d, 0, d.NFwd); got != "k" {
 		t.Fatalf("the generalised word slot is named: %q", got)
 	}
-	// Only a CLAIMED slot counts: beyond the claim the token is not this
-	// dispatch's.
+	// The record's scan: a ROUTED dispatch resolves its claimed slots from
+	// the window, so only a slot beyond the claim counts for it; an unrouted
+	// one has every slot count — the claim stops at a paren group or a
+	// body-local name and the generalised word after it is still this
+	// dispatch's operand.
+	if got := es.specUndefUnroutedSlot(d, true); got != "" {
+		t.Fatalf("a claimed slot of a routed dispatch is the window's: %q", got)
+	}
 	d.NFwd = 2
-	if got := es.specUndefFwdSlot(d); got != "" {
-		t.Fatalf("a slot beyond the claim is not named: %q", got)
+	if got := es.specUndefUnroutedSlot(d, true); got != "k" {
+		t.Fatalf("a slot beyond a routed claim is named: %q", got)
+	}
+	if got := es.specUndefUnroutedSlot(d, false); got != "k" {
+		t.Fatalf("a slot beyond an unrouted claim is named: %q", got)
+	}
+	if got := es.specUndefFwdSlot(d, 0, d.NFwd); got != "" {
+		t.Fatalf("the claim alone (the root admission's scan) stops short of it: %q", got)
 	}
 	d.NFwd = 3
-	if es.specUndefFwdSlot(nil) != "" {
+	if es.specUndefFwdSlot(nil, 0, 3) != "" || es.specUndefUnroutedSlot(nil, true) != "" {
 		t.Fatal("a nil descriptor names nothing")
 	}
 	// The refusal reads through the one undef site.

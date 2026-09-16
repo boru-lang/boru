@@ -161,6 +161,22 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def k 5 end for 2 [ undef k def k 6 ] k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end def f fn [[][Integer][if true [undef k] [] def k 6 end k]] end f k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end if true [undef k] [] add k (1 add 1)`, "forward-slot read of `k` after a placed undef"},
+		// The same at the user and poly records, and — review round of
+		// #465 — a generalised slot BEYOND the claim: the claim stops at a
+		// paren group or a body-local name, and the word after it is still
+		// this dispatch's forward operand (a lookup there raised
+		// undefined_word where the interpreter no-matches at the word).
+		{`def k 5 end def g fn [[x:Integer y:Integer][Integer][x add y]] end if true [undef k] [] g k (1 add 1)`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def g fn [[x:Integer y:Integer][Integer][x add y]] end if true [undef k] [] g (1 add 1) k`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def g fn [[x:Integer y:Integer][Integer][x add y]] end if false [undef k] [] g (1 add 1) k`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def g fn [[a:Integer b:Integer][Integer][a add b]] end def f fn [[][Integer][def j 1 end g j k]] end if true [undef k] [] f`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def f fn [[x:Any][Any][add k (x)]] end if true [undef k] [] f 1`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def f fn [[x:Any][Any][add (x) k]] end if true [undef k] [] f 1`, "forward-slot read of `k` after a placed undef"},
+		// The poly record (a `get` over a gradual operand re-matches at run
+		// time): a container literal in the window is undrivable, and a slot
+		// the loop's carried name declines is unrouted.
+		{`def k 5 end def f fn [[x:Any][Any][x get k [9]]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
+		{`def k 5 end def f fn [[x:Any][Any][for 2 [def j 1 end x get j drop x get k]]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
 		// A `/v` read takes no tag hook: the rescue refuses it rather than seat
 		// it late.
 		{`def k 5 end if true [undef k] [] add k k/v`, "read of `k` after a placed undef the placement did not seat"},

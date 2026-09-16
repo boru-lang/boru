@@ -8691,6 +8691,24 @@ Codex read the first cut and raised three things; one reproduced.
   are refused rows (`TestSpeculativeUndefIsPlacedAndReadLive`), answering
   as the interpreter does under the hatch.
 
+The merged cover-gate then found the increment's own over-correction:
+the forward-slot scan had been narrowed to the CLAIMED slots ("beyond
+the claim the token is not this dispatch's"), which left the user and
+poly records' refusal arms with no row — and, measured, let two shapes
+through with the wrong error. The claim stops at a paren group and at a
+body-local name, and the generalised word after it is still this
+dispatch's forward operand: `g (1 add 1) k` and `g j k` (j body-local)
+both lowered a lookup that raised undefined_word at `k` where the
+interpreter no-matches at `g`. The scan is a range now
+(`specUndefFwdSlot(d, from, to)`): the root admission reads the claim,
+the records read every slot no routing resolves
+(`specUndefUnroutedSlot` — all of an unrouted region's, the slots beyond
+the claim of a routed one). Eight refused rows pin it: the paren group
+before and after the slot at the user record, the body-local lead-in in
+a unit, the paren group at the mono record inside a unit, and at the
+poly record a container literal in the window and a slot a loop's
+carried name declines.
+
 ## What the ledger excludes, and why each exclusion was measured
 
 Each of these was arrived at by instrumenting and counting, not by reading.

@@ -77,7 +77,7 @@ func (es *EmitState) routeRegion(d *RegionDesc) bool {
 	// unbound word as a Word value and no-match, or claim it into an Any
 	// slot and raise the word — only the routed op reproduces, at root as
 	// in a unit (the sixty-ninth increment).
-	if len(es.openUnitRecs) == 0 && es.specUndefFwdSlot(d) == "" {
+	if len(es.openUnitRecs) == 0 && es.specUndefFwdSlot(d, 0, d.NFwd) == "" {
 		return false
 	}
 	var names []string

@@ -5237,19 +5237,25 @@ func (es *EmitState) refuseUndef(name string, kind undefRefusal) {
 	}
 }
 
-// specUndefFwdSlot names the first CLAIMED forward word slot of a
-// descriptor that reads a name a placed speculative undef generalised
-// (specUndefNames), or "". A dispatch that ROUTES resolves such a slot from
-// its window (placeRoutedLiveSlots); one that does not — an undrivable
-// region, a routing the call's own shape declines — refuses it
-// (fwdReadAfterSpecUndef), since neither the committed call's lookup nor
-// its bake raises what the interpreter's collection of the unbound word
-// raises.
-func (es *EmitState) specUndefFwdSlot(d *RegionDesc) string {
+// specUndefFwdSlot names the first forward word slot of a descriptor that
+// reads a name a placed speculative undef generalised (specUndefNames) and
+// that no routing resolves, or "". A dispatch that ROUTES resolves its
+// CLAIMED slots from its window (placeRoutedLiveSlots), so only the slots
+// beyond the claim count for it; one that does not — an undrivable region,
+// a routing the call's own shape declines — has every slot count. Either
+// way the slot refuses (fwdReadAfterSpecUndef): neither the committed
+// call's lookup nor its bake raises what the interpreter's collection of
+// the unbound word raises. Every window slot is scanned, not only the
+// claim: the claim stops at a paren group or a body-local name, and the
+// generalised word after it is still this dispatch's forward operand
+// (`g (1 add 1) k`, `g j k` with j body-local — both lowered a lookup that
+// raised undefined_word where the interpreter no-matches at g, the
+// review round of #465).
+func (es *EmitState) specUndefFwdSlot(d *RegionDesc, from, to int) string {
 	if d == nil || len(es.specUndefNames) == 0 {
 		return ""
 	}
-	for i := 0; i < d.NFwd && i < len(d.Slots); i++ {
+	for i := from; i < to && i < len(d.Slots); i++ {
 		if d.Slots[i].Source != SlotWordRef {
 			continue
 		}
@@ -5258,6 +5264,21 @@ func (es *EmitState) specUndefFwdSlot(d *RegionDesc) string {
 		}
 	}
 	return ""
+}
+
+// specUndefUnroutedSlot names the first generalised forward word slot of a
+// record that no routing resolves: every slot of an unrouted region, the
+// slots beyond the claim of a routed one (placeRoutedLiveSlots took the
+// claimed ones).
+func (es *EmitState) specUndefUnroutedSlot(d *RegionDesc, routed bool) string {
+	if d == nil {
+		return ""
+	}
+	from := 0
+	if routed {
+		from = d.NFwd
+	}
+	return es.specUndefFwdSlot(d, from, len(d.Slots))
 }
 
 // nameCarried reports whether an armed loop carries, or has carried, name
@@ -5827,7 +5848,8 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	generic := len(rec.caps) == 0 && es.routeRegion(region)
 	if generic {
 		es.placeRoutedLiveSlots(region, args)
-	} else if n := es.specUndefFwdSlot(region); n != "" {
+	}
+	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
@@ -6993,7 +7015,8 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	generic := !sig.CompileEffect.Has(core.CompileValueDiverges) && es.routeRegion(region)
 	if generic {
 		es.placeRoutedLiveSlots(region, args)
-	} else if n := es.specUndefFwdSlot(region); n != "" {
+	}
+	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
@@ -7837,7 +7860,8 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	generic := !valueDivergingWord(ownerReg, es.reg, word) && es.routeRegion(region)
 	if generic {
 		es.placeRoutedLiveSlots(region, args)
-	} else if n := es.specUndefFwdSlot(region); n != "" {
+	}
+	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
 		es.refuseUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
