@@ -82,12 +82,28 @@ dated 2026-09-14; refresh it at the end of each tier, not each increment.
 | region table (`TestRegionTableWellFormed`, `descFloor` 4000) | **124401** descriptors with increment 61 (76280 with increment 60 and its review corrections, 51372 before it); the floor is unchanged | floor, up only |
 | collect oracle (`TestRegionCollectOracle`) | **47633 reproduced** of 72490 executed (floor 47000), `diverged-value` **2** with increment 63 (47627 and 8 with 62 after its review; 47464 before review counted the zero-arg claim); 3 findings ledgered by name (NUR141, NUR143 ×2; NUR140's six retired by 63) | floor up only; the ledger pinned in BOTH directions |
 
-Increments 1–67 are on `main`. The most recent landings: #461 (increment
-65, the native seat routes), #462 (increment 66, the routed dispatch raises
-its own diagnostics), both 2026-09-15, and #463 (increment 67, the
-speculative undef refuses), 2026-09-16.
+Increments 1–68 are on `main`. The most recent landings: #462 (increment
+66, the routed dispatch raises its own diagnostics), 2026-09-15, #463
+(increment 67, the speculative undef refuses) and #464 (increment 68, the
+speculative undef is placed), both 2026-09-16.
 
 ## What is in flight
+
+**Increment 69, the forward slot of a generalised name routes (2026-09-16,
+built on 68).** The routed op's unbound-slot arm, measured before built:
+the interpreter does not read an unbound word in a forward window, it
+collects it — a typed slot takes it as a Word value and no signature
+matches (at the dispatching word), an Any slot claims it and the token
+dispatches (undefined_word at the token) — and `DISPATCH_GENERIC` already
+does both over its window (`NoMatchOverWindow`, the sixty-sixth's
+unbound-slot arm). So the shape 68 refused now routes: the live read is
+the word slot's operand (`slotIsOperand`), routing admits a root region
+for a generalised slot, and the read's event lowers to a placeholder the
+op pops unread (`placeRoutedLiveSlots`). Every forward-slot row answers
+as the interpreter does, at root and in a unit, at the mono, poly and
+user records; the refusal narrows to an undrivable region and a `/v`
+read. Narrative: the sixty-ninth-increment section of
+FULL-COMPILATION-HANDOFF.0.md.
 
 **Increment 68, the speculative undef is placed (2026-09-16, built on 67).**
 The binder half's lowering for the shape 67 refused: a speculative undef of

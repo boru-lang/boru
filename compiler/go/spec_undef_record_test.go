@@ -131,19 +131,38 @@ func TestRecordDynBindRefusesDefAfterSpecUndef(t *testing.T) {
 // nothing for a nil descriptor, an empty set, or slots that are not words.
 func TestSpecUndefFwdSlot(t *testing.T) {
 	es := NewEmitState()
-	d := &RegionDesc{Slots: []SlotDesc{
+	d := &RegionDesc{NFwd: 3, Slots: []SlotDesc{
 		{Token: core.NewInteger(1)},
 		{Source: SlotWordRef, Token: core.NewWord("j")},
 		{Source: SlotWordRef, Token: core.NewWord("k")},
 	}}
-	if es.specUndefFwdSlot(d) != "" || es.specUndefFwdSlot(nil) != "" {
+	if es.specUndefFwdSlot(d, 0, 3) != "" || es.specUndefFwdSlot(nil, 0, 3) != "" || es.specUndefUnroutedSlot(d, false) != "" {
 		t.Fatal("no generalised name: nothing")
 	}
 	es.specUndefNames = map[string]bool{"k": true}
-	if got := es.specUndefFwdSlot(d); got != "k" {
+	if got := es.specUndefFwdSlot(d, 0, d.NFwd); got != "k" {
 		t.Fatalf("the generalised word slot is named: %q", got)
 	}
-	if es.specUndefFwdSlot(nil) != "" {
+	// The record's scan: a ROUTED dispatch resolves its claimed slots from
+	// the window, so only a slot beyond the claim counts for it; an unrouted
+	// one has every slot count — the claim stops at a paren group or a
+	// body-local name and the generalised word after it is still this
+	// dispatch's operand.
+	if got := es.specUndefUnroutedSlot(d, true); got != "" {
+		t.Fatalf("a claimed slot of a routed dispatch is the window's: %q", got)
+	}
+	d.NFwd = 2
+	if got := es.specUndefUnroutedSlot(d, true); got != "k" {
+		t.Fatalf("a slot beyond a routed claim is named: %q", got)
+	}
+	if got := es.specUndefUnroutedSlot(d, false); got != "k" {
+		t.Fatalf("a slot beyond an unrouted claim is named: %q", got)
+	}
+	if got := es.specUndefFwdSlot(d, 0, d.NFwd); got != "" {
+		t.Fatalf("the claim alone (the root admission's scan) stops short of it: %q", got)
+	}
+	d.NFwd = 3
+	if es.specUndefFwdSlot(nil, 0, 3) != "" || es.specUndefUnroutedSlot(nil, true) != "" {
 		t.Fatal("a nil descriptor names nothing")
 	}
 	// The refusal reads through the one undef site.
@@ -254,5 +273,23 @@ func TestTwinInstallsAndRootDynBindSkip(t *testing.T) {
 	lw.noteTwin(1)
 	if reason := lw.lowerDynBind(&EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "c", srcSeq: -1, residentTwin: -1, root: true, depth: 1, val: core.NewInteger(5), pos: pos}}); reason != "" || len(cf.Code) != 2 || cf.Code[1].Op != OpBindDynScope {
 		t.Fatalf("a root def whose twin is skipped keeps the install: %q code=%v", reason, cf.Code)
+	}
+}
+
+// Rollback prunes the placeholder marks above its checkpoint (review of
+// #465): a mark is keyed by event seq, and the seqs a discarded loop round
+// issued are reissued by the round that stabilises — an unpruned mark would
+// land on that round's live read and lower it to a placeholder push where a
+// lookup is owed. Marks at or below the checkpoint stay.
+func TestRollbackPrunesLivePlaceholders(t *testing.T) {
+	es := NewEmitState()
+	es.RecordSpeculativeUndef("k", core.SrcPos{Row: 1, Col: 1})
+	cp := es.Checkpoint()
+	es.RecordSpeculativeUndef("j", core.SrcPos{Row: 1, Col: 9})
+	kept := cp.(emitCheckpoint).seq // the undef of k's own seq: at the checkpoint, kept
+	es.livePlaceholders = map[int]bool{kept: true, es.seq: true, es.seq + 3: true}
+	es.Rollback(cp)
+	if len(es.livePlaceholders) != 1 || !es.livePlaceholders[kept] {
+		t.Fatalf("Rollback keeps the marks at or below its checkpoint and drops the rest: %v", es.livePlaceholders)
 	}
 }

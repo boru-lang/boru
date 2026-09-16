@@ -67,7 +67,17 @@ import core "github.com/boru-lang/boru/core/go"
 // and false outside a fn unit — at top level analysis order is program order
 // and the bake IS the read.
 func (es *EmitState) routeRegion(d *RegionDesc) bool {
-	if d == nil || d.LeadLocal || !es.Active() || len(es.openUnitRecs) == 0 || !regionDrivable(d) {
+	if d == nil || d.LeadLocal || !es.Active() || !regionDrivable(d) {
+		return false
+	}
+	// At top level analysis order is program order and the bake IS the
+	// read — except for a name a placed speculative undef generalised
+	// (specUndefNames): its binding may be gone by the time the dispatch
+	// runs, and what the interpreter then does with the slot — collect the
+	// unbound word as a Word value and no-match, or claim it into an Any
+	// slot and raise the word — only the routed op reproduces, at root as
+	// in a unit (the sixty-ninth increment).
+	if len(es.openUnitRecs) == 0 && es.specUndefFwdSlot(d, 0, d.NFwd) == "" {
 		return false
 	}
 	var names []string
