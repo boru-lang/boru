@@ -15,6 +15,22 @@ fix merged (#459); the first ROUTED dispatch (increment 64, #460) is in
 review and the native seat (increment 65) is built on it. Increments 1–63
 are on `main`.
 
+**State on 2026-09-17** (branch `claude/admiring-cerf-x3iv96`, PR #471,
+head `658fc85`; increments 1–73 are on `main`). The corpus expansion
+(+710 rows in six files) re-measured the sample: refusals 0 → 113 (gate
+raised to the measured value, every one an open defect), islands 0 → 12
+(gate stays 0), interp-entry census rows 28 → 54 (ceiling 27), engine
+entries 281 → 379 (ceiling 277), five miscompiles (NUR152 fixed on the
+branch; NUR153–156 pending); the static inventory is unchanged (92 sites,
+114 handlers). The plan was reviewed against the definition of done and
+re-staged — read [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md)
+and FULL-COMPILATION.0.md §10.1 before picking the next increment: S0 (the
+generated sweep) first, then S1 (fn values as one convention) with S2
+(handler migration) in parallel. `boru build` now refuses a program that
+does not compile; every fn value carries its home from construction; a
+sentinel gate (`test/go/sentinelgate`) keeps each nil/empty-field reading
+in one predicate.
+
 ---
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)

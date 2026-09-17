@@ -8,6 +8,12 @@ to 9 are not started beyond instruments and worklist measurements. §10's
 stage table carries the per-stage detail and is the authority on what has
 landed; the running state-of-play is
 [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md).
+**Re-staged 2026-09-17** (§10.1, on the review
+[FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md)): the
+corpus expansion of PR #471 measured the daily instruments as a sample of
+the old corpus, the generic lane's first slices moved none of the static
+inventory, and the debt is fn values and code bodies — so the order of
+work changes while the architecture does not.
 **Provenance:** the directive that closes the question
 `design/legacy/COMPILE-DECLARATION-MODEL.0.ignore` left open: interpreter islands are
 not acceptable, the interpreter is not an escape hatch, failure to compile
@@ -3497,6 +3503,63 @@ result width feeds a static seat still declines until Stage 5's regions
 land. T1 is a Stage-9 property, not a rolling one.
 
 ---
+
+### 10.1 Re-staging — 2026-09-17
+
+The table above is kept as the record of what each stage IS; this block
+is the order the work now takes, and why. The argument and the
+measurements are in [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md);
+only the decisions are repeated here.
+
+Three findings force the change. **The corpus is a sample and
+under-measures by construction**: about 710 rows of ordinary idioms took
+the corpus from 0 refusals / 0 islands / 28 interpreter-entering rows to
+113 / 12 / 54 and exposed five miscompiles, so no ratchet over the
+hand-written corpus is evidence about "all valid code". **The generic lane
+grew from the typed end**: increments 60–66 route 676 dispatches the typed
+lowering already compiled (the `k` pair's class), because the VM's
+descriptor host declines every evaluation and the split-identity invariant
+was read as forbidding routing elsewhere; the refusal-site census stayed at
+92 and step 6's terminal arm is still `MarkUncompilable`. **The debt is fn
+values and code bodies**: 59 of the 113 refusals, all 12 islands, 23 of
+the 54 census rows and all five miscompiles are fn-value lowerings, and
+Stage 6's 114 undeclared handlers have not moved since 2026-08-25.
+
+Corrections to the spine: Stage 5's count-generic downstream is INSIDE
+Stage 4 (the lane cannot answer a live claim of another width without it,
+and that is the case the lane exists for); Stage 7's on-demand unit
+compile is on the spine, not a parallel track (the lane's `foreign-unit`
+arm and the fn-value convention both need it); the split-identity
+invariant (`TestEmitSplitFormsIdentical`) is a property of the TYPED lane —
+a record-time-stable lead's split is surface syntax; a live lead's split is
+semantics and the descriptor is right to carry it — so it is not the reason
+the terminal arm cannot flip; and the terminal arm flips per TOKEN CLASS
+(when the host drives every slot kind a region contains), then per family,
+never per site.
+
+| step | content | gate | session-days |
+|---|---|---|---:|
+| **S0** | the generated sweep — word inventory × operand kinds × call forms — through the differential and census lanes; the coverage-matrix gate; every ratchet re-based on it | no empty matrix cell; the sweep's defect list is the ledger the later steps retire from | 6–10 |
+| **S1** | fn values as ONE convention (Stage 3 closed): a fn value applied anywhere carries a unit of the running program or obtains one now, compiled at its home, memoised by body key and dep generation (the Stage 7 unit-cache slice); the Apply kernel's first branch; the callback seams reduced to one question; NUR153 ruled first | islands 12 → 0; fn-value refusals 59 → 0; the 23 fn-value census rows → 0; NUR154–156 closed by mechanism | 15–25 |
+| **S2** (parallel, `basic/go` + `lang/go`) | handler migration as a census-driven sweep (Stage 6): the 114 declared or rewritten; code-body words on units; `Test.*` quotation bodies compiled | `undeclaredHandlerCeiling` 114 → 0, falling per PR; code-body refusals 23 → 0; the `RunResolved` and `Test.*` census rows → 0 | 25–40 |
+| **S3** | runtime compilation (Stage 7): computed bodies, splices and code parts, `canon` / `Vm.run`, module bodies at import (O4: compile); O5 answered | the round-trip census rows → 0; F5 fuzzed | 10–20 |
+| **S4** | the lane completed: the evaluating host (group and active slots — 29% of tokens — with its own generated falsifier); the lane's runtime total (every `vm:generic-*` arm retired to a raise or a compiled path, the count-generic downstream built as part of it); the non-word leads on Apply; the routed-dispatch perf row in the register (F4); then the terminal-arm flip per family in the disposition census's order | oracle under-claim and declined classes → 0; dispatch-agreement ledger empty; `vm:generic-*` arms 10 → 0; `MarkUncompilable` sites 92 → the trap and delete rows | 25–40 |
+| **S5** | Stage 5's remaining generality (inert values both sides of a run, arbitrary and non-adjacent consumers, the split-rule window) | provenance refusals 15 → 0; NUR129 closed | 10–15 |
+| **S6** | Stage 8's T1 half: the "check diagnostics" sentinel deleted, definite errors trapped, the armed-only rows | `armedOnlyCeiling` 16 → 0; the correct-error row → 0 | 5–10 |
+| **S7** | Stage 9: every valve deleted, `CompileCheck` total | engine-entry census 0; `deferCeiling` and the mechanism deleted | 8–15 |
+| | **total remaining** | | **~105–175** |
+
+Dependencies: S0 first; S1 before S4's non-word leads and S2's `Test.*`
+half; S3's unit cache inside S1, the rest before S2 finishes and before
+S4's foreign-unit arm; S4 before S7; S2 beside everything else. Two rules
+bind every step: a new shape lands on the G-lane first and takes a typed
+lowering later by proof (the five miscompiles of 2026-09-17 are all
+bespoke typed lowerings, none in shared-kernel code); and the count of
+`vm:generic-*` defer arms may only fall, each retirement naming its
+compiled replacement — the discipline the refusal-site census already
+applies to `MarkUncompilable`. The rulings the steps wait on (NUR153, O2,
+O4, O5, the attributed set, NUR110, NUR078) are listed with a
+recommendation each in the review's §6.
 
 ## 11. Open questions (O) and what would falsify this (F)
 
