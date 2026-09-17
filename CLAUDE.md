@@ -61,6 +61,17 @@ Before committing, run the pre-commit checklist from the repo root:
 make fmt && make vet && make lint && make test && make cover-gate
 ```
 
+`make ci-local` runs exactly the steps CI runs, in CI's order
+(`scripts/ci-steps.sh` is the one definition both share) — use it before a
+push; the five-target line above is the subset a change usually needs.
+Two switches make iteration fast: `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv`
+restricts every corpus walk in `test/go/langspec` to the named spec files
+(the ten gates over one family run in seconds), and `BORU_DIRECTION_GATES=1`
+arms the direction lane — the gates against their END STATE, red by design
+until full compilation is done (`make test-direction`; the default lane
+asserts only the regression ceilings and is what blocks). `make gate-status`
+prints every gate's live value against both numbers.
+
 `make cover-gate` enforces **ADR-008**: 100% unit-test coverage of every
 reachable Go statement (the sole exclusions are provably-unreachable guards
 marked with a proof-carrying `//covergate:allow <reason>` comment on the

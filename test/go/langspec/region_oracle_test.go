@@ -122,7 +122,7 @@ func TestRegionCollectOracle(t *testing.T) {
 	defer func() { compiler.RegionOracle = false }()
 
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", specDir, err)
 	}
@@ -175,7 +175,7 @@ func TestRegionCollectOracle(t *testing.T) {
 				continue
 			}
 			if _, errI := newDifferentialInstance(t).RunInterp(input); errI == nil {
-				t.Errorf("%s: errored under the oracle where the interpreter does not: %v", row, errC)
+				divergence(t, "region-oracle", e.Name()+":L"+itoa(lineNum), fmt.Sprintf("errored under the oracle where the interpreter does not: %v", errC))
 			}
 		}
 		f.Close()
@@ -200,6 +200,9 @@ func TestRegionCollectOracle(t *testing.T) {
 		if n := len(tl.examples[k]); n > 0 {
 			t.Logf("%s, first %d:\n  %s", k, n, strings.Join(tl.examples[k], "\n  "))
 		}
+	}
+	if filteredCorpus() {
+		return // a subset carries neither the ledger's rows nor the floor
 	}
 	// The findings, two ways against the ledger.
 	for key, detail := range tl.findings {

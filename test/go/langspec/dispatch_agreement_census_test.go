@@ -228,7 +228,7 @@ func TestDispatchAdmissionAgreementCensus(t *testing.T) {
 	defer uninstall()
 
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

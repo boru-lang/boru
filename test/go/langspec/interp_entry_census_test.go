@@ -750,11 +750,11 @@ import (
 // the row's reads and writes run on the VM where they went through
 // CallBoru before. The stamp's decline keeps its pin on a nested lambda's
 // read (TestStampConstDynScopeDeclineKeepsEnclosingCompile).
-const interpEntryRowCeiling = 27
+const interpEntryRowCeiling = 54 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away
 
 func TestInterpEntryCensus(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -835,16 +835,8 @@ func TestInterpEntryCensus(t *testing.T) {
 		}
 	}
 
-	if dirty > interpEntryRowCeiling {
-		t.Errorf("interp-entry census %d exceeds ceiling %d — a change put interpretation BACK "+
-			"into compiled programs. The OpFallback island ceiling cannot see this (it counts "+
-			"disassembly spans, not a CallBoru inside a handler), so raising the number here is "+
-			"not a bookkeeping fix: it is the invariant T2 forbids", dirty, interpEntryRowCeiling)
-	}
-	if dirty < interpEntryRowCeiling {
-		t.Errorf("interp-entry census %d is BELOW the ceiling %d — the ratchet tightened, "+
-			"lower interpEntryRowCeiling to %d", dirty, interpEntryRowCeiling, dirty)
-	}
+	gate(t, "interp-entry census rows", dirty, 0, interpEntryRowCeiling, true,
+		"corpus rows that run compiled and still enter the interpreter through an unattributed seam — the OpFallback island ceiling cannot see this (it counts disassembly spans, not a CallBoru inside a handler)")
 }
 
 // runWithEntryHook runs one row compiled with the interpreter-entry hook armed

@@ -43,6 +43,8 @@ var diagSurfaceLedger = map[string]string{
 	"undefined_word":       "the Stage 1 `/v` hold: a `/v` read of a name def-bound to a computed fn keeps its compile-lane undefined_word (stepWordVal declines the fn-carrier table — substituting there green-lit lowerings that dropped the operand), where the plain pass constructs the fn concretely and resolves the read. Non-blocking for the program's RESULTS: the refusal keeps the silent interpreter fallback (FnCarrierReadSubstituted). Graduation = a lowering for /v reads of table-bound names.",
 	"macro_not_expandable": "compile-pass-only BY CONSTRUCTION: macro expansion (`parse <kind>` over a parser-fn value) is a compile-pipeline stage — the plain pass has no expansion step to fail. Info-severity; the row refuses and is interpreted. Graduation = none expected (a designed stage asymmetry); revisit if the class grows past its two parselang witnesses.",
 	"type_error":           "one word-splice witness (`def p word [1 add 2] … f p`): the compile pass's splice-body return-count model claims the body nets no value where the plain pass (and the runtime) see the spliced expression's value. Non-blocking on the corpus row (it compiles and runs). Graduation = splice-body return modeling in the unit walk.",
+	"unused_def":           "REAPPEARED 2026-09-17 with the corpus expansion (callbacks.tsv:L82, each-variants.tsv:L202, fold-map-filter.tsv:L73/L227, module-composition.tsv:L95): a factory `def mk fn [[k:Integer][Function][([n:Integer] => …)]]` whose returned closure is applied through a def-bound read — the compile pass's fn-carrier read does not credit the def, so the armed pass reports it unused where the plain pass resolves the read. Checker debt on the T1 path (FULL-COMPILATION-REVIEW.0.md §3.5 / §10.1 S6): the armed-only ceiling in diagnostic_parity_test.go counts the same rows. Graduation = the def-bound produced-closure read crediting its def on the compile pass.",
+	"fn_body_error":        "2026-09-17, the corpus expansion (fn-locals-scope.tsv:L158/L159/L223/L224): a fn body that imports a module, defines a class or a fnsig and then returns a value — the armed pass's body analysis reports fn_body_error where the plain pass and the runtime accept the body. Checker debt on the T1 path, counted by the armed-only ceiling. Graduation = the body analysis modelling a body-local import / type install (§10.1 S6).",
 	"case_not_exhaustive":  "one case-over-instantiated-scrutinee witness: per-call instantiation makes the compile pass judge exhaustiveness against the narrowed scrutinee type where the plain pass judges the declared one — the same designed call-site asymmetry as redundant_guard. Graduation = §8.4.4, with redundant_guard.",
 }
 
@@ -51,7 +53,7 @@ func TestDiagnosticSurfaceParity(t *testing.T) {
 		t.Skip("diag-surface sweep: skipped in -short")
 	}
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", specDir, err)
 	}

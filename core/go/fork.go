@@ -91,6 +91,20 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.errs = nil
 	fork.SDKCache = make(map[string]any)
 	fork.VmRunning = 0 // the fork starts idle, independent of the parent's run
+	// Check is a POINTER the shallow copy would alias, and a fork is a
+	// RUNTIME instance — a timer or interval body, a connection handler, a
+	// model watcher's action, an await branch. It must neither count
+	// against, race, nor inherit the ACTIVITY of the parent's check pass:
+	// with the alias, a timer body firing while the parent's next
+	// CompileCheck was mid-pass read and wrote the parent's step meter from
+	// the timer goroutine (the data race lang/go's
+	// TestTimeoutBodyAppliesParentFnOnItsFork pins under -race) and ran
+	// under the parent's analysis mode. The fork starts with the fresh,
+	// inactive state a new registry gets, keeping only the configured step
+	// budget; a compile that runs ON a fork arms the fork's own state
+	// (compiler's StampDetachedSig).
+	fork.Check = NewCheckState()
+	fork.Check.StepBudget = r.Check.StepBudget
 	// The fork is an instance of the parent's module, never a module of its
 	// own: a fn the parent minted runs on the fork when invoked there (FnHome).
 	fork.home = r.Home()

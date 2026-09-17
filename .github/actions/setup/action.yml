@@ -1,0 +1,59 @@
+name: boru setup
+description: >
+  The setup every CI job shares — Go with the per-run build cache, Node for
+  the parser-parity and lint steps, the lint and vuln tools, and the CLI
+  build. One definition so the jobs that run in parallel cannot drift.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: lang/go/go.mod
+        # The action's own cache is OFF: see the cache step below.
+        cache: false
+
+    # Go module + build cache, keyed PER RUN. setup-go keys its cache on a
+    # go.sum at the repository ROOT, and this go.work workspace has none, so
+    # it cached nothing; and it saves only on an exact-key miss, so a saved
+    # cache goes stale until the next dependency bump. The run id is the
+    # key's tail, so the exact key never hits and every run SAVES its fresh
+    # state; the restore-keys prefixes RESTORE the most recent save. A save
+    # happens only on a job that reaches its post step, so a red job seeds
+    # nothing — the next green one does. Measured on the single-job layout:
+    # tool installs 72s -> 7s, the CLI build 38s -> 2s, vet 21s -> 6s; test
+    # results are never reused across runs (checkout rewrites every mtime).
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: go-ci-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-${{ github.run_id }}-${{ github.job }}
+        restore-keys: |
+          go-ci-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-${{ github.run_id }}-
+          go-ci-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}-
+          go-ci-${{ runner.os }}-
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: |
+          core/ts/package-lock.json
+          parser/ts/package-lock.json
+
+    - name: Install TypeScript core/parser dependencies
+      shell: bash
+      run: |
+        npm ci --prefix core/ts
+        npm ci --prefix parser/ts
+
+    - name: Install golangci-lint and govulncheck
+      shell: bash
+      run: |
+        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Build CLI
+      shell: bash
+      run: scripts/ci-steps.sh build-cli

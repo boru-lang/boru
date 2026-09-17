@@ -66,7 +66,7 @@ func TestBindTwinsEqualLedger(t *testing.T) {
 	}
 
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func twinOpIdxs(code []compiler.Instr) []int {
 // refusal logic will tighten.
 func TestBindTwinOpsArePlacedOrderedSubset(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,71 @@
+# shards.tsv — the langspec corpus split into CI shards, one line per
+# top-level Test function: <shard>\t<TestName>. TestLangspecShardsPartition
+# (shards_test.go) keeps it complete and disjoint; `make test-langspec
+# SHARD=n` runs one shard and the ci.yml matrix runs them in parallel.
+# Tests that share a memoised walk (gatherCensus: TestCompiledCoverage,
+# TestOnlyMetaFallsBack, TestRefusalsAreFailures, TestCompiledStatus; the
+# two TestSpecProd*) stay together so the walk runs once. Balanced greedily
+# on the wall clock of a verbose full run on 2026-09-17 (1652 s under
+# concurrent load; about 410 s per shard); rebalance when one shard drifts
+# past the others by more than a minute — `go test ./langspec -v` gives
+# the durations.
+1	TestDiagnosticParityAcrossPasses
+1	TestBindTwinOpsArePlacedOrderedSubset
+1	TestDispatchAdmissionAgreementCensus
+1	TestSpecProdTCODisabled
+1	TestSpecProd
+1	TestCheckAnyFrontier
+1	TestCheckRunFalsePositive
+1	TestRegionDescriptorReach
+1	TestMultiRunBindParityOracle
+1	TestSpecCompiledConcurrentRowsRaceFree
+1	TestFrontierSpecInterp
+1	TestModuleExportCoverage
+1	TestLangspecShardsPartition
+1	TestBindLedgerEntriesArePositioned
+1	TestDotAccessKeepsSourcePosition
+1	TestWhileSpreadElementCoversEveryResidualValue
+2	TestSpecCompiledOrFallback
+2	TestBindLedgerCensus
+2	TestBindLedgerDepthsCompose
+2	TestBindLedgerLiveDepths
+2	TestPropertyDifferential
+2	TestVariationDifferential
+2	TestCorpusThreeModes
+2	TestFrontierSpecCompiled
+2	TestCompiledCombinationParity
+2	TestIOSurfaceCompilesNoRefusal
+2	TestNativeReturnsCoverage
+2	TestRefusalDispositionCensus
+2	TestBindLedgerBranchArmDepthsCompose
+2	TestGeneralisedResidualStaysSilent
+3	TestRegionCollectOracle
+3	TestInterpEntryCensus
+3	TestBindingSandboxRollbackAndReplay
+3	TestDiagnosticSurfaceParity
+3	TestCheckAccuracyRatchet
+3	TestRealProgramsCompile
+3	TestRegionSlotTokenKinds
+3	TestReturnsAnnotationNarrowing
+3	TestCompiledCombinationPath
+3	TestValueDivergesCompilesNative
+3	TestFnValueApplicationCompiles
+3	TestRefusalSiteCensus
+3	TestCallbackReturnContractIsChecked
+3	TestDeclarationCensus
+3	TestDeclaresCheckReturnsPredicate
+3	TestFrontierRefusalRowsCompile
+3	TestRefusalDispositionGateRefuses
+3	TestRefusalSiteKeysAreSyntactic
+3	TestRegionDescriptorOracle
+3	TestRegionDescriptorValidateRejects
+3	TestTwinRegimeSmoke
+3	TestVariadicSpreadOracle
+4	TestSpecCompiledDifferential
+4	TestRegionTableWellFormed
+4	TestCompiledCoverage
+4	TestBindTwinsEqualLedger
+4	TestCheckTypeSoundness
+4	TestOnlyMetaFallsBack
+4	TestRefusalsAreFailures
+4	TestCompiledStatus

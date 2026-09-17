@@ -82,7 +82,7 @@ func TestModuleExportCoverage(t *testing.T) {
 	// compile status ledgered, so a word whose result cannot yet be
 	// def-bound in a compiling row (the fn-util family) is still genuinely
 	// specced by its frontier rows.
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read spec dir %s: %v", specDir, err)
 	}

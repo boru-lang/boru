@@ -135,7 +135,7 @@ func TestBindingSandboxRollbackAndReplay(t *testing.T) {
 	}
 
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

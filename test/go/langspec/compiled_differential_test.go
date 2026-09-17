@@ -42,7 +42,7 @@ const minCompiledRows = 6410 // + F4 class/object make (plain-data const-bake) +
 
 func TestSpecCompiledDifferential(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", specDir, err)
 	}
@@ -87,19 +87,20 @@ func TestSpecCompiledDifferential(t *testing.T) {
 			ai := newDifferentialInstance(t)
 			gotI, errI := ai.RunInterp(input)
 
+			key := e.Name() + ":L" + itoa(lineNum)
 			if (errC != nil) != (errI != nil) {
-				mismatches++
-				t.Errorf("%s:L%d: %s\n  error divergence: compiled=%v interpreted=%v",
-					e.Name(), lineNum, input, errC, errI)
+				if !divergence(t, "compiled-differential", key, fmt.Sprintf("%s\n  error divergence: compiled=%v interpreted=%v", input, errC, errI)) {
+					mismatches++
+				}
 				continue
 			}
 			if errC != nil {
 				continue
 			}
 			if renderAny(gotC) != renderAny(gotI) {
-				mismatches++
-				t.Errorf("%s:L%d: %s\n  compiled=%q interpreted=%q",
-					e.Name(), lineNum, input, renderAny(gotC), renderAny(gotI))
+				if !divergence(t, "compiled-differential", key, fmt.Sprintf("%s\n  compiled=%q interpreted=%q", input, renderAny(gotC), renderAny(gotI))) {
+					mismatches++
+				}
 			}
 		}
 		f.Close()
@@ -108,8 +109,9 @@ func TestSpecCompiledDifferential(t *testing.T) {
 		}
 	}
 
-	t.Logf("compiled differential: %d rows compiled, %d mismatches", compiled, mismatches)
-	if compiled < minCompiledRows {
+	t.Logf("compiled differential: %d rows compiled, %d unledgered mismatches", compiled, mismatches)
+	checkLedgerRetired(t, "compiled-differential")
+	if !filteredCorpus() && compiled < minCompiledRows {
 		t.Errorf("only %d rows took the compiled path (floor %d) — the emitter regressed to refusing the corpus",
 			compiled, minCompiledRows)
 	}

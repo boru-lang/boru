@@ -94,7 +94,7 @@ is nearer 15% than the 25% the assessment gave.
 | `vmDefer(` calls in `eng/go` | 17 | **28** | 11 are the generic lane's own arms (ten names) |
 | routed dispatches (`OpDispatchGeneric`) | 0 | **676** (floor 600) | increments 64–65 |
 | region oracle, descriptors executed | 47,110 reproduced | **473,151** executed: 446,999 reproduced (94.5%), 9,016 under-claimed (1.9%), 17,130 declined (3.6%), 1 over-claim, 5 value divergences | increment 62 |
-| refusal-site dispositions | assigned | 90 generic (stage 5: 29, stage 3: 21, stage 4: 19, stage 7: 11, stage 6: 9, stage 8: 1, stage 2: 1), 1 trap, 4 delete | the disposition census |
+| refusal-site dispositions | assigned | 87 generic (stage 5: 26, stage 3: 21, stage 4: 19, stage 7: 11, stage 6: 9, stage 8: 1), 1 trap, 4 delete | the disposition census (`TestRefusalDispositionCensus`) |
 | work landed | — | `main`: 17 commits, +10,997 / −1,492 non-doc lines, increments 60–73; this branch: 8 commits, +2,931 / −279 | one session each |
 
 Two readings. The rows that fell (refusals, islands, census) did not fall:
@@ -180,7 +180,7 @@ observed one-in-seven rate and one falsified premise per package.
 | generic lane, complete (B1) | 15–25 | **25–40** | the evaluating host, the lane's runtime totality and the fn-value lead are measured as the remaining three cores (§4.3); the first slices cost ~2 session-days for the easy half |
 | handler migration (B2) | 12–20 | **25–40** | zero movement in 23 days is the honest rate signal; 114 handlers at 3–5 per session-day, with the `do`/`Test` quotation bodies needing Stage 7 first |
 | runtime compilation (B3) | 10–20 | **10–20** | unchanged; the unit cache is now on the critical path of B1 and the fn-value convention, so it lands earlier, not cheaper |
-| refusal-site retirement (B4) | 15–25 | **10–20** | smaller: with fn values and handlers done as programmes, most of the 90 "generic" sites retire with their family rather than one at a time |
+| refusal-site retirement (B4) | 15–25 | **10–20** | smaller: with fn values and handlers done as programmes, most of the 87 "generic" sites retire with their family rather than one at a time |
 | checker sentinel and traps (B5) | 5–10 | **5–10** | unchanged |
 | valves (B6) | 8–15 | **8–15** | unchanged |
 | **total remaining** | **83–148** | **~105–175** | |
@@ -571,3 +571,30 @@ census's 522/172/114. Effort figures are `git log 4945889..origin/main`
 and this branch's log. The estimates in §2.3 and §5 and the probabilities
 are the author's judgement from those inputs and are labelled as such;
 nothing in §2.3's second table or §5's last column is a measurement.
+
+## 9. What landed the same day for velocity (2026-09-17)
+
+The maintainer asked what would raise development velocity and then to
+implement every suggestion; this records what each became, so the next
+session does not re-derive them. Measured costs before: the langspec
+package 22–29 minutes, the pre-commit cycle about an hour, CI 28–31
+minutes as one sequential job, the direction gates red on every push with
+the log parsed by hand to prove nothing new broke.
+
+| item | what landed |
+|---|---|
+| one spec file as a five-second experiment | `BORU_SPEC_FILES=<names or globs>`: every corpus walk in `test/go/langspec` (`specEntries`, one seam) and the interpreter oracle (`specfix.RunDir`) visit only the named files; absolute counts are reported, not asserted. The ten gates over `callbacks.tsv`: 6.5 s; the oracle: 2 s |
+| regression lane vs direction lane | `lanes_test.go`: every ratchet has an END STATE (the design's number) and a REGRESSION ceiling (the last merged value, falls only); the default lane asserts the ceiling and blocks, `BORU_DIRECTION_GATES=1` asserts the end state and is red by design. `knownDivergences` keys the five miscompiles to their NUR numbers, pinned both ways; the ten tests re-based; CI's `direction-gates` job renders the table into every PR's summary |
+| shard and reorder CI | five parallel jobs (checks, module suites, four langspec shards from `shards.tsv` with `TestLangspecShardsPartition` keeping it complete, the post-test gates, the direction lane) over one composite setup action |
+| incremental coverage gate | `cover-profile` profiles every module before failing and caches a module's profile on `scripts/cover-key.sh`'s digest of its dependency closure; `cover-gate` runs the check even after a red module |
+| one `make ci-local` that is `ci.yml` | `scripts/ci-steps.sh` is the single definition; the workflow calls it per step and `make ci-local` runs the sequence |
+| shrink the handover surface | `SESSION-HANDOVER.0.md` trimmed to 199 lines as the entry point (its running detail moved verbatim into the log); `make gate-status` prints every gate against both numbers and refreshes `GATE_STATUS.md`; `make status-static` the instant censuses |
+| work by mechanism | recorded as process rules 9–11 on the handover page and in §10.1's two standing rules |
+| the second parallel line | [HANDLER-MIGRATION-LINE.0.md](HANDLER-MIGRATION-LINE.0.md), a session brief with `make handler-worklist` (the 114 signatures, one per line) and the per-word procedure |
+| the flakes | the kg `check` target: not a flake — `boru check` anchors relative imports on the file where `boru` anchors on the cwd, so every `tests/*_test.boru` lost its `./util.boru` import silently (28 phantom errors per file); `boru check --base DIR` now anchors where run does and the target passes. `TestModelWatchForkNoRace`: 40 of 40 under concurrent load, not reproduced, left as is. The registry race at the spawn seam: every spawn seam already forks and NUR152's `FnHome` keeps a parent-minted callback on the fork, which is the mechanism both recorded witnesses had; `TestTimeoutBodyAppliesParentFnOnItsFork` pins it under the race detector |
+
+One checker defect the kg investigation exposed and this note only
+records: a relative import that resolves to nothing is silent in check
+mode — the namespace's words come back `undefined_word` one by one instead
+of one `import` error at the line that failed. It belongs with the
+checker-precision programme (§3.5, Tier C).

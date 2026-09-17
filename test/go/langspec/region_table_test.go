@@ -145,7 +145,7 @@ func TestRegionTableWellFormed(t *testing.T) {
 	tl := &regionTally{sources: map[string]int{}}
 
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

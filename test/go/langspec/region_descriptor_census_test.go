@@ -298,7 +298,7 @@ func sameInts(a, b []int) bool {
 // pinned by the oracle above.
 func TestRegionDescriptorReach(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func slotKind(v core.Value) string {
 // is exactly how the previous numbers passed.
 func TestRegionSlotTokenKinds(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatal(err)
 	}

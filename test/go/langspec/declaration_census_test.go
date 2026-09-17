@@ -24,6 +24,7 @@
 package langspec
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -102,6 +103,12 @@ func TestDeclarationCensus(t *testing.T) {
 			if !declared(sig) {
 				undeclared++
 				undeclaredBy[why]++
+				// BORU_LOG_UNDECLARED=1 names every undeclared signature —
+				// the Stage-6 handler-migration worklist (`make
+				// handler-worklist`; design/HANDLER-MIGRATION-LINE.0.md).
+				if os.Getenv("BORU_LOG_UNDECLARED") != "" {
+					t.Logf("UNDECLARED\t%s\t%s\t%s", name, why, sigShape(sig))
+				}
 			}
 		}
 	}
@@ -134,4 +141,18 @@ func TestDeclarationCensus(t *testing.T) {
 		t.Errorf("undeclared declaration-relevant signatures %d exceed ceiling %d — the recorder is assuming a handler contract nobody wrote down: %s",
 			undeclared, undeclaredHandlerCeiling, render(undeclaredBy))
 	}
+}
+
+// sigShape renders a signature's parameter types for the worklist line,
+// `(Integer List)` — the shape a declaration will be written against.
+func sigShape(sig *core.Signature) string {
+	parts := make([]string, len(sig.Args))
+	for i, a := range sig.Args {
+		if a == nil {
+			parts[i] = "?"
+			continue
+		}
+		parts[i] = a.Name()
+	}
+	return "(" + strings.Join(parts, " ") + ")"
 }

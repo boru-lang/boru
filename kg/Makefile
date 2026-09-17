@@ -15,10 +15,16 @@ build:
 	$(MAKE) -C ../cmd/go build
 
 # Static type-check every pipeline module and every test.
+# --base . : a test under tests/ imports its siblings' PARENT
+# (`import "./util.boru"`), which `boru tests/x.boru` resolves against the
+# cwd and `boru check tests/x.boru` against the file's own directory —
+# where the import silently found nothing and every KgX word came back
+# undefined (28 phantom errors per test file). The flag anchors check where
+# run anchors.
 check:
 	@for f in *.boru tests/*.boru; do \
 	  echo "check $$f"; \
-	  $(BORU) check $$f || exit 1; \
+	  $(BORU) check --base . $$f || exit 1; \
 	done
 
 # Canonical formatting, in place.

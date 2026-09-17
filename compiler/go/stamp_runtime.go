@@ -49,10 +49,9 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // fd.Signatures[sigIdx]'s body to a standalone one-unit Program and returns
 // its CompiledFnRef. It runs only when runtime stamping is armed on r
 // (EnableRuntimeStamping — the compiled execution entry points). The compile
-// is fully isolated: it runs on a ForkConcurrent copy of r carrying a FRESH
-// CheckState (Registry.Check is a shared pointer the fork's shallow copy
-// would otherwise alias — the compile pass must not touch the parent's live
-// check state). Refusal returns (nil, false) and leaves r untouched.
+// is fully isolated: it runs on a ForkConcurrent copy of r, which carries
+// its own fresh CheckState (the compile pass must not touch the parent's
+// live check state). Refusal returns (nil, false) and leaves r untouched.
 //
 // The caller contract is ForkConcurrent's: invoke from the goroutine that
 // owns r (store words and codec resolution run on the registry executing
@@ -65,11 +64,11 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		return nil, false
 	}
 	fork := r.ForkConcurrent()
-	// Fresh check state: the fork's shallow copy aliases r.Check (a shared
-	// *CheckState); arming a compile pass on the alias would trash the
-	// parent's live diagnostics/emit state. Mirror NewRegistry's init
-	// (StepBudget sentinel -1, inactive recorder).
-	fork.Check = &core.CheckState{StepBudget: -1, Emit: core.TheInactiveEmit}
+	// The fork carries its OWN fresh check state (ForkConcurrent gives every
+	// fork one — a fork's shallow copy used to alias r.Check, and arming a
+	// compile pass on the alias would have trashed the parent's live
+	// diagnostics and emit state), so the compile pass is armed on it
+	// directly.
 	defer fork.Check.BeginCompilePass()()
 	// BeginCompilePass installs a concrete *EmitState; the two-value cast
 	// (never-failing here) keeps this panic-free without an unreachable

@@ -432,6 +432,11 @@ Flags:
   over a dynamic operand: the points where the checker matched
   optimistically and the runtime re-verifies. The gradual-typing
   migration surface — tighten these and the diagnostics disappear.
+* `--base DIR` — resolve a target's relative imports (`import "./util.boru"`)
+  against `DIR` instead of the target's own directory. `boru check` anchors
+  on the file (what `boru build` needs) where `boru` anchors on the process
+  cwd, so a test file under `tests/` that imports its siblings' parent
+  checks with `--base .` exactly as it runs with `boru tests/x.boru`.
 * `--pedantic` — promote the advisory tiers: exit non-zero when any
   warning- or info-severity diagnostic is reported, not only on errors.
   Without it every non-error run exits 0, so a `warning` cannot fail a

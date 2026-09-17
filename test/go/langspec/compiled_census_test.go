@@ -91,7 +91,7 @@ func gatherCensus(t *testing.T) *census {
 // IO errors instead of FailNow-ing inside sync.Once.
 func computeCensus() (*census, error) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		return nil, err
 	}

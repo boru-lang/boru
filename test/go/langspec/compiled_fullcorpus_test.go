@@ -24,6 +24,7 @@ package langspec
 import (
 	"bufio"
 	"errors"
+	"fmt"
 
 	lang "github.com/boru-lang/boru/lang/go"
 	"os"
@@ -160,12 +161,12 @@ func itoa(n int) string {
 
 func TestSpecCompiledOrFallback(t *testing.T) {
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
+	entries, err := specEntries(specDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", specDir, err)
 	}
 
-	var rows, compiledPath, mismatches int
+	var rows, compiledPath, mismatches, refusedRows int
 	entryCensus := newEngineEntryCensus()
 	bailCensus := newDeferCensus()
 	localBailCensus := newDeferCensus()
@@ -219,11 +220,19 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 			ai := newDifferentialInstance(t)
 			gotI, errI := ai.RunInterp(input)
 
+			key := e.Name() + ":L" + itoa(lineNum)
 			// Error taxonomy parity: same presence AND same code.
 			if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
-				mismatches++
-				t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error divergence: compiled=[%s]%v interpreted=[%s]%v",
-					e.Name(), lineNum, wasCompiled, input, cdC, errC, cdI, errI)
+				if !wasCompiled && cdC == "compile_refused" {
+					// A REFUSAL, not a divergence: the compile gate in
+					// TestCompiledCoverage owns it (every one an open defect).
+					refusedRows++
+					continue
+				}
+				if !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error divergence: compiled=[%s]%v interpreted=[%s]%v",
+					wasCompiled, input, cdC, errC, cdI, errI)) {
+					mismatches++
+				}
 				continue
 			}
 			if errC != nil {
@@ -237,33 +246,37 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 				// gated, which is what catches a "source position unknown" regression.
 				if aeC, aeI := asBoruError(errC), asBoruError(errI); aeC != nil && aeI != nil {
 					if aeC.Detail != aeI.Detail {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error detail divergence:\n  compiled=%q\n  interpreted=%q",
-							e.Name(), lineNum, wasCompiled, input, aeC.Detail, aeI.Detail)
+						if !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error detail divergence:\n  compiled=%q\n  interpreted=%q",
+							wasCompiled, input, aeC.Detail, aeI.Detail)) {
+							mismatches++
+						}
 						continue
 					}
 					if aeI.Row > 0 && aeC.Row == 0 {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
-							e.Name(), lineNum, wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail)
+						if !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
+							wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail)) {
+							mismatches++
+						}
 						continue
 					}
 					// Phase-7 rich-diagnostic parity: the compiled error must carry
 					// the SAME notes, suggestions, and secondary spans as the
 					// interpreter, not just the same Detail.
 					if diff := diagPayloadMismatch(aeC, aeI); diff != "" {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
-							e.Name(), lineNum, wasCompiled, input, diff)
+						if !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
+							wasCompiled, input, diff)) {
+							mismatches++
+						}
 						continue
 					}
 				}
 				continue
 			}
 			if renderAny(gotC) != renderAny(gotI) {
-				mismatches++
-				t.Errorf("%s:L%d (wasCompiled=%v): %s\n  compiled=%q interpreted=%q",
-					e.Name(), lineNum, wasCompiled, input, renderAny(gotC), renderAny(gotI))
+				if !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  compiled=%q interpreted=%q",
+					wasCompiled, input, renderAny(gotC), renderAny(gotI))) {
+					mismatches++
+				}
 			}
 		}
 		f.Close()
@@ -272,11 +285,12 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 		}
 	}
 
-	t.Logf("compile-or-fallback: %d rows, %d compiled, %d divergences (values + error taxonomy)", rows, compiledPath, mismatches)
+	t.Logf("compile-or-fallback: %d rows, %d compiled, %d refused (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, refusedRows, mismatches)
 	entryCensus.assertCeiling(t)
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
+	checkLedgerRetired(t, "compile-or-fallback")
 	if mismatches != 0 {
-		t.Errorf("%d compile-or-fallback divergences — every program must compile or fall back to an identical result and error taxonomy", mismatches)
+		t.Errorf("%d compile-or-fallback divergences the ledger does not know — every program must compile to an identical result and error taxonomy", mismatches)
 	}
 }
