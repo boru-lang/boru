@@ -144,7 +144,16 @@ type Registry struct {
 	// empty). Read by the compiled CALL_USER gate, whose CompiledFn
 	// carries the owning registry but no signature to read a
 	// ModuleCallID from.
-	ModuleRef      string
+	ModuleRef string
+	// home is the canonical registry of the MODULE this registry is an
+	// instance of: nil for a module's own registry (the main program's, a
+	// module body's sub-registry, a sandbox's), the parent's home for a
+	// concurrent fork. Read through Home(): a fn value carries its home
+	// registry, and whether a call is FOREIGN to that fn is a question about
+	// modules, not registry pointers — a fork of the defining module IS the
+	// defining module for that goroutine, with the live state the fork was
+	// made for (a service's per-connection fork, an acceptor's).
+	home           *Registry
 	errs           []error           // registration errors accumulated during setup
 	ready          bool              // true after initial setup; triggers dynamic help generation
 	OnRegisterHook func(name string) // called when a function is registered after startup

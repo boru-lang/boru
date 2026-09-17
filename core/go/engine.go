@@ -5110,19 +5110,13 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// it falls through to the name-lookup branch below. Anonymous closures
 	// keep their own sigs even when they captured a module registry.
 	var fn *FnDefInfo
-	foreignReg := fnDef.Registry != nil && fnDef.Registry != e.Registry
+	foreignReg := FnHomeForeign(e.Registry, &fnDef)
 	if len(fnDef.Signatures) > 0 && (fnDef.Anonymous || !foreignReg) {
-		reg := fnDef.Registry
-		if reg == nil {
-			reg = e.Registry
-		}
+		reg, _ := FnHome(e.Registry, &fnDef)
 		fn = compileFnDef(reg, fnDef)
 	}
 	if fn == nil && fnDef.Name != "" {
-		reg := fnDef.Registry
-		if reg == nil {
-			reg = e.Registry
-		}
+		reg, _ := FnHome(e.Registry, &fnDef)
 		fn = reg.Lookup(fnDef.Name)
 	}
 	if fn == nil && len(fnDef.Signatures) > 0 {
@@ -5305,7 +5299,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// Body-less sigs and a real Go Handler — it must dispatch straight
 	// through execMatch below, exactly like any other native, so we require
 	// a body-bearing own sig before entering this branch.
-	if fnDef.Registry != nil && fnDef.Registry != e.Registry {
+	if FnHomeForeign(e.Registry, &fnDef) {
 		ownSigs := fnDef.OwnSigs()
 		var wrapperSig *FnSig
 		// Select the own sig CORRESPONDING TO THE MATCHED sig — same
@@ -5395,7 +5389,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// IS the interpreter's dispatch. Interpretation is unchanged — Reg is
 	// read only at the check-mode carrierResults seam (execMatch:2625).
 	match := &MatchResult{Sig: sig, Positions: positions, Name: fnDef.Name}
-	if fnDef.Registry != nil && fnDef.Registry != e.Registry {
+	if FnHomeForeign(e.Registry, &fnDef) {
 		match.Reg = fnDef.Registry
 	}
 	if len(positions) > 0 {
@@ -5609,7 +5603,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// body must run via CallBoru in that registry — the execFnDefLiteral
 	// sub-registry branch handles them) and macros.
 	checkFnValue := e.Registry != nil && e.Registry.analysisMode() && !fnDef.Anonymous && !fnDef.Macro &&
-		(fnDef.Registry == nil || fnDef.Registry == e.Registry) &&
+		!FnHomeForeign(e.Registry, &fnDef) &&
 		e.Registry.analysisRecorder().Active()
 	ownSigs := fnDef.OwnSigs()
 	for i := range ownSigs {
@@ -6023,7 +6017,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		args[i].Undefined = false
 	}
 
-	if capturedReg != nil && (capturedReg != e.Registry || e.Registry.Lookup("__pa") == nil) {
+	if capturedReg != nil && (!capturedReg.SameHome(e.Registry) || e.Registry.Lookup("__pa") == nil) {
 		// Execute in the captured module's registry via CallBoru.
 		// Pass the FnDef's lexical captures so the body sees them as
 		// defs (alongside the module-registry's own bindings).

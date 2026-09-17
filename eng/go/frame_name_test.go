@@ -18,13 +18,22 @@ func TestNameFrameFns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fn := &compiler.CompiledFn{NParams: 4, NLocals: 5, LocalNames: []string{"g", "", "h", "m", "t"}}
+	other, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := &compiler.CompiledFn{NParams: 5, NLocals: 6, LocalNames: []string{"g", "", "h", "m", "k", "t"}}
 	lam := core.NewFunction(core.FnDefInfo{Anonymous: true})
 	named := core.NewFunction(core.FnDefInfo{Name: "h"})
-	foreign := core.NewFunction(core.FnDefInfo{Name: "sqrt", Registry: r})
+	// A fn whose home is ANOTHER module's registry — a module wrapper.
+	foreign := core.NewFunction(core.FnDefInfo{Name: "sqrt", Registry: other})
 	closure := compiler.NewClosure(&compiler.Program{}, 0, nil)
-	locals := []core.Value{lam, lam, named, foreign, closure}
-	nameFrameFns(fn, locals)
+	// A fn at home in r — every boru-bodied fn carries the registry that
+	// minted it — is named like the homeless lambda above; the home is not
+	// what makes a wrapper foreign, the OTHER module is.
+	home := core.NewFunction(core.FnDefInfo{Name: "inc", Registry: r})
+	locals := []core.Value{lam, lam, named, foreign, home, closure}
+	nameFrameFns(r, fn, locals)
 	if fd := locals[0].Data.(core.FnDefInfo); fd.Name != "g" || !fd.Anonymous {
 		t.Errorf("a lambda bound for param g is named g, its other fields kept: %+v", fd)
 	}
@@ -37,14 +46,17 @@ func TestNameFrameFns(t *testing.T) {
 	if fd := locals[3].Data.(core.FnDefInfo); fd.Name != "sqrt" {
 		t.Errorf("a module wrapper keeps its name (installDef's rebinding path is not mirrored): %+v", fd)
 	}
-	if cl, ok := locals[4].Data.(core.ClosurePayload); !ok || cl.RetName != "" {
+	if fd := locals[4].Data.(core.FnDefInfo); fd.Name != "k" || fd.Registry != r {
+		t.Errorf("a fn at home in r is named for its param, its home kept: %+v", fd)
+	}
+	if cl, ok := locals[5].Data.(core.ClosurePayload); !ok || cl.RetName != "" {
 		t.Errorf("a compiled closure in a CAPTURE slot (past NParams) is left alone: %v", locals[4])
 	}
 	// A compiled closure bound for a named PARAM takes the name (the
 	// thirtieth increment), its payload kept — the render stays when the
 	// payload names no unit.
 	named2 := []core.Value{closure}
-	nameFrameFns(fn, named2)
+	nameFrameFns(r, fn, named2)
 	if cl, ok := named2[0].Data.(core.ClosurePayload); !ok || cl.RetName != "g" || cl.Render != "" {
 		t.Errorf("a compiled closure bound for param g is named g: %v", named2[0])
 	}
@@ -52,23 +64,23 @@ func TestNameFrameFns(t *testing.T) {
 	// param — takes the param's name too, as installDef renames whatever it
 	// binds (the thirty-first increment); one already so named is untouched.
 	prenamed := []core.Value{core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: &compiler.Program{}, Unit: 0, RetName: "p"})}
-	nameFrameFns(fn, prenamed)
+	nameFrameFns(r, fn, prenamed)
 	if cl := prenamed[0].Data.(core.ClosurePayload); cl.RetName != "g" {
 		t.Errorf("a named closure bound for param g is renamed g: %v", prenamed[0])
 	}
 	same := []core.Value{core.NewValueRaw(core.TFunction, core.ClosurePayload{RetName: "g", Render: "kept"})}
-	nameFrameFns(fn, same)
+	nameFrameFns(r, fn, same)
 	if cl := same[0].Data.(core.ClosurePayload); cl.Render != "kept" {
 		t.Errorf("a closure already so named is untouched: %v", same[0])
 	}
 	// A slot past the frame, a data value: nothing to do, nothing to panic on.
 	short := []core.Value{core.NewInteger(1)}
-	nameFrameFns(fn, short)
+	nameFrameFns(r, fn, short)
 	if n, _ := core.AsInteger(short[0]); n != 1 {
 		t.Errorf("data untouched: %v", short)
 	}
 	// bindUnitLocals names through the same helper.
-	bound := bindUnitLocals(fn, []core.Value{lam, lam, named, foreign}, []core.Value{closure})
+	bound := bindUnitLocals(r, fn, []core.Value{lam, lam, named, foreign}, []core.Value{closure})
 	if fd := bound[0].Data.(core.FnDefInfo); fd.Name != "g" {
 		t.Errorf("bindUnitLocals names the frame's fns: %+v", fd)
 	}

@@ -86,6 +86,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
@@ -6482,3 +6483,78 @@ and `specFamilyAtFnBaseline`'s arms), `core/go/rununit_test.go`
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
+
+## NUR152 — a fn value had a home only if a module exported it {#nur152}
+
+**Status:** Resolved (recorded 2026-09-17; fixed in the same PR).
+**Found:** investigating the main-vs-module representation split, at the
+maintainer's request — "code loaded from the main file is in a module as
+well; there should be no difference in code based on module" — reproduced
+on `82816e9`.
+
+**Rule:** a function value carries the scope it was written in; its free
+names are looked up in its DEFINING module, at call time
+(design/FUNCTION-VALUE-SCOPE.0.md §11, rule 1) — in both directions.
+
+**The split.** `FnDefInfo.Registry` was set in exactly one place,
+`resolveModuleExport`, so a fn defined in the main program carried nil,
+and `FnHome`'s nil arm — documented as "a fn defined in the running
+scope, whose defining registry IS r" — handed it whatever registry
+happened to be running. That is true only while a main-program fn is
+never applied anywhere but main.
+
+**Divergences, interpreter first.**
+
+1. *Main fn into a module, module has no `secret`.*
+   `import module [def run fn [[f:Function][Integer][(f 5)]] export "M"
+   {run: run/v}] end def secret 1 end def pub fn [[x:Integer][Integer][x
+   add secret]] end M.run pub/v` — interpreted `cannot call add` (`secret`
+   looked up in M, unbound), compiled `6`. A compile ≠ interpret
+   divergence in which the interpreter is the wrong lane.
+2. *Same, module has `def secret 100`.* `105` on BOTH engines — main's
+   `pub` silently reading the module's `secret` — for the rule's `6`. No
+   differential can see it; only the rule can. The lambda form
+   (`M.run ([x:Integer] => [x add secret])`) is the same.
+3. *After stamping the home at construction* (the first cut of the fix):
+   interpreted `6`, compiled `105`. `compileStoredFnUnit` and the fn-value
+   unit compile took `r := es.reg` — the emitter's CURRENT registry, the
+   module's while `run`'s body compiles foreign — so `pub`'s body became a
+   `storedfn$body` unit stamped with the module as its owner, and the VM
+   read `secret` against the module at run time.
+4. *Forks.* Comparing home to caller by POINTER sent a same-module callback
+   back to the shared original from its per-connection `ForkConcurrent`
+   clone: `boru:repl`'s service handler lost the fork's live state
+   (`repl-eval-line: expected 1 return value(s), got 2`), `serve-raw`'s
+   handler raced the acceptor — `fatal error: concurrent map iteration and
+   map write` took the corpus differential down.
+
+**Fix.** Every boru-bodied fn is stamped with the registry that minted it
+(`FnConstruct`, `=>`, `macro`); a nil home is left to Go-built values,
+which have no free words. A registry has a `Home()` — itself, or for a
+concurrent fork the registry it was forked from — and every "is this fn
+foreign?" test (`FnHome`, `FnHomeForeign`, the engine's dispatch arms, the
+compiler's `foreignFnHome`, the VM's `tryNativeFnApply` and frame naming,
+`deq`'s fn arm) compares homes, so a fn runs where it is invoked whenever
+that is an instance of its own module. Export resolution mints a fresh
+value whether or not the fn already carries its home (a region claim was
+otherwise keyed by the `name/v` token's position inside the module body).
+Stored-fn and fn-value units compile at the value's home, the caller's
+check state shared onto a foreign one exactly as `tryRecordLambdaClosure`
+already did. `IsInertConstMember` no longer keys on a nil home: a fn value
+is immutable code whichever module it belongs to; only a capture is live
+state.
+
+**Fence.** `lang/go/fn_home_main_module_test.go` (rows 1–2, the lambda,
+a main factory's closure returned through the module, and the control),
+`core/go/fn_home_module_test.go` (`Home`, `SameHome`, `FnHomeForeign`
+over main / module / fork), `eng/go/frame_name_test.go` (at-home vs
+foreign naming), `lang/spec/module-composition.tsv` (the reverse-direction
+rows), and the module suites (`boru:repl`, `serve-raw`) that the fork
+rule keeps green.
+
+**Not in this record.** Applying a returned closure INSIDE the foreign
+body (`1 (f 5) apply` in `run2`) is a compile error today ("unmatched
+dispatch recovered at apply") — a refusal, not a divergence, and a defect
+owed its own fix. `Registry.ModuleScope` (the open-words rule) and
+`ModuleRef` (the per-export policy identity) are deliberate module-only
+designs and stay as they are; the main program still has neither.

@@ -3125,7 +3125,15 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	}
 	inputs, paramNames := fnValueInputs(lam.Params)
 	ps := lamParamContract(lam)
-	r := es.reg
+	// In the fn's HOME, with the caller's check state shared onto a foreign
+	// one — see compileStoredFnUnit for the measured divergence.
+	// In the fn's HOME, with the caller's check state shared onto a foreign
+	// one — see compileStoredFnUnit for the measured divergence.
+	r, _ := core.FnHome(es.reg, &fd)
+	if core.FnHomeForeign(es.reg, &fd) {
+		restore := check.ShareCheckStateFrom(r, es.reg)
+		defer restore()
+	}
 	// PROBE in a throwaway emit state (mirrors recordClosureDispatch), so a body
 	// that refuses leaves THIS program untouched and the value stays unresolved.
 	probe := NewEmitState()
@@ -3200,7 +3208,39 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	}
 	lam := &fd.Signatures[sigIdx]
 	inputs, paramNames := fnValueInputs(lam.Params)
-	r := es.reg
+	// The body compiles in the fn's HOME, never in whatever registry the
+	// emitter is bound to at this moment: a main-program handler stored from
+	// inside a module's fn (`M.run pub/v` — run's body is compiled foreign,
+	// with es.reg the module's) would otherwise get a unit stamped with the
+	// MODULE as its owner, and read main's free words (`secret`) against the
+	// module at run time — measured as 105 for the interpreter's 6. The
+	// caller's check state is shared onto a foreign home so the recorder
+	// still writes into THIS program (tryRecordLambdaClosure's split).
+	// The body compiles in the fn's HOME, never in whatever registry the
+	// emitter is bound to at this moment: a main-program handler stored from
+	// inside a module's fn (`M.run pub/v` — run's body is compiled foreign,
+	// with es.reg the module's) would otherwise get a unit stamped with the
+	// MODULE as its owner, and read main's free words (`secret`) against the
+	// module at run time — measured as 105 for the interpreter's 6. The
+	// caller's check state is shared onto a foreign home so the recorder
+	// still writes into THIS program (tryRecordLambdaClosure's split).
+	//
+	// A FOREIGN trivial-delegation wrapper (`MathUtil.sqrt/v`, every own sig
+	// a `[Word(inner)]` pass-through) is declined outright. The VM never
+	// enters a unit for one — it dispatches the inner native directly
+	// (vmNativeApplicable / tryNativeFnApply) — so the unit would go unused;
+	// and where the old registry mismatch made its compile refuse (the inner
+	// word is unbound in the caller's registry), compiling it at home
+	// SUCCEEDS, and a stamped value left as a residual then meets the closure
+	// render refusal a plain const never did (TestClosureCaptureOpenShapes).
+	if core.FnHomeForeign(es.reg, &fd) && core.IsDelegationFnDef(fd) {
+		return 0, false
+	}
+	r, _ := core.FnHome(es.reg, &fd)
+	if core.FnHomeForeign(es.reg, &fd) {
+		restore := check.ShareCheckStateFrom(r, es.reg)
+		defer restore()
+	}
 	// PROBE in a throwaway state so a refusing body leaves THIS program
 	// untouched (mirrors tryReturnedClosure / recordClosureDispatch).
 	probe := NewEmitState()

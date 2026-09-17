@@ -1232,3 +1232,47 @@ in `7e98aeb` hooks the same `TFunction` intercept and reworks with it.
 **Break 2** (the compiler's *"fn value read from a container
 auto-dispatches (Stage 3)"* refusal) is untouched and independent of all
 of the above.
+
+### 12.7 The reverse direction, and what "home" means — 2026-09-17
+
+§12.1's seam had a nil arm — *"fnDef.Registry == nil is a fn defined in
+the running scope, whose defining registry IS r"* — and that sentence was
+only true while a main-program fn was never applied anywhere but main.
+`Registry` was set in exactly one place, `resolveModuleExport`, so rule 1
+held module→main and not main→module: a main-program fn handed INTO a
+module (`M.run pub/v`, `run` applying its `f:Function` param) resolved its
+free words in the module. Measured: `cannot call add` interpreted where the
+compiled lane answered `6`, and with a same-named `secret` in the module
+`105` on BOTH engines for the rule's `6` — invisible to any differential.
+Recorded as NUR152 and fixed there.
+
+What landed, in three parts, each of which the first cut got wrong once:
+
+1. **The home is stamped at construction**, not at export: `fn`, `=>` and
+   `macro` write the minting registry onto the value. A nil `Registry` now
+   means only a Go-built value (a registered native, a wrapper minted by
+   Go) with no free words to resolve. `IsInertConstMember` stops keying on
+   it — a fn value is immutable code whichever module owns it; only a
+   capture is live state.
+2. **"Foreign" is a question about modules, not registry pointers.** A
+   registry has a `Home()` — itself, or for a concurrent fork the registry
+   it was forked from — and `FnHome` / `FnHomeForeign` compare homes. A fn
+   invoked on a fork of its own module runs ON THE FORK, which is what the
+   fork exists for (a service's per-connection state, an acceptor's
+   isolation); comparing pointers sent it back to the shared original and
+   raced the acceptor. Every dispatch arm that used to write
+   `fd.Registry != nil && fd.Registry != r` now asks `FnHomeForeign`.
+3. **A stored-fn or fn-value unit compiles at the VALUE's home**, never at
+   the registry the emitter happens to be bound to. `run`'s body compiles
+   foreign with `es.reg` the module's; `pub`'s unit, compiled from inside
+   it, was stamped with the module as owner and read `secret` there at run
+   time (`105`). The caller's check state is shared onto a foreign home,
+   exactly as `tryRecordLambdaClosure` already did.
+
+What this does NOT change: `Registry.ModuleScope` (the open-words rule)
+and `ModuleRef` (the per-export policy identity) are deliberate
+module-only designs and stay as they are — the main program still has
+neither. The word "module scope" still names three different predicates
+in the code (`Registry.ModuleScope`, `core.ModuleScopeBinding`, the
+emitter's `len(es.units) == 1`); that is a naming debt, not a semantic
+one, and it is left for its own change.

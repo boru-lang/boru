@@ -91,7 +91,26 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.errs = nil
 	fork.SDKCache = make(map[string]any)
 	fork.VmRunning = 0 // the fork starts idle, independent of the parent's run
+	// The fork is an instance of the parent's module, never a module of its
+	// own: a fn the parent minted runs on the fork when invoked there (FnHome).
+	fork.home = r.Home()
 	return &fork
+}
+
+// Home returns the canonical registry of the module r is an instance of —
+// r itself unless r is a concurrent fork, in which case the registry it was
+// forked from (transitively). Two registries with the same Home are the same
+// module: a fn minted in one is at home in the other.
+func (r *Registry) Home() *Registry {
+	if r != nil && r.home != nil {
+		return r.home
+	}
+	return r
+}
+
+// SameHome reports whether r and other are instances of the same module.
+func (r *Registry) SameHome(other *Registry) bool {
+	return r.Home() == other.Home()
 }
 
 // SyncWriter serializes concurrent Write calls so that several forked

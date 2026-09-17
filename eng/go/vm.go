@@ -292,7 +292,7 @@ func RunUnit(ref *compiler.CompiledFnRef, r *core.Registry, args []core.Value) (
 		return nil, fmt.Errorf("bytecode: unit index %d out of range", ref.Unit)
 	}
 	return runVMEntry(ref.Prog, r, core.StepLimitFor(r, core.DefaultStepLimit), func(vc *vmContext) ([]core.Value, error) {
-		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(&ref.Prog.Fns[ref.Unit], args, ref.Captures))
+		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(r, &ref.Prog.Fns[ref.Unit], args, ref.Captures))
 	})
 }
 
@@ -352,7 +352,7 @@ func (vc *vmContext) enterBodyUnit(reg *core.Registry, unit int, locals []core.V
 // leading param slots (0..NParams-NCaptures-1) and captures the trailing ones —
 // the top-first sig-order split every enterBodyUnit caller shares. Args past
 // the param count are ignored, matching the interpreter's CallBoru binding.
-func bindUnitLocals(fn *compiler.CompiledFn, args, captures []core.Value) []core.Value {
+func bindUnitLocals(r *core.Registry, fn *compiler.CompiledFn, args, captures []core.Value) []core.Value {
 	locals := make([]core.Value, fn.NLocals)
 	nInputs := fn.NParams - len(captures)
 	for i := 0; i < len(args) && i < nInputs; i++ {
@@ -363,7 +363,7 @@ func bindUnitLocals(fn *compiler.CompiledFn, args, captures []core.Value) []core
 			locals[slot] = cv
 		}
 	}
-	nameFrameFns(fn, locals)
+	nameFrameFns(r, fn, locals)
 	return locals
 }
 
@@ -373,11 +373,11 @@ func bindUnitLocals(fn *compiler.CompiledFn, args, captures []core.Value) []core
 // no-matches as `fn g(…)` / `cannot call `g“ on that lane. The VM bound the
 // caller's value verbatim, so `(f (z:Integer => [z])) 3` rendered `fn
 // (Integer) 3` for the interpreter's `fn g(Integer) 3` (NUR122's class, the
-// twenty-sixth increment). Only an FnDefInfo of THIS registry is renamed —
-// the payload the interpreter's rule names; a module wrapper (a foreign
-// Registry) takes installDef's rebinding path, which this does not mirror,
-// and a compiled closure keeps its render.
-func nameFrameFns(fn *compiler.CompiledFn, locals []core.Value) {
+// twenty-sixth increment). Only an FnDefInfo AT HOME in r is renamed — the
+// payload the interpreter's rule names; a module wrapper (a foreign home)
+// takes installDef's rebinding path, which this does not mirror, and a
+// compiled closure keeps its render.
+func nameFrameFns(r *core.Registry, fn *compiler.CompiledFn, locals []core.Value) {
 	for i := 0; i < fn.NParams && i < len(locals) && i < len(fn.LocalNames); i++ {
 		name := fn.LocalNames[i]
 		if name == "" {
@@ -391,7 +391,7 @@ func nameFrameFns(fn *compiler.CompiledFn, locals []core.Value) {
 			continue
 		}
 		fd, ok := locals[i].Data.(core.FnDefInfo)
-		if !ok || fd.Name == name || fd.Registry != nil {
+		if !ok || fd.Name == name || core.FnHomeForeign(r, &fd) {
 			continue
 		}
 		fd.Name = name
@@ -503,7 +503,7 @@ func (vc *vmContext) runUnitNested(h any, args []core.Value) ([]core.Value, bool
 	if ref.Prog != vc.p {
 		return vc.runForeignUnit(ref, args)
 	}
-	res, err := vc.enterCallbackUnit(vc.r, ref.Unit, bindUnitLocals(&vc.p.Fns[ref.Unit], args, ref.Captures))
+	res, err := vc.enterCallbackUnit(vc.r, ref.Unit, bindUnitLocals(vc.r, &vc.p.Fns[ref.Unit], args, ref.Captures))
 	return res, true, err
 }
 
@@ -550,7 +550,7 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 	// seam the enclosing unit was entered through.
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = false
-	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(&vc.p.Fns[cl.Unit], shapeInputs(cl, inputs), cl.Captures))
+	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], shapeInputs(cl, inputs), cl.Captures))
 	vc.rootRetTrim = prev
 	if err != nil {
 		return res, err
@@ -1727,10 +1727,7 @@ func (vc *vmContext) tryNativeFnApply(fnVal core.Value, args []core.Value) ([]co
 	if !isFn { //covergate:allow compiler/VM defensive arm; every caller gates on the same assertion (§compiler)
 		return nil, false, nil
 	}
-	reg := fnDef.Registry
-	if reg == nil {
-		reg = vc.r
-	}
+	reg, _ := core.FnHome(vc.r, &fnDef)
 	var sigs []core.Signature
 	if core.IsSelfContainedGoFnDef(fnDef) {
 		// The stable handle: its own sigs, never its name (vmNativeApplicable).
@@ -1756,7 +1753,7 @@ func (vc *vmContext) tryNativeFnApply(fnVal core.Value, args []core.Value) ([]co
 	// Decline so the caller islands — the island applies the value through
 	// that branch, module scope and all. Go-handler natives stay on this
 	// fast path: they read HOST state from vc.r and never resolve body words.
-	if _, isBoru := mr.Sig.Impl.(*core.BoruImpl); isBoru && reg != vc.r {
+	if _, isBoru := mr.Sig.Impl.(*core.BoruImpl); isBoru && core.FnHomeForeign(vc.r, &fnDef) {
 		return nil, false, nil
 	}
 	// The handler runs against the DISPATCHING registry (vc.r), not the
@@ -2405,7 +2402,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
-			nameFrameFns(fn, nl)
+			nameFrameFns(curReg, fn, nl)
 			vc.pushFrameArgs(nl, fn.NArgs)
 			locals = nl
 			enterUnit(unit)
@@ -2637,7 +2634,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
-				nameFrameFns(fn, ent.locals)
+				nameFrameFns(curReg, fn, ent.locals)
 				vc.pushFrameArgs(ent.locals, fn.NArgs)
 				locals = ent.locals
 				enterUnit(ent.unit)
@@ -2698,7 +2695,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
-			nameFrameFns(fn, nl)
+			nameFrameFns(curReg, fn, nl)
 			vc.pushFrameArgs(nl, fn.NArgs)
 			locals = nl
 			enterUnit(unit)
@@ -2746,7 +2743,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if in.Op == compiler.OpCallUser {
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 				vc.frameDepth++ // balanced by the matching RET below
-				nameFrameFns(fn, nl)
+				nameFrameFns(curReg, fn, nl)
 				vc.pushFrameArgs(nl, fn.NArgs)
 			} else {
 				// Tail call: REPLACE the frame — the language's
@@ -2765,7 +2762,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					loopBase = frames[len(frames)-1].loopBase
 				}
 				loops = loops[:loopBase]
-				nameFrameFns(fn, nl)
+				nameFrameFns(curReg, fn, nl)
 				vc.swapTailArgs(frames, nl, fn.NArgs)
 			}
 			locals = nl

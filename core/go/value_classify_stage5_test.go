@@ -261,8 +261,15 @@ func TestS5CInertReachAndConstMembers(t *testing.T) {
 	if !IsInertConstMember(NewFunction(FnDefInfo{})) {
 		t.Error("a pure fn value rides as a const member")
 	}
-	if IsInertConstMember(NewFunction(FnDefInfo{Registry: &Registry{}})) {
-		t.Error("a sub-registry fn value must refuse as a member")
+	// A fn value carries the registry that minted it — a main-program fn as
+	// much as a module export — and the home says nothing about mutability:
+	// the value is immutable code either way and is applied against that home
+	// at run time (FnHome). Only a lexical capture is live state.
+	if !IsInertConstMember(NewFunction(FnDefInfo{Registry: &Registry{}})) {
+		t.Error("a fn value with a home rides as a const member too")
+	}
+	if IsInertConstMember(NewFunction(FnDefInfo{Captured: []CapturedBinding{{Name: "x", Value: NewInteger(1)}}})) {
+		t.Error("a capturing fn value must refuse as a member")
 	}
 	if !IsInertConstMember(NewParenExpr([]Value{NewWord("w"), NewInteger(1)})) {
 		t.Error("an inert deferred paren rides as a const member")

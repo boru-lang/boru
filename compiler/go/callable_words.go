@@ -534,7 +534,7 @@ func paramSpecPatterns(ps *ClosureParamSpec) []*core.Value {
 // Both callers take fd from `args[i].Data.(core.FnDefInfo)` and pass its
 // address, so fd is never nil here.
 func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
-	return fd.Registry != nil && fd.Registry != r
+	return core.FnHomeForeign(r, fd)
 }
 
 // lambdaHookCompatible reports whether a LAMBDA hook value can compile to a

@@ -1262,9 +1262,7 @@ func calleeLeaksFlow(r *core.Registry, name string, seen map[string]bool) bool {
 // fnDefLeaksFlow scans every overload body of fd for a leaking
 // break/continue. A module fn's body words resolve in its OWN registry.
 func fnDefLeaksFlow(r *core.Registry, fd *core.FnDefInfo, seen map[string]bool) bool {
-	if fd.Registry != nil {
-		r = fd.Registry
-	}
+	r, _ = core.FnHome(r, fd)
 	for i := range fd.Signatures {
 		for _, t := range fd.Signatures[i].Body() {
 			if calleeValueLeaksFlow(r, t, seen) {

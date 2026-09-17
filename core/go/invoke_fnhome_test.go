@@ -31,9 +31,11 @@ func TestFnHome(t *testing.T) {
 		}
 	})
 
-	t.Run("a fn defined in the running scope stays there", func(t *testing.T) {
-		// Registry == nil means "defined where it is running"; the caller IS
-		// the defining registry, so routing anywhere else would be wrong.
+	t.Run("a fn with no home stays where it is running", func(t *testing.T) {
+		// Registry == nil is a Go-built value (a registered native, a wrapper
+		// minted by Go) with no free words of its own; the caller is the only
+		// registry there is, so routing anywhere else would be wrong. A boru-
+		// bodied fn always carries its home (TestRegistryHomeAndForeign).
 		got, gotCaps := FnHome(caller, &FnDefInfo{Captured: caps})
 		if got != caller {
 			t.Errorf("registry = %p, want the caller %p", got, caller)

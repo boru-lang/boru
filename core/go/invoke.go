@@ -168,20 +168,37 @@ func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Valu
 // a fn VALUE before running it: which registry resolves its free words, and
 // which captures ride along.
 //
-// The defining registry wins whenever the fn carries one, so a callback's free
-// words resolve where the function was WRITTEN rather than where a Go word
-// happens to invoke it. Both nil cases fall back to the caller's registry and
-// are correct by construction: fnDef == nil is a synthesized carrier sig with no
-// fn value behind it, and fnDef.Registry == nil is a fn defined in the running
-// scope, whose defining registry IS r.
+// A boru-bodied fn carries the registry that MINTED it (FnConstruct, `=>`,
+// `macro`), so its free words resolve where the function was WRITTEN rather
+// than where a Go word happens to invoke it — in both directions: a module
+// export applied from the main program reads the module's bindings, and a
+// main-program fn handed into a module reads main's. The comparison is by
+// MODULE (Registry.Home), not by pointer: when the caller is an instance of
+// the fn's own module — the module registry itself, or a concurrent fork of
+// it carrying a connection's or a service's live state — the fn runs on the
+// CALLER, which is what that fork exists for. Only a genuinely foreign call
+// moves to the defining registry.
+//
+// The nil cases fall back to the caller and are correct by construction:
+// fnDef == nil is a synthesized carrier sig with no fn value behind it, and
+// fnDef.Registry == nil is a Go-built value (a registered native, a wrapper
+// minted by Go) with no free words to resolve.
 func FnHome(r *Registry, fnDef *FnDefInfo) (*Registry, []CapturedBinding) {
 	if fnDef == nil {
 		return r, nil
 	}
-	if fnDef.Registry != nil {
+	if FnHomeForeign(r, fnDef) {
 		return fnDef.Registry, fnDef.Captured
 	}
 	return r, fnDef.Captured
+}
+
+// FnHomeForeign reports whether applying fnDef from r crosses a module
+// boundary: the fn carries a home and that home is not r's module. A Go-built
+// value (no home) is never foreign, and neither is a fn invoked on a fork of
+// the module that minted it.
+func FnHomeForeign(r *Registry, fnDef *FnDefInfo) bool {
+	return fnDef != nil && fnDef.Registry != nil && !fnDef.Registry.SameHome(r)
 }
 
 // isInternalErr reports whether err is an internal_error-class BoruError — the

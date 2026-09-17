@@ -643,7 +643,13 @@ func IsInertConstMember(v Value) bool {
 			return true
 		}
 		if fd, ok := v.Data.(FnDefInfo); ok {
-			return len(fd.Captured) == 0 && fd.Registry == nil
+			// A fn value carries its HOME registry from construction (a
+			// main-file fn as much as a module export), so the home says
+			// nothing about mutability: the value is immutable code either
+			// way, and the fn-value-call boundary applies it against that home
+			// (FnHome) exactly as the interpreter does. Only a lexical capture
+			// makes it non-inert — the captured cell is live state.
+			return len(fd.Captured) == 0
 		}
 		// A dot-access reach (`r.int`, `m.a.b`) riding inside a NEVER-evaluated
 		// compound — a NoEvalArgs code body the driving word stores or drops
