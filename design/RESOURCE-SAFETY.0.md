@@ -6,14 +6,14 @@ Design for **guaranteed-cleanup resource safety** in boru — the `ensure` and
 ## Context
 
 This is the implementation-ready expansion of idea #2 from
-`design/effect-oriented-programming-in-boru-report.0.md` ("Resource safety:
+`design/legacy/effect-oriented-programming-in-boru-report.0.ignore` ("Resource safety:
 `ensure` / `bracket` / `scoped`"), which ranked it the clearest concrete gap an
 effect-oriented lens exposes in boru — and the one place where both EOP lineages
 converge on the same primitive (ZIO's `acquireRelease`/`scoped`/`ensuring`, and the
 algebraic-effects `finally` clause).
 
 boru today reifies a failure as a value (`do […] error […]`, `raise`,
-`design/ERRORS.8.md`) but has **no construct that guarantees a finalizer runs**. A
+`design/legacy/ERRORS.8.ignore`) but has **no construct that guarantees a finalizer runs**. A
 cleanup step written after a body simply does not execute when the body raises:
 
 ```boru
@@ -55,7 +55,7 @@ the control structure now, before those handles exist, means they can ship *with
 their safety story rather than retrofitting one. This RFC states that scope honestly
 rather than implying boru is leaking handles today.
 
-### Relationship to `ERRORS.8.md`
+### Relationship to `legacy/ERRORS.8.ignore`
 
 `ensure`/`bracket` are the *cleanup* complement to that document's *catch* surface.
 They share the same engine machinery — bodies run through the `InvokeBody` seam, and
@@ -65,7 +65,7 @@ and catch. No new control-flow primitive is introduced; the only new behaviour i
 
 ### Relationship to the effect report (idea #1)
 
-If static effect inference (`effect-oriented-programming-in-boru-report.0.md` #1)
+If static effect inference (`legacy/effect-oriented-programming-in-boru-report.0.ignore` #1)
 lands, `bracket`/`ensure` are effect-transparent wrappers: the effect set of
 `bracket [acq] [use] [rel]` is the union of the effect sets of its three bodies. They
 add control structure, not effects, so they need no capability of their own (§7).
@@ -210,7 +210,7 @@ bracket [acquire] [use] [release] -> <use result>
 
 - Run `acquire` via `InvokeBody(r, acquire, nil)`. It must produce **exactly one**
   value — the resource `R`. Zero values is an `ensure_error`-style "acquire produced
-  no resource" (the same void-group reasoning as `ERRORS.8.md` §3); more than one is
+  no resource" (the same void-group reasoning as `legacy/ERRORS.8.ignore` §3); more than one is
   an error (ambiguous resource).
 - **If `acquire` fails, do not run `release`** (there is nothing to release) — the
   error propagates directly. This matches ZIO `acquireRelease` (the release is bound

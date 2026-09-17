@@ -296,11 +296,12 @@ const (
 // exactly like the checker's flag family (--check / --no-check /
 // BORU_NO_CHECK): a positive flag, a force variant, and a --no twin
 // that wins over everything. Compiled mode is ON by default (maintainer
-// decision, design/P7-ENDGAME.10.md — the P7 endgame closed the refusal
+// decision, design/legacy/P7-ENDGAME.10.ignore — the P7 endgame closed the refusal
 // ledger to the documented residue and flipped the default to TRY):
 //
 //	(default)                             → TRY: bytecode when compilable,
-//	                                        silent sound fallback otherwise
+//	                                        silently interpreted otherwise
+//	                                        (a hidden compile failure)
 //	--compile        / BORU_COMPILE        → TRY, explicitly
 //	--force-compile  / BORU_FORCE_COMPILE  → FORCE: refusal is a loud error
 //	--no-compile     / BORU_NO_COMPILE     → OFF, wins over all of the above
@@ -338,7 +339,7 @@ func envEnabled(name string) bool {
 // REQUIRES the bytecode path and errors (with the refusal reason) when the
 // program is not compilable. CompileTry results are identical to the
 // interpreter — the flag is opt-in performance, never semantics
-// (design/boru-bytecode-plan.0.md, ground rules).
+// (design/legacy/boru-bytecode-plan.0.ignore, ground rules).
 func EvalOptionsMode(w io.Writer, source string, o lang.Options, mode CompileMode) error {
 	return buildrt.Eval(w, source, o, mode)
 }

@@ -2,7 +2,7 @@ package native
 
 import "testing"
 
-// Step 2 of design/PAREN-REPRESENTATION.9.md: a word-context ParenExpr
+// Step 2 of design/legacy/PAREN-REPRESENTATION.9.ignore: a word-context ParenExpr
 // evaluated when stepped on the main stack. The parser does not yet emit
 // these in word context (Step 1), so these tests construct them directly
 // and pin the four contracts — results flow out, defs leak, errors

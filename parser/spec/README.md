@@ -12,7 +12,7 @@ the safe data-decode seam), no shared reader or renderer code between ports.
 `parse-battery.test.ts` opened by declaring "The Go parser is the REFERENCE:
 every construct converts to the same value stream." Nothing checked that.
 When it was checked for the first time, **15 of 254 rows encoded a render
-`parser/go` does not produce** (design/TS-PARITY-AUDIT.0.md) — the battery
+`parser/go` does not produce** (design/legacy/TS-PARITY-AUDIT.0.ignore) — the battery
 had been pinning TypeScript's own behaviour, and the twins could drift with
 no gate noticing.
 
@@ -32,7 +32,7 @@ still evaluates alike is invisible to it.
 Each runner reads the files and implements the escape decoding and the render
 independently, in about forty lines. That is the same discipline `core/spec`
 uses, for the same reason: shared scaffolding can hide one bug from both
-engines (design/CORE-GO-TS-DEFECTS.0.md, blind spot 9), and a shared reader
+engines (design/legacy/CORE-GO-TS-DEFECTS.0.ignore, blind spot 9), and a shared reader
 would hide exactly the class of defect this corpus was built to catch.
 
 ## Format

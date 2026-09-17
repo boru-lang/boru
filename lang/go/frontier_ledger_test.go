@@ -7,7 +7,7 @@ import (
 )
 
 // The frontier ledger — the expected-red harness for the runtime-independence
-// program (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md). Each frontier
+// program (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore). Each frontier
 // CASE asserts the TARGET behavior of a remaining compiler gap (compiles
 // natively / runs on the VM / zero runtime bails); the LEDGER pins that the
 // case fails today and HOW (the failure-mode substring). The runner is green

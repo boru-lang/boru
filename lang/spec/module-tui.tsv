@@ -82,7 +82,7 @@ import "boru:tui"  Tui.edit 5 {}	ERROR:uncalled_function	edit requires an input 
 import "boru:tui"  Tui.focusable 5	ERROR:uncalled_function	focusable requires a widget Map tree
 import "boru:tui"  Tui.text "ok" {w: "viewport"}	ERROR:w is reserved	the options overlay cannot override the widget kind
 #
-# §7  standalone terminal utilities (design/TUI-UTILITIES.0.md) — pure,
+# §7  standalone terminal utilities (design/legacy/TUI-UTILITIES.0.ignore) — pure,
 #     no backend, no policy scope; escape bytes stay out of this file
 #     (the strip round-trip and width laws pin them; Go tests pin the
 #     exact per-profile sequences)

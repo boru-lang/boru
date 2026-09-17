@@ -159,7 +159,7 @@ func TestTapePrefixContiguous(t *testing.T) {
 //
 // One simulated call level: splice a 12-token body at the cursor, do 14
 // insert+remove pairs there, then leave 8 tokens pending and move on —
-// the op mix measured from the real engine (design/RECURSION-PERFORMANCE.10.md).
+// the op mix measured from the real engine (design/legacy/RECURSION-PERFORMANCE.10.ignore).
 // The slice variant drags the pending tail on every edit; the Tape keeps
 // the gap at the cursor so the tail never moves.
 

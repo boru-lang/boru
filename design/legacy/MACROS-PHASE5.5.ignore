@@ -1,0 +1,66 @@
+# Macros Phase 5 — Compiled-Mode Expander & Staging
+
+**Status:** **Interpreter staging: LANDED + tested. Compiled-mode expander:
+BLOCKED on the IR backend (not yet built).** Companion to `../MACROS.8.md` §4 (the
+compiled-mode design) and `MACROS-PHASE1.10.ignore` (the interpreter implementation).
+
+---
+
+## 1. What's done (interpreter)
+
+The interpreter is the primary target and needs no phase split: a macro is a
+runtime fexpr whose action is "splice code" (`execMacro` →`__SP`). Phase 5's
+*staging* discipline is already enforced here, verified by `lang/spec/macro.tsv`
+§8 and `TestMacroStaging`:
+
+- **Define-before-use.** A macro must be defined before its use site is
+  *stepped*; using it earlier raises `undefined_word` (left-to-right execution,
+  no forward resolution for the macro word itself). `nope 1; def nope …` errors.
+- **Call-time expansion in fn bodies.** A macro referenced inside a fn body
+  expands when the body *runs*, so it only needs to be defined before the
+  **call** — not before the fn was constructed. `def f …[twice n]…; def twice
+  …; f 5` → 10. (This is deliberately *more lenient* than compiled mode.)
+- **"Compile once" analog.** The expansion cache (Phase 1e, keyed on macro name
+  + operand canon) is the interpreter's miniature of compile-once: a macro
+  re-applied to the same operands expands once and re-splices the cached
+  tokens. This is the seam where interpreter and compiled modes converge.
+
+## 2. What's blocked (compiled mode) — needs the IR backend
+
+A strict stack-machine IR cannot splice ahead of the program counter without
+embedding a runtime compiler, so expansion **must move to compile time**
+(`../MACROS.8.md` §4). The design is unchanged; only *timing* and *memoization*
+move. None of this can be built until the IR backend exists:
+
+- **Compile pass.** Walk tokens; on a `Macro`-tagged word, run the **existing
+  expander** (`expandMacroWith` / `expandAllMacros` are mode-agnostic — they
+  already produce the token list), then continue compiling the returned tokens
+  in place. The output re-enters the compiler and is lowered like hand-written
+  code.
+- **Run pass.** Executes IR containing **no macros and no `__SP`** — they were
+  expanded away at compile time.
+- **Staging / `eval-when`.** The compiler must be able to *execute* boru to run
+  transformers (the evaluator is present at compile time). Macros are
+  **define-before-use**: a macro must be compiled and runnable before the
+  compiler reaches its first use — so a forward reference to a macro (e.g. a
+  macro used in a fn body that is *compiled* before the macro is defined) is a
+  **compile-time error**, unlike runtime fns (which resolve via the registry at
+  call time) and unlike the interpreter's lenient call-time expansion (§1).
+  Single-pass left-to-right makes this natural.
+
+The template, `unquote`, `splice`, and hygiene (Phase 4) are **mode-agnostic**;
+only *when* it runs (step time vs compile time) and *re-step vs lower* differ.
+
+## 3. Hook points (when the IR backend lands)
+
+- The compile walk invokes `eng.ExpandMacroForm` / `expandMacroWith` (already
+  built, pure token→token) at each macro-tagged word — no expander changes.
+- `FnDefInfo.Macro` already flags macros for the compile walk to branch on.
+- The expansion cache (`Registry.macroCache`) carries straight over as the
+  compile-time memo.
+- Staging enforcement: the compiler rejects a macro word it reaches before the
+  macro's defining form has been compiled+run (an `eval-when`-style stage
+  boundary).
+
+No interpreter behavior changes when compiled mode lands; it is an additional
+lowering path that reuses the Phase 1–4 machinery.

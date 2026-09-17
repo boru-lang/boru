@@ -123,7 +123,7 @@ var flexNatives = []NativeFunc{
 // still matches optimistically rather than failing on a strict supertype.
 //
 // In PLAIN check mode a concrete map source additionally mints the
-// container's abstract StoreShapeInfo (design/checker-precision-fronts.0.md
+// container's abstract StoreShapeInfo (design/legacy/checker-precision-fronts.0.ignore
 // §2 stage 1 — `flex` is a store-creating word: one shape per creation
 // site), so downstream `set`/`get`/`dot` over the result read/write ITS
 // key types instead of degrading to dynamic(Any). A flex-of-flex source

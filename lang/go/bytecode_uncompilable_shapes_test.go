@@ -4,7 +4,7 @@ import "testing"
 
 // Pins for the historical `uncompilable.boru` trio (authored against
 // 407feda, where `boru --force-compile` aborted on each): three shapes
-// that interpreted green while the strict compiler soundly refused.
+// that interpreted green while the strict compiler refused.
 // All three compile natively today; these pins keep them compiling.
 // The refusal MESSAGES each shape used to produce still guard genuinely
 // unsound siblings (e.g. the single-literal-body provenance refusal,

@@ -442,7 +442,7 @@ func applyHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]V
 	// signature can never eclipse an arg-taking sibling the stack was
 	// about to satisfy (the NUR035 hazard). Macros are excluded by the
 	// gate itself — applying a macro is never a stack-value dispatch
-	// (design/MACROS-PHASE1.10.md §5, D4).
+	// (design/legacy/MACROS-PHASE1.10.ignore §5, D4).
 	return []Value{markApplied(v)}, nil
 }
 
@@ -502,7 +502,7 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // dynamic fn operand the check-mode handler could not wrap — checkModeGradualFn)
 // as an OpCallNativePoly event, so the wrapper is constructed at RUN time by the
 // real handler over the real fn value (`m.a/u 1 2` lowers get → poly usurp →
-// OpCallDynamic; Stage M2b, design/STAGE3-INLINING-DESIGN-ROUND.0.md). The VM's
+// OpCallDynamic; Stage M2b, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The VM's
 // callPoly re-matches the word's own signatures with the kernel's own
 // MatchSignature — the exact dispatch the interpreter takes — so a runtime
 // non-fn value raises the identical illegal_ref. Only the VALUE-form

@@ -3,9 +3,9 @@
 #
 # Boundary rows for a module-captured Function VALUE applied inside its
 # own module — the execFnDefSig same-registry dispatch class routed onto
-# the main-tape frame splice (design/SUB-ENGINE-MAIN-TAPE-REVIEW.0.md R2)
+# the main-tape frame splice (design/legacy/SUB-ENGINE-MAIN-TAPE-REVIEW.0.ignore R2)
 # — and for the ARGUMENTS-ARE-INERT invariant
-# (design/ARG-SEMANTICS-UNIFICATION.0.md): an argument never acts on its
+# (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore): an argument never acts on its
 # own; binding style (named vs unnamed) changes only how the body refers
 # to it. The callee here is an ANONYMOUS fn in the export map (a named
 # module fn resolves through its registered body-runner handler instead)

@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// Generic-type words (design/GENERICS.10.md):
+// Generic-type words (design/legacy/GENERICS.10.ignore):
 //
 //	def Box gen [T] refine Record [value:T]
 //	def Pair gen [(K extends Comparable) (V default Any)] refine Record [key:K value:V]

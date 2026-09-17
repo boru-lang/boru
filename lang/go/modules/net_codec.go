@@ -44,7 +44,7 @@ import (
 // `connect` returns an Endpoint — a Service whose call/send forward over
 // the socket, one in-flight request at a time (synchronous correlation;
 // the RFC's pending-call pump and peer-push handlers are deferred, see
-// design/NETWORK-IMPLEMENTATION-PLAN.0.md §1). `call {req} ep
+// design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1). `call {req} ep
 // {timeout: <ms>}` bounds the reply wait, raising `timeout`.
 
 // ---- Go-backed Function values ----

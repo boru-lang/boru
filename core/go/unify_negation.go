@@ -94,7 +94,7 @@ func (n *NegationUnifier) Match(v Value, t *Type) bool {
 // type, yielding the candidate; a concrete member of the inner type
 // fails definitively, and a type-level pair defers to the structural
 // rule — the Unify capability every membership kind carries
-// (design/TYPE-REPRESENTATION.1.md §N3).
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
 func (n *NegationUnifier) Unify(a, b Value) (Value, *UnifyError) {
 	// The complement rule decides whenever exactly one side IS this
 	// negation's node — concrete, carrier, or type-level candidate

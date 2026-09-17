@@ -384,7 +384,7 @@ sqlite + output), `boru:net` (network), `boru:time-util` (clock + real timers),
 
 The **tape growth ceiling** is the "tape length limitation" the brief names: the
 engine runs on a bounded-growth gap buffer (see
-[TAPE-DATA-STRUCTURE.10](TAPE-DATA-STRUCTURE.10.md)); a program that splices
+[TAPE-DATA-STRUCTURE.10](legacy/TAPE-DATA-STRUCTURE.10.ignore)); a program that splices
 without bound latches `exhausted` rather than OOMing the host.
 
 **Declared-only** — `policy.Limits` (`policy.go`) has six fields: `TimeoutMs`,
@@ -462,7 +462,7 @@ do I have to examine it again from scratch?" boru has an answer the native
 ecosystems don't: **`boru check` can *infer* the manifest** and offer to write
 it. Because the capability scopes are an *effect alphabet* and the carrier
 checker already walks the call graph
-([effect-oriented-programming-in-boru-report.0](effect-oriented-programming-in-boru-report.0.md)
+([effect-oriented-programming-in-boru-report.0](legacy/effect-oriented-programming-in-boru-report.0.ignore)
 idea #1), a module's required-capability set is the union of the effect sets of
 the words it can reach — a fixpoint the checker already computes for types. So:
 
@@ -637,7 +637,7 @@ that boru can **statically verify declared ⊇ actual**:
   has no ambient authority, and the carrier checker already computes a call-graph
   fixpoint. Adding an `Effects []string` facet to signatures (drawn from the
   capability vocabulary) and unioning it up the graph — the
-  [effect-oriented-programming report](effect-oriented-programming-in-boru-report.0.md)'s
+  [effect-oriented-programming report](legacy/effect-oriented-programming-in-boru-report.0.ignore)'s
   highest-leverage idea, currently the one "Absent" row in its parallel-evolution
   table — yields each module's *actual* reachable capability set. The compiler
   already tracks a pure/effectful split informally (`CompileIslandPure`); this
@@ -1089,7 +1089,7 @@ the host keeps its 64 MB.
 Denying `clock` and the `rand` seed makes a dependency's execution
 **reproducible** — valuable for supply-chain auditing (same input ⇒ same
 behaviour ⇒ diffable) and as the precondition for the
-[EOP report](effect-oriented-programming-in-boru-report.0.md)'s `with-handler`
+[EOP report](legacy/effect-oriented-programming-in-boru-report.0.ignore)'s `with-handler`
 testing story. Two known leaks must be closed first (§9.4): `TimeUtil.sleep` /
 `timeout` / `interval` / `elapsed` and `boru:test` bypass `EffectiveClock` and
 call `time.*` directly, so a "no clock" grant is not yet airtight.
@@ -1285,12 +1285,12 @@ small sealed native TCB underneath.
   import path and module system the manifest/attenuation hook into.
 - [FILE-ACCESS.10](FILE-ACCESS.10.md) — the `FileOps` capability the wrapping
   pattern generalises.
-- [effect-oriented-programming-in-boru-report.0](effect-oriented-programming-in-boru-report.0.md)
+- [effect-oriented-programming-in-boru-report.0](legacy/effect-oriented-programming-in-boru-report.0.ignore)
   — idea #1 (static effect inference) is the verification mechanism of §7.
 - [boru-vendor.0](boru-vendor.0.md) — the integrity/lockfile/signing model §9.3
   recommends adopting for the module path.
 - [GO-MODULES.10](GO-MODULES.10.md) — the compile-time-sealed native TCB (§9.1).
-- [TAPE-DATA-STRUCTURE.10](TAPE-DATA-STRUCTURE.10.md),
+- [TAPE-DATA-STRUCTURE.10](legacy/TAPE-DATA-STRUCTURE.10.ignore),
   [RESOURCE-SAFETY.0](RESOURCE-SAFETY.0.md) — the tape ceiling and resource
   bounds of §8.
 - Laurence Tratt, [*Can We Retain the Benefits of Transitive Dependencies

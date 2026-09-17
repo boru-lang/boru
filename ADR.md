@@ -186,7 +186,7 @@ lockstep. Live wire protocols are versioned the same way.
 
 ## ADR-010 — Types are values {#adr-010}
 
-**Status:** Proposed · **Date:** 2026-07-31 · `design/NUR-RESOLUTION-PLAN.0.md`
+**Status:** Proposed · **Date:** 2026-07-31 · `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`
 
 A type literal is a **value**, usable anywhere a value may appear. No
 layer may treat it as declaration-only syntax.
@@ -202,7 +202,7 @@ refusal is a bug. The emitter interns bare type nodes, nested included.
 > **Amendment (2026-08-20).** One refusal is by design, not a bug:
 > after the Stage 2 flip a PREDICATE-TYPE node at a fn-invoking word
 > refuses compilation exactly as the fn value it replaced
-> (`design/TYPE-REPRESENTATION.1.md` §9).
+> (`design/legacy/TYPE-REPRESENTATION.1.ignore` §9).
 
 ---
 
@@ -285,7 +285,7 @@ kernel machinery. It depends on the pieces it uses and nothing else, and
 
 > **Amendment (2026-08-08).** `check` removed too; the set is `core` +
 > `parser`. Core-typed primitives moved down, two pass drivers became S1
-> slots. [BASIC-CHECK-CUT.0.md](design/BASIC-CHECK-CUT.0.md)
+> slots. [BASIC-CHECK-CUT.0.md](design/legacy/BASIC-CHECK-CUT.0.ignore)
 
 ---
 
@@ -323,7 +323,7 @@ prerequisite.
 [CANON-ROUNDTRIP.0.md](design/CANON-ROUNDTRIP.0.md)
 
 > **Amendment (2026-08-20).** A named type canons as its NAME for
-> every declaration kind now (`design/TYPE-REPRESENTATION.1.md` §6),
+> every declaration kind now (`design/legacy/TYPE-REPRESENTATION.1.ignore` §6),
 > so its round-trip is under a live def — the `canon P → P`
 > precedent, generalised.
 

@@ -7,7 +7,7 @@ import (
 )
 
 // Stage M1 landing tests — the MERGED-WORD ReturnsFn seam
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md §2.4a/§5/§6 Stage M1).
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §2.4a/§5/§6 Stage M1).
 //
 // An open word — a module-defined `add` merged into the importer's dispatch
 // table (TransplantExtension) — dispatches as a BARE word through execMatch on

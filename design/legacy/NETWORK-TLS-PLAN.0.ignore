@@ -1,0 +1,435 @@
+# TLS and client certificates for `boru:net` — implementation plan
+
+> **Status: phases 1-4 and 7 BUILT; 5-6 outstanding.** It planned the
+> work behind the TLS options that [../NETWORK-CLIENTS.0.md](../NETWORK-CLIENTS.0.md)
+> §4.4 and [../NETWORK-SERVERS.0.md](../NETWORK-SERVERS.0.md) §4.4 specified
+> but which no code implemented, and it **amended** their credential
+> grammar: a client certificate is named, not pathed — an amendment now
+> carried in those notes themselves. §1 describes the tree as it was
+> BEFORE this work; §8 marks each phase; §8b records where the build
+> diverged from the plan. Read
+> [../NETWORK-CLIENTS.0.md](../NETWORK-CLIENTS.0.md) §4 and §9 first.
+
+## 1. Context — why
+
+Three facts, all verified against the tree:
+
+1. **There was no TLS surface at all** (the state this plan was written
+   against). `lang/go/native/fetch.go:253`
+   builds `&http.Client{Timeout: timeout}` — stock transport, system
+   roots, no client certificates, and no injection point. `net_socket.go`
+   has no `tls` handling, so `connect-raw` is plaintext TCP. Neither
+   `crypto/tls` nor `crypto/x509` is imported anywhere in the tree.
+2. **The design exists but is unimplemented.** NETWORK-CLIENTS §4.4
+   specifies `tls: {verify: ca: sni: cert: key:}`, and its §11 roadmap
+   puts "TLS-client, mutual TLS" in Phase B — never landed.
+3. **The specified credential shape is wrong** and should be fixed before
+   it is built, not after (§3).
+
+The outcome: `fetch` and `connect-raw` can speak TLS, can verify a peer
+against a supplied CA set, and can present a **client certificate the
+guest program can name but never read**.
+
+## 2. What Go gives us (the shape to mirror)
+
+`tls.Certificate` holds a DER chain plus a `PrivateKey` typed
+`crypto.PrivateKey` and required to satisfy `crypto.Signer` — **an
+interface, not bytes**. The key need not exist in the process; it can be
+an HSM/KMS/agent handle. Selection is either a static
+`tls.Config.Certificates` slice or the per-handshake callback
+`GetClientCertificate(*tls.CertificateRequestInfo)`, which wins when set
+and receives the server's `AcceptableCAs` and `SignatureSchemes`.
+
+**Mirror the callback, not the slice.** Late binding is what buys
+rotation, multi-identity selection and HSM backing, and it costs nothing
+now versus retrofitting later.
+
+## 3. The one design change to the existing spec
+
+NETWORK-CLIENTS §4.4 currently specifies `tls: {cert: "./gw.pem" key:
+"./gw.key"}` — **guest-supplied file paths**. Do not build that. The path
+is chosen by the guest but dereferenced by the network capability under
+host authority, so a program holding `network` but not `fileops` obtains a
+file read it is not entitled to — and, even blind to the bytes, an oracle
+for path existence and key well-formedness. It also puts key locations in
+source, logs and error text, and forecloses rotation and HSMs.
+
+**Replace it with a named identity**, resolved host-side:
+
+```
+fetch {url: "https://api.internal/v1/orders"  tls: {identity: acme/q}}
+connect-raw {tcp: "billing.internal:443"  tls: {identity: acme/q}}
+```
+
+Keep an explicit-bytes fallback (`tls: {cert: <Bytes> key: <Bytes>}`)
+where the bytes arrive through `boru:io`/`boru:pki` under *their own* gates
+— never a path the network layer dereferences. It requires the new
+`client-cert` op and is off in the default profile.
+
+Holding principle: **a certificate is data, a private key is a
+capability.**
+
+## 4. Architecture
+
+Four pieces, each following an existing in-tree pattern.
+
+| Piece | Pattern it copies | Location |
+|---|---|---|
+| `ClientIdentity` interface + `CertRequest` | `capabilities.FileOps` / `Clock` | `lang/go/capabilities/tlsident.go` (new) |
+| `CapClientIdents` registry slot + `SetHostClientIdents` | `CapFormats` / `SetHostFormats`, `lang/go/native/capabilities.go:168-183` | `lang/go/native/capabilities.go` |
+| `(*Boru).RegisterClientIdentity` | `(*Boru).RegisterFormat`, `lang/go/boru.go:484-491` (lazy map init + register) | `lang/go/boru.go` |
+| HTTP transport seam | `SetHostFileOps` slot + `design/TEST-SEAMS.10.md` | `lang/go/native/fetch.go` + `capabilities.go` |
+
+### 4.1 The identity seam
+
+```go
+// lang/go/capabilities/tlsident.go
+type CertRequest struct {
+    Host          string     // the peer being dialled
+    AcceptableCAs [][]byte   // from tls.CertificateRequestInfo
+    SigSchemes    []uint16
+}
+
+type ClientIdentity interface {
+    // Certificate returns the chain + signer for this handshake, or a nil
+    // certificate to decline (mapping to Go's empty-Certificate return).
+    Certificate(req CertRequest) (*tls.Certificate, error)
+}
+```
+
+Plus two host-side constructors so the common cases need no boilerplate —
+and note both are **host** code, so the path read happens under host
+authority with a host-chosen path, which is exactly the distinction §3
+turns on:
+
+- `capabilities.StaticIdentity(certPEM, keyPEM []byte) (ClientIdentity, error)` — wraps `tls.X509KeyPair`.
+- `capabilities.FileIdentity(certPath, keyPath string) (ClientIdentity, error)` — wraps `tls.LoadX509KeyPair`.
+
+Slot registration mirrors `SetHostFormats` exactly, including the
+policy-uninstall branch:
+
+```go
+const CapClientIdents = "engine.clientidents" // map[string]capabilities.ClientIdentity
+
+func SetHostClientIdents(r *Registry, ids map[string]capabilities.ClientIdentity) {
+    if pol := HostPolicy(r); pol != nil && !pol.Installed("network") {
+        _, _ = r.Capabilities.Delete(CapClientIdents)
+        return
+    }
+    _ = r.Capabilities.Set(CapClientIdents, ids)
+}
+```
+
+### 4.2 The transport seam
+
+`fetch.go:253` must stop constructing its own client. Introduce:
+
+```go
+// lang/go/capabilities/httpops.go
+type HTTPOps interface {
+    Transport(p TLSProfile, id ClientIdentity) (http.RoundTripper, error)
+}
+```
+
+> **Revised during Phase 1** (was `Client(p, timeout) (*http.Client, error)`).
+> The seam hands back a **transport, not a client**. The pool and the TLS
+> config live on the transport while the per-request timeout lives on the
+> client, so `fetch` builds a cheap client around a shared transport per
+> call. Returning a client instead would force the cache to be keyed on the
+> guest-supplied timeout — an unbounded cache keyed by untrusted input,
+> which is open question §9.3 answered the wrong way. As built. Phase 3
+> added the resolved `ClientIdentity` as a second parameter and moved
+> caching out of the implementation entirely — see §8b.
+
+`TLSProfile` is the resolved, comparable result of parsing the guest's
+`tls:` map (identity name, verify flag, CA-set fingerprint, SNI, min
+version). It is an empty struct until Phase 2 populates it. The default
+implementation:
+
+- clones `http.DefaultTransport` and keeps **`ForceAttemptHTTP2: true`** —
+  setting `TLSClientConfig` on a fresh `http.Transport` silently disables
+  HTTP/2, so without this, adding a client cert would quietly downgrade
+  every request to HTTP/1.1;
+- sets `GetClientCertificate` to a closure over the resolved
+  `ClientIdentity`;
+- **caches one transport per distinct `TLSProfile`** (Phase 2, once the
+  profile has fields), so connection reuse survives and a per-request
+  transport is not built.
+
+This seam is independently valuable: it is the point where tests stub the
+network without touching the wire.
+
+### 4.3 Option grammar (one parser, both call sites)
+
+```
+tls: {
+  identity: <Atom>     # host-registered client identity
+  verify:   <Boolean>  # default true
+  ca:       <Bytes>    # additional roots, PEM
+  sni:      <String>   # server name override
+  min:      <String>   # "1.2" | "1.3"
+  cert:     <Bytes>    # gated fallback (with key:)
+  key:      <Bytes>
+}
+```
+
+One `parseTLSOpts(r, v Value, word string) (TLSProfile, error)` shared by
+`fetch` and `parseNetAddr` (`net_socket.go:172` neighbourhood), so the two
+call sites cannot drift.
+
+### 4.4 Policy
+
+No new scope. Inside the existing `network` scope
+(`lang/go/policy/policy.go`, `KnownScopes`):
+
+| Op | Meaning |
+|---|---|
+| `client-cert` | present a client certificate at all |
+| `tls-insecure` | permit `verify: false` |
+
+The check is already argument-aware — `fetch` passes
+`policy.Args{"host":…, "port":…}` and `checkNetPolicy`
+(`net_socket.go:172`) does the same — so **add the identity name to
+`policy.Args`**. A profile can then allow-list which identity is usable
+for which host, which is the property the path form cannot have: the
+deployment decides which credential a program may present, not the
+program.
+
+`GlobalsFor("network", …)` already returns `["network"]`; both new ops
+inherit it unchanged.
+
+## 5. Phases
+
+Ordered so each lands green on its own. Phase 1 is the smallest useful PR.
+
+### Phase 1 — transport seam, no user-visible change ✅ **DONE**
+`lang/go/native/fetch.go`, `lang/go/native/capabilities.go`,
+`lang/go/capabilities/httpops.go` (new), `lang/go/boru.go`,
+`lang/go/native/httpops_test.go` (new).
+
+Replaced the inline client with `HTTPOps`, default implementation
+reproducing today's behaviour exactly (`http.DefaultTransport`, which is
+what a nil `Transport` field resolved to anyway). Host entry point is
+`(*Boru).SetHTTPOps`.
+
+`CapHTTPOps` deliberately has **no policy-uninstall branch**, unlike
+`CapFormats`: the transport is not itself an authority, `fetch` is gated
+by `checkFetchPolicy` before any transport is resolved, and removing the
+slot would only fall back to the default — it could not deny anything.
+
+The transport is resolved **before** `r.NoteEffect()`, since choosing one
+opens no socket; a host whose `HTTPOps` refuses provably sent nothing, and
+`TestFetchTransportErrorIsUnsent` pins that against the effect ledger.
+
+### Phase 2 — base TLS client options ✅ **DONE**
+`parseTLSOpts` + `verify` / `ca` / `sni` / `min` on `fetch`. `tls-insecure`
+policy op. Client certificates are meaningless before this exists.
+**Done when:** a `httptest` TLS server with a private CA is reachable via
+`tls: {ca: …}` and rejected without it.
+
+### Phase 3 — client identities (the actual mTLS) ✅ **DONE**
+`capabilities.ClientIdentity`, `CapClientIdents`,
+`(*Boru).RegisterClientIdentity`, `tls: {identity: …}`, `client-cert`
+policy op, identity name in `policy.Args`.
+**Done when:** an mTLS `httptest` server with `ClientAuth:
+RequireAndVerifyClientCert` accepts a request carrying a registered
+identity, and the same request without it fails with a distinguishable
+error.
+
+### Phase 4 — sockets ✅ **DONE**
+Wire the same `TLSProfile` into `connect-raw` via `parseNetAddr`
+(`net_socket.go`), so `Socket` may be a TLS stream. Per NETWORK-SERVERS
+§4.4 TLS is a socket option, not a separate API — the `Socket` type and
+every socket word stay unchanged.
+
+### Phase 5 — vault-backed identity (opaque handle) ✅ **DONE**
+`Vault.identity "acme-mtls"` → an opaque, module-minted external type
+usable **only** as a `tls: {identity: …}` argument, with no reveal path.
+Pinned in `lang/go/test/fixedid_stability_test.go`. See §8b for the two
+places the build departed from the sketch above (the FixedID band and
+what `Format` prints).
+
+This exists because `Vault.reveal` returns a `String`
+(`lang/go/modules/vault.go:186`) — revealing a private key into a guest
+string is precisely the failure mode this design avoids.
+
+### Phase 6 — server side ✅ **DONE**
+`listen {tls: {identity: … require-client: <Bytes>}}` (`ClientCAs` +
+`ClientAuth`), and the verified peer chain surfaced as a Map
+(`Net.peer-cert`) so authorization can be written in boru. `serve-raw`
+inherits it, since it binds through `listen`. See §8b for the four
+places the build sharpened this.
+
+### Phase 7 — docs ✅ **DONE**
+- **../NETWORK-CLIENTS.0.md §4.4** — replaced `cert:`/`key:` paths with
+  `identity:`, with the confused-deputy rationale in an AMENDED box; the
+  §8 gateway example follows.
+- **../NETWORK-SERVERS.0.md §4.4** — same, plus the `listen` example at §723.
+  The server side itself is phase 6; the doc now says so instead of
+  implying a shipped path form.
+- **../STDLIB-ALLOCATION.0.md §5.4** — the `crypto/tls` row says certificates
+  arrive as `Bytes` from `boru:pki`; correct for the cert, incomplete for
+  the key, which needs this seam.
+- **../STDLIB-COVERAGE.10.md** — move `crypto/tls` from bucket C to A.
+
+## 6. Repo rules this work must satisfy
+
+Non-negotiable, from `lang/go/CLAUDE.md`, `design/go-modules/README.10.md`
+and ADR-008:
+
+- **`BarrierPos: -1`** on any inner native sig of a module FnDef wrapper,
+  or the infix form stops dispatching (pinned by `wrapper_dispatch_test.go`).
+  `fetch`'s three sigs already do this (`net_module.go:31-33`) — new sigs
+  must match.
+- **Every export needs a `registerDocs` line** (`docs_net.go`) or
+  `TestModuleExportDocs` fails.
+- **Spec rows** in `lang/spec/module-net.tsv`
+  (`input⇥expected⇥description`, rows lead with `import "boru:net"`), and
+  every positive row needs a negative sibling (`ERROR:<substring>`).
+- **100% statement coverage** (`make cover-gate`). TLS code is
+  error-branch-dense — plan a test per branch. A genuinely unreachable
+  guard needs a proof-carrying `//covergate:allow <reason>` on the guard's
+  opening line (`design/COVERAGE-ALLOWLIST.10.md`).
+- **No panics**; guard args with `AsConcreteString` / `RequireConcreteMap`
+  and fail with `r.BoruError(code, detail, word)`.
+- **Effect fence.** `r.NoteEffect()` at `fetch.go:~250` stays where it is:
+  with a custom transport the handshake happens inside `client.Do`, so the
+  existing placement remains correct — everything before it provably sent
+  nothing.
+
+## 7. Errors
+
+NETWORK-CLIENTS §8.2 routes handshake failure to `transport`. Keep that,
+but make credential failure distinguishable — it is a configuration
+problem, not a connectivity one:
+
+| Condition | Code |
+|---|---|
+| dial/handshake failure | `transport` |
+| unknown identity name | `net_error` (detail names the identity) |
+| identity denied by policy | `policy.Denied` (existing shape) |
+| peer rejected our certificate | `transport`, detail `client-cert-rejected` |
+
+Note for the implementer: a server may reject a client certificate either
+as a handshake alert **or** as an application-level 4xx after a successful
+handshake. Only the first is catchable as `transport`; document that the
+second surfaces as an ordinary response.
+
+## 8. Verification
+
+```bash
+make fmt && make vet && make lint && make test && make cover-gate
+```
+
+Plus, specific to this work:
+
+1. **Unit** — `go test ./lang/go/native/ -run Fetch` and
+   `./lang/go/modules/ -run Net`. Use `net/http/httptest` (already an
+   in-tree dependency) to stand up a TLS server; mint test certs with
+   `crypto/x509` + `crypto/ed25519` in a test helper. **No test may touch
+   a real network.**
+2. **mTLS round trip** — `httptest.NewUnstartedServer` with
+   `TLSConfig{ClientCAs: pool, ClientAuth: RequireAndVerifyClientCert}`;
+   assert success with a registered identity, `transport` without one.
+3. **Policy** — assert `client-cert` denial and `tls-insecure` denial
+   produce `*policy.Denied`, and that `SetHostClientIdents` removes the
+   slot when the profile has `network.install=false`.
+4. **Redaction** — assert the Phase 5 handle formats as
+   `<identity …>` and that no test can obtain key bytes from it.
+5. **HTTP/2 non-regression** — assert the default transport still reports
+   HTTP/2 against an h2 `httptest` server once `TLSClientConfig` is set;
+   this is the regression the `ForceAttemptHTTP2` note in §4.2 prevents.
+6. **Spec** — `make spec-test` (excluded from `make test`) after adding
+   `module-net.tsv` rows.
+
+## 8b. What the build changed about this plan
+
+Recorded so the note stays an account of what happened, not what was
+guessed:
+
+- **§4.2 seam shape** — `Transport(p)` not `Client(p, timeout)`; caching
+  moved to the caller (§4.2 box).
+- **Transport cache is per REGISTRY** (`native.ResolveTransport`), not
+  process-wide. Once a profile names its identity, a global cache keyed
+  on the profile would serve registry A's client certificate to
+  registry B's identically-named identity. Bounded at 64 — the answer to
+  §9.3.
+- **`TLSProfile.Insecure`, not `Verify`** — a Go `bool` zero value is
+  `false`, so a `Verify` field would make "unconfigured" mean "skip
+  verification". The guest still writes `verify: false`; the inversion
+  happens at the parser boundary.
+- **`ca:` REPLACES the system pool** rather than adding to it: pointing
+  at a private CA and also trusting the public web is rarely intended,
+  and the narrower reading is the recoverable mistake.
+- **Unknown `tls:` keys are rejected.** A silently-ignored `verifiy:`
+  would leave the caller believing they had configured something.
+- **`boru:net` had to start owning its minted types**
+  (`subReg.Types.MintOwner`), which every other module already did — a
+  word extension may only anchor on a nominal type the extending scope
+  owns.
+- **`Vault.identity` is FixedID 5012, not `10000+`.** The `10000+` band
+  in §5 was a guess; the tree's actual convention is that a module's
+  minted Ideal types sit in the 5000 band next to their siblings
+  (Module 5000, ModuleExport 5001, Socket 5009, Listener 5010,
+  Terminal 5011). It is minted with the same `eng.Builtin.RegisterType`
+  helper `boru:net` uses, not `RegisterExternalBuiltin`.
+- **The handle formats as `<vault identity>`, not `<identity acme-mtls>`.**
+  Printing the alias would leak *which* credential a program uses into
+  every log that formats the value — a smaller leak than the key, but a
+  free one to avoid, and the alias is recoverable from the vault by
+  anyone entitled to it. §8.4's redaction check reads the stricter form.
+- **The credential resolves lazily, at the handshake, not at `identity`.**
+  `Vault.identity` registers a `capabilities.IdentityFunc` closure and
+  returns; the `reveal` through the host backend happens inside
+  `GetClientCertificate`. So a rotated secret is picked up without
+  re-running the program, a program that never dials never reveals
+  anything, and minting a handle needs no vault backend at all (the
+  spec rows in `module-vault.tsv` §6 pin exactly that).
+- **The server side is a SEPARATE profile type,** `ServerTLSProfile`, not
+  extra fields on `TLSProfile`. §4.3's one option grammar turned out to
+  describe two overlapping ones: a listener presents a certificate and
+  may demand one (`identity:`, `require-client:`, `min:`), while a dial
+  verifies one and may present one (`identity:`, `verify:`, `ca:`,
+  `sni:`, `min:`). Sharing a struct would also have put a server-only
+  field in the outbound transport cache key. The shared keys still go
+  through the SAME helpers (`tlsIdentityArg`, `tlsPEMArg`,
+  `tlsMinVersion`), which is what §4.3 was actually protecting. Each
+  side rejects the other's keys BY NAME rather than as generic unknowns.
+- **`require-client:` REQUIRES; there is no request-but-do-not-verify
+  setting.** Go offers `RequestClientCert` and `VerifyClientCertIfGiven`;
+  neither is exposed. A certificate nobody checks is decoration, and the
+  gap between "a peer sent one" and "a peer proved one" is exactly the
+  confusion `Net.peer-cert` must not create — it reads
+  `VerifiedChains`, never `PeerCertificates`.
+- **Presenting a SERVER certificate is its own policy op,** `server-cert`,
+  not the `client-cert` of §4.4. A client certificate proves who a
+  program is when it calls out; a server certificate lets it answer AS a
+  service. A deployment may grant one and refuse the other.
+- **`accept` completes the handshake before the Socket escapes** (the
+  dial side already did), so `recv` never returns plaintext from an
+  unauthenticated peer and a `require-client:` rejection lands on
+  `accept`. `{within:}` bounds it. `serve-raw` handshakes on the
+  PER-CONNECTION goroutine instead, so a peer that connects and then
+  stalls costs one goroutine rather than the whole acceptor. Wrapping
+  the listener also cost `accept {within:}` its deadline —
+  `tls.NewListener` does not forward `SetDeadline` — so `netListener`
+  now keeps the bound listener alongside the wrapped one.
+- **`native` cannot import `modules`,** so `ParseTLSOpts` cannot know the
+  handle type directly. `native.TLSIdentityHandles` is a slice of
+  `func(Value) (string, bool)` probes that `modules` appends to in
+  `init()` — the dependency points the way the module graph already
+  allows.
+
+## 9. Open questions
+
+1. **Identity naming**: Atom (`acme/q`) or String? Atom reads better and
+   matches the codec/kind convention; String is easier to compute. Lean
+   Atom, accept both.
+2. **Does `ca:` belong in `tls:` or should roots be a host seam only?**
+   A guest-supplied root set widens trust; the `RootsProvider` seam
+   proposed in STDLIB-ALLOCATION §4.1 may be the better owner.
+3. ~~**Client cache eviction**~~ — ANSWERED in the build: bounded at 64
+   AND keyed to the registry lifetime (both, not either). Past the cap a
+   transport is built per call: correctness unaffected, only reuse.
+4. **`min:` default** — TLS 1.2 (Go's default) or 1.3 (stricter, breaks
+   older peers)?

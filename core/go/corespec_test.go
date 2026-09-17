@@ -11,7 +11,7 @@ package core
 // the documented contract (REFERENCE.md, design/TYPES.10.md), so a row can
 // legitimately fail on BOTH engines — which is exactly the class of defect
 // the engine-level agreement corpus is structurally blind to
-// (design/CORE-GO-TS-DEFECTS.0.md).
+// (design/legacy/CORE-GO-TS-DEFECTS.0.ignore).
 
 import (
 	"bufio"

@@ -5,7 +5,7 @@
 #   cmd/go/bin/boru --no-compile scripts/hash-identity-probe.boru
 #   # or: scripts/hash-identity-probe.sh   (adds the cross-process check)
 #
-# `design/unison-in-boru-report.0.md` proposes deriving a content hash
+# `design/legacy/unison-in-boru-report.0.ignore` proposes deriving a content hash
 # from the ADR-015 canon contract and using it as a definition's
 # identity. This probe measures whether that is sound TODAY, one
 # property per check, so the claim is settled by running it rather than
@@ -14,7 +14,7 @@
 # A FAIL here is not a bug report against canon — canon meets its own
 # contract. It records a property that content hashing needs and that
 # ADR-015 does not supply. Findings:
-# `design/unison-hash-identity-probe.0.md`.
+# `design/legacy/unison-hash-identity-probe.0.ignore`.
 #
 # `--no-compile` is required: the compiler refuses any program in which
 # a function value reaches `canon` (Stage 3), so a compiled run would

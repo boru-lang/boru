@@ -45,7 +45,7 @@ func specfixProbeRegistry(t *testing.T) *core.Registry {
 	pinfo := core.ClassTypeInfo{Fields: fields, ID: "P1", Name: "Class/P"}
 	pbody := core.NewClassType(def, pinfo)
 	// Mirror installTypeBinding: the node records its declared content
-	// (design/TYPE-REPRESENTATION.1.md §N2) so the probes that evaluate
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2) so the probes that evaluate
 	// `P` — which now denotes the node — recover the class schema.
 	def.SetTypeBody(pbody)
 	r.Defs.PushType("P", def, pbody)

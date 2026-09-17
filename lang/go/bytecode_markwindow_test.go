@@ -96,9 +96,9 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// values the raising run never produced — caught at lowerCall's
 	// store-prologue gate, one stage before the window's own "residual shape
 	// beyond Stage 1 (call result above a literal)" decline this row used to
-	// surface. Same sound refusal, earlier and truer diagnosis.
+	// surface. Same refusal, earlier and truer diagnosis.
 	//
-	// Re-diagnosed again 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the
+	// Re-diagnosed again 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the
 	// region's `M.dec` call fails dispatch, and that is now an error-severity
 	// check diagnostic in the model-undermining class (dispatch did not
 	// resolve, so there is nothing to compile), so the pipeline refuses on the
@@ -124,7 +124,7 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// declared inside the `wrap` lambda's body and then named from the `do`
 	// code body — which a compiled unit could not resolve at all, so the
 	// admission predicate refused one stage before the mark window ever
-	// armed. Same sound refusal, earlier and truer diagnosis (the third such
+	// armed. Same refusal, earlier and truer diagnosis (the third such
 	// re-diagnosis of this row).
 	//
 	// Re-diagnosed 2026-09-16 (the seventy-second increment): the local fn's
@@ -146,7 +146,7 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// interpreter enforces it at the named call), so the unit's finish sees a
 	// 2-value model residual against 1 declared, with a dynamic value that
 	// may be an unapplied fn in it, and refuses on the count path one stage
-	// before the mark window's verify. Same sound refusal, earlier and truer
+	// before the mark window's verify. Same refusal, earlier and truer
 	// diagnosis (the fourth for this row). Parity is what this test guards
 	// and it holds.
 	mwRefusedWithParity(t,

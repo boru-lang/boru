@@ -10,7 +10,7 @@
 # (invariant — deviates from the doc's §5.6 covariance example; see
 # GENERICS.10.md §15a). Strict field typing, sealing, and the
 # $class/jsonify/reify serialization contract all carry over from
-# plain classes. See design/GENERICS.10.md + design/CLASS-OBJECT.10.md.
+# plain classes. See design/legacy/GENERICS.10.ignore + design/legacy/CLASS-OBJECT.10.ignore.
 #
 # §1  declare + make + identity
 def Box gen [T] class {value:T} end Box	Box	a schema NAME denotes its minted node and renders as the name (§6)

@@ -2,7 +2,7 @@ package core
 
 import "fmt"
 
-// Binding inference for generic fns (design/GENERICS.10.md §9.2.2,
+// Binding inference for generic fns (design/legacy/GENERICS.10.ignore §9.2.2,
 // Phase 4): at each call of a generic fn, the type parameters bind
 // from the actual arguments' types — a placeholder param slot binds
 // typeof(arg); a typed-list pattern over a placeholder binds the
@@ -285,7 +285,7 @@ func unifyTypeParam(lit Value, node *Type, other Value) (Value, *UnifyError) {
 // genBinder accumulates type-parameter bindings during call-site and
 // schema inference. Both InferGenBindings and InferSchemaBindings share
 // it: an isParam gate (only declared parameters bind) and a merge that
-// tor-unions repeated evidence (design/GENERICS.10.md §9.2.2 — runtime
+// tor-unions repeated evidence (design/legacy/GENERICS.10.ignore §9.2.2 — runtime
 // calls are never rejected for parameter inconsistency).
 type genBinder struct {
 	bindings map[string]Value

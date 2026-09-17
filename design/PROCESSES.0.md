@@ -39,13 +39,13 @@ What is missing is a *long-lived* process primitive, mailboxes, `send`/`receive`
 PIDs, and a named process registry. This document specifies them.
 
 This began as a **design RFC only**, matching how other subsystems were
-designed first (`STREAM-WORDS.0.md`, `PERMISSIONS-PLAN.10.md`). **Status
+designed first (`STREAM-WORDS.0.md`, `legacy/PERMISSIONS-PLAN.10.ignore`). **Status
 (2026-08-14):** phase 1 has since landed — `spawn`/`self`/`send`/`receive`/
 `register`/`whereis`/`unregister`, the opaque `Pid`, bounded mailboxes with
 `"block"`/`"fail"`/`"drop"` overflow, patrun dispatch with `name:Type`
 binding slots, and `process`-scope gating
 (`lang/go/native/native_process.go`, `core/go/process.go`) — with the
-executable-slice decisions recorded in `NETWORK-IMPLEMENTATION-PLAN.0.md`.
+executable-slice decisions recorded in `legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore`.
 Links/monitors, supervision, and distribution remain design-only.
 
 ### Relationship to `boru:stream`
@@ -129,7 +129,7 @@ This RFC delivers the concurrency substrate for that model. The networking and
 binary-codec layers that complete the end-goal are scoped as later phases and
 enumerated honestly in the [gap analysis](#8-gap-analysis). boru's stated stance
 is that it "is a query/data language, not a systems language"
-(`BATTERIES-INCLUDED-REPORT.5.md`); actors are introduced as *controlled,
+(`legacy/BATTERIES-INCLUDED-REPORT.5.ignore`); actors are introduced as *controlled,
 capability-gated* concurrency, not as an invitation to write arbitrary systems
 code.
 

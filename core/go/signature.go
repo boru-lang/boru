@@ -287,7 +287,7 @@ func SigTypeMatches(v Value, t *Type) bool {
 	}
 	// Gradual (dynamic) carrier: matches the slot unless its bound is
 	// PROVABLY disjoint from t — the not-disjoint rule, the optimistic
-	// dual of strict ConformsTo (design/dynamic-modality-report.10.md).
+	// dual of strict ConformsTo (design/legacy/dynamic-modality-report.10.ignore).
 	// Reuses `tand` for the disjointness proof; dynamic(Any) matches
 	// every inhabited slot, dynamic(Integer) fails only provably-disjoint
 	// slots (String, Atom, …). Checked first so a dynamic carrier never
@@ -346,7 +346,7 @@ func SigTypeMatches(v Value, t *Type) bool {
 	// never carriers): matches iff EVERY alternative matches, so
 	// dispatch distributes over the abstract domain. The selected
 	// signature's returns are then refined per alternative by
-	// disjunctPartitionReturns (design/checker-accuracy-review.10.md A1).
+	// disjunctPartitionReturns (design/legacy/checker-accuracy-review.10.ignore A1).
 	if v.Carrier && !v.Dynamic && IsDisjunct(v) {
 		di, err := AsDisjunct(v)
 		if err == nil && len(di.Alternatives) > 0 {
@@ -514,7 +514,7 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if _, ok := v.TypeBody(); ok {
 		// A node carrying recorded type CONTENT is the evaluated name
 		// of a structural type (the Stage 2 flip of
-		// design/TYPE-REPRESENTATION.1.md): it is admissible exactly
+		// design/legacy/TYPE-REPRESENTATION.1.ignore): it is admissible exactly
 		// where its declared body was — `refine Table R` collects R at
 		// the TNode arg slot precisely as it collected R's record body
 		// before the flip. Pure nominal literals (builtins, refine

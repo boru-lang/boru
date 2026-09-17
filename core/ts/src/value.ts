@@ -496,7 +496,7 @@ export class Value {
     // Go's kernelFormatDefault (core/go/value.go:3660). Without this arm the
     // fallthrough below reached String(DisjunctInfo) and produced the literal
     // '[object Object]' — the defect the parser stream oracle was built to
-    // catch and never ran to find (design/TS-PARITY-AUDIT.0.md).
+    // catch and never ran to find (design/legacy/TS-PARITY-AUDIT.0.ignore).
     if (this.isDisjunct()) {
       return this.asDisjunct()
         .alternatives.map((alt) => alt.toString())

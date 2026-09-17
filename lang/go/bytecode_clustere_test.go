@@ -16,7 +16,7 @@ import (
 //
 // The remaining cluster-E cases (a /v-deferred map field auto-invoked on `.field`,
 // and a nested-factory apply in the MAIN residual) are separate resolveDynamicApply
-// gaps — see design/MISCOMPILE-HUNT-FINDINGS.0.md.
+// gaps — see design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore.
 func TestFnValueApplyInBody(t *testing.T) {
 	apply := []struct{ name, src string }{
 		{"fn-param apply", `def apply1 fn [[fnv:Function][Integer][(fnv 100)]] (apply1 ([y:Integer] => [5]))`},

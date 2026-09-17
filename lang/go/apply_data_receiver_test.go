@@ -23,7 +23,7 @@ import (
 // consumed as a window ARGUMENT (`(x (n f/v apply) apply)`, the numeral's
 // `n`, which the interpreter DISPATCHES over `f/v`) lowered as data and the
 // csucc rows compiled to `f` applied to `n`. The accounting now runs under
-// a tail apply too, and those rows refuse soundly.
+// a tail apply too, and those rows refuse.
 
 const adrChurch = `def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end `
 
@@ -112,7 +112,7 @@ func TestApplyDataReceiverSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a refusal", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {

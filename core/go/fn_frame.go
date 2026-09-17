@@ -9,7 +9,7 @@ import "fmt"
 // (buildFnBodyHandler, compileFnDef via buildFnBodyHandler, and
 // execFnDefSig's no-captured-registry branch) builds its frame from
 // these pieces, so the on-tape frame shape cannot diverge between
-// dispatch paths. See design/TCO-STAGED.10.md Stage 1.
+// dispatch paths. See design/legacy/TCO-STAGED.10.ignore Stage 1.
 //
 // A frame on the tape is:
 //
@@ -34,7 +34,7 @@ type FnFrameMeta struct {
 	// HasGen marks a generic fn (the handler installs inferred
 	// type-parameter bindings per call). The eager-teardown gate
 	// declines generic frames until the bind/teardown/Retire
-	// interaction is separately proven (design/TCO-STAGED.10.md
+	// interaction is separately proven (design/legacy/TCO-STAGED.10.ignore
 	// Stage 4).
 	HasGen bool
 	// InstallNames are the binding names this overload's handler
@@ -89,7 +89,7 @@ type FrameOpenInfo struct {
 	// the skip, an argument with active step semantics (a Function
 	// value, an __SP marker) fires on PLACEMENT, making its behaviour
 	// depend on which siblings happen to sit beside it — the
-	// named/unnamed asymmetry of design/ARG-SEMANTICS-UNIFICATION.0.md.
+	// named/unnamed asymmetry of design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore.
 	ArgSpan int
 }
 

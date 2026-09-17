@@ -219,7 +219,7 @@ the expressiveness.
 
 **Two compile-lane guards shipped with it**, each closing a miscompile
 window the park made REACHABLE rather than one it wrote (§5.8's lesson
-in `design/HIGHER-ORDER-FUNCTIONS.0.md`): `tryRecordPoly` declines a
+in `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`): `tryRecordPoly` declines a
 stack-only mixed-arity window over dynamic carriers, and
 `recordCallElided` declines a dynamic non-carrier lead — both the
 `apply` shape where the check's gradual `[Reach Any]` match meets a
@@ -300,9 +300,9 @@ callback API. **It is commit `36ba1a2`, merged by `7e98aeb` = PR #366**, not
 `lang/go/fnslot_unused_def_test.go` pins both directions and would need to move
 with it.
 
-## 4. Item C — break 2 is unblocked, sound, and narrower than recorded
+## 4. Item C — break 2 is an open defect, unblocked and narrower than recorded
 
-### 4.1 The refusal is sound
+### 4.1 The refusal is an open defect — and deleting the guard is not the fix
 
 Two sites, identical text, both in `compiler/go/emit.go` — `:4647` (mono, a
 `recordCallRefusal` arm) and `:5064` (poly, a guard in `RecordPolyCall`).
@@ -315,7 +315,10 @@ the stack. The VM has no on-land dispatch of a surfaced fn value; the
 interpreter has one (the 0-arg courtesy dispatch, `core/go/engine.go:682`).
 Removing the refusal reinstates miscompile mechanism E.
 
-So this is a **sound guard to be replaced, not removed**.
+So the guard is **to be replaced, not removed**: deleting it trades one
+defect for a worse one. The refusal itself is not a design outcome — it is
+an unimplemented case, owed a fix, and it stays owed until the VM can
+dispatch a surfaced fn value on landing.
 
 ### 4.2 The scope is one shape, not a family
 
@@ -413,7 +416,7 @@ signatures are `TList`/`TMap` only, and `do (inc/r)` is a signature error.
 > nullary signature can never eclipse an arg-taking sibling the stack was
 > about to satisfy (the NUR035 hazard); every other arity keeps the
 > re-step, which already ignores origin. Macros are excluded — applying a
-> macro is never a stack-value dispatch (MACROS-PHASE1.10.md §5, D4).
+> macro is never a stack-value dispatch (legacy/MACROS-PHASE1.10.ignore §5, D4).
 >
 > **A first fix CALLED instead of marking, and that is the record worth
 > keeping.** `applyHandler` invoked the fn at the apply site through
@@ -462,7 +465,9 @@ signatures are `TList`/`TMap` only, and `do (inc/r)` is a signature error.
 > not hold at arity 0. Full suite green with no row changed.
 
 A Flatten built on `apply` would have reintroduced, for this one shape,
-exactly the quiet wrongness the refusal was installed to prevent.
+exactly the quiet wrongness the refusal was holding back. Holding wrongness
+back is containment, not a fix — the shape was owed the working dispatch it
+now has, and the refusal was the open defect standing in until it arrived.
 
 **Hole 2 — `apply` is not itself faithfully recordable.**
 `777 inc/r apply` records **both** `Call{apply,1}` and the induced
@@ -564,7 +569,7 @@ the code no longer does:
 - `test/go/langspec/compiled_metafallback_test.go:129` — says 4
   container-auto-dispatch rows "stay REFUSED … permanent unless a runtime
   auto-dispatch model is built". All four compile on main; the model was built.
-- `design/STAGE3-INLINING-DESIGN-ROUND.0.md:45`, `:218-220` — the same stale
+- `design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore:45`, `:218-220` — the same stale
   accounting.
 - `check/go/method_shape.go:48-52` — the file header says the get-family read
   guards "still refuse those reads outright before any model could run", while

@@ -2,7 +2,7 @@ package formatter
 
 // Rules is the declarative layout rule table the formatter interprets — the
 // stylesheet of the XSLT-style split the design settled on
-// (design/fmt-module-and-xslt.0.md, Phase 3): the RULES are data (this
+// (design/legacy/fmt-module-and-xslt.0.ignore, Phase 3): the RULES are data (this
 // table, exposed to boru as `Fmt.rules` and consumed by `Fmt.format-with`),
 // and the emitter is the generic PROCESSOR that interprets them, exactly as
 // an XSLT processor interprets templates. Every layout decision the

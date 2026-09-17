@@ -1,0 +1,848 @@
+# Voxgig-boru Library Reports — Amalgamated
+
+Downloaded and amalgamated from the downstream boru library projects in the
+[`voxgig-boru`](https://github.com/voxgig-boru) GitHub organisation. These are
+first-hand reports written while building real data-structure libraries in
+boru, and they are the primary signal for language/DX prioritisation.
+
+**Source reports (current versions, 2026-06-06):**
+
+| Part | Source file | Repo @ commit | Subject |
+|------|-------------|---------------|---------|
+| 1 | `dx-report.md` | `voxgig-boru/bloom-filter` @ `4b208cb` | Developer-experience report for the bloom-filter library; building/testing/upgrading `5b983b6` → `db828ec`. |
+| 2 | `DX-REPORT.md` | `voxgig-boru/trie` @ `d80f4cc` | Developer-experience report for the trie utilities (four variants, eight namespaces, ~2000 lines), with a `db828ec` upgrade postscript. |
+| 3 | `BORU-CHECK-REPORT.md` | `voxgig-boru/trie` @ `d80f4cc` | Diagnostics report: what `boru check` flags on this library, why they are false positives, and the case for advisory (non-gating) CI. |
+
+All three were reproduced against boru build `db828ec` (`boru-lang/boru`).
+
+> **Relationship to `VOXGIG-DX-REPORT.5.ignore`:** that file is a hand-curated
+> consolidation of the **earlier** (2026-06-01, boru `5b983b6`/`b6617dd`)
+> versions of the two DX reports, re-verified theme-by-theme against `main`.
+> This file is a faithful amalgamation of the **current** (2026-06-06,
+> `db828ec`) source reports — including the new `boru check` diagnostics
+> report, which has no analogue in the `.5` consolidation. Use `.5` for the
+> cross-referenced status matrix; use this file for the verbatim, up-to-date
+> source material.
+
+**Severity legend (as used by the source reports):**
+**🔴 high** = silent wrong results / blocks a use case ·
+**🟡 medium** = friction with a clear workaround ·
+**🟢 low** = papercut.
+
+---
+
+## Part 1 — bloom-filter: developer-experience report
+
+*Source: `voxgig-boru/bloom-filter/dx-report.md` @ `4b208cb`*
+
+# Developer-experience report: bloom-filter on boru
+
+**Date:** 2026-06-06
+**boru build under test:** `boru-lang/boru` @ `db828ec` (built locally from a
+source tarball with `GOFLAGS=-mod=mod`; version string reported as
+`boru db828ecb6ee1d161ff177134478f42c56484f051`).
+**Context:** building, testing, refactoring, and then upgrading this
+bloom-filter module from `5b983b6` to `db828ec`. Everything below was
+reproduced first-hand against the build above; each item carries a
+minimal repro you can paste into a `.boru` file and run.
+
+Severity: **🔴 high** (silent wrong results / blocks a use case) ·
+**🟡 medium** (friction, clear workaround) · **🟢 low** (papercut).
+
+---
+
+## Fixed since the `5b983b6` report
+
+Three issues from the previous report are resolved in `db828ec`:
+
+- **Forward `set` now mutates a `refine Object`.** `b set k v` used to be
+  a silent no-op through a typed param; it now persists at the top level
+  and through ordinary typed-param fns. *(But see §1 — it regresses
+  inside a `Test.test` sub-engine, so it isn't fully usable yet.)*
+
+- **A library that uses `export` can be run directly.** `boru bloom.boru`
+  now exits `0` instead of `undefined word: export` — `export` is a
+  top-level no-op outside an import context. The separate runnable entry
+  point (`test/bloom_smoke_test.boru`) is no longer strictly required.
+
+- **A failing `Test.test` names the case.** Output is now
+  `FAIL <name> — [boru/assertion_failure]: Assert.equal: expected X, got Y`,
+  so you no longer have to bisect to find which case failed.
+
+  ```boru
+  import "boru:test" end
+  [ true false Assert.equal end ] "my-failing-case" Test.test end
+  # FAIL my-failing-case — [boru/assertion_failure]: Assert.equal: expected false, got true
+  ```
+
+---
+
+## Still open
+
+### 1. 🟡 Forward `set`/`get` regress inside a `Test.test` sub-engine
+
+Forward-form `set`/`get` on a `refine Object` now work at the top level
+and through plain typed-param fns, but **do not persist when the same
+code runs inside a `Test.test` body**. Migrating the bit store to the
+cleaner forward form (`bits set k 1`, `bits get k`) passed the spec,
+property, and smoke suites but failed exactly one example in the
+imperative `Test.test` suite — `add` then `contains` returned `false`
+for a just-added key. The library therefore keeps the stack form
+(`bits 1 k set`, `bits k get`), which is reliable in every context.
+
+- **Impact:** the natural forward style is unusable for mutate-through
+  code that must also run under `Test.test`; you need the stack form.
+- **Workaround:** use stack-form `get`/`set` for any object you mutate.
+
+### 2. 🟡 `print` forward-arg collection reverses/breaks chained prints
+
+```boru
+(1 add 1) print (2 add 2) print     # prints 4 then 2 — the first
+                                    # `print` swallowed (2 add 2)
+```
+
+A trailing `print` at end-of-input can also fail to find its argument.
+Write `print (value) end` (or `(value) print end`), one value per
+statement. Unchanged from the previous build.
+
+### 3. 🟡 `def _ (void-returning-call)` corrupts the next dispatch
+
+Binding the result of a word whose signature returns nothing (e.g. a
+mutator declared `[…] []`) leaves stack residue that derails the
+following word:
+
+```boru
+def Bits (refine Object {})
+def mark fn [ [i:Integer b:Bits] [] [ b 1 (convert String i) set ] ]   # returns []
+def b (make Bits {})
+def _ (mark 5 b)
+"ok" print            # error: no matching signature for print
+```
+
+Give mutators a return value, or call them as bare statements without
+`def`. (This is also why the forward-`set` regression in §1 is easy to
+misdiagnose — a void-bound mutator looks similar.)
+
+### 4. 🟢 `make Object {}` is rejected without a hint
+
+```boru
+def x (make Object {})
+# error: make: expected a constructed object type, got Object
+```
+
+Use a `def T (refine Object {…})` subtype (or a `{…}` map literal). The
+error doesn't suggest the fix.
+
+### 5. 🟢 `indexof` is haystack-first, against the data-last grain
+
+`indexof` moved into the string module in `db828ec`; it still puts the
+haystack at `sig[0]`:
+
+```boru
+import "boru:string-util" end
+(StringUtil.indexof " ABC" "B")   # => 2   (haystack, needle)
+(" ABC" StringUtil.indexof "B")   # => -1  (reads as needle=" ABC")
+```
+
+The natural data-piped form gives the wrong answer; write it
+fully-forward. Worth a one-line note in the string-module reference.
+
+---
+
+## New in `db828ec`
+
+### N1. 🟡 `import` now requires a terminator
+
+`import` gained an optional second (selective-import) argument, so the
+forward form **without `end`** greedily swallows a following value:
+
+```boru
+import "boru:string-util"
+(StringUtil.indexof " ABC" "B") print end   # undefined word: StringUtil
+```
+
+`import` collected the `(…)` as its second argument, so the namespace
+never bound. Terminate every import — `import "x" end` — which is what
+this module now does throughout. (On `5b983b6` the bare `import "x"` form
+was fine; this is a behavioural change, not just a style preference.) A
+language-level fix that removes the need for the terminator is proposed
+in [`proposals/lazy-arg-resolution.md`](proposals/lazy-arg-resolution.md).
+
+### N2. 🟢 Custom error raising is still absent
+
+There is no word to raise a custom error message; `raise`/`fail`/`throw`
+are all undefined (`do [raise "x"] error […]` only "works" because it
+catches the `undefined_word: raise` error). `error` remains a
+*handler* combinator (`do [risky] error [handler]`). This module still
+signals `merge` precondition failures by dispatching a descriptively
+named undefined word (`bloom-merge-requires-equal-m`) — the only
+catchable, self-describing idiom available.
+
+---
+
+## Upgrade notes: `5b983b6` → `db828ec`
+
+A consumer upgrading across these commits hits several breaking changes
+(all migrated in this module's history):
+
+| Change | Before | After |
+|--------|--------|-------|
+| Util module ids gained `-util` | `boru:math`, `boru:array` | `boru:math-util`, `boru:array-util` (and `string-util`, `bin-util`, `time-util`, …) |
+| Module namespaces are PascalCase | `math.log`, `array.where`, `test.test`, `assert.equal` | `MathUtil.log`, `ArrayUtil.where`, `Test.test`, `Assert.equal` |
+| Decimal type renamed | `Decimal` | `Float` (with a `Number` supertype) |
+| `indexof` moved out of core | core `indexof` | `StringUtil.indexof` (`import "boru:string-util" end`) |
+| Bitwise ops moved out of core | core `band`/`bor`/`bxor` | `BinUtil.band`/`.bor`/`.bxor` (`import "boru:bin-util" end`) |
+| `import` terminator | `import "x"` ok | `import "x" end` required (N1) |
+| `base` is now reserved | usable as a local name | rename the local |
+
+`boru:test`, `boru:report`, and `boru:rand` kept their ids; the property
+generator binding is still `r` (`r.int`, `r.string`, …). Core
+arithmetic/comparison/boolean words (`add`, `sub`, `mul`, `div`, `mod`,
+`eq`, `lte`, `gte`, `and`, `not`) and `slice`/`size`/`iota`/`each`/
+`fold`/`all`/`convert`/`get`/`set` remain core.
+
+---
+
+## What worked well
+
+- **Static dispatch & types**, the two test surfaces
+  (`Test.test`/`Test.check-prop` and `Test.spec`/`Test.prop`), and the
+  `fold`/`each`/`iota`/`ArrayUtil.where` data-flow words all behaved
+  predictably once the namespace renames were applied.
+- **Error messages** are specific and point at the right span — the
+  import-terminator hint (N1) and the new named test failures are real
+  improvements. The remaining gaps are the *silent* cases (§1, §3).
+
+---
+
+## Summary
+
+| # | Severity | Issue | Status vs `5b983b6` |
+|---|----------|-------|---------------------|
+| — | — | Forward `set` no-op on `refine Object` | **fixed** (top level) |
+| — | — | `export`-using library can't run directly | **fixed** |
+| — | — | Failing `Test.test` not named | **fixed** |
+| 1 | 🟡 | Forward `set`/`get` regress inside `Test.test` | new caveat |
+| 2 | 🟡 | `print` forward-collection reverses/breaks | unchanged |
+| 3 | 🟡 | `def _ (void-call)` corrupts next dispatch | unchanged |
+| 4 | 🟢 | `make Object {}` rejected without hint | unchanged |
+| 5 | 🟢 | `indexof` haystack-first | unchanged (now in `StringUtil`) |
+| N1 | 🟡 | `import` now requires `end` | new |
+| N2 | 🟢 | No custom error-raising word | unchanged |
+
+
+---
+
+## Part 2 — trie: developer-experience report
+
+*Source: `voxgig-boru/trie/DX-REPORT.md` @ `d80f4cc`*
+
+# Developer-experience report: building the trie utilities in boru
+
+This is a first-hand account of writing this library — four trie variants,
+eight namespaces, ~2000 lines of boru plus tests — against `boru` at commit
+`b6617dd` (2026-06-01). It records what worked, what cost me time, and the
+workarounds I settled on, in the hope it is useful both to the next person
+writing boru data structures and to the language authors.
+
+> **Postscript (upgraded to `db828ec`, 2026-06-06).** Some sharp edges below
+> were since fixed upstream, and the library was updated accordingly:
+> #4 (`do {…}` evaluating String values as code) is fixed, so the value
+> *boxing* workaround was removed; failing `Test.test` cases now surface
+> loudly by name (#5-adjacent DX). Others still stand. The upgrade also
+> brought breaking renames: `concat`/`indexof`/`contains` moved to
+> `boru:string-util`, the test module is now `Test.*`/`Assert.*`, and `base`
+> joined the reserved words — none a language *fault*, just churn to track.
+
+The headline: boru is genuinely capable of expressing persistent, recursive
+data structures cleanly, and once the idioms are in hand the code reads
+well. Getting the idioms in hand, though, took a lot of empirical probing,
+because several behaviours are surprising and fail *silently* or with an
+error pointing somewhere other than the cause.
+
+---
+
+## What worked well
+
+- **Recursion with pattern-matched overloads.** Trie traversal is naturally
+  recursive, and boru handles direct self-recursion and mutual recursion
+  without ceremony. This is the backbone of every variant.
+- **Multiple namespaces per module.** `export "A" {…}` twice in one file
+  gives a clean `A.x` / `B.x` split, which let each variant ship a `…Set`
+  and a `…Map` over one shared engine.
+- **Persistent structures fall out naturally.** Lists and maps behave as
+  values — `push` and `merge` return new structures rather than mutating —
+  so immutable, path-copying tries were the path of least resistance, not a
+  fight. I verified this explicitly (a `push` onto a shared list does not
+  disturb other references).
+- **The property-testing framework.** `test.prop` / `test.check-prop` with
+  `boru:rand` generators made it easy to cross-check the four variants
+  against each other over random inputs. This caught real differences.
+- **Error messages often point at the fix.** The recurring hint *"forward
+  args for X may have run into the next word; group the call with parens"*
+  is genuinely good and was usually correct.
+
+---
+
+## Sharp edges (and the workarounds)
+
+These are ordered roughly by how much time each one cost me.
+
+### 1. Argument order is the reverse of the call, and a type mismatch fails *silently*
+
+The rule "the first signature parameter is the top of the stack" means a
+function's parameter list is the **reverse** of its left-to-right call
+order. Calling `t key val Xxx.set` requires the signature
+`[val:Any key:String t:Map]`, not `[t key val]`. I inverted this more times
+than I'd like to admit.
+
+What made it costly is the *failure mode for namespace words*: when the
+top-of-stack type doesn't match the first parameter, dispatch does not
+error — it leaves the function value on the stack as data. So a wrong-order
+`TrieMap.get` call silently produced output like `fn map-get(Map, String)`
+interpolated into a string, with no diagnostic. For a plain (non-namespace)
+word the mismatch *does* error, which is the more helpful behaviour.
+
+*Workaround:* I adopted one mnemonic — **signature = reverse of call
+order** — and wrote the intended call form in a comment above every
+function. A linter rule that flagged a namespace member resolving to a bare
+function value (almost always an arity/order bug) would have saved hours.
+
+### 2. `fold` binds `[element accumulator]`, not `[accumulator element]`
+
+The fold body receives the *element* first and the *accumulator* second
+(`var [[elem acc] …]`), with the accumulator on top of the stack. I
+initially guessed the opposite, which silently produced wrong results for
+list-building folds (the accumulator and element got swapped into `push`).
+Worth stating prominently in the docs with a list-building example, since
+reduce/fold conventions vary across languages.
+
+### 3. `merge` is a deep, index-wise merge
+
+`{kids: [99]} {kids: [10, 20]} merge` yields `{kids: [99, 20]}` — the lists
+are merged element-by-element, not replaced. I reached for `merge` to
+update one field of a node and it silently fused sibling child-lists
+together, producing a tree where one branch's nodes leaked into another.
+This was the single hardest bug to localize because the corruption appeared
+in a subtree the edit never touched.
+
+*Workaround:* never `merge` to update a field. Rebuild the whole node with
+an explicit constructor (`do {a: [..], b: [..]}`). A shallow `assoc`/`with`
+word that replaces a single key without deep-merging would remove a real
+foot-gun.
+
+### 4. `do {k: [v]}` evaluates the map's values *as code*
+
+The idiomatic constructor `do {field: [expr]}` evaluates each value
+quotation — and if the result is a String that happens to name a word
+(`"do"`, `"if"`, `"get"`, `"fold"`), that word is *dispatched* instead of
+stored. So a `…Map` storing the value `"if"` corrupted its node. Plain
+non-word strings (`"hello"`) were fine, which is exactly what makes this
+dangerous: it passes every casual test and breaks on real data.
+
+*Workaround:* store values **boxed** — wrapped in a one-element list,
+`[] val push` — which is inert under `do`, and unbox on the way out. Every
+variant does this. (Bare-word map values like `{a: v}` resolve a
+*top-level* `def` but **not** a function parameter — "undefined word" — so
+that escape hatch wasn't available inside functions.)
+
+### 5. `eq` on lists is identity, not structure
+
+`["a" "b"] ["a" "b"] eq` is `false`. `assert.equal` *does* compare lists
+deeply (so unit tests were fine), but a property body using `eq` to compare
+two key-lists silently compared identities and passed vacuously — my
+cross-variant equivalence checks were, for a while, only verifying that the
+*lengths* matched. A distinct word for structural equality (or making `eq`
+structural for value types) would help; at minimum the asymmetry with
+`assert.equal` deserves a docs note.
+
+### 6. `get` with a bare variable index returns `none`
+
+`xs get 1` works; `xs get i` (where `i` is a binding) returns `none` — the
+forward `get` grabs the bare word rather than its value. `xs get (i)`
+(parenthesized) works. This is the same forward-collection issue as #1 but
+manifests as a silent `none` rather than an error, and it bit me twice
+(once in real code, once in a test helper that then passed vacuously).
+
+### 7. Reserved words can't be binding names — and the set is wider than expected
+
+Several names cannot be used as `def`/parameter/`var` bindings:
+- `end` (the call terminator),
+- `node` (a builtin word),
+- `eq` (the comparison word) — this one cost time, because using it as a
+  field/param name silently dispatched the comparison and produced an
+  infinite loop in a ternary-search-tree constructor,
+- single uppercase letters (`L`, `P`) — they collide with type names.
+
+The map *key* `"end"` (a string) is fine; only the binding is not. The
+error when it does surface (`invalid_word_name`, or a downstream signature
+error) rarely names the real problem. A short "reserved identifiers" list
+in the reference would help a lot.
+
+### 8. String interpolation is fragile as an argument to a recursive call
+
+`` `${a}${b}` `` works at the top level of an expression, but using it
+*inline* as an argument to a forward-dispatched recursive call (or binding
+it where the result is a word-like string) produced "no matching signature"
+and "undefined word" errors that pointed at the call, not the template.
+
+*Workaround:* build path strings with `concat` (`[a b] concat`) and bind
+them to a simple variable before passing them on. Robust everywhere I tried
+it.
+
+### 9. Smaller papercuts
+
+- **No way to build a map with computed keys.** `set` works only on
+  `Store`/`Object`, not on a `Map` literal; `make Map …` is unsupported;
+  and `refine Object` dynamic fields can't be enumerated (`items` returns
+  only declared fields). The net effect: a dynamically-keyed, *walkable*
+  map isn't expressible, which is why every node here stores children as an
+  **association list** `[[key, child], …]` instead of a keyed map.
+- **`filter` wants a `Function`, not a `[…]` quotation**, unlike `each`
+  /`fold` which happily take a bracket body. I used `fold` everywhere
+  instead.
+- **Forward arguments have precedence — by design (I misjudged this).** A word
+  collects the tokens *after* it as arguments, stopping at the next function
+  word or a closing paren, and otherwise falls back to the stack. So a
+  terminator is rarely needed: `(… my-fn)`, `… my-fn next-word`, and
+  `import "x"` all resolve on their own. The only case that needs
+  disambiguation is when a bare, type-compatible **literal** immediately
+  follows a stack-form call — then use parens, `end`, or the **`/s`** modifier,
+  which pins the call to stack args (`5 5 cmp/s 9` → compares `5` and `5`,
+  leaves `9`; `5 5 cmp 9` → forward-grabs `9`). My first draft of this report
+  overstated it as "every call needs `end`"; it does not — that was my error,
+  not a language wart.
+- **`if` is safe all-forward.** I kept every `if cond [then] [else]` with
+  the condition and branches all forward of the word; the mixed form is the
+  one to avoid.
+- **Print order is reversed** (the first printed line appears last), so demo
+  scripts print a leading blank line to restore source order.
+- **No custom error raising.** `error` is a *handler* combinator
+  (`do […] error […]`); there's no `raise`/`throw` with a message. Not
+  needed here (tries don't raise), but worth knowing.
+- **No in-memory jsonic parser.** `read` is file I/O; there is no
+  string→value parse exposed. That's why this library's round-trip is
+  data-based (`from-keys`/`from-entries`) rather than a string `decode` of
+  the `encode` snapshot. A `parse`/`unjson` word would close the loop.
+- **`do {k:[v]}` generators can be order/charset-sensitive.** A two-field
+  `do {keys:[…], q:[…]}` property generator that referenced a `def`-bound
+  charset failed where the same structure with a literal charset worked. I
+  sidestepped it by generating a single value per property.
+
+---
+
+## Case study: what would it take to make a HAMT worthwhile?
+
+When the brief asked for four variants, I implemented a **burst trie** for
+the fourth and explicitly declined a **HAMT** (hash array-mapped trie). It
+is worth recording *why*, because the answer is more nuanced than "boru
+can't do it" and it points at a few concrete language gaps. (The facts
+below were confirmed against the source and quick probes at `b6617dd`; I
+did not build a HAMT end to end, so the "only blocker" claim in Level A is
+a strong inference, not an executed result.)
+
+A HAMT keeps each node's present children in a small **packed array** and
+uses a per-node integer **bitmap** to say which of (say) 32 slots are
+occupied; the slot's position in the packed array is
+`popcount(bitmap & (bit − 1))`. Its whole reason to exist — over a
+balanced tree, a sorted trie, or a plain hash map — is *performance from
+memory layout*: a contiguous, O(1)-indexed array that is cheap to copy
+(≤32 slots) for persistence or mutate in place for bulk builds.
+
+Crucially, a HAMT indexes children by an integer **slot**, not by a
+dynamic string key. So it sidesteps the limitation that shaped every other
+variant here (boru can't build maps with computed keys, and `refine Object`
+fields aren't enumerable) — integer-indexed `List`s cover it. That makes
+the HAMT *more* expressible in boru than I first assumed. The question
+splits cleanly into two levels.
+
+### Level A — to express a *correct, persistent* HAMT
+
+Already present and sufficient: the full bitwise suite (`band` `bor`
+`bxor` `bnot` `bsl` `bsr` `busr`), integers wide enough to mask, hashing to
+a fixed-width integer (`bin.fnv32` / `bin.fnv64`), O(1) list indexing
+(`get`), and structural sharing via copy-returning ops. Bit-slicing a hash
+(`(h bsr 5) band 31`) works directly.
+
+Missing or awkward, but minor:
+
+1. **`popcount`** — the one genuinely absent primitive, and the core of the
+   slot-indexing trick. It is implementable in user code (a SWAR sequence
+   with the existing bitwise/multiply words, or a ≤64-step loop), so it is
+   a convenience rather than a blocker — but a native `popcount` is the
+   single highest-leverage addition.
+2. **`insert-at` / `remove-at` for lists** — to grow or shrink the packed
+   child array by one slot. Today you compose `take`/`concat`/`shed`; a
+   primitive is cleaner and avoids the O(n) rebuild.
+3. **Defined fixed-width *unsigned* integer semantics** (a `u32`/`u64`, or
+   documented shift/wrap behaviour). The bitmap depends on well-defined
+   shifts and no sign surprises at bit 31/63. Manual masking works but is a
+   foot-gun.
+
+With just `popcount` (or its in-language equivalent) a correct persistent
+HAMT is writable today.
+
+### Level B — to make a HAMT actually *pay off*
+
+This is the real answer, and none of it is surface syntax. An interpreted,
+GC'd, value-semantics language cannot deliver a HAMT's performance
+advantage without:
+
+1. **Mutable, fixed-width, unboxed arrays** with an in-place O(1)
+   `set`/`insert` contract. boru has indexed `set` *only* on the separate
+   `Array` type, not on plain `List`s (`[10 20 30]` is a `List` and `set`
+   rejects it), and the mutation-vs-copy contract isn't exposed. This is
+   what enables the *transient* fast path (à la Clojure) that makes bulk
+   construction competitive.
+2. **Layout guarantees** — contiguous packed storage and unboxed small ints
+   for the bitmap — for the cache locality that *is* the HAMT's edge over
+   other trees. Boxed values defeat this entirely.
+3. Realistically, **a native persistent-map type in the runtime**
+   (HAMT/CHAMP-backed), the way Clojure, Scala, and Erlang ship one. Then
+   `make`/`get`/`set`/`merge` over a large map become O(log₃₂ n) with
+   structural sharing and user code never touches a bitmap — and, as a
+   bonus, this would also retire boru's dynamic-key-map limitation.
+
+### Takeaway
+
+For *expressiveness*, add `popcount` (ideally also `insert-at`/`remove-at`
+and unsigned-int clarity) and a HAMT becomes a reasonable pure-boru
+exercise. For *HAMT-class performance*, that is a runtime decision: ship a
+native persistent map, and/or add mutable unboxed fixed-width arrays with
+transients. The burst trie was the pragmatic stand-in precisely because it
+trades the bitmap-packing trick for flat buckets — and buckets are just
+`List`s, which boru represents naturally.
+
+
+## Suggestions, in priority order
+
+1. **Surface silent dispatch failures.** The two costliest bugs (#1, #6)
+   both failed silently — a namespace word left undispatched, a `get`
+   returning `none`. A warning when a namespace member resolves to a bare
+   function value, and an error (not `none`) when `get` is handed a bare
+   undefined word, would catch a whole class of mistakes.
+2. **A shallow field-update word** (`with`/`assoc`) so `merge` (#3) isn't
+   the only option for "replace one key".
+3. **Document the gotchas:** argument-order = reverse-of-call, fold binding
+   order, `merge` depth, `do`-evaluates-values, list `eq` vs `assert.equal`,
+   reserved identifiers, and `get (i)` vs `get i`. Each is a one-line note
+   that would save a newcomer an afternoon.
+4. **A jsonic string parser** to complement `jsonify`, enabling true
+   `encode`/`decode` round-trips.
+
+---
+
+## Bottom line
+
+I shipped four working, cross-checked, persistent trie variants with fuzzy
+and wildcard search in boru, so the language is clearly up to the task. The
+friction was almost entirely in *discovering* the idioms, not in expressing
+the algorithms — and nearly every hour lost went to a behaviour that failed
+quietly instead of loudly. Louder failures and a handful of docs notes would
+turn a sometimes-bewildering experience into a smooth one.
+
+
+---
+
+## Part 3 — trie: `boru check` diagnostics report
+
+*Source: `voxgig-boru/trie/BORU-CHECK-REPORT.md` @ `d80f4cc`*
+
+# `boru check` on the trie library: a diagnostics report
+
+A record of what the boru static checker (`boru check`) reports when run over this
+library, why those reports are **false positives** on this style of code, and
+what (if anything) would make the checker useful here. It backs the decision to
+wire `boru check` into CI as an **advisory, non-gating** step (`--soft` +
+`continue-on-error`) rather than a hard gate — see `ci/test.yml`.
+
+Verified against `boru` commit `db828ec`. Every example below is **standalone**:
+copy it into a `.boru` file, then compare `boru check --soft file.boru` (the
+diagnostic) against `boru file.boru` (it runs correctly).
+
+---
+
+## TL;DR
+
+`boru check` is a structural type/usage checker. This library is deliberately
+**generic and dynamically dispatched**: every node is a plain `Map` walked by
+stack-dispatched words, children live in untyped association lists pulled out
+with `get` (which returns `Any`), and the public surface is exported **by
+reference** (`map-add/r`). The checker can't model any of those three things, so
+it emits hundreds of diagnostics on code that the full test suite proves
+correct. None of them corresponds to a real defect.
+
+| Module | `no_signature` | `missing_returns` | `unused_def` | `fn_body_error` | `branch_error` |
+|---|---:|---:|---:|---:|---:|
+| `trie.boru`  | 143 | 71  | 33 | 1 | 1 |
+| `radix.boru` | 228 | 109 | 29 | 6 | 5 |
+| `tst.boru`   | 297 | 53  | 25 | 1 | 3 |
+| `burst.boru` | 197 | 82  | 27 | 7 | 1 |
+
+(Per-file counts from `boru check --soft <module>`. All four modules execute
+green across the full suite — see `ci/test.yml`.)
+
+Two of these are *correctness* errors in the checker itself (`fn_body_error`,
+`branch_error`): it fails to parse or simulate code that the interpreter runs
+without complaint. The rest are *expressiveness* gaps — the checker is sound
+only for code more statically typed than this.
+
+---
+
+## How to reproduce
+
+```bash
+# One module, advisory mode (always exits 0):
+boru check --soft trie.boru
+
+# All four (note: analysis halts early — see "A caveat on multi-file runs"):
+boru check --soft trie.boru radix.boru tst.boru burst.boru
+
+# Confirm the same code RUNS correctly:
+boru test/trie_test.boru      # ... "all green"
+```
+
+`--soft` makes `check` exit `0` regardless of findings; without it, `check`
+exits non-zero on any error-level diagnostic.
+
+---
+
+## Issue 1 — `unused_def` on reference-exported words
+
+**The checker says:** `def map-make is never used`.
+
+**Standalone example** (`unused.boru`):
+
+```boru
+def map-make fn [ [] [Map] [ {end: false} ] ]
+export "Demo" { make: map-make/r }
+```
+
+```
+$ boru check --soft unused.boru
+check: 1:5: [warning] unused_def: def map-make is never used
+$ boru unused.boru        # defines Demo.make fine — no error
+```
+
+**Why it's a false positive.** `map-make` *is* used — it's the implementation of
+`Demo.make`, bound in the export block by reference with the `/r` suffix. The
+checker's "is it referenced?" pass doesn't count a `/r` reference-export as a
+use, so **every word in the public API is flagged**, precisely because it's
+public. In this library that's 25–33 false `unused_def` warnings per module —
+one for nearly every exported word (`map-keys`, `set-has`, `map-longest-prefix`,
+…), all of which are reachable through their namespace.
+
+**Root cause.** Reference exports (`name/r`) aren't traced as usages.
+
+---
+
+## Issue 2 — `no_signature` on generic words over `Any` values
+
+**The checker says:** `no matching signature for fold; assuming best-fit
+candidate for analysis` (also for `get`, `push`, and the module's own recursive
+words).
+
+**Standalone example** (`nosig.boru`):
+
+```boru
+def kids-count fn [ [node:Map] [Integer] [
+  0 (node "kids" get) [ var [[pair acc] acc 1 add ] ] fold
+] ]
+(kids-count {kids: [["a" 1] ["b" 2]]}) print
+```
+
+```
+$ boru check --soft nosig.boru
+check: 2:34: [error] no_signature: no matching signature for fold; assuming best-fit candidate for analysis
+$ boru nosig.boru
+2
+```
+
+**Why it's a false positive.** Children are stored in an association list and
+pulled out with `(node "kids" get)`. Core `get` is typed to return `Any`, so by
+the time the value reaches `fold`, the checker sees `fold` applied to `Any`
+rather than `List` and can't select a signature. The interpreter has the real
+list at runtime and folds it correctly (prints `2`).
+
+This is the single largest category (140–300 per module) because the whole
+library is built on this one shape: *get an untyped child list, walk it.* It
+also cascades onto the library's **own** recursive words — a self-call whose
+receiver came from `get` is `Any`, so the recursive call can't be matched
+either:
+
+```boru
+def walk fn [ [key:String node:Map] [Any] [
+  if ((key size) eq 0) [node] [
+    def ch  (key slice 0 1)
+    def kid (node ch get)                       # kid : Any
+    if (kid eq none) [none] [kid (key slice 1 (key size)) walk]   # walk over Any
+  ]
+] ]
+```
+
+```
+check: ... no matching signature for walk; assuming best-fit candidate for analysis
+check: ... no matching signature for get;  assuming best-fit candidate for analysis
+```
+
+**Root cause.** No flow typing / narrowing through `get`, and `Any` doesn't
+unify with a concrete parameter type when selecting an overload. The checker
+recovers ("assuming best-fit candidate"), but every such site is still reported
+at error level.
+
+---
+
+## Issue 3 — `missing_returns` on core words
+
+**The checker says:** `word size has no declared Returns for matched signature;
+assuming Any`.
+
+**Standalone example** (`missret.boru`):
+
+```boru
+def grow fn [ [xs:List] [List] [ xs (xs size) push ] ]
+(grow [1 2]) print
+```
+
+```
+$ boru check --soft missret.boru
+check: 1:41: [warning] missing_returns: word size has no declared Returns for matched signature; assuming Any
+check: 1:47: [warning] missing_returns: word push has no declared Returns for matched signature; assuming Any
+$ boru missret.boru
+[1, 2, 2]
+```
+
+**Why it's a false positive.** Nothing is wrong with the *user* code — these
+warnings are about **core words** (`size`, `push`, `get`, `add`, …) whose
+built-in signatures carry no declared `Returns` for the checker to read, so it
+falls back to `Any` and warns at each call site. Because the library leans on
+these primitives constantly, that's 50–110 warnings per module describing a gap
+in the *standard library's* type annotations, not in this code.
+
+**Root cause.** Core/native word signatures lack `Returns` declarations.
+
+---
+
+## Issue 4 — `fn_body_error`: the checker mis-parses a valid body
+
+**The checker says:** `fn body analysis error for build-row:
+[boru/syntax_error]: unmatched opening parenthesis`.
+
+**Standalone example** (`fnbody.boru`) — this is the real `build-row` from
+`trie.boru` (Levenshtein DP row), self-contained:
+
+```boru
+def min3 fn [ [a:Integer b:Integer c:Integer] [Integer] [
+  def m (if (a lt b) [a] [b]) if (m lt c) [m] [c] ] ]
+
+def build-row fn [
+  [prow:List query:String letter:String] [List] [
+    def cols ((query size) 1 add)
+    def row0 [ ((prow get 0) 1 add) ]
+    row0 (range 1 cols) [
+      var [[i row]
+        def insc ((row  get ((i 1 sub))) 1 add)
+        def delc ((prow get (i))         1 add)
+        def qc   (query slice (i 1 sub) i)
+        def repc ((prow get ((i 1 sub))) (if (qc letter eq) [0] [1]) add)
+        row (insc delc repc min3) push
+      ]
+    ] fold
+  ]
+]
+
+("x" "ax" [0 1 2] build-row) print
+```
+
+```
+$ boru check --soft fnbody.boru
+check: [error] fn_body_error: fn body analysis error for build-row: [boru/syntax_error]: unmatched opening parenthesis
+$ boru fnbody.boru
+[1, 1, 1]
+```
+
+**Why it's a false positive — and worse than the others.** This is not an
+expressiveness gap; it's a **checker bug**. The parentheses are balanced (the
+interpreter parses and runs the function, printing `[1, 1, 1]`). The checker's
+*own* body re-parser — distinct from the one the runtime uses — chokes on the
+combination of nested parenthesised arithmetic, a list literal holding a
+parenthesised expression, and an inline `if` inside a `fold`/`var` block, and
+reports a syntax error that does not exist. When this fires, that function's
+body is dropped from analysis entirely.
+
+---
+
+## Issue 5 — `branch_error`: simulated-stack desync
+
+**The checker says:** `branch analysis error: [boru/halt]: undefined stack entry
+at position 1`.
+
+**Where it shows up.** In the recursive insert/delete/descent words that branch
+with `if` and return a node from one arm and a different shape from the other
+(`radix.boru` shows 5, `tst.boru` 3). It carries no source location.
+
+**Why it's a false positive.** It's a **downstream cascade** from Issue 2. Once
+`no_signature` forces the checker to "assume a best-fit candidate," its
+simulated operand stack can diverge from the real one; a later `if` then tries
+to read a stack slot the checker no longer believes exists, and the branch
+analysis halts with `undefined stack entry`. The interpreter, working with real
+values, never sees this. So `branch_error` is not an independent finding — it's
+the checker losing its place after Issue 2, and it disappears wherever the
+generic `get`/`fold` shapes don't appear.
+
+---
+
+## A caveat on multi-file runs
+
+Running all four modules in one invocation reports only ~145 errors total —
+*fewer* than `trie.boru` alone in some categories — because analysis **halts
+early**: after the `fn_body_error`/`branch_error` in the first file the run
+emits `check: (empty stack)` and stops fully analysing the rest. Per-file runs
+(the table above) are therefore the accurate measure; the combined summary line
+under-counts. This is itself a reason not to gate on `check`: its output isn't
+even stable across invocation shapes.
+
+```
+$ boru check --soft trie.boru radix.boru tst.boru burst.boru | tail -1
+check: (empty stack)
+```
+
+---
+
+## Net assessment
+
+Of the five categories:
+
+- **Issues 1–3** (`unused_def`, `no_signature`, `missing_returns`) are
+  *expressiveness gaps* — the checker is sound only for code that is more
+  statically typed than a generic, `Map`-and-association-list trie. They are
+  100% false on this library.
+- **Issues 4–5** (`fn_body_error`, `branch_error`) are *checker defects* — it
+  fails to parse or simulate code the interpreter executes correctly.
+
+There is **no configuration** (short of `--soft`) that filters these down to a
+true-positive set, and no subset of the diagnostics that flags a real bug here.
+A hard `boru check` gate would block every green build on noise. That is why CI
+runs it `--soft` + `continue-on-error`: the log is there for a human to skim,
+and the **runnable test suites remain the real gate**.
+
+We re-run `boru check` on each boru bump; if a future release narrows `get`,
+traces `/r` exports, ships `Returns` for core words, and fixes the body
+re-parser, the signal-to-noise may flip and the step can be promoted to a gate.
+
+---
+
+## What would make `boru check` useful on this code
+
+In rough priority order:
+
+1. **Trace `/r` reference-exports as usages** — kills Issue 1 outright.
+2. **Declare `Returns` for core/native words** (`get`, `size`, `push`, `add`,
+   `slice`, `fold`, …) — kills Issue 3 and sharpens Issue 2.
+3. **Flow-narrow `get` / accept `Any` against concrete params** when selecting
+   overloads (or treat `Any` as unifying) — collapses Issue 2 and, with it, the
+   Issue 5 cascade.
+4. **Fix the body re-parser** so it accepts the same syntax the runtime does —
+   removes Issue 4 and the early-halt in multi-file runs.
+5. **Demote unresolved generics to `info`**, not `error`, so `--soft` isn't the
+   only way to keep exit codes meaningful.

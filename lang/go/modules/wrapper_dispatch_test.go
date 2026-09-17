@@ -23,7 +23,7 @@ import (
 // — the FnDef would just sit on the stack with the args around
 // it, never invoked. That residue is no longer silent: a failed
 // fn-value dispatch raises [boru/uncalled_function] at the
-// dispatch site (design/FN-VALUE-DISPATCH.0.md), so the
+// dispatch site (design/legacy/FN-VALUE-DISPATCH.0.ignore), so the
 // broken-wiring case pins the LOUD error rather than the quiet
 // no-invoke.
 func TestModuleWrapperInnerSigBarrierPos(t *testing.T) {

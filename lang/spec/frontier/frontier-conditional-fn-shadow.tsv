@@ -1,5 +1,5 @@
 # Conditional fn-shadow (found by the variation sweep, forward-barrier.tsv:73;
-# fixed to a SOUND REFUSAL the same day). A user fn REDEFINED inside a
+# fixed to a REFUSAL the same day). A user fn REDEFINED inside a
 # conditionally-reached body — an if/case arm or a for/each loop body —
 # overlap-removes the enclosing overload IN PLACE (installDef drops the outer
 # entry then pushes the new one at the SAME def depth), so the branch/loop def

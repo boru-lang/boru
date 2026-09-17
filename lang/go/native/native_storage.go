@@ -75,7 +75,7 @@ var storageNatives = []NativeFunc{
 			// Class instance (in-place, SEALED): a declared field
 			// writes in place and returns nothing; an undeclared
 			// field is a loud sealed_field error — see
-			// design/CLASS-OBJECT.10.md §3.3. A statically-decidable
+			// design/legacy/CLASS-OBJECT.10.ignore §3.3. A statically-decidable
 			// violation (unknown field, or a concrete value failing the
 			// same MakeClassFieldValue check the write runs) is flagged
 			// at check time (setClassInstanceReturns).
@@ -934,7 +934,7 @@ func delFlexMapReturns(args []Value, r *Registry) []Value {
 // instances: a field declared in the class schema (own or inherited)
 // writes into the flat field map and returns nothing; an undeclared
 // field raises sealed_field loudly — the open-bag use case belongs to
-// plain maps / FlexMaps, not class instances (design/CLASS-OBJECT.10.md).
+// plain maps / FlexMaps, not class instances (design/legacy/CLASS-OBJECT.10.ignore).
 // classSchemaOf resolves the CLASS schema governing a check-mode receiver
 // via the type-binding body (TopTypeBody). An unresolvable schema — the
 // class was `undef`'d after construction, or the receiver is an
@@ -1347,7 +1347,7 @@ func recordSchemaFieldReturns(rt RecordTypeInfo, key Value) []Value {
 // TYPED-container CARRIER ({:T} map / [:T] list) narrows to a DYNAMIC carrier of
 // the declared element type instead of dynamic(Any). Returns (_, false) when the
 // container carries no narrower-than-Any element type (an untyped Map/List keeps
-// dynamic(Any)). See design/TYPED-CONTAINER-ELEMENT-PRECISION.0.md, Part B.
+// dynamic(Any)). See design/legacy/TYPED-CONTAINER-ELEMENT-PRECISION.0.ignore, Part B.
 //
 // The bound is DYNAMIC (gradual) — a read is only a claim the write-enforcement
 // (Part C) backs. What the narrower bound buys: a provably-DISJOINT dispatch (a
@@ -1424,7 +1424,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		}
 	}
 	// A store-shaped FLEX carrier (`flex {…}` and the set-writes threaded
-	// through it — design/checker-precision-fronts.0.md §2 stage 1): a key
+	// through it — design/legacy/checker-precision-fronts.0.ignore §2 stage 1): a key
 	// this container saw written reads back its recorded bound, surfaced
 	// GRADUAL like the record-schema rule above (a flex tree has runtime
 	// writers the shape cannot see, so the claim is a bound a guard
@@ -1605,7 +1605,7 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 	// A QUOTED CODE element (a dispatch-table entry — `def ops [quote [1
 	// add 2] …] (ops get 0)`) carries its analysed stack effect on the
 	// carrier, so a downstream `do` types its result instead of the
-	// dynamic(Any) hatch (design/checker-precision-fronts.0.md §1 stage 1).
+	// dynamic(Any) hatch (design/legacy/checker-precision-fronts.0.ignore §1 stage 1).
 	// The helper self-gates to plain (non-Compiling) check mode and
 	// declines anything it cannot analyse cleanly, so this only ever
 	// NARROWS the plain-carrier fallback below.
@@ -1757,7 +1757,7 @@ func setStoreHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry)
 }
 
 func setStoreReturnsFn(args []Value, r *Registry) []Value {
-	// Store-identity typing (design/checker-precision-fronts.0.md §2
+	// Store-identity typing (design/legacy/checker-precision-fronts.0.ignore §2
 	// stage 1): a SHAPED store carrier records the write in ITS OWN
 	// KeyTypes, so two stores' same-named keys no longer join. The flat
 	// map is ALSO written — it remains the compatibility fallback for
@@ -1836,7 +1836,7 @@ func getStoreReturnsFn(args []Value, r *Registry) []Value {
 		// Emit a bounded gradual carrier dynamic(Any) — optimistically
 		// compatible with any slot — rather than strict Carry<Any>, which
 		// would fail every typed slot downstream and force a no_signature
-		// or Any catch-all. (design/dynamic-modality-report.10.md, escape
+		// or Any catch-all. (design/legacy/dynamic-modality-report.10.ignore, escape
 		// hatch 1.) A key recorded by a prior `set` keeps its real, strict
 		// carrier.
 		return []Value{NewDynamicCarrier(TAny)}

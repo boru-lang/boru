@@ -94,7 +94,7 @@ import "boru:net" Net.getr	fn [[:String :Fetch][Any][] [:Atom :Fetch][Any][]]	Ne
 import "boru:net" Net.has	fn [[:String :Fetch][Boolean][] [:Atom :Fetch][Boolean][]]	Net.has likewise
 import "boru:net" {a:1} Net.dot a/q	ERROR:uncalled_function	the overloads are anchored on the Fetch type: a Map is NOT a receiver for the qualified form
 
-# --- Server-side TLS (design/NETWORK-TLS-PLAN.0.md §5 phase 6). A
+# --- Server-side TLS (design/legacy/NETWORK-TLS-PLAN.0.ignore §5 phase 6). A
 # listener PRESENTS a credential and may DEMAND one back; a dial
 # verifies one and may present one. Each side rejects the other's keys
 # by name — a `verify: false` quietly accepted on a listener would read

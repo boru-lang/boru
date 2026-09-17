@@ -10,7 +10,7 @@
 # (surface_unsatisfied, listing every gap) unless every operation is
 # satisfied. Membership (sig dispatch, `is`, unify, the tor/tand/tnot
 # algebra) is a parent-chain probe of the conformance set — no
-# structural duck typing. See design/SURFACES.10.md.
+# structural duck typing. See design/legacy/SURFACES.10.ignore.
 #
 # §1  declaration
 def Shape surface {area: (fnsig [[Self] [Float]])} end Shape	Shape	the name denotes its minted node and renders as the name (§6); the contract is the node's recorded content

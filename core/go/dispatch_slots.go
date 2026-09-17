@@ -1,7 +1,7 @@
 package core
 
 // Engine dispatch-hook slots — Stage 3b of the four-piece split
-// (design/ENG-FOUR-PIECE.0.md seam S9). A compiler-piece behavior the
+// (design/legacy/ENG-FOUR-PIECE.0.ignore seam S9). A compiler-piece behavior the
 // core step loop must be able to OFFER without naming compiler symbols
 // registers itself here at init; a nil slot simply declines. At the
 // package cut these become the compiler's registrations onto core's
@@ -83,7 +83,7 @@ var CheckBraid = struct {
 	// call that never happened: a capitalised `def` given a fn body binds a
 	// TYPE, so the name in call position places its lattice node and leaves
 	// the operands after it unconsumed, exit 0 and all
-	// (design/HIGHER-ORDER-FUNCTIONS.0.md §5.1). Offered the reconciled
+	// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1). Offered the reconciled
 	// residual — the exact list CheckResult.Stack reports — so the judgement
 	// reads what the user is shown.
 	NoteStrandedTypeCall    func(e *Engine, residual []Value)

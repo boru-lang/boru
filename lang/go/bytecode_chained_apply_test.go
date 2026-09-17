@@ -3,13 +3,13 @@ package lang
 import "testing"
 
 // bytecode_chained_apply_test.go pins the chained-forward-apply family
-// (design/checker-compiler-completeness-review.0.md §2.1). History: until
+// (design/legacy/checker-compiler-completeness-review.0.ignore §2.1). History: until
 // 2026-08-02 the forward spelling `f (g x)` of two chained Function-param
 // applications slipped past the pending-apply refusal net — noteDynFrameReplay
 // armed the whole-frame replay on a window holding TWO applicable values, the
 // flat re-push lost the inner group's collapse, and the compiled program
 // raised the RET count error where the interpreter applies both fns. The
-// replay was then narrowed to single-applicable windows (sound refusal), and
+// replay was then narrowed to single-applicable windows (refusal), and
 // on 2026-08-03 the Stage-G single-arg increment GRADUATED the family: a
 // leading Function-typed carrier applied to one argument (`(g x)`, g a param)
 // records the same RecordDynApply event the trailing spelling `(x g)` does —
@@ -118,7 +118,7 @@ func TestMultiArgChainedApplyRefuses(t *testing.T) {
 // dyn-BIND of a value the window itself reads may be skipped by the
 // event-order proof. An EFFECTFUL event between the apply and the tail, or
 // a bind of an UNRELATED value, still declines — the RET-time replay would
-// otherwise reorder the tail apply against it. Both refuse soundly with
+// otherwise reorder the tail apply against it. Both refuse with
 // interpreter-parity fallback.
 func TestTailProofNegatives(t *testing.T) {
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")

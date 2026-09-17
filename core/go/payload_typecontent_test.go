@@ -3,7 +3,7 @@ package core
 import "testing"
 
 // isTypeBodyLegacy is the 18-arm shape enumeration IsTypeBody carried
-// before the payload seam (design/TYPE-REPRESENTATION.1.md §N4),
+// before the payload seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4),
 // preserved verbatim as the equivalence ORACLE: the seam must answer
 // exactly as the enumeration did, for every payload kind.
 func isTypeBodyLegacy(v Value) bool {

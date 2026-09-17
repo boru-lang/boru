@@ -1,7 +1,7 @@
 # check/go — Type checker CLAUDE.md
 
 The `check` module is the static-analysis pass cut out of the kernel
-(design/ENG-FOUR-PIECE.0.md): carrier typing and check mode, the
+(design/legacy/ENG-FOUR-PIECE.0.ignore): carrier typing and check mode, the
 fn-body / construction / ordering mirrors, the dispatch-recovery
 braid, and the standalone diagnostic passes — dead overloads, the
 pure-word dry pass, guard-predicate narrowing, static index and size
@@ -35,7 +35,7 @@ Three rules specific to this module:
 
 - **The carrier lattice is NOT here any more** (ADR-013's 2026-08-08
   amendment; reasoning in
-  [design/BASIC-CHECK-CUT.0.md](../../design/BASIC-CHECK-CUT.0.md)). The join family, the body runners, guard narrowing, the
+  [design/legacy/BASIC-CHECK-CUT.0.ignore](../../design/legacy/BASIC-CHECK-CUT.0.ignore)). The join family, the body runners, guard narrowing, the
   carrier constructors, dead-overload detection and the deduping
   diagnostic emitters moved down to `core/go` — they were pure
   functions over core types, and `basic` needs them to carry its

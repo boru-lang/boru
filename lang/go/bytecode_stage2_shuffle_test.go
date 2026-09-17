@@ -86,8 +86,8 @@ def apply-all fn [[xs:List env0:Map] [List] [(xs each [env0 swap pick-b])]]
 
 // A DUPLICATING shuffle over a dynamic element (fresh output IDs — the
 // CALL_NATIVE bake path, not the elision): `dup` feeding a poly-re-matched
-// native must compile-or-fall-back soundly and produce interpreter-identical
-// results.
+// native must either compile or refuse — never diverge — and produce
+// interpreter-identical results either way.
 func TestDynamicDupInEachBodySound(t *testing.T) {
 	stage1aSound(t, `def sq-all fn [[xs:List] [List] [(xs each [dup mul])]]
 (sq-all [2 3 4])`)

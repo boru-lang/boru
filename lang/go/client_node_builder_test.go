@@ -8,7 +8,7 @@ import (
 
 // errCountFor is the shared check-mode error counter for the client node-builder
 // regressions below (radix / tst edge-splitter + node-rebuild patterns from
-// design/CLIENT-FIXES-2026-06-24.md).
+// design/legacy/CLIENT-FIXES-2026-06-24.ignore).
 func errCountFor(t *testing.T, src string) int {
 	t.Helper()
 	a, _ := lang.New()

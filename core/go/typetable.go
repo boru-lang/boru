@@ -825,13 +825,13 @@ var builtinDecls = []builtinDecl{
 	// as children of this node; instances are children of their class.
 	// Classes are NOT Object subtypes — Object is the open mutable
 	// keyed container, classes are sealed nominal records. See
-	// design/CLASS-OBJECT.10.md.
+	// design/legacy/CLASS-OBJECT.10.ignore.
 	{Path: "Ideal/Class", FixedID: 102, Rank: 40_900_000_000},
 	// Ideal/Surface — the root of user-defined surface types (the
 	// pure-contract operation sets minted by the `surface` word).
 	// Conformance is explicit (`<Type> exposes <Surface>`) and checked
 	// loudly at declaration; membership is a conformance-set probe via
-	// surfaceUnifier. See design/SURFACES.10.md.
+	// surfaceUnifier. See design/legacy/SURFACES.10.ignore.
 	{Path: "Ideal/Surface", FixedID: 103, Rank: 40_910_000_000},
 	// Ideal/Module — the module descriptor (moduletype.go). Kernel-
 	// declared since the ADR-012 stage-2 move from lang; the Rank is
@@ -877,9 +877,9 @@ var builtinDecls = []builtinDecl{
 	// conformance. As a constraint outside a surface schema, no value
 	// matches Self — it is a placeholder, not a category. Generic
 	// schemas reuse it for self-reference (`Self of [T]` — D5 in
-	// design/GENERICS.10.md).
+	// design/legacy/GENERICS.10.ignore).
 	{Path: "Type/Self", FixedID: 104, Rank: 60_500_000_000},
-	// Generics metatypes (design/GENERICS.10.md): TypeParam is the root
+	// Generics metatypes (design/legacy/GENERICS.10.ignore): TypeParam is the root
 	// unconstrained type-parameter placeholders mint under (bounded
 	// ones mint under their bound's node); GenSpec is the value `gen
 	// […]` produces and the GenSpec-aware constructor overloads

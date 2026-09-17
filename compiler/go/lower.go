@@ -3265,8 +3265,9 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// call's args — ops[0] (examined first, sig position 0) ends on TOP
 		// (layoutOperands' contract, the callPoly window layout), event
 		// results consumed from where they lie, consts pushed. A layout the
-		// scheduler cannot seat refuses the trap; the caller's whole-program
-		// fallback stands (slow, not wrong).
+		// scheduler cannot seat refuses the trap, and the caller's whole-program
+		// refusal stands — the program is then silently interpreted, which hides
+		// the failure rather than fixing it.
 		if reason := lw.layoutOperands(ev.trap.rematchOps, ev.trap.pos, layoutMsgs{
 			loopResults:  "rematch operands include a variadic loop result",
 			resultNotTop: "stack discipline: rematch operand is not on top (rematch of " + ev.trap.rematchWord + ")",

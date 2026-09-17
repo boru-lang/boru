@@ -100,7 +100,7 @@ func TestFnUnitDynFrameRuntimeCountDefers(t *testing.T) {
 	for _, src := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if compiled {
-			t.Errorf("%q: expected the runtime deferral (sound fallback), got a compiled run", src)
+			t.Errorf("%q: expected the runtime deferral (refused, then interpreted), got a compiled run", src)
 		}
 		requireParity(t, src, gotC, errC, gotI, errI)
 	}
@@ -140,12 +140,12 @@ func TestFnUnitLoopApplyFlowCrossesIsland(t *testing.T) {
 
 // A VALUE-producing callee through the same looper shape accumulates one
 // value per iteration — a runtime residual the static model cannot absorb,
-// deferring soundly.
+// deferring.
 func TestFnUnitLoopApplyValueCalleeDefers(t *testing.T) {
 	src := `import module [def looper fn [[Function] [Integer] [def acc 0 for 3 [def acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, mk: (fn [[x:Integer] [Integer] [x mul 3]])}] end L.looper L.mk`
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if compiled {
-		t.Errorf("expected the runtime deferral (sound fallback), got a compiled run")
+		t.Errorf("expected the runtime deferral (refused, then interpreted), got a compiled run")
 	}
 	requireParity(t, src, gotC, errC, gotI, errI)
 }
@@ -233,7 +233,7 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 // defers to the interpreter's canonical signature_error; and the one shape
 // whose live table CAN drift from the freeze — a callee whose own body
 // rebinds the same name (the dynamic-scope in-place overlap-replace, which
-// survives the callee's teardown) — keeps a sound refusal via the FnBinders
+// survives the callee's teardown) — keeps a refusal via the FnBinders
 // gate.
 func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	src := `def wrapfn fn [[m:Map] [Integer] [def helper fn [[a:Integer] [Integer] [a mul 2] [b:String] [Integer] [7]] helper (m get k/q)]] wrapfn {k:3}`

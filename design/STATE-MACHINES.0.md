@@ -40,8 +40,8 @@ by the cited file):
   `receive` (with `after`) / `register` / `whereis`, bounded mailboxes,
   pattern-matched consume-front dispatch (`design/PROCESSES.0.md`; verified by
   `describe spawn` and by run). A hosted machine's event loop is these words.
-  Note: `design/IMPLEMENTATION-STATUS.10.md` still records PROCESSES/SERVICES
-  as "RFC; no code" — that is stale; `design/NETWORK-IMPLEMENTATION-PLAN.0.md`
+  Note: `design/legacy/IMPLEMENTATION-STATUS.10.ignore` still records PROCESSES/SERVICES
+  as "RFC; no code" — that is stale; `design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore`
   §1 is the ground truth for the shipped subset.
 - **The service layer is implemented**: `service` / `add` / `call` / `send` /
   `state-of` — "a value that owns state and answers pattern-matched requests"
@@ -68,7 +68,7 @@ by the cited file):
   log (verified by run: `fold [bump] [{e: 1} {e: 2} {e: 3}] {n: 0}` → `{n:3}`
   with the element bound first, accumulator second); `scan` yields the audit
   trajectory.
-- **TCO is a language guarantee** (`design/TCO.10.md`) — a process host's
+- **TCO is a language guarantee** (`design/legacy/TCO.10.ignore`) — a process host's
   tail-recursive receive loop cannot blow the stack.
 - **Timer machinery at the host layer**: `receive … after <ms>`, plus
   `boru:time-util`'s clock-capability-gated words.
@@ -98,12 +98,12 @@ boundedly, instead of every process reinventing it. A served machine is a
 whose receive loop is the machine's step. The machine itself is neither: it is
 a **value**, host-independent and testable with no concurrency at all.
 
-### Relationship to `case-exhaustiveness.0.md` and `VALUE-PATTERN-DISPATCH.0.md`
+### Relationship to `case-exhaustiveness.0.md` and `legacy/VALUE-PATTERN-DISPATCH.0.ignore`
 
 The exhaustiveness pass is the strongest static asset this design leans on,
 and it is already load-bearing: hand-written machines that encode states as an
 `enum` and dispatch with `case` get gating state×event coverage today (§6.4).
-`VALUE-PATTERN-DISPATCH.0.md` records the precision gap that blocks the
+`legacy/VALUE-PATTERN-DISPATCH.0.ignore` records the precision gap that blocks the
 *overload* encoding of the same idea (enum-state value-pattern overloads fail
 through variable references); this RFC **endorses that fix as an independent
 effort** (§8 item 3) — it is the one language-level investment adjacent to
@@ -895,7 +895,7 @@ state-machine logic in plain boru get §6.1's checking for free, today:
   everywhere it was tried).
 
 The module's documentation presents both as the drop-down path when the
-declarative table doesn't fit (HOWTO material), and `VALUE-PATTERN-DISPATCH.0.md`'s
+declarative table doesn't fit (HOWTO material), and `legacy/VALUE-PATTERN-DISPATCH.0.ignore`'s
 precision fixes (§8 item 3) make the second encoding robust through variables.
 
 And a third encoding stays deliberately **unblessed**: *boolean history
@@ -944,8 +944,8 @@ machine could do directly.
 ## 8. Language primitives — considered and declined
 
 The corpus default stands: "new behaviour is a word or a literal, nothing
-else" (`effect-oriented-programming-in-boru-report.0.md`,
-`fsharp-units-in-boru-report.0.md`), and `amop-in-boru-report.0.md` §2.1
+else" (`legacy/effect-oriented-programming-in-boru-report.0.ignore`,
+`legacy/fsharp-units-in-boru-report.0.ignore`), and `legacy/amop-in-boru-report.0.ignore` §2.1
 already recommended library-first for exactly this shape ("Do not change the
 core parser first"). Candidates, with verdicts:
 
@@ -979,7 +979,7 @@ core parser first"). Candidates, with verdicts:
    RFC's side.
 3. **Value-pattern-dispatch precision fixes** — **endorsed, as an independent
    effort.** The two partition bugs and the variable-reference gap recorded
-   in `VALUE-PATTERN-DISPATCH.0.md` are not state-machine work, but fixing
+   in `legacy/VALUE-PATTERN-DISPATCH.0.ignore` are not state-machine work, but fixing
    them completes §6.4's second encoding (overload-level exhaustiveness
    through variables). This document adds a consumer to that design's
    motivation; it does not depend on it.
@@ -1029,7 +1029,7 @@ transport story is the distribution story).
 
 - **Phase 0 — preconditions.** The VM fallback double-run fix; loader `Procs`
   sharing; (independent, already recorded elsewhere) the
-  `VALUE-PATTERN-DISPATCH.0.md` partition fixes.
+  `legacy/VALUE-PATTERN-DISPATCH.0.ignore` partition fixes.
 - **Phase 1 — the core module.** `define`/`init`/`step`/`can`/`spec`/
   `classify`/`serve`/`start`; the §3.3 semantics complete (RTC, internal
   drain, bounded postpone, entry/exit + explicit self-transition kinds, named

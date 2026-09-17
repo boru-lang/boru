@@ -54,7 +54,7 @@ func TestListMemberFnCarrierSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal (%s)", c.src, c.note)
+			t.Errorf("%q: compiled — expected a refusal (%s)", c.src, c.note)
 			continue
 		}
 		if !strings.Contains(got, reason) {

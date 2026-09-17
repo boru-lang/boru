@@ -33,7 +33,7 @@ func InstallDef(r *Registry, name string, body Value, stackOnly ...bool) {
 // REDEFINITION (it must drop the colliding overload); a param entering
 // a new scope must not, or it destroys the caller's binding (e.g. a
 // fn-valued arg whose param name collides with a live caller param —
-// design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md).
+// design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore).
 func InstallFrameBinding(r *Registry, name string, body Value) {
 	installDef(r, name, body, true)
 }
@@ -139,7 +139,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// that collides with an outer same-named binding must SHADOW it (a
 		// fresh entry the teardown pops to restore the outer), not drop it.
 		// Dropping the outer entry here is the per-call cleanup over-pop bug
-		// (design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md): the colliding outer
+		// (design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore): the colliding outer
 		// param vanishes, then the frame's undef tail pops the wrong level.
 		// Entries carrying LOCKED signatures (native registrations, module-
 		// wrapper rebindings) are never dropped: locked sigs can never be
@@ -176,8 +176,9 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// when the branch is not taken (or the loop runs zero times), so
 				// the two diverge. Refuse — MarkUncompilable is a no-op off the
 				// compile pass, so plain check and the interpreter are unaffected
-				// and the program runs correctly (slow, not wrong). An
-				// UNCONDITIONAL redefinition (top level or inside `do`) is sound
+				// and the program runs correctly — silently, which is why this
+				// refusal has to stay on the books as a defect. An UNCONDITIONAL
+				// redefinition (top level or inside `do`) has no such divergence
 				// and keeps compiling: CondBodyDepth is 0 there.
 				//
 				// A redefinition inside a FN BODY by a CAPTURING fn value — a
@@ -221,11 +222,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					// nothing. The live lead then resolves the arm's binding
 					// (whose unit no call site compiled) or an unbound name,
 					// diverging from the interpreter. No compiled twin reproduces
-					// a shadow the interpreter does not tear down, so refuse —
-					// slow, not wrong. An IN-FUNCTION family (created inside this
-					// fn, above the baseline) is popped by RET and compiles
-					// soundly, so it is NOT refused (the baseline gate; Codex P2
-					// on #469).
+					// a shadow the interpreter does not tear down, so refuse. That
+					// keeps a wrong answer out and leaves the shape uncompiled —
+					// an open defect, owed the model that reproduces the shadow.
+					// An IN-FUNCTION family (created inside this fn, above the
+					// baseline) is popped by RET and has no such divergence, so it
+					// is NOT refused (the baseline gate; Codex P2 on #469).
 					refusal = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
 				}
 				if refusal != "" {
@@ -352,7 +354,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// leaf-fn / recursion case (fib, a tail-accumulator) — every call skips
 	// BOTH per-call DefTable.Snapshot maps (each O(all bound names)) and the
 	// def-cleanup name scan, the dominant term behind the ~340 allocs/frame
-	// (design/INTERPRETER-SPEED-PLAN.10.md #5). Stack balance is preserved:
+	// (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). Stack balance is preserved:
 	// the fn baseline still pushes/pops (a nil entry) and the DefCleanup
 	// marker still rides the tape (carrying SkipCleanup).
 	needsFrameState := fnDefCopy.Gen != nil || bodyNeedsFrameState(r, s.Body())
@@ -362,7 +364,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	// pairs, zero-Pos ReturnCheck) never vary between calls. Build that
 	// skeleton ONCE here and per call only copy it with the arg values
 	// patched in — the old per-call rebuild minted ~7 ID-stamped tokens
-	// per frame (design/INTERPRETER-SPEED-PLAN.10.md #5). The per-call
+	// per frame (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). The per-call
 	// COPY is mandatory: execMatch's stampResultPos mutates the returned
 	// slice (ReturnCheck Pos, fn-value pos), and ForkConcurrent engines
 	// share this handler. Nothing keys on the shared tokens' Value.IDs —
@@ -547,7 +549,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// the body (`of [T]`, `make (Box of [T])`). AFTER the snapshot,
 		// so the existing DefCleanup truncation tears them down — the
 		// undef tail's capitalised path would Retire the bound type's
-		// canonical node (design/GENERICS.10.md Phase 4).
+		// canonical node (design/legacy/GENERICS.10.ignore Phase 4).
 		if fnDefCopy.Gen != nil {
 			InstallGenCallBindings(r, fnDefCopy.Gen, s.Params, args)
 		}
@@ -555,7 +557,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// Append the body tokens directly: append COPIES them into result's
 		// backing array and s.Body() (the shared BoruImpl.Body) is never
 		// mutated here, so the previous intermediate make+copy was a
-		// redundant per-call allocation (design/INTERPRETER-SPEED-PLAN.10.md #5).
+		// redundant per-call allocation (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
 		result = append(result, s.Body()...)
 		// The canonical cleanup tail: DefCleanup (undoes body-local
 		// defs), __pa (pops Args + FnBaseline), the undef pairs for
@@ -1089,7 +1091,7 @@ func IsHostTypeBody(v Value) bool {
 func IsTypeBody(v Value) bool {
 	// A bare lattice node IS a type; everything else asks its sealed
 	// payload through the one recognition seam (Payload.IsTypeContent,
-	// design/TYPE-REPRESENTATION.1.md §N4). The 18-arm shape
+	// design/legacy/TYPE-REPRESENTATION.1.ignore §N4). The 18-arm shape
 	// enumeration this replaced is pinned as the equivalence oracle in
 	// TestIsTypeContentMirrorsLegacy.
 	if IsBareTypeNode(v) {

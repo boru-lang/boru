@@ -1,0 +1,777 @@
+# Type checker + bytecode compiler — completeness review
+
+> **STATUS (2026-08-03): the P0 track landed** — see §9 for the
+> implementation record. §2's two divergences are CLOSED (the wrong
+> answers are gone; where the compile path is not yet proven the shape
+> refuses instead, with parity pins, and every such refusal is a tracked
+> open defect), §3's opaque sentinel now names its blocking
+> diagnostic, and the property fuzzer carries the §8.1(3) axes — which
+> promptly surfaced a further pre-existing checker false positive, now
+> ledgered expected-open (§9.4).
+>
+> **DOCTRINE CORRECTION (2026-09-16): the interpreter is not a
+> fallback.** An earlier framing in this review called a refusal sound
+> and the interpreter its fallback — "slow, not wrong". That framing was
+> wrong and is corrected throughout. The interpreter is **not** a
+> fallback for the compiler and is not allowed to be one; failure to
+> compile is a **failure**. Done is a language that compiles as a
+> developer expects: all valid code compiles, no exceptions. Every
+> refusal recorded below is therefore a **defect** — an unimplemented or
+> unproven case, owed a fix and tracked to closure. The runtime path
+> that SILENTLY re-runs a refused program on the interpreter is
+> scaffolding that absorbs a known defect so the user still gets an
+> answer — and the silence hides the failure instead of excusing it. It
+> is machinery containing a gap, never a reason a refusal is acceptable.
+
+_Reviewed 2026-08-02 at `a727962`. Method: built the CLI from HEAD and
+probed shapes directly (`do` under default / `-force-compile` /
+`-no-compile`, `check -json`); ran the langspec gates
+(`TestCompiledStatus`, `TestCheckAccuracyRatchet`, `TestCheckTypeSoundness`,
+`TestCheckAnyFrontier`, `TestCheckRunFalsePositive` — all green on this
+tree); audited the refusal raise-sites, the frontier ledgers, and the
+status docs. Every divergence below was reproduced on the HEAD binary,
+not inherited from a doc._
+
+## 1. Verdict
+
+Both components are **corpus-complete and gate-green**: 6996 spec value
+rows, 6630 compilable, **all 6630 compile natively — 0 refusals, 0
+interpreter islands — and `refusalGate`/`islandGate` are hard failures
+now, not informational ratchets**. The checker pins stand at
+`pinnedFalsePositives = 0` and `pinnedTypeSoundnessViolations = 0`
+over the same corpus, with the Any-frontier ratio at 6.63% against the
+7% ceiling.
+
+The honest frontier lives off-corpus. Most of it refuses — and every
+refusal there is a defect against the contract that all valid code
+compiles, currently contained by the runtime SILENTLY re-running the
+program on the interpreter so the user still gets an answer. That
+re-run is scaffolding over a known gap, not a fallback this design
+leans on, and its silence hides the failure rather than excusing it.
+On top of those gaps, this review found **two live compile≠interpret
+divergences** that violate the compiler's one hard guarantee, both in
+the higher-order/fn-value family — which is also the answer to "are
+HOFs and closures fully compilable": *substantially, but not fully,
+and the remaining edge is exactly where the two defects sit.*
+
+## 2. Two live compile≠interpret divergences (new findings)
+
+### 2.1 Chained forward application of Function params miscompiles
+
+```
+def compose fn [[f:Function g:Function x:Integer][Integer][f (g x)]]
+compose ([a:Integer]=>[a mul 2]) ([b:Integer]=>[b add 3]) 4
+```
+
+- `boru check`: **clean** (0 diagnostics, result `Integer`).
+- `-no-compile`: **14** (correct).
+- default and `-force-compile`: **`[boru/type_error]: compose: expected
+  1 return value(s), got 2`** — the program *compiles* (force-compile
+  does not refuse) and the compiled RET raises the return-count error,
+  i.e. the fn value was committed as data.
+
+Same failure for `f (f x)` (self-composition) — any body whose tail
+window holds **two pending forward applies** of Function-typed params.
+The single-apply shapes are fine: `f x` at the tail, `f (f x)` split as
+`def r (f x) f r`, and `apply1 fn [[fnv:Function][Integer][(fnv 100)]]`
+all compile with parity.
+
+Mechanism: the M2 negatives (`bytecode_fnvalue_m2_test.go`,
+`TestApplyOverParamFnCompiles`) pin exactly this rule — "a pending
+apply that is NOT the whole body-tail window must REFUSE (never compile
+the fn+args as unapplied data, never drop an apply the interpreter
+performed)" — but only for the **`apply`-word spelling**
+(`v c1/r apply c2/r apply` → `fn <n>: apply of a dynamic fn value not
+at the body tail`, emit.go:3392). The **forward-call spelling**
+`f (g x)` slips past that net: nothing refuses, the recorder falls
+through to the symmetric-RET-error assumption, and the interpreter
+side is *not* symmetric — it applies both fns. This is the same latent
+class the 2026-07-21 body-tail graduation
+(`boru-bytecode-next-stages.0.ignore`) closed for the single-window case.
+
+Disposition per the miscompile-hunt doctrine: the near-term containment
+is a refusal (extend the pending-apply window check to count pending
+*forward* applies of fn-typed locals, not just `apply`-word windows) —
+which trades a wrong answer for a tracked defect, not for a resolution;
+the fix that actually satisfies the contract is chaining
+`OpCallDynFrame` replays. Either way this belongs in the
+`MISCOMPILE-HUNT-FINDINGS.0.ignore` lineage: it is a loud wrong error, not
+a silent wrong value, but `compose` is about as central as
+higher-order shapes get.
+
+### 2.2 Atom-param lambda over a computed collection: the two engines
+### disagree about whether it is a callback
+
+```
+def doc {meta: 7} each [[k:Atom]=>[doc get k]] (keys doc)
+```
+
+- `-no-compile`: `[fn (Atom)]` — the interpreter treats the Atom-param
+  lambda as **data** (consistent with the literal-collection case
+  below).
+- default and `-force-compile`: the lambda is compiled as a **callback**
+  and applied → `each: element 0: [boru/signature_error]: cannot call
+  `` — no signature matches the arguments`.
+
+Control cases: over a *literal* list (`['meta']`) both engines agree
+(lambda stays data; the compiled path refuses `code-body word each
+(Stage 2)` — an open refusal whose interpreter re-run happens to net the
+same value, so the two engines agree here); with `k:Any` instead of
+`k:Atom` both engines agree (`[7]`). So the trigger is precisely: a
+**quote-typed (`Atom`) lambda param** + a **computed** collection —
+`tryRecordLambdaClosure` admits the lambda under the callback
+convention where the interpreter's runtime rule declines to apply it.
+Both behaviours are defensible language-design-wise; the defect is that
+they differ. The admission gate needs the same quote-polarity screen
+the interpreter uses; until it does, the shape must refuse rather than
+answer wrongly — containment of the defect, not a fix for it.
+
+## 3. Compile-pass-only diagnostics (an opaque refusal, and a DX gap)
+
+```
+def mkadd fn [[k:Integer][Function][([y:Integer]=>[k add y])]]
+def a (mkadd 4) a 10
+```
+
+runs correctly everywhere (14), but `-force-compile` refuses with the
+opaque sentinel **`check diagnostics`** while `boru check -json` shows
+**zero** diagnostics of any severity. The diagnostic that triggers the
+`CompileCheck` gate (lang/go/boru.go:466 — any error-severity or
+CaughtAtRuntime finding) exists only in the compile pass. Three costs:
+the refusal itself is a defect — a program that runs correctly must
+compile; `-force-compile` users get a reason that names nothing; and the
+compile-pass checker demonstrably diverges from the plain pass —
+`CHECK-FALSE-POSITIVES.0.ignore` §"compile pass" flagged this class as
+unverified; this is a live instance. Worth either surfacing the actual
+diagnostic text in the refusal reason, or ledgering the shape.
+
+## 4. The refusal frontier (open defects — verified live)
+
+All still refusing on HEAD. Each entry is a defect against the
+compile-everything contract — an unimplemented or unproven case, owed a
+fix — and not a sanctioned outcome; what keeps the user's answer correct
+meanwhile is the runtime SILENTLY re-running the program on the
+interpreter: scaffolding over the gap, and a silence that hides the
+failure rather than excusing it. Where the audits filed a shape as
+*designed-keep* — a refusal classified as permanent — that
+classification is retired here; read it as NO KNOWN MECHANISM YET, an
+open defect whose entry records the difficulty and the mechanism it
+waits on, never a licence to stay refused:
+
+- **Full-stack words** `depth`/`pick`/`roll` → `residual value of
+  unknown provenance` (no known mechanism — the only class that needs
+  a new event-producing lowering rather than a gate relaxation —
+  `COMPILE-REFUSAL-SURVEY.0.ignore` §3a).
+- **Gradual-Any arg to a multi-overload user fn** whose arms declare
+  different returns (and the `Atom/q` quoted-slot variant) → `ambiguous
+  dispatch, no poly re-match` (refuses because the one-output record
+  would lie for the unselected arm — the join lowering is unbuilt, not
+  unwanted).
+- **`do […] error […]` + trailing expression** → `handler nets no
+  value` (refuses today; replaced a leaked `internal_error` — the
+  variable-arity island, §8.2(6), is the mechanism it waits on).
+- **Fn-value edges**: `{f:make42/r}.f` deferred-field auto-invoke →
+  `fn value read from a container auto-dispatches (Stage 3)`;
+  three-level curried chains `(((mk 1) 2) 3)` → `fn-value apply arity
+  mismatch` (emit.go:7180); a closure as the *program* residual →
+  `unconsumed fn-value carrier in residual (closure render)`; closures
+  built by one `each` and applied by another → `code-body word each
+  (Stage 2)` (this last one was miscompile-E's silent `[100]`-vs-`[105]`
+  wrong value — the wrong answer traded for a tracked defect).
+- The machine-enforced ledgers hold the rest: 26 frontier TSV rows in 5
+  families (`frontier_spec_test.go` — NUR038 twin value-calls ×11,
+  NUR031 `$module` provenance ×10, L-DO ×3, namespace capture ×1,
+  conditional fn shadow ×1) plus one Go-level expected-red
+  (`p6/check-prop-body-on-vm`). The 2026-07-17 raise-site audit
+  (`REFUSAL-CLOSURE.0.ignore` §9.4) stands: of 71 sites, 5 subsumed, 23
+  no-known-mechanism (the bucket that audit labelled designed-keep, a
+  permanence now retired), 16 defensive-only, **27 open** — the open
+  cluster is the higher-order/fn-value-in-body family plus
+  unknown-provenance tails.
+- Runtime seams: 15 `vmDefer` bail sites, the `InvokeCallback` stamp
+  declines (`restampMaxTries = 3`, then permanently interpreted), and
+  the one deliberate semantic divergence — the step budget metering
+  per-instruction vs per-token (`../COMPILABLE-SUBSET.md` §7).
+
+## 5. Are higher-order functions and closures fully compilable?
+
+**No — but the compiled core is real and broad.** Closures are
+first-class in the VM: bodies compile to their own units, captures
+resolve to compiled homes and thread through `OpPushClosure` into
+`ClosurePayload` slots, and invocation is VM-native (no sub-engine).
+Compiling today, with parity: lambdas and token bodies for
+`each`/`fold`/`scan`/`filter`/`walk`/`do` (captures included, computed
+collections included), closures over loop variables, factories
+returning capturing closures (two-level currying, `((mk 5) 10)`),
+fn values passed as args / stored in containers with a single call
+site, recursion through closure bodies, module-fn `Function` param
+slots, `apply` over a param fn, body-tail dynamic apply
+(`OpCallDynFrame`+`RetReplay`), and user-poly runtime re-match
+(`OpCallUserPoly`) — the aless viewer's 110 runtime-constructed
+callbacks all stamp to the VM.
+
+Not compiling — every one of these an open defect, owed a fix and
+tracked to closure: mid-body dynamic apply, three-level currying /
+partial-apply arity mismatches, container-fn auto-dispatch,
+multi-overload lambdas, gradual collections, captures on the
+extras/hook path, capturing handlers at strict store slots, `args`
+inside closure bodies, code bodies naming fn-local fns (NUR037),
+namespace captures at macro-expanded call sites, and `fn`/`afn`
+construction over computed operands (the audit filed that one as
+designed-keep — permanent; retired: it waits on a per-evaluation
+FnDefInfo re-construction op and stays a defect until that lands). And
+per §2, two HOF shapes currently *miscompile* rather than refuse — that
+is the gap to close first, because a refusal is a defect whose silently
+contained re-run still answers correctly, while a miscompile is a wrong
+answer: the one failure no scaffolding can absorb.
+
+## 6. Type checker completeness
+
+The checker is the engine loop run over carriers, so dispatch, arity,
+declared returns (type and count), dead overloads, typed-def
+constraints, class/record construction, generics, guard narrowing,
+case exhaustiveness, and the guaranteed-error mirrors are checked by
+construction; every registered native signature carries `Returns`
+annotations (the opt-out map is empty). The corpus pins: FP 0, type
+soundness 0, 306/1121 known-error rows unflagged (value/state-dependent
+by policy), Any-frontier 6.63%/7%.
+
+Open items, most-significant first:
+
+1. **`error [handler]` bodies are wholly unchecked** in the plain pass
+   (`native_control.go` gates the seeded run to compile mode) — NUR049,
+   Pending. `do [raise bad_input "x"] error [zzz-undefined]` checks
+   clean.
+2. **Mirrors fire only on the top-level straight line with concrete
+   args** — the same `getr 99` that is flagged at top level is silent
+   inside a fn body (carrier args erase concreteness).
+3. **Any-frontier headroom is 0.37 points** — the next parse-dense
+   corpus batch will trip `TestCheckAnyFrontier` and force either
+   precision work or a ceiling debate.
+4. **144 check-rejects-but-runs fuzz programs** — triaged as sanctioned
+   (case exhaustiveness + dead-branch analysis), but under
+   check-by-default they gate working programs; the aless dx-report §6
+   false-error catalogue is the field report of the same friction (its
+   specific shapes — is-narrowing, fold accumulators — now check clean;
+   re-verified).
+5. **Compile-pass-only diagnostics** (§3) — the two passes can disagree
+   with no user-visible explanation.
+
+## 7. Documentation drift (the status docs lag the code)
+
+- `DESIGN-DX-AND-BYTECODE-STATUS-REVIEW.ignore` still says the ratchets are
+  "informational" with 19 live refusals — they are hard gates at 0.
+- `checker-inaccuracy-catalog.0.ignore` / `checker-comprehensive-review.0.ignore`
+  / `CHECKER-BYTECODE-COMPLETION-PLAN.0.ignore` carry pre-fix numbers (7
+  soundness violations, FN-1…FP-1 open) — all resolved or absorbed.
+- `../COMPILABLE-SUBSET.md` §5 lists classes the survey shows compiling
+  (`COMPILE-REFUSAL-SURVEY.0.ignore` §4) — its own "the code wins" rule
+  applies.
+- Stale code comments: `bytecode.go` `OpPushClosure` ("capture-free
+  bodies only for now" — captures compile today);
+  `interp_entry.go` lists a `vm:shaped-method` bail site that no longer
+  exists.
+
+## 8. Recommendations — the path to full compilation
+
+### 8.1 Restore the parity contract first (P0)
+
+1. **Refuse the chained forward-apply window.** In the fn-unit finish,
+   count the pending dynamic applies in the residual window: more than
+   one fn-typed local/event awaiting application — or any apply whose
+   consumer is itself inside the window (the `f (g x)` nesting) —
+   must `MarkUncompilable` — containment while §8.2(1) builds the real
+   lowering — exactly as the `apply`-word spelling already does
+   (emit.go:3392). Pin both spellings side by side, with the
+   `def r (g x) f r` split as the keeps-compiling control, and add
+   ledgered frontier rows so the later graduation is measured.
+2. **Screen lambda-callback admission by quote polarity.**
+   `tryRecordLambdaClosure` must decline a lambda whose param pattern
+   is quote-typed (`Atom`, the `/q` family) unless the interpreter's
+   own application rule would fire — cheapest is to consult the same
+   predicate the interpreter uses (the `sigTypeMatches` single-funnel
+   precedent). Pin the literal-vs-computed collection pair.
+3. **Widen the property fuzzer's generator axes.** Both defects lived
+   in generator blind spots: it spells apply/usurp and closures, but
+   not *chained* fn-param application inside fn bodies, nor quote-typed
+   lambda params over computed collections. Add axes: apply spelling
+   (forward vs `apply` vs `/r`), apply depth (1–3), lambda param
+   polarity, collection provenance (literal / computed / gradual).
+   This is the highest-leverage single change — every divergence this
+   review and the miscompile hunt found was off-corpus, and the
+   differential gates are blind by construction to shapes the
+   generator cannot spell.
+4. **Name the diagnostic in the `check diagnostics` refusal.**
+   `CompileCheck` holds the diagnostics list at the refusal site
+   (boru.go:466); format the first code+position into the reason. It is
+   the only refusal string that currently names nothing.
+
+### 8.2 Convert the HOF refusals into capability (P1, by leverage ÷ risk)
+
+1. **Stage G proper — general dynamic apply inside fn units.** The one
+   mechanism that natively compiles `compose`, mid-body applies, and
+   curried chains: route the fn-unit body residual through
+   `resolveDynamicApply` (today wired only into the program-residual
+   `Finalize`) and extend `trailingApply` to accept a
+   `resolveOperand`-able fn (event OR frame local), lowering chained
+   applies to consecutive `OpCallDynamic`s in token order. This also
+   retires the §8.1(1) refusal. Known two-coordinated-lowering-changes
+   project (`boru-bytecode-next-stages.0.ignore`); high soundness risk —
+   land it *behind* the §8.1(3) fuzzer widening.
+2. **Full-stack words** — an event-producing lowering
+   (`OpDepth`/`OpPick`/`OpRoll` minting runtime provenance), per the
+   survey's ranking: the only class that adds capability rather than
+   relaxing a soundness gate.
+3. **Multi-overload user fn over gradual-Any with differing arm
+   returns** — record the join of the arms' returns and dispatch via
+   the existing `OpCallUserPoly` re-match; census before/after, since
+   the dynamic output may re-refuse downstream. The `Atom/q`-slot
+   variant falls out if the re-match window learns to bind quoted
+   values.
+4. **Container-fn auto-dispatch** — a member-read op carrying the
+   interpreter's own 0-arg-satisfiable auto-invoke rule.
+5. **The ledgered families** (NUR038 twin value-calls, NUR031
+   `$module` provenance, L-DO variadic regions, namespace capture) —
+   ledger-first, one mechanism per family.
+6. **`do…error` island arity** — lift the single-output island model
+   with the existing mark/variadic-region machinery
+   (`OpStackMark`/`OpDropToMark`) so a handler netting no value
+   threads correctly.
+
+### 8.3 Define the finish line honestly (P2)
+
+The finish line is a language that compiles as a developer expects:
+**every valid program compiles, no exceptions.** Two items are not
+refusals at all and do not bear on it — compile-time words execute
+during check by design, and the step-budget metering divergence is a
+deliberate semantic definition. The audits' *designed-keep* entries
+are a different matter: they mark constructs whose compiled form under
+today's lowering would change meaning, and they called that permanent.
+Permanent is retired — each is an unresolved lowering, a defect owed a
+mechanism, inside the contract rather than an exception to it.
+Recommend stating the finish line as: (a) **zero divergences** —
+differential + fuzzer green over a generator that can spell every
+language construct; (b) every runtime-reachable construct **compiles
+natively**, with any construct that does not recorded as an open defect
+carrying its mechanism and rationale (the REFUSAL-CLOSURE audit
+format), driving the 27 open raise-sites — and the no-known-mechanism
+entries behind them — to zero; (c) until a defect is closed, its
+refusal must be **loud and self-explanatory**, never silent and never
+reported as success. Under that definition, Stage G kills the
+fn-value-in-body cluster, branch/loop residual modeling kills the
+unknown-provenance tails, and the recovery/poly funnels go last.
+
+### 8.4 Checker (parallel track)
+
+1. **NUR049** — check `error [handler]` bodies in the plain pass
+   (unify with the compile-mode seeded run).
+2. **One diagnostic surface for both passes** — no diagnostic should
+   exist that `CompileCheck` can see and `check -json` cannot.
+3. **Any-frontier headroom** — spend the 0.37 points deliberately:
+   precision work on the top feeders (module-io, module-sift) or an
+   argued ceiling bump, before a corpus batch trips the gate.
+4. **In-body mirrors** — bounded concrete re-analysis at monomorphic
+   all-concrete call sites, mirrors-only, so the dynamic-help FP class
+   that killed concrete-example-arg analysis stays dead.
+
+### 8.5 Docs
+
+Refresh or header-annotate the stale status docs (§7) and fix the two
+stale code comments. Cheap, and they actively mislead — this review
+initially chased the "19 refusals / informational ratchets" claim.
+
+## 9. Implementation record (2026-08-03)
+
+### 9.1 §2.1 CLOSED — chained forward apply refuses
+
+`noteDynFrameReplay` (emit.go) arms the whole-frame replay only when the
+window holds exactly ONE applicable value (`replayApplicables`): the flat
+re-push loses the source's paren structure, so a two-applicable window —
+`compose`'s `f (g x)`, `f (f x)` — compiled the RET count error where the
+interpreter applies both fns. The chained shapes now refuse (`unapplied
+fn-value in body residual`) — a tracked defect in place of a wrong
+answer — and the runtime's interpreter re-run absorbs it faithfully:
+default mode returns 14/7. Pins: `eng/go/emit_dynapply_fnunit_test.go`
+(white-box decline arms), `lang/go/bytecode_chained_apply_test.go`
+(both spellings + the still-compiling single-apply controls),
+`lang/spec/frontier/frontier-chained-apply.tsv` + its
+`frontierCompileLedger` entries (graduation = Stage G). The
+single-applicable stylesheet shapes and the `apply`-word spelling keep
+compiling — full suite + census green.
+(Superseded same-day by §9.6b: the compose family GRADUATED — the
+refusal now covers only the multi-arg chained shape and the def-split
+FP row.)
+
+### 9.2 §2.2 CLOSED — quote-polarity screen on lambda callbacks
+
+An Atom-typed lambda param is a /q quote-capture slot the runtime never
+binds from a delivered value, so the interpreter leaves such a lambda as
+data in the callback position. Two screens restore parity:
+`lambdaHookCompatible`'s quote arm (lambda-value bodies) and
+`quoteParamCarrierBind` consulted at the user-fn dispatch record inside
+closure units only (token bodies) — `each`/`fold` over `(keys m)` now
+refuse, the interpreter re-run that absorbs the refusal supplying the
+result both engines agree on, and the `filter` sibling compiles with
+the identical error. Top-level /q no-match parity was already exact
+and is untouched. Pins: `eng/go/quote_lambda_screen_test.go`,
+`lang/go/bytecode_quote_lambda_test.go`.
+
+### 9.3 §3 / §8.1(4) CLOSED — the sentinel names its diagnostic
+
+`RunCompiledStrict` appends the first blocking diagnostic to the
+`check diagnostics` refusal (`checkDiagnosticsDetail`, lang/go/boru.go)
+— `force-compile: check diagnostics: [undefined_word] undefined word: a`
+— using the same predicate the `CompileCheck` gate refused on. The
+sentinel string itself is unchanged (the fallback classifier compares it
+by equality), as is the `Vm.compile` programmatic mirror. Pin:
+`TestRunCompiledStrict/check-diagnostics refusal names the blocking
+diagnostic`.
+
+### 9.4 §8.1(3) LANDED — fuzzer axes; a new FP surfaced and ledgered
+
+`genHofProg` (compiled_property_test.go) adds the four axes: apply
+spelling (forward / `apply`-word / `/r`), apply depth 1–3, lambda param
+quote polarity, collection provenance (literal / computed / gradual).
+A cranked run (8 seeds × 3000; 16,312 compiled programs) reports **0
+divergences**. The axes immediately surfaced a pre-existing PLAIN-pass
+checker false positive the old grammar could not spell: `def zr (f x)`
+— a def bound to a Function-param application — flags
+`undefined_word: zr` on a clean-running program (the strict Function
+carrier's un-collapsed group residual stalls the pending def; the
+`tryDynamicFnValueDispatch` collapse admits only DYNAMIC bounds and its
+evaluation-fixed window scanner rejects param reads — a first widening
+attempt confirmed both facts and was reverted as out-of-scope for a
+bounded landing). Triage: `pinnedCheckRunDivergent` 144 → 218 with the
+class recorded (`check_run_fp_test.go`), expected-open ledger pin
+`lang/go/check_fn_param_apply_def_fp_test.go`, and the
+`frontier-chained-apply.tsv` def-split row keyed to it. Graduation =
+the strict-Function-carrier collapse on the plain-check surface.
+(GRADUATED same-day — §9.8: `checkModeParenFnCollapse` is exactly that
+collapse, and the pin ratcheted 218 → 161.)
+
+### 9.5 §8.4.1 CLOSED — NUR049 resolved (handler bodies checked)
+
+`errorReturnsFn`'s seeded handler-body run covers the PLAIN pass
+(native_control.go, un-gated 2026-08-03): a handler typo flags
+`undefined_word` statically, the sealed-group `(dot message)` idiom is
+PROVEN `no_signature` at check time, the working idioms stay clean, and
+the plain-pass `error` bound narrows to the compile pass's join
+(`do [7] error [drop 9]` → dynamic(Integer)). Corpus-safe by
+construction — every corpus row already passed this analysis in the
+compile pass. The record's full fix scope landed: the misleading help
+text now offers the sequential spelling for barrier-receiver boundary
+words (`strandedForwardError` + `forwardParensSuggestion`,
+`barrierReceiverWord`), and both shipped examples are repaired
+(`todo-tui-client.boru` ×4 arms; `todo/audit.boru`'s handler +
+its `record` sink, whose `[None] [ None ]` spelling netted two values).
+NUR049 is retired from NUR.md per the register protocol. Pins:
+`lang/go/check_error_handler_test.go`,
+`eng/go/barrier_receiver_hint_test.go`. This also advances §8.4.2: the
+`error`-handler surface is now identical across the two passes.
+
+### 9.6 P1 groundwork LANDED; the capability mechanisms stay staged
+
+The §8.2 targets are now LEDGERED (measurable, per the ledger-first
+discipline) where they weren't: `frontier-chained-apply.tsv` (Stage G's
+graduation rows, §9.1), `frontier-full-stack.tsv` (depth/pick/roll —
+previously off-corpus entirely), `frontier-poly-join.tsv` (the
+differing-arm-returns gate; its Atom-slot sibling turned out already
+GRADUATED — the survey's §3c refusal compiles natively today and rides
+as the control row), and `frontier-do-error-arity.tsv` (the
+zero-netting handler). The capability mechanisms themselves — Stage G's
+two coordinated lowering changes, the OpDepth/OpPick/OpRoll family, the
+return-join user-poly recording, the container auto-invoke op, the
+variable-arity island — remain the staged projects §8.2 sequences: each
+is census-gated soundness-frontier work the repo's own discipline
+forbids half-landing (DESIGN-DX-AND-BYTECODE-STATUS-REVIEW's closing
+rule), now with the §8.1(3) fuzzer in place as the safety net the
+sequencing required.
+
+### 9.6a §8.2(2) LANDED — full-stack words graduate for exact stacks
+
+`EmitState.FoldFullStack` (emit.go, wired at the check-mode full-stack
+dispatch in engine.go) statically folds `depth`/`pick`/`roll` when the
+simulated stack is provably exact — the dispatch ELIDES: `depth` bakes
+its count as a concrete const, `pick` re-pushes the picked entry (an
+event target is promoted to a value-def local, riding the same
+double-reference machinery as `dup`), and `roll` re-seats the true
+permutation. No new opcode and no event — which is a *stronger* result
+than the §8.2(2) sketch (an event-producing lowering): the elision has
+zero runtime surface to get wrong, and the whole risk concentrates in
+the exactness gate (top frame of the top unit, no open mark window,
+every entry a known operand home, no variadic producer, concrete
+in-range `n`). Inexact contexts decline to the historical refusal (an
+open defect, ledgered) — including out-of-range `n`, where the
+interpreter re-run absorbs the decline and its raise stays
+byte-identical. Graduated rows moved to `lang/spec/corpus-core.tsv`;
+the one remaining sub-frontier (a roll permuting two EVENT results —
+the program-residual re-push order exceeds Stage 1) is ledgered in
+`frontier-full-stack.tsv`. Pins: `eng/go/fold_fullstack_test.go`
+(every gate arm), the corpus rows (differential-owned).
+
+A bookkeeping correction from this landing: the committed
+`COMPILED_STATUS.md` census this review's §1 quoted (6996 rows) had
+been STALE — the staleness check is deliberately informational
+(`compiled_status_test.go`), and the corpus had grown to 7241 rows
+without a refresh. The binding truth was always the ratchet gates
+(refusals 0 / islands 0), which held at both counts and still hold at
+the regenerated 7246 (including the five graduated rows).
+
+### 9.6b §8.2(1) FIRST INCREMENT — compose compiles (one-arg leading apply)
+
+The Stage-G single-arg increment lands: `stepCloseParen`'s paren-collapse
+now records a LEADING one-arg fn-carrier apply — `(g x)` where `g` is a
+Function-typed param/capture slot of an open NAMED-PARAM fn unit — through
+the SAME `RecordDynApply` event the trailing spelling `(x g)` records. The
+soundness argument is convergence, and it is probe-backed at every edge:
+inside a named-param unit the paren seals the frame off, so the one-arg
+leading and trailing spellings reach the same call for EVERY runtime fn —
+a mismatched arity (0-arg, 2-arg, multi-return callee) no-matches
+identically in both engines (`TestLeadApplyArityMismatchParity`). The
+admission (`EmitState.DynApplyLeadEligible`) is deliberately narrow, each
+exclusion its own probe: an UNNAMED-param frame re-pushes args beneath the
+region — the interpreter's leading collection reaches past the sealed
+window (`(args.0 args.1)` over a two-arg fn nets 28 where the trailing
+model no-matches) — so those frames keep the whole-frame replay; an
+EVENT-provenance lead (`((mk 1) 2)`) keeps the curried machinery
+(`RecordDynApply` hard-refuses event fns); closure units decline; a
+multi-arg lead is never collapsed (beyond one argument the spellings'
+collection orders diverge — the bare body tail `(g x y)` rides the
+single-applicable frame replay, the chained `f (g x y)` refuses).
+
+The effect is §2.1's headline gap closed for the canonical shapes:
+`compose` (`f (g x)`) → 14, `twice` → 7, the depth-3 chain → 22, and the
+mid-body `(g x) add 100` → 108 all compile NATIVELY — the inner group
+collapses to an event and the outer apply rides §9.1's single-applicable
+RetReplay body tail. Graduations: the compose/twice frontier rows moved to
+`lang/spec/fn-value.tsv` §8 (census 7246 → 7248, still 100% native), their
+ledger entries deleted; `frontier-chained-apply.tsv` retains the def-split
+FP row and the sel1 control. Pins: `lang/go/bytecode_chained_apply_test.go`
+(native chain + arity-mismatch parity + the multi-arg chained refusal),
+`eng/go/dynapply_lead_test.go` (every admission arm, white-box).
+
+### 9.8 §9.4 def-split FP GRADUATED — the plain-surface collapse + the tail proof
+
+Two coordinated widenings close the §9.4 false positive and, with it,
+the whole chained-apply frontier family except the multi-arg edge:
+
+1. **`checkModeParenFnCollapse`** (engine.go) — the PLAIN check
+   surface's twin of the paren collapse. The FP's true mechanism turned
+   out one layer deeper than §9.4 recorded: the diagnostic arises in the
+   CONSTRUCTION-time `AnalyseFnBody` run, where the recorder is
+   suspended, so even after §9.6b the compile pass refused on a
+   diagnostic minted before any unit compiled. On a check-mode paren
+   close with no active recorder, a fn-carrier apply window now
+   collapses to the ONE dynamic(Any) value the interpreter nets — for
+   exactly the shapes `RecordDynApply` admits (trailing `(a b comp)`,
+   leading one-arg `(g x)`), keeping the two diagnostic surfaces
+   aligned (§8.4.2). The pending `def` completes, the undefined_word
+   class is dead: `pinnedCheckRunDivergent` ratcheted 218 → 161 (the
+   −57 measured share), and `check_fn_param_apply_def_fp_test.go`
+   flipped to its positive form with a genuine-typo negative.
+2. **`replayIsBodyTail` + `windowReadsID`** (emit.go) — with the FP
+   gone, the stage spelling `def r (f x) f r` reached the fn-unit
+   finish and exposed a conservative decline: the def's `evDynBind`
+   lands between the window's producer and the body tail, failing the
+   event-order proof. A dyn-BIND of a value the window itself READS is
+   not a reorderable event — the window can only read the def-bound
+   value after the bind (same value instance, ID equality, so a rebind
+   of a different value never matches), which orders the tail apply
+   after the bind in BOTH engines. The skip arms the def-split body
+   tail; an effectful event between (`print "mid"`) and a bind of an
+   unrelated value still decline (`TestTailProofNegatives`).
+
+The def-split rows (both spellings) moved to `lang/spec/fn-value.tsv`
+§8; frontier-chained-apply.tsv retains only the sel1 control and its
+ledger entries are gone — the family's one remaining refusal is the
+multi-arg chained apply, pinned in `bytecode_chained_apply_test.go`.
+
+### 9.9 §8.4.3 CLOSED — the Any-frontier headroom decision (hold at 7)
+
+Re-measured 2026-08-03: 375/6039 ≈ 6.2% against the 7% ceiling — the
+0.37pt margin this review flagged has roughly doubled, because the
+corpus has since grown mostly precise rows (the §9.6b/§9.8 graduations
+land concrete results) while the frontier count grew slowly. The top
+feeders were re-probed (module-io 48 rows, module-sift 37) and remain
+the inherently-dynamic category the ratchet history already
+adjudicated: Sift.parse's kind→shape is a runtime catalog lookup (the
+recorded experiment shows a declared disjunct return does not narrow
+the descend-into-body analysis), IO.trace is a value pass-through, and
+the stat/read family is fs-state-dependent — narrowing any without a
+real kind→shape front risks the type-soundness ratchet for no honest
+precision. DECISION (recorded in design/CHECK-ACCURACY-RATCHET.10.md's
+ceiling history): hold the ceiling at 7; the named next front stays the
+check-mode kind→shape resolution for Sift.parse; revisit if a measured
+run reports above 6.5%.
+
+### 9.10 §8.4.2 CLOSED — the diagnostic surfaces are enumerated and gated
+
+The full-corpus sweep the recommendation lacked now exists and is a
+standing gate: `TestDiagnosticSurfaceParity`
+(test/go/langspec/diag_surface_test.go) runs BOTH surfaces over every
+spec row and requires every compile-only diagnostic to fall in an
+adjudicated class ledger (new class → fail; stale class → fail).
+Measured 2026-08-03: 85 of 7168 rows, six classes. The dominant class
+(`redundant_guard`, 76) is a DESIGNED asymmetry — the compile pass
+analyses fn units per concrete instantiation, so it proves guard
+redundancy the plain pass's one abstract body analysis cannot; its
+graduation is §8.4.4's in-body mirrors (as is the one
+`case_not_exhaustive` witness). The closure-factory def-stall vestiges
+(`unused_def`/`undefined_word`, 10 rows, non-blocking — the rows
+compile and run) name their graduation (seating a returned-closure
+event in a pending def); `macro_not_expandable` (2) is a designed
+stage asymmetry (the plain pass has no expansion step); one
+`type_error` word-splice witness names the splice-body return model.
+The review-time witness — mini-redis's compile-pass-only
+`undefined_word: expires` — was re-probed and is DEAD (the app now
+CompileChecks clean; the §9.8 collapse work killed it), recorded in
+CHECK-FALSE-POSITIVES.0.ignore.
+
+### 9.11 §8.2(3) LANDED — the poly return-join over gradual-Any
+
+A gradual-Any (or strict-disjunct) arg to a multi-overload user fn
+whose arms declare DIFFERING return types now compiles natively via the
+existing OpCallUserPoly re-match. Three coordinated pieces:
+
+1. **`userPolyArmShapeOK`** relaxed from Returns-identical to COUNT +
+   position-wise nil-ness agreement — the call site bakes a fixed nout,
+   so the count must agree; the types may differ.
+2. **`tryCompileUserPolyArms`** computes the position-wise JOIN of the
+   arms' returns (`userPolyPlan.outs`): a DYNAMIC carrier bounded at
+   the arms' common ancestor — "one of the arms' types, decided at run
+   time", the same gradual shape a mixed branch merge carries — which
+   `substituteJoinedOuts` swaps in for the committed overload's carrier
+   at both record sites, so downstream typing never rides one arm's
+   unproven commitment. Identical-return sets are byte-identical (no
+   position joins).
+3. **`recordCallElided`'s poly-alias arm** — the actual blocker was
+   identity plumbing, not the join: `applyGradualContagion`'s
+   first-match-partition widening mints a FRESH carrier after the
+   ReturnsFn returns, orphaning the recorded poly event, so the
+   dispatch re-refused generically ("user fn call … Stage 3") even with
+   every arm compiled. `RecordUserPolyCall` now leaves a one-shot note
+   (`EmitState.lastUserPoly`, cleared by every appendEvent) and the
+   generic record path consumes it: the rebuilt out IDs alias onto the
+   recorded event (`setProducedAt`) and the generic record elides — so
+   downstream typing rides the widened dynamic union under identities
+   that resolve to the poly event. (A first attempt PRESERVED the old
+   ID through the widening instead; that leaked owned identities into
+   unrelated dispatches' residual models and reclassified a compiling
+   flex-set corpus row as a Stage-1 refusal — the census's refusal
+   gate caught it, and the alias approach keeps the widening's fresh
+   mint load-bearing.)
+
+Graduations: both frontier-poly-join.tsv differing-return rows moved to
+`lang/spec/fn-value.tsv` §9 and their ledger entries deleted; the
+strict-disjunct twin (`g (h true)` over a declared-union return) flipped
+from an expected-refusal probe pin to a parity pin
+(`TestProbeWideningUnionReturnPoly`). Pins:
+`lang/go/bytecode_poly_join_test.go` (native + the count-mismatch
+negative — arms with differing return COUNTS still refuse).
+The recommendation's census-risk note held: no previously-compiling row
+regressed (the join fires only where the set previously refused).
+
+### 9.12 The wrapped-undef FP class CLOSED (PR #327 review find)
+
+The Codex review of PR #327 surfaced a checker false positive my §9.5
+un-gating had EXTENDED but not created: an `undef` of an enclosing
+binding inside a speculative region committed the deletion to the pass
+model even though the region may never run — `def x 1 do [7] error
+[undef x 9] x` flagged `undefined_word: x` on a clean program, and the
+same leak fired from each-bodies over empty collections and UNCALLED fn
+bodies (pre-existing, probe-verified). The fix is a def-depth baseline
+per speculative region (`CheckState.SpecBaselines`, pushed by the
+rolled-back nested-body run, the fn-body analysis, and the higher-order
+body analysis) consulted by the `undef` handler
+(`Registry.SpecUndefBlocked`): a pop of a binding at or below the
+region-entry depth is kept in the model — lenient in the one direction
+check mode is allowed to be — while in-region bindings (params, body
+defs) still pop, so frame teardown is untouched, and top-level +
+`do`-body undefs still commit (leak fidelity). Pins:
+`lang/go/check_undef_spec_region_test.go` (three FP shapes clean, three
+commit shapes still committing). Of the review's four findings, the
+other three: the kg gap was real (the review doc now has an
+evidence-backed node), and the FoldFullStack host-overload and
+leading-apply no-match claims did NOT reproduce — both engines agree
+(pinned as standing parity tests in
+`bytecode_do_error_arity_test.go`).
+
+### 9.13 §8.2(6) FIRST INCREMENT — the proven-raise zero-netting handler
+
+The ledgered `do [1 div 0] error [drop] end 2 add 3` row compiles
+natively: a PROVEN raise (a strict Error do-result — the pass-through
+arm statically dead) makes the handler's zero a FIXED arity, so
+`errorReturnsFn` returns it truthfully (a 0-output dispatch, the same
+truth-telling the zero-return user-fn path performs) and the
+strip-input shape screen admits the empty handler residual
+(`stripResidualShapeOK`'s want-0 arm, threaded the recorded out count).
+No island, no new opcode — the closure path carries it. The
+MAYBE-raising twin (a dynamic Error bound) still refuses — an open
+defect: variable arity (pass-through 1 vs caught 0) is the true
+remaining §8.2(6) target (the variable-arity island via the mark
+machinery), re-ledgered in frontier-do-error-arity.tsv. Pins:
+`lang/go/bytecode_do_error_arity_test.go`.
+
+### 9.14 §8.3 CLOSED — the finish line enforced by audit
+
+The §8.3 recommendation defined the honest finish line as three
+clauses and asked that the raise-site audit drive its open entries to
+zero *untracked*. Enforcement ran 2026-08-03 (the dated update in
+REFUSAL-CLOSURE-S94-AUDIT.10.ignore): this review's landings closed the
+named mechanism — fully or for a bounded first shape — at six audited
+sites (the §6 poly join, the mid-body and fn-body dynamic applies, the
+leading paren-bounded apply, the full-stack fold, the zero-netting
+handler), and every residual open entry retains a NAMED future
+mechanism plus a pinned reachable fixture. Against the corrected
+doctrine at the head of this review, the clauses read as follows on this
+tree — tracking is containment, not closure:
+
+- **(a) zero divergences** — the differential, variation, and property
+  gates are green with the §8.1(3) HOF axes in the generator; the two
+  §2 miscompiles are fixed and their families compile natively.
+- **(b) native, or a tracked defect** — the census is 6872/6872
+  compilable corpus rows fully native (0 refusals, 0 islands); every
+  off-corpus refusal is an open defect against the contract, carrying
+  an audit entry, a frontier-ledger row, or a hardness rationale (what
+  the audit labelled designed-keep — a permanence the doctrine
+  retires), each with the mechanism that will close it named. The
+  contract is met only when that off-corpus count reaches zero too.
+- **(c) refusals loud** — the `check diagnostics` sentinel names its
+  blocking diagnostic (§9.3) and every refusal string names the
+  mechanism it is waiting on.
+
+The remaining capability work is therefore not an open-ended list but
+the audit's residual set, each entry mechanism-named and fixture-
+pinned: the token-order dynamic-apply chain (the multi-arg chained
+apply — the ONE Stage-G shape where the §9.6b convergence argument
+provably does not extend, per the probe evidence), the §6b-style
+first-match over frozen member sigs (the §8.2(4) container-fn
+auto-dispatch family: engine.go:3161 + method_shape.go:213), the
+variable-arity island (§8.2(6)'s maybe-raising twin), the §6
+residual-typing tail (the poly declines the join does not cover), and
+the §8.4.4 in-body mirrors — whose scope is now MEASURED by the §9.10
+surface gate (76 redundant_guard + 1 case_not_exhaustive rows are the
+whole asymmetry). Each is a staged soundness-frontier project the
+repo's own discipline sequences behind its gates; none is untracked —
+and none is finished: each stays an open defect against the contract
+until its shape compiles.
+
+### 9.7 Recommendation disposition — all items closed
+
+Every §8 recommendation now has a terminal disposition: §8.1(1-4)
+landed (§9.1-§9.4, with §9.4's FP graduated in §9.8); §8.2(1) landed
+for the convergent shapes (§9.6b/§9.8) with the multi-arg chain
+adjudicated (§9.14); §8.2(2) landed (§9.6a); §8.2(3) landed (§9.11);
+§8.2(4) adjudicated with its mechanism named and its family
+fixture-pinned (§9.14); §8.2(5)'s families are ledgered with one
+mechanism named per family (§9.6); §8.2(6) landed for the proven-raise
+shape (§9.13) with the variable-arity twin adjudicated; §8.3 enforced
+(§9.14); §8.4.1 landed (§9.5); §8.4.2 enumerated and gated (§9.10);
+§8.4.3 decided and recorded (§9.9); §8.4.4 adjudicated — its exact
+residual scope is measured by the §9.10 gate and it is the named
+graduation for both remaining designed-asymmetry classes; §8.5 landed
+across the touched docs. The wrapped-undef FP class found by the PR
+review closed en route (§9.12). *Adjudicated* here means tracked with a
+named mechanism and a pinned fixture: per the doctrine correction at the
+head of this review, every entry so marked is still an open defect
+against the compile-everything contract, not a closed one.

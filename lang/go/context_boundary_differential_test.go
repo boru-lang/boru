@@ -39,7 +39,7 @@ import (
 // to a nested-`if` chain, `otherwise`'s list argument, list
 // auto-evaluation, an interp-string hole — has no call to wrap, so it
 // cannot be bracketed at all: instead, a context write through a handle
-// read inside one REFUSES compilation (NUR054, the "slow, not wrong" rule)
+// read inside one REFUSES compilation (NUR054, the refusal rule (a defect the runtime absorbs))
 // and the whole program runs on the interpreter, whose scoping is
 // canonical. Those rows therefore agree the way the ungrouped map-slot row
 // below agrees — both sides of the comparison are the interpreter — and if
@@ -223,7 +223,7 @@ context has y/q`},
 		t.Errorf("interpreter/compiler context-boundary divergences: %d, budget %d.\n"+
 			"A NEW divergence was added. The contract (design/COMPILABLE-SUBSET.md) is "+
 			"that a form the compiler cannot lower faithfully must be REFUSED, not "+
-			"answered differently — 'slow, not wrong'. If this row is genuinely "+
+			"answered differently; the refusal is contained, not fixed. If this row is genuinely "+
 			"unavoidable for now, raise the budget deliberately and say why in NUR054.",
 			open, openDivergenceBudget)
 	}

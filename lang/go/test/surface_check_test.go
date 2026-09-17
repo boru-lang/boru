@@ -35,7 +35,7 @@ def area fn [[c:Circle] [Float] [3.14]]
 Circle exposes Shape
 `
 
-// TestCheckSurfaceShapeTyping pins S2's core (design/SURFACES.10.md):
+// TestCheckSurfaceShapeTyping pins S2's core (design/legacy/SURFACES.10.ignore):
 // a required operation called on a SURFACE-typed carrier types via
 // the contract's shape — clean, no no_signature degrade — and the
 // result type is the shape's declared return, not Any.

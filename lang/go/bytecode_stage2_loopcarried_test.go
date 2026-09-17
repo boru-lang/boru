@@ -142,7 +142,7 @@ func TestLoopCarriedUndefStaysSound(t *testing.T) {
 // `add 1` when the loop runs ZERO times, so `(pickfn 0)` silently miscompiled
 // to 12 (should be 11) before this refusal landed; `(pickfn 2)` coincidentally
 // agreed at 12 because the loop runs. Refuse — compiled == interpreter at every
-// n (slow, not wrong). See the conditional-fn-shadow divergence fix.
+// n — containment, not a fix. See the conditional-fn-shadow divergence fix.
 func TestLoopCarriedFnValueRebindStaysSound(t *testing.T) {
 	base := `def pickfn fn [[n:Integer] [Integer] [def h ([x:Integer] => [x add 1]) for n [def h ([x:Integer] => [x add 2])] end (h 10)]]`
 	// The DEFINITION carries the unsound loop rebind, so every call refuses.

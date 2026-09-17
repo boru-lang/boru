@@ -11,7 +11,7 @@ import (
 
 // BuildFnUtilModule creates the "boru:fn-util" native module — the point-free
 // function vocabulary the higher-order capability audit found missing
-// (design/HIGHER-ORDER-FUNCTIONS.0.md §6.4): compose, pipe, curry, partial,
+// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §6.4): compose, pipe, curry, partial,
 // const, identity, flip, on, memoize. Every word was writable in user boru in
 // a handful of lines; shipping them native removes the friction AND the §5.8
 // compile refusals the user-space spellings draw — a native word's produced

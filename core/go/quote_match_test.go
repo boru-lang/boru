@@ -10,7 +10,7 @@ import "testing"
 // refuses to compile instead of falling to the value sig (TAny, ReturnsIdentity).
 // The guard rejects a non-concrete carrier at a /q position. This is
 // check-mode-only — at runtime the operand is concrete, so positionalMatch is
-// unaffected there. See design/module-fn-checkstate-ownership.2.md.
+// unaffected there. See design/legacy/module-fn-checkstate-ownership.2.ignore.
 func TestPositionalMatchQuoteArgRejectsNonConcreteCarrier(t *testing.T) {
 	dynAny := func() Value { c := NewCarrier(TAny); c.Dynamic = true; return c }
 

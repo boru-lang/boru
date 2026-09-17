@@ -403,7 +403,7 @@ func TestClosureArgsStaysDynamic(t *testing.T) {
 // overlap-redefinition filter, which DROPPED the caller's `comp`; the undef
 // cleanup tail then over-popped the survivor to depth 0, so the SECOND
 // `comp/v h` errored `undefined word: comp`. See
-// design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md and InstallFrameBinding.
+// design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore and InstallFrameBinding.
 func TestFrameParamShadowsCollidingFunctionParam(t *testing.T) {
 	// buildFnBodyHandler path: a named-param fn (h) invoked via a helper,
 	// whose Function param `comp` collides with caller t's `comp`, reused twice.

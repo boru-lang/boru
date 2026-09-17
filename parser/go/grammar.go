@@ -98,7 +98,7 @@ type parserTokens struct {
 // setupBaseTokens registers the boru token table from the declarative
 // grammar artifact (grammar.json — fixed tokens with their source
 // text, matcher-produced tokens by name; `<` / `>` are general-purpose
-// tokens per design/GENERICS.10.md D14, and #XML carries a whole
+// tokens per design/legacy/GENERICS.10.ignore D14, and #XML carries a whole
 // embedded literal filled by the xml_literal matcher) and removes
 // backtick from jsonic's string/multi chars so template strings are
 // handled by custom rules. Returns the struct view alongside the
@@ -1561,7 +1561,7 @@ func setupInterpGrammar(j *jsonic.Jsonic, t parserTokens) {
 }
 
 // setupAngleGrammar defines the generics angle-bracket sugar rules
-// (design/GENERICS.10.md Phase 6, decisions D14/D15): `Box<Integer>`.
+// (design/legacy/GENERICS.10.ignore Phase 6, decisions D14/D15): `Box<Integer>`.
 //
 // The consumer is CONTEXTUALLY GATED (D14): an angle group opens only
 // when the value that just closed is a capitalised bare name — the

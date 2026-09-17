@@ -27,7 +27,7 @@ were.
 
 The second value here was `{i:Integer}` — the map a `name:Type` pair
 lowers to, spliced onto the body by the return-by-value sugar (deleted;
-see [FN-OUTPUT-SIG.0.md](FN-OUTPUT-SIG.0.md)). A reader who could SEE
+see [legacy/FN-OUTPUT-SIG.0.ignore](legacy/FN-OUTPUT-SIG.0.ignore)). A reader who could SEE
 `{i:Integer}` sitting in the returns would have recognised their own
 output signature in the value and found the bug immediately. Instead the
 message sent them looking at `convert`, which was innocent.

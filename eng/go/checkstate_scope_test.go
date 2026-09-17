@@ -8,7 +8,7 @@ import (
 )
 
 // The §4 collision guard, validated at the mechanism level
-// (design/module-fn-checkstate-ownership.1.md §5a, the prerequisite that makes
+// (design/legacy/module-fn-checkstate-ownership.1.ignore §5a, the prerequisite that makes
 // §5b's shared CheckState safe).
 //
 // Under §5b a module sub-registry transiently shares the parent compile pass's

@@ -138,7 +138,7 @@ RANK             TYPE PATH                  REPRESENTATIVE LITERAL          NOTE
 ```
 
 *(Update, 2026-08-20: the type-node fusion
-([TYPE-REPRESENTATION.1.md](TYPE-REPRESENTATION.1.md) §6, the `tcmp`
+([legacy/TYPE-REPRESENTATION.1.ignore](legacy/TYPE-REPRESENTATION.1.ignore) §6, the `tcmp`
 flip) changed the user-band exemplar. `def Positive (Integer gt 0)` now
 mints a node parented at `Integer`, so it orders in the SCALAR band —
 just after `Integer`, strictly below the concrete integers:

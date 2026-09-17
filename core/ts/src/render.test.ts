@@ -1,7 +1,7 @@
 // Unit campaign for the render surface — value.ts's toString arms and the
 // exported renderers, plus canon.ts's tails.
 //
-// design/CORE-TS-COVERAGE.0.md stage 2. Every expectation is the Go form the
+// design/legacy/CORE-TS-COVERAGE.0.ignore stage 2. Every expectation is the Go form the
 // function names as its mirror: renderSugar tracks the kernel's String arm,
 // renderInterpSegments tracks renderInterpParts "byte for byte", and
 // renderXmlTmplSrc tracks renderXmlTmplSrc.

@@ -1,0 +1,403 @@
+# Sub-Engine vs Main Tape — Review of Every Spawn Site
+
+**Status:** Review / discovery note (not an ADR). Answers the question:
+*for each place the kernel or language layer spawns a sub-engine, could
+the work run on the main tape instead, using mark and move cells — and
+would that improve performance and reduce resource usage?*
+
+**Method.** Every production (non-test) `New(r)` / `NewTop(r)` +
+`.Run(…)` site in `eng/go` and `lang/go` was cataloged and read in
+context, together with the two main-tape cell mechanisms the engine
+already has (`Mark`/`Move` with `ForCont`/`IfCont`, and the fn-frame
+protocol `(ₘ … __DC __pa undef… [__RC] )`). The per-spawn cost was
+measured directly (§3). Site-by-site verdicts are in §5; ranked
+recommendations in §6.
+
+**Summary of findings.**
+
+1. The conversion this review asks about has **already been done where
+   it pays most**: named-fn dispatch splices frames onto the main tape
+   (design/legacy/TCO-STAGED.10.ignore), and `for` / `if` / `case` branches run via
+   mark/move cells and paren splicing. The kernel's direction of travel
+   already agrees with the question.
+2. Mark/move as it exists is **not a general sub-engine replacement**:
+   Mark cells are *skipped*, not treated as barriers, by stack-argument
+   collection, so a mark-delimited body is not stack-isolated the way a
+   sub-engine's fresh tape is. The fn-frame paren cell is the isolating
+   main-tape mechanism, and it carries most of the conversion cost.
+3. The sub-engine is also the interpreter's **only error-trapping
+   boundary** (`do`/`error`, the test runner, help examples) and its
+   only seam for engine-level hooks (trace, step-debug, profiling,
+   recorder isolation). Those sites cannot move to the main tape
+   without inventing new machinery that would re-create a sub-engine in
+   cell form.
+4. The real, measurable waste is not "the sub-engine exists" but "**a
+   fresh engine+tape is allocated per invocation**": ≈92 µs and
+   ≈189 KB per spawn (≥164 KB of it the 1024-entry tape floor), paid
+   *per element* in the hot callback words. The VM's island engine
+   already proves the fix — reuse via `reuseTape` — which is ~10×
+   faster and ~1700× lighter *with zero semantic change*. That, not a
+   mark/move rewrite, is the recommended optimization for the hot
+   sites (§6 R1).
+5. One genuine sub-engine→main-tape flip is already on record as a
+   residual: `execFnDefSig`'s CallBoru branch when
+   `capturedReg == e.registry` (TCO-STAGED Stage 5 residuals). It stays
+   the top conversion candidate, gated on boundary spec rows (§6 R2).
+
+---
+
+## 1. The two mechanisms, precisely
+
+### 1.1 Sub-engine (`New(r).Run(tokens)`)
+
+A sub-engine shares the caller's `*Registry` (defs, types, contexts,
+args stacks, FlowCtrl, check state) but gets its **own tape, pointer,
+step limit, and engine-level fields** (`trace`, `recorder`, `marks`,
+`isTop`, `reuseTape`). Its isolation properties, each load-bearing
+somewhere in the tree:
+
+- **Fresh stack.** The body sees exactly the inputs spliced in front of
+  it; it cannot consume the caller's stack values, and its residual is
+  harvested as a `[]Value` return, not merged into the caller's tape.
+  Result-shape contracts ("exactly one value, else error/discard")
+  hang off this.
+- **Error trap.** `sub.Run` returning an error is the interpreter's
+  try/catch. `do`+`error`, the `boru:test` runner, help-example
+  rendering, and the debug dashboard all convert a body error into a
+  value/diagnostic and continue. The tape has no error-recovery cell;
+  an error mid-tape aborts the whole `Run`.
+- **Engine-hook seam.** `SetTrace` (trace/profile/step-debug),
+  `Recorder`, `elemEvalRecordable`, and check-mode budget/emit
+  isolation (`IsolateEmit` / `IsolateBudget`) attach per-engine.
+- **FlowCtrl transparency.** `break`/`continue` propagate outward via
+  the shared registry (`exitWithFlowCtrl` returns the residual tape
+  cleanly for a non-top engine), so nesting sub-engines does not
+  change loop semantics.
+
+### 1.2 Main-tape cells
+
+Three cell families run nested work on the main tape today:
+
+- **`Mark`/`Move`** (`stepMark`/`stepMove`, engine.go): one-shot replay,
+  plus `ForCont` (for-loop iteration state, accumulates `Results`
+  across iterations and splices them at loop end) and `IfCont` (lazy
+  condition → branch splice). Used by `for` (native/forloop.go) and
+  `if` (native/conditional.go, native_control.go).
+- **Paren groups.** `spliceArg` wraps a code-body branch in
+  `( … )` so it evaluates as a grouped sub-expression in place.
+- **Fn frames** (`fn_frame.go`): `(ₘ args… body… __DC __pa undef…
+  [__RC] )` — the TCO-STAGED protocol. The FrameOpen paren is the
+  stack barrier; the cleanup tail (`DefCleanup` cell, `__pa` word,
+  `undef` pairs, `ReturnCheck` cell) reproduces on the tape what
+  `CallBoru` does in Go around its sub-engine.
+
+**The critical asymmetry:** `resolvedIndicesBefore` (stack-argument
+collection) **stops at `OpenParen` but only *skips* `Mark`/`Move`
+cells** (engine.go:3023). Forward scans do stop at marks
+(engine.go:1403, 6382), but the downward stack walk does not. So a
+body placed between a mark and a move *can consume the caller's stack
+values below the mark*, and its residuals merge into the caller's
+stack. For `for`/`if` this is the intended inline-block semantics.
+For a callback body (`each [add]` over one input) it would silently
+change behaviour: a sub-engine raises "insufficient args"; a
+mark-delimited body would eat the enclosing stack. Any conversion
+that needs isolation must therefore use the **paren/frame** cell
+shape, not bare mark/move — which is exactly what the fn-frame
+protocol is.
+
+### 1.3 What a conversion of a callback word would actually require
+
+Handlers (`each`, `fold`, `inner`, …) are invoked mid-dispatch by
+`execMatch` and must return their results synchronously — the result
+feeds forward collection and the sig's `Returns` contract. To run the
+body on the main tape instead, the word must return *tokens* for the
+engine to step (as `for`/`if` do), plus:
+
+- a continuation cell per iteration (an `EachCont` analogous to
+  `ForCont`) that harvests per-iteration results and, at the end,
+  splices the *assembled list* (not raw values) — new kernel machinery;
+- a frame/paren wrapper per iteration for stack isolation (§1.2);
+- rework of check-mode analysis and the bytecode story: these words
+  currently route through the `InvokeBody` seam precisely so the VM
+  can run compiled closures without the interpreter
+  (`design/legacy/boru-bytecode-plan.0.ignore` P1); the interpreter and VM paths
+  are byte-identical today, and a tape-driven interpreter path would
+  have to prove that equivalence again;
+- error-trap parity where the word offers it (`do`).
+
+That is a semantics-bearing redesign, not an optimization — and the
+measured hot cost (§3) turns out not to require it.
+
+---
+
+## 2. Where the conversion already happened (precedent)
+
+| Feature | Old shape | Current shape |
+|---|---|---|
+| Named `def f fn […]` call | `CallBoru` sub-engine per call | body spliced as a main-tape frame; TCO elides tail frames (TCO-STAGED Stages 1–4b) |
+| Module-fn self/mutual recursion | (believed Go-recursive) | one `CallBoru` boundary per entry, then main-tape frames inside (TCO-STAGED Stage 5 finding) |
+| `for` | — | mark + body + `MoveCont(ForCont)` replay on the main tape |
+| `if` / chained `elif` | — | mark + condition + `MoveIf(IfCont)`; branches splice as `( … )` groups |
+| Module wrapper delegation | CallBoru per call | `isTrivialDelegationBody` short-circuit → direct `execMatch`, "no body splicing, no sub-engine" |
+
+The pattern of the successful conversions: **control flow whose body is
+inline source** (loops, conditionals, fn bodies) moved to the tape;
+**callback/analysis/sandbox execution** stayed on sub-engines.
+
+---
+
+## 3. Measured cost of a sub-engine spawn
+
+Micro-benchmark (Go 1.x, Intel Xeon 2.8 GHz, `eng/go`, one-literal
+program, i.e. pure spawn overhead):
+
+```go
+// fresh spawn per call (what InvokeBody's interpreter branch does)
+for i := 0; i < b.N; i++ { _, _ = New(r).Run(toks) }
+// reused engine (what the VM's island runner does)
+e := New(r); e.reuseTape = true
+for i := 0; i < b.N; i++ { _, _ = e.Run(toks) }
+```
+
+| | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| Fresh `New(r).Run` | 92 178 | 188 771 | 6 |
+| Reused (`reuseTape`) | 8 927 | 112 | 2 |
+
+The dominant term is the tape: `DefaultTapeInitialFloor = 1024`
+entries × 160 B/Value ≈ **164 KB allocated and zeroed per spawn**,
+regardless of body size. Every element of `each [1 add] xs` pays it.
+At 200k elements that is ~37 GB of allocation churn; the CLI run of
+`iota 200000 → each [1 add]` takes ~10.5 s wall on the same box.
+Reuse removes ~90 % of the time and ~99.9 % of the allocation with
+**no observable semantic difference** — the isolation properties of
+§1.1 are per-`Run`, not per-allocation. (The floor exists for
+recursion headroom on *top-level* programs; a per-element callback
+never needs it, so an alternative/complementary fix is a small
+`TapeConfig.InitialSize` for element-eval engines.)
+
+The VM already learned this lesson: `vmContext.islandEng` is a single
+reused sub-engine with `reuseTape` for exactly this reason
+(vm.go:105, tape.go `Reload`).
+
+---
+
+## 4. Blocker taxonomy
+
+Each site in §5 is tagged with the blockers that apply:
+
+- **B-REG** — runs on a *different registry* (module sub-registry,
+  policy-sandboxed fresh registry, `ForkConcurrent`). The main tape
+  belongs to an engine bound to the caller's registry; body words must
+  resolve elsewhere. Not expressible as tape cells.
+- **B-GOR** — runs on *another goroutine* / asynchronously (await
+  branches, timer/interval callbacks, HTTP eval). A shared tape is a
+  data race.
+- **B-HOOK** — needs *engine-level hooks or modes*: `SetTrace`
+  (trace/profile/step-debug), recorder isolation, check-mode toggled
+  on/off, budget/emit isolation. Cells have no per-region hook scope.
+- **B-ERR** — relies on the sub-engine as an *error trap* (error →
+  value/diagnostic, execution continues). The tape has no catch cell.
+- **B-ISO** — relies on *stack isolation / result-shape contracts*
+  ("exactly one value or def-time error", "last residual", "residual
+  list is the result"). Convertible only via frame cells + new
+  continuation machinery (§1.3).
+- **B-SEAM** — sits behind `InvokeBody`/`CallBoru` for VM parity;
+  a tape-driven interpreter path forks the two execution shapes.
+- **COLD** — not a hot path (def-time, type-construction, module load,
+  debug word): conversion value ≈ 0 regardless of feasibility.
+
+---
+
+## 5. Site-by-site verdicts
+
+### 5.1 Kernel runtime paths (eng/go)
+
+| Site | What it runs | Blockers | Verdict |
+|---|---|---|---|
+| `registry.go:1467` `CallBoru` | module fns, host calls, fn values via captured registry | B-REG (module case), B-ISO, B-SEAM | **Keep.** Named same-registry fns already bypass it via frame splice; what remains is mostly cross-registry by construction. |
+| `engine.go:4986` `execFnDefSig` CallBoru branch, `capturedReg == e.registry` | a module-fn value applied inside its own module (callbacks passed back in) | none hard — same registry, results already spliced back | **Convert (R2).** Already recorded as a TCO-STAGED Stage-5 residual: "routing it onto the splice branch is a small flip"; needs drain/flow boundary spec rows first. |
+| `invoke.go:27` `InvokeBody` interpreter branch | every higher-order code body: `each`/`fold`/`scan`/`do`/`filter`/`case`/`where`/`group`/`having`/`order`/`outer`/`select` | B-ISO, B-SEAM, B-ERR (`do`) | **Keep the seam; fix the allocation (R1).** Per-element fresh spawn is the hot cost; reuse removes it without touching semantics. |
+| `engine.go:3388` `autoEvalList`, `:3909` `autoEvalMap`, `:3482/3746` interp-string parts, `:3728` `evalParenExprResults` | container-element / template-hole evaluation | B-ISO (element isolation + collect-into-container), B-HOOK (`elemEvalRecordable`, recorder interplay) | **Keep; candidates for reuse (R1).** A collect-into-list/map cell would be new machinery duplicating what a `Run` return already gives. |
+| `trace.go:141` `RunTrace` | `trace [...]` word | B-HOOK (per-run trace callback) | **Keep.** A separate observed execution is the feature. |
+| `vm.go` island engine | interpreter fallback islands inside compiled runs | already reused (`reuseTape`) | **Keep — it is the model to copy.** |
+| `macro_expand.go:134/:284` | macro template body / unquote escapes | B-ISO (last-residual contract, scoped via Defs snapshot/restore), COLD-ish (per macro application) | **Keep.** |
+| `core_helpers.go:247` etc. | remaining CallBoru delegations | as CallBoru | **Keep.** |
+
+### 5.2 Kernel check/compile/def-time paths (eng/go) — all COLD
+
+| Site | Purpose | Blockers | Verdict |
+|---|---|---|---|
+| `carrier.go:2819` `RunCarrierBodyWithDefs` | symbolic branch analysis (check mode) | B-HOOK (recorder guard, def rollback, budget), B-ISO | **Keep.** Branches must NOT commit to the main straight-line. |
+| `carrier.go:3488` `runFnBodyOnce` / `AnalyseFnBody` | fn-body return inference, memoized fixed point | B-HOOK, B-ISO | **Keep.** |
+| `engine.go:4142` `concreteEvalOnce` | const-folding: runs twice with check mode OFF | B-HOOK (mode toggled off mid-compile), B-ISO | **Keep.** |
+| `core_make.go:1168`, `fn_params.go:135`, `generics_unify.go:69`, plus lang twins (`native_definition.go:442`, `native_type_gen.go:158`) | "evaluate a paren/list span to exactly one type" at def/construction time | B-ISO (==1-result contract), COLD | **Keep.** Conversion risk >> gain. |
+| `compile_sandbox.go` | registry snapshot/rollback around the compile pass | not a spawn site | n/a — and any main-tape scheme would still need it. |
+
+### 5.3 Language layer (lang/go)
+
+| Site | Word(s) | Hot? | Blockers | Verdict |
+|---|---|---|---|---|
+| `native_array.go:1760/1777/1811/1827` | `inner` (pair-op + agg-op, 1D/2D) | per element/cell | B-ISO; also bypasses `InvokeBody` today | **Route through `InvokeBody` (R3) + reuse (R1).** Sibling `outer` already uses the seam. |
+| `native_array.go:1935` | `eachrank` | per cell | B-ISO | **Reuse (R1).** |
+| `native_map_iter.go:126` | map `each`/`fold` quotation path (interpreter fallback) | per entry | B-ISO, B-SEAM | **Reuse (R1).** |
+| `filter.go`, `native_array.go` each/fold sites | via `InvokeBody` | per element | see InvokeBody | **R1.** |
+| `native_control.go:302/320` `do` eval; `:208` do+error; `:1041` error handler | `do`, `error` | per call | **B-ERR** (the whole point), B-SEAM | **Keep.** The sub-engine IS the try/catch. |
+| `conditional.go:340` `runCaseBody`, `:115` paren match; `native_control.go:776` case subject | `case` | per clause | B-ISO; branches already splice via parens once matched | **Keep; reuse where per-clause cost shows.** |
+| `modules/rand.go:402/441` | `Rand.list-of`, `Rand.map-from` (interpreter fallback) | per element | B-ISO | **Reuse (R1).** `list-of` is loop-shaped — the one site where a ForCont-style conversion would be natural — but the compiled path already avoids the cost. |
+| `modules/parselang.go:606` | `parse <kind>` deferred dispatch | per call | ==1-result contract | **Leave;** low value, `NewTop` semantics involved. |
+| `native_behave.go:364/454/520/540` | user `behave` compare/unify/nodify/canon bodies | hot via `sort`/`cmp` | B-ISO + **re-entrancy** (fires from inside `CompareValues` mid-step — the main tape is busy) | **Keep; reuse is the only safe optimization, with care for nesting.** |
+| `log_sinks.go:200`, `log_span.go:378` | fn log sinks, `Log.with-span` | per record / per call | re-entrancy (sink fires mid-statement), B-ERR (span status) | **Keep; reuse for the sink.** |
+| `native_temporal_await.go:42`, `native_temporal_timeout.go:31` | `await*`, `timeout`/`interval` | — | **B-REG + B-GOR** (ForkConcurrent + goroutines) | **Keep.** Isolation is the semantics. |
+| `modules/vm.go` run/check/compile-InSubEngine | `Vm.*` sandbox words | — | **B-REG** (fresh registry + composed policy), B-HOOK | **Keep.** Sandboxing is the feature. |
+| `native_module_module.go:179` | inline `module […]` body | load-time | B-REG | **Keep.** |
+| `modules/debug*.go`, `debugserve/server.go:173` | trace/profile/step/dashboard/HTTP eval | — | B-HOOK, B-GOR, B-ERR | **Keep.** |
+| `native_help.go:71`, `modules/test.go` bodies | help examples, test runner | — | B-ERR, B-HOOK (budget/emit isolation) | **Keep.** |
+| `query.go:518`, `setpath.go:134` | query clause subexpr, computed path segment | occasional | B-ISO | **Leave;** reuse only if profiling shows it. |
+
+---
+
+## 6. Recommendations (ranked)
+
+**R1 — Reuse sub-engines at the hot per-invocation sites instead of
+converting them.** Extend the island pattern (`reuseTape` +
+`Tape.Reload`) beyond the VM: a small registry-scoped free-list of
+engines (a pool, because bodies nest: an `each` body can invoke
+`each`), acquired by `InvokeBody`'s interpreter branch and the raw
+per-element sites (`inner`, `eachrank`, map-iter quotation path,
+`Rand.list-of`/`map-from`, behave bodies, log sinks). Measured effect:
+~10× time, ~1700× allocation per spawn (§3). Zero semantic change —
+every isolation property of §1.1 is preserved. Design cares:
+`ForkConcurrent` must not share the pool (clear it in the fork, like
+`debugEngines`); error paths must still return engines to the pool
+(or drop them — a pool miss just allocates); a `Reload` too-small
+fallback already exists. A complementary/cheaper variant: give
+element-eval sub-engines a small `TapeConfig.InitialSize` instead of
+the 1024-entry floor.
+
+**R2 — Flip `execFnDefSig`'s same-registry CallBoru branch to the
+splice branch.** The one true sub-engine→main-tape conversion left on
+the table, already identified in TCO-STAGED Stage 5 residuals. It
+gives fn *values* applied in their own module the same frame-splice
+path (and eventually TCO symmetry) named fns have. Gate it the way the
+design doc asks: add drain/flow boundary spec rows first
+(break/continue crossing that boundary, residual drain shape), then
+the flip is small.
+
+**R3 — Route `inner` through `InvokeBody`.** Not a tape question but
+surfaced by this review: `inner` spawns raw sub-engines while its
+sibling `outer` uses the seam, so compiled closures in `inner` bodies
+lose VM-native execution. Mechanical, improves VM coverage, and makes
+R1 apply to it for free.
+
+**R4 — Do not convert the callback words (`each` family, `do`,
+`case`) to mark/move.** The blockers are semantic, not implementation
+effort: marks are not stack barriers (§1.2), the tape has no error
+trap (`do`), result-assembly needs new continuation cells, and the
+interpreter/VM byte-parity that the `InvokeBody` seam guarantees would
+have to be re-proven for a second interpreter execution shape. The
+performance motive disappears once R1 lands. If inline-block semantics
+for a loop-shaped word are ever *wanted* (a deliberate language
+change), `ForCont` is the precedent — but that is a spec'd semantics
+change, not an optimization.
+
+**R5 — Leave the isolation-by-design sites alone.** Sandboxing
+(`Vm.*`), concurrency (`await`, timers), observation (trace, profile,
+step-debug, dashboard, HTTP eval), analysis (carrier/fn-body/const-fold
+check engines, macro expansion), and error-trapping (test runner, help
+examples) use the sub-engine *because* it is not the main tape. For
+these, the sub-engine is the cheap implementation of a semantic
+boundary, and cells would have to re-invent it.
+
+---
+
+## 7. Outcome record (implemented July 2026, this branch)
+
+R1–R3 were implemented; R4/R5 are standing decisions (no conversion —
+the callback words keep the `InvokeBody` seam, the isolation sites keep
+their sub-engines).
+
+**R1 — engine pool (`eng/go/engine_pool.go`).** `Registry.enginePool`
+parks up to 8 reusable engines (`reuseTape` + `Tape.Reload`); acquire
+POPS so nested bodies get distinct engines; `ForkConcurrent` starts
+with an empty pool (a parked engine back-points to the pool's owner);
+engines whose tape grew past 4096 entries are dropped, not pinned.
+`RunPooled` **copies the residual out before release** — `Run`'s
+return aliases the tape backing array under `TakeAll`'s
+ownership-transfer contract, and a later `Reload` would clobber a
+retained slice (the one real hazard found during implementation; the
+copy is a handful of Values against the ~164KB spawn it replaces).
+Converted sites: `InvokeBody`'s no-Invoker branch (every higher-order
+code body), the VM `invokeClosure` raw-token branch, map `each`/`fold`
+quotation bodies, `eachrank`, `Rand.list-of`/`map-from` interpreter
+paths, the fn log sink, and the four `behave` bodies (via
+`RunPooledTop`, preserving their NewTop flow/panic semantics — New and
+NewTop share one step limit, so top-ness is the only delta). Pinned by
+`engine_pool_test.go` (parity with fresh runs, reuse, nesting,
+error-path release, isTop reset, fork isolation, grown-tape drop,
+residual non-clobber).
+
+**R2 — same-registry `execFnDefSig` flip (`engine.go`).**
+`capturedReg == e.registry` now falls through to the main-tape frame
+splice; only genuinely cross-registry values take `CallBoru`. Empirical
+boundary work (instrumented sweeps): the branch is reached from source
+ONLY by an **anonymous** fn in a module export map value-dispatched
+back inside its own module — named module fns resolve through their
+registered body-runner handler (already splicing) even as values. Every
+observable probe (result, module-scope resolution, args.N, def
+cleanup, raise, break/continue flow errors) is **identical pre/post
+flip**; the boundary rows pin that invariance
+(`lang/spec/module-fnvalue-boundary.tsv` + the value twins in
+`lang/go/native/fnvalue_sameregistry_test.go`, including the
+cross-registry negative).
+
+**Found and guarded: a pre-existing compile unsoundness.** The new
+boundary rows exposed that a fn with an UNNAMED `Function`/`FnDef`
+param compiled to a unit that misses the runtime frame auto-dispatch
+(returns 0 values where the interpreter returns the dispatch result) —
+independent of the flip (reproduced on the unflipped tree). Fixed for
+the fn-unit analysis path with a refusal guard in
+`carrier.go::runFnBodyOnce` (new documented tier, see
+design/legacy/P7-ENDGAME.10.ignore). **Follow-up landed:** the auto-dispatch
+itself was subsequently judged a language-design defect and removed —
+arguments are now inert on placement across every dispatch path
+(design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore §7, which also records the
+CallBoru residual-trim and the flow-control frame-unwind fixes that
+completed it). The guard stays with an updated justification (unnamed
+args flowing to residuals are still unmodelled by unit lowering;
+refusal gate at 17).
+
+**R3 — `inner` via `InvokeBody`.** The five raw `New(reg).Run` sites
+in `innerHandler` now use the seam, matching `outer` — compiled
+closures run VM-native, interpreter bodies get the pool for free.
+
+### Measured results (Intel Xeon 2.8GHz, 4 vCPU)
+
+Micro (committed benchmark `eng/go/engine_pool_bench_test.go`,
+one-literal program = pure spawn overhead, 200k iterations):
+
+| | ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| `BenchmarkSubEngineFresh` | 91 864 | 188 771 | 6 |
+| `BenchmarkSubEnginePooled` | 9 321 | 304 | 3 |
+| improvement | **9.9×** | **620×** | 2× |
+
+Macro (CLI wall-clock, `boru do`, before = commit 12fd523, after =
+this change set):
+
+| Program | Before | After | Δ |
+|---|---:|---:|---:|
+| `(iota 100000) each [1 add]` | 6.38 s | 1.72 s | **3.7×** |
+| `(iota 200000) each [1 add]` | 10.46 s | 3.33 s | **3.1×** |
+| `inner [mul] [add] (iota 20000) (iota 20000)` | 4.28 s | 0.70 s | **6.1×** |
+| `for 200000 [def s (s add i)]` (mark/move path, unchanged) | 6.58 s | 7.15 s | noise |
+
+Allocation churn for the 200k `each` drops from ~38 GB
+(200 001 × 189 KB) to ~60 MB of pooled-run overhead — the "reduce
+resource usage" goal of the original review, delivered without
+touching the semantics the sub-engine encodes.
+
+Full verification: `make fmt && make vet && make lint && make test`
+green, including the langspec gates (differential, compiled coverage
+at the new documented tier, check-accuracy ratchet at the new pinned
+floor) and the full TSV spec corpus.

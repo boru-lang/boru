@@ -3,7 +3,7 @@ package core
 import "sync/atomic"
 
 // Observability seams for the runtime-independence program
-// (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, C4 + Phase 10): two
+// (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, C4 + Phase 10): two
 // arm-able hooks that make silent engine decisions observable WITHOUT
 // changing behaviour, the way the stamp log does for stamping decisions
 // (stamp_report.go). Both are TEST SEAMS (design/TEST-SEAMS.10.md), not API:

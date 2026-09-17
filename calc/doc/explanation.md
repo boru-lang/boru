@@ -269,4 +269,4 @@ factually intact — not just designed-to-be intact.
 - The dispatch algorithm itself, including the unified
   `args[1] op args[0]` reasoning, has its mathematical
   justification in
-  [`design/SIGNATURE-MATCHING-PSEUDOCODE.10.md`](../../design/SIGNATURE-MATCHING-PSEUDOCODE.10.md).
+  [`design/legacy/SIGNATURE-MATCHING-PSEUDOCODE.10.ignore`](../../design/legacy/SIGNATURE-MATCHING-PSEUDOCODE.10.ignore).

@@ -64,7 +64,7 @@
 
 Status: **design under examination — decisions taken; D3 implemented
 on this branch** (2026-07-22). Revision of
-[FLEX-ATTRS.0.md](FLEX-ATTRS.0.md): after reviewing that note's
+[legacy/FLEX-ATTRS.0.ignore](legacy/FLEX-ATTRS.0.ignore): after reviewing that note's
 analysis, the maintainer took four decisions (§1) that replace the
 instance-attribute mechanism. This note records the decisions, designs
 each piece, and re-runs the same four-perspective examination —
@@ -86,7 +86,7 @@ Grounding — verified against the live tree and a fresh binary
 - `eng/go/typetable.go:642-796`, `lang/go/test/fixedid_stability_test.go`
   (FixedID space), `lang/go/native/native_keyval.go` (KeyVal — the
   tree's one existing nominal Map child, used below as a live probe)
-- `design/FLEX-NODES.10.md`, `design/FLEX-ATTRS.0.md` (prior designs)
+- `design/FLEX-NODES.10.md`, `design/legacy/FLEX-ATTRS.0.ignore` (prior designs)
 
 
 ## 1. The decisions

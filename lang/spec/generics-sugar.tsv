@@ -12,7 +12,7 @@
 # marker ever reaches the engine value stream — macros, quote, and
 # Vm.parse see the canonical form. Commas between entries/args are
 # optional separators, exactly like list elements.
-# See design/GENERICS.10.md §6 + the Phase 6 landed-state note.
+# See design/legacy/GENERICS.10.ignore §6 + the Phase 6 landed-state note.
 #
 # §1  declarations — sugar/canonical twins
 def Box<T> class {value:T} end Box	Box	a sugared class-schema head — the name renders (§6)

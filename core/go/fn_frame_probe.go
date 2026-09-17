@@ -1,6 +1,6 @@
 package core
 
-// Tail-call detection (design/TCO-STAGED.10.md Stage 2). The probe is a
+// Tail-call detection (design/legacy/TCO-STAGED.10.ignore Stage 2). The probe is a
 // read-only structural scan of the tape around a dispatching fn-body
 // call; it answers "is this call in tail position of an enclosing fn
 // frame whose tail the engine could run eagerly?". Detection only —

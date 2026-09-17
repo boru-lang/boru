@@ -47,7 +47,7 @@ func TestSpliceDynComputedPayloadCompiles(t *testing.T) {
 	// instant it is stepped standalone) and graduates with it.
 	mustCompileWithParity(t, `def mk fn [[] [List] [[7 8]]]  def xs (mk)  word xs`, "[7 8]")
 
-	// A RE-READ of the payload def after the spread keeps the sound refusal:
+	// A RE-READ of the payload def after the spread keeps the refusal:
 	// the splice reassigns the payload's provenance to the spread event, so
 	// the trailing `xs` would resolve to the variadic spread instead of the
 	// original list (PR #279 review: compiled [1 2 2] vs interp [1 2 [1 2]]).

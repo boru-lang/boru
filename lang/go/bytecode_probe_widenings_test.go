@@ -1,7 +1,7 @@
 package lang
 
 // Three probe-verified gate widenings (the REFUSAL-CLOSURE §9.4 open-site
-// sweep, 2026-07-17), each turning a sound refusal into a compiled shape:
+// sweep, 2026-07-17), each turning a refusal into a compiled shape:
 //
 //   - a computed range START/STEP that resolves to a frame LOCAL lowers
 //     (computedRangeBounds passes bounds as-is; RecordLoop admits const +

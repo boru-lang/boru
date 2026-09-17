@@ -96,7 +96,7 @@ type EmitRecorder interface {
 	// §6.5's each-body recovery). bodyID is the body Value's ID — the
 	// latch's identity guard: a nested body's analysis during the outer
 	// unit's compile overwrites the latch, and the mismatched ID makes
-	// the outer bridge decline to a sound refusal instead of pairing
+	// the outer bridge decline — refusing instead of pairing
 	// against the wrong run. r is the noting registry, for the
 	// module-registry fence. Inactive: plain no-op.
 	MultiRunBodyGuard(r *Registry, bodyID string) func()
@@ -238,7 +238,7 @@ type EmitRecorder interface {
 	// data (Engine.noteFnResultReSteps, NUR124). The recorder plans a
 	// re-step deopt over the call's results for it, or declines the unit.
 	NoteFnResultReStep(v Value, resume SrcPos)
-	// Stage-0b promotions (design/ENG-FOUR-PIECE.0.md): the probes that
+	// Stage-0b promotions (design/legacy/ENG-FOUR-PIECE.0.ignore): the probes that
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
 	InClosureUnit() bool

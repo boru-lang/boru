@@ -139,7 +139,7 @@ func TestFrontierSpecInterp(t *testing.T) {
 const docMod = `import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end `
 
 // hof* — shared def prefixes of the frontier-hof-audit.tsv rows (the
-// higher-order audit's §1 programs, design/HIGHER-ORDER-FUNCTIONS.0.md).
+// higher-order audit's §1 programs, design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore).
 // Must match the TSV rows byte-for-byte — the orphan arm catches drift.
 const (
 	hofSKI    = `def kk x:Any => [y:Any => [x]] end def ss f:Function => [g:Function => [x:Any => [(f x) (g x)]]] end def ii ((ss kk/v) kk/v) end `
@@ -216,7 +216,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	`context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1`: {why: "NUR054: a context read inside an auto-evaluated list has no compiled context layer", failsWith: "no layer to hand out"},
 
 	// Conditional fn-shadow — a MISCOMPILE (variation sweep,
-	// forward-barrier.tsv:73); now a SOUND REFUSAL: a user fn redefined
+	// forward-barrier.tsv:73); now a REFUSAL: a user fn redefined
 	// inside a conditionally-reached body overlap-removes the enclosing
 	// overload in place, so the branch/loop def rollback cannot restore it and
 	// compiled resolution bakes the shadow while the interpreter keeps the
@@ -263,9 +263,9 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// region now refuses at lowerCall's store-prologue gate — a promoted
 	// variadic result's stores pop success-arity values the raise path
 	// never delivers — one stage before the "residual shape beyond Stage 1"
-	// decline these rows used to surface. Same sound refusal, earlier and
+	// decline these rows used to surface. Same refusal, earlier and
 	// truer diagnosis.
-	// Re-diagnosed 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the region's
+	// Re-diagnosed 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the region's
 	// `M.dec` call fails dispatch, which is now an error-severity check
 	// diagnostic in the model-undermining class (dispatch did not resolve, so
 	// there is no call to compile) — the pipeline therefore refuses on the
@@ -297,7 +297,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// Chained forward application of Function params (frontier-chained-apply
 	// .tsv) — the compose family, a live MISCOMPILE until 2026-08-02 (the
 	// whole-frame replay's flat window lost the paren structure: compiled
-	// RET count-error, interpreted 14), then a sound refusal
+	// RET count-error, interpreted 14), then a refusal
 	// (noteDynFrameReplay declines a window with >1 applicable value).
 	// GRADUATED 2026-08-03 in three coordinated steps: (1) the Stage-G
 	// single-arg increment — a leading one-arg fn-carrier apply `(g x)`
@@ -470,7 +470,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// islands verbatim through OpCallDynMixedFromMark (rows moved to
 	// lang/spec/bytecode-migrated.tsv; family pinned in
 	// lang/go/bytecode_markwindow_test.go). The def-msg rows above and the
-	// module-export row keep their sound refusals (a PROMOTED def read /
+	// module-export row keep their refusals (a PROMOTED def read /
 	// a non-event region entry decline the window).
 
 	// The twin regime's placement frontier (frontier-twin-placement.tsv,
@@ -594,7 +594,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// wide-join negative keeping the drift refusal).
 
 	// do-unit registry replay — was a MISCOMPILE (variation sweep,
-	// 2026-07-13); now a SOUND REFUSAL (drift graduated the same day): the
+	// 2026-07-13); now a REFUSAL (drift graduated the same day): the
 	// bake decision declines a body carrying a capitalised def
 	// (bodyHasReplayHazard), so the interpreter owns the shape with full
 	// parity. Full graduation = the Phase 6 JIT detached-unit cache compiles
@@ -617,10 +617,10 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// ───────────────────────────────────────────────────────────────────
 	// frontier-hof-audit.tsv — the higher-order audit's §1 programs
-	// (design/HIGHER-ORDER-FUNCTIONS.0.md §1, pinned 2026-08-21). Three
+	// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §1, pinned 2026-08-21). Three
 	// refusal families, all pre-existing and documented in the audit:
 	//
-	// (1) audit §5.8 / COMPILABLE-SUBSET.md "slow, not wrong": a curried
+	// (1) audit §5.8 / COMPILABLE-SUBSET.md §1: a curried
 	//     combinator's body result is an inner fn literal closing over the
 	//     enclosing parameters — unknown provenance, so the mint refuses
 	//     and the interpreter owns the program. The CPS rows are the same
@@ -667,7 +667,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	hofPitem + `def pseq fn [[a:Function b:Function][Function][ ( fn s:String Map [ def r1 (a s) if (r1.ok) [ def r2 (b (r1.rest)) if (r2.ok) [ {ok:true val:[(r1.val) (r2.val)] rest:(r2.rest)} ] [ {ok:false rest:s val:None} ] ] [ {ok:false rest:s val:None} ] ] ) ]] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def two (pseq digit/v digit/v) end (two '42x')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): the same earlier-refusal move as the pmany row — psat's arm nets a leading fn carrier that resolveArm now declines rather than merge as placed data. `digit/v` at pseq's Function slots is still check-invisible (digit is table-bound) and still declines the trap; it is no longer the first gate reached", failsWith: "fn psat: body result of unknown provenance"},
 
 	// The §9 Stage-2 refusal rows: the lead-apply admission's witnesses
-	// compile (unledgered), while these two spellings stay sound refusals.
+	// compile (unledgered), while these two spellings stay refusals.
 	// §9d — the GRADUAL inner parameter (`x:Any` beside the captured
 	// `g`) GRADUATED 2026-09-07 (the twenty-sixth increment): a lambda
 	// VALUE unit takes the fn path's residual replay, whose applicable
@@ -683,7 +683,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// introduced (before it, the read raised undefined_word and the
 	// program refused); the def site now detects the dropped apply.
 	// §9f — code BODIES over def-bound computed fns. Three regressions found
-	// by a differential sweep, each made a sound refusal on 2026-08-21. The
+	// by a differential sweep, each made a refusal on 2026-08-21. The
 	// `do [(f 2)]` row left this ledger with the thirty-eighth increment
 	// (2026-09-09): the fn-carrier substitution fires inside a nested body
 	// too, so the row COMPILES and agrees — but `do` reaches the dyn-body

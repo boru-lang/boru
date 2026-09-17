@@ -133,7 +133,7 @@ add/vv	ERROR:invalid word modifier	repeated v is still rejected
 #
 # §11  type bindings — valof/`/v` yield what the name DENOTES: the minted
 #      lattice NODE, identical to bare evaluation (the Stage 2 flip,
-#      design/TYPE-REPRESENTATION.1.md §6). One rule for every declaration
+#      design/legacy/TYPE-REPRESENTATION.1.ignore §6). One rule for every declaration
 #      kind; the recorded body is content (`TypeContentOf`), never the
 #      reference's value.
 def P refine Integer  valof P	P	bare refine: the node, rendered as the name

@@ -6,11 +6,11 @@ import (
 )
 
 // TestRunCompiledReason pins the third return of RunCompiledReason: the
-// whole-program compilation-refusal reason the CLI surfaces as a performance
-// warning. A reason is reported ONLY for a genuine refusal (a valid program the
-// compiler cannot lower, which silently falls back to the slower interpreter);
+// whole-program compilation-refusal reason the CLI surfaces as a warning. A
+// reason is reported ONLY for a genuine refusal (a valid program the compiler
+// cannot lower — a defect — which is then silently re-run on the interpreter);
 // it is EMPTY for a compiled run and for a statically-invalid program (which
-// fails in both engines and so is not a performance fallback).
+// fails in both engines and so is not a refusal at all).
 func TestRunCompiledReason(t *testing.T) {
 	// POSITIVE — a compiled program reports ran=true and no reason.
 	t.Run("compiled", func(t *testing.T) {

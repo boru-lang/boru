@@ -54,7 +54,7 @@ var Natives = []NativeFunc{
 	// `quote (expr)` evaluates expr then quotes the result (the inert-value
 	// idiom); `codequote (expr)` keeps the paren as code — the structural
 	// quotability the macro layer wants. Words → atoms and lists → raw list
-	// behave exactly like `quote`. See design/PAREN-REPRESENTATION.9.md §2.2.
+	// behave exactly like `quote`. See design/legacy/PAREN-REPRESENTATION.9.ignore §2.2.
 	{
 		Name: "codequote",
 		// Like quote: the /q'd-Atom sig bakes its inert symbol + CALL_NATIVE.

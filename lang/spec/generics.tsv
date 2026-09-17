@@ -11,7 +11,7 @@
 # predicates, disjuncts, negations, and surfaces all answer uniformly),
 # and memoises ONE instantiation per (schema, canonical args).
 # Recursion uses `Self of [T]` (the schema's own name is unbound while
-# its body builds). See design/GENERICS.10.md.
+# its body builds). See design/legacy/GENERICS.10.ignore.
 #
 # §1  record schemas — declare + instantiate
 def Box gen [T] refine Record [value:T] end Box	Box	a schema NAME denotes its minted node and renders as the name (§6)

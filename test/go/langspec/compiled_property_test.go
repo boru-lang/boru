@@ -567,7 +567,7 @@ func genCatchProg(r *rand.Rand) *gnode {
 }
 
 // genGradualAnyProg — the gradual-`Any` boundary (miscompile classes C & D,
-// design/MISCOMPILE-HUNT-FINDINGS.0.md): a fn DECLARED to return `[Any]` whose
+// design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore): a fn DECLARED to return `[Any]` whose
 // gradual result feeds a polymorphic word (`add`), a higher-order word over a
 // list of Any elements (`each` / `size`), a comparison, or a concrete Integer
 // param (via a second Any-returning fn). These were CONFIRMED silent

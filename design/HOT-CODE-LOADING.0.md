@@ -13,7 +13,7 @@ service model (`SERVICES.0.md` §7.4):
 That stance is **revised**: live reload is now a requirement, because the
 plugin-system payoff is judged worth the (modest, as this report shows)
 mechanism cost. The suffix on this file is an implementation-completeness
-indicator (`IMPLEMENTATION-STATUS.10.md`): `.0` — design/report only, no
+indicator (`legacy/IMPLEMENTATION-STATUS.10.ignore`): `.0` — design/report only, no
 `reload` word exists yet.
 
 ## 1. Summary
@@ -78,11 +78,11 @@ Hot swap usually dies at the compiler; here it already survived it:
   generations carried across `ForkConcurrent` clones); `InvokeCallback`
   validates freshness on every invoke and falls back to `CallBoru` on any
   mismatch (`compiler/go/bytecode.go::DepsFresh`;
-  `design/RUNTIME-STAMPING.0.md`). Wrong-code execution is structurally
+  `design/legacy/RUNTIME-STAMPING.0.ignore`). Wrong-code execution is structurally
   excluded; the cost of a swap is de-optimization, not incorrectness.
 - Better: for detached refs the de-optimization is **temporary**. Each
   carries a JIT re-stamp box (`RestampBox`,
-  `compiler/go/stamp_runtime.go::JitRestamp`; `REFUSAL-CLOSURE.0.md` §7c):
+  `compiler/go/stamp_runtime.go::JitRestamp`; `legacy/REFUSAL-CLOSURE.0.ignore` §7c):
   a stale ref re-compiles against the **live** bindings at invoke time —
   a stable rebind pays one compile and runs on the VM again — bounded at
   `RestampMaxTries = 3` total re-compiles per ref so a hot rebinding loop
@@ -187,7 +187,7 @@ fresh `service` construction (adoption — §5.2).
   live engine are the REPL's normal operation.
 - `boru:repl` is that surface as a **network service** (a line-protocol
   REPL server evaluating via `boru:vm`;
-  `NETWORK-IMPLEMENTATION-PLAN.0.md` §1.5) — i.e. remote live code
+  `legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore` §1.5) — i.e. remote live code
   injection into a running process already ships, policy-gated.
 - `Debug.watch` reports every change to a binding
   (`lang/go/modules/docs_debug.go`) — binding mutation is an observable

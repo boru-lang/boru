@@ -36,7 +36,7 @@ type DefTable struct {
 	// "did any binding change in between" — the TCO gate uses it to
 	// decline eager frame teardown when arg auto-evaluation installed
 	// or removed a binding the parked teardown would have sequenced
-	// differently (design/TCO-STAGED.10.md Stage 3).
+	// differently (design/legacy/TCO-STAGED.10.ignore Stage 3).
 	mutations int64
 	// gen is a per-name monotone generation counter, bumped by `touch`
 	// whenever a name's binding stack changes (push / pop / replace /
@@ -75,7 +75,7 @@ func (dt *DefTable) Gen(name string) int64 {
 // (zero Value, false) if name is unbound. Canonical read for "what
 // does this name resolve to right now". A value binding denotes its
 // Body; a TYPE binding denotes its minted (or adopted) lattice node —
-// the Stage 2 flip of design/TYPE-REPRESENTATION.1.md §5: a type name
+// the Stage 2 flip of design/legacy/TYPE-REPRESENTATION.1.ignore §5: a type name
 // evaluates to its type, for every declaration kind, so `canon M`
 // prints M and `fn M Any […]` sees a type where it used to see the
 // declaration's structural body (NUR090). Consumers that need the

@@ -1,0 +1,350 @@
+# Macros Phase 1 — Implementation Scope
+
+**Status:** **Phase 1 COMPLETE (1a–1e, green).** Companion to `../MACROS.8.md` (the overall plan);
+this doc turns its Phase 0+1 row into a concrete, line-level build order
+grounded in the current code.
+
+> **Landed (green):** `gensym` (1a, atoms `tmp$g<n>`); `FnDefInfo.Macro` +
+> `FnSig.FormArgs` raw-capture (1b); the `macro` definer, the `stepWord`
+> dispatch branch, and the `macro_expand.go` expander with `unquote`/`splice`
+> (1c+1d); `macroexpand` introspection. Integration notes discovered in
+> implementation: `aggregateDispatch` must carry the `Macro` flag (so `Lookup`
+> returns it); a macro VALUE stays data via the anonymous-0-arg short-circuit
+> and is applied only by name; a resolved name (a gensym atom) is spliced as a
+> **Word** so it is a code identifier; `gensym` must be lowercase to be a legal
+> binder. **Cache (1e):** memoizes expansions keyed on `(macro name + operand
+> canon)` rather than source `Pos` — simpler, fully correct (an expansion
+> depends only on the template + operand forms, never runtime state), and
+> collision-free (a `Pos` could collide across re-parsed/synthetic sources,
+> e.g. the help system's synthetic example runs). Cleared by the `macro`
+> definer on (re)construction so a redefined macro re-expands.
+**Scope:** `gensym` (Phase 0) + an unhygienic-but-real `macro` definer with
+raw-form capture, `unquote`/`splice`, interpreter-mode expansion, and an
+expansion cache (Phase 1). Hygiene (Phase 4) and compiled-mode (Phase 5) are
+out of scope here.
+
+---
+
+## 1. Key finding — most of the "new" machinery already exists
+
+The `../MACROS.8.md` thesis ("assembling existing primitives") is *stronger* than
+it claimed. Verified on this branch:
+
+| Plan called it "new" | Reality | Evidence |
+|---|---|---|
+| raw-form capture (parens) | **already shipping** as `FnSig.RawParens` | `value.go:251`; `codequote` sets `RawParens{0:true}` (`natives.go:60`); gated in `preEvalParens` via `rawParenForward` (`engine.go:677,826,841`) |
+| capture a bare word as data | **already shipping** as `FnSig.QuoteArgs` | `matchSignature` accepts the raw word (`engine.go:3781`); in-place Word→Atom at `engine.go:1760` |
+| run a transformer body | **`CallBoru`** runs an `FnSig` body in a sub-engine on the same registry, returns `[]Value` | `registry.go:830` |
+| splice tokens into the call site | **`__SP`** marker re-steps the tape | `engine.go:1713` + `spliceExpand` |
+| a dispatch-time behavioural flag | **`FnDefInfo.Anonymous`** is the precedent | `value.go:315` |
+| walk a template structurally | **`WalkBodyWords`** (recurses List/ParenExpr) | `fn_capture.go:18` |
+
+So Phase 1 is: **(a)** one small new capture mode (`FormArgs` — a generalization
+of `RawParens`+`QuoteArgs` to *any* form, keeping a word as a word), **(b)** a
+`Macro` flag + a dispatch branch that fires before forward collection, **(c)** a
+provenance-walking expander, **(d)** the `macro`/`unquote`/`splice`/`gensym`
+words, **(e)** an expansion cache.
+
+---
+
+## 2. Data-model changes
+
+- **`FnDefInfo.Macro bool`** — `eng/go/value.go:315`, placed right after
+  `Anonymous` (same behavioural-flag pattern). Read at dispatch (both normal
+  and check mode, unlike `Anonymous` which is check-mode-only).
+- **`FnSig.FormArgs map[int]bool`** — `eng/go/value.go`, slotted after
+  `RawParens` (the capture-mode cluster). Mirror it on `NativeSig.FormArgs`
+  (`nativefunc.go:42` cluster) and copy it through in `registry.go:803`
+  (alongside `RawParens`). Opt-in, nil-safe, per-position — identical
+  convention to its siblings.
+
+No new payload types, no FixedID, no wire change.
+
+---
+
+## 3. `FormArgs` — raw-form capture (the one genuinely-new input piece)
+
+**Intent:** capture the next forward *form* — a bare word, a literal, a `(…)`
+paren group, or a `[…]` list — as **raw tokens**: no eval, no `preEvalParens`,
+and crucially **no Word→Atom coercion** (a macro operand `x` must arrive as
+`Word("x")`, not `Atom("x")`, so the template can re-emit it as code).
+
+This is why `FormArgs` is *not* just `QuoteArgs`: `QuoteArgs` coerces the word
+to an Atom (`engine.go:1760`). A macro needs the word preserved.
+
+**Two hook points, both mirroring the existing `RawParens` path:**
+
+1. **`preEvalParens` suppression** (`engine.go:826,841`): extend the existing
+   gate so a `FormArgs` position is also left un-expanded:
+   ```go
+   if tok.Quoted || rawParenForward(fn, resolved) || rawFormForward(fn, resolved) {
+       resolved++; scanIdx++; continue
+   }
+   ```
+   Add `rawFormForward` next to `rawParenForward` (`engine.go:672`), same shape.
+
+2. **`matchSignature` forward scan** (`engine.go:~3781`, in the Word branch and
+   the literal branch): when `sig.FormArgs[fwd]` is set, accept the token at
+   `scanIdx` **without resolving it** (no def lookup, no undefined-word error,
+   no Word→Atom). Record the position and advance — the same "don't dispatch,
+   just record" move `QuoteArgs` makes, minus the Atom requirement. A `(…)` at
+   a `FormArgs` slot arrives as a single `ParenExpr` value (preEvalParens left
+   it raw); a `[…]` arrives as a `List`; a word as a `Word`.
+
+3. **`stepLiteral`**: **no conversion needed** (unlike `QuoteArgs`' Word→Atom).
+   The collected value is already the raw form; it flows straight to the
+   handler/`CallBoru` binding.
+
+**Balanced-span note:** because `FormArgs` reuses the *value-level* `ParenExpr`
+(parser-collapsed) rather than the `OpenParen…CloseParen` marker tape, we do
+**not** need new balanced-span scanning for the common case — `RawParens`
+already proved a paren arrives as one `ParenExpr` value. The marker-tape span
+walk (`engine.go:739` depth loop) is only relevant if a macro arg appears as a
+raw open-paren marker span mid-collection; treat that as an edge case to test,
+not a primary path.
+
+### 3.1 Maps are a separate capture channel (`autoEvalMap`)
+
+**Maps don't go through the list/paren capture path** — their values are
+evaluated by `autoEvalMap`, which is **deliberately NOT gated by `NoEvalArgs`
+or `RawParens`** (the documented exception in lang/go/CLAUDE.md "Quotation").
+Verified empirically:
+
+```
+codequote {k: (add 1 2)}   → {k:3}                 # paren value EVALUATED before capture
+codequote {k: m.a.b}       → error: undefined m    # reach value EVALUATED before capture
+quote [ {k: (add 1 2)} ]   → [{k:paren([add 1 2])}] # but a quoted LIST preserves map interiors
+```
+
+So a macro operand that is a **map literal** would arrive with its values
+already evaluated unless suppressed. The fix is the existing map counterpart of
+`NoEvalArgs`: **`FnSig.NoEvalMapArgs`** (`value.go`, `nativefunc.go:52`,
+copied through at `registry.go:804`), which gates `autoEvalMap` at
+`engine.go:1312`. `macro` therefore sets `NoEvalMapArgs` on every param
+alongside `FormArgs` (§4). No new machinery — another existing primitive.
+
+---
+
+## 4. `macro` definer
+
+A sibling of `fn`/`afn` (`native_definition.go:476/512`). New
+`native_macro.go` (or add to `native_definition.go`):
+
+```
+def unless macro [[cond body] [ quote [ if unquote cond [] unquote body ] ]]
+```
+
+`macroHandler`:
+1. Parse a **2-element** list `[[params] [body]]` (params spec + a single body,
+   like `afn`, not `fn`'s 3-triple). Reuse `parseFnParams` for the params.
+2. Build one `FnSig{Params, Body, Returns:[Any], BarrierPos}` exactly as
+   `afnHandler` does.
+3. **Set `sig.FormArgs[i] = true` AND `sig.NoEvalMapArgs[i] = true` for every
+   param position** `i` (the latter so a *map* operand is captured raw too —
+   see §3.1).
+4. Build `FnDefInfo{Signatures:[sig], Macro:true, Captured: ComputeCaptures(...)}`.
+   (Captures are needed now for Phase-4 referential transparency and are free
+   to compute — same call `fnHandler`/`afnHandler` already make.)
+5. Return `NewFunction(fnDef)`.
+
+`def name macro […]` binds it like any word (the existing `def` path; the
+`Macro` flag rides on the bound `FnDefInfo`).
+
+---
+
+## 5. Macro dispatch branch + bypass guards
+
+**Primary branch — `stepWord`** (`engine.go:877`). Insert immediately after the
+`fn := e.registry.Lookup(w.Name)` resolution (`engine.go:1099`) and **before**
+`preEvalParens` (`engine.go:1199`):
+
+```go
+if fn != nil && fn.Macro {
+    return e.execMacro(w, fn, val.Pos)   // capture-raw, expand, splice — §6
+}
+```
+
+This guarantees operands are still raw on the tape (no pre-eval, no
+collection) when the macro runs.
+
+**Bypass guards (../MACROS.8.md §9 risk #3).** A macro `FnDefInfo` can also reach
+the stack *as a value* and dispatch via `execFnDefLiteral` (`engine.go:2124`).
+Three paths there must not silently run a macro as a normal fn — add a guard at
+the **top** of `execFnDefLiteral`, before the own-sig/registry split
+(`engine.go:~2146`):
+
+```go
+if fnDef.Macro {
+    return e.execMacroDefLiteral(valIdx, fnDef)   // or: raise "macro used as value"
+}
+```
+
+Covered by this single early guard:
+- own-sig vs registry resolution (`engine.go:2152`),
+- the anonymous 0-arg "stay as data" short-circuit (`engine.go:2241`),
+- the trivial-delegation module-wrapper short-circuit (`engine.go:2319`).
+
+**Open question (D4):** is "a macro value on the stack" an *error* (macros are
+not first-class values — Lisp's stance) or does it expand against available
+stack args? Recommend **error** for Phase 1 (simpler, matches define-before-use
+ethos); revisit if a use case appears.
+
+---
+
+## 6. The expander (`eng/go/macro_expand.go`, new)
+
+`execMacro(w, fn, pos)`:
+
+1. **Cache check** (§8): key `(w.Name, pos)`. Hit → re-splice cached tokens.
+2. **Raw-capture** the forward operands using the `FormArgs` collection (§3):
+   one raw form per param. Bind them as the macro's args.
+3. **Run the template body** via `CallBoru(&fn.Signatures[0], rawArgs,
+   fn.Captured)` (`registry.go:830`). Because the body is `quote [ … ]`, the
+   result is the **inert template token list** (words stay words; `unquote`/
+   `splice`/their operands are literal tokens inside it).
+4. **Expand the template** — walk the returned token list, **recursing into
+   List, ParenExpr, AND Map values**. `WalkBodyWords` (`fn_capture.go:18`)
+   already does exactly this recursion (it has a `TMap` branch at `:68`), so the
+   expander reuses/extends it rather than re-deriving the walk:
+   - bare token → emit as-is (template-origin code);
+   - `unquote x` → resolve `x` against the macro's arg bindings, emit the bound
+     form as **one grouped node** (wrap a multi-token form as a `ParenExpr` so
+     the generated word forward-collects it as a single arg);
+   - `splice xs` → resolve `xs` to a list, emit its elements **flattened**.
+
+   **Map values must be parenthesized to carry `unquote`/`splice`.** A map
+   literal splits on whitespace, so `{k: unquote v}` parses as *two* entries
+   (`k:unquote`, `v:v`); the template author writes `{k: (unquote v)}`, which
+   parses to `{k: paren([unquote v])}` — the expander recurses into that
+   ParenExpr and resolves it. When the expanded map is later spliced and
+   re-stepped, `autoEvalMap` evaluates its (now unquote-resolved) values in the
+   *generated* context — the correct deferral, same as parens elsewhere.
+5. **Splice** the expanded token list into the call site: replace the
+   `unless …operands` span ahead of the pointer with `NewSplice(NewList(tokens))`
+   and let the existing `__SP` step (`engine.go:1713`) re-step the tape.
+   Rewind the pointer to the splice start so normal stepping resumes on the
+   generated code (where `preEvalParens` now *does* evaluate the emitted parens
+   — deferral to generated code, exactly as intended).
+
+**Errors are loud:** the expander uses `CallBoru` (propagates errors), never
+routes through `do` (which catches+reifies) — ../MACROS.8.md fact 6.
+
+**Model decision (D3):** the template is **data walked by the expander** (Model
+A), not live `unquote`/`splice` words run during the body. `unquote`/`splice`
+are recognized by the expander by name; registering them as words that **error
+outside a template** is the guard against misuse.
+
+---
+
+## 7. New words
+
+- **`gensym`** (Phase 0, ship first): mints a fresh atom `tmp$G<n>` from a new
+  `Registry` counter. Note: `tmp$G<n>` is mixed-`$` → still a legal word under
+  our `ValidateWordName` all-`$`-reserved rule (verified). Standalone, tiny,
+  usable in hand-written `word`/`__SP` macros even before `macro` lands.
+- **`macro`** — the definer (§4).
+- **`unquote`** / **`splice`** — expander-recognized; registered as words that
+  raise outside a macro template. `splice` is the `word`/`__SP` semantics given
+  a template-facing name.
+- **`macroexpand`** (pull a *minimal* version into Phase 1 for testability —
+  returns the expanded token list as data without splicing; the plan lists full
+  introspection in Phase 2).
+
+Register in a new `lang/go/native/native_macro.go` (`macroNatives` slice wired
+into `register.go`).
+
+---
+
+## 8. Expansion cache
+
+- Key: `struct{ Name string; Pos SrcPos }` (`Pos` = `Value.Pos`,
+  `boru_error.go:141`; stable + unique per static call site).
+- Store on `Registry` (new `MacroCache map[...]...`), nil-init.
+- Invalidate on macro redefinition: `def`/`undef` of a name whose binding is a
+  `Macro` FnDef clears matching entries (or bump a per-macro generation counter
+  folded into the key).
+- **Risk:** `Pos` is not unique if the same source is re-parsed/`read`+`eval`'d
+  dynamically. Phase-1 mitigation: cache only when `Pos.Row != 0`; skip caching
+  for synthetic/posless tokens. **D5:** ship the cache in Phase 1, or defer to a
+  1.5 once correctness is proven? Recommend ship, behind the `Pos.Row != 0`
+  guard.
+
+---
+
+## 9. Sub-phase sequencing (within Phase 1) + effort
+
+| Step | Deliverable | Effort | Gate |
+|---|---|---|---|
+| 1a | `gensym` + counter + spec/tests | S | unblocks hand-written macros |
+| 1b | `FnDefInfo.Macro` + `FnSig.FormArgs` fields + `registry.go` copy-through + `rawFormForward` + `preEvalParens`/`matchSignature` hooks | M | `FormArgs` capture unit-tested in isolation (a temp native that echoes its raw args) |
+| 1c | `macro` definer + `stepWord` branch + `execFnDefLiteral` guard | M | a no-template identity macro splices its operands |
+| 1d | expander + `unquote`/`splice` + `__SP` output | M | `unless` expands + runs (the §3 walk in ../MACROS.8.md) |
+| 1e | `macroexpand` (minimal) + expansion cache | S–M | cache correctness under a loop; redefinition invalidation |
+
+**Smallest shippable:** 1a then 1b–1d. 1e is an optimization/tooling tail.
+
+---
+
+## 10. Test plan (`lang/spec/macro.tsv` + Go tests; pair positive/negative)
+
+- **gensym:** uniqueness across calls; the `myor` capture bug (unhygienic) +
+  its `gensym` fix (negative + positive rows).
+- **FormArgs capture:** operands arrive unevaluated; a `(x gt 10)` arg is **not**
+  `preEvalParens`-collapsed at capture but **is** in the expansion; a bare word
+  arrives as a Word (not an Atom, not undefined-word error).
+- **Map capture + expansion (§3.1):** a map operand `{k: (x gt 10)}` is captured
+  with its value **un-evaluated** (`NoEvalMapArgs`), negative — without it the
+  value would auto-eval at capture; a template map value `{k: (unquote v)}`
+  resolves the unquote and defers evaluation to the spliced/generated code;
+  negative — `{k: unquote v}` (unparenthesized) splits into two entries.
+- **Expansion correctness:** `unless`; `macroexpand` shows the expected token
+  list.
+- **`unquote` vs `splice`:** grouped node vs flattened; negative — `splice` of a
+  compound condition mis-dispatches (proves the distinction is load-bearing).
+- **Errors loud:** an error during expansion propagates (not swallowed like
+  `do`); `unquote`/`splice` outside a template error.
+- **Bypass guards:** a macro value reaching `execFnDefLiteral` (own-sig,
+  anonymous-0-arg, module-wrapper) hits the guard (errors / expands) — never
+  silently runs as a plain fn.
+- **Cache:** macro in a loop expands once, re-splices; redefinition invalidates.
+- **No-panic:** macro words pass type literals without panic (`TestTypeLiteralNoPanic`).
+
+---
+
+## 11. Open decisions (need a call before coding 1b+)
+
+- **D1 — `macro` surface:** 2-element `[[params] [body]]` (recommended,
+  `afn`-like) vs an `fn`-style triple. Affects the definer parse only.
+- **D2 — `FormArgs` vs reuse:** add the dedicated `FormArgs` field (recommended
+  — preserves word-ness) vs. have `macro` set `RawParens`+`QuoteArgs` (loses
+  word→code fidelity). This is the core capture decision.
+- **D3 — template model:** data-walked-by-expander (Model A, recommended +
+  matches the plan) vs live unquote/splice words. Confirm.
+- **D4 — macro-as-value:** error (recommended) vs expand-on-stack.
+- **D5 — cache in Phase 1:** ship behind `Pos.Row!=0` guard (recommended) vs
+  defer to 1.5.
+- **D6 — `macroexpand` now:** minimal version in Phase 1 for testing
+  (recommended) vs Phase 2 per the original plan.
+
+---
+
+## 12. Touchpoints (file:line)
+
+- `eng/go/value.go:315` — `FnDefInfo.Macro`; `:251`-cluster — `FnSig.FormArgs`.
+- `eng/go/nativefunc.go:42` — `NativeSig.FormArgs`; `registry.go:803` — copy-through.
+- `eng/go/value.go` `NoEvalMapArgs` (`nativefunc.go:52`, `registry.go:804`) —
+  set by `macro` per-param; gates `autoEvalMap` at `engine.go:1312` (§3.1).
+- `eng/go/fn_capture.go:68` — `WalkBodyWords` map-value recursion (reused by the expander).
+- `eng/go/engine.go:672` — `rawFormForward` (next to `rawParenForward`);
+  `:826,:841` — `preEvalParens` gate; `:~3781` — `matchSignature` forward scan.
+- `eng/go/engine.go:1099–1199` — `stepWord` macro branch; `:2146` —
+  `execFnDefLiteral` guard; `:1713` — `__SP` output (unchanged).
+- `eng/go/macro_expand.go` — **new** expander.
+- `eng/go/registry.go:830` — `CallBoru` (template run, unchanged); new
+  `MacroCache` + invalidation.
+- `lang/go/native/native_macro.go` — **new**: `macro`, `unquote`, `splice`,
+  `gensym`, `macroexpand`; wired in `register.go`.
+- `lang/go/native/native_definition.go:476/512` — `fn`/`afn` construction
+  precedent for the `macro` definer.
+- `lang/spec/macro.tsv` — **new** spec; `fixedid`/fnmodel goldens unaffected
+  (no new types).

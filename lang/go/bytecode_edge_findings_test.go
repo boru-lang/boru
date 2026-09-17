@@ -8,8 +8,10 @@ import (
 
 // Landing tests for design/EDGE-SPEC-FINDINGS.0.md — four compile≠interpret
 // divergences the edge-spec expansion surfaced. Each was a shape the compiler
-// lowered to a WRONG value; the fix makes the compiler REFUSE (fall back —
-// "slow, not wrong") so the interpreter owns the shape. Every finding is pinned
+// lowered to a WRONG value; the fix makes the compiler REFUSE (§5), after
+// which the program is silently re-run on the interpreter — scaffolding
+// absorbing an open compile defect, not a path the design owns. Every
+// finding is pinned
 // three ways: the reproducer REFUSES with its reason, the reproducer's compiled
 // run falls back to interpreter PARITY, and a sibling that must keep compiling
 // natively still does (the negative that proves the refusal is not blanket).
@@ -75,7 +77,7 @@ func interpOnlyWithSoundRefusal(t *testing.T, src, want string) {
 		t.Fatalf("%q: CompileCheck: %v", src, cerr)
 	}
 	if prog == nil {
-		t.Logf("%q: compile refused soundly (%q)", src, reason)
+		t.Logf("%q: compile refused (%q)", src, reason)
 		return
 	}
 	b, _ := New()
@@ -142,7 +144,7 @@ func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
 	mustCompileWithParity(t, `5 do [raise aa 'm'] error ['x'] add 1`, "[5x 1]")
 	mustCompileWithParity(t, `5 do [raise aa 'm'] error ['x'] add 'y'`, "[5 xy]")
 
-	// The window's decline fences keep the sound refusal: a NON-TERMINAL
+	// The window's decline fences keep the refusal: a NON-TERMINAL
 	// drift site (a downstream consumer would need a result count the island
 	// cannot promise) and BYSTANDER data below the window (the in-order
 	// reconciliation cannot interleave the window's const re-pushes with
@@ -326,8 +328,9 @@ func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 // conditional shadow while the interpreter keeps the outer fn when the branch
 // is not taken (or the loop runs zero times), so `if false [def g …] g 1`
 // returned the shadow's value compiled but the ORIGINAL interpreted. The fix
-// refuses to compile the redefinition (CondBodyDepth-gated) so the interpreter
-// owns the shape — slow, not wrong.
+// refuses to compile the redefinition (CondBodyDepth-gated), and the program
+// is silently re-run on the interpreter — contained, not fixed, and the shape
+// is still owed a lowering.
 func TestEdgeFindingConditionalFnShadowRefuses(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
@@ -364,11 +367,11 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		// the model declines — and the fetched fn reaches `apply` as an
 		// untyped carrier, which the record refuses ("apply over a dynamic
 		// lead", the BROAD-era mixed-arity guard) rather than lower an
-		// unprovable overload. Sound refusal; the interpreter owns it.
+		// unprovable overload. A refusal, and a defect while it stands.
 		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, false, "[true]"},
 		// A LIST member pinpoints by concrete index — the arrival model fires.
 		{"list member", `def d fn [[n:Integer][Integer][n mul 2]] def lst [d/v] 21 (lst get 0) apply eq 42`, true, "[true]"},
-		// Anonymous lambda member: no name for the model — sound refusal.
+		// Anonymous lambda member: no name for the model — refusal.
 		{"anonymous member", `def m {double: ([n:Integer] => [n mul 2])} m.double 21 eq 42`, false, "[true]"},
 		// 0-arg member: the arrival model claims the empty-window arity-0
 		// landing (the break-2 closure, FN-VALUE-OPEN-WORK §4) — the
@@ -379,7 +382,7 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		// now runs it right: the NUR038 arrival path converts the bare
 		// word through the /q slot (`m.q foo` ≡ `q foo` → 9, then 9 eq 9).
 		{"quoted param member", `def q fn [[k:Atom/q][Integer][9]] def m {q: q/v} m.q foo eq 9`, false, "[true]"},
-		// Two-return member: the single-result claim fails — sound refusal.
+		// Two-return member: the single-result claim fails — refusal.
 		{"two-return member", `def t fn [[n:Integer][Integer Integer][n n]] def m {t: t/v} m.t 3 eq 3`, false, "[3 true]"},
 		// The member read ends the tape: no window — the fn stays data.
 		{"read at tape end", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} m.double`, true, "[fn d(Integer)]"},
@@ -569,7 +572,7 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 	// #278 review P1-a: compiled [x 7 x 71] vs interp [x 7 x 8]).
 	mustCompileWithParity(t, `def xs (for 2 [7 "x"]) xs add 1`, "[x 7 x 8]")
 
-	// Decline fences — each keeps the sound refusal with interpreter parity.
+	// Decline fences — each keeps the refusal with interpreter parity.
 	// A DYNAMIC count: the split needs the static region size.
 	mustRefuseWithParity(t,
 		`def m {n: 3} def xs (for (m get "n") [1]) xs`,

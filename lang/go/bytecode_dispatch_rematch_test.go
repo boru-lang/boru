@@ -53,7 +53,7 @@ func TestDispatchRematchRaisesByteIdentical(t *testing.T) {
 // no-match was WRONG (a fn declared [Integer] returns a Pos-reparented value
 // whose runtime tag matches the Pos param), the rematch MATCHES at run time
 // and defers to the interpreter (the tail was truncated at the terminal op),
-// producing the interpreter's result — slow, not wrong.
+// producing the interpreter's result — contained, not fixed.
 func TestDispatchRematchMatchDefers(t *testing.T) {
 	const src = `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
 	a, err := New()

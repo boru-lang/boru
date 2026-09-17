@@ -60,7 +60,7 @@ var langNew = lang.New
 
 // registerTerminalBackend wires the real-TTY tuikit backend onto the
 // runtime's registry so `import "boru:tui"` words reach the terminal
-// (design/TUI-IMPLEMENTATION-PLAN.0.md P3). Registration is cheap and
+// (design/legacy/TUI-IMPLEMENTATION-PLAN.0.ignore P3). Registration is cheap and
 // pre-import-safe; failure means a backend is already registered on
 // this registry, which is exactly the state we want.
 func registerTerminalBackend(a *lang.Boru) {
@@ -85,11 +85,12 @@ func EvalColor(w io.Writer, source string, o lang.Options, mode CompileMode, col
 // EvalReport is Eval plus the -compile-report surface, a compilation-refusal
 // warning stream, and caller-resolved color. When report is non-nil, the
 // instance's detached-stamp attribution (lang.Boru.StampReport —
-// design/RUNTIME-STAMPING.0.md) is printed to it after the run, one line per
+// design/legacy/RUNTIME-STAMPING.0.ignore) is printed to it after the run, one line per
 // runtime-constructed callback with its outcome or refusal reason. When warn is
 // non-nil and the default compile-try mode falls back because the WHOLE program
-// refused to compile, a one-line performance warning naming the refusal reason
-// is printed to it (a refusal runs on the slower interpreter). color renders a
+// refused to compile, a one-line warning naming the refusal reason is printed
+// to it — a refusal is a compile DEFECT, and the warning is what stops it going
+// unreported. color renders a
 // structured BoruError through the ANSI diagnostic renderer; color=false keeps
 // the byte-identical plain text.
 func EvalReport(w, report, warn io.Writer, source string, o lang.Options, mode CompileMode, color bool) error {
@@ -161,7 +162,7 @@ func runAndPrint(w, warn io.Writer, a *lang.Boru, source string, mode CompileMod
 		// stored callbacks still earn the VM path — the compiled mode's
 		// contract, exactly as the in-library armed fallback behaved.
 		if reason != "" && warn != nil {
-			fmt.Fprintf(warn, "warning: bytecode compilation refused, ran on the interpreter (slower): %s\n", reason)
+			fmt.Fprintf(warn, "warning: bytecode compilation refused — the program did not compile and was re-run on the interpreter. This is a defect, not a performance note: %s\n", reason)
 		}
 		var refused *lang.BoruError
 		if errors.As(err, &refused) && refused.Code == "compile_refused" {
@@ -377,8 +378,8 @@ func Main(cfg Config, args []string, _ io.Reader, stdout, stderr io.Writer) int 
 
 	// warn is nil DELIBERATELY: a built binary must not editorialise about its
 	// own execution engine. `boru run` warns when the whole program refused to
-	// compile and fell back to the interpreter — that is developer-facing
-	// performance advice, and its test pins it — but a shipped tool writing
+	// compile and was re-run on the interpreter — that names a defect to whoever
+	// can fix it, and its test pins it — but a shipped tool writing
 	// "warning: bytecode compilation refused…" to stderr on every invocation is
 	// noise in someone else's pipeline, and the refusals are easy to hit (two
 	// statement-form `if (cond) [body]` statements are enough). The user of a

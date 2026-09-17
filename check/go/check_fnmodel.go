@@ -150,7 +150,7 @@ func nur068ReturnCarrier(r *core.Registry, t *core.Type, pats []*core.Value, i, 
 
 // typedContainerCarrier generalises a TYPED-container param ({:T} map / [:T] list)
 // to a carrier that PRESERVES its declared ELEMENT type — the D2 read-precision
-// foundation (design/TYPED-CONTAINER-ELEMENT-PRECISION.0.md, Part A). The element
+// foundation (design/legacy/TYPED-CONTAINER-ELEMENT-PRECISION.0.ignore, Part A). The element
 // type rides on p.Pattern (a typed-map/list value carrying a ChildTypeInfo), NOT
 // p.Type (which generalises to bare Node), so mirror recordSchemaCarrier: read the
 // pattern and mint a FRESH ID so each typed-container param keys a DISTINCT

@@ -65,7 +65,7 @@ def z fn [[][Integer][42]]  def h fn [[f:Function][Any][f/v]]  typeof ((h z/v))	
 def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an application is ASKED for
 #
 # §5  a failed dispatch is LOUD, wherever the value would have gone
-#     (design/FN-VALUE-DISPATCH.0.md). The old contract marked the value
+#     (design/legacy/FN-VALUE-DISPATCH.0.ignore). The old contract marked the value
 #     and let the end-of-run drain judge it, so any consumer at all — a
 #     `print`, a `def`, an Any slot — silenced a real dispatch failure.
 #     The judgement is now made where the call is, so what happens to the
@@ -85,7 +85,7 @@ def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an
 #     check mode evaluates a code body's parens on its own straight line, so
 #     it reports the call as an error while the run traps it, and a row would
 #     read as a checker false positive. The divergence is pre-existing and
-#     unchanged by this contract (design/FN-VALUE-DISPATCH.0.md §6).
+#     unchanged by this contract (design/legacy/FN-VALUE-DISPATCH.0.ignore §6).
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w "x"	ERROR:uncalled_function	a named export called with a mismatched arg raises AT THE CALL
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  print (M.w "x")	ERROR:uncalled_function	and a consumer around it does not silence it — the old drain never fired here
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def y (M.w "x")  y	ERROR:uncalled_function	nor does binding the result with def
@@ -142,8 +142,9 @@ def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end m.p 5 end m.p 7	5 7	explicit
 #     baked the NAME (the island span, the CALL_NATIVE const-bake, the
 #     closure probe) turned a working program into undefined_word in the
 #     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now refuses
-#     the whole program at compile admission, so the interpreter owns it
-#     ("slow, not wrong"; design/COMPILABLE-SUBSET.md §5). The refusing
+#     the whole program at compile admission, and it is then silently
+#     re-run on the interpreter (design/COMPILABLE-SUBSET.md §5) — an open
+#     defect, not a sanctioned outcome. The refusing
 #     shapes are pinned in lang/go/test/nur037_fnlocal_test.go — a spec
 #     value row must compile (refusalCeiling 0). The rows here pin the
 #     twins the refusal must NEVER over-match, holding both engines to
@@ -159,7 +160,7 @@ def g fn [[xs:List] [Any] [def n 10 each [n add] xs]] end g [1 2]	[11 12]	a fn-l
 #     and the outer param fn over its result — the canonical HOF chain.
 #     A live MISCOMPILE until 2026-08-02 (the whole-frame replay's flat
 #     window lost the paren structure and compiled the RET count error),
-#     then a sound refusal; GRADUATED 2026-08-03 by the Stage-G single-arg
+#     then a refusal; GRADUATED 2026-08-03 by the Stage-G single-arg
 #     increment: the leading one-arg apply `(g x)` records the same
 #     RecordDynApply event as the trailing spelling `(x g)` (the two
 #     collections converge at one argument), so the inner group collapses

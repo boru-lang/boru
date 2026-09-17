@@ -2,7 +2,7 @@ package core
 
 import "testing"
 
-// Phase 1e (design/MACROS-PHASE1.10.md §8): the expansion cache primitive. The
+// Phase 1e (design/legacy/MACROS-PHASE1.10.ignore §8): the expansion cache primitive. The
 // integration (a macro re-applied to the same operands expands once) is
 // covered by the macro spec/Go tests; this pins the registry-level memo.
 func TestMacroCachePrimitive(t *testing.T) {

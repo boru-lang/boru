@@ -1,7 +1,7 @@
 # boru Language Specification: error-taxonomy edge cases
 # Format: input<TAB>expected<TAB>description
 #
-# Edge-case battery over the error system (design/ERRORS.8.md): the
+# Edge-case battery over the error system (design/legacy/ERRORS.8.ignore): the
 # three raise forms and their payloads, do-boundary reification and
 # code routing, taxonomy precision for the native codes, the
 # pattern-match no-op contract of `error`, and the boru:test assertion

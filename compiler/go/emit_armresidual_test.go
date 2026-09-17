@@ -121,7 +121,7 @@ func TestLowerTrapVariadicRegionNotOnTop(t *testing.T) {
 
 // A multi-value arm that is neither all-inert-captured nor event-seated is
 // irreconstructible: lowerFragment's default keeps the whole-program refusal
-// (the sound fallback) — the arm the each row covered before its all-inert
+// (the refusal the interpreter absorbs) — the arm the each row covered before its all-inert
 // capture graduated it.
 func TestLowerFragmentIrreconstructibleMultiArm(t *testing.T) {
 	es := NewEmitState()

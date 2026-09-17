@@ -6,7 +6,7 @@ import (
 )
 
 // Generic types — schemas, type parameters, instantiation
-// (design/GENERICS.10.md; pinned decisions in the approved plan).
+// (design/legacy/GENERICS.10.ignore; pinned decisions in the approved plan).
 //
 //	def Box gen [T] class {value:T}
 //	def b:(Box of [Integer]) {value:42}

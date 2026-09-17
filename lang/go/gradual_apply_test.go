@@ -90,7 +90,7 @@ func TestGradualApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", src, cerr)
 		}
 		if prog != nil || reason == "" {
-			t.Errorf("%q: compiled (reason %q) — expected a sound refusal", src, reason)
+			t.Errorf("%q: compiled (reason %q) — expected a refusal", src, reason)
 		}
 	}
 }

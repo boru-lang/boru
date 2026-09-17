@@ -1,7 +1,7 @@
 # Silent forward-collection traps (DX investigations)
 
 **Status:** investigations only — no code change. Two silent-failure traps
-surfaced by the voxgig trie/bloom DX reports (`design/VOXGIG-BORU-REPORTS.5.md`,
+surfaced by the voxgig trie/bloom DX reports (`design/legacy/VOXGIG-BORU-REPORTS.5.ignore`,
 bloom #3 and trie #6), both reproduced on the current build. Each is a case
 where forward collection does something locally reasonable but globally
 surprising, and fails **quietly** rather than loudly — the dominant cost the

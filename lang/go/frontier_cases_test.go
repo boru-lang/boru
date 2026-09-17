@@ -166,7 +166,7 @@ func bailCensus(bails []BailEvent) string {
 // --- shared frontier sources -------------------------------------------------
 
 // lJoinRepro is the L-JOIN minimal repro verbatim from
-// design/VOXGIG-COMPILE-LEAVES.2.md — the recursive branch-join accumulator
+// design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore — the recursive branch-join accumulator
 // whose self-call operand loses provenance across fixpoint iterations. The
 // only library-code blocker (tst.boru / radix.boru).
 const lJoinRepro = `def rec fn [

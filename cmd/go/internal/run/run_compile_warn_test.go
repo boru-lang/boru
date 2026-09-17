@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// A whole-program compilation refusal silently runs on the slower interpreter
-// (design/COMPILABLE-SUBSET.md §1: "slow, not wrong"). The default compile-try
+// A whole-program compilation refusal is silently re-run on the interpreter
+// (design/COMPILABLE-SUBSET.md §1) — a defect that would otherwise go
+// unreported. The default compile-try
 // mode surfaces that as a one-line stderr warning naming the first offending
 // construct, so the performance cost is not a surprise. A compiled program, and
 // the interpreter (-no-compile) mode, print no warning.

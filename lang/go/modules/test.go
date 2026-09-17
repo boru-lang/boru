@@ -568,7 +568,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					native.TAny, native.TAny, native.TAny, native.TInteger,
 				},
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					// Side-effect suppression (design/module-fn-checkstate-ownership.1.md
+					// Side-effect suppression (design/legacy/module-fn-checkstate-ownership.1.ignore
 					// §5c): test-record accumulates pass/fail outcomes into the run. Once
 					// a module-fn body (run-case) runs IN CHECK MODE under the parent pass
 					// (§5b), this handler fires during the compile/check pass — it must NOT

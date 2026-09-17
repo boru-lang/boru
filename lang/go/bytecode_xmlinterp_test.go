@@ -9,7 +9,7 @@ import "testing"
 // pops their results and rebuilds the element via rebuildXmlFromTmpl —
 // byte-identical to the interpreter's buildXmlFromTmpl over the same
 // values. The string sibling landed earlier as OpInterp; this is its tree
-// twin. A 0-or-many-valued hole keeps the sound refusal (one operand-stack
+// twin. A 0-or-many-valued hole keeps the refusal (one operand-stack
 // slot per hole), pinned below.
 func TestXmlInterpComputedCompiles(t *testing.T) {
 	// Child hole — the reported §9.2 fixture family.
@@ -44,7 +44,7 @@ func TestXmlInterpComputedCompiles(t *testing.T) {
 		`def f fn [[x:Integer] [] []] def g fn [[x:Integer] [Xml] [<p>${x}${f x}</p>]] g 1`,
 		"interpolated XML with a runtime-computed part")
 	// An inline COMPUTED LIST literal inside the hole declines operand
-	// resolution — sound refusal, the interpreter owns it.
+	// resolution — refusal, absorbed by the interpreter and owed a fix.
 	mustRefuseWithParity(t,
 		`def f fn [[x:Integer] [Xml] [<p>${[x (x add 1)]}</p>]] f 7`,
 		"interpolated XML with a runtime-computed part")

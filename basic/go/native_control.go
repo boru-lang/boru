@@ -331,7 +331,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// list carrier rather than concrete tokens) has a genuinely unknown
 	// residual, so emit a bounded gradual dynamic(Any) — optimistically
 	// usable downstream — rather than strict Carry<Any>.
-	// (design/dynamic-modality-report.10.md, do/eval hatch.) A concrete
+	// (design/legacy/dynamic-modality-report.10.ignore, do/eval hatch.) A concrete
 	// body is analyzed normally; one that runs to nothing stays strict.
 	if !(IsConcrete(body) && body.Parent.ConformsTo(TList)) {
 		return []Value{NewDynamicCarrier(TAny)}
@@ -1134,7 +1134,7 @@ func forListListReturnsFn(args []Value, r *Registry) []Value {
 
 // forCarrierAnalyse analyses the body to a bounded fixed point with
 // the iterator bound as a typed carrier (AnalyseLoopBody —
-// design/checker-accuracy-review.10.md A4): body rebindings like
+// design/legacy/checker-accuracy-review.10.ignore A4): body rebindings like
 // `def acc (acc add 0.5)` join back into the enclosing binding and
 // the body re-runs until the bindings stabilise, so post-loop reads
 // see Integer|Float, not the pre-loop Integer. Returns a typed list

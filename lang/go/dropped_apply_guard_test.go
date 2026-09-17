@@ -12,7 +12,9 @@ import (
 // denotes this pass means the body's apply was never modelled — the analysis
 // handed the callee straight back — so a compiled program would bind both
 // names to one slot and leak the unconsumed arguments into the residual.
-// Refuse, and the interpreter fallback owns the shape: slow, not wrong.
+// Refuse. The program is then silently re-run on the interpreter —
+// scaffolding absorbing an open compile defect, not a path the design
+// owns — and the shape stays owed a lowering.
 //
 // The guard's own comment cites `def f2 (f1 2)` over a curried factory, and
 // that shape no longer reaches it: the read model carries a RESULT SHAPE, so

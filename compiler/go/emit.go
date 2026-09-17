@@ -10,7 +10,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// The bytecode recording pass — Stage 1 of design/boru-bytecode-plan.0.md.
+// The bytecode recording pass — Stage 1 of design/legacy/boru-bytecode-plan.0.ignore.
 //
 // For the POSITIVE statement of what compiles and why — the rule each refusal
 // gate below is defending — see design/COMPILABLE-SUBSET.md. Keep it in lockstep
@@ -775,8 +775,9 @@ type EmitState struct {
 	// dispatch record that follows the analysis in the same pipeline)
 	// pairs exactly this range's twins against the compiled unit's def
 	// sites; a mismatched bodyID — a nested body's analysis overwrote the
-	// latch during the outer unit's compile — declines the bridge to a
-	// sound refusal. Overwrite semantics: every close overwrites, and the
+	// latch during the outer unit's compile — declines the bridge, which
+	// refuses rather than pairing wrongly. Overwrite semantics: every close
+	// overwrites, and the
 	// zero latch (empty bodyID) bridges nothing.
 	lastMultiRun multiRunLatch
 	// lastClosure is the closure-compile latch: the unit index the most
@@ -931,7 +932,7 @@ type EmitState struct {
 	// rewrites a single-push-site marked const to OpPushConstFresh (per-call
 	// identity), keeps a multi-push-site one shared when nothing compound can
 	// escape the fn, and refuses otherwise. See OpPushConstFresh (bytecode.go)
-	// and design/MISCOMPILE-HUNT-FINDINGS.0.md §A.
+	// and design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A.
 	freshenConst map[int]bool
 	// fnRiskFields maps a constructed INSTANCE's value ID → the field keys
 	// holding genuinely-0-param fn values (noteFnRiskFields /
@@ -944,7 +945,7 @@ type EmitState struct {
 	// through the instance CARRIER — whose payload inspection sees only the
 	// schema — still tags noteMemberFnRead: the §3 arrival model then
 	// compiles the landing with parity, and every shape it declines gets
-	// refuseStrandedMemberFn's sound refusal instead of the pre-existing
+	// refuseStrandedMemberFn's refusal instead of the pre-existing
 	// stranded-apply miscompile (`o.f 21 eq 42` → fn-as-data + eq(21,42)).
 	fnMemberFields map[string]map[string]core.Value
 	// memberFnReads holds the value IDs of get-family reads that surfaced a
@@ -1315,7 +1316,7 @@ type emitUnit struct {
 	// absent from enclosingBindIDs. dynScopeRescue recovers the read's NAME (from
 	// DynFrom, tagged at the read site) and consults this set to confirm it is a
 	// live enclosing binding — the VM's OpLookupDynScope reads the same live cell
-	// the interpreter does (and DEFERS on a miss, a sound fallback), so a name
+	// the interpreter does (and DEFERS on a miss rather than guessing), so a name
 	// match is a safe commit signal for an otherwise un-ID-able mutable read.
 	enclosingBindNames map[string]bool
 	// pendingApply lists the value IDs of Function-typed CARRIERS this
@@ -1327,7 +1328,7 @@ type emitUnit struct {
 	// (fn on top, args below — exactly the interpreter's applyHandler re-step
 	// against the preceding stack) or refuse, so an unconsumed pending apply
 	// can never silently compile the fn+args as unapplied data (Stage M2a,
-	// design/STAGE3-INLINING-DESIGN-ROUND.0.md).
+	// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore).
 	pendingApply []pendingApply
 }
 
@@ -2827,7 +2828,8 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		// `((mk) get 0) eq c` stays true, `(mk) eq (mk)` stays false).
 		// A deep-clone freshen breaks the member identity; a shared const
 		// breaks the outer's. Until a selective (spine-only) freshen
-		// exists, refuse — the sound fallback (PR #225 P1).
+		// exists, refuse — no wrong answer, and an open defect until the
+		// selective freshen lands (PR #225 P1).
 		if embedsEnclosingCompound(lit, es.units[len(es.units)-1].enclosingIDs) {
 			es.MarkUncompilable("fn body literal embeds an enclosing binding's container (per-call spine identity over a shared member)")
 			return EmitOperand{}, false
@@ -4632,7 +4634,7 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 //     ([1 2] each q) q do`): the each's runtime installs twice where
 //     one generalized note exists, so replaying it once under-counts;
 //     bracketed, the each's twins stay unplaced and the regime refuses
-//     the program (sound fallback).
+//     the program — correct over a miscompile, and owed a fix.
 //   - THE TAINT: sub-ranges noted under a nested NON-keep body run
 //     (lastKeepTaints) are excluded even inside the bracket. A nested
 //     each/fold inside the do body (`do [[1 2] each [def x 5]]`) runs
@@ -6663,7 +6665,8 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 			// reconciliation (the Stage-A multi-value arm model): the TOP
 			// operand rides as bodyOut, residualN carries the full count, and
 			// lowerFragment seats every event-produced value (or refuses the
-			// inert-tail shapes it cannot reconstruct — the sound fallback).
+			// inert-tail shapes it cannot reconstruct — a refusal, and a defect
+			// while it stands).
 			// Per-iteration values then accumulate exactly as the interpreter.
 			// PARKED-FN screen (mirrors the program-residual fn-boundary
 			// guard): a Function value anywhere in the region auto-applies in
@@ -6955,7 +6958,8 @@ func (es *EmitState) atUnitRootFrame() bool {
 // every preserved entry either a known operand home (event / local /
 // materialisable const / type node) with no variadic producer (a variadic
 // region's runtime count is not its model count). Anything else declines
-// and the historical refusal path stands (slow, not wrong). An
+// and the historical refusal path stands — the program is then silently
+// interpreted, which hides that failure rather than fixing it. An
 // out-of-range n declines too: the interpreter raises there, and the
 // fallback keeps the raise byte-identical.
 func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([]core.Value, bool) {
@@ -7206,7 +7210,7 @@ func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, writt
 // bind's RESULT, not to the raw body operand (out shares the body's ID —
 // ReparentValue preserves it — and without the remint a reference would
 // resolve straight to the un-reparented param local: miscompile B's exact
-// mechanism, design/MISCOMPILE-HUNT-FINDINGS.0.md §B).
+// mechanism, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §B).
 //
 // Declines (returning out unchanged and false) when recording is inactive or
 // the body is CONCRETE — a static typed-def's reparent rides the const pool
@@ -7617,7 +7621,7 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		// → 42; bare `{b:f/v} dot b` → 7; `… dot b add 1` → 8 — it even
 		// collects forward args). The VM would push it as inert data — a
 		// silent wrong value (miscompile mechanism E, the deferred-field
-		// auto-invoke, design/MISCOMPILE-HUNT-FINDINGS.0.md). Refuse on the
+		// auto-invoke, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore). Refuse on the
 		// RECEIVER signal: reads from fn-free containers are unaffected. An
 		// ANNOTATED shaped-method read (shapedReadOut) is exempt: its landing
 		// is modelled by tryShapedMethodDispatch, whose guard-owned decline
@@ -7882,7 +7886,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// handler rather than removed one. That decline is gone
 		// (eng/go/vm_foreign_unit.go), so the node rides as an ordinary
 		// const and its body runs on the VM. A declined stamp still falls
-		// back to CallBoru — correct, slower, and visible to the
+		// back to CallBoru — correct, uncompiled, and visible to the
 		// interp-entry census, which is the gate that keeps this honest.
 		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal {
 			continue
@@ -8090,7 +8094,8 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
 		// Same auto-dispatch divergence as the mono path (recordCallRefusal):
 		// the interpreter invokes a container-read fn value as it lands; the
-		// VM would push it as data. Refuse the program (sound fallback).
+		// VM would push it as data. Refuse the program rather than diverge —
+		// the lesser failure, and one owed a lowering.
 		// Annotated shaped-method reads and pinpointed genuine-0-arg member
 		// reads are exempt (see recordCallRefusal).
 		es.SiteCounts[SiteMeta]++
@@ -9315,7 +9320,7 @@ func isGetFamilyWord(w string) bool {
 // apply `(mk 5) 10 20` from a curried CHAIN `((mk 1) 2) 3` — the flattened
 // residual is identical for both, and committing one OpCallDynamic over a
 // chain leaks the intermediate closure (miscompile mechanism E,
-// nested-factory apply, design/MISCOMPILE-HUNT-FINDINGS.0.md).
+// nested-factory apply, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore).
 //
 // The factory returns its lambda one of two ways, and both are recoverable:
 // a CLOSURE when the body reads an enclosing binding (`( fn [[x:Integer]
@@ -9966,7 +9971,7 @@ func noEvalBodiesInert(sig *core.Signature, args []core.Value) bool {
 // the token list through a sub-engine over the live registry) contains a
 // statement whose check-time execution left registry state the replay
 // double-applies or half-misses — the do-unit registry-replay miscompile
-// class (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, Phase 6 item):
+// class (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, Phase 6 item):
 //
 //   - a CAPITALISED def/var (a type install): the check-time run of the body
 //     (RunCarrierBodyWithDefs) rolls back only the Defs binding — the minted
@@ -10372,7 +10377,7 @@ func isTypeBodyPayload(v core.Value) bool {
 // VALUE-literal class whose interpreter evaluation CONSTRUCTS a fresh
 // instance per evaluation, making per-call container identity observable
 // through `eq` (miscompile mechanism A,
-// design/MISCOMPILE-HUNT-FINDINGS.0.md §A). That is ListPayload and
+// design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). That is ListPayload and
 // MapPayload — sameContainer (compare.go) identifies them by backing array /
 // *OrderedMap pointer, and CloneValue mints both fresh. Everything else
 // stays shared: scalars and Microns compare by value; type bodies, fn
@@ -13685,8 +13690,9 @@ func eventsThroughSeq(events []EmitEvent, seq int) []EmitEvent {
 // interpreter's forward collection stops at the statement End; the
 // flattened residual has no such boundary), a silent-divergence class
 // probe-confirmed pre-existing (`c.add (1 add 2) ; Log.measurements
-// size` compiled to the wrong value). Such carriers now refuse instead —
-// sound fallback. Trailing shapes are unaffected: they draw args from
+// size` compiled to the wrong value). Such carriers now refuse instead: a
+// miscompile traded for a compile failure, not for a fix — the shape is
+// still owed one. Trailing shapes are unaffected: they draw args from
 // the STACK below the value, exactly the interpreter's stack-form
 // dispatch, which crosses statements by design.
 func (es *EmitState) methodShapeAnnotated(id string) bool {

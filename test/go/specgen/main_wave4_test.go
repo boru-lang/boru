@@ -19,7 +19,7 @@ import (
 // error-code work removes one:
 //
 //   - top-level `1 0 div` stopped qualifying when the checker's arith
-//     mirror began flagging it statically (design/CHECKER-COMPLETION.0.md),
+//     mirror began flagging it statically (design/legacy/CHECKER-COMPLETION.0.ignore),
 //     which classifies classCheck;
 //   - an out-of-bounds `getr` stopped qualifying when that condition was
 //     given the `index_out_of_range` code its own check-mode mirror had

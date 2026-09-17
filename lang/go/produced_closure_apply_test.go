@@ -68,7 +68,7 @@ func TestProducedClosureApplyParity(t *testing.T) {
 		{`def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply`, "T — Church true"},
 		{`def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply`, "F — Church false: its capture-free inner lambda is a stamped const, entered under the value's own contract"},
 		{`def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules`, "6 — the fetched-fn apply (increment 27's positive twin), native now"},
-		// A two-arg closure over two literals. This was a sound refusal
+		// A two-arg closure over two literals. This was a refusal
 		// ("the seating cannot reorder") until the forty-third increment:
 		// the apply's two operands leave the residual in an order no static
 		// offset reaches, and the program residual now REBUILDS instead —
@@ -120,7 +120,7 @@ func TestProducedClosureApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal (%s)", c.src, c.note)
+			t.Errorf("%q: compiled — expected a refusal (%s)", c.src, c.note)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {

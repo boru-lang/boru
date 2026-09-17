@@ -14,7 +14,7 @@ import (
 // snapshot. The set is deliberately generous: an omission would over-skip
 // and leak, so err toward keeping frame state (the closure/def/each tests
 // exercise every entry). See buildFnBodyHandler and
-// design/INTERPRETER-SPEED-PLAN.10.md #5.
+// design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5.
 var frameStateWords = map[string]bool{
 	"def": true, "undef": true, // bind / unbind in scope
 	"fn": true, "afn": true, // construct an inner fn (reads baseline)
@@ -91,7 +91,7 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 // !bodyNeedsFrameState gate, which excludes every opaque-code word
 // (do/call/eval/word/…) that could reach `args` dynamically — the
 // handler pushes a shared empty list instead of copying the call's args
-// into a fresh list per call (design/INTERPRETER-SPEED-PLAN.10.md #5).
+// into a fresh list per call (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
 // The WalkBodyWords token space is complete under that gate (it descends
 // into code lists, parens, interp/XML expressions and Reach receivers,
 // so `args.0` is seen), and macro splices are resolved recursively below.

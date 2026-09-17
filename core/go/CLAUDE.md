@@ -1,7 +1,7 @@
 # core/go — Interpreter core CLAUDE.md
 
 The `core` module is the interpreter core cut out of the kernel
-(design/ENG-FOUR-PIECE.0.md, Stage 4): values, types, signatures,
+(design/legacy/ENG-FOUR-PIECE.0.ignore, Stage 4): values, types, signatures,
 matching, the registry, and the step loop, standalone on
 cockroachdb/apd alone. The kernel conventions in
 [eng/go/CLAUDE.md](../../eng/go/CLAUDE.md) apply to this module
@@ -44,7 +44,7 @@ Two rules specific to this module:
 
 - **The carrier lattice is core's, not the checker's** (ADR-013's
   2026-08-08 amendment; reasoning in
-  [design/BASIC-CHECK-CUT.0.md](../../design/BASIC-CHECK-CUT.0.md)). `carrier_new.go`, `carrier_join.go`,
+  [design/legacy/BASIC-CHECK-CUT.0.ignore](../../design/legacy/BASIC-CHECK-CUT.0.ignore)). `carrier_new.go`, `carrier_join.go`,
   `carrier_body.go`, `carrier_spread.go`, `guard_narrow.go`,
   `guard_predicate.go`, `deadsig.go` and `record_typed_def.go` hold
   what used to live in `check/go/carrier.go`. The test is ownership of
@@ -69,5 +69,5 @@ Two rules specific to this module:
   new core symbol does not belong in it.
 
 Coverage: `make cover-gate-core` gates core/go by its own suite
-(floor ratcheting to 100, design/ENG-FOUR-PIECE.0.md Stage 5), on
+(floor ratcheting to 100, design/legacy/ENG-FOUR-PIECE.0.ignore Stage 5), on
 top of the repo-wide merged ADR-008 gate.

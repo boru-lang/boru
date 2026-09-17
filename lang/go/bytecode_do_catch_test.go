@@ -36,7 +36,7 @@ func TestDoCatchMultiValueArity(t *testing.T) {
 
 	// FALLS BACK (refuses natively) — fallible multi-value bodies. Parity must
 	// still hold: the caught-error path is byte-identical to the interpreter,
-	// no STORE_LOCAL underflow. wantCompiled=false (the sound fallback).
+	// no STORE_LOCAL underflow. wantCompiled=false (the refusal the interpreter absorbs).
 	fallback := []string{
 		// The trie codec shape: a Reach (module fn) that RAISES, caught, bound.
 		mod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,

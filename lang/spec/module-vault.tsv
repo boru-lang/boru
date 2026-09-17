@@ -94,7 +94,7 @@ import "boru:vault"  Vault.restore "x"	ERROR:uncalled_function	restore requires 
 import "boru:vault"  Vault.set-expiry "a" 5	ERROR:uncalled_function	set-expiry requires String args
 #
 # §6  `identity` — an opaque handle to a vault-held TLS client
-#     credential (design/NETWORK-TLS-PLAN.0.md §5). It is deliberately
+#     credential (design/legacy/NETWORK-TLS-PLAN.0.ignore §5). It is deliberately
 #     NOT a String: `reveal` yields a secret a boru program can print,
 #     which is right for an API token and wrong for a private key. The
 #     handle is accepted only as `tls: {identity: …}` and needs no

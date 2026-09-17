@@ -181,7 +181,7 @@ question (§7).
 
 `<` and `>` are already meaningful in boru: they are the **generic type
 sugar** delimiters, `Box<Integer>` ≡ `(Box of [Integer])`
-(`design/GENERICS.10.md` D14/D15). Adding XML must not disturb that.
+(`design/legacy/GENERICS.10.ignore` D14/D15). Adding XML must not disturb that.
 It does not — and the reason is structural, not a heuristic.
 
 ### 3.1 How angle brackets work today

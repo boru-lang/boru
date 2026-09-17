@@ -119,7 +119,7 @@ render {mode: "x", tabs: {a: 1}}`, "[2]"},
 // A GENUINE reassignment inside an arm (a real `def` of a DIFFERENT value,
 // not a narrow) gives the arms DIFFERING IDs, so joinBranchDef keeps the
 // fresh-ID JoinCarriers merge — the shared-ID shortcut must NOT fire here.
-// The shape may soundly REFUSE (the merged binding read after the branch
+// The shape may REFUSE (the merged binding read after the branch
 // is its own known gap), but it must never MISCOMPILE: whenever it does
 // compile, the VM result equals the interpreter's. This pins that the
 // narrow-preservation did not weaken the genuine-merge path into a
@@ -153,7 +153,7 @@ render {mode: "x", n: 7}`
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		return // a sound refusal (its own separate gap) — not a miscompile
+		return // a refusal (its own separate gap) — not a miscompile
 	}
 	b, err := New()
 	if err != nil {

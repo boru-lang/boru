@@ -1,8 +1,8 @@
 // Package stackform defines a canonical strict-stack representation
 // of a boru program. It is the form the property-based-testing
-// reducer operates on (design/PBT-PLAN.10.md) and the first half of
+// reducer operates on (design/legacy/PBT-PLAN.10.ignore) and the first half of
 // the work the bytecode-emission proposal in
-// design/boru-bytecode-report.0.md needs.
+// design/legacy/boru-bytecode-report.0.ignore needs.
 //
 // A StackForm is a flat sequence of Ops. Each Op corresponds to one
 // observable engine action — either pushing a literal value onto
@@ -68,7 +68,7 @@ func (Call) opMarker() {}
 // emitted by the engine's primary recorder — quoted bodies stay as
 // PushLit of the raw list. A future enhancement can promote those
 // to Quote when the body is later executed via call/do. See
-// design/PBT-PLAN.10.md "Out of scope".
+// design/legacy/PBT-PLAN.10.ignore "Out of scope".
 type Quote struct {
 	Body *StackForm
 }

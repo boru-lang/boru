@@ -33,7 +33,7 @@ func runBothEngines(t *testing.T, prog string) (compiled, interpreted string) {
 		// ("apply over a dynamic lead") rather than lower an unprovable
 		// overload — the interpreter owns the shape until it graduates.
 		if strings.Contains(errC.Error(), "compile_refused") {
-			t.Skipf("compiled lane refused soundly: %v", errC)
+			t.Skipf("compiled lane refused: %v", errC)
 		}
 		t.Fatalf("RunCompiled: %v", errC)
 	}

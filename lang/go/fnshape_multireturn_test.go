@@ -29,7 +29,7 @@ func TestFnShapeMultiReturnLaneParity(t *testing.T) {
 		name string
 		src  string
 		want string
-		// tolerateRefusal marks a row whose compiled lane refuses SOUNDLY
+		// tolerateRefusal marks a row whose compiled lane REFUSES
 		// since the BROAD park (NUR073 clause 3): the paren-apply idiom the
 		// original pin rode was removed, and the BROAD spellings of this
 		// shape sit behind the def-bound-computed-fn compile frontier. The
@@ -70,13 +70,13 @@ for 2 [7 (mk 1) apply]`,
 			compiled, ran, reason, err := mustNew(t).RunAutoValues(tc.src)
 			if err != nil {
 				if tc.tolerateRefusal && strings.Contains(err.Error(), "compile_refused") {
-					t.Skipf("compiled lane refused soundly (%v)", err)
+					t.Skipf("compiled lane refused (%v)", err)
 				}
 				t.Fatalf("compiled: %v", err)
 			}
 			if !ran {
 				if tc.tolerateRefusal {
-					t.Skipf("compiled lane refused soundly (%q)", reason)
+					t.Skipf("compiled lane refused (%q)", reason)
 				}
 				t.Fatalf("compiled lane refused (%q) — this shape compiled when the pin was written; a refusal here is a silent loss of coverage, not a pass", reason)
 			}

@@ -1,7 +1,7 @@
 package eng
 
 // TestPieceMap is the four-piece split's Stage-0 "virtual package" lint
-// (design/ENG-FOUR-PIECE.0.md): every production file is assigned to a
+// (design/legacy/ENG-FOUR-PIECE.0.ignore): every production file is assigned to a
 // piece (core / check / compiler / eng), and files assigned to core
 // must not reach UP the target dependency chain
 // (eng -> compiler -> check -> core) through the known entanglement
@@ -153,7 +153,7 @@ func TestPieceMap(t *testing.T) {
 		for _, probe := range upwardRefs {
 			applies := probe.pieces[piece] || (probe.pieces == nil && piece == "core")
 			if applies && probe.re.Match(src) && !probe.allowed[f] {
-				t.Errorf("%s (core): new wrong-direction reference [%s] — route it through a seam (design/ENG-FOUR-PIECE.0.md)", f, probe.name)
+				t.Errorf("%s (core): new wrong-direction reference [%s] — route it through a seam (design/legacy/ENG-FOUR-PIECE.0.ignore)", f, probe.name)
 			}
 		}
 	}

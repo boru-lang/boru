@@ -15,7 +15,7 @@ import (
 // context layer. There is no call to bracket (vm.go's enterBodyUnit map,
 // path 5), so the region's layer has no compiled twin, and the refusal fires
 // AT THE MINT: a `context` read inside the region refuses compilation and
-// the program falls back to the interpreter ("slow, not wrong",
+// the program falls back to the interpreter (a refusal the interpreter absorbs,
 // design/COMPILABLE-SUBSET.md). Refusing the read — not just a set/del
 // through it — is what closes every consumption that can tell the region's
 // layer from the ambient one: aliases (`dup`), identity probes (`eq`),

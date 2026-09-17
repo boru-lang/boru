@@ -1,5 +1,5 @@
 // Native Returns/ReturnsFn coverage gate (G7 —
-// design/CHECKER-BYTECODE-COMPLETION-PLAN.0.md Phase 4.3).
+// design/legacy/CHECKER-BYTECODE-COMPLETION-PLAN.0.ignore Phase 4.3).
 //
 // Every registered native signature — in the default registry and in
 // every `boru:` module's sub-registry — must tell the checker what it

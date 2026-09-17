@@ -1,0 +1,1522 @@
+# Generic Types — Design and Plan
+
+Status: **LANDED (2026-06-10/11), all phases.** This document is the
+design record; the authoritative landed state is §15a–§15h (one note
+per implementation phase, each marking where the landing deviates
+from the original text below). The load-bearing deviations:
+
+- **D2/§5** — `gen` returns NOTHING; the spec rides a registry
+  pending-slot to the next constructor (§15a). `of` evaluates its
+  argument list (no NoEvalArgs).
+- **D5/§5.5** — recursion is `Self of [...]`; the schema's own name
+  is unbound while its body builds (§15a).
+- **D10/§5.6** — v1 is INVARIANT: `intBox is (Box of [Number])` is
+  `false`, inverting this document's covariance example (§15b).
+- **D14/§6.4** — `<`/`>` are GENERAL-PURPOSE parser tokens with the
+  generics rule as one contextual consumer, not an exclusive
+  reservation (§15f).
+- **D15** — sugar desugars at parse time; macros/quote/Vm.parse see
+  only the canonical stream (§15f).
+- **§8.2** — `Comparable` landed as a SURFACE in boru:decision, not a
+  tor-alias (§15h).
+
+User-facing docs: REFERENCE.md "Generic types", TUTORIAL §13,
+HOWTO "Define a generic type", EXPLANATION "Generics as memoised
+type construction".
+
+Originally: design draft refreshed 2026-06-04 against
+the current type system (the TYPE-UNIFORM `def`/`refine` syntax and the
+`eng/go` + `lang/go/native` layout) and the set-theoretic extensions
+proposed in this design round. **Reviewed 2026-06-10 against the
+classes / surfaces / errors landings — see §15. The core design has
+aged well; §15 lists what is now cheaper, what is newly in scope
+(generic classes), and the revision pass needed before Phase 0
+lock-down.**
+
+Related design notes:
+- `elixir-types-in-boru-report.10.ignore` — set-theoretic refinements (`tnot`
+  negation, the `dynamic(T)` modality, dead-overload detection). It names
+  generics the *convergent frontier*; this note is the parametric half of
+  that frontier.
+- `checker-loud-diagnostics-report.10.ignore` — the `boru check` diagnostic
+  framework the generics diagnostics slot into.
+- `boru-bytecode-report.0.ignore` — the compiler thesis §10 builds on.
+
+**Naming note.** The instantiation word is **`of`** (`Box of [Integer]`),
+not `apply`: `apply` is already a registered word for function
+application (`args… fn apply`, `lang/go/native/native_ref.go`). Earlier
+drafts of this document used `apply`; every instantiation site below now
+reads `of`.
+
+## 1. Motivation
+
+The boru type system already has records, typed lists/maps, fn-shape
+types, predicate types, dependent scalars, and a `tand`/`tor`/`Never`/
+`Any` algebra (soon closed under negation via `tnot`). What is missing
+is **parametric polymorphism** — the ability to write a single type or
+function shape that abstracts over one or more type arguments and is
+instantiated at use sites.
+
+Concrete pain points users hit today:
+
+- `def Box refine Record [value:Any]` loses precision: a `Box` of `Integer`
+  is the same type as a `Box` of `String`. There is no way to say
+  "a `Box` whose `value` field has type `T`, for the same `T`
+  throughout."
+- Container fn-shapes have to be re-declared per element type.
+  `def IntMapper fn [[Integer] [Integer]]` and
+  `def StrMapper fn [[String] [String]]` have identical structure.
+- Higher-order list/map words (`map`, `fold`, `outer`, `inner`) accept
+  `TList` / `TAny` because we cannot express "a fn from `T` to `U`"
+  in a way the static checker can refine across call sites.
+- Predicate types currently parameterise by value (`x:Any`) but not by
+  type. Useful constructions like "a predicate that accepts any `T`
+  and returns `T` if the guard passes" cannot be encoded.
+
+## 2. Design philosophy: concatenative core, angle-bracket sugar
+
+A type-parameter list is — structurally — an ordered list with one
+entry per parameter, where each entry carries a name plus optional
+constraint and default. boru already has lists; boru already has words
+that take quoted lists and do interesting things with them (`def`,
+`fn`, `refine`, `for`, …). Generics fit the same mould.
+
+**The canonical surface** is fully concatenative: four new engine
+words (`gen`, `extends`, `default`, `of`) extend the type and fn
+machinery with parametric polymorphism. **The angle-bracket form**
+(`Box<T>`, `<T extends C>`, `Box<Integer>`) is a documented
+parser-level sugar that desugars to the canonical form before any
+engine code runs.
+
+This split has three concrete benefits over an angle-bracket-native
+design:
+
+1. **One core machinery.** Generics are an extension of the existing
+   typed-def / refine / fn pipeline. The static checker, error
+   reporting, and source-position threading work without bespoke
+   code paths.
+2. **Programmatic generics.** `def myParams [T (U extends Comparable)];
+   def Box gen myParams refine Record [...]` — parameter lists can be
+   constructed at runtime or assembled by macros. This is impossible
+   with a pure-syntax angle-bracket form.
+3. **Smaller token surface.** `<` and `>` only need to exist in the
+   sugar layer (lexer rewrite). The grammar, AST, and engine never
+   see them.
+
+## 3. Goals and non-goals
+
+**Goals.**
+
+1. Add **type parameters** to records, fn-shape types, predicate types,
+   typed-def, and fn definitions.
+2. Express the feature in a **concatenative core** (`gen`, `extends`,
+   `default`, `of`) so it composes with the rest of the language.
+3. Provide a **TypeScript-style angle-bracket sugar** so users
+   familiar with mainstream generics syntax can read and write the
+   feature without re-learning.
+4. Support TypeScript-style **constraints** (`extends`) with semantics
+   that integrate naturally with the existing `tand`/`tor`/`Never`/
+   `Any`/`tnot` algebra rather than reinventing them.
+5. Support **defaults** (`<T = Integer>` / `(T default Integer)`).
+6. Be **inferable** wherever the existing signature-matcher already
+   has enough information — e.g. `Box<Integer>` should be inferable
+   from a value of `{value: 42}` without an explicit annotation.
+7. Preserve `boru check` (carrier-based static checking) coverage —
+   generics must produce carriers that the checker can refine.
+
+**Non-goals (deferred).**
+
+- Higher-kinded types (parameters that are themselves generic).
+- Conditional types (`T extends U ? X : Y`).
+- Mapped types (`{[K in keyof T]: …}`).
+- Variance annotations richer than the inferred contravariant-input /
+  covariant-return rule the fn-shape matcher already implements.
+- Generic modules. (Modules can re-export concrete instantiations.)
+
+## 4. Survey of the existing syntactic landscape
+
+What the parser and engine already use, that bears on the design:
+
+- **`<` and `>` are syntactically free.** Comparisons use `lt`, `gt`,
+  `lte`, `gte` (`eng/go/compare.go`). No existing word, sigil,
+  or jsonic token consumes `<` or `>`. They are available for the
+  sugar layer.
+- **Type names start with a capital letter, def names lower-case**
+  (`LANGREF.md` §"Type and Def Naming"). The same rule applies to
+  type parameters — `gen [T U V]` accepts capitals; `gen [t]` is
+  rejected at registration time.
+- **Typed-def uses `:`** — `def x:Integer 42`. Reserved as-is. We do
+  not introduce a colon-as-extends shorthand in v1.
+- **Type algebra uses `tand` / `tor`** — `Integer tor String`. The
+  `extends` constraint takes any type expression, so the algebra
+  composes for free: `(T extends Number tand Comparable)`. With
+  **negation** (`tnot`, per `elixir-types-in-boru-report.10.ignore` item 1)
+  the bound may also exclude — `(T extends Number tand tnot Integer)`.
+  Checking a negated bound is a *disjointness* test
+  (`arg tand bound ≠ Never`), which is exactly the decision procedure
+  the `tnot` work introduces — reused here for free.
+- **Fn-shape types already encode variance** (contravariant inputs,
+  covariant returns; `LANGREF.md` §"Structural Function-Shape Types").
+  Generic fn shapes inherit this for free.
+- **`Any` and `Never` are the lattice top and bottom.** Unconstrained
+  type parameters default to `extends Any`; `Never`-bounded
+  parameters are valid but uninhabited.
+- **`NoEvalArgs` already exists** for words that take a list as a
+  code body (`def`, `fn`, `if`, `for` branches, `each`, etc.) — the
+  list arrives quoted instead of being auto-evaluated. `gen` uses
+  the same mechanism.
+
+## 5. The canonical concatenative core
+
+Four new engine words. All four are forward-collecting; `gen` and
+`of` use `NoEvalArgs` on their list argument so the parser does
+not auto-evaluate it.
+
+### 5.1 `gen` — declare type parameters
+
+```
+gen [T  (U extends Comparable)  (V default Integer)  (W extends Comparable default String)]
+```
+
+Signature: `gen [List/q] -> [GenSpec]`. Walks the list, collecting one
+parameter spec per entry:
+
+- **Bare atom** (e.g. `T`): unconstrained parameter (`extends Any`,
+  no default).
+- **Paren-expression** (e.g. `(U extends Comparable)`): evaluated
+  with `U` bound as a fresh `TypeParam` placeholder in scope, so
+  later parameters can refer to earlier ones (`gen [T (U default T)]`)
+  and constraints can be F-bounded (`gen [(T extends Container of [T])]`).
+
+`gen` itself does not install a type. It produces a `GenSpec` value
+that the next constructor under a `def` (`refine …` / `fn …`) consumes
+to build a generic schema.
+
+### 5.2 `extends` — attach a constraint
+
+```
+T extends Comparable
+```
+
+Signature: `extends [Atom/q TypeExpr] -> [GenParam]`. Forward-collects
+the right-hand type expression. Errors with
+`[boru/extends_outside_gen]` if invoked outside a `gen` parameter
+list.
+
+### 5.3 `default` — attach a default
+
+```
+T default Integer
+T extends Comparable default String
+```
+
+Signature: `default [Atom/q TypeExpr] -> [GenParam]` and
+`default [GenParam TypeExpr] -> [GenParam]` (chains after `extends`).
+Same context restriction as `extends`.
+
+### 5.4 `of` — instantiate a schema
+
+```
+Box of [Integer]
+Pair of [String  Integer]
+Tree of [Tree of [Integer]]
+```
+
+Signature: `of [Schema List] -> [TypeLiteral]`. Looks up the
+schema, validates arity and constraints, substitutes each parameter,
+and returns a normal type-literal value (`RecordType`, `FnShape`,
+`PredicateType`, …) that the rest of the engine consumes without
+needing to know it came from a generic. (Named `of` rather than
+`apply` because `apply` already applies a function value to stack
+args — see the naming note at the top.)
+
+### 5.5 Worked declarations in the canonical form
+
+```
+def Box gen [T] refine Record [value:T]
+def Pair gen [K V] refine Record [key:K  value:V]
+def Tree gen [T] refine Record [value:T  left:Tree of [T]  right:Tree of [T]]
+def Mapper gen [T U] fn [[T] [U]]
+def Reducer gen [T A] fn [[A T] [A]]
+def Predicate gen [T] fn [[T] [Boolean]]
+def SortedList gen [(T extends Comparable)] refine Record [items:[:T]]
+def Result gen [T (E default Error)] refine Record [ok:T  err:E]
+
+def identity gen [T] fn [[T] [T] [/* body */]]
+def pair gen [K V] fn [[K V] [Pair of [K V]] [{key:_  value:_}]]
+def map gen [T U] fn [[fn:Mapper of [T U]  [:T]] [:U] [/* body */]]
+```
+
+### 5.6 Worked applications
+
+```
+def intBox:(Box of [Integer]) {value:42}
+def pairs:[:Pair of [String Integer]] [{key:"x" value:1}]
+intBox is (Box of [Integer])         # → true
+intBox is (Box of [Number])          # → true (Integer extends Number)
+```
+
+The parens are needed only because `of` is forward-collecting and
+we want it to bind tightly inside an annotation. In word context
+(top level) the parens are unnecessary: `Box of [Integer]` stands
+alone.
+
+## 6. Angle-bracket sugar
+
+A lexer-level rewrite layer recognises two forms and emits the
+canonical token stream. The grammar, AST, and engine see no `<` or
+`>`.
+
+### 6.1 Reserved tokens
+
+`<` (`#LA`) and `>` (`#RA`) are registered as fixed jsonic tokens so
+they tokenize even when adjacent to text (`Box<T>` lexes as `Box`,
+`<`, `T`, `>` — same trick as `(`, `)`, `.`, `;`).
+
+### 6.2 Two rewrite rules
+
+| Sugar | Canonical |
+|---|---|
+| `Name<...>` in a declaration head (after `def Name`, before `refine`/`fn`) | `Name gen [...]` |
+| `Name<...>` elsewhere (use site) | `Name of [...]` |
+
+The list contents are themselves rewritten:
+
+| Sugar inside `<…>` | Canonical inside `[…]` |
+|---|---|
+| `T` (bare) | `T` |
+| `T extends C` | `(T extends C)` |
+| `T = D` | `(T default D)` |
+| `T extends C = D` | `(T extends C default D)` |
+| `,` separator | whitespace |
+
+### 6.3 Side-by-side
+
+```
+# Sugar
+def Box<T> refine Record [value:T]
+def Pair<K extends Comparable, V = Any> refine Record [key:K  value:V]
+def Tree<T> refine Record [value:T  left:Tree<T>  right:Tree<T>]
+def Mapper<T, U> fn [[T] [U]]
+
+def intBox:Box<Integer> {value:42}
+intBox is Box<Number>
+
+def map<T, U> fn [[fn:Mapper<T, U>  [:T]] [:U] [/* body */]]
+
+# Canonical (what the engine actually sees)
+def Box gen [T] refine Record [value:T]
+def Pair gen [(K extends Comparable) (V default Any)] refine Record [key:K  value:V]
+def Tree gen [T] refine Record [value:T  left:Tree of [T]  right:Tree of [T]]
+def Mapper gen [T U] fn [[T] [U]]
+
+def intBox:(Box of [Integer]) {value:42}
+intBox is (Box of [Number])
+
+def map gen [T U] fn [[fn:Mapper of [T U]  [:T]] [:U] [/* body */]]
+```
+
+### 6.4 Disambiguation
+
+The sugar layer commits to the rule **`<` is only ever the start of a
+generic argument list**. Any `<` not followed by a valid type-param
+or type-arg list is a `[boru/syntax_error]`. This is a hard, long-term
+commitment: boru will not later add `<` as a comparison operator
+(comparisons stay on `lt`/`gt`/`lte`/`gte`).
+
+Whitespace is irrelevant: `Box<T>`, `Box< T >`, and `Box <T>` all
+lex the same.
+
+## 7. Semantics
+
+### 7.1 Schemas vs instantiated types
+
+`gen` followed by a `refine` / `fn` / predicate body produces a
+`TypeSchema` value installed in the type stack. A schema holds:
+
+- the parameter list (names, constraints, defaults)
+- the body with parameter references left as `TypeParam(name)`
+  placeholders
+
+`of` substitutes each `TypeParam(name)` with the supplied
+argument and runs the existing normalisation (e.g. `tand`
+distribution over `tor`). The result is a normal type literal that
+downstream code consumes unchanged.
+
+### 7.2 Constraint checking
+
+At each `of`, for each parameter `T extends C`, run
+`isSubtype(arg, C)` — the same predicate used by `is`. Failure
+produces `[boru/constraint_violation]` with a hint pointing at the
+parameter declaration site (using `WithPos`). When `C` contains a
+negation (`tnot`), the check is the disjointness form noted in §4.
+
+### 7.3 In-scope binding while evaluating constraints
+
+`gen` is **not** a vanilla word. It walks its list with `NoEvalArgs`
+on, processes entries left-to-right, and for each entry:
+
+1. Binds the parameter name as a fresh `TypeParam` placeholder in
+   the type stack (push).
+2. Evaluates the entry's `extends` and `default` expressions with
+   that binding visible — this makes both forward references between
+   parameters (`gen [T (U default T)]`) and F-bounded constraints
+   (`gen [(T extends Container of [T])]`) work without special
+   casing.
+3. Records the resulting `GenParam` in the spec.
+
+After the body type is built, the placeholder bindings are popped.
+The resulting `TypeSchema` carries the parameter list independently
+of the type stack — instantiations re-bind the placeholders fresh
+at each `of`.
+
+### 7.4 Variance
+
+Generic fn-shape types reuse the existing fn-shape variance rules:
+contravariant in input parameter positions, covariant in return
+positions. No per-parameter variance markers in v1.
+
+### 7.5 Inference
+
+Two inference sites are in scope:
+
+1. **Value-to-type at typed-def sites.** `def x:Box {value:42}` — no
+   `of` written — should infer `Box of [Integer]` (sugar:
+   `Box<Integer>`) by unifying the value against the schema body.
+2. **Function-call inference.** `[1 2 3] map (quote double)` should
+   infer `T=Integer`, `U=Integer` for `map gen [T U]` from the list
+   and the `Mapper of [T U]` argument shape. The carrier-based
+   checker already tracks types through dispatch; inference extends
+   this with a substitution-collecting step before subtype checking.
+
+Both forms degrade gracefully — explicit annotation always works.
+
+### 7.6 Interaction with the existing algebra
+
+- `(Box of [Integer]) tand (Box of [Number])` reduces to
+  `Box of [Integer]` (per-parameter intersection; record fields
+  are read-write so the schema is invariant in `T` by default).
+- `(Box of [Integer]) tor (Box of [String])` stays as a
+  disjunct — does not auto-collapse to `Box of [Integer tor String]`,
+  because the two are observationally distinct.
+- `Box of [Never]` is type-inhabited but value-uninhabited; the
+  engine emits a `static_warning` at instantiation.
+- **Negated and dynamic type arguments.** A type argument may be a
+  negation (`Box of [tnot Integer]`) or a bounded dynamic
+  (`Box of [dynamic(Integer tor String)]`); both flow through
+  substitution as ordinary type values. A `dynamic()` argument makes
+  the instantiation gradually-typed in that parameter — the
+  compatibility/narrowing rules of `elixir-types-in-boru-report.10.ignore`
+  item 2 then apply per field, rather than the strict invariance above.
+
+### 7.7 Recursion and F-bounds
+
+`def Tree gen [T] refine Record [...  left:Tree of [T] ...]` is
+permitted. Substitution memoises on `(schema, normalised args)` to
+avoid loops. F-bounds work because of §7.3: the placeholder for `T`
+is in scope while the constraint is evaluated.
+
+## 8. Case study: the `boru:decision` module
+
+`modules/decision.go` is a DMN-style decision module
+(decision tables and decision trees) implemented in pure boru. It is
+a good case study because it has three independent shapes of
+`Any`-punt that generics resolve in distinct ways.
+
+### 8.1 The result-type punt
+
+Every record that carries a decision result types it as `Any` (or
+`Map`):
+
+```boru
+def Rule       refine Record [when:Map  then:Map]
+def DTable     refine Record [kind:String  rules:List  hit-policy:String]
+def DTree      refine Record [kind:String  root:Atom  nodes:List]
+def LeafNode   refine Record [id:Atom  kind:String  result:Any]
+def decide fn [[model:Map  input:Map] [Any] [...]]
+```
+
+A table that returns `{premium: 1.5}` records and a table that
+returns `Integer` codes have the same static type. The carrier
+checker cannot refine the result of `decide` past `Any`, so every
+caller has to dynamic-check.
+
+Threading a single result parameter `R` through the schema fixes it:
+
+```boru
+def Rule<R>     refine Record [when:Pred  then:R]
+def DTable<R>   refine Record [kind:String  rules:[:Rule<R>]  hit-policy:HitPolicy]
+def LeafNode<R> refine Record [id:Atom  kind:String  result:R]
+def DTree<R>    refine Record [kind:String  root:Atom  nodes:[:(BranchNode tor LeafNode<R>)]]
+
+# Combined with the Result<T, E> shape from §5.5:
+def decide fn [[model:(DTable<R> tor DTree<R>)  input:Map]
+               [Result<R, DecisionError>] [...]]
+```
+
+Or, in the canonical form:
+
+```boru
+def Rule gen [R] refine Record [when:Pred  then:R]
+def decide gen [R] fn [
+  [model:((DTable of [R]) tor (DTree of [R]))  input:Map]
+  [Result of [R DecisionError]]
+  [...]
+]
+```
+
+This is the highest-leverage change in the module — it propagates
+precision into every call site of `decide`.
+
+### 8.2 The comparison-operand punt
+
+`apply-op` is fully untyped:
+
+```boru
+def apply-op fn [[rhs:Any  op:String  lhs:Any] [Boolean] [...]]
+```
+
+`"hello" lt 5` passes the static check today because both operands
+satisfy `Any`. A bounded type parameter rejects it:
+
+```boru
+def Comparable (Integer tor Decimal tor String)
+
+def apply-op<T extends Comparable> fn [
+  [rhs:T  op:String  lhs:T] [Boolean] [...]
+]
+```
+
+The constraint reuses the existing type algebra — no new mechanism.
+This is the cheapest cleanup in the module: one signature change,
+one new type alias. (`apply-op` keeps its name — it is a decision-
+module function, unrelated to the `apply`/`of` words.)
+
+### 8.3 The recursive-shape punt
+
+`Pred` flattens three structurally distinct cases into one record
+with `children:Any`:
+
+```boru
+def Pred refine Record [kind:String  op:String  children:Any]
+```
+
+`children` is a list of sub-predicates for `all`/`any` and a single
+sub-predicate for `not`. Generics don't directly fix this — the
+right shape is a tagged union — but they unblock the cleaner
+formulation:
+
+```boru
+def AllPred  refine Record [kind:String  op:String  children:[:Pred]]
+def AnyPred  refine Record [kind:String  op:String  children:[:Pred]]
+def NotPred  refine Record [kind:String  op:String  children:Pred]
+def CondPred refine Record [field:Atom    op:String  value:Any]
+def Pred (AllPred tor AnyPred tor NotPred tor CondPred)
+```
+
+Builder functions then return the precise variant:
+
+```boru
+def all-of fn [[children:[:Pred]] [AllPred] [
+  make AllPred {kind:"group" op:"all" children:children}
+]]
+```
+
+Generics participate here for `Pred` carrying a phantom result
+parameter only if the predicate body branches on the same `R` as the
+enclosing rule — not the case here, so this part of the module
+benefits from the disjunct refactor more than from generics per se.
+
+### 8.4 Where generics don't help
+
+- **`Cond.value:Any`** is genuinely heterogeneous per condition: each
+  `Cond` compares a different input field, so the value type varies
+  row-by-row. This is a path-dependent / dependent-record problem,
+  not a parametric one. Best left as `Any` until boru grows a
+  dependent-record story.
+- **The `collect` hit policy returns `[:R]`, not `R`.** Different
+  hit policies have different return-type variants, which
+  TypeScript expresses with conditional types — explicitly
+  out-of-scope (§3 non-goals). Workaround: split `decide` into
+  `decide-first<R>`, `decide-collect<R>`, etc., each with its own
+  return type. Each is parametric in `R`; the dispatch on
+  hit-policy moves from runtime to the type level.
+- **Stringly-typed field reads.** Most accesses go through
+  `(map get "field")` rather than typed-record dot access. Refining
+  types end-to-end requires also tightening those reads to dot
+  accessors against the now-precise record types. This is a
+  co-requisite refactor, not an extra cost — the current dynamic
+  accesses are a symptom of not having generics.
+
+### 8.5 Order of impact
+
+If only one piece landed, **§8.1 (`decide<R>` returning
+`Result<R, DecisionError>`)** is the highest-leverage change because
+it propagates precision into every caller. **§8.2 (bounded
+`apply-op`)** is the cheapest cleanup. **§8.3 (Pred disjunct)** is
+nice-to-have and largely about disjuncts rather than generics.
+
+This case study suggests a useful diagnostic for adopting generics
+elsewhere in the codebase: look for fields, parameters, or returns
+typed `Any` or `Map` that are *the same shape across all call
+sites of the surrounding function* — those are the parametric
+ones. `Any`s that genuinely vary per call site need a different
+tool (disjuncts, dependent records, or just leaving them as `Any`).
+
+## 9. Static check mode
+
+`boru check` runs programs through the same engine in **carrier mode** —
+literals become type-only abstractions, dispatch and signature
+matching are unchanged, and `Returns` / `ReturnsFn` annotations on
+each `NativeSig` propagate types through call sites. Generics integrate
+mostly through this existing infrastructure; the new analyser code is
+small (~400–500 lines including tests) and concentrated in two
+helpers plus three diagnostic codes.
+
+### 9.1 Existing infrastructure that helps
+
+- **`ReturnsFn`** is the natural extension point for `of` and for
+  generic fn dispatch. `of`'s `ReturnsFn` substitutes its supplied
+  args into the schema body and returns the substituted shape as a
+  carrier — same shape as the existing `ReturnsListElemAt` /
+  `ReturnsPreserveListAt` helpers.
+- **Fn-body memoisation keys on `(name, arg-type-paths, capture-set)`**
+  (`AnalyseFnBody` in `eng/go/carrier.go`). Different
+  instantiations of a generic fn produce distinct cache entries
+  automatically — polymorphic recursion converges per-instantiation
+  without new infrastructure. (The capture-set component, added since
+  the first draft of this note, only *strengthens* this: two
+  instantiations never alias.)
+- **The `!Carrier` guard in `sigTypeMatches`** keeps carriers and
+  type literals distinguishable. A `TypeParam{T}` placeholder appears
+  in two roles — as a type literal during schema construction, as a
+  carrier-Parent during fn-body analysis with `T` in scope — and the
+  existing distinction handles both.
+- **Common-ancestor widening** for `if` branches already does the
+  right thing for two carriers of the same instantiated type. Two
+  `Box<Integer>` carriers from the two arms join cleanly.
+
+### 9.2 New checker pieces
+
+**1. Substitution helper.** `substituteCarrier(carrier, bindings) Value`
+— structural walk that replaces each `TypeParam{T}` with
+`bindings[T]`. Used by `of`'s `ReturnsFn` and by generic fn
+dispatch. Roughly:
+
+```go
+func substituteCarrier(v Value, b map[string]Value) Value {
+    if isTypeParam(v.Parent) { return b[paramName(v.Parent)] }
+    if isRecord(v.Parent)    { return rebuildRecord(v, recurse on fields) }
+    // ... lists, maps, fn shapes recurse; scalars pass through
+}
+```
+
+**2. Unification for binding inference.**
+`unifyForBindings(paramType, argCarrierType) → bindings` — at a
+generic fn call site, walk the parameter types alongside the actual
+carriers and capture the bindings:
+
+- `TypeParam{T}` against any carrier → `bindings[T] = carrier` (or
+  `tor`-merge with an existing binding).
+- Record-against-record → recurse on fields.
+- List-against-list → recurse on element type.
+- Fn-shape-against-fn-shape → recurse on inputs (contravariantly)
+  and returns (covariantly).
+
+If the same parameter unifies against two incompatible types, take
+their `tor`. If unification fails outright, emit a diagnostic and
+fall back to **`dynamic()`** for that binding (per
+`elixir-types-in-boru-report.10.ignore` item 2) so analysis continues with
+a gradually-compatible type rather than a strict-top `Any` that would
+spuriously fail every downstream concrete slot.
+
+**3. Constraint check.** Once bindings are inferred, for each
+`T extends C` run `isSubtype(bindings[T], C)`. Reuses the existing
+`Unify` / `is` predicate (and, for negated bounds, the disjointness
+test of §4). Failure is a diagnostic, not a panic.
+
+**4. Three new diagnostic codes:**
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `constraint_violation` | error | `Foo<X>` where `X` doesn't satisfy a parameter's `extends` bound |
+| `unbound_param` | error | A generic fn call where some `T` appears only in returns and couldn't be inferred from inputs — caller must annotate |
+| `arity_mismatch` | error | `Foo<X, Y>` when `Foo` takes a different number of parameters |
+
+All three slot into the existing `CheckDiagnostic` structure and the
+`LANGREF` diagnostics table — alongside `uncalled_function` and
+`unreachable_signature` from `checker-loud-diagnostics-report.10.ignore`.
+
+### 9.3 What gets better for check-mode users
+
+Today's checker reports `Any` in many places where generics let it
+report a precise type:
+
+- **Higher-order words.** `[1 2 3] map (quote double)` reports
+  residual stack `[:Integer]` instead of `[:Any]`. This is the
+  highest-leverage win — every program using `map` / `fold` / `each`
+  benefits.
+- **Record fields.** `intBox.value` typechecks as `Integer` rather
+  than `Any` because the schema records `value:T` and the
+  instantiation supplies `T=Integer`.
+- **Comparison operands.** `<T extends Comparable> apply-op` rejects
+  `"hello" lt 5` at check time. Today the runtime check is the only
+  line of defence.
+- **Decision module returns.** Per the §8 case study, `decide` reports
+  `Result<R, DecisionError>` for the precise `R` of the table or
+  tree, propagating into every caller.
+
+### 9.4 Subtleties — decisions worth pinning before implementation
+
+**Disjunct widening of generic instantiations.** When two arms of an
+`if` produce `Box<Integer>` and `Box<String>`, today's
+common-ancestor rule widens to whatever ancestor the two records
+share — typically `Map`. Could improve to `Box<Integer tor String>`
+if records covary in their parameters. But §7.6 says generic record
+types are **invariant** in their parameters (record fields are
+read-write). Under invariance, `Box<Integer tor String>` is *not* a
+supertype of `Box<Integer>`, so the widening should stay at
+`Map`/`Any`.
+
+**Decision needed:** is invariance worth the loss of precision at
+branch joins? TypeScript's pragmatic answer is "covariant by default,
+fix it later" — recommendation is to do the same and revisit if
+mutation patterns make it unsound in practice. Note that once `tnot`
+lands, the algebra is the **Boolean closure** of the lattice
+(`elixir-types-in-boru-report.10.ignore` item 1), which is the proper
+framework to decide variance *semantically* — a parameter is
+covariant iff substituting a subtype yields a denotational subtype —
+rather than by the TypeScript default. Worth revisiting then.
+
+**Operations on unconstrained `TypeParam` carriers.** A fn body
+analysed with `TypeParam{T}` in the parameter slots sees abstract
+values whose Parent is a placeholder. Operations on those carriers —
+`T add T`, `T size`, `T.field` — must produce sensible carrier
+results.
+
+*Original rule (strict):* a `TypeParam` carrier matched no signature
+except those whose param slot is also `T` or a constraint-satisfying
+broader type — stricter than TypeScript, on the argument that a generic
+body can only call operations the constraints license.
+
+*Revised rule (gradual — current).* An **unconstrained** parameter is
+`extends Any`, so a value of it is statically ANY type — indistinguishable
+from an explicit `Any` param. Declaration-time analysis therefore binds a
+**dynamic(Any)** carrier for an unconstrained `T` and admits body
+operations gradually, exactly as it does for an `Any` parameter (the
+checker's gradual-modality direction: "statically unknown, optimistically
+anything"). The per-call analysis, which sees the real instantiated arg
+types, is where an operation is actually checked against a concrete type —
+so a misuse specific to a real call is still caught, while a bare-`T` body
+that is valid for its actual instantiations (a generic fn used as a
+higher-order body, or recursively — `generics-fn.tsv`) no longer produces a
+declaration-time false positive. A genuine defect no instantiation can fix
+(an **undefined word**) is still reported at declaration time.
+
+A **bounded** parameter is unchanged and stays strictly checked: a
+`(T extends Number)` carrier reaches Number ops through the bound and
+rejects operations the bound cannot justify. `<T extends Comparable>` lets
+you call `lt`/`gt` on a `T`; `(T extends Number)` justifies `add` but not a
+field `dot`. The `TypeParam` matching rule above still governs bounded
+parameters — only the unconstrained case is relaxed to gradual.
+
+**Carrier disjunct cap and generic explosions.** A program that
+instantiates the same schema with many different types builds wide
+disjuncts at join points. If `CarrierDisjunctCap` (8) kicks in
+mid-analysis the disjunct collapses to common-ancestor and we lose
+all parameter precision. **Mitigation:** treat instantiations of the
+same schema specially — collapse `Box<A> tor Box<B> tor … tor Box<H>`
+to `Box<A tor B tor … tor H>` (per-parameter `tor`) before applying
+the cap. Cheap to implement, preserves parameter precision under
+widening.
+
+### 9.5 Carrier shapes for the new value kinds
+
+- **`TypeSchema`** — installed in the type stack at declaration.
+  Carrier form is the schema itself (a metatype value). Satisfies
+  metatype slots; does not satisfy value-level slots.
+- **`TypeParam{name}`** — appears in two contexts:
+  - As a type-literal-level placeholder in schema bodies (during
+    schema construction). Substituted at `of` time.
+  - As a carrier Parent inside fn-body analysis when the parameter is
+    in scope (`Carrier{Parent: TypeParam{T}}`). Substituted on call.
+- **Instantiated records / fn shapes / predicates** — ordinary
+  carriers with the substituted Parent. Indistinguishable from
+  hand-written equivalents downstream.
+
+### 9.6 Cost summary
+
+| Piece | Lines (approx, with tests) | Where |
+|---|---|---|
+| `substituteCarrier` | 80 | `eng/go/carrier.go` |
+| `unifyForBindings` | 120 | new `eng/go/generics_unify.go` |
+| Constraint-check helper | 40 | new file alongside |
+| Three diagnostic codes | 20 | `eng/go/check.go` |
+| `of` `ReturnsFn` | 50 | new `lang/go/native/native_type_of.go` |
+| Generic fn dispatch hook | 60 | `eng/go/engine.go` |
+| Tests | 200 | `eng/go/generics_check_test.go`, `lang/go/test/generics_*.go` |
+
+Roughly 400-500 lines, concentrated in two new files plus targeted
+edits to `eng/go/carrier.go`, `eng/go/engine.go`, `eng/go/check.go`,
+and the `lang/go/native/native_type*.go` word registrations.
+
+### 9.7 Interaction with dead-overload detection
+
+`checker-loud-diagnostics-report.10.ignore` Phase 2 adds an
+`unreachable_signature` check that flags an overload subsumed by an
+earlier, higher-priority one. Two points of contact:
+
+- **Monomorphizations are not competing overloads.** A generic fn's
+  instantiations are distinct entries in the fn-summary memo (§10.4),
+  not multiple signatures in one word's declared signature table. The
+  dead-overload check runs over a word's *declared* signatures;
+  generic instantiations never appear there, so the two features are
+  orthogonal by construction.
+- **`TypeParam` slots must be honoured.** When the subsumption check
+  compares a generic fn's own overloads (a fn with several `gen`
+  sigs), a `TypeParam{T}` slot is **not** subsumed by a concrete-type
+  slot — `[T]` and `[Integer]` are distinct. The check must treat an
+  unsubstituted `TypeParam` as incomparable to concrete types, the
+  same way §9.4's matching rule does.
+
+## 10. Static compilation
+
+The proposed boru bytecode compiler (`design/legacy/boru-bytecode-report.0.ignore`)
+is "the carrier checker with a recording side effect" — every dispatch
+decision the checker makes statically becomes a `CALL_NATIVE sig_id`
+in the bytecode. Where a corner is still uncompiled, the machinery
+routes it to the interpreter over the same stack representation —
+**silently**, so nothing in the run says the compile was refused. That
+routing is scaffolding around an open defect, not a fallback the design
+leans on: the interpreter is **not** a fallback for the compiler and is
+not allowed to become one. Done is a language that compiles as a
+developer expects — ALL valid code compiles, no exceptions. Generics
+fit this thesis cleanly, adding one new compile-time concept
+(monomorphization) that the existing fn-summary memo gives us almost
+for free.
+
+### 10.1 Bottom line
+
+**Generics are entirely a compile-time feature. Runtime cost is zero.**
+Every `gen` / `extends` / `default` / `of` call is `RunInCheckMode`
+— they execute during the carrier pass to install schemas and produce
+instantiated type literals, but they emit no bytecode. By the time the
+compiler runs the same pass with the recording side effect on, every
+parameter has been substituted; the compiled program contains only
+concrete operations on concrete types. Same story as Rust generics or
+C++ templates.
+
+### 10.2 What each new word emits
+
+| Word | Compile-time effect | Bytecode emitted |
+|---|---|---|
+| `gen [...]` | Build a `GenSpec`, install `TypeParam` placeholders | none |
+| `extends`, `default` | Build `GenParam` entries for `gen` | none |
+| `of` | Substitute schema body, install instantiated type | none unless the result flows to a runtime word that needs the type as a value (e.g. `is`), in which case the substituted type literal is interned in the constant pool |
+| `def Foo gen [...] refine Record [...]` | Install `TypeSchema` in the type stack | none |
+| `def name gen [...] fn [...]` | Install generic fn-def | one compiled body per distinct call-site instantiation, lazily |
+
+`of` deserves a special note: in the overwhelmingly common case
+(annotation, `is` check, generic fn dispatch) the result is consumed
+at compile time and produces zero runtime instructions.
+`Box of [Integer]` adds nothing to the bytecode stream. The
+compile-time work happens; runtime cost is zero.
+
+### 10.3 Each call-site class — generic dimension
+
+The bytecode report's §2.4 splits dispatch into monomorphic,
+polymorphic-with-disjunct, and value-dependent-return. Generics reuse
+the same three buckets:
+
+**Generic fn at a fully-resolved call site (the common case).**
+`[1 2 3] map (quote double)` compiles to one specialised `map_int_int`
+body. The checker's `unifyForBindings` (§9.2.2) runs at compile time,
+fixes `T=Integer, U=Integer`, the substituted body is compiled once
+and cached. The call site emits `CALL_USER map_int_int_id`. **Identical
+performance to a hand-written non-generic equivalent** — no boxing,
+no runtime type test, no parameter passing.
+
+**Generic fn at a polymorphic call site.** `xs map (quote double)`
+where `xs: Carrier<[:Integer] tor [:String]>`. Same choice the report
+already makes for non-generic disjuncts: split (compile both
+monomorphizations, dispatch via `CALL_NATIVE_POLY`) or keep one boxed
+copy. The first compiles to faster code; the second compiles to less
+code.
+
+**Generic fn at a site the checker cannot yet resolve.** A program
+where the checker can't resolve a parameter lands in the §1.5
+`FALLBACK_INTERP` boundary — the span is re-run on the interpreter,
+**silently**, so nothing in the run says the compile was refused.
+Rare in well-typed code, and rare is not done: each such site is an
+open defect owed a fix and tracked to closure, never a sanctioned
+outcome of this design.
+
+### 10.4 The fn-summary memo IS the monomorphization cache
+
+`AnalyseFnBody`'s memoisation key is `(name, arg-type-paths,
+capture-set)` (`eng/go/carrier.go`). For a generic fn, distinct type
+instantiations produce distinct keys automatically. **Each cache
+entry becomes one `fn_id` in the compiled fn table.** The checker →
+compiler transition is: keep doing what `AnalyseFnBody` does, but
+each time the body is analysed for a fresh key, also feed it through
+the compile pass and record the resulting bytecode under that
+`fn_id`.
+
+No new data structure for monomorphization — the existing checker
+memo IS the spec.
+
+### 10.5 Compilation-specific concerns
+
+**Code bloat.** Monomorphization can blow up code size when a generic
+fn is called with many distinct type arguments — Rust hits this; we
+will too. Mitigation: a compiler flag capping monomorphizations per
+fn, falling back to a boxed `CALL_NATIVE_POLY` dispatch once the cap
+is hit. The polymorphic-dispatch path already exists in the proposal;
+this just adjusts the trigger condition.
+
+**Constant-pool entries for instantiated type literals.** Programs
+that pass `Box<Integer>` as a value (to `is`, to a typed-def
+annotation that the runtime evaluates) need the substituted type
+literal in the constant pool. The substitution memo deduplicates:
+same `(schema, args)` → same pool slot.
+
+**Cross-module generics.** Module A defines `Box gen [T] refine Record [...]`;
+module B does `Box of [Integer]`. The compiler must compile the
+specialisation triggered by B even though the schema lives in A. Two
+strategies:
+
+- **Importer-side specialisation** (Rust's approach): each module
+  compiles the specialisations its own code triggers. Simpler;
+  possible duplication across modules.
+- **Pre-specialised exports**: A's compiled artifact pre-compiles all
+  instantiations seen at compile time across importers. More complex
+  link step.
+
+Recommendation: importer-side. Matches the existing per-module
+sub-engine model (`lang/go/native/native_module_module.go`) where each
+module has its own compile context.
+
+### 10.6 Coordinating with the value-dependent-return split
+
+§2.4 of the bytecode report describes value-dependent returns (e.g.
+`add` returns Integer or Decimal based on inputs) being split into
+two `sig_id`s with a dispatch opcode. Generics expand this: a
+generic `<T extends Number>` fn could split into `T=Integer` and
+`T=Decimal` versions, both specialised.
+
+The bytecode report's split-sig generator and the generics
+substitution engine end up doing the same thing from two directions.
+**Worth coordinating in implementation:** both should allocate
+`sig_id`s through a single per-instantiation registry, so that
+`add[Integer,Integer]→Integer` (from the value-dependent split) and
+`my-fn<Integer>` (from a generic instantiation) live in the same
+`sig_id` namespace and can chain monomorphically. This shared registry
+is also where the dead-overload check (§9.7) reads from — a
+monomorphization is a distinct `sig_id`, never a subsumed overload.
+
+### 10.7 Compile-time inference failure modes
+
+The compiler depends on the checker resolving every parameter for
+every reachable call site. When inference fails:
+
+- **`unbound_param` diagnostic at compile time.** The call site is
+  genuinely polymorphic at runtime → the compiler emits a boxed
+  dispatch at that site rather than a `CALL_USER` — that still
+  compiles. Reaching for `FALLBACK_INTERP` instead does not: it hands
+  the span **silently** back to the interpreter, and every such site is
+  an open defect owed a compiled boxed-dispatch path, never the
+  intended answer.
+- **`constraint_violation` at compile time.** Hard error — the
+  program does not compile. Same severity as the checker today.
+- **`arity_mismatch` at compile time.** Hard error.
+
+These are the same diagnostics §9.2 introduces for check mode; the
+compiler reuses them and treats `unbound_param` as a boxed-dispatch
+trigger rather than a hard stop — the program still compiles.
+
+### 10.8 Summary
+
+Generics extend the checker; the compiler is the checker plus
+recording; therefore generics extend the compiler — almost
+mechanically. The only genuinely new compile-time work is
+**monomorphization**, and the fn-summary memoisation table that
+already exists for the checker IS the monomorphization cache. Every
+generic fn call at a fully-resolved site compiles to a single
+`CALL_USER` against a specialised body — runtime cost identical to
+hand-written non-generic equivalents.
+
+The two implementation choices worth pinning before this lands:
+(a) importer-side cross-module specialisation, and (b) shared
+`sig_id` allocation between the value-dependent-return split and
+generic instantiation. Both decisions point in the same direction
+as the bytecode report's existing recommendations.
+
+## 11. Implementation plan
+
+### Phase 0 — design lock-down
+
+This document, plus a short follow-up RFC review with the team. Pin
+the four core word names (`gen`, `extends`, `default`, `of`) and
+the sugar rewrite rules. Pin the §9.4 decisions (variance,
+unconstrained-param strictness, per-schema disjunct collapse).
+
+### Phase 1 — schemas, substitution, and the four core words
+
+- New `Value` kinds: `TypeSchema`, `GenSpec`, `GenParam`, and the
+  `TypeParam{name}` placeholder (payload markers in `eng/go/payload.go`).
+- `RegisterGen`, `RegisterExtends`, `RegisterDefault`, `RegisterOf`
+  in `lang/go/native/native_type*.go` files (matching the existing
+  layout for the type words).
+- `instantiateSchema(schema, args)` performs constraint-checking and
+  substitution; memoises on `(schema, normalised args)`.
+- `def`'s `refine` and `fn` constructors recognise a `GenSpec`
+  argument and install a `TypeSchema` instead of a concrete type.
+- Tests: every form in §5.5 and §5.6 in canonical syntax only.
+
+### Phase 2 — typed-def, `is`, and pattern dispatch
+
+- Typed-def sites accept schema instantiations (`Box of [...]`)
+  in annotations.
+- `is` accepts an instantiation on the right.
+- Signature matching learns `TypeParam` is "matches anything, binds
+  to whatever it sees" — the inference path for fn-defs.
+
+### Phase 3 — static check mode
+
+- `substituteCarrier` (§9.2.1).
+- `unifyForBindings` (§9.2.2).
+- Constraint-check helper (§9.2.3).
+- Three new diagnostic codes (§9.2.4): `constraint_violation`,
+  `unbound_param`, `arity_mismatch`.
+- `of`'s `ReturnsFn` substitutes the schema body with the supplied
+  args and returns the substituted carrier.
+- Generic fn-def dispatch in check mode: infer bindings from arg
+  carriers, run constraint checks, substitute the return type.
+- Per-schema disjunct collapse (§9.4) before `CarrierDisjunctCap` is
+  applied.
+- Tests: precise residual carriers for higher-order words, refined
+  record-field reads, constraint-violation diagnostics, unbound-param
+  diagnostics, arity-mismatch diagnostics. Carrier-shape tests for
+  the new value kinds (§9.5).
+
+### Phase 4 — angle-bracket sugar
+
+- Add `LA`/`RA` jsonic tokens in `eng/go/parser/grammar.go`.
+- Lexer-level rewrite producing the canonical token stream:
+  - `Name<...>` in a `def` declaration head → `Name gen [...]`.
+  - `Name<...>` elsewhere → `(Name of [...])`.
+  - `T extends C` inside `<…>` → `(T extends C)`.
+  - `T = D` inside `<…>` → `(T default D)`.
+  - `,` inside `<…>` → whitespace.
+- Tests: every example in §6.3 produces the same engine behaviour
+  as its canonical twin.
+
+### Phase 5 — value-to-type inference
+
+- Value-to-type inference at typed-def sites (§7.5.1).
+- Tests: cases that succeed without annotation; cases that fail
+  with helpful error messages.
+
+### Phase 6 — generic fn definitions and higher-order word retrofit
+
+- Extend `fn` registration to accept a `GenSpec`.
+- Retrofit `map`, `fold`, `outer`, `inner` to use generic fn-shape
+  types so the static checker can refine result types.
+
+### Phase 7 — docs
+
+- LANGREF.md: new "Generic Types" section after "Predicate Types"
+  and before "Type and Def Naming". Lead with sugar (the form most
+  users will write); cross-reference the canonical form.
+- LANGREF.md "Static Type Checking" section: add the three new
+  diagnostic codes and document the per-schema disjunct collapse.
+- SIGNATURES.md: add `gen`, `extends`, `default`, `of` with their
+  signatures.
+- TYPES.md: cover schemas, substitution, constraint checking, and
+  the sugar/canonical correspondence.
+- A new `GENERICS.md` user-facing how-to in `lang/doc/`.
+
+## 12. Open questions
+
+1. **Default substitution timing.** Eagerly at parse time (simpler,
+   no late binding) or lazily at `of` time (allows defaults to
+   reference parameters bound later in the schema). My
+   recommendation: lazy, because §7.3's binding mechanism makes it
+   nearly free.
+
+2. **Sugar for `extends` outside `gen`.** Should we allow
+   `extends` as a standalone word for ad-hoc subtype assertions
+   (`x extends Comparable` ↔ `x is Comparable tand Comparable`)?
+   No — keep `extends` strictly bound to the `gen` parameter list
+   to avoid muddying its meaning.
+
+3. **`of` arity inference for defaulted schemas.** Bare `Box`
+   (no `of`) where every parameter has a default — does it
+   auto-instantiate to `Box of []`? Probably yes, with a clear
+   error when not all parameters have defaults.
+
+4. **Generic word resolution order.** Schemas live in the type
+   stack; `of` resolves the head against the type stack first,
+   def stack second. Worth a test for the case where `Box` is also
+   shadowed by a non-generic type.
+
+5. **Failed-inference error messages.** When inference can't solve,
+   the error should point at the call site and list the parameters
+   that could not be bound, not just say "no matching signature".
+   Needs new error infrastructure parallel to `signatureError`.
+
+6. **Module exports.** A module that defines `def Box gen [T] …`
+   exports the schema, not an instantiation. Users of the module
+   write `module:Box of [Integer]` (or `module:Box<Integer>`)
+   at the call site. Should Just Work but worth a test.
+
+7. **Generic predicate types — what does "static" mean?** A
+   predicate body that branches on `T` is genuinely generic, but
+   constraint-checking the body across all possible `T` is
+   undecidable in general. Document that predicate bodies are
+   typed at instantiation time, not at declaration.
+
+## 13. Risk register
+
+- **Sugar-canonical drift.** The two surfaces must stay in lockstep.
+  Mitigation: every sugar test in Phase 3 is a pair of programs (one
+  in each surface) that must produce identical engine output.
+- **`<`/`>` reservation is permanent.** Once we ship the sugar, we
+  cannot use `<` for comparisons or as an operator anywhere. Document
+  this in `LANGREF.md`'s syntax section as a hard rule.
+- **Carrier-checker complexity.** Substitution must thread through
+  the carrier path or `boru check` regresses. Plan to write
+  carrier-specific tests in Phase 2 alongside the dispatch work.
+- **Performance.** Repeated instantiations with the same args (e.g.
+  `Box of [Integer]` mentioned 50 times) hit the
+  `instantiateSchema` memo. Implement the memo from the start.
+- **Documentation drift.** Five doc files mention the type system.
+  Phase 7 must touch all of them in one PR.
+
+## 14. Decision summary
+
+- **Canonical form:** four engine words — `gen` (declare params),
+  `extends` (constrain), `default` (default value), `of`
+  (instantiate). All ordinary forward-collecting words; `gen` and
+  `of` use `NoEvalArgs` on their list. `of` is named to avoid the
+  existing `apply` word (function application).
+- **Sugar:** angle brackets, TS-style. `Box<T>`, `<T extends C>`,
+  `<T = D>`, `Box<Integer>`. Pure lexer rewrite to the canonical
+  form; nothing downstream sees `<` or `>`.
+- **Constraints:** `extends` clause inside the parameter list;
+  right-hand side is any type expression including `tand`/`tor`/`tnot`.
+- **Defaults:** `default` word in the canonical form; `=` in the
+  sugar.
+- **Variance:** inferred from fn-shape rules; no explicit markers
+  in v1 (revisit semantically once `tnot` lands — §9.4).
+- **Inference:** at typed-def and fn-call sites, via the existing
+  carrier/unify machinery; failed bindings fall back to `dynamic()`,
+  not `Any`.
+- **Algebra:** generic instantiations participate in `tand`/`tor` as
+  ordinary types (invariant per parameter; no auto-distribution
+  through type constructors).
+- **Phased rollout:** seven phases, with the canonical core landing
+  before the sugar so the engine is exercised independently of the
+  parser changes.
+
+## 15a. Landed state — Phase 1 (2026-06-10)
+
+> **Phase 1 LANDED:** the four canonical words + record/fnsig schemas
+> + `of` instantiation, per the approved plan, with these deviations
+> pinned during implementation:
+>
+> - **D2 revised — the spec travels out-of-band, not on the stack.**
+>   `gen [...]` returns NO value and parks its GenSpec on a registry
+>   pending-slot; the next type constructor (refine/fnsig; class/fn in
+>   later phases) consumes it at handler entry. The planned
+>   trailing-stack-position delivery was defeated by `def`'s forward
+>   collection, which captures a produced value before the next
+>   constructor can see the stack. The pending spec is SUSPENDED
+>   during argument auto-evaluation (`execMatch`), so a constructor
+>   nested inside an argument (`f:(fnsig [[T] [T]])`) builds a plain
+>   shape instead of stealing the outer spec; an orphan spec errors
+>   loudly (`gen_without_constructor`) at the TOP-level end-of-run
+>   drain (sub-runs legitimately execute while a spec is pending).
+> - **D4 refined — structural kinds stay structural.** Record and
+>   fn-shape instantiations keep their structural identity
+>   (Parent=TMap / FunctionSignature); the minted per-(schema,args)
+>   node carries the memo (`teq` identity) and the display name
+>   (`Box of [Integer]`). Nominal instance identity arrives with
+>   generic CLASSES (Phase 2), as planned.
+> - **Word-shape pins:** `of`/`extends`/`default` use BarrierPos 1
+>   (the tor/tand swap pattern) — all-forward let a trailing-context
+>   `of` defer and steal a later stack value at end-of-run
+>   resolution. The bound/default slots are ORDINARY TAny slots
+>   (TypeArgs slots are literal-exclusive and reject DepScalar
+>   bounds; TAny ordinaries admit literals via the rejectsTypeLiteral
+>   carve-out AND payload bounds).
+> - **Substitution covers**: record fields, class fields (ready for
+>   Phase 2), typed-list/map children (`[:T]` survives as a raw Word
+>   at schema build — substitution resolves words by parameter name),
+>   fn-shape params/returns, disjunct alternatives, negation inners,
+>   and nested `GenInstRef`s. Recursion via `Self of [T]` (D5) works:
+>   the memo registers the in-flight node before substituting.
+> - **Bounds verified end-to-end** for lattice types, refine
+>   newtypes, predicate refinements (`(Integer gt 0)`), and SURFACES
+>   (`(T extends Shape)`) — S4 of SURFACES.10.ignore confirmed: zero new
+>   membership machinery.
+> - **Rode along:** `ResolveFieldType` now resolves only CAPITALISED
+>   names as type references — a lowercase string field default that
+>   spelled a word name (`class {op:"add"}`) used to seed the field
+>   with that word's FnDef.
+>
+> Battery: `lang/spec/generics.tsv` (§1-§6, positive + negative),
+> `lang/go/test/generics_core_test.go` (binding-leak lifecycle,
+> nested-schema isolation, memo identity); help entries for all four
+> words. Phases 2+ (classes, integration, generic fns, checker,
+> sugar, inference, retrofit, docs) follow.
+
+## 15b. Landed state — Phase 2: generic classes (2026-06-10)
+
+> **Phase 2 LANDED:** `def Box gen [T] class {value:T}` end-to-end.
+> The class constructor consumes the pending spec (fields parsed with
+> placeholders live — the typed=required / valued=default rule reads
+> naturally: `{value:T count:0}`); minting defers to `of`, whose
+> SchemaClass case stamps the instantiation node + the canonical
+> Name onto the substituted ObjectTypeInfo. Verified pins: `typeof`
+> → `Box of [Integer]`; `is Box` true by ancestry, exact
+> instantiation true, sibling AND wider instantiation false (the D10
+> invariance pin — doc §5.6's covariant `is (Box of [Number])
+> → true` example is superseded); `deq` same-instantiation
+> structural, cross-instantiation never; strict make/set typing and
+> `sealed_field` carry over with the canonical name in errors;
+> `[:T]` fields element-check at make; predicate-typed fields run
+> their predicate. Subclassing an INSTANTIATION rides
+> objectWithParentHandler unchanged (`refine (Box of [Integer])
+> {…}`); subclassing the schema itself is rejected. Serialization
+> needed ZERO new code: jsonify's `$class` carries the canonical
+> instantiation string (= the node Name) and `reify` with the
+> instantiated type Value as target round-trips, with the
+> $class/target mismatch loud (D11 as planned; string-only
+> re-instantiation stays a fast-follow). Battery:
+> `lang/spec/generics-class.tsv` §1-§5.
+
+## 15c. Landed state — Phase 3: integration gate (2026-06-10)
+
+> **Phase 3 LANDED:** instantiations behave as ordinary types at the
+> consumption boundaries, with two real fixes surfaced by the gate:
+> (1) `defTypedHandler` now evaluates PARENTHESISED annotations
+> (`def b:(Box of [Integer]) {…}` — def's NoEvalMapArgs had left the
+> ParenExpr raw); (2) `ResolveSigType` gained branches for type
+> VALUES arriving directly rather than by name (ObjectType /
+> Surface / TypeSchema → their minted node; RecordType → the
+> structural pattern path) — previously they fell to the TAny tail,
+> so `fn [[x:(Box of [Integer])] …]` was a silent wildcard that
+> ACCEPTED sibling instantiations. Pins: instantiation-typed params
+> dispatch and reject siblings; a bare-schema param means family
+> membership (D3); records construct via `make` (typed-def-binding
+> a record stays the pre-existing unify error; record `make` keeps
+> its convert-to-field-type contract — strictness is the CLASS
+> contract); module-exported schemas instantiate importer-side
+> (§12.6); a shadowing def wins resolution (§12.4). Known upstream
+> gap (not generics-specific): `case` does not match class
+> instances against class-type literals — plain classes behave the
+> same; the §15.2.7 synergy row waits on that. Battery: generics.tsv
+> §7.
+
+## 15d. Landed state — Phase 4: generic fn definitions, runtime (2026-06-10)
+
+> **Phase 4 LANDED:** `def idg gen [T] fn [[x:T] [T] [x]]` works at
+> runtime. `FnDefInfo` carries `Gen *GenSpecInfo`; `fn`'s handler
+> consumes the pending spec and pops the placeholder bindings after
+> the signature parses. Per call, `InferGenBindings`
+> (eng/go/generics_unify.go) binds each parameter from the actual
+> args — a `x:T` slot binds **typeof(arg)** (so `idg "hi"` binds
+> `T=ProperString`, consistent with the language's own `typeof`);
+> a `[:T]`/`{:T}` pattern binds the tor-union of element types
+> (§9.2.2 — conflicts merge, runtime calls are never rejected for
+> parameter inconsistency). `InstallGenCallBindings` installs the
+> bindings AFTER the body's def snapshot, so the existing DefCleanup
+> truncation tears them down in lockstep with params/locals — and
+> crucially NOT via the undef tail, whose capitalised-name path would
+> retire the bound type's canonical lattice node. Two kernel gaps the
+> phase surfaced: (1) typed-list/map param patterns kept a raw
+> `word(T)` child (resolvable only at definition time, while the
+> placeholders are live) — `ResolveSigType` now routes them through
+> `ResolveSigChildParam`; and dispatch-side, `unifyInner` gained a
+> **type-parameter fold** (mirroring the surface fold) so a
+> placeholder literal embedded in a structural pattern admits values
+> by its bound via `genParamUnifier.Match` — plain `ConformsTo` has
+> no admission path into a `Type/TypeParam` node. (2) `OpenUnifyMap`
+> panicked on any non-OrderedMap pattern (`m:{:Integer}` params —
+> pre-existing, not generics); it now falls back to the unifier.
+> Bounds reject at dispatch (signature_error) and at the return
+> check, where the error names the parameter (`expected T, got
+> ProperString`) via genParamUnifier.Format. The UNCONSTRAINED
+> unbindable-parameter return check is deliberately loose at runtime
+> (pinned in generics-fn.tsv §7); the checker reports the precision
+> loss in Phase 5, and `unbound_param` diagnostics land there.
+> Battery: lang/spec/generics-fn.tsv; Go lifecycle pins in
+> lang/go/test/generics_core_test.go (nested-call binding alignment).
+
+## 15e. Landed state — Phase 5: static check mode (2026-06-10)
+
+> **Phase 5 LANDED**, structurally lighter than §9's sketch because
+> schemas and `of` are REAL in check mode (RunInCheckMode) — no
+> carrier substitution machinery was needed for instantiation, and a
+> bound-violating `of` is loud in check mode exactly as at runtime
+> (`constraint_violation` aborts; the diagnostics registry already
+> carried the severities). What landed: (1) **call-site analysis** —
+> `buildFnBodyReturnsFn` infers the parameter bindings from the arg
+> carriers (`InferGenBindings` extended: a typed-list/map CARRIER —
+> what StripToCarriers makes of a list literal — binds T from its
+> child constraint; concrete maps bind from their values), installs
+> them around `AnalyseFnBody` (so body-internal `of [T]` resolves;
+> popped explicitly — no DefCleanup frame on this path), and
+> substitutes them into declared returns naming a parameter
+> (`GenBindingCarrier`: node → carrier, tor-merge → disjunct
+> carrier). The FnSummaries memo key already includes arg types, so
+> each instantiation analyses once — monomorphization for free, as
+> §9.6 hoped. An uninferable return parameter reports
+> `unbound_param` (deduped — the dynamic-help example generator's
+> synthetic install-time invocation would double it) and degrades to
+> dynamic(Any), never silent Any. (2) **Declaration-time abstract
+> check** — fnHandler analyses each generic body at construction
+> with carriers of the declared param types: placeholder-parent
+> carriers enforce §9.4 (ops on bare T flagged; `(T extends Number)`
+> reaches Number ops through the placeholder's lattice parent —
+> the D9 minting earns its keep), and undefined words surface at the
+> def. Non-generic fns get an EQUIVALENT analysis incidentally via
+> the dynamic-help example generator (synthesized example calls);
+> generic params have no synthesizable examples, hence the explicit
+> path. (3) `checkModeSurfaceShape`'s scan now resolves raw Word
+> tokens via the def stack, so a surface-bounded placeholder carrier
+> (S4×S2) types its contract ops inside body analysis. (4) The
+> per-schema disjunct collapse §10.4 anticipated is NOT needed:
+> JoinCarriers' existing cap widens sibling instantiations to their
+> common ancestor, which IS the schema node — a precise widening
+> (`TestGenCheckJoinNoExplosion` is the canary that would justify
+> revisiting). Battery: lang/go/test/generics_check_test.go.
+
+## 15f. Landed state — Phase 6: angle-bracket sugar (2026-06-10)
+
+> **Phase 6 LANDED** per D14/D15, superseding §6.4. `<` (#LA) and `>`
+> (#RA) are GENERAL-PURPOSE standalone fixed tokens; the generics
+> angle rule is their only v1 consumer, gated contextually — a
+> val.Close alternate (the dotchain technique) opens the
+> "angle"/"aelem" rule pair (the paren-rule skeleton) only when the
+> just-closed value is a CAPITALISED bare name. A `<` anywhere else
+> is a syntax error only because no other consumer exists yet;
+> future rules (embedded XML, …) can register more consumers without
+> re-lexing; comparisons stay lt/gt. Note the gate's corollary:
+> generic FN defs keep the canonical `def name gen [T] fn […]` form
+> (fn names are lowercase — sugar heads are for TYPES). Desugaring
+> is parse-time, inside the conversion walks (D15): `def Name<…>`
+> emits `Name gen […]` (entries: `T` → word; `T extends C` /
+> `T = D` → the canonical paren forms — `=` needed no token, it
+> already lexes as bare text); every other position emits the
+> ParenExpr `( Name of […] )`, byte-identical to canonical source —
+> pinned by macroexpand/Vm.parse rows showing
+> `paren([word(Box) word(of) [Integer]])`. Commas are optional
+> separators (list-element rule); nested sugar needs no `>>`
+> handling (standalone tokens); `Name<Integer> teq (Name of
+> [Integer])` — one memoised node. The phase also closed three
+> integration gaps the sugar's target positions exposed (all
+> CANONICAL-form fixes, sugar rides them): (1) typed-list/map CHILD
+> constraints that are ParenExprs now evaluate
+> (`eng.ResolveChildTypeExpr`, wired into defTypedHandler and
+> ResolveSigType — `[:(Box of [Integer])]` worked in neither form
+> before); (2) unifyInner gained an OBJECT-TYPE fold (Is-membership,
+> mirroring the surface fold) so class/instantiation literals admit
+> instances in unify positions — this also fixed the §15c known gap:
+> `case` now matches class instances against bare class names; (3)
+> `case` evaluates ParenExpr clause patterns, so `case b [(Box of
+> [Integer]) …]` matches. Record-vs-concrete-map unify remains
+> nominal (records construct via `make`) — unchanged, documented.
+> Battery: lang/spec/generics-sugar.tsv (twins, data/child
+> positions, D15 rows, negatives incl. the gate); generics.tsv §7
+> canonical rows for the three integration fixes.
+
+## 15g. Landed state — Phase 7: value-to-type inference (2026-06-10)
+
+> **Phase 7 LANDED**, resolving D12: a bare generic schema used as a
+> construction target — `make Box {value:42}`, `def b:Box {…}` —
+> infers its type arguments from the body and instantiates.
+> `InferSchemaBindings` (eng/go/generics_unify.go) mirrors the
+> call-site inference contract: a placeholder field constraint binds
+> typeof(field value); `[:T]`/`{:T}` child constraints bind the
+> tor-union of element types (the shared `inferFromChildPattern`);
+> conflicts merge per §9.2.2, never reject. `InferAndInstantiateSchema`
+> assembles the positional args (defaults fill behind the inferred
+> prefix; an inferred parameter AFTER an uninferable defaulted one is
+> rejected loudly rather than mis-positioned) and routes through the
+> ordinary `InstantiateSchema` — so memoisation, bound checks
+> (`constraint_violation` fires on inferred args too), and nominal
+> identity are untouched. Wiring: `MakeHandler` (before the Ideal
+> dispatch) and `defTypedHandler` (before the typed-def branches, so
+> the resulting instantiation constructs through the existing
+> ObjectType/record paths). An uninferable, undefaulted parameter is
+> `unbound_param` with an `of [...]` hint — never silent Any; an
+> explicit instantiation always wins over inference; a fully-
+> defaulted schema auto-instantiates with no evidence (the D12
+> arity_mismatch interim behaviour is gone). Nested instantiations
+> bind as parameters (`Outer of [Box of [Integer]]`). Battery:
+> generics.tsv §8.
+
+## 15h. Landed state — Phase 8: higher-order verification + boru:decision retrofit (2026-06-11)
+
+> **Phase 8 LANDED**, with one plan adjustment and two upstream
+> dispatch fixes the dogfood surfaced. Higher-order verification:
+> each/fold compose with instantiation lists and generic-fn bodies
+> (generics-fn.tsv §7) — element precision INTO bodies holds; the
+> known looseness (`get N` after `each` degrades even for plain
+> Integers) is pre-existing and not generics. The dogfood exposed:
+> (1) typed-list/map param PATTERNS rejected DEF-BOUND args while
+> accepting literals (`f zs` vs `f [1 2]`) — `patternsOk` now
+> resolves forward Word tokens via the def stack before unifying,
+> exactly like the forward type scan; (2) execFnDefLiteral's
+> sub-registry path picked the wrapper body by ARITY ONLY, so a
+> module fn with two same-arity overloads ran the FIRST body with
+> the OTHER sig's matched args — it now selects by param
+> correspondence with the matched signature
+> (`TestModuleWrapperSigBodyPairing`). Retrofit: `Comparable` is a
+> SURFACE in boru:decision (superseding §8.2's tor-alias) with the
+> scalar builtins declared via `exposes`; `apply-op` is
+> `gen [(T extends Comparable)]` for the ORDERING ops with an Any
+> overload for eq/neq (equality is universal) that RAISES
+> `not_comparable`/`unknown_op` instead of the historic silent
+> false; Rule/LeafNode are `gen [R]` (builders ride Phase-7
+> inference), DTable/DTree carry `(R default Any)` (rule lists give
+> no direct evidence). PLAN ADJUSTMENT: `decide gen [R]` with a
+> checker-visible refined return needs parameter binding from
+> INSTANTIATION-typed args (decomposing `DTable of [R]` against an
+> argument's instantiation node) — machinery deliberately deferred;
+> decide keeps `[Any]` and the fixture is dropped, noted here
+> honestly rather than half-landed. Battery: module-decision.tsv
+> (schema renders + instantiation rows, Comparable membership,
+> not_comparable negative), generics-fn.tsv §7.
+
+## 15. Review (2026-06-10) — against the post-2026-06-04 landings
+
+Between the 2026-06-04 refresh and this review, the language landed:
+classes (`Ideal/Class`, sealed nominal records, strict field typing,
+`const`), the open Object / container 2×2, **surfaces** (`Ideal/
+Surface`, `Self`, `exposes`, S1+S2+S3 — `design/legacy/SURFACES.10.ignore`),
+`tnot` + `dynamic()` + dead-overload detection (the three
+elixir-report dependencies this note cites as future), `raise` + the
+loud-failure batch (`design/legacy/ERRORS.8.ignore`), BigInteger/BigDecimal, and
+in-memory parsing. The review below is against that state.
+
+### 15.1 What aged well — and is now cheaper
+
+1. **The four-word `RunInCheckMode` core is now routine, not novel.**
+   §10.1's "all four words execute during the carrier pass" pattern
+   has since been exercised by `class`, `surface`, `exposes`, `const`,
+   and `fnsig` — all install/construct statically today. Confidence
+   in Phase 1 should be high.
+2. **`TypeParam{name}` has a landed precedent: `Type/Self`**
+   (FixedID 104). A placeholder type node substituted at use time is
+   exactly how surfaces work, and the machinery generalises directly:
+   `eng.SubstituteSelf` is a one-parameter version of §9.2.1's
+   `substituteCarrier`; `eng.FnSigSatisfiesSpec` already implements
+   the contravariant-params / covariant-returns satisfaction check
+   §7.4 needs; and `engine.go::checkModeSurfaceShape` +
+   `spliceCheckResults` are a working miniature of §9.2's
+   "substitute the shape, synthesise carriers, splice" pipeline.
+   The §9.6 cost estimate for the substitution/satisfaction half
+   shrinks accordingly.
+3. **The landed dependencies are present-tense now.** `tnot` (so
+   negated bounds and the disjointness check of §4/§7.2 work today),
+   `dynamic()` (the §9.2.2 inference-failure fallback exists), and
+   dead-overload detection (§9.7's counterpart) are all on main.
+4. **`InstallType` per-kind branches are the established install
+   route.** TypeSchema installation (§7.1) slots in exactly like the
+   disjunct / negation / depscalar / class / surface branches — the
+   surface branch is a fresh template to copy, including the
+   shared-payload + unifier-on-the-minted-node discipline.
+5. **`of` naming still holds** (`apply` still taken), and all four
+   words (`gen`, `extends`, `default`, `of`) remain unclaimed as of
+   this review — verified, including module preambles (no `def gen /
+   of / extends / default` anywhere).
+
+### 15.2 What changed under the design — revision needed
+
+1. **Surfaces are the missing constraint story — §8.2 is superseded.**
+   `def Comparable (Integer tor Decimal tor String)` should be a
+   **surface** (`def Comparable surface {cmp: (fnsig [[Self Self]
+   [Integer]])}` …), and `T extends Shape` membership needs **zero
+   new machinery**: surface membership already rides `v.Is`/`unify`
+   via the surfaceUnifier, which is exactly the `isSubtype` predicate
+   §7.2 specifies. S4 of the surfaces plan and §7.2 here are the same
+   line of code. More importantly, §9.4's hardest subtlety —
+   *"operations on unconstrained TypeParam carriers"* — now has a
+   landed answer for surface-bounded parameters: give the `TypeParam`
+   carrier its bound as Parent and `checkModeSurfaceShape` (S2)
+   already types required-operation calls via the substituted shape.
+   The recommended strict rule ("a TypeParam carrier matches only
+   constraint-licensed operations") is precisely what S2 implements;
+   `<T extends Comparable>` licensing `cmp` falls out of it.
+2. **Generic classes are newly in scope — the doc must cover them.**
+   Every worked example parameterises `refine Record`; classes are
+   now the language's primary nominal record kind (sealed, strict
+   fields, eager defaults, `make`, `Ideal/Class` lattice). A revision
+   needs a section deciding: `def Box gen [T] class {value:T}`
+   (schema rule says a TYPE entry is a required field — a `TypeParam`
+   is a type, so `{value:T}` reads naturally); lattice placement of
+   instantiations (one minted node per memoised `(schema, args)`
+   under `Class/Box`?); `MakeClassFieldValue` against a substituted
+   constraint (should Just Work — it takes a constraint Value);
+   instance equality across instantiations (`deq` requires the same
+   exact class — is `Box of [Integer]` the "same exact class" per
+   memoised node? yes, if instantiation is memoised); and —
+   **entirely absent from this note** — serialization: what does
+   `$class` carry for an instantiated class, and what does
+   `StructUtil.reify` accept as a target? An instantiation-naming
+   scheme (`"Box of [Integer]"`? re-instantiation at reify time?)
+   is an open question to add to §12.
+3. **`extends` vs `exposes` vocabulary.** With `exposes` landed as
+   the conformance *declaration* verb, `extends` remains right for
+   the constraint *question* — but the doc should state the unifying
+   doctrine explicitly: `extends C` means **`Is`-membership in C**,
+   uniformly — lattice bound, predicate refinement, disjunct,
+   negation, or surface. The post-design `v.Is(t)` symmetry work
+   (REFINE-NEWTYPE-VS-SUBSET, surfaces) makes this one predicate;
+   the design gets simpler by saying so.
+4. **Stale references to refresh.** (a) `LANGREF.md` / `SIGNATURES.md`
+   / `TYPES.md` no longer exist — the user docs are now REFERENCE.md
+   / TUTORIAL.md / HOWTO.md / EXPLANATION.md (Phase 7 and the §4
+   survey citations need re-aiming). (b) `Decimal` (§8.2) is not a
+   type; `BigDecimal` landed (`0d` literals). (c) "soon closed under
+   negation via `tnot`" (§1) — landed. (d) `fnsig` is now the
+   canonical type-only shape word (and runs in check mode); examples
+   like `def Mapper gen [T U] fn [[T] [U]]` should standardise on
+   `fnsig [[T] [U]]`, noting the map-literal parens gotcha surfaces
+   hit (`{m: (fnsig …)}`).
+5. **Claiming core words now has a demonstrated migration hazard.**
+   Landing `case` broke the `boru:test` module preamble (`def case` →
+   reserved_word; renamed `test-case`). `default` is especially
+   collision-prone in user code. Phase 1 should include the sweep
+   step: grep module preambles + the spec corpus for bindings of the
+   four names before registration (clean as of this review).
+6. **Diagnostics must meet the Phase-D quality bar.** `raise`,
+   `def_error` / `no_value_error` blame-shifting, and runtime
+   `uncalled_function` set the expectation (ERRORS.8.ignore §7): the span
+   points at the causing site, a hint says what to do, the code is
+   dispatchable. §9.2's `constraint_violation` (pointing at the
+   parameter declaration via `WithPos`) and `unbound_param` (listing
+   the unbound parameters — open question 5) were already written in
+   this spirit; the error infrastructure they need (`BoruErrorHint`,
+   `makeBoruErrorAt`) exists now. Note `arity_mismatch` already exists
+   as a code — reuse is consistent.
+7. **Small synergy:** `case` matches via unify, so instantiations
+   work as `case` matches for free (`case v [(Box of [Integer])
+   "int-box" …]`) — worth a spec row when generics land.
+
+### 15.3 Verdict
+
+The architecture — concatenative core + sugar-as-rewrite, schemas as
+installed type-stack values, substitution through the carrier
+checker, monomorphization = the existing fn-summary memo — survives
+contact with six months of type-system landings untouched; nothing
+landed contradicts it, and three of its riskiest pieces (placeholder
+substitution, variance-aware satisfaction, check-mode shape splicing)
+now have working precedents to copy. The required revision pass is
+additive: a generic-classes section (with the serialization open
+question), the surface-based constraint story replacing §8.2's
+tor-alias, the doc-reference refresh, and the word-claim sweep.
+Recommend doing that revision as the Phase 0 lock-down artifact.

@@ -156,7 +156,7 @@ and cannot mistake an agreeing probe for proof.
 
 Held open by `NUR.md` §NUR061 — the auditable owner ADR-014 asks for. The
 report is written and measured in
-[TABNAS-DOT-BOUNDARY-REPORT.0.md](TABNAS-DOT-BOUNDARY-REPORT.0.md), ready
+[legacy/TABNAS-DOT-BOUNDARY-REPORT.0.ignore](legacy/TABNAS-DOT-BOUNDARY-REPORT.0.ignore), ready
 to file verbatim; it is **not yet submitted**, so no issue URL exists to
 link. When one does, it belongs in NUR061 and in both matcher comments.
 The arm goes when the boundary is fixed upstream.

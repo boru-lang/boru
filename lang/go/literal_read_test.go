@@ -75,7 +75,7 @@ func TestLiteralReadSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a refusal", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {

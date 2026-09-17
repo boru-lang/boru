@@ -203,7 +203,7 @@ func TestCheckUncalledFunction(t *testing.T) {
 		// the wrapper is PLACED and g collects it as its Function arg, so
 		// the spelling now MEANS what the /v row below always meant — a
 		// value handed to g, not a call. The loud contract of
-		// design/FN-VALUE-DISPATCH.0.md lives where a dispatch actually
+		// design/legacy/FN-VALUE-DISPATCH.0.ignore lives where a dispatch actually
 		// fires (the def-staged rows above); a placed, consumed fn draws
 		// no uncalled_function.
 		{`def f fn [[x:Integer] [Integer] [x]]  def g fn [[c:Function] [Integer] [5 c apply]]  ((usurp f) g)`, "uncalled_function", 0, "a placed wrapper consumed by g is a value, not a call (BROAD)"},
@@ -438,7 +438,7 @@ func TestCheckIfJoinsBranches(t *testing.T) {
 
 // TestCheckIfMixedBranchesWidenToScalar checks that heterogeneous
 // branches join WITHOUT collapsing to a distant common ancestor:
-// Integer|String stays a Disjunct (design/checker-accuracy-review.10.md
+// Integer|String stays a Disjunct (design/legacy/checker-accuracy-review.10.ignore
 // A1 — collapsing to Scalar changed first-match dispatch downstream).
 // Direct siblings (value-tagged literals) still collapse to their
 // shared parent — see TestCheckConditionalDefSameBranch.
@@ -837,7 +837,7 @@ func TestCheckDiagnosticPosition(t *testing.T) {
 // an if is joined across branches: after
 // `if [cond] [def x 1] [def x "hi"]`, x should be the
 // Integer|String disjunct (preserved for per-alternative dispatch,
-// design/checker-accuracy-review.10.md A1), not whichever branch
+// design/legacy/checker-accuracy-review.10.ignore A1), not whichever branch
 // ran last.
 func TestCheckConditionalDefJoin(t *testing.T) {
 	a, err := lang.New()
@@ -1830,7 +1830,7 @@ func TestCheckUndefinedWordTypoNextToValid(t *testing.T) {
 }
 
 // TestCheckIndexOutOfRange pins the static index/size check
-// (design/elixir-types-in-boru-report.10.md item 4). A provably
+// (design/legacy/elixir-types-in-boru-report.10.ignore item 4). A provably
 // out-of-range list index — past the end, equal to the length, or
 // negative — is flagged at `boru check` with an index_out_of_range
 // diagnostic (SeverityError: every consumer of a provably-OOB index

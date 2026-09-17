@@ -352,7 +352,7 @@ Options:
 // Emit runs the bytecode recording pass over source and prints the
 // Program disassembly to stdout, or the precise refusal reason when
 // the emitter cannot lower the program (debug/tooling surface —
-// design/boru-bytecode-plan.0.md, Stage 1 gate and the DX section).
+// design/legacy/boru-bytecode-plan.0.ignore, Stage 1 gate and the DX section).
 func Emit(stdout, stderr io.Writer, source string) error {
 	return EmitAt(stdout, stderr, source, "", 0, "")
 }
@@ -391,7 +391,7 @@ func EmitAt(stdout, stderr io.Writer, source, registry string, seed int64, baseD
 	return nil
 }
 
-// writeSiteReport prints the compile report (design/boru-bytecode-plan.0.md
+// writeSiteReport prints the compile report (design/legacy/boru-bytecode-plan.0.ignore
 // DX section): the per-class dispatch-site tally that answers "why didn't
 // this compile to a single path?", plus the interpreter islands a
 // compiled program falls back into for each fallback span.

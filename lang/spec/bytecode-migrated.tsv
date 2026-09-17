@@ -1,5 +1,5 @@
 # Bytecode regression rows migrated from lang/go Go tests (WS4 priority-1,
-# design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md "Test-first frontier
+# design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore "Test-first frontier
 # suite"). Each row was a hand-pinned off-corpus compiled/interpreted parity
 # regression whose VALUE half is ordinary shared-spec material; the
 # opcode/refusal/disassembly halves stay in the owning Go tests. Expected

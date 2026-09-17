@@ -26,18 +26,34 @@ Read as a checkable contract, this is T1 exactly as
 [FULL-COMPILATION.0.md](FULL-COMPILATION.0.md) §1 states it, with **no
 carve-out list**:
 
-- Every program the interpreter accepts produces a `Program`.
-  `compile_refused` is not a result, and the `BORU_COMPILE_FALLBACK`
-  hatch retires.
-- A refusal site has exactly three legal dispositions: a generic
-  lowering, a trap that raises the interpreter's own error at the same
-  moment, or deletion. "Carve-out" is not one of them.
+- Every program the interpreter accepts produces a `Program`. That is
+  the whole contract, not one branch of two: `compile_refused` is not a
+  result, it is a DEFECT against the contract — an unimplemented or
+  unproven case, owed a fix and tracked to closure — and the
+  `BORU_COMPILE_FALLBACK` hatch retires.
+- A refusal site is such a defect, and its disposition is the fix it is
+  owed: exactly three are legal — a generic lowering, a trap that raises
+  the interpreter's own error at the same moment, or deletion.
+  "Carve-out" is not one of them, and neither is "leave it to the
+  interpreter".
 - "Valid" is decided by the interpreter. The checker may never be the
   reason a program fails to compile, so the whole-program "check
   diagnostics" sentinel goes (Stage 8's T1 half is inside done).
 - Computed code is code: runtime-supplied bodies compile too (Stage 7 is
   inside done, and "runtime compilation must itself never refuse" is part
   of the contract).
+
+**Framing correction (maintainer, 2026-09-16).** The interpreter is NOT a
+fallback for the compiler, and it is not allowed to be one. Failure to
+compile is a FAILURE — never "slow, not wrong", never an acceptable worst
+case, never a co-equal branch of a two-outcome contract. The run-time path
+that **silently** re-runs a refused program on the interpreter is
+SCAFFOLDING that absorbs a known defect so the user still gets an answer —
+and nothing in the run says the compile was refused, which makes that
+failure worse, not milder: it hides itself. Where the sections
+below describe that path, they describe machinery, not a sanctioned
+outcome, and it never makes a refusal acceptable: every refusal recorded on
+this page is a defect owed a fix and tracked to closure.
 
 In [FULL-COMPILATION-ASSESSMENT.0.md](FULL-COMPILATION-ASSESSMENT.0.md)
 §5 this settles the **T1 half** of outcome B: no compilation carve-outs,
@@ -89,8 +105,9 @@ the stored-handler latch's lookup half: a stored handler reads its
 module-scope deps live) and #468 (increment 72, NUR037's fn-local fn: a
 code body's local fn is placed for the frame — plus a per-run Go build
 cache in CI), all 2026-09-16. Increment 73 (NUR149: a fn body's redefinition
-of a speculative family's name refuses, and a designed defer inside a `do`
-body falls back instead of trapping) is in flight.
+of a speculative family's name refuses — a miscompile removed, the refusal
+logged as the defect it is — and a designed defer inside a `do` body reaches
+the interpreter re-run instead of being trapped as a value) is in flight.
 
 ## What is in flight
 
@@ -151,18 +168,20 @@ whose condition read the name never terminated. The recorder now refuses
 at the carried-undef site (one site, two hooks — the handler passes the
 fact, since the recorder's registry can be a module's; NUR144 is resolved
 and retired per the register's contract, the class having been NUR145 for
-one commit), every row falls back with parity, in-region undefs and
-never-bound names still compile, and no corpus row is touched. What the
-binder half owes — the placed transition and the live reads — is stated in
-the handoff's section and the site's disposition row.
+one commit) — a miscompile traded for a logged defect, not a resting
+place: every row reaches the interpreter re-run with parity while the
+lowering is still owed, in-region undefs and never-bound names still
+compile, and no corpus row is touched. What the binder half owes — the
+placed transition and the live reads — is stated in the handoff's section
+and the site's disposition row, and 68 pays it.
 
 **Increment 66, the routed dispatch raises its own diagnostics (2026-09-15,
 built on 65).** A no match, a strict-barrier strand and an unbound slot
 are raised from the op's window instead of deferred: the interpreter's
 `sigError` / `strandedForwardError` / `undefinedWordError` derivations
 moved onto the seam (core/go/region_diag.go) with the engine's methods as
-seats, so the error is byte-identical where a defer's fallback could be
-fenced into an internal error. Measured after the review of #461 put the
+seats, so the error is byte-identical where a defer's interpreter re-run
+could be fenced into an internal error. Measured after the review of #461 put the
 memo's key back, no program reaches these arms today — every such rebind
 is diagnosed at check first, the escaped unit's included — so the raise
 stands for the shape the check pass cannot see, pinned at the seam and
@@ -388,16 +407,18 @@ as #455 (`6ea8ac1`).
    fn-local fn is 72 (in flight): a code body's local fn is placed as a
    registry-visible install for the frame, so the body resolves it on
    every path; a capturing local fn, a value read of it, and a closed
-   body's redefinition of it keep the refusal (the review's three,
-   NUR150). Its measurement found NUR149 (pre-existing on `main`), which
-   73 fixes in two halves: a fn body's in-place redefinition of a
-   speculative family's name compiled away while the family's live lead
-   resolved the module binding (now REFUSED — the family-L leak inside a
-   fn body has no compiled twin, so the program falls back), and a
-   designed defer raised inside a `do` body was TRAPPED as an Error value
-   by the escape hatch instead of propagating to whole-program fallback
-   (now re-raised, so the fallback completes — a general fix, the
-   NUR147-in-`do` symptom included). Still the binder half's after it:
+   body's redefinition of it still refuse (the review's three, NUR150 —
+   three open defects, each owed a lowering). Its measurement found
+   NUR149 (pre-existing on `main`), which 73 fixes in two halves: a fn
+   body's in-place redefinition of a speculative family's name compiled
+   away while the family's live lead resolved the module binding (the
+   miscompile is gone; the site now REFUSES, because the family-L leak
+   inside a fn body has no compiled twin — an open defect the containment
+   path absorbs and the binder half still owes), and a designed defer
+   raised inside a `do` body was TRAPPED as an Error value by the escape
+   hatch instead of reaching the whole-program interpreter re-run (now
+   re-raised, so the containment path runs to completion — a general fix,
+   the NUR147-in-`do` symptom included). Still the binder half's after it:
    loop bodies (and the capturing local fn, with family L's capturing
    closure — one limit, the seventieth's).
 3. The row-level remainder in parallel only where a row exposes a

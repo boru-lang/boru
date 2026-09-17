@@ -13,7 +13,7 @@ import (
 )
 
 // Stage M2c landing tests — shaped-instance-method dispatch
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 M2c; eng/go/method_shape.go).
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 M2c; eng/go/method_shape.go).
 //
 // A module instance (logger / instrument / span / rand handle) is a Map of
 // trivial-delegation method wrappers closing over per-instance state. The
@@ -166,7 +166,7 @@ func TestShapedMethodCapturingMemberStaysRefused(t *testing.T) {
 // Re-diagnosed 2026-09-05 (NUR121): the collection-hazard mark names the
 // same fact one stage earlier — the next statement's `size` stack-collected
 // past the unapplied `c.add` lead, so any apply of that lead over the
-// residual would run over `size`'s result. Same sound refusal, earlier and
+// residual would run over `size`'s result. Same refusal, earlier and
 // truer diagnosis; the methodShapeAnnotated decline still stands behind it.
 func TestShapedMethodComputedArgStaysRefused(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release

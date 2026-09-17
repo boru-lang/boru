@@ -56,7 +56,7 @@ never touched by `make fmt/vet/lint/test/cover-gate`.
 
 Best of 3 runs each (Go 1.24.7, Node 22 / bun 1.3, Python 3.11, Ruby 3.3,
 loopback Linux, single box; re-measured 2026-07-10 after the
-runtime-stamping work — `design/RUNTIME-STAMPING.0.md`):
+runtime-stamping work — `design/legacy/RUNTIME-STAMPING.0.ignore`):
 
 | Runtime | req/s | µs / round-trip | vs. Go |
 |---|--:|--:|--:|
@@ -104,7 +104,7 @@ cmd/go/bin/boru run -no-compile -install network bench/networking/apps/echo_redi
 `-no-check`. An earlier checker false-positive on `echo_redis.boru` was traced to
 mini-redis's connection parameter being typed `Any`; it is now typed `Service`
 (its real type), which resolves the check — see
-`design/CHECK-FALSE-POSITIVES.0.md`.)
+`design/legacy/CHECK-FALSE-POSITIVES.0.ignore`.)
 
 | App | tier | interpreted | compiled | speedup |
 |---|---|--:|--:|--:|
@@ -127,7 +127,7 @@ apply all still executed on the interpreter (a pprof of the compiled run
 put ~97% of callback CPU in `Registry.CallBoru`; `-force-compile` cannot
 surface this — stored-handler refusals are probed in a throwaway state and
 decline silently). The runtime-stamping work
-(`design/RUNTIME-STAMPING.0.md`) closed the gap end to end:
+(`design/legacy/RUNTIME-STAMPING.0.ignore`) closed the gap end to end:
 
 - **detached fn-unit stamping** at the codec-resolution, service-store, and
   module-load sites compiles runtime-constructed callbacks the whole-program
@@ -156,7 +156,7 @@ the VM, not just its native `Net.http` codec).
 **mini-s3 stays ~1.0×**, as before: it is I/O-bound (streaming HTTP over
 `serve-raw`), and its per-connection actor uses `do [ … ] error [ … ]` —
 both `CompileFallbackBody`, deliberate interpreter islands. Remaining
-blockers are tracked in `design/NET-COMPILE-FRONTIER.0.md`.
+blockers are tracked in `design/legacy/NET-COMPILE-FRONTIER.0.ignore`.
 
 ### Where boru's time goes (the interpreter path)
 
@@ -224,7 +224,7 @@ fix; the socket words themselves are not the constraint.
 ## Resolution — the handler now compiles (~97× faster)
 
 The highest-leverage fix above **landed**: the callback-compilation seam
-(`design/CALLBACK-COMPILATION.0.md`) compiles a `serve-raw` connection handler
+(`design/legacy/CALLBACK-COMPILATION.0.ignore`) compiles a `serve-raw` connection handler
 body to its own bytecode unit and runs it on the VM (`RunUnit`) per connection,
 instead of `Registry.CallBoru` on the interpreter. The echo handler body — `for`,
 `def`, `convert`, `join`, and the `Net.recv-until` / `Net.send-bytes` socket

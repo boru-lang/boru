@@ -1,7 +1,7 @@
 # Networking + TUI verification apps (working examples)
 
 Working boru programs that verify the networking stack — the acceptance
-apps of `design/NETWORK-IMPLEMENTATION-PLAN.0.md` §1.5 — and, since the
+apps of `design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore` §1.5 — and, since the
 `boru:tui` landing, the terminal-UI stack (`design/TUI.0.md`,
 graduated from the `../tui/` probe by implementation-plan P5).
 Unlike the aspirational sketches in `design/examples/todo/` (written

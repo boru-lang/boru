@@ -47,6 +47,26 @@ reference to a deleted `NURnnn` stays unambiguous forever.
   this file as Pending or Allowed; `git log -S NURnnn` recovers a
   retired number's history.
 
+> **Scope ruling (maintainer, 2026-09-17) — what this register records.**
+> This register records **answer divergences only**: cases where two lanes
+> disagree about a program's result. It does **not** record compile
+> refusals. The two are different defects with different ledgers, and the
+> distinction decides when a record is Resolved.
+>
+> So when a miscompile is fixed by making the shape REFUSE, the divergence
+> is gone — the lanes agree — and the record is **Resolved** and deleted,
+> even though the shape does not compile. That is not "resolving by
+> refusing", and it does not soften the compilation contract: failure to
+> compile is still a failure, and the refusal is still a defect owed a
+> fix. It is tracked where compile defects belong — the refusal gates, the
+> census, and the open-defect taxonomy in
+> [`design/COMPILABLE-SUBSET.md`](design/COMPILABLE-SUBSET.md) §5 — not
+> here. Reading a Resolved record as still-open because its shape refuses
+> conflates the two ledgers and double-counts the same work.
+>
+> (Recorded after exactly that mistake: NUR149 was briefly reopened on the
+> grounds that its shape still refuses. The reopening was withdrawn.)
+
 > **Spelling note (2026-08-19).** The modifier `/r` was renamed **`/v`**
 > and the word `ref` became **`valof`** (see [ADR.md](ADR.md), ADR-011).
 > Records dated before that day quote the old spellings verbatim, because
@@ -67,16 +87,16 @@ keep the two in sync in the same commit.
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
-| [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
+| [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
 | [NUR139](#nur139) | RESOLVED (2026-09-11, the fifty-seventh increment). One rule — "an unreachable unit's lowering says nothing about the PROGRAM" — had TWO per-unit refusal sites in Finalize and covered only one. `lowerEvents` refusing took the stamp-only trap-stub recovery; `reconcileResults` refusing returned straight out and killed the program. Invisible while the only unreachable units were fn-value stamps, whose refusals happen to land in the first site; the moment a declined closure dispatch left one, `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went from compiling to "fn do$body: body leaves extra values". Same shape as NUR136 — one invariant, two sites, one of them wrong — and the recovery is now one helper (`unreachableUnitStub`) called from both | the variation lane, on a row this increment added, 2026-09-11 |
 | [NUR138](#nur138) | RESOLVED (2026-09-11, the fifty-seventh increment). Third instance of NUR133's and NUR137's shape — a screen written for the producers that happened to exist, meeting one that did not — and the FIRST in the opposite direction: it cost refusals, not a wrong answer. `regionReadsTheStack` answered "reads the stack" for any `opClosure` operand, but a closure operand is a PUSH (`OpPushClosure` puts captures then closure ABOVE the mark and the call pops what it pushed) and its captures are always promoted to frame locals. Since a body word's own body operand IS an `opClosure`, the blanket answer declined the region plan for every CLOSURE-COMPILED body word — so `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the body took the dyn-body strategy and refused the moment the body compiled. The screen now walks the captures instead of assuming, so an unpromoted capture still declines | widening the whole-residual dispatch's exactness screen, 2026-09-11 |
-| [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal, never a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
+| [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal — a defect owed a fix — rather than a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
 | [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
 | [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
-| [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, by design — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
-| [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three refuse and fall back now; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
+| [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, a refusal owed its own fix — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
+| [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three now refuse — three wrong answers traded for three unimplemented cases, each owed a fix, absorbed meanwhile by the interpreter; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
 | [NUR132](#nur132) | RESOLVED (2026-09-10, the fiftieth increment). A `break` / `continue` whose loop was in the SAME unit lowered to a bare `OpJmp`, which reached the right pc and did neither of the two things the interpreter does: TRIM THE ROUND (its tape splices back to the round's mark) and, for a break, CLOSE THE LOOP. `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` for the interpreter's `9 5 9 5`, its `break` twin `9 5 0 9 5 1 9` for `9 5 0 9 5 1`, and `while [true] [ (7 add 2) if true [break] [5] end ]` `9` for `[]` — silent, exit 0, on the DEFAULT lane. The leak was worse than the trim: an inner loop's break landed PAST the `FOR_NEXT` that pops it, so `for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]` had the OUTER loop stepping the INNER loop's stale counter and never terminated (tape_exhausted) where the interpreter answers `0 0 1 0`. Both terminators emit the FLOW signal ops now — the same pair the cross-frame case already used, whose `vmLoop` carries the very destinations the jumps named | shrinking the last `while` frontier row to its minimal shape, 2026-09-10 |
 | [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
 | [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
@@ -90,7 +110,7 @@ keep the two in sync in the same commit.
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
-| [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/unison-hash-identity-probe.0.md` P4 (flagged for NUR by the PR #376 review, Codex P1) |
+| [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
 | [NUR079](#nur079) | Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
@@ -99,8 +119,8 @@ keep the two in sync in the same commit.
 | [NUR082](#nur082) | Three tree-walking subcommands, two rules for `.boru/`: `fmt` and (now) `check` skip the package directory, `boru test`'s `discover()` walks it — VERDICT 2026-08-18: resolve by fix, one shared walk helper carrying the skip | giving `boru check` directory targets, 2026-08-18 (W-CLI-CHECK) |
 | [NUR083](#nur083) | `check` and `build` anchor relative imports to the FILE's directory, `run` and `debug` to the process cwd, so `boru check sub/m.boru` now accepts a program `boru run sub/m.boru` refuses from the same cwd — VERDICT 2026-08-18: resolve by fix, `run`/`debug` adopt the file anchor (the multi-target `check` cannot use cwd at all) | multi-file `boru check`, 2026-08-18 (W-CLI-CHECK) |
 | [NUR084](#nur084) | `-h` is not a uniform surface: FlagSet commands print their flags to stderr, `fmt` reads `-h` as a filename, and none exits 0 — though `boru help <cmd>` tells users to run it — VERDICT 2026-08-18: resolve by fix, `fmt` gains a FlagSet and `flag.ErrHelp` exits 0 | `boru check -h` failing as a missing file, 2026-08-18 (W-CLI-CHECK) |
-| [NUR088](#nur088) | One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/HIGHER-ORDER-FUNCTIONS.0.md` §4.2) |
-| [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/HIGHER-ORDER-FUNCTIONS.0.md` §1.1) |
+| [NUR088](#nur088) | One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2) |
+| [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §1.1) |
 | [NUR091](#nur091) | A malformed `fn` declaration fails LOUDLY or SILENTLY depending on its output slot: `fn List [Integer] [size]` raises signature_error, `fn List Any [1]` strands its operands and binds nothing, exit 0 | the function-type prototype, 2026-08-19 |
 | [NUR096](#nur096) | The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
 | [NUR092](#nur092) | `varyRefusalLedger`'s stale arm is corpus-sensitive: adding an UNRELATED spec row can displace a seed from the hash-ordered 32-seed sample, empty a bucket, and instruct the author to delete a ledger entry whose refusal class is still live at larger breadth | adding NUR091's spec rows, 2026-08-19 |
@@ -116,7 +136,7 @@ keep the two in sync in the same commit.
 | [NUR101](#nur101) | BROAD's placement depended on ENCLOSING CONTEXT: `(mk 1) 2` places (`fn (Integer) 2`) while `((mk 1) 2)` dispatches (`3`). **RULED 2026-08-26 "place uniformly"; the ruling's PREMISE was then FALSIFIED 2026-08-27** — the survivor count IS the question, and the enclosing group is a SECOND decision, not a modifier of the first. The interpreter was right all along; the COMPILER carried five silent miscompiles in both directions, hidden by 75 parity assertions that use post-Stage-J `Run` (the compiled path) as their interpreter oracle. See [design/PAREN-RESTEP-RULE.0.md](design/PAREN-RESTEP-RULE.0.md) | re-measuring §5.4 after #402, 2026-08-25; ruled 2026-08-26; ruling's premise falsified by measurement 2026-08-27 |
 | [NUR099](#nur099) | `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
 | [NUR100](#nur100) | ADR-016 ("arity and origin never change function behaviour") is contradicted by live code: `RunPredicate` admits or refuses a function as a predicate purely on its parameter count, and `smallerArityOverload` gates a compile refusal the same way | the maintainer's ruling that the ADR-016 rule is absolute, 2026-08-25 |
-| [NUR097](#nur097) | One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/HIGHER-ORDER-FUNCTIONS.0.md`) |
+| [NUR097](#nur097) | One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`) |
 | [NUR102](#nur102) | A predicate body runs a different number of times in each lane — overload pruning evaluates it 4× interpreted and 2× compiled, an effect-count divergence no differential gate can see because both lanes return the same value | the Stage-2 collection-kernel feasibility probe, 2026-08-25 |
 | [NUR103](#nur103) | The checker's answer depends on who is asking: the same program yields a clean `boru check` and a refusing compile, so the tool a user would reach for reports the program fine — **one instance fixed 2026-08-26** (a nameless `undefined_word` from a Word-typed carrier); the mini-redis instance is diagnosed and OPEN, and its first fault is a coverage hole — `boru check` does not analyse a service-handler body at all, so a bare undefined word inside one ships clean | the server-concurrency corpus, 2026-08-26 |
 | [NUR105](#nur105) | `boru check` does not analyse the body of a function VALUE constructed in ARGUMENT position — all three anonymous spellings (`=>`, `fn`, `afn`) — so `each ([e:Any] => [nosuchw e]) [1 2 3]` checks clean and then raises `undefined_word` at run time, an error the checker catches without difficulty when the identical body is `def`-bound. A code BLOCK argument and a named fn REFERENCE are both analysed, so position decides it, not spelling; measured matrix in the record | bounding NUR103's mini-redis half, 2026-08-26 |
@@ -222,7 +242,7 @@ become refusable at the declaration — the outcome this record exists for.
 **Related.** The 1-argument cases (`def I …`, and the capitalised-constructor
 convention `def New fn opts:Map Service […]` used by `design/examples/`) stay
 reachable only at the USE site until this lands, which is what
-`stranded_type_call` reports (`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.1).
+`stranded_type_call` reports (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.1).
 
 ---
 
@@ -251,10 +271,10 @@ fixed; the rule itself is unconditional.
 
 2. **`compiler/go/compiler_dispatch_record.go` `smallerArityOverload`** — a
    poly window over dynamic operands is refused compilation when the word
-   registers an overload consuming FEWER operands. Lower stakes (a
-   compile-coverage conservatism, not an answer change — the lane falls back
-   and the results agree), but the same shape, and introduced recently in
-   PR #401.
+   registers an overload consuming FEWER operands. Lower stakes only in that
+   no answer changes — the refusal is a compile-coverage defect, absorbed
+   meanwhile by the interpreter re-running the program — but the same shape,
+   and introduced recently in PR #401.
 
 **A THIRD SITE existed and was not on this list; it is now gone (2026-08-28).**
 The compiler's `lambdaCallbackInputs` admitted a list `each` callback and
@@ -377,8 +397,8 @@ oracle sees `sameContainer` false with equal contents.
 - Across requests the memo REFUSES rather than reads stale: request 1
   `import "boru:sift"  Sift.kinds`, request 2 `Sift.define zz …`, request
   3 `Sift.kinds` compiles to "operand of unknown provenance or not
-  statically materialisable at keys" — a sound fallback, where the
-  interpreter answers seven kinds.
+  statically materialisable at keys" — a refusal, and a defect of its own,
+  absorbed today by the interpreter, which answers seven kinds.
 
 A mutation the check pass cannot perform (a `set` whose key is a value the
 analysis widens) followed by a read in the same request is the shape that
@@ -663,8 +683,8 @@ unscreened."* The comment was right and did not prevent the recurrence,
 because the default still silently produced an answer. So the fix changes
 the DEFAULT rather than adding a fifth case: an event kind the screen does
 not name is now assumed to read the stack. Adding a region producer costs a
-refusal until someone lists its operands — the sound direction, and the one
-that fails loudly.
+refusal until someone lists its operands — a defect that announces itself,
+rather than a silent wrong answer.
 
 Pinned in `lang/go/region_stack_read_test.go` (both arms of the branch, the
 body-unit face, and the inert-condition twins that must keep compiling) and
@@ -805,11 +825,12 @@ memo-isolation defect in), and that identification is the part still owed.
 
 **Fixing it does NOT graduate the two ledger rows, and that is worth knowing
 before someone tries.** The compile pipeline refuses on a CAUGHT
-model-undermining finding too — deliberately, `lang/go/boru.go`: the `do`
-body's contents were recorded from the same guess, so the runtime catching
-the error does not make the compiled region's value right. A correct caught
-attribution changes the rows' reason, not their verdict. What they need is
-the dispatch to resolve, which is family A's problem.
+model-undermining finding too — the guard is deliberate (`lang/go/boru.go`:
+the `do` body's contents were recorded from the same guess, so the runtime
+catching the error does not make the compiled region's value right), the
+refusal it produces is not. A correct caught attribution changes the rows'
+reason, not their verdict. What they need is the dispatch to resolve, which
+is family A's problem — the fix those refusals are owed.
 
 ---
 
@@ -854,7 +875,7 @@ def xs [1] def g fn x:Integer Integer [x add 1] 5
 **One of the three is OLDER than the PR, and that matters for the record.**
 Measured on the merge base `6bc55db`: the two `error`-region shapes REFUSED
 there ("the single-output island model would leave the stack one short"), so
-the forty-eighth increment turned two sound refusals into wrong answers. The
+the forty-eighth increment turned two refusals into wrong answers. The
 `evCallUser` witness diverged there identically (`0 1 9 2` — a different
 wrong answer from the same program's mark-plan variant), which makes the
 review's diagnosis of it wrong about the cause and right about the
@@ -870,7 +891,9 @@ producer's operands (a kind that is not listed is UNSCREENED, not
 operand-less — the comment says so, because that is the mistake to prevent);
 `RecordFallback` marks its region possibly-callable unconditionally; and
 `lowerUserCall` refuses to promote a variadic callee's result. All three
-shapes fall back to the interpreter and agree. The const-argument twin `9 f 3`
+shapes now refuse instead of answering wrongly; the interpreter absorbs each
+refusal, so the answers agree — three wrong answers traded for three
+unimplemented cases, each owed a fix. The const-argument twin `9 f 3`
 still compiles natively and is still seated by `OpSeatBelowMark`, which is
 the pin that keeps the fix from being a blanket retreat.
 
@@ -1109,7 +1132,7 @@ report a property of the code.
 sub-registry's check is INACTIVE by design: the body must execute for real so
 its exports get concrete names ("check mode is not propagated into a module
 body — carrier-stripping would destroy the concrete export names",
-`native_module_module.go`; `design/module-fn-checkstate-ownership.1.md` §3.2).
+`native_module_module.go`; `design/legacy/module-fn-checkstate-ownership.1.ignore` §3.2).
 So a module fn's body is only ever analysed under whatever call shapes a
 program happens to use. Measured on HEAD, the same fn either way:
 
@@ -1322,8 +1345,9 @@ bogus constant): the same shape with a FN-valued capture read bare as the
 lambda's whole body answers `fn` where the interpreter dispatches the
 binding as a word and answers `42`. That is NUR123's open lambda-body
 case, whose record claimed such a body "refuses soundly" — it compiles
-and diverges. Its fix is the deopt inside a lambda unit (the handoff's
-twelfth-increment note).
+and diverges, and the quoted verdict is wrong in its second word too: a
+refusal there would be a defect owed a fix, not a sound outcome. Its fix
+is the deopt inside a lambda unit (the handoff's twelfth-increment note).
 
 ## NUR124 — a shuffled fn re-steps AT the shuffle on the interpreter, and a produced closure not at all on the compiled lane {#nur124}
 
@@ -1539,9 +1563,9 @@ shape, so the arity-1 apply fires on a value the paren placed with one
 survivor.
 
 Adding `callResultPlaced` there does remove the miscompile — the row refuses
-("residual shape beyond Stage 1 (call result above a literal)"), a sound
-fallback rather than a wrong answer — but it costs a corpus row against a
-refusal ceiling of 0, so it was withdrawn:
+("residual shape beyond Stage 1 (call result above a literal)"), trading a
+wrong answer for a refusal, which is a defect of its own — and it costs a
+corpus row against a refusal ceiling of 0, so it was withdrawn:
 
 ```
 recursion.tsv:L48  def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]] 10 (mk2 5) apply
@@ -1760,8 +1784,9 @@ consumed by a fn-value apply lowering (`creditWordRead`: the paren window,
 the trailing apply) — else the unit refuses (`wordReadAccounting`): a
 container member, an if-arm residual, a stack-collected argument, and a
 binding read both bare and by `/v` (one value ID, two dispatch semantics)
-all refuse soundly. Every row above bar the last three now agrees on both
-lanes (`lang/go/word_read_dispatch_test.go`), the container and arm rows
+all refuse rather than diverge — four unimplemented cases, each owed a
+fix. Every row above bar the last three now agrees on both lanes
+(`lang/go/word_read_dispatch_test.go`), the container and arm rows
 refuse, and `[x g]`, `g 3`, the quoted arg, the returned closure and the
 named 0-arg lambda agree too. A word-read lead over plain data that
 matches NO prefix of the tokens after it raises the no-match natively
@@ -1833,8 +1858,8 @@ binds the name registry-visibly (seedParentDeopt) — `[1] each [j]` [42],
 Integer, `if true [do [j]] [0]` 42, `5  do [j]  add` 47 (eleven more
 rows; `for 2 [j]` and `[1 2] fold [j] 0` agree on value and message and
 differ in the count error's position, NUR118; a lambda value's body,
-`[1] each [x:Integer => [j]]`, refuses soundly). STILL OPEN: a lambda
-value's own body (`([] => [j])` renders `fn` on both lanes and escapes
+`[1] each [x:Integer => [j]]`, refuses — itself a defect). STILL OPEN: a
+lambda value's own body (`([] => [j])` renders `fn` on both lanes and escapes
 the frame its binding lives in); a point whose statement the compiled stack
 cannot match declines and keeps the slot push (`5  j typeof`, `def y 5  y
 j typeof`: a literal or a read pushed before the statement and still
@@ -1921,7 +1946,8 @@ def app3 fn [[g:Function][Integer][(g 5)]]  app3 (z:String => [z])
 Two boundaries, both measured: the divergence is on the ERROR path only — the
 succeeding twin `app3 (z:Integer => [z mul 2])` is 10 on both lanes — and the
 no-paren spelling `[g x]` inside a lambda REFUSES instead ("fn app2: body result
-of unknown provenance"), a sound fallback.
+of unknown provenance") — a refusal the interpreter absorbs, and a defect in
+its own right.
 
 That narrows the fix below a deopt. The values already agree; only the dispatch's
 NAME and POSITION are wrong. The model is `callDynFrameWords`
@@ -2302,17 +2328,19 @@ Measured boundaries, so the fix knows its own edges:
 | shape | compiled | interpreted | |
 | --- | --- | --- | --- |
 | fresh def, untaken `if` branch | binds | unbound | **miscompile** |
-| shadowing a VALUE binding | refused (residual provenance) | correct | sound |
-| shadowing a FN overload | refused (family L, by name) | correct | sound |
+| shadowing a VALUE binding | refused (residual provenance) | correct | not wrong — the refusal is a defect of its own |
+| shadowing a FN overload | refused (family L, by name) | correct | not wrong — the refusal is a defect of its own |
 | zero-iteration `for` body | unbound | unbound | correct |
 | taken branch | binds | binds | correct |
 
 The zero-iteration loop row is the useful one: the same question is already
 answered correctly there, so the machinery to get this right exists.
 
-**Verdict: resolve by fix, compiler-side — and refusing is a fix.** Its two
-siblings above refuse, and a refusal is sound (the interpreter runs the program
-correctly); a silent wrong binding is not. Full graduation is the same one
+**Verdict: resolve by fix, compiler-side — and refusing is containment, not
+the fix.** Its two siblings above refuse, and those refusals are defects owed
+their own fix; what makes them less urgent than this row is only that a
+refusal is contained (the interpreter still runs the program correctly) where
+a silent wrong binding is not. Full graduation is the same one
 family L already names — "a runtime dispatch respecting the conditional
 binding" — which is Stage 4/5's def-twin work, not Stage 3's. Pinned as
 measured meanwhile by `lang/go`'s `TestCondBodyFreshDefBindsCompiledOnly`.
@@ -2344,8 +2372,9 @@ Three things the record did not have.
    `op` is CONSTANT-FOLDED to the value the untaken branch installed. So this is
    not "a gate that fires on `changed` and should also fire on fresh" — the
    rollback the checker performs is already right, and the recorder's view of
-   the same pass survives it. Fixing the recorder's rollback is a repair;
-   refusing is the fallback if it is not reachable.
+   the same pass survives it. Fixing the recorder's rollback is the repair;
+   refusing would only contain the miscompile — a defect in its own right,
+   owed a fix — if the repair proves unreachable.
 
 2. **THE BOUNDARY TABLE ABOVE IS INCOMPLETE.** Re-measured at `-no-check`,
    `if` is not the only shape:
@@ -2589,7 +2618,7 @@ without checking what that answer rested on.
 ## NUR101 — BROAD places a REFERENCED fn but still dispatches a COMPUTED one {#nur101}
 
 **Status:** Pending · **Recorded:** 2026-08-25 · **Surfaced by:** re-measuring
-`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.4 against the post-#402 tree; the
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.4 against the post-#402 tree; the
 diagnosis below is the maintainer's correction of this record's first version
 
 **Rule:** ADR-011's 2026-08-24 amendment, implementing NUR073's BROAD verdict
@@ -2676,7 +2705,7 @@ inside an enclosing group place, or dispatch?** ADR-011's carve-out is
 written for *"a bare WORD inside a group"*, and `(mk 1)` is not a bare word,
 which is how this register came to hold two contradictory readings (see
 below). Options, costs and a recommendation:
-[design/O1-RELITIGATION.0.md](design/O1-RELITIGATION.0.md).
+[design/legacy/O1-RELITIGATION.0.ignore](design/legacy/O1-RELITIGATION.0.ignore).
 
 **RULED 2026-08-26 — place uniformly.** A computed function applied inside
 an enclosing group PLACES, exactly as its unwrapped twin does. `((mk 1) 2)`
@@ -2688,7 +2717,7 @@ is not one.
 Both lanes move. The compiled lane is NOT already at this answer for the
 enclosing-group case — `lang/go/bytecode_curried_test.go:17-24` pins compiled
 `((mk 1) 2)` as `[3]` — so the fix is interpreter AND compiler, and that
-fixture is rewritten with it. `design/HIGHER-ORDER-FUNCTIONS.0.md` §5.4's
+fixture is rewritten with it. `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.4's
 `((mk 1) 2)` → `3` transcripts and its `def h (mk 1)` / `2 h/v apply`
 workaround are re-spelled, as every §1 program was when BROAD's first half
 landed. `def h (mk 1) end  h 2` → `3` must keep working: a bare NAME bound to
@@ -2876,7 +2905,7 @@ non-Boolean targets.
   (`'false' convert Boolean` → `true` pinned explicitly).
 
 **Review (2026-07-31):** re-affirmed by the maintainer
-(`design/NUR-RESOLUTION-PLAN.0.md`). The single coercion rule this
+(`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`). The single coercion rule this
 record leans on is now specified once — with every consuming construct
 enumerated — in `design/TRUTHINESS.0.md` (the One Truthiness Model);
 an ADR stating the model as a language principle is a recorded
@@ -2924,7 +2953,7 @@ presenting Boolean as special.
 
 Finite **dependent scalar types** also define finite domains, and
 should eventually enter the same coverage channel. Two items to
-investigate (`design/NUR-RESOLUTION-PLAN.0.md`):
+investigate (`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):
 
 - **Ergonomics** — allow a finite dependent type to be declared by
   enumerating its values (a `{2,3,4}`-style literal domain) rather
@@ -2980,7 +3009,7 @@ the non-uniform return type never degrades static analysis to `Any`.
   coerced boolean.**"
 
 **Review (2026-07-31):** re-affirmed by the maintainer
-(`design/NUR-RESOLUTION-PLAN.0.md`). The operand-return semantics —
+(`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`). The operand-return semantics —
 short-circuit behaviour, evaluation order, which operand is returned,
 and the interaction with static typing — are specified in
 `design/TRUTHINESS.0.md` §"The connectives", which this record now
@@ -3052,7 +3081,7 @@ distinctions into the structural layer — the wrong home for them.
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
 2026-07-22; verdict and rewritten wording: maintainer, via
-`design/NUR-RESOLUTION-PLAN.0.md`)
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3130,7 +3159,7 @@ refinement construction.
 unstated deliberate scoping or an omission; needs a verdict.
 
 **Verdict direction (maintainer, 2026-07-31 — architectural
-remediation, `design/NUR-RESOLUTION-PLAN.0.md`):** the Bytes omission
+remediation, `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** the Bytes omission
 exposes a deeper **ownership** problem in the kernel type hierarchy,
 and the fix is architectural rather than a one-line addition to
 `canonicalBaseType`. The proposed rule: **all globally visible
@@ -3226,7 +3255,7 @@ remains the aliasing probe.
   on a scalar; `sameContainer` identity arms for compounds).
 - REFERENCE.md §Comparison ("**`eq` is identity for compounds; `deq`
   is structural — by design**"); EXPLANATION.md §"Type ordering", the "**Two equalities, one rule.**"
-  lead-in (added with this verdict); `design/LISP-ANALYSIS.5.md` (the original
+  lead-in (added with this verdict); `design/legacy/LISP-ANALYSIS.5.ignore` (the original
   argument).
 - `core/go/compare.go` — the carve-out arms themselves
   (`opaqueIdealExactEqual` / `opaqueIdealDeepEqual`, `storeDeepEqual`,
@@ -3238,7 +3267,7 @@ remains the aliasing probe.
   words' `deq`-basis battery pins the value side of the rule.
 
 **Modification recorded (maintainer, 2026-07-31,
-`design/NUR-RESOLUTION-PLAN.0.md`):** the two-level model is to grow
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** the two-level model is to grow
 into a complete equality family with a third word — **`req`**,
 reference equality (pointer identity only, uniformly for compounds
 and scalars) — separating three notions many languages conflate:
@@ -3258,7 +3287,7 @@ unchanged.
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; the 2026-07-31 investigation verdict discharged below;
 verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3338,7 +3367,7 @@ semantic-vs-deterministic split applied to the other special value.
 
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3394,7 +3423,7 @@ arithmetic a defined error. The behaviour is Python's
 
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3454,7 +3483,7 @@ route.
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22 as "the String family's core straggler"; verdict:
 maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3506,7 +3535,7 @@ that is the sequence home.
 ## NUR020 — `print` stays in core; every other IO word is namespaced {#nur020}
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
-2026-07-22; verdict: maintainer, via `design/NUR-RESOLUTION-PLAN.0.md`)
+2026-07-22; verdict: maintainer, via `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3581,7 +3610,7 @@ context for the verdict below, not a separate record: bringing `del`
 into line with `set` is the step that was directed.
 
 **Verdict (maintainer, 2026-07-31 — resolve by fix,
-`design/NUR-RESOLUTION-PLAN.0.md`):** bring `del` into symmetry with
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** bring `del` into symmetry with
 `set` across the container set. **First investigation step:** confirm
 that boru distinguishes an *absent key* from a *present key bound to
 `none`* — the deletion semantics hang on that distinction being real
@@ -3690,7 +3719,7 @@ distinct miss sentinel exists; it does not reopen this record.
 ## NUR024 — Two orderings by design: semantic (`cmp`) and deterministic (`tcmp`) {#nur024}
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
-2026-07-22; verdict: maintainer, via `design/NUR-RESOLUTION-PLAN.0.md`)
+2026-07-22; verdict: maintainer, via `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3773,7 +3802,7 @@ severed from jsonic purely to bolt on interpolation, and the
 replacement escape handler was never brought to parity.
 
 **Verdict (maintainer, 2026-07-31 — resolve by fix,
-`design/NUR-RESOLUTION-PLAN.0.md`):** boru shall **not** use the
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** boru shall **not** use the
 jsonic JSON string lexer as-is for strings. Instead: a **custom
 unified string lexer** — a vendored copy of jsonic's string lexer,
 extended to also handle backtick templates (i.e. `${…}`
@@ -4096,7 +4125,7 @@ form.
 
 **The mechanism (corrected 2026-08-02).** This record originally
 proposed that "the first pass measures widths against a pre-wrap layout
-decision it then invalidates". `design/NUR-EFFORT-TRIAGE.0.md:139-148`
+decision it then invalidates". `design/legacy/NUR-EFFORT-TRIAGE.0.ignore:139-148`
 (the NUR046 bullet; the cause statement at :140-141) investigated and
 found otherwise: the true cause is **re-parse
 statement-segmentation drift** (root-level newlines emitted by pass 1
@@ -4699,7 +4728,7 @@ them revealed.
 ## NUR074 — `canon` renders a function's parameter names, so alpha-equivalent functions render differently {#nur074}
 
 **Status:** Pending · **Recorded:** 2026-08-16 · **Surfaced by:**
-`design/unison-hash-identity-probe.0.md` P4, a proof-of-concept pass over the
+`design/legacy/unison-hash-identity-probe.0.ignore` P4, a proof-of-concept pass over the
 canon contract; flagged for this register by the PR #376 review (Codex P1).
 
 **Rule:** a value's canonical rendering should depend on the **value**, not on
@@ -4743,7 +4772,7 @@ candidate 1 below. Nothing about NUR031's fix depends on the answer — it
 compares whatever canon renders — so this stays independently decidable.
 
 **Evidence:** `scripts/hash-identity-probe.boru` P4 and its wrapper
-`scripts/hash-identity-probe.sh`; `design/unison-hash-identity-probe.0.md` §4;
+`scripts/hash-identity-probe.sh`; `design/legacy/unison-hash-identity-probe.0.ignore` §4;
 `core/go/compare.go` `fnStructurallyEqual` (the canon-as-equality path);
 `NUR.md` §NUR031 (retired 2026-08-16 — `git log -S NUR031` for the
 binding-name half and its 2026-08-15 refinement).
@@ -4891,7 +4920,7 @@ designed behaviour ("the planner's designed TFunction intercept"); two
 more bare uses sit in the frontier divergence ledger (§3.3's count of 3).
 
 **RE-AFFIRMED 2026-08-26 — implement as amended.** Re-litigated under O1
-(`design/O1-RELITIGATION.0.md` §2) and the amendment stands: a bare name
+(`design/legacy/O1-RELITIGATION.0.ignore` §2) and the amendment stands: a bare name
 bound to a function CALLS, universally, and passing one as an argument is
 explicit. The slot type must stop deciding what a token means — that is the
 same class of context-sensitivity Stage 4's descriptor would otherwise have
@@ -4916,7 +4945,7 @@ when that fix lands.
 ## NUR079 — Gated words inside an imported file-module body escape the policy that governs the same call at top level {#nur079}
 
 **Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
-Roc comparison study (`design/roc-in-boru-report.0.md` §7.1), while
+Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.1), while
 checking Roc's claim that `roc check`/`roc build` perform no dependency
 I/O
 
@@ -5025,7 +5054,7 @@ permission flags they document. The record stays Pending until both land.
 ## NUR080 — A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one {#nur080}
 
 **Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
-Roc comparison study (`design/roc-in-boru-report.0.md` §7.2), while
+Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.2), while
 measuring boru's nominal-newtype guarantee against Roc's opaque types
 
 **Rule:** the two engines agree. A bare `refine` is a nominal newtype
@@ -5047,8 +5076,9 @@ directions depending on source order:
 So a declared binding loses the brand it was given, and a bare literal
 acquires a brand it never had. `boru check` reports `0 error(s), 0
 warning(s), 0 info`, and `--force-compile` does not refuse — it compiles
-and answers wrongly, which puts this outside the
-`MarkUncompilable`-is-always-sound architecture. Compiled mode is the
+and answers wrongly, which puts this beyond the reach of `MarkUncompilable`
+altogether: that machinery can contain a refusal (itself a defect owed a
+fix); it cannot contain a wrong answer. Compiled mode is the
 execution default since the P7 endgame, so this is the default answer.
 A String newtype (`def Name (refine String)`) did not reproduce it.
 
@@ -5056,7 +5086,7 @@ A String newtype (`def Name (refine String)`) did not reproduce it.
 whether a typed def elsewhere in the program mentioned it — points at the
 const-pool entry for the literal being reparented rather than a fresh
 value being minted, i.e. the residual of
-`design/MISCOMPILE-HUNT-FINDINGS.0.md` §B, whose July-2026 update states
+`design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore` §B, whose July-2026 update states
 "The static/concrete path is untouched." No `lang/spec/*.tsv` row covers
 `typeof` or `is` over a typed def of a literal in both source orders,
 which is why `make verify-bytecode` is blind to it.
@@ -5279,7 +5309,7 @@ normalises from the canonical form only, rather than canonicalising the
 intermediates first and then reducing.
 
 **Evidence:** the table above, measured against this tree by running
-`boru fmt` on each spelling; `design/HIGHER-ORDER-FUNCTIONS.0.md` §4.2;
+`boru fmt` on each spelling; `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2;
 `STYLE-GUIDE.md` §S1 carries the same table as the formatter-status note.
 `boru describe fn` documents the underlying two-form rule (*"a list input
 always selects the spec-list form"*), which is what makes
@@ -5308,7 +5338,7 @@ record retires when each of the five rewrites to
 ## NUR089 — an inline lambda and a named reference to the same function are not equally checkable {#nur089}
 
 **Status:** Pending · **Recorded:** 2026-08-19 · **Surfaced by:** the
-function-type prototype (`design/FUNCTION-TYPES.0.md`), while
+function-type prototype (`design/legacy/FUNCTION-TYPES.0.ignore`), while
 establishing which of the audit's combinator blocks check clean and why
 
 **Rule:** a function value is a function value. ADR-011's "calling is an
@@ -5364,7 +5394,7 @@ combinator without calling it is clean in both spellings, so the defect
 is in the analysis of the *call*, not the body.
 
 **Not fixed by declaring a function type.** Replacing `f:Function` with
-a declared `f:IntToInt` (`design/FUNCTION-TYPES.0.md`) leaves the lambda
+a declared `f:IntToInt` (`design/legacy/FUNCTION-TYPES.0.ignore`) leaves the lambda
 call site failing — re-confirmed 2026-08-20 on the type-node-fusion
 tree, where the diagnostic becomes `no_signature: cannot call bb … got
 (Function); nearest [IntToInt]` (the named fn-shape param now carries
@@ -5395,7 +5425,7 @@ spellings, pinned as a spec row.
 
 **Status:** Pending · **Recorded:** 2026-08-19 · **Surfaced by:** probing
 `fn`'s `(tnot List)` input guard while investigating NUR090 (retired
-2026-08-20 — the name→node flip, `design/TYPE-REPRESENTATION.1.md`)
+2026-08-20 — the name→node flip, `design/legacy/TYPE-REPRESENTATION.1.ignore`)
 
 **Rule:** boru refuses loudly. `lang/spec/fn-triple.tsv` §4 pins the
 input guard's refusal as an ERROR row — *"a bare List type literal input
@@ -5569,7 +5599,7 @@ can live in `class.tsv` with the soundness pin still at 0.
 
 **Status:** Pending · **Recorded:** 2026-08-21 · **Surfaced by:** the
 higher-order capability audit's §5.6
-(`design/HIGHER-ORDER-FUNCTIONS.0.md`), re-assessed and pinned 2026-08-21
+(`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`), re-assessed and pinned 2026-08-21
 
 **Rule:** one binding store, one resolution rule. A name in a fn body
 should mean the same kind of thing wherever it was bound.
@@ -5603,7 +5633,7 @@ one syntax is the non-uniformity.
 as `lang/spec/frontier/frontier-hof-audit.tsv` §8 (all three rows). The
 contract is documented in `REFERENCE.md` §"Definition and scoping" and
 argued, with the cross-language positioning, in
-`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.6.
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.6.
 
 **Verdict proposed:** **Allowed, plus a diagnostic.** The late half is
 load-bearing: top-level liveness — redefinition reaching existing words —
@@ -5680,9 +5710,10 @@ predicate-effect row, and `design/COMPILABLE-SUBSET.md` mentions
 predicates only for typed binds and tape-bound handlers.
 
 **Why it matters beyond purity.** A predicate is ordinary boru: it may
-log, may touch a store, may be expensive. "Slow, not wrong" does not
-cover it — the two lanes disagree observably, and which one is *correct*
-is itself unsettled, since neither count is obviously the specified one.
+log, may touch a store, may be expensive. "Slow, not wrong" defends
+nothing anywhere, and least of all here — the two lanes disagree
+observably, and which one is *correct* is itself unsettled, since neither
+count is obviously the specified one.
 
 **Discharge.** Either (a) rule that predicate bodies must be pure, and
 enforce it, at which point the count is unobservable and this becomes
@@ -6281,9 +6312,10 @@ at the second `call`. Reproduced on `main` with no dependency at all:
 call {} svc` answers `1 1` on the default lane by whole-program fallback
 and raises an internal error under `-force-compile`.
 
-**Rule:** a program that compiles runs compiled; a runtime bail is a
-defer the census counts (`vm:poly-no-match`, one of its two), slow and
-not wrong, and every one is owed a retirement.
+**Rule:** all valid code compiles, and a program that compiles runs
+compiled; a runtime bail is a defer the census counts
+(`vm:poly-no-match`, one of its two) — a defect the runtime contains, not
+an outcome the design allows, and every one is owed a retirement.
 
 **Divergence.** `call` has two overloads, `[Map Service]` and `[Map
 Service Map]`. The first `call` leaves its handler's residual on the
@@ -6318,8 +6350,9 @@ PR).
 **Found:** review of #467's first cut (4f5fee1), three reproduced on that
 tree, the fourth on the restore predicate.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6367,8 +6400,9 @@ fixed in the same PR).
 **Found:** review of #468's first cut (286a6c9), all three reproduced on
 that tree.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6388,7 +6422,8 @@ refusal is a slow path, never a wrong answer.
    (`sameFnDecls`: the same signature count and declaration sites), or
    the site refuses. Two first-cut rows that answered by index — the
    redefining body reading its own redefinition (`55`, `111`) — refuse
-   under the rule and fall back with parity.
+   under the rule; the interpreter absorbs them, so the answers match, and
+   two refusals are now owed a fix.
 3. *A value read admitted.* `do [f/v]` returned the fn as data from the
    compiled closure where the interpreter dispatches the returned value
    and raises `uncalled_function`; the guard had refused it. Fix: a
@@ -6410,8 +6445,9 @@ fixed in the same PR).
 **Found:** review of #469's first cut (ea3ac11), both reproduced on that
 tree.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6434,7 +6470,8 @@ refusal is a slow path, never a wrong answer.
    NUR149 leak. Fix: `specFamilyAtFnBaseline` gates the refusal on the
    dropped binding existing at the enclosing fn's baseline (a MODULE-scope
    family), so an in-function family is not refused (it compiles; its routed
-   dispatch may still defer at run time and fall back — slow, not wrong).
+   dispatch may still defer at run time and fall back — a deferred defect the
+   runtime contains, not an outcome the design allows).
 
 **Fence.** `lang/go/do_defer_fallback_test.go` (the user-internal-error
 trapped rows, the in-function-family not-refused row),

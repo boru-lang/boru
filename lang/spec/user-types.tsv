@@ -318,7 +318,7 @@ def R class {xs:[:Integer 1 2]} def r (make R {}) (r dot xs)	[:Integer 1 2]	a po
 def R class {xs:[:Integer 1 2]} def r (make R {xs:[9]}) (r dot xs)	[9]	an explicit field value still overrides the populated default
 
 # ====================================================================
-# NUR093/NUR094 retirement pins (design/TYPE-REPRESENTATION.1.md §5)
+# NUR093/NUR094 retirement pins (design/legacy/TYPE-REPRESENTATION.1.ignore §5)
 # ====================================================================
 # NUR093: an alias and a singleton are `is`-true AND dispatchable — the
 # alias binding ADOPTS the canonical aliased node (an `x:Foo` param is

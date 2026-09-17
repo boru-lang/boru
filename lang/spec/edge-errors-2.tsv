@@ -33,7 +33,7 @@ def x:Integer "s"	ERROR:does not unify with declared type	a typed def rejects a 
 -1e309	ERROR:float_overflow	a negative overflowing float literal is rejected at parse too
 [1 2] getr -1	ERROR:out of bounds	a negative strict index misses loudly
 #
-# §4  the §5 uncalled_function residue check (design/ERRORS.8.md)
+# §4  the §5 uncalled_function residue check (design/legacy/ERRORS.8.ignore)
 import "boru:math-util" MathUtil.sqrt "x"	ERROR:uncalled_function	a wrapper call matching no signature leaves the fn as data — the end-of-run drain names it
 import "boru:string-util" StringUtil.upper 42	ERROR:uncalled_function	…same through any module wrapper
 #

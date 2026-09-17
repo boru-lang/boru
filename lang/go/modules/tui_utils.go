@@ -5,7 +5,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/tuikit"
 )
 
-// The general terminal utilities of design/TUI-UTILITIES.0.md: pure
+// The general terminal utilities of design/legacy/TUI-UTILITIES.0.ignore: pure
 // words on the module's no-backend tier, exposing the SAME color model,
 // degradation tables, and width tables the framework renders with — to
 // plain CLI scripts that never open the terminal. No policy scope, no

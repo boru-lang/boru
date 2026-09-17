@@ -1,7 +1,7 @@
 package core
 
 // The analysis accessor layer — Stage 2a of the four-piece split
-// (design/ENG-FOUR-PIECE.0.md seam S1). Every consultation of the
+// (design/legacy/ENG-FOUR-PIECE.0.ignore seam S1). Every consultation of the
 // checker's state that the PURE INTERPRETER makes routes through the
 // small surface below, so the core piece's files carry no direct
 // CheckState knowledge: this one file concentrates the coupling, and
@@ -63,7 +63,7 @@ func (r *Registry) EnterSpecArm(known bool) func() {
 // predicate sandbox; restoreAnalysisSnapshot rolls it back IN PLACE
 // (not by swapping the pointer) so a module sub-registry transiently
 // sharing the state observes the rollback too
-// (design/module-fn-checkstate-ownership.1.md §3.2).
+// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2).
 func (r *Registry) analysisSnapshot() *CheckState { return r.Check.Clone() }
 
 func (r *Registry) restoreAnalysisSnapshot(s *CheckState) {

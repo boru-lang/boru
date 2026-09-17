@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Instantiation of generic schemas (`of`, design/GENERICS.10.md; plan
+// Instantiation of generic schemas (`of`, design/legacy/GENERICS.10.ignore; plan
 // decisions D4/D5/D7/D8). The lang `of` word is a thin wrapper over
 // InstantiateSchema; substitution recursion (nested `X of […]`,
 // `Self of [T]`) re-enters here through GenInstRef resolution.

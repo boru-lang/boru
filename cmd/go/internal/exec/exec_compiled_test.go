@@ -11,7 +11,7 @@ import (
 // The Phase 2 entry-point pin (plan p2 case): an exec request runs
 // COMPILED-BY-DEFAULT — no unattributed interpreter entry fires for a
 // compilable program — and a refused program still returns the
-// interpreter's exact result (the sound fallback, never an error).
+// interpreter's exact result (the refusal the interpreter absorbs, never an error).
 func TestExecRunsCompiled(t *testing.T) {
 	var entries []string
 	prev := langNew

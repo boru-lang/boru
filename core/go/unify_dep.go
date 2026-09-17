@@ -56,7 +56,7 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 // structural fallback cannot re-admit it by lattice subtyping alone.
 // This is the Unify capability PredicateUnifier already carries; without
 // it a typed bind against the bare minted node (`def x:Big 5` once
-// evaluation yields nodes — design/TYPE-REPRESENTATION.1.md §N3) would
+// evaluation yields nodes — design/legacy/TYPE-REPRESENTATION.1.ignore §N3) would
 // fall to unifySameOrSubtype's narrower-literal arm and bind without
 // ever running the constraint.
 func (d *DepScalarUnifier) Unify(a, b Value) (Value, *UnifyError) {
@@ -90,7 +90,7 @@ func (d *DepScalarUnifier) Unify(a, b Value) (Value, *UnifyError) {
 // depScalarContent returns the DepScalar VALUE a unify operand stands
 // for: the operand itself when it carries the payload, or a bare
 // node's recorded refinement body (the named spelling after the Stage
-// 2 flip — design/TYPE-REPRESENTATION.1.md §N2).
+// 2 flip — design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 func depScalarContent(v Value) (Value, bool) {
 	if v.IsDepScalar() {
 		return v, true

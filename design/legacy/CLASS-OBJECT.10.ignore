@@ -1,0 +1,744 @@
+# Class / Object Split — Container Symmetry and the `class` Word
+
+> **Superseded (2026-07).** The `class` word landed, but the mutable
+> `Object`/`Array` *containers* this note proposes were **removed**, not
+> shipped: `FlexMap`/`FlexList` (the `flex` family) fill the mutable-Node
+> role, so the 2×2 (`List : Array :: Map : Object`) collapsed to
+> `List/Map` (immutable) + `FlexList/FlexMap` (mutable) + `class` (typed,
+> sealed records). The `Object`/`Array` lattice types, the `object`/`array`
+> words, and the shared object instance struct are gone; the SDK
+> `Resource`/`Entity` hierarchy was re-rooted under `Ideal/Resource` with
+> its own structs, and the class instance struct is now `ClassInstanceInfo`.
+> This document is kept as the historical design record for the `class`
+> word only. See `REFERENCE.md` (container model) for the current story.
+
+Status: **discovery note** — directions agreed in design conversation
+(2026-06-09, language owner; revised same day — no aliases, paren-free
+definition forms, flat instances). **Not an ADR** (ADRs are added only
+on explicit instruction) and **implementation pending**; this document
+owns the design and plan.
+
+## 1. Decisions
+
+1. **Container symmetry.** The 2×2: `List : Array :: Map : Object` —
+   immutable value vs mutable container, indexed vs keyed. `Object`
+   becomes a core, *constructible*, *enumerable*, *mutable* keyed
+   container — the keyed sibling of `Array`. **Store stays a separate
+   surface type** (scoped copy-on-write context semantics).
+2. **`class` defines, `refine` extends.**
+   `def Foo class {…}` defines a root class (no parens — the same
+   nested-collection shape as `def name fn […]`).
+   `def Bar refine Foo {…}` defines a subclass. `refine` keeps its
+   general meaning — *refine an existing type* — and a class is just
+   one more refinable type; the scalar forms (`refine Integer`
+   newtypes, predicate subsets) are untouched.
+3. **No deprecated aliases.** `refine Object {…}` is **removed**, not
+   aliased: it raises a loud error with a hint pointing at
+   `class {…}`. Pre-1.0 clean break, carried in the README upgrade
+   notes.
+4. **Classes have no prototypes — just instances.** A class is a
+   schema (fields + defaults + parent class). `make` resolves the
+   full default set **eagerly, flat into the instance** by walking
+   the class chain at construction time. Instances carry one flat
+   field map: no `Prototype` link, no delegation at `get`. (The
+   context/Store scope chain is separate machinery and unaffected.)
+5. **Sealed instances.** Writing an undeclared field on a class
+   instance raises `[boru/sealed_field]` loudly. Open dynamic data
+   belongs on plain Object.
+6. **No prototype surface, no prototype dispatch.** Polymorphism
+   stays with signature dispatch through the type lattice — one
+   dispatch mechanism (the ADR-004 principle applied to dispatch).
+
+## 2. Proposed surface, type by type
+
+The contract column-wise: **immutable values return the updated copy
+from `set`; mutable containers mutate in place and return nothing.**
+
+### 2.1 Map — immutable, keyed (largely current behaviour)
+
+```
+def m {a:1, b:2}              # literal; computed key in a literal: {[k]: v}
+m get a                       # returns 1      — bare key is literal (JS .key)
+def k 'b'
+m get (k)                     # returns 2      — parens = computed key (JS [k])
+def m2 (m set c 3)            # returns {a:1 b:2 c:3} — NEW map (landed 2026-06-09)
+m                             # returns {a:1 b:2}     — receiver untouched
+{} set a 1 set b 2            # returns {a:1 b:2}     — copy-returning chains
+import "boru:struct-util"
+StructUtil.items m            # returns [['a' 1] ['b' 2]]
+m size                        # returns 2
+m {a:1, b:2} deq              # returns true   — structural; eq is identity
+```
+
+### 2.2 List — immutable, indexed (one proposed addition)
+
+```
+def xs [1 2 3]
+xs get 0                      # returns 1
+xs push 4                     # returns [1 2 3 4]   — copy-returning (current)
+import "boru:array-util"
+ArrayUtil.insert-at 1 99 xs   # returns [1 99 2 3]  — copy-returning (current)
+ArrayUtil.remove-at 0 xs      # returns [2 3]       — copy-returning (current)
+
+def ys (xs set 0 99)          # PROPOSED: returns [99 2 3], xs unchanged —
+xs                            # returns [1 2 3]
+                              # completes the column rule (today List set is
+                              # a signature error). Open question §6.1, now
+                              # recommended: yes, for symmetry with Map.
+```
+
+### 2.3 Object — mutable, keyed, open, fully enumerable (Phase B)
+
+```
+def o object {}               # sugar — exactly `make Object {}`
+def o2 object {a:1}           # seeded from a map (today an error; retires B5)
+o2 set b 2                    # in place; returns NOTHING — read o2 back
+def k 'dyn'
+o2 set (k) 3                  # computed key, in place
+o2.b                          # returns 2 — dot access (literal key)
+o2 get (k)                    # returns 3
+StructUtil.items o2           # returns [['a' 1] ['b' 2] ['dyn' 3]] — ALL
+                              # fields enumerate (no invisible-dynamic-field
+                              # class of bug)
+o2 size                       # returns 3
+def alias o2                  # bindings share the container (mutable column):
+alias set a 9 end o2.a        # returns 9
+```
+
+### 2.4 Array — mutable, indexed (constructor proposed)
+
+```
+def a array [1 2 3]           # sugar — exactly `make Array [1 2 3]`
+                              # (today Array is host-side-only, §6.2)
+a set 0 99                    # in place; returns NOTHING — bounds-checked
+a.0                           # returns 99 — dot index (get already has the
+                              # [Integer, Array] signature)
+a size                        # returns 3
+a set 5 1                     # ERROR — index out of bounds (current set rule)
+```
+
+### 2.4b Constructor sugars
+
+`object {…}` ≡ `make Object {…}` and `array […]` ≡ `make Array […]`.
+Both names are unclaimed today (verified — no word, no module export;
+the array module namespace is the capitalised `ArrayUtil`). They are
+ordinary forward words per ADR-004, so the paren-free `def o object
+{…}` rides the same nested-collection path as `def Foo class {…}` and
+`def name fn […]`. The lowercase trio reads as a family: `class`
+mints a type, `object`/`array` mint containers. `make` remains the
+general constructor (and the only spelling for class instances —
+`make Point {…}`; a per-class sugar would shadow user namespaces).
+
+### 2.5 Classes and instances
+
+```
+def Point class {x:0, y:0}            # root class: schema + defaults
+def Point3 refine Point {z:0}         # subclass: inherits x,y; adds z
+
+def p make Point3 {x:1}               # instance — defaults resolved FLAT at
+                                      # make-time: p's own fields are
+                                      # {x:1 y:0 z:0}; no prototype link
+typeof p                              # returns Point3
+p is Point                            # returns true  — nominal subtyping (lattice)
+p get x                               # returns 1
+p set y 5                             # in place (mutable column); returns nothing
+p set w 9                             # ERROR [boru/sealed_field]: 'w' is not a
+                                      #   field of Point3 (fields: x y z)
+                                      #   hint: declare it in the class, or use
+                                      #   a plain Object for open data
+StructUtil.items p                    # returns [['x' 1] ['y' 5] ['z' 0]] — flat,
+                                      # fully enumerable
+
+# Methods stay free functions dispatched on the nominal type:
+def norm fn [[p:Point] [Float] [((p.x dup mul) add (p.y dup mul)) MathUtil.sqrt]]
+def norm fn [[p:Point3] [Float] [ … ]]   # overload: subclass-specific dispatch
+
+# The removed form fails loudly (no alias):
+def Box refine Object {v:0}
+# ERROR [boru/refine_error]: refine Object is no longer the class form
+#   hint: def Box class {v:0}
+```
+
+### 2.6 Dot access works for everything
+
+`.` is `get`, and the guarantee is uniform: **every container and
+instance answers dot access**, with the literal-vs-computed key rule
+(`x.k` literal, `x get (k)` computed) everywhere. Status against
+current main (verified by probe):
+
+| Receiver | Form | Status |
+|----------|------|--------|
+| Map | `m.a`, nested `m.a.b` | ✅ works today |
+| List | `xs.1` (index) | ✅ works today |
+| Class instance | `p.x` | ✅ works today (refine-Object instances) |
+| Store | `context.n` | ✅ works today |
+| Module export | `MathUtil.sqrt` | ✅ works today |
+| Object (plain) | `o.a` | Phase B — same `get` Object sig; pin with spec rows |
+| Array | `a.0` | Phase C — `get` already has the `[Integer, Array]` sig; pin with spec rows once `array` makes instances reachable |
+| Call result | `(object {a:1}).a` | parenthesised receiver, existing rule |
+
+So this is a **guarantee to pin**, not new machinery: Phases B and C
+each carry a dot-access spec battery over the receivers they
+introduce (positive + missing-key-returns-None + `!.` strict rows).
+Writes stay with `set` — there is no dot-assignment form; `.` remains
+read-only sugar for `get`.
+
+### 2.7 Crossing the columns (proposed, small)
+
+```
+convert Map o2                # Object → Map   — freeze: immutable snapshot
+convert Object m              # Map → Object   — thaw: fresh mutable container
+```
+
+One pair of `convert` overloads completes the story (today `convert`
+already handles scalar conversions); deep vs shallow: **shallow**, to
+match the rest of the copy semantics.
+
+## 3. What this changes in the engine
+
+- **`class {schema}`** mints a nominal lattice type carrying
+  `ObjectTypeInfo`-style schema + defaults + parent — the machinery
+  `refine Object` uses today, under the new word. `refine X` where X
+  is a class type routes to the same minting with a parent.
+- **`make <Class> {…}`** resolves defaults eagerly: walk the class
+  parent chain once, lay every field into a single flat `Fields` map,
+  overlay the provided values, reject unknown keys (sealing applies
+  from construction onward). `buildBasePrototype` and the instance
+  `Prototype` walk in `GetField` are **deleted** for class instances —
+  reads become a single map lookup. (`contextstack.go` keeps its own
+  chain; it never depended on instance prototypes.)
+- **`set` on a class instance** checks the field against the schema:
+  declared → in-place write; undeclared → `[boru/sealed_field]` with
+  the field list in the message.
+- **Plain Object** instances are the same flat structure with no
+  schema and no seal: any key writes, everything enumerates.
+- **Enumeration** (`StructUtil.items`/`size`/`walk`) reads the flat
+  field map — the dynamic-fields-invisible bug ceases to exist
+  structurally rather than being patched.
+- **`def Foo class {…}` parses with no parens** — the same
+  nested-function-word collection that already makes
+  `def name fn […]` work; `class` needs the same treatment in the
+  forward collector as `fn`.
+
+## 3b. What about Object prototypes?
+
+Reopened during review: classes are now flat — should plain mutable
+*Objects* carry a JS-style prototype (delegating `get` up a chain)?
+
+**Resolution: no — Object is flat; delegation is Store's job.** The
+2×2 stays honest precisely because each cell has one behaviour:
+
+- A delegating Object reintroduces the bug class this design just
+  killed structurally — reads that see fields enumeration doesn't
+  show. JS lives with `own` vs `in` vs `for…in` precisely because of
+  this split; boru doesn't have to.
+- Array doesn't delegate; its keyed sibling shouldn't either.
+- The delegation use cases are already owned elsewhere: **defaults**
+  → class schemas (resolved flat at `make`); **data layering** →
+  `StructUtil.merge` / `setpath` (explicit, copy-returning);
+  **scope-chain lookup** → `Store`, which IS the prototype-chain
+  container — chained copy-on-write layers with fallback reads are
+  its entire identity, and the reason it stays a separate surface
+  type in this design.
+
+That last point sharpens the Store story: *"if you want a delegating
+keyed container, that's what Store is."* Today the only Store is the
+ambient `context`; if user-space delegation is ever wanted as a
+value, the sanctioned route is making Store constructible with an
+**explicit parent** — `store {a:1} parent-store` — rather than
+bolting a `proto` onto Object. Parked as open question §6.5; no use
+case demands it yet.
+
+### The full for/against (review follow-up, 2026-06-09)
+
+Steelman **for** JS-style protos on Object: shared defaults with
+live update (one prototype backs many instances; layered data like
+config cascades is delegation natively); near-zero implementation
+cost (the engine chain exists); minimal-kernel elegance (Self proved
+delegation can express classes/mixins as patterns); REPL dynamism;
+and boru already teaches `get` via the JS analogy.
+
+**Against** (decisive): (1) delegation structurally reintroduces the
+reads-vs-enumeration split — the silent-lie bug class the voxgig
+reports paid for and flat instances eliminated; (2) **data delegation
+IS method delegation** — fns are first-class field values that
+auto-dispatch, so a fn on a proto reached via delegated `get` becomes
+prototype method dispatch through the back door; the one-mechanism
+principle cannot be defended once field delegation exists; (3) action
+at a distance under shared mutation (and captures share pointers) —
+JS's named vulnerability class *prototype pollution*, plus
+SmooshGate; (4) every structural word (`deq`, `jsonify`, `clone`,
+`merge`, `walk`, `size`) needs a chain policy, each a future DX row;
+(5) checker-hostile — proto-touched reads degrade to `dynamic(Any)`;
+JS made delegation fast only via hidden classes/shapes, machinery
+whose purpose is to pretend objects are flat; (6) redundant here —
+defaults/class schemas, layering/`merge`+`setpath`, scoping/Store,
+polymorphism/signature dispatch already own the use cases.
+
+**Community consensus (2025/26):** prototypes survived as a runtime
+substrate and lost as a programming model. ES6 classes won the
+surface; `__proto__` is Annex-B legacy and `setPrototypeOf` carries
+engine-deopt warnings; the JS community moved the *dictionary* use
+case to proto-free containers (`Object.create(null)`, then `Map`) —
+i.e. JS itself corrected toward what boru's flat Object is from the
+start; no mainstream newer language (Swift/Rust/Go/Kotlin/Julia)
+adopted prototypes, with Lua metatables the closest survivor —
+promptly wrapped in class libraries; JS's own trajectory (class
+fields, `#private`, Records & Tuples) points away from proto-as-API.
+Academic summary: a good minimal kernel for *implementing* object
+systems, a poor application-level model.
+
+## 3c. Constructors and default member values (review follow-up, 2026-06-09)
+
+**Baseline (verified on main):** the required/defaulted split already
+exists — a schema field given a *type* (`a:String`) is **required**
+(`make: missing field "a"`, loud); a field given a *value* (`w:9`)
+**defaults** when omitted (and the value infers the type); unknown
+keys at `make` already error. Two gaps found: predicate field types
+(`r:Radius` where `def Radius (Float gte 0.0)`) are accepted but
+**not enforced** at `make` (`{r:-1.0}` constructs); and a wrong-typed
+provided value coerces silently (`a:String` given `42` stores `'42'`).
+
+**Default member values — adopt, with the split blessed as contract:**
+
+- *type = required, value = default.* Loud `missing field` for
+  required; defaults fill the rest. This is the modern consensus
+  design (Kotlin/Swift/Rust/dataclasses moved to required-by-default
+  with explicit defaults; Go's everything-has-a-zero-value is the
+  cautionary tale), and it resolves the one culture tension: a field
+  whose absence would be a bug should be *typed*, not defaulted.
+- Defaults + sealing + flat instances give **totality**: every
+  instance has every field, always — complete enumeration, no
+  null-holes, checker-trustable presence.
+- Rules to pin: defaults are **pure literal values** (no computed
+  defaults — that smuggles constructor logic back in); copied per
+  instance, never shared (the 2×2 already defuses most of this:
+  List/Map defaults are immutable values); the silent provided-value
+  coercion becomes a **loud type error**.
+
+**Constructors — no constructor bodies; `make` stays the only
+primitive constructor (dumb field-filling + checks):**
+
+- *Validation belongs in the type system:* field types already accept
+  predicate refinements — **enforce them at `make` and at instance
+  `set`** (closing the gap above). Declarative, unforgettable,
+  schema-visible, checker-reasonable.
+- *Smart constructors are free functions* —
+  `def circle fn [[r:Float] [Circle] [… make Circle {r:r}]]` —
+  zero new surface, module-exportable, owns derived/normalized
+  fields. Consistent with methods-as-free-functions.
+- Avoided wholesale: a second function kind, the
+  partially-initialized-object escape problem, `this`/`self` (still
+  not introduced), and make-vs-constructor bypass anxiety.
+- Consensus check: the field moved to "constructors should be dumb" —
+  Java *records* (fields only), Kotlin data classes, Python
+  dataclasses, no-work-in-constructor testing doctrine; validation
+  lives in factories and type constraints.
+
+**Plain Objects: neither.** `object {…}` literal seeding is the whole
+construction story — no schema, no defaults, no hooks. An Object
+wanting defaults is a class in a trench coat; ad-hoc defaults over
+open data are explicit `merge`/`setpath`. (Prototypes — JS's
+defaults-for-objects mechanism — were just removed; defaults through
+another door would repeat the mistake.)
+
+**Semantics of a value default (verified):** the schema discriminates
+each entry on **whether its value is a bare type literal or a
+concrete value** — not via `typeof` (note `typeof String` is
+`Scalar`, the literal's *parent*; the schema never asks). In data
+context the parser turns type names into type-literal nodes, so:
+
+- `{x:String}` — the entry's value IS the String lattice node
+  (`Data == nil`, the engine's `IsTypeLiteral` test) → a **type
+  constraint**: field `x` is a required String (verified: accepts
+  `'hi'`, errors `missing field "x"` when omitted; user types like
+  `{x:Pos}` behave identically).
+- `{x:1}` — the entry's value is a **concrete value** → a
+  **default**, and the field's type is the value's own type
+  (`1`'s parent, Integer): `make Foo {x:2}` works, `make Foo {}`
+  gives `x:1`.
+
+Corner this implies: a field whose *data* should itself be a type
+literal (storing a type as a value) is inexpressible in a schema —
+a type-literal entry is always read as a constraint. (Verified
+oddity: `make Foo {x:Integer}` against `x:String` coerces to the
+string `'Integer'` — the same coercion softness, same fix.) Enforcement today is *conversion to the exemplar's type*:
+`{x:'hi'}` errors ("cannot convert"), but `{x:2.5}` silently
+**truncates to 2** — the same lossy-coercion softness as the
+`a:String`/`42` case, to become a loud type error. Also verified: a
+default value carrying a *refined* type does not retain it as the
+field type (`def d:Pos 5` … `{x:d}` infers Integer, accepts a plain
+`7`), so "type T **and** default v" is currently inexpressible when
+T is narrower/wider than the literal's natural type.
+
+**Typed defaults — chosen spelling (review, 2026-06-09):**
+`{x: (make Foo 1)}` — a default value *constructed at the refined
+type* declares that type as the field type AND supplies the default.
+No new syntax; `make` becomes the universal constructor (classes,
+Objects, Arrays, refined scalars). Three gaps make it aspirational
+today, all Phase A items:
+
+1. `make Foo 1` on a scalar refinement does **not** tag the value —
+   `typeof (make Foo 1)` → Integer, `(make Foo 1) is Foo` → false —
+   even though the minting machinery exists (`def d:Foo 1` →
+   `typeof d` → Foo, `d is Foo` → true). Fix: `make <ScalarRefine>
+   <value>` routes through the same tagging as the typed def, and
+   validates predicate refinements (`make Radius -1.0` errors).
+2. Schema field-type inference must use the default value's
+   **declared (nominal) type** — its Parent — not its base type.
+3. Field-type enforcement at `make` / instance `set` (already
+   queued).
+
+With those three, `def S class {x:(make Foo 1)}` gives: omitted →
+`x` = Foo(1); provided `(make Foo 7)` → accepted; provided plain
+`7` → loud type error (a bare Integer is not a Foo — the newtype
+strictness REFERENCE already documents for params and returns,
+extended to fields).
+
+**Phase A additions from this analysis:** enforce predicate field
+types at `make`/instance-`set`; replace the provided-value coercions
+(`a:String`+`42`→`'42'`, `x:1`+`2.5`→`2`) with loud type errors; spec
+rows for required-vs-defaulted, predicate enforcement (positive +
+violation), per-instance default copying, and the two-role
+default semantics (`{x:1}` accepts `{x:2}`, defaults to 1, rejects
+non-Integers loudly).
+
+## 3d. `const` members — singleton types (review follow-up, 2026-06-09)
+
+Proposal: `{x:(const 1)}` — field `x` can only ever hold `1`. `const`
+mints an **interned singleton type** (one inhabitant) and returns the
+value **tagged with it** (the same reparenting `def d:Foo 1` already
+performs), so `typeof (const 1)` is the singleton, whose canon prints
+as `1`. `set x 2` on an instance then fails the ordinary field-type
+check.
+
+**Already in the language (verified):** `def One 1` is a singleton
+type today (`1 is One` true, `2 is One` false); literal unions work
+(`def M ('GET' tor 'POST')` — membership and fn-param dispatch both
+correct, `'PUT'` fails loudly); membership is same-type strict
+(`1.0 is (1 tor 2)` → false — `cmp`'s cross-leaf magnitude
+equivalence does not leak into membership). Wired-but-dead nearby:
+`(Integer eq 1)` predicate refinements don't work, and value patterns
+in fn sigs don't dispatch — `const` subsumes the first and supplies
+semantics for the second.
+
+**The unification:** because `const 1` returns a concrete value whose
+*declared Parent* is the singleton, `{x:(const 1)}` needs **zero
+schema special-casing** — it rides the §3c typed-default rule
+(`{x:(make Foo 1)}`): field type from the value's Parent, default =
+the value. A const member is a typed default whose type has one
+inhabitant; `make S {x:1}` accepted, `make S {x:2}` and instance
+`set x 2` are loud type errors, `make S {}` fills the forced default.
+
+**Gotchas to pin:** intern singletons by (base, value) — two
+`(const 1)`s must be one lattice node (canonicalization invariants,
+no mint bloat); type-algebra closure (`(const 1) tand Integer` =
+`(const 1)`, `(const 1) tand (const 2)` = `Never`, `tnot (const 1)`
+within Integer = a neq refinement — same wiring the dead eq-refinement
+needs); compound consts are structural-`deq` and fine for immutable
+List/Map, but **mutable values (Object/Array) are rejected**; NaN
+membership defined via the coherent total order, not IEEE eq (or
+rejected); pin `typeof s.x` (recommend: the stored value stays
+singleton-tagged so reads round-trip); per-instance storage of the
+invariant value is accepted (enumeration/serialization want
+discriminants in the data — class-level storage is a later
+optimization, not a semantic).
+
+**Alternatives considered:** today's workaround `def K 'point'` +
+`{kind:K}` (works but: separate def, and as a *type* entry the field
+is required-with-no-default — callers must spell the only possible
+value at every make; `const` fuses singleton + forced default
+inline); fixing `(T eq v)` refinements with `const` as sugar (same
+destination — adopt eq-refinement as the internal encoding); **`final`
+(write-once per instance) is the orthogonal feature** — TS
+readonly-vs-literal-types, Python Final-vs-Literal — deliberately not
+conflated, separate pass if wanted; real ADTs (Rust/Haskell enums)
+are the road not taken — boru's `tor` + literal discriminants is the
+TypeScript path, which makes `const` *more* load-bearing here.
+
+**Prior art:** TypeScript literal types + `as const` + discriminated
+unions (the proven model and payoff — flow narrowing later via the
+existing `dynamic(T)` narrowing machinery); Python `Literal`/`Final`;
+Scala 3 first-class literal types; Haskell DataKinds; Java/Go none;
+Rust skipped them in favour of declared enums. Verdict: literal types
+earn their keep exactly where unions are structural — boru's
+situation.
+
+**Payoff:** `def Circle class {kind:(const 'circle'), r:0.0}` +
+`def Shape (Circle tor Square)` — discriminated unions that make
+`tor` practical for data modelling, with discriminants present in
+enumeration and serialization.
+
+## 3e. Serialization and `reify` (direction set 2026-06-09)
+
+```
+def Point3 class {x:0, y:0, z:0, kind:(const 'p3')}
+def p (make Point3 {x:1})
+
+StructUtil.jsonify p
+# returns pure JSON:
+# {"$class": "Point3", "x": 1, "y": 0, "z": 0, "kind": "p3"}
+
+reify Point3 {…}        # hydrate from an already-parsed Node (Map)
+reify Point3 "…json…"   # hydrate from JSON text
+```
+
+- Metadata rides the existing **`$`-prefix synthetic-key convention**
+  (`$name`/`$module` on ModuleExports). `$class` carries the class
+  name; nested instances each carry their own.
+- Output is **pure JSON** — no custom syntax. Non-JSON field scalars
+  (Atoms, dates, BigDecimal, …) serialize to their natural JSON
+  projections; the **schema drives recovery** at reify (the class
+  knows the field is an Atom/Date/BigDecimal and converts back) —
+  this is also how scalar-newtype fields round-trip without any
+  `$`-key per field.
+- `reify` ≈ parse (when given text) + the `make` path: defaults fill,
+  required fields enforced, predicate field types validated, sealing
+  applied. Hydration is *construction*, with construction's
+  guarantees.
+- Cycles among instances: `jsonify` errors loudly (pure JSON has no
+  references).
+- Synergy: `reify` from text needs in-memory JSON parsing — the same
+  machinery as `StructUtil.parse` (`design/legacy/PARSING.10.ignore` §2); one
+  implementation serves both.
+
+Sub-questions resolved (2026-06-09, second pass):
+
+- **`$`-escaping: escape on write.** `jsonify` escapes user-data keys
+  beginning with `$` (→ `$$class`); `parse`/`reify` unescape. User
+  maps containing MongoDB-style `$`-keys round-trip, and a spoofed
+  `$class` inside user data is structurally impossible.
+- **`reify` target: explicit + union-bounded.** `reify Point3 data`
+  (explicit class; `$class` cross-checked if present) and
+  `reify Shape data` where `Shape` is a `tor` union — `$class`
+  selects the member, **but only from the union**. Auto-instantiation
+  is always bounded by a named type; there is no unbounded
+  registry-driven construction (the Java-deserialization lesson).
+  This is also the discriminated-union sweet spot: `const`-`kind`
+  fields + union-bounded reify give tagged-union hydration for free.
+- **Unknown keys: strict.** A key the schema doesn't declare is a
+  loud reify error, mirroring `make`'s unknown-field error and
+  sealing. Schema evolution is handled by adding *defaulted* fields —
+  old data lacking them still reifies.
+- **Home: `StructUtil.reify`**, paired with `jsonify` and sharing the
+  module's parse machinery (`design/legacy/PARSING.10.ignore` §2).
+
+## 4. Interactions with open proposals
+
+- **B5 (`make Object {}`)** — resolved by design in Phase B (becomes
+  a value, not an error). The ERRORS.8.ignore §4 hint proposal stays
+  superseded.
+- **T9.1 side gap (non-enumerable dynamic fields)** — dies
+  structurally with flat instances + open Objects.
+- **`raise` (ERRORS.8.ignore §2)** — `sealed_field` and `refine_error`
+  arrive through the normal native error path; no dependency.
+
+## 5. Implementation phases
+
+| Phase | Content | Breaking? |
+|-------|---------|-----------|
+| A | `class` word + `refine <Class>` subclassing + flat eager-default instances + sealing + **removal of `refine Object`** (loud `refine_error` with hint) | **yes** — one clean break, README upgrade note; all `refine Object` call sites rewrite to `class` |
+
+> **Phase A increment 1 LANDED (2026-06-09):** `Ideal/Class` lattice
+> node (FixedID 102); `class {schema}` word (paren-free `def Foo
+> class {…}` verified — it rides the def-name-fn collection path as
+> predicted); flat sealed `make` path (`makeClassInstance`: all
+> fields resolved eagerly, no Prototype; unknown/missing-required
+> fields loud); `sealed_field` error with field list + hint on
+> instance `set`; subclassing via `refine Foo {…}` propagating the
+> Class flag; Class-branch `get`/`set` sigs (dot access works);
+> `InstallType` roots class types at `Class/Foo`; `p is Object` →
+> false. Spec battery in `lang/spec/class.tsv` (defaults, required,
+> sealing, subclass chain, negatives). Remaining: the `describe <Class>` schema view (polish) and Phases
+> B/C (Object/Array containers, sugars, List set, convert
+> freeze/thaw). **Every designed Phase A feature is now LANDED.**
+>
+> **Phase A residuals LANDED (2026-06-10):** `describe <Class>`
+> schema view (kind + lattice path + Refines line + field table with
+> required/default/inherited annotations + sealing note; a def'd
+> type is detected before the word-help fallback). StructUtil on
+> instances pinned type-preserving: `clone` yields a fresh instance
+> of the same type (deq-equal, eq-distinct), `setpath` round-trips
+> through MakeClassInstance so edits run the same strict schema
+> checks as `make` (unknown field / off-schema value loud; open
+> Objects accept new keys, returning a new Object), `walk` sees the
+> field projection. `undef <Class>` pinned: the NAME goes (make is
+> a loud undefined_word) but live instances keep identity, reads,
+> and typed writes. Known pre-existing quirk (all user types, not
+> class-specific): re-`def`ing a name after `undef` fails on the
+> type-name-part registry ("name part conflicts"). REFERENCE.md
+> gained a "Classes" section (schema rules, strictness, sealing,
+> equality, serialization, the 2×2 container table, and the
+> parallel-mutation caution for the mutable column).
+>
+> **Phase A increment 7 LANDED (2026-06-09) — `const` singleton
+> members (§3d complete):** `const v` mints a per-registry interned
+> singleton node under v's own type (one node per base+canonical
+> value, via a hidden type binding) with a value-equality Behavior,
+> and returns v tagged — so `typeof (const 1)` renders as `1` and
+> `{kind:(const 'point')}` rides the typed-default rule unchanged.
+> The schema membership check moved from raw ConformsTo to the
+> one-predicate `v.Is(t)` rule, so the plain inhabitant is accepted
+> at make/set while everything else (including the cross-leaf `1.0`)
+> errors loudly; `is` gained the const-membership branch (narrowly —
+> newtype `is` stays strict-identity). Mutable exemplars and NaN are
+> rejected. Spec rows class.tsv §10.
+>
+> **Phase A increment 6 LANDED (2026-06-09) — typed defaults via
+> tagged `make` (§3c complete):** `make Foo v` on a user scalar
+> refinement now casts v to the BASE type and tags the result
+> (`(make Foo 1) is Foo` → true, `typeof` → Foo) — the same reparent
+> the typed-def path performs, implemented in MakeScalarHandler
+> (which previously discarded the registry and the tag). With the
+> increment-2 strict default branch this completes the chosen
+> spelling: `def S class {x:(make Foo 1)}` declares a Foo-typed
+> field defaulting to Foo(1); a bare Integer is rejected loudly, a
+> tagged value is accepted, and `make Foo "42"` casts to base then
+> tags. Spec rows class.tsv §9.
+>
+> **Phase A increment 5 LANDED (2026-06-09) — the clean break:**
+> `refine Object {…}` is removed; it raises `[boru/refine_error]`
+> with the class hint. All call sites swept to `class` (~213 across
+> specs, Go tests, live docs); tests pinning the removed semantics
+> (silent conversion, prototype seeding/chains, Object-conformance)
+> were rewritten to the class contract; the nested class-typed field
+> nominal check landed in MakeClassFieldValue; the dead bare-Object
+> construction handler is deleted; README carries the upgrade note.
+> Type rendering: a class type shows as `object<Class/Point>{…}`
+> with its schema — adequate; a dedicated `describe Point` schema
+> view is a polish follow-up.
+>
+> **Phase A increment 3 LANDED (2026-06-09):** instance equality —
+> `deq` = same exact class + field-wise structural (cross-class and
+> subclass-vs-parent never equal); `eq` = identity via the shared
+> field map (Map's aliasing rule); `cmp` orders same-class instances
+> field-wise. Enumeration — `valueToAny` projects instances to flat
+> field maps (eng.ObjectFields), so items/walk/transform see real
+> data; `convert Map`/`List` on instances; `size` = field count.
+>
+> **Phase A increment 4 LANDED (2026-06-09):** serialization +
+> hydration per §3e — `jsonify` emits `$class` on class instances and
+> escapes user `$`-keys to `$$` (spoof-proof); `StructUtil.reify`
+> hydrates from JSON text or Nodes with explicit-class or
+> tor-union-bounded targets ($class selects within the union only),
+> routing through the make path (defaults, required, predicates,
+> sealing) with schema-driven recovery of JSON's poor scalars
+> (Integer/Float/predicate-base) and recursive hydration of nested
+> class fields. Spec rows in module-struct.tsv.
+>
+> **Phase A increment 2 LANDED (2026-06-09):** strict field typing
+> at make AND set via `MakeClassFieldValue` — typed fields reject
+> non-conforming values loudly (no conversion), predicate fields run
+> their predicate (`{r:Radius}` rejects `-1.0` at make and at
+> `set`), defaulted fields constrain to the default's own type
+> (`{x:1}` rejects `'hi'` and `2.5` — the silent-coercion
+> softnesses closed for classes); registry threaded through
+> makeObject; make-with-prototype on a class errors. Spec rows in
+> class.tsv §6.
+| B | `object {…}` sugar + `make Object {…}` construct plain open Objects; full enumeration; dot-access spec battery for Object receivers; docs lead with the 2×2 table | no (turns an error into a value) |
+
+> **Phase B LANDED (2026-06-10):** bare `make Object {…}` constructs a
+> plain open Object (`eng.MakeOpenObject`: concrete-map source, word
+> values resolved, fields in source order) instead of erroring; the
+> `object {…}` sugar word is exactly that make path; open instances
+> accept in-place `set` of existing AND new keys (returning nothing —
+> the mutable column's contract), alias on assignment (`eq` identity
+> via the shared field map), enumerate (items/size/keys), and
+> dot-access reads work. `p is Object` true / `is Class` false.
+> Spec battery in `lang/spec/object.tsv`; help entry for `object`.
+
+| C | Column completion: List copy-returning `set`; `array […]` sugar + `make Array […]`; dot-access battery for Array; `convert` freeze/thaw pair | no (additive) |
+
+> **Phase C LANDED (2026-06-10):** the 2×2 container table is now
+> complete and symmetric. List gained copy-returning `set` (sig
+> `[Integer Any List]` → new List, receiver untouched, bounds
+> checked — mirroring Map's copy-returning set); `array […]` sugar +
+> `make Array […]` (TypeArgs fix so the bare ideal constructs);
+> `convert Object` on a Map thaws (freeze = `convert Map` on an
+> Object already worked), completing the freeze/thaw pair both
+> directions; Array dot-access rows. The old "List is immutable: set
+> rejects" test re-pinned to the copy-returning contract. Spec rows
+> in object.tsv; help entries for `array`/`object`.
+
+Phase A bundles sealing with the rewrite on purpose: every
+`refine Object` site must be touched anyway, so the sealed contract
+arrives exactly where code is already being edited — no separate
+breaking wave. Standard discipline per phase: positive + negative
+spec rows (sealed write, unknown-key `make`, removed-form error,
+enumeration coverage), fnmodel golden regeneration, `describe` /
+REFERENCE / TUTORIAL / README-upgrade-notes in the same change.
+
+## 5b. Phase A readiness review (2026-06-09)
+
+**Decided and implementable now:** the class/refine surface (paren-free,
+no aliases), flat eager-default instances, sealing, typed=required /
+valued=default, typed defaults via `(make Foo 1)`, predicate-field
+enforcement at make/set, coercions → loud type errors, `const`
+singleton members, `object`/`array` sugars, the dot-access guarantee,
+both `set` contracts, no prototypes, no constructor bodies.
+
+**Missed — now resolved (review, 2026-06-09 second pass):**
+
+1. **Lattice placement — RESOLVED: classes live under `Ideal/Class`,
+   instances under their class.** `typeof p` → `Point3`,
+   `typeof Point3` → (parent class or) `Class`. Class instances are
+   **not** Object subtypes — a clean branch. Consequences: every
+   instance-relevant word (`get`/`set`/dot/`items`/`size`,
+   `StructUtil` words) gains Class-branch signatures rather than
+   inheriting Object's; `p is Object` becomes false (migration note);
+   `Class` joins the reserved builtin type names (verified
+   unclaimed). Recommendation pending no objection: instances get the
+   *full* container-read vocabulary (`get`, dot, `items`, `size`)
+   plus schema-checked `set` — sealing lives in the Class-branch
+   `set` sig, not in word absence.
+2. **Record/Table — RESOLVED: special fundamental types, not
+   classes.** `class` does not subsume them; structural `Record`
+   (and `Table`) remain their own type kinds (the generics design's
+   `refine Record` is untouched). User-facing guidance to write:
+   *Record for anonymous structural shapes, class for named nominal
+   entities.*
+3. **Instance equality/ordering — RESOLVED: needed, as proposed.**
+   `eq` = identity; `deq` = same class AND structurally equal fields
+   (verified gap today: same-class structural twins are deq-unequal);
+   `cmp` gains an instance rule in the compare cascade (class
+   identity first, then field-wise).
+4. **Serialization — RESOLVED in direction:** metadata under the
+   existing **`$`-prefix synthetic-key convention** (`$name`/`$module`
+   precedent on ModuleExports); output is **pure JSON**; round-trips
+   via a new **`reify`** word hydrating from JSON text *or*
+   already-parsed Nodes. Sketch in §3e; open sub-questions queued.
+5. **StructUtil words on instances** — `clone` (type-preserving?),
+   `setpath` (what does a copy-returning update of a *mutable*
+   instance mean — new instance of same class?), `walk`.
+6. **`describe`/canon rendering** for class types and instances
+   (promote open question §6.4 into Phase A — `describe Point3` must
+   show schema, parent, defaults, consts).
+7. Smaller, decide-in-passing: `undef` of a class with live
+   instances; a parallel-execution note for mutable containers
+   (Objects/instances have no Store-style COW isolation); spec rows
+   for module-exported classes (`make Mod.Point {…}`).
+
+**Spikes before committing:**
+
+- **Parser spike:** confirm `def Foo class {…}` paren-free genuinely
+  rides the `def name fn […]` nested-collection path (stated as
+  parser-known territory; verify before building on it).
+- **Migration inventory:** ~213 `refine Object` call sites measured
+  across specs/tests/docs (`object.tsv`, `user-types.tsv`,
+  `compare.tsv`, `storage.tsv`, `convert-ideal.tsv`, …) — mechanical
+  but broad; the spec rewrite is the bulk of Phase A's diff.
+
+**Not blocking** (explicitly deferred/parked): contract-construct
+naming + implementation (rides generics), `final`, Phase C column
+completion, constructible Store, class type parameters (generics).
+
+1. **List `set`** — proposed yes (§2.2) to complete the column rule;
+   confirm before Phase C.
+2. **`make Array […]`** — proposed yes (§2.4); confirm before Phase C.
+3. **`convert` freeze/thaw** (§2.6) — shallow proposed; confirm.
+4. **Class introspection** — what `describe Point3` renders (schema,
+   parent, defaults). Decide during Phase A from the existing
+   ObjectTypeInfo rendering.
+5. **Constructible Store with explicit parent** (§3b) — the sanctioned
+   delegation container if user-space chained lookup is ever needed;
+   parked until a use case demands it.

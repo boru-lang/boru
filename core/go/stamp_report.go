@@ -2,7 +2,7 @@ package core
 
 import "sync"
 
-// Stamp attribution (design/RUNTIME-STAMPING.0.md Phase 5). Runtime stamping
+// Stamp attribution (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5). Runtime stamping
 // is silent by design — a refusal must never change behaviour — which
 // historically made "did this callback compile?" unobservable from outside a
 // Go test (the gap that let a stale "the handlers compile" claim survive in

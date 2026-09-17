@@ -3,7 +3,7 @@ package check
 import core "github.com/boru-lang/boru/core/go"
 
 // Store-identity context typing — stage 1 of
-// design/checker-precision-fronts.0.md §2. CheckState.ContextTypes is ONE
+// design/legacy/checker-precision-fronts.0.ignore §2. CheckState.ContextTypes is ONE
 // flat string-keyed namespace for the whole check pass, so two stores'
 // same-named keys JOIN and every store read is answered from a global
 // map. The StoreShapeInfo payload keys the same best-effort typing by

@@ -193,8 +193,10 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 // name (body defs are body-local; module-mutating meta words refuse), so the
 // value threaded at OpPushClosure equals every per-run lookup the interpreter
 // makes. A carrier with no producing event in the emit tables declines later in
-// recordClosureDispatch (capOps resolveOperand) — sound fallback, and the
-// ordinary path for a FOREIGN body's captures, whose events live elsewhere.
+// recordClosureDispatch (capOps resolveOperand) — a refusal rather than a
+// wrong thread, and the ordinary path today for a FOREIGN body's captures,
+// whose events live elsewhere. That decline is a defect owed a fix, not a
+// resting place.
 //
 // A concrete value still const-bakes (excluded here); a bare type node is a
 // type, never a carried instance (excluded). A Dynamic (gradual-Any) carrier is

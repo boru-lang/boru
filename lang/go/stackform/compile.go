@@ -9,7 +9,7 @@ import (
 // and the recorded StackForm.
 //
 // The recording side effect is exactly the architecture proposed by
-// design/boru-bytecode-report.0.md §1.2 ("the compiler is the
+// design/legacy/boru-bytecode-report.0.ignore §1.2 ("the compiler is the
 // checker with a recording side effect") — except we record on the
 // normal-execution path, not the carrier-only check path, so the
 // values stored in PushLit ops are the actual data the engine saw.

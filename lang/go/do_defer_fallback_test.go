@@ -134,7 +134,7 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 	// module-family leak: the baseline gate keeps it off the refusal (Codex
 	// P2 on #469). It COMPILES (no refusal); its routed live-lead dispatch
 	// may still defer to the interpreter at run time, which falls back with
-	// the same answer — slow, not wrong.
+	// the same answer — contained, not fixed.
 	{
 		src := `def m {e: true} end  def g fn [[][Integer][if (m "e" get) [def f fn [[x:Integer][Integer][x add 1]] end] [] def f fn [[x:Integer][Integer][x add 2]] end  f 5]] end  g`
 		a, err := New()

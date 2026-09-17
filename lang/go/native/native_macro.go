@@ -6,7 +6,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Macro system words. See design/MACROS.8.md and design/MACROS-PHASE1.10.md.
+// Macro system words. See design/MACROS.8.md and design/legacy/MACROS-PHASE1.10.ignore.
 //
 // - gensym (Phase 0): fresh non-colliding atoms.
 // - macro (1c): the definer — an fn the expander runs on UNEVALUATED operand
@@ -332,7 +332,7 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 	// Every param is raw-capture: FormArgs (word/paren/literal raw), NoEvalArgs
 	// (a list operand stays un-evaluated), NoEvalMapArgs (a map operand keeps
-	// its values un-evaluated). See design/MACROS-PHASE1.10.md §3/§3.1.
+	// its values un-evaluated). See design/legacy/MACROS-PHASE1.10.ignore §3/§3.1.
 	form := make(map[int]bool, len(params))
 	for i := range params {
 		form[i] = true
@@ -474,7 +474,8 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	// hooks memoize, deterministic over src+opts), so its spliced tokens
 	// record exactly as the interpreter splices them. A compile pass that
 	// cannot mirror the hook faithfully (non-concrete src/opts) REFUSES
-	// instead of baking the transducer — slow, not wrong.
+	// instead of baking the transducer — no wrong answer, but no compile
+	// either, so the shape stays an open defect.
 	// `mini` has no expansion cache, so the hook re-runs whenever the call
 	// is stepped — hooks memoize their compile (as `re` does). A
 	// non-concrete runtime src falls back to the standard transducer call.

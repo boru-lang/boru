@@ -37,7 +37,7 @@ import (
 //	peer-cert <Socket>                   -> the verified peer certificate, or None
 //
 // Passive (pull) reads only — active mode (`set-active`) is a deferred
-// follow-on (design/NETWORK-IMPLEMENTATION-PLAN.0.md §1). Every recv*
+// follow-on (design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1). Every recv*
 // honours an optional `{within: <ms>}` deadline, raising `timeout`, so a
 // slow peer cannot pin an actor forever. Peer disconnect raises `closed`
 // — catch it with `do […] error [ case [ [get code eq "closed"] […] … ] ]`.

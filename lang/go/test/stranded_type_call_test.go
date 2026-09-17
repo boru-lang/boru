@@ -7,7 +7,7 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// §5.1 of design/HIGHER-ORDER-FUNCTIONS.0.md — "a capitalised name bound to
+// §5.1 of design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore — "a capitalised name bound to
 // a function never calls, silently". `def I x:Integer => [add 1 x] end I 5`
 // prints `I 5` and exits 0: the capitalised name minted a TYPE, so writing
 // it in call position placed the lattice node and left the 5 unconsumed.
@@ -120,7 +120,7 @@ func TestStrandedTypeCallDedupesOneSourceDefect(t *testing.T) {
 // row below is the §5.1 defect and each goes unreported. Pinning it here
 // means the limit is visible to the next reader and any fix that closes it
 // fails this test loudly instead of drifting past it — see
-// design/HIGHER-ORDER-FUNCTIONS.0.md §5.1 "What it still misses".
+// design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1 "What it still misses".
 func TestStrandedTypeCallMissesConsumedPair(t *testing.T) {
 	for _, src := range []string{
 		`def I x:Integer => [add 1 x] end I 5 drop`,        // a later word takes the operand

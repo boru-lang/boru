@@ -25,7 +25,7 @@ func (*BindingBodyUnifier) ContentMembership() {}
 
 // Body returns the structural body this binding was declared with — the
 // node-side recovery of the declaration's structure (the seam Stage 1 of
-// design/TYPE-REPRESENTATION.1.md generalizes per kind).
+// design/legacy/TYPE-REPRESENTATION.1.ignore generalizes per kind).
 func (u *BindingBodyUnifier) Body() Value { return u.body }
 
 func (u *BindingBodyUnifier) Match(v Value, t *Type) bool {

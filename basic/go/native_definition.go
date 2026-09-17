@@ -246,7 +246,7 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(FnsigHandler, RunInCheck()),
 				// Pure construction — runs in check mode too, so surface
 				// schemas carry REAL shapes statically and `exposes` is
-				// fully static-checkable (design/SURFACES.10.md S2). A
+				// fully static-checkable (design/legacy/SURFACES.10.ignore S2). A
 				// pending gen spec turns the result into a generic
 				// fn-shape schema (see the handler).
 				Returns: []*Type{TFnUndef}, BarrierPos: -1,
@@ -416,7 +416,8 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// a curried factory is the shape; compiled, both names take one
 		// slot and the unconsumed argument leaks into the residual
 		// (`2 fn (Integer) 3` where the interpreter answers `6`). Refuse
-		// so the interpreter fallback owns it — slow, not wrong.
+		// rather than leak: the program is then silently interpreted, which
+		// hides this failure instead of fixing it.
 		if prev, dup := CheckFnCarrierBoundName(r, value.ID); dup && prev != name {
 			r.Check.Recorder().MarkUncompilable(
 				"def of a computed fn whose apply the analysis dropped (curried chain — Stage 1)")
@@ -689,7 +690,7 @@ func DefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	stackOnly := DefStackOnly(args[0])
 	body := args[1]
 	if IsCapitalisedName(name) {
-		// `def` is the universal binder (design/TYPE-UNIFORM.10.md
+		// `def` is the universal binder (design/legacy/TYPE-UNIFORM.10.ignore
 		// Phase 2): a capitalised name is a TYPE binding. Delegate to
 		// the kernel type installer — the same path the `type` word
 		// uses — so object/predicate lattice-minting and all
@@ -732,7 +733,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	// A FailedDispatch fn value is here because a CALL matched no signature —
 	// a genuine dispatch failure (a concrete type mismatch, e.g.
 	// `def y (Net.recv-until nl nl)` feeding Bytes to the Socket slot). At
-	// RUNTIME that raises at the call now (design/FN-VALUE-DISPATCH.0.md), so
+	// RUNTIME that raises at the call now (design/legacy/FN-VALUE-DISPATCH.0.ignore), so
 	// this arm is CHECK MODE, where analysis continues past the finding and
 	// `def` still sees the wreckage as a plain value binding. It is never a
 	// deliberate `def <word> fn […]` extension, yet it carries the dispatched
@@ -788,7 +789,7 @@ func reservedWordError(r *Registry, op, name string) error {
 // shapes (predicate type / bare-refine newtype / DepScalar subset over a
 // param or computed carrier) now compile: RecordTypedBind emits an OpBindTyped
 // that runs the interpreter's own validate/reparent at run time (RunTypedBind,
-// eng/go/typed_bind.go — the closure of miscompile B's sound refusal). This
+// eng/go/typed_bind.go — the closure of miscompile B's refusal). This
 // mark remains only for the residual shape RecordTypedBind declines: a dynamic
 // body whose operand has no resolvable provenance, where compiling would have
 // to guess the stack layout. Object / alias / schema typed-defs do not route
@@ -830,7 +831,7 @@ func markRefineDefUncompilable(r *Registry, name string, body Value) {
 // runs the transform). In a COMPILE pass the check-mode run is ANALYSIS ONLY
 // (recording suspended so the predicate body's dispatches are not emitted
 // inline ahead of the bind); a declined record refuses regardless of
-// concreteness — slow, not wrong.
+// concreteness — no wrong bake, and no compile either.
 func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Value, describeType func() string, pos SrcPos) ([]Value, error) {
 	resumePred := func() {}
 	if es := r.Check.Recorder(); es.Active() && IsConcrete(body) {
@@ -886,7 +887,8 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 
 // MarkFnPredicateBindUncompilable refuses compilation when a fn-predicate
 // typed-def's bind record declined: the predicate is a runtime evaluation
-// for every body shape, so there is no sound bake — slow, not wrong.
+// for every body shape, so there is no faithful bake to emit. The refusal
+// keeps a wrong bake out; compiling it is still owed.
 func MarkFnPredicateBindUncompilable(r *Registry, name string) {
 	if es := r.Check.Recorder(); es.Active() {
 		es.MarkUncompilable("typed-def `" + name + "`: fn-predicate bind is runtime-evaluated (no compiled bind at this site)")
@@ -1143,7 +1145,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// after the Stage 2 flip — the NAME of a predicate type, which
 	// evaluates to its minted node carrying a PredicateUnifier. The
 	// predicate BODY to run is the node's recorded content
-	// (design/TYPE-REPRESENTATION.1.md §N2); defFnPredicateBind keeps
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2); defFnPredicateBind keeps
 	// its historical run-then-reparent semantics (typeof x → Pos for an
 	// input-typed predicate) in both spellings.
 	if constraint.Parent.Equal(TFunction) || core.IsPredicateTypeNode(constraint) {
@@ -1278,7 +1280,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		// must NOT take this nominal reparent arm: the arm unifies
 		// against the BUILTIN ancestor only, so it would bind without
 		// ever running the constraint (`def x:Big 5` succeeding once
-		// evaluation yields nodes — design/TYPE-REPRESENTATION.1.md
+		// evaluation yields nodes — design/legacy/TYPE-REPRESENTATION.1.ignore
 		// §N3). Such constraints fall through to the general UnifyR
 		// below, where dispatchUnifier finds the kind's Unify. A user
 		// `behave unify/q` wrapper on a nominal refine is NOT a
@@ -1439,7 +1441,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	}
 	if IsCapitalisedName(name) {
 		// `undef` is the universal unbinder (the symmetric completion
-		// of Phase 2's universal `def` — design/TYPE-UNIFORM.10.md):
+		// of Phase 2's universal `def` — design/legacy/TYPE-UNIFORM.10.ignore):
 		// a capitalised name is a TYPE binding, so pop it from the single
 		// binding store and retire the minted lattice type.
 		// The pop, the mint retirement, the ledger note and the rebind
@@ -1981,7 +1983,7 @@ func PopArgsHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 
 // resolveTypedDefConstraint applies the name→node recoveries a
 // typed-def constraint needs ahead of branch dispatch (the Stage 2
-// flip, design/TYPE-REPRESENTATION.1.md §N2): a SCHEMA-kind NAME
+// flip, design/legacy/TYPE-REPRESENTATION.1.ignore §N2): a SCHEMA-kind NAME
 // (generic schema / class / record / table / options / typed-map /
 // Micron) evaluates to its minted node, and the branches dispatch on
 // the declared structural content the node records; kinds that enforce

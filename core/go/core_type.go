@@ -168,7 +168,7 @@ func IsValueOfType(v, t Value) bool {
 	// A NAMED type in the type slot evaluates to its minted node (the
 	// Stage 2 flip); this predicate has always decided membership
 	// against the declared content, which the node records
-	// (design/TYPE-REPRESENTATION.1.md §N2). Catch-all bindings
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). Catch-all bindings
 	// (BindingBodyUnifier — record shapes, singletons, typed-container
 	// literals) resolve to their body so the shape branches below keep
 	// their subset semantics; kinds whose membership lives in a kernel
@@ -337,7 +337,7 @@ func validateTypeName(r *Registry, name string) error {
 // when it inherits) so `typeof` / `is` report the nominal name.
 
 // installTypeBinding stamps the declared content onto the minted node
-// (Value.TypeBody — design/TYPE-REPRESENTATION.1.md §N2's node-side
+// (Value.TypeBody — design/legacy/TYPE-REPRESENTATION.1.ignore §N2's node-side
 // recovery) and pushes the type binding. Every MINTING branch of
 // InstallType funnels through here; the alias arm adopts an existing
 // node instead and never stamps. A bare-node pushed value (the refine
@@ -479,7 +479,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// kind — the pre-flip regime left it an unbridged catch-all
 		// node ("a gate, not a dispatch category"), which is the same
 		// dead-dispatch class NUR093 records for aliases. One rule for
-		// every kind (design/TYPE-REPRESENTATION.1.md §N3).
+		// every kind (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
 		parent := inputT
 		if parent == nil {
 			parent = TFunction

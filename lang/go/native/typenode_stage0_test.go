@@ -7,7 +7,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Stage 0 of design/TYPE-REPRESENTATION.1.md — the catch-all InstallType
+// Stage 0 of design/legacy/TYPE-REPRESENTATION.1.ignore — the catch-all InstallType
 // branch fixes (NUR093) and the typed-def constraint guard, exercised
 // through the full word surface.
 

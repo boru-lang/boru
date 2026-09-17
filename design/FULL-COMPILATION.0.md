@@ -9,7 +9,7 @@ stage table carries the per-stage detail and is the authority on what has
 landed; the running state-of-play is
 [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md).
 **Provenance:** the directive that closes the question
-`design/COMPILE-DECLARATION-MODEL.0.md` left open: interpreter islands are
+`design/legacy/COMPILE-DECLARATION-MODEL.0.ignore` left open: interpreter islands are
 not acceptable, the interpreter is not an escape hatch, failure to compile
 is a hard error, and compiled code must behave exactly as interpreted code
 with the checker aligned with both. This note designs the compiler that
@@ -18,7 +18,7 @@ satisfies those four sentences.
 > Authority: this note is the DESIGN, not the record of what is built —
 > §10's stage table and the handoff are that.
 > `design/COMPILABLE-SUBSET.md` remains the
-> statement of the current subset; `design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md`
+> statement of the current subset; `design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore`
 > remains the record of the doctrine this note extends. Where this note and
 > the code disagree, the code wins. Code citations were verified against the
 > tree at the recording date and drift as the tree does.
@@ -87,7 +87,7 @@ Non-goals, explicitly: no language-semantics changes in service of
 compilation (Factor changed its language to get there — mandatory effect
 declarations, `call(` — boru does not; §4.1); no serialized-artifact story
 (blocked independently — a Program pins sub-registries by reference,
-`design/STAGE3-INLINING-DESIGN-ROUND.0.md`); no speculative typed lowering
+`design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore`); no speculative typed lowering
 that would need deoptimization (§6.9).
 
 ---
@@ -145,7 +145,7 @@ inside `Engine.MatchSignature`, `core/go/engine.go:8393-8413`; latched at
 (`boru.go:503-506`; §5). Totality must be proven against the **whole gate
 inventory**, with generated differential sweeps as the oracle (the
 690-program sweep that found 24 divergences the ~30 hand-picked rows
-missed — `design/HIGHER-ORDER-FUNCTIONS.0.md` §9g), not against the 153
+missed — `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §9g), not against the 153
 rows.
 
 **2.3 "Islands are at zero" is true only of `OpFallback`.** The live system
@@ -284,7 +284,7 @@ verdict its residual code. That is the whole design.
 runtime-independence invariant C4 bans *interpreter execution*, not runtime
 decisions: "no interpreter execution of any program the compiler accepts,
 on any default path" with enumerated carve-outs
-(`design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:123-135`), and its
+(`design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:123-135`), and its
 stated method is "sound runtime re-dispatch — never static best-guess
 baking" (`:16-19`). Kernel `MatchSignature` at VM time is shipped doctrine
 (`OpCallNativePoly`, `eng/go/vm.go:485-590`; `OpCallUserPoly`, `:604`;
@@ -293,7 +293,7 @@ runtime name resolution is shipped (`OpLookupDynScope`/`OpBindDynScope`);
 runtime **compilation** is shipped (`StampDetachedSig`,
 `compiler/go/stamp_runtime.go:60`; the bounded JIT restamp, `:192`;
 `Vm.run` compiling runtime-supplied source under fork isolation). And
-`COMPILE-REFUSAL-SURVEY.0.md` already measured the corollary: after those
+`legacy/COMPILE-REFUSAL-SURVEY.0.ignore` already measured the corollary: after those
 opcodes drove islands 102→0, **not one live refusal is a
 dispatch-resolution problem**. What refuses today is everything *around*
 dispatch: putting operands on the stack (collection), naming their homes
@@ -308,7 +308,7 @@ a named compiled replacement per seam: the seams were permanent because
 their only landing pad was the interpreter, and T2 removes the landing
 pad. And C3's R3 defers registry-aware (predicate-faithful) matching in
 compiled dispatch to "a separate later design, not assumed"
-(`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:109-117`) — §6.3's
+(`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:109-117`) — §6.3's
 predicate-unit inventory and §6.10's retirement row are that design.
 
 **3.3 The precedents all have this shape.** Full compilation of a dynamic
@@ -361,7 +361,7 @@ code*:
   LuaJIT/HotSpot keep interpreters for native-code economics (startup,
   memory, deopt simplicity) that mostly vanish for an AOT-to-bytecode VM.
 
-**3.4 Engagement with the prior note.** `COMPILE-DECLARATION-MODEL.0.md`
+**3.4 Engagement with the prior note.** `legacy/COMPILE-DECLARATION-MODEL.0.ignore`
 proposed two things. Its §4.1 declaration triple
 (`tapeBound` / `needs` / `env`, constraints C1–C4) is *adopted* here as the
 handler-contract vocabulary (§6.8) — the fn-util lesson stands: what a Go
@@ -418,7 +418,7 @@ already was.
   mark-not-call episode (a second dispatch path produced three lane
   divergences; the fix was removing the fork) and the stage-3 rule "a
   dispatch seam may not have two recording paths"
-  (`design/STAGE3-INLINING-DESIGN-ROUND.0.md:162-164`). A generic opcode
+  (`design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore:162-164`). A generic opcode
   that *re-implements* matching or application would reintroduce drift one
   level down. The obligation is structural: G-lane opcodes call the same
   `core` functions the Engine calls (`MatchSignature`, `signature.go:175`;
@@ -1621,7 +1621,7 @@ set.**
 compile at the concrete-mismatch recovery site were differential-reverted
 because "the recovery fires for reasons (forward-collection state, arity,
 coercion) the param guard does not replicate"
-(`design/VOXGIG-COMPILE-LEAVES.1.md:610-616`). Those attempts *committed a
+(`design/legacy/VOXGIG-COMPILE-LEAVES.1.ignore:610-616`). Those attempts *committed a
 bet* at compile time and guarded it with a check that lacked the
 collection state; the descriptor mechanism exists to *carry* that state
 and re-run the same routine — a replayed decision, not a guarded guess.
@@ -1773,9 +1773,11 @@ Morrisett & Harper, POPL 1996, is the formal warrant that one uniform
 
   The lookup now uses `fd.Registry` for a foreign body. A foreign cell has
   no producing event in the CALLER's emit tables, so `resolveOperand`
-  declines and this row falls back — sound, parity restored, and ONE island
-  remains where the shape needs a registry-tagged operand for a foreign
-  module-scope instance. That is the follow-up the frontier ledger named;
+  declines and this row is re-run on the interpreter — parity restored, the
+  miscompile gone, and ONE island still standing where the shape needs a
+  registry-tagged operand for a foreign module-scope instance. That island
+  is an open defect against §0's "residual code, never refusal", not a
+  resting place. That is the follow-up the frontier ledger named;
   the parity fence is `lang/go`'s
   `TestForeignClosureCaptureResolvesInItsOwnRegistry`.
 
@@ -2992,7 +2994,7 @@ sound and total:
   known trade — compile-on-eval is ~interpretation cost per op for
   run-once code (§7) — bounded by the **planned** Phase 6 JIT
   detached-unit cache: named as the graduation at `emit.go:6569`, scoped
-  in `RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md`'s Phase 6 (body identity
+  in `legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore`'s Phase 6 (body identity
   keys on the structural `FnAnalysisKey` precedent, never `Value.ID`), and
   **not yet built** — an explicit Stage 7 dependency.
 - **Staleness policy at the end state**: the bounded restamp
@@ -3048,7 +3050,7 @@ adopted declaration triple (§3.4): every signature declares, per operand,
   §6.7 when computed). `InvokeBody`'s raw-token fall-through arm retires;
   bodies run through `enterBodyUnit` under the VM invoker — the modelled
   callback frame the HOF audit names as the `InvokeBody` island's
-  graduation criterion (`design/HIGHER-ORDER-FUNCTIONS.0.md:921`),
+  graduation criterion (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore:921`),
   generalized here from the list-Function rows to every code-body word.
 - `env: Live` handlers (dyn-scope, `parselang`-class) get the per-region
   DynEnv arming.
@@ -3306,7 +3308,7 @@ the ~15 `vmDefer` sites plus the C1 fence, each with a named replacement:
 
 This retirement list deliberately **overturns C4's recorded permanence**
 of the fail-safe decline seams ("permanent by design",
-`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md:123-135`): those seams were
+`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore:123-135`): those seams were
 permanent because their only landing pad was the interpreter, and
 refusing to land there meant refusing the program. T2 removes the landing
 pad; the table is the argument that each seam can land compiled instead.
@@ -3925,21 +3927,21 @@ benchmark is simply the first mandated pair.
 ## 15. Related work
 
 **In-tree:** `COMPILABLE-SUBSET.md` (the subset this note totalizes);
-`COMPILE-DECLARATION-MODEL.0.md` (the declaration triple, adopted; typed
-islands, rejected); `COMPILE-REFUSAL-SURVEY.0.md` (dispatch opcodes
+`legacy/COMPILE-DECLARATION-MODEL.0.ignore` (the declaration triple, adopted; typed
+islands, rejected); `legacy/COMPILE-REFUSAL-SURVEY.0.ignore` (dispatch opcodes
 necessary but insufficient — the finding §6.2/§6.6 answer);
-`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md` (the doctrine and the defer
-worklist); `HIGHER-ORDER-FUNCTIONS.0.md` (§9d and the §9g generated-sweep law);
+`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore` (the doctrine and the defer
+worklist); `legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` (§9d and the §9g generated-sweep law);
 `FUNCTION-VALUE-SCOPE.0.md` (the env axis); `NUR.md` NUR101/NUR078
 (NUR037 survives outside `NUR.md` — the ledger note at
-`design/HIGHER-ORDER-FUNCTIONS.0.md:1197`. NUR067 did too, in the
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore:1197`. NUR067 did too, in the
 `frontier-await-winner.tsv` ledger entry, and is CLOSED as of 2026-09-10:
 both the file and the entry are deleted, and its record is the
 frontier_spec_test.go note that replaced them plus this note's §6.6 and the
 handoff's thirty-ninth-to-forty-first increments);
 `DO-STRUCTURE-COMPILATION.0.md` (the "always compile" directive);
-`HOT-CODE-LOADING.0.md`; `STAGE3-INLINING-DESIGN-ROUND.0.md` (one
-recording path; the third architecture); `VOXGIG-COMPILE-LEAVES.1.md`
+`HOT-CODE-LOADING.0.md`; `legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore` (one
+recording path; the third architecture); `legacy/VOXGIG-COMPILE-LEAVES.1.ignore`
 (the differential-reverted recovery-site attempts — the "DO NOT RETRY"
 record §6.2 answers); `AOT-COMPILE.0.md` and
 `INTERPRETER-TIERED-EXECUTION.0.md` (adjacent, unimplemented tiers).

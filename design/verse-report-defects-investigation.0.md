@@ -1,7 +1,7 @@
-# Defect investigation — root causes for `verse-in-boru-report.0.md` §6
+# Defect investigation — root causes for `legacy/verse-in-boru-report.0.ignore` §6
 
 The Verse comparison report
-([`verse-in-boru-report.0.md`](verse-in-boru-report.0.md)) verified its boru
+([`legacy/verse-in-boru-report.0.ignore`](legacy/verse-in-boru-report.0.ignore)) verified its boru
 claims by running them, and seven defects fell out. This note is the
 follow-up: for each, the cause **in the source**, the blast radius as
 *tested*, and what a fix has to decide. Reproduced against `main` @
@@ -30,10 +30,13 @@ because in every case the mistake is more instructive than the fix.
   container — a real data race, and this note twice described it wrongly
   (first as "narrow", then with the wrong mechanism). Both corrections and
   the fix are in §A; all four shapes now refuse in both engines.
-- **C is fixed.** `errorReturnsFn` refuses instead of widening a known
-  arity. §C now records exactly what its "user-visible by default"
-  severity rests on: the effects fence, which blocks the rescuing
-  fallback once the guarded block has emitted output.
+- **C's miscompile is closed — and what stands in its place is a refusal,
+  an open defect owed a fix.** `errorReturnsFn` refuses instead of
+  widening a known arity, so the leaked `internal_error` is gone; a
+  program a developer expects to compile still does not. §C now records
+  exactly what its "user-visible by default" severity rests on: the
+  effects fence, which blocks the silent interpreter re-run once the
+  guarded block has emitted output.
 - **F is fixed, return side included.** Fixes (1)-(4) landed earlier with
   regression tests — the two verified patches, the inline-union route via
   `paramBodyCarrier`, and the diagnostic reword. The sixth consequence
@@ -983,10 +986,11 @@ has to cover module sub-registries, not just container payloads.
      parent's layer. Same failure mode as the `UpdateChain` repro recorded
      above, and the same lesson — verify the probe removed what it claims.
    - The ungrouped twin agrees **trivially**. That form does not compile at
-     all, so the program falls back to the interpreter and both sides of
-     the comparison ARE the interpreter. The pair is still the finding, but
-     the difference between the two rows is that one compiles and the other
-     is refused — and the refusal is what looks like agreement.
+     all — itself an open defect, owed a fix — so the runtime silently
+     re-runs the program on the interpreter and both sides of the
+     comparison ARE the interpreter. The pair is still the finding, but the
+     difference between the two rows is that one compiles and the other is
+     refused — and the refusal is what looks like agreement.
 3. Gate the frame on a static "this body may touch context" flag so the
    allocation is paid only where it is observable, and add an
    each/fold/filter row to the alloc guard.
@@ -1096,14 +1100,16 @@ Two options were considered and rejected:
   breaks `break`/`continue` out to an enclosing loop — the very thing the
   island flow-escape translation exists to paper over — so it trades a
   scoping bug for a flow bug.
-- **Refuse to compile the shape when the region touches `context`.** The
-  interpreter is canonical, so a refusal is *correct* by construction, and
-  refusal is already a shipped strategy (the ungrouped method call above).
-  Rejected on SOUNDNESS: a called fn can touch context, so a syntactic scan
-  misses cases, and the sound version — refuse on any call in the region —
-  fires on nearly every `case` arm. This is the same argument that killed
-  blocker 3's static per-`CompiledFn` frame flag: a flag that under-reports
-  does not cost allocation, it loses the write.
+- **Refuse to compile the shape when the region touches `context`.**
+  Rejected twice over. First on DOCTRINE: valid code is owed a compile,
+  so every shape the compiler refuses — the ungrouped method call above
+  included — is an open defect owed a fix, and this option proposes
+  minting one deliberately instead of teaching the emitter the frame.
+  Second on ANALYSIS: a called fn can touch context, so a syntactic scan
+  misses cases, and the complete version — refuse on any call in the
+  region — fires on nearly every `case` arm. This is the same argument
+  that killed blocker 3's static per-`CompiledFn` frame flag: a flag that
+  under-reports does not cost allocation, it loses the write.
 
 The emission spans still have to be located: the `case` desugar's arm
 fragments, and the inline list auto-evaluation that serves both `def name
@@ -1180,14 +1186,15 @@ Not caused by it, reproduced on the unpatched binary, all
   dispatch with zero modelled outputs cannot be seated, so
   `def b (quote [break]) for 5 [do b i]` stops compiling); modelling it
   empty everywhere (also breaks `do [raise "x"] dot code`, which then
-  compiles and raises `signature_error` instead of falling back);
-  `MarkUncompilable` (refuses the whole `do […] error […]` family — ten
-  tests pin those paths by name); `SetCatchVariadic`, the mechanism built
-  for a runtime-variable count (the latch IS consumed — verified by
-  instrumenting `catchVariadicFor` — but marking the `do` event variadic
-  does not stop the ENCLOSING closure being seated at the over-reported
-  count); and a gradual `dynamic(Any)` result (one output so still
-  lowerable, variable so the consumer should decline — it does not).
+  compiles and raises `signature_error` where today it is refused and
+  silently re-run); `MarkUncompilable` (refuses the whole
+  `do […] error […]` family — ten tests pin those paths by name);
+  `SetCatchVariadic`, the mechanism built for a runtime-variable count
+  (the latch IS consumed — verified by instrumenting `catchVariadicFor` —
+  but marking the `do` event variadic does not stop the ENCLOSING closure
+  being seated at the over-reported count); and a gradual
+  `dynamic(Any)` result (one output so still lowerable, variable so the
+  consumer should decline — it does not).
 
   Discrimination is not the blocker: `doBodyMayRaise` is too conservative
   to serve (any registered word is fallible, so `drop` qualifies), a
@@ -1290,12 +1297,13 @@ own. Measured against a binary built from the commit before the fix:
 | `def x (do […] error [drop])` ⏎ `x` | `BIND_GLOBAL underflow` | `undefined_word: x` | same |
 | **`do [1 print  1 div 0] error [drop]`** ⏎ `2 add 3` | `CALL_DYNAMIC underflow` | **`internal_error`** | `1` then `5` |
 
-For the first three the whole-program fallback catches the underflow and
-silently re-runs, so the answer is right and the only costs are a wasted
-compile and an unreported runtime bail. The fourth is the one that bites:
-once the guarded block has emitted output the fallback is **deliberately
-blocked** — re-running would duplicate the output — and the engine says so
-in the note it attaches:
+For the first three the whole-program interpreter re-run catches the
+underflow and takes over **silently**: the user sees the right number
+while a miscompile goes unreported, at the cost of a wasted compile, an
+unannounced runtime bail, and a defect hidden rather than closed. The
+fourth is the one that bites: once the guarded block has emitted output
+the fallback is **deliberately blocked** — re-running would duplicate the
+output — and the engine says so in the note it attaches:
 
 > the interpreter fallback was blocked: output was already emitted, so
 > re-running would duplicate it; run with --no-compile and report this as
@@ -1309,7 +1317,9 @@ are rescued — which is the mistake of generalising from the cases that
 happen not to trip the fence.
 
 Post-fix, that fourth program refuses at compile time, prints `1`, and
-returns `5`.
+returns `5`. The leaked `internal_error` is gone; what stands in its place
+is a program the compiler will not compile, which is an open defect owed a
+fix, not a resting place.
 
 ### Three variants, one cause
 
@@ -1322,15 +1332,16 @@ returns `5`.
 A handler that leaves a value (`error [drop 9]`) is fine, and so is a
 program that ends at the `error`.
 
-### Why the adjacent no-error case refuses cleanly
+### Why the adjacent no-error case refuses instead of leaking
 
 `do [1] error [drop]` + a trailing expression refuses with
 `force-compile: code-body word error (Stage 2)` for an unrelated reason: a
 statically concrete do-result bakes into the island span, and a baked arg
 beyond the signature's `BarrierPos` (1 for `error`) is rejected
 (`eng/go/carrier.go:1878-1879`), so the island declines and
-`recordCallRefusal` marks the program uncompilable. That is the correct
-behaviour the error-fired path is missing.
+`recordCallRefusal` marks the program uncompilable. Both shapes are
+defects — this one refuses to compile, the error-fired one miscompiles —
+and the only difference is that this one announces itself.
 
 ### Fix
 
@@ -1338,9 +1349,12 @@ Two independent repairs, both worth doing:
 
 1. **Make `errorReturnsFn` refuse instead of widening.** It already knows
    the true arity — it ran the handler. When the handler nets **zero**,
-   call `MarkUncompilable` rather than returning a one-value bound. Under
-   ADR-005 and the refusal architecture (fallback is always sound), that
-   is the sanctioned response and it fixes all three variants at once.
+   call `MarkUncompilable` rather than returning a one-value bound (a
+   returned refusal, not a panic, per ADR-005). That stops the wrong answer
+   in all three variants at once — but it is containment, not a repair:
+   three shapes a developer expects to compile stop compiling, each one an
+   open defect owed a fix, and the interpreter re-run behind them is
+   scaffolding absorbing that debt.
 
    **Zero, not `!= 1`** — this note originally said `!= 1` and that is
    wrong. A residual of two or more is not broken: its bottom is the
@@ -1368,15 +1382,16 @@ Two independent repairs, both worth doing:
    results...)`, and `screenResults` (`vm.go:217-222`) checks only
    `tapeCoupled`, never a count.
 
-### FIXED via (1) — and what the ratchets say about (2)
+### APPLIED via (1) — and what the ratchets say about (2)
 
 (1) is applied: `errorReturnsFn` now calls `MarkUncompilable` when the
-handler it just ran nets **zero** values. All three underflow variants
-refuse cleanly instead of leaking an `internal_error`, and handlers that
-net one — or that net more because the seeded error is still under the
-result — keep compiling to the same answer. Regression tests in
-`lang/go/bytecode_error_arity_test.go` pin every half, including the
-`>1` boundary that the first attempt at this fix broke.
+handler it just ran nets **zero** values. All three underflow variants now
+refuse loudly instead of leaking an `internal_error`: an open defect that
+announces itself in place of a silent wrong answer, and still owed a
+compiling implementation. Handlers that net one — or that net more because
+the seeded error is still under the result — keep compiling to the same
+answer. Regression tests in `lang/go/bytecode_error_arity_test.go` pin
+every half, including the `>1` boundary the first attempt at this fix broke.
 
 While implementing it, two ratchets turned up that were not in the
 original analysis and that bear directly on whether (2) should follow:
@@ -1390,8 +1405,9 @@ const islandCeiling  = 0
 Every spec row compiles, and **no compiled program in the corpus embeds an
 interpreter island at all**. Both must stay at zero before the fallback
 and `OpFallback` machinery can be deleted (plan P7). At first read this
-looks like an argument against (1) — it adds a refusal category. Three
-things say otherwise:
+looks like an argument against (1) — it adds a refusal category, and
+`refusalCeiling` says never raise it. Three things bound what (1) costs;
+none of them makes the refusal acceptable:
 
 - Neither ceiling moved. They count **spec rows**, and no row exercises a
   zero-netting `error` handler — which is precisely why the defect
@@ -1401,14 +1417,17 @@ things say otherwise:
   the one that code already enforces.
 - Its sibling guard states the preference outright: letting a shape island
   "would convert a clean refusal into a NEW interpreter island (a
-  regression on islandCeiling)". **Refusal is the preferred direction in
-  this code**, not a last resort.
+  regression on islandCeiling)". **This code prefers a refusal to a new
+  island** — a choice between two open defects, not an endorsement of
+  either; `refusalCeiling = 0` and `islandCeiling = 0` are the standard
+  both are measured against, and (1) owes `refusalCeiling` a return to zero.
 
 The consequence for the test gap is that defect C's repro **cannot become
-a spec row** — under the fix it would refuse and breach `refusalCeiling`;
-without it, it miscompiles. That is why the regression lives in Go tests.
-It is also the reason the gap existed: a shape that cannot be expressed in
-the corpus is invisible to the corpus-driven gates.
+a spec row** — with (1) in place it refuses and would breach
+`refusalCeiling`; without it, it miscompiles. Neither is a state to leave
+it in, and that is why the regression lives in Go tests for now. It is
+also the reason the gap existed: a shape that cannot be expressed in the
+corpus is invisible to the corpus-driven gates.
 
 So (2) — `FallbackSpan.NOut` — is no longer obviously "worth doing too".
 It would let this shape compile as a zero-output island, which *raises*
@@ -1641,16 +1660,17 @@ fail when the `!Compiling` gate is removed.
   error* for a program that runs fine — trading a silent effect for a
   false verdict.
 - **The effect ledger** (`eng/go/effects.go`) still counts modelled
-  writes. Deliberate and conservative: over-counting only forgoes a safe
-  interpreter fallback, while under-counting a real network send would
+  writes. Deliberate and conservative: over-counting only forgoes the
+  silent interpreter re-run — scaffolding over a refusal, not a facility
+  worth protecting — while under-counting a real network send would
   duplicate it. Discarded OUTPUT does stop counting, which is strictly
-  correct — nothing escaped, so nothing should block a fallback.
+  correct — nothing escaped, so nothing should fence the re-run.
 - **`boru check --emit`** (the disassembly surface) runs a compile pass, so
   its module-body effects are real. Consistent with the table above, and
   unchanged from before.
 - **A nested body draws no advisory entry.** The advisory lands on
   `parent.Check`, and a module sub-registry owns its own `CheckState` by
-  design (`design/module-fn-checkstate-ownership.1.md` §3.2), so a nested
+  design (`design/legacy/module-fn-checkstate-ownership.1.ignore` §3.2), so a nested
   entry would be recorded where nothing reads it. The nested body IS
   modelled — verified by `TestModelledEffectsPropagateThroughNestedImports`
   — only its report is missing. Fixing it means routing diagnostics to a
@@ -1905,7 +1925,7 @@ and the capability section now shows the dispatch idiom.
 The original plan was to generate the table FROM a registry-side
 enumeration of codes — the doctrine that makes `boru describe` unable to
 drift, and the data source `boru explain <code>` would need (R4 in
-`rust-zig-roc-faber-in-boru-report.0.md`). It exists now:
+`legacy/rust-zig-roc-faber-in-boru-report.0.ignore`). It exists now:
 `eng/go/errorcodes.go` owns the mechanism and the kernel's 45 codes;
 `lang/go/native/errorcodes.go` registers the language layer's 188.
 `eng.ErrorCodes()` / `eng.LookupErrorCode(code)` are the accessors.
@@ -2324,7 +2344,7 @@ The tests that would have caught it, in order of leverage:
 
 ### Not a new defect
 
-`design/ERRORS.8.md:188-206` records this as VOXGIG **B2a**:
+`design/legacy/ERRORS.8.ignore:188-206` records this as VOXGIG **B2a**:
 
 > `(1 add 1) print (2 add 2) print` prints `4` then `2` — un-separated
 > chained forward calls evaluate right-to-left.
@@ -2366,7 +2386,7 @@ invalidate a test silently is more expensive than an ordering surprise.
 
 **Three of the seven are compiled-vs-interpreted divergences** (B, C, and
 the compiled half of G's neighbourhood), all in the same architectural
-seam: body invocation. `design/MISCOMPILE-HUNT-FINDINGS.0.md` records 23
+seam: body invocation. `design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore` records 23
 prior `--compile != interpret` divergences and the same seam keeps
 producing them, which argues for a differential gate specifically over
 *body-invoking words × observable side effects* rather than over the

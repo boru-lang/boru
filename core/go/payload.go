@@ -37,13 +37,13 @@ import (
 // mismatched-shape constructions are rejected at the type-check
 // level. The seal is the kernel guarantee that fulfils the
 // "make illegal values unrepresentable" goal stated in
-// design/TYPE-DECOUPLING.10.md.
+// design/legacy/TYPE-DECOUPLING.10.ignore.
 type Payload interface {
 	payloadMarker()
 	// IsTypeContent reports whether this payload is a TYPE's content —
 	// the structural body of a type declaration — as opposed to an
 	// ordinary value's data. It is the sealed-payload half of the ONE
-	// type-recognition seam (design/TYPE-REPRESENTATION.1.md §N4):
+	// type-recognition seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4):
 	// IsTypeBody asks the payload instead of enumerating shapes, so a
 	// new kind declares itself by answering here rather than by
 	// growing an arm at every consumer. Most payloads answer with a
@@ -416,7 +416,7 @@ func (PathonInfo) payloadMarker()           {} // legacy; replaced by PathonPayl
 // directly. NewNone() now produces NonePayload below.
 func (noneSentinel) payloadMarker() {}
 
-// PayloadBase is the S6 seal extension (design/ENG-FOUR-PIECE.0.md): a
+// PayloadBase is the S6 seal extension (design/legacy/ENG-FOUR-PIECE.0.ignore): a
 // payload variant declared OUTSIDE core embeds PayloadBase to satisfy the
 // sealed Payload interface, since payloadMarker itself is only definable
 // beside the seal. Kernel-declared variants keep their direct markers.
@@ -432,7 +432,7 @@ func (PayloadBase) payloadMarker() {}
 // to a single Boolean carrier result: the group's ORIGINAL tokens,
 // preserved so guard narrowing can see the `x is T` structure that
 // evaluation reduced to a bare Boolean
-// (design/checker-accuracy-review.10.md A3 — without it, the canonical
+// (design/legacy/checker-accuracy-review.10.ignore A3 — without it, the canonical
 // `if (x is T) …` paren form narrowed nothing while the list form
 // `if [x is T] …` narrowed fine). Check-mode only; the runtime never
 // produces carriers.

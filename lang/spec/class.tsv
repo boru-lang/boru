@@ -4,7 +4,7 @@
 # `def Foo class {schema}` defines a class: a sealed nominal record
 # type rooted under Ideal/Class (its own Ideal branch — the former open
 # `Object` container was removed; classes are sealed nominal records — see
-# design/CLASS-OBJECT.10.md). Schema entries: a TYPE value declares a
+# design/legacy/CLASS-OBJECT.10.ignore). Schema entries: a TYPE value declares a
 # required field; a CONCRETE value declares a default (the field's
 # type is the value's own type). Instances are FLAT (every field, own
 # and inherited, resolves eagerly at make — no prototype chain) and

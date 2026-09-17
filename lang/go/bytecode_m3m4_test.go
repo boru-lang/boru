@@ -1,6 +1,6 @@
 package lang
 
-// Phase 6 Stage M3 + M4 landing tests (design/STAGE3-INLINING-DESIGN-ROUND.0.md
+// Phase 6 Stage M3 + M4 landing tests (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore
 // §6).
 //
 // M3 (as re-landed by the namespace freeze) — DSL parsers: a Parse.parser-

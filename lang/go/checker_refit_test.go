@@ -2,7 +2,7 @@ package lang
 
 import "testing"
 
-// Pins for the three checker design refits (design/CHECKER-COMPLETION.0.md
+// Pins for the three checker design refits (design/legacy/CHECKER-COMPLETION.0.ignore
 // §7): the RuntimeMirror diagnostic classification and the narrowed
 // compile refusal, and the central caught-region re-attribution. The
 // BeginCompilePass helper is pinned kernel-side

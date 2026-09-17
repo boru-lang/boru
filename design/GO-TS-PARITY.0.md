@@ -6,9 +6,9 @@ functionality parity go and ts on modules core, parser and basic, with
 approach — "use shared tsv spec files as much as possible to establish
 parity".
 
-Sibling notes: [TS-PARITY-AUDIT.0.md](TS-PARITY-AUDIT.0.md) (the audit
-that built the parser stream oracle), [CORE-TS-COVERAGE.0.md](CORE-TS-COVERAGE.0.md),
-[BASIC-CHECK-CUT.0.md](BASIC-CHECK-CUT.0.md) (the dependency cut that
+Sibling notes: [legacy/TS-PARITY-AUDIT.0.ignore](legacy/TS-PARITY-AUDIT.0.ignore) (the audit
+that built the parser stream oracle), [legacy/CORE-TS-COVERAGE.0.ignore](legacy/CORE-TS-COVERAGE.0.ignore),
+[legacy/BASIC-CHECK-CUT.0.ignore](legacy/BASIC-CHECK-CUT.0.ignore) (the dependency cut that
 preceded this).
 
 ## The measurement, and why the obvious one misleads
@@ -327,7 +327,7 @@ subset (the port is faithful where it is implemented) and 23 of 35 differed
 the moment a constructor appeared. Then a 980-source sweep opened the
 ENGINE surface: **136 verified divergences, 131 distinct sources, not one
 covered by an eng/spec row** — 102 wrong answers, 26 gaps, 3 code diffs.
-[ENGINE-BLIND-SPOT.0.md](ENGINE-BLIND-SPOT.0.md) is the account.
+[legacy/ENGINE-BLIND-SPOT.0.ignore](legacy/ENGINE-BLIND-SPOT.0.ignore) is the account.
 
 Three things from it are worth carrying even if the tables are never read:
 

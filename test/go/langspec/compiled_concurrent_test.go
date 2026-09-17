@@ -1,4 +1,4 @@
-// Stage-5 concurrency gate (design/boru-bytecode-plan.0.md §Stage 5:
+// Stage-5 concurrency gate (design/legacy/boru-bytecode-plan.0.ignore §Stage 5:
 // "Race detector (go test -race) over the concurrent spec rows in
 // compiled mode"). The concurrent words — await (parallel bodies),
 // timeout, interval, cancel — fork an isolated registry per branch

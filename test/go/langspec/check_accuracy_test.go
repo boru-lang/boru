@@ -1,4 +1,4 @@
-// Check-accuracy ratchet (design/checker-accuracy-review.10.md §5).
+// Check-accuracy ratchet (design/legacy/checker-accuracy-review.10.ignore §5).
 //
 // Runs `boru check` semantics (Registry.Check.Begin + a normal engine
 // run) over every row of the production language spec at lang/spec/

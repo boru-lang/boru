@@ -8,7 +8,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Bytecode Program model — Stage 1 of design/boru-bytecode-plan.0.md.
+// Bytecode Program model — Stage 1 of design/legacy/boru-bytecode-plan.0.ignore.
 //
 // A Program is the flat, linear lowering of the typed region the
 // carrier checker resolved: literal pushes, fixed-arity native calls
@@ -377,7 +377,7 @@ const (
 	// constructing a fresh List/Map each time — so a pooled const pushed from a
 	// compiled fn unit must not leak one shared identity across calls
 	// (`def mk fn [[] [List] [[1]]]  (mk) eq (mk)` must stay false; miscompile
-	// mechanism A, design/MISCOMPILE-HUNT-FINDINGS.0.md §A). The finalize pass
+	// mechanism A, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). The finalize pass
 	// rewrites OpPushConst → OpPushConstFresh in place (freshenFnUnitConsts,
 	// emit.go) exactly for fn-unit consts that (a) materialised from a literal
 	// written in the body — an ENCLOSING binding's value read by name keeps the
@@ -472,8 +472,9 @@ const (
 	// program CONTINUES past this op with NOut results committed downstream,
 	// so every shape-claim failure — a non-callable/quoted runtime value, or
 	// a result count differing from the claim — raises internal_error, which
-	// RunCompiled resolves by re-running the interpreter (slow, not wrong;
-	// runtimeShouldFallback) and --force-compile surfaces loudly. A genuine
+	// RunCompiled resolves by silently re-running the interpreter
+	// (runtimeShouldFallback) — right answer, hidden failure — and
+	// --force-compile surfaces the same case loudly. A genuine
 	// boru error raised by the method surfaces as-is (the interpreter raises
 	// the same at the same point, prior side effects included).
 	OpCallDynMethod
@@ -488,7 +489,8 @@ const (
 	// substitution does. A miss, or a binding the substitution would NOT
 	// push as a simple value (a Function/class dispatch, a splice/reach
 	// marker), defers to the interpreter via internal_error
-	// (runtimeShouldFallback — slow, not wrong). The binder side is
+	// (runtimeShouldFallback) — containment for a shape the VM cannot yet
+	// read, and a defect while it stands. The binder side is
 	// OpBindDynScope: the whole-program lowering pass installs it in every
 	// unit that binds a dynamically-read name.
 	OpLookupDynScope
@@ -681,8 +683,8 @@ type PolyRef struct {
 	// overload than the checker's model (that is poly's point), and when
 	// that overload's result count differs from the claim the program's
 	// stack layout no longer holds — the VM defers to the interpreter via
-	// internal_error (runtimeShouldFallback: slow, not wrong) instead of
-	// silently shifting every downstream operand.
+	// internal_error (runtimeShouldFallback) instead of silently shifting
+	// every downstream operand — the lesser of two failures, and still one.
 	NOut int
 	// Reg is the sub-registry whose signatures the VM re-matches a MODULE poly
 	// word over (`StructUtil.getpath` — a sub-registry word). Nil means the main
@@ -880,7 +882,8 @@ type CompiledFnRef struct {
 // RestampBox carries a detached ref's stamp inputs and its current
 // re-stamped twin (see CompiledFnRef.Restamp). Tries caps the TOTAL
 // re-compiles per ref so a hot rebinding loop cannot pay a compile per
-// invoke — once exhausted, the seam stays on CallBoru (slow, not wrong).
+// invoke — once exhausted, the seam stays on CallBoru: correct, uncompiled,
+// and a cap worth removing rather than a settled design point.
 type RestampBox struct {
 	mu     sync.Mutex
 	fd     core.FnDefInfo

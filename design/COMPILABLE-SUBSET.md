@@ -4,16 +4,24 @@ The bytecode compiler (`eng/go/emit.go`, `lower.go`, `vm.go`, `bytecode.go`)
 is **the carrier type-checker run with a recording side effect**: every
 dispatch the checker resolves in a typed region is recorded as a classified
 event, and `Finalize` linearises the trace into a `Program`. Anything the
-recorder cannot prove it can lower **faithfully** is refused, and the caller
-(`lang.(*Boru).RunCompiled`) silently falls back to the interpreter. The worst
-failure mode is therefore *slow, not wrong*.
+recorder cannot prove it can lower **faithfully** is refused — and every such
+refusal is a **defect**: an unimplemented or unproven case, owed a fix and
+tracked to closure. Done is a language that compiles the way a developer
+expects — ALL valid code compiles, no exceptions. The interpreter is **not** a
+fallback for the compiler and is not allowed to become one; that
+`lang.(*Boru).RunCompiled` currently re-runs a refused program on the
+interpreter — **silently** — is **scaffolding** absorbing that defect, never a
+reason a refusal is acceptable. The silence makes it worse, not better: the
+failure hides itself, so nothing in the run says the compile was refused.
 
 This document is the **positive** statement of what compiles and why. The code
-expresses the subset as a pile of individually-justified refusal gates (chiefly
-`EmitState.RecordCall` and `isInertConst`); read those for the exact edge, but
-read **this** first for the rule each gate is defending. When you widen the
-subset, update this file in lockstep — the gates should be a checklist against a
-stated rule, not the rule itself.
+expresses the subset as a pile of refusal gates (chiefly `EmitState.RecordCall`
+and `isInertConst`); read those for the exact edge, but read **this** first for
+the rule each gate is defending. Each gate is also a standing defect report: it
+marks a case the recorder cannot yet prove, which is work outstanding, not a
+boundary the design has chosen. When you widen the subset, update this file in
+lockstep — the gates should be a checklist against a stated rule, not the rule
+itself.
 
 > Authority: the code is authoritative for behaviour; this page is the index and
 > the rationale. If they disagree, the code wins and this page is stale — fix it.
@@ -22,17 +30,28 @@ stated rule, not the rule itself.
 
 ## 1. The contract
 
-For every source program, exactly one of:
+The contract has ONE outcome, not two: **every valid source program compiles.**
+`CompileCheck` returns a non-nil `*Program`; `RunProgram` executes it and returns
+a residual byte-identical to the interpreter's `Run` for the same source (the one
+documented exception is §7).
 
-1. **Compiles** — `CompileCheck` returns a non-nil `*Program`; `RunProgram`
-   executes it and returns a residual byte-identical to the interpreter's
-   `Run` for the same source (the one documented exception is §7).
-2. **Refuses** — `CompileCheck` returns `(nil, reason)`; `RunCompiled` rolls
-   the registry back to its pre-check snapshot (`CompileSandbox`) and runs the
-   interpreter. The `reason` names the first offending construct.
+A **refusal** is a breach of that contract, not a second branch of it. When
+`CompileCheck` returns `(nil, reason)`, the `reason` names the first offending
+construct — which is to say it names the defect, and that defect is owed a fix
+and tracked to closure.
 
-Refusal is always sound. Compilation is sound by construction + the differential
-and property gates (§8); there is no independent proof.
+The containment machinery is real and is described here accurately, as
+machinery: `RunCompiled` rolls the registry back to its pre-check snapshot
+(`CompileSandbox`) and **silently** re-runs the program on the interpreter — an
+answer comes back, and nothing in the run says the compile was refused. That is
+scaffolding around a known bug, and the silence indicts it rather than excusing
+it: a failure that hides itself is the harder one to find and the easier one to
+bank on. Not a supported outcome, not a success criterion, and never a reason to
+leave a construct uncompiled.
+
+Compilation is sound by construction + the differential and property gates (§8);
+there is no independent proof. A refusal does not produce a *wrong* answer, but
+"not wrong" is not the bar here — compiling is.
 
 ---
 
@@ -117,10 +136,13 @@ is identity, so two source literals must stay two consts with two IDs.
 
 ---
 
-## 5. What refuses (the fallback taxonomy)
+## 5. What refuses today (the open-defect taxonomy)
 
-`RecordCall` and friends latch the program uncompilable on the first of these;
-the interpreter then owns the whole program:
+Every entry below is an unimplemented or unproven case — a defect against §1,
+owed a fix and tracked to closure, never a sanctioned design outcome.
+`RecordCall` and friends latch the program uncompilable on the first of these,
+and the §1 scaffolding then re-runs the whole program on the interpreter so the
+user still gets an answer while the case is open:
 
 - **Compile-time word** — `RunInCheckMode` (def/import/type/macro/Test). Runs at
   compile time, emits nothing; a residual that depends on its *runtime* error
@@ -139,7 +161,7 @@ the interpreter then owns the whole program:
 - **Fn-INVOKING word** — `apply` of a non-re-stepped value, `is` over a
   predicate fn: their handlers re-step the fn on the tape, which the VM cannot
   honour. Since the type-node fusion
-  ([TYPE-REPRESENTATION.1.md](TYPE-REPRESENTATION.1.md) §9) a named
+  ([legacy/TYPE-REPRESENTATION.1.ignore](legacy/TYPE-REPRESENTATION.1.ignore) §9) a named
   PREDICATE TYPE evaluates to its minted node rather than the fn value, and
   the recorder refuses that node at the same words via `IsPredicateTypeNode`
   ("function value reaches <word> (Stage 3)") — the refusal surface is
@@ -245,7 +267,9 @@ reused after the join now compiles.
 
 - **Fallback islands** (`OpFallback`) re-run a recorded token span through a
   reused sub-engine, threading the operand stack. Soundness rests on island runs
-  being non-nested/non-concurrent within a VM run.
+  being non-nested/non-concurrent within a VM run. An island is containment, not
+  a lowering: it marks a span the emitter could not yet lower — a defect scoped
+  down to that span — and each one is owed a real lowering.
 - **`OpCallDynamic`** applies a runtime fn value to trailing residual args (the
   `r.int 0 100` method-field boundary), leaving a non-callable value untouched —
   faithful to the interpreter either way.

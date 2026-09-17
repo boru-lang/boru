@@ -23,7 +23,7 @@ import (
 // (`(w p/v)` renders under w's param, as installDef renames whatever it
 // binds).
 //
-// Found on the way, pre-existing and now a sound refusal: a fn body's def of
+// Found on the way, pre-existing and now a refusal: a fn body's def of
 // a capturing fn value over an outer overloading def outlives the call on
 // the interpreter (the drop-then-push leaves the frame's def depth
 // unchanged, so DefCleanup pops nothing) where the compiled program kept the
@@ -103,7 +103,7 @@ func TestValReadAliasSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a refusal", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {

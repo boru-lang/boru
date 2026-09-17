@@ -78,7 +78,7 @@ Test.fail-count end`)
 
 // NEGATIVE: a body hitting the dot-METHOD leaf (`rig.int 1 6` — method
 // dispatch on a Map whose members are fn values, the prop-spec gen-body
-// blocker) must still refuse and fall back soundly — identical results,
+// blocker) must still refuse and refuse and be interpreted — identical results,
 // fail-count included.
 func TestTestBodyDotMethodStaysSound(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release

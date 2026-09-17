@@ -7,7 +7,7 @@ import (
 )
 
 // Stage M2 landing tests — the fn-value frontier
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 Stage M2, sub-stages a–d).
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 Stage M2, sub-stages a–d).
 //
 //   - M2a `apply` over a param/captured fn (recursion.tsv:90-92): the apply
 //     dispatch over a Function-typed CARRIER is elided with a PENDING apply on
@@ -60,7 +60,7 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 	}
 }
 
-// fnValueM2Refusal pins a sound refusal: the program does NOT compile (reason
+// fnValueM2Refusal pins a refusal: the program does NOT compile (reason
 // carries the expected substring), and the interpreter fallback agrees with a
 // plain interpreted run on value and error taxonomy.
 func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {

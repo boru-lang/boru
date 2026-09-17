@@ -324,7 +324,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	genSpec := fnDef.Gen
 	sigParams := append([]core.FnParam(nil), s.Params...)
 	return func(args []core.Value, caller *core.Registry) []core.Value {
-		// The MERGED-WORD seam (Stage M1, design/STAGE3-INLINING-DESIGN-ROUND.0.md
+		// The MERGED-WORD seam (Stage M1, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore
 		// §2.4a/§5): a transplanted word-extension sig (open words — a module-
 		// defined `add` merged into the importer's dispatch table) dispatches as a
 		// BARE word on the importer's engine, so no execFnDefLiteral wrapper
@@ -1026,7 +1026,8 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 //
 // RecordDynApply's own guards (operand provenance, the event-lead
 // quote-state refusal, fnConcreteSingleValuedOrCarrier) still apply; a
-// decline or refusal there leaves the program on the sound fallback.
+// decline or refusal there leaves the program silently interpreted — the
+// answer is right, the compile failed, and nothing in the run says so.
 // Pinned end-to-end by frontier-hof-audit.tsv §9's mkap row.
 func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
 	if len(args) != 1 || len(outs) != 1 {

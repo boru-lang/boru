@@ -1,7 +1,7 @@
 # Signature-Order Refactor: Unify FnSig and NativeSig on Top-First
 
 > **Status: implemented** (this branch). The PBT plan in
-> `design/PBT-PLAN.10.md` is unblocked.
+> `design/legacy/PBT-PLAN.10.ignore` is unblocked.
 >
 > ## What landed (diff from this design doc)
 >

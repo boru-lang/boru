@@ -420,7 +420,7 @@ func TestRunFileExitEndsTheFileNotTheRun(t *testing.T) {
 	// (expected, input, name), so the two-argument spelling this fixture
 	// used never dispatched — it left the function on the stack and
 	// recorded no case at all, which the loud dispatch contract now
-	// refuses outright (design/FN-VALUE-DISPATCH.0.md).
+	// refuses outright (design/legacy/FN-VALUE-DISPATCH.0.ignore).
 	src := "import \"boru:test\"\nimport \"boru:io\"\n" +
 		"Test.test \"one\" [Assert.equal 1 1]\n" +
 		"IO.exit 0\n" +
