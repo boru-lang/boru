@@ -10,7 +10,7 @@ Rust/Elm-grade error UX: every failure report should help FIX the
 problem — multiple labeled source locations, expected-vs-found
 comparisons, per-overload "why this candidate didn't match" verdicts,
 did-you-mean suggestions, plain language, and actionable fixes.
-Builds on the loud-failures tradition (design/ERRORS.8.md, the DX
+Builds on the loud-failures tradition (design/legacy/ERRORS.8.ignore, the DX
 field reports).
 
 ## The model (eng/go/boru_error.go)

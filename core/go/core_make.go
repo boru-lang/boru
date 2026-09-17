@@ -185,7 +185,7 @@ func makeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, erro
 	}
 	// Every object type is now a class — flat, sealed instances (open
 	// objects and their prototype chain were removed). See
-	// design/CLASS-OBJECT.10.md §3.
+	// design/legacy/CLASS-OBJECT.10.ignore §3.
 	return makeClassInstance(objType, provided, r)
 }
 
@@ -201,7 +201,7 @@ func makeObject(objType ClassTypeInfo, srcVal Value, r *Registry) ([]Value, erro
 // legacy object path): a typed field rejects non-conforming values
 // loudly, predicate-typed fields run their predicate via Unify, and
 // a defaulted field rejects values outside the default's own type.
-// See design/CLASS-OBJECT.10.md §3c.
+// See design/legacy/CLASS-OBJECT.10.ignore §3c.
 func makeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry) ([]Value, error) {
 	allFields := objType.AllFields()
 
@@ -612,7 +612,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 
 	// A generic SCHEMA as the make target — `make Box {value:42}` —
 	// infers its type arguments from the construction body and
-	// instantiates first (design/GENERICS.10.md Phase 7 / D12); the
+	// instantiates first (design/legacy/GENERICS.10.ignore Phase 7 / D12); the
 	// instantiation then takes the ordinary path below. Uninferable,
 	// undefaulted parameters error (unbound_param) — never silent Any.
 	if IsTypeSchema(targetVal) {
@@ -677,7 +677,7 @@ func MakeHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// the BASE type if needed, then tag the result with the refinement
 	// — the same reparent the typed-def path (`def x:Foo v`) performs.
 	// Without this, make silently returned a base-tagged value
-	// (design/CLASS-OBJECT.10.md §3c typed-defaults gap 1), so
+	// (design/legacy/CLASS-OBJECT.10.ignore §3c typed-defaults gap 1), so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
 	// could not be expressed.
 	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
@@ -991,7 +991,7 @@ func MakeScalarHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	// — the same reparent the typed-def path (`def x:Foo v`) performs.
 	// Without this, make silently returned a base-tagged value, so
 	// `(make Foo 1) is Foo` was false and a Foo-typed schema default
-	// could not be expressed (design/CLASS-OBJECT.10.md §3c gap 1).
+	// could not be expressed (design/legacy/CLASS-OBJECT.10.ignore §3c gap 1).
 	if canon := CanonicalType(reg, targetType); reg != nil && canon != nil && canon.Origin == OriginUserDef {
 		if base := builtinBaseOf(canon); base != nil && base.ConformsTo(TScalar) {
 			conv := srcVal

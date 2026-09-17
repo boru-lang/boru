@@ -10,7 +10,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// The bytecode recording pass — Stage 1 of design/boru-bytecode-plan.0.md.
+// The bytecode recording pass — Stage 1 of design/legacy/boru-bytecode-plan.0.ignore.
 //
 // For the POSITIVE statement of what compiles and why — the rule each refusal
 // gate below is defending — see design/COMPILABLE-SUBSET.md. Keep it in lockstep
@@ -932,7 +932,7 @@ type EmitState struct {
 	// rewrites a single-push-site marked const to OpPushConstFresh (per-call
 	// identity), keeps a multi-push-site one shared when nothing compound can
 	// escape the fn, and refuses otherwise. See OpPushConstFresh (bytecode.go)
-	// and design/MISCOMPILE-HUNT-FINDINGS.0.md §A.
+	// and design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A.
 	freshenConst map[int]bool
 	// fnRiskFields maps a constructed INSTANCE's value ID → the field keys
 	// holding genuinely-0-param fn values (noteFnRiskFields /
@@ -1328,7 +1328,7 @@ type emitUnit struct {
 	// (fn on top, args below — exactly the interpreter's applyHandler re-step
 	// against the preceding stack) or refuse, so an unconsumed pending apply
 	// can never silently compile the fn+args as unapplied data (Stage M2a,
-	// design/STAGE3-INLINING-DESIGN-ROUND.0.md).
+	// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore).
 	pendingApply []pendingApply
 }
 
@@ -7210,7 +7210,7 @@ func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, writt
 // bind's RESULT, not to the raw body operand (out shares the body's ID —
 // ReparentValue preserves it — and without the remint a reference would
 // resolve straight to the un-reparented param local: miscompile B's exact
-// mechanism, design/MISCOMPILE-HUNT-FINDINGS.0.md §B).
+// mechanism, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §B).
 //
 // Declines (returning out unchanged and false) when recording is inactive or
 // the body is CONCRETE — a static typed-def's reparent rides the const pool
@@ -7621,7 +7621,7 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		// → 42; bare `{b:f/v} dot b` → 7; `… dot b add 1` → 8 — it even
 		// collects forward args). The VM would push it as inert data — a
 		// silent wrong value (miscompile mechanism E, the deferred-field
-		// auto-invoke, design/MISCOMPILE-HUNT-FINDINGS.0.md). Refuse on the
+		// auto-invoke, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore). Refuse on the
 		// RECEIVER signal: reads from fn-free containers are unaffected. An
 		// ANNOTATED shaped-method read (shapedReadOut) is exempt: its landing
 		// is modelled by tryShapedMethodDispatch, whose guard-owned decline
@@ -9320,7 +9320,7 @@ func isGetFamilyWord(w string) bool {
 // apply `(mk 5) 10 20` from a curried CHAIN `((mk 1) 2) 3` — the flattened
 // residual is identical for both, and committing one OpCallDynamic over a
 // chain leaks the intermediate closure (miscompile mechanism E,
-// nested-factory apply, design/MISCOMPILE-HUNT-FINDINGS.0.md).
+// nested-factory apply, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore).
 //
 // The factory returns its lambda one of two ways, and both are recoverable:
 // a CLOSURE when the body reads an enclosing binding (`( fn [[x:Integer]
@@ -9971,7 +9971,7 @@ func noEvalBodiesInert(sig *core.Signature, args []core.Value) bool {
 // the token list through a sub-engine over the live registry) contains a
 // statement whose check-time execution left registry state the replay
 // double-applies or half-misses — the do-unit registry-replay miscompile
-// class (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, Phase 6 item):
+// class (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, Phase 6 item):
 //
 //   - a CAPITALISED def/var (a type install): the check-time run of the body
 //     (RunCarrierBodyWithDefs) rolls back only the Defs binding — the minted
@@ -10377,7 +10377,7 @@ func isTypeBodyPayload(v core.Value) bool {
 // VALUE-literal class whose interpreter evaluation CONSTRUCTS a fresh
 // instance per evaluation, making per-call container identity observable
 // through `eq` (miscompile mechanism A,
-// design/MISCOMPILE-HUNT-FINDINGS.0.md §A). That is ListPayload and
+// design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). That is ListPayload and
 // MapPayload — sameContainer (compare.go) identifies them by backing array /
 // *OrderedMap pointer, and CloneValue mints both fresh. Everything else
 // stays shared: scalars and Microns compare by value; type bodies, fn

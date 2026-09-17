@@ -858,7 +858,7 @@ func TestS5BParenLeadFnApplyIdxArity(t *testing.T) {
 
 // TestS5BParenLeadFnApplyIdxGradualArgDeclines pins the classifier's
 // ARGUMENT gate — the one that keeps the Church-chain family refused
-// (design/HIGHER-ORDER-FUNCTIONS.0.md §5.8). Dropping either clause
+// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.8). Dropping either clause
 // compiles `def app f:Function => [x:Any => [(f x)]]` and its whole
 // family, which LOOKS like a graduation and is a miscompile waiting on a
 // function-valued argument: the interpreter never applies one — its

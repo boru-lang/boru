@@ -157,7 +157,7 @@ type Registry struct {
 	// module sub-registry can transiently share the parent compile
 	// pass's analysis state (mode/emit/memos/counters) while still
 	// resolving names in its own Defs/Types — the module-fn body
-	// compilation refactor (design/module-fn-checkstate-ownership.1.md
+	// compilation refactor (design/legacy/module-fn-checkstate-ownership.1.ignore
 	// §5b). Snapshot sites deep-clone the pointee (CheckState.Clone)
 	// and restore IN PLACE so a transient sharer observes the rollback.
 	Check *CheckState
@@ -171,7 +171,7 @@ type Registry struct {
 	// See flowctrl.go.
 	FlowCtrl FlowCtrl
 
-	// TCO is the tail-call-optimisation surface (design/TCO-STAGED.10.md).
+	// TCO is the tail-call-optimisation surface (design/legacy/TCO-STAGED.10.ignore).
 	// Lives on the registry (not the engine) so sub-engines sharing the
 	// registry contribute to one count and obey one switch.
 	TCO TCOState
@@ -205,7 +205,7 @@ type Registry struct {
 	// gensymN is the monotonic counter behind the `gensym` word: each call
 	// mints a fresh, never-colliding atom name `tmp$g<n>`. Used for
 	// capture-free temporaries in (hand-written and, later, expanded) macros.
-	// See design/MACROS-PHASE1.10.md §7. The name is lowercase + mixed-`$` so
+	// See design/legacy/MACROS-PHASE1.10.ignore §7. The name is lowercase + mixed-`$` so
 	// it is a LEGAL word name (ValidateWordName: lowercase-only, all-`$`
 	// reserved) — gensyms are used as binders (`def <gensym> …`).
 	gensymN uint64
@@ -216,7 +216,7 @@ type Registry struct {
 	// module-private fn (`decide`, `apply-op`, …) analysed under a shared
 	// check pass must not collide with a same-named, same-positioned
 	// parent fn. FnAnalysisKey prefixes this id; read it via
-	// AnalysisScopeID. See design/module-fn-checkstate-ownership.1.md §5a.
+	// AnalysisScopeID. See design/legacy/module-fn-checkstate-ownership.1.ignore §5a.
 	regID uint64
 
 	// macroCache memoizes macro expansions keyed on (macro name + operand
@@ -356,7 +356,7 @@ type Registry struct {
 	// aggregateDispatch rebuilds a fresh []Signature + *FnDefInfo on every
 	// word dispatch even in a hot loop where the name's bindings never
 	// change (~14% of interpreter allocations — see
-	// design/INTERPRETER-SPEED-PLAN.10.md #2). Each entry records the
+	// design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #2). Each entry records the
 	// DefTable generation (Defs.Gen(name)) the aggregate was built at; the
 	// cache hits while that generation is unchanged and misses (rebuilds)
 	// the moment any binding for the name changes. Per-execution state,
@@ -743,7 +743,7 @@ func (r *Registry) NextGensym() string {
 	return fmt.Sprintf("tmp$g%d", r.gensymN)
 }
 
-// macroCache memoizes macro expansions (design/MACROS-PHASE1.10.md §8). A
+// macroCache memoizes macro expansions (design/legacy/MACROS-PHASE1.10.ignore §8). A
 // macro's expansion depends ONLY on its template and the operand FORMS — never
 // on runtime state — so it is deterministic and cacheable. The key is the
 // macro name + the canon of its operands (NOT source Pos, which can collide
@@ -1495,7 +1495,7 @@ func ResolveTypeLiteralDef(v Value, reg *Registry) Value {
 		return v
 	}
 	// The node records its declared content (Value.TypeBody —
-	// design/TYPE-REPRESENTATION.1.md §N2), so a class / resource /
+	// design/legacy/TYPE-REPRESENTATION.1.ignore §N2), so a class / resource /
 	// record / micron name — which EVALUATES to its node after the
 	// Stage 2 flip — resolves to its schema directly from the node.
 	if body, ok := v.TypeBody(); ok {
@@ -1683,7 +1683,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	// The unnamed-arg prefix assembled above is call-site-resolved data;
 	// stepping starts after it (arguments are inert — the sub-engine twin
-	// of FrameOpenInfo.ArgSpan; design/ARG-SEMANTICS-UNIFICATION.0.md).
+	// of FrameOpenInfo.ArgSpan; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 	unnamedCount := len(tokens)
 	body := make([]Value, len(sig.Body()))
 	copy(body, sig.Body())
@@ -1748,7 +1748,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// call-scoped data, trimmed up to unnamedCount. Leaking them into the
 	// caller's stream would let a resolved fn-value argument re-step and
 	// fire there (the inert-arguments invariant,
-	// design/ARG-SEMANTICS-UNIFICATION.0.md).
+	// design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 	// Undeclared returns keep the historical flow-through (the residual
 	// IS the return), matching the frame path, which emits no ReturnCheck
 	// in that case.
@@ -1859,7 +1859,7 @@ func (r *Registry) ResolveTypedName(name string) (Value, bool) {
 // Post the Stage 2 flip the node records the same declared content
 // (Value.TypeBody, stamped by installTypeBinding), and consumers that
 // operate on a type's STRUCTURE read it from the node via TypeContentOf
-// (design/TYPE-REPRESENTATION.1.md §N2). The entry's stored Body stays
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). The entry's stored Body stays
 // authoritative HERE because three binding shapes carry a body that is
 // deliberately not the node's content: a generic type-PARAM bound to
 // its argument value (the node is the ARGUMENT's — possibly a builtin,

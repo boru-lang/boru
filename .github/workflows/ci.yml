@@ -142,7 +142,7 @@ jobs:
         run: make parser-parity
 
       # core/go profiled by ITS OWN suite alone, floor 100 — the standalone
-      # gate from design/ENG-FOUR-PIECE.0.md Stage 5.
+      # gate from design/legacy/ENG-FOUR-PIECE.0.ignore Stage 5.
       #
       # Added for the same reason the knowledge-graph step above was: it ran
       # only as a local pre-commit gate, so the rule was enforced solely by

@@ -3,7 +3,7 @@
 **Status:** Proposed. Design only; no compiler code changed by this document.
 
 Companion reading: `FORWARD-COLLECTION-PHASES.10.md`, `FORWARD-COLLECTION-TRAPS.0.md`,
-`PARAM-GUARD-SKIP-MISCOMPILE.0.md`, `dynamic-modality-report.10.md`, `P7-ENDGAME.10.md`.
+`legacy/PARAM-GUARD-SKIP-MISCOMPILE.0.ignore`, `legacy/dynamic-modality-report.10.ignore`, `legacy/P7-ENDGAME.10.ignore`.
 
 ---
 
@@ -111,7 +111,7 @@ non-refinement type.
   door to the census regression).
 - For a **predicate/refinement** slot (`def Big (Integer gt 10)` threaded as a param
   *type*), the user-fn guard enforces the NOMINAL type only (see
-  `PARAM-GUARD-SKIP-MISCOMPILE.0.md` and the carve at `engine.go` ~8349‑8357). A
+  `legacy/PARAM-GUARD-SKIP-MISCOMPILE.0.ignore` and the carve at `engine.go` ~8349‑8357). A
   nominally-typed-but-predicate-failing value passes the guard yet the interpreter
   raises → unsound.
 
@@ -135,7 +135,7 @@ all valid code compiles, no exceptions):** universal full compilation of every
 unsound and so needs a different mechanism than the one designed here; any change to
 `genArgs`/interior body carriers; any change to overload ranking; a generalized
 non-terminal interpreter re-dispatch (which would reintroduce the interpreter
-dependency `P7-ENDGAME.10.md` is deleting).
+dependency `legacy/P7-ENDGAME.10.ignore` is deleting).
 
 **Honest framing.** "The redesign" = full compilation for the concrete-slot,
 single-overload subset (the reported bug and most real code) + **refusal** for the

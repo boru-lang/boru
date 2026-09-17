@@ -6,9 +6,9 @@ package parser_test
 // NO code — they read the same files and each decodes the escape notation
 // and renders the value stream independently, exactly as core/spec's pair
 // does. That independence is the point: shared scaffolding can hide the same
-// bug from both engines (design/CORE-GO-TS-DEFECTS.0.md, blind spot 9), and
+// bug from both engines (design/legacy/CORE-GO-TS-DEFECTS.0.ignore, blind spot 9), and
 // a parser corpus with a shared reader would hide precisely the class of
-// defect design/TS-PARITY-AUDIT.0.md found.
+// defect design/legacy/TS-PARITY-AUDIT.0.ignore found.
 //
 // Six files, six contracts (lex.tsv and data.tsv have their own strict
 // runners in lexspec_test.go and dataspec_test.go because they render

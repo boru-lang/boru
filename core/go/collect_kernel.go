@@ -386,7 +386,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// Paren expression value (paren-nesting Step 3): expand it back to
 		// its OpenParen … CloseParen marker span in place, then re-process
 		// — the IsOpenParen branch above collapses it on THIS engine. See
-		// design/PAREN-REPRESENTATION.9.md Step 3.
+		// design/legacy/PAREN-REPRESENTATION.9.ignore Step 3.
 		if IsParenExpr(tok) {
 			// Step 4: a quote-captured ParenExpr (already Quoted) or a
 			// raw-capture forward position is left unevaluated so the
@@ -575,7 +575,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// position — a word stays a Word, a paren/list/literal stays
 		// as-is — with no resolution, no dispatch, no Word→Atom
 		// coercion, and no function-word boundary. The operand is
-		// captured unevaluated. See design/MACROS-PHASE1.10.md §3.
+		// captured unevaluated. See design/legacy/MACROS-PHASE1.10.ignore §3.
 		if sig.FormArgs != nil && sig.FormArgs[fwd] {
 			positions[fwd] = scanIdx
 			fwd++
@@ -740,7 +740,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// carrier (e.g. `set (quote name) v`) DOES conform and still
 		// matches. Inert at runtime (operands are concrete there). Mirrors
 		// the stack-phase and positionalMatch /q guards. See
-		// design/module-fn-checkstate-ownership.2.md.
+		// design/legacy/module-fn-checkstate-ownership.2.ignore.
 		if sig.QuoteArgs != nil && sig.QuoteArgs[fwd] && tok.Carrier && !IsConcrete(tok) && !tok.Parent.ConformsTo(TAtom) {
 			break
 		}

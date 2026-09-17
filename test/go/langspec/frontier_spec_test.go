@@ -139,7 +139,7 @@ func TestFrontierSpecInterp(t *testing.T) {
 const docMod = `import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end `
 
 // hof* — shared def prefixes of the frontier-hof-audit.tsv rows (the
-// higher-order audit's §1 programs, design/HIGHER-ORDER-FUNCTIONS.0.md).
+// higher-order audit's §1 programs, design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore).
 // Must match the TSV rows byte-for-byte — the orphan arm catches drift.
 const (
 	hofSKI    = `def kk x:Any => [y:Any => [x]] end def ss f:Function => [g:Function => [x:Any => [(f x) (g x)]]] end def ii ((ss kk/v) kk/v) end `
@@ -265,7 +265,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// never delivers — one stage before the "residual shape beyond Stage 1"
 	// decline these rows used to surface. Same refusal, earlier and
 	// truer diagnosis.
-	// Re-diagnosed 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the region's
+	// Re-diagnosed 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the region's
 	// `M.dec` call fails dispatch, which is now an error-severity check
 	// diagnostic in the model-undermining class (dispatch did not resolve, so
 	// there is no call to compile) — the pipeline therefore refuses on the
@@ -617,7 +617,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 
 	// ───────────────────────────────────────────────────────────────────
 	// frontier-hof-audit.tsv — the higher-order audit's §1 programs
-	// (design/HIGHER-ORDER-FUNCTIONS.0.md §1, pinned 2026-08-21). Three
+	// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §1, pinned 2026-08-21). Three
 	// refusal families, all pre-existing and documented in the audit:
 	//
 	// (1) audit §5.8 / COMPILABLE-SUBSET.md §1: a curried

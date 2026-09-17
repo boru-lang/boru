@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Generic-types core tests (design/GENERICS.10.md Phase 1) — the
+// Generic-types core tests (design/legacy/GENERICS.10.ignore Phase 1) — the
 // invariants the TSV battery can't reach: placeholder-binding
 // hygiene across success and failure paths (plan decision D1), and
 // nested-schema binding isolation.

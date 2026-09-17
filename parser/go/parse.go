@@ -25,7 +25,7 @@ type parenGroup []any
 type unclosedParen struct{ items []any }
 
 // angleGroup represents a generics angle-bracket sugar group
-// (design/GENERICS.10.md Phase 6): `Box<Integer>` folds the receiver
+// (design/legacy/GENERICS.10.ignore Phase 6): `Box<Integer>` folds the receiver
 // name and the collected items into one node. The conversion emits ONE
 // structural sugar marker (ADR-012 amendment) carrying both
 // precomputed forms — the generic-def head params and the use-site
@@ -570,7 +570,7 @@ func groupModifier(item any) (base string, prefix, suffix []core.Value, ok bool)
 // pos is the source position of item (caller has already deSited it).
 //
 // Word-context paren groups become a single ParenExpr value (paren-nesting
-// Step 1, design/PAREN-REPRESENTATION.9.md), the same representation data
+// Step 1, design/legacy/PAREN-REPRESENTATION.9.ignore), the same representation data
 // context already uses. The engine evaluates it via evalParenExprResults
 // (Step 2 at the pointer, Step 3 in a forward window).
 func emitPrimary(dst *[]core.Value, item any, pos core.SrcPos, d *parseDepth) error {

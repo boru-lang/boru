@@ -6,7 +6,7 @@ import (
 	parser "github.com/boru-lang/boru/parser/go"
 )
 
-// Phase 1b (design/MACROS-PHASE1.10.md §3): FormArgs raw-form capture, tested in
+// Phase 1b (design/legacy/MACROS-PHASE1.10.ignore §3): FormArgs raw-form capture, tested in
 // isolation with a temp native that records its operands. The macro definer
 // (1c) reuses this; here we prove the capture mechanism independently.
 //

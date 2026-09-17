@@ -30,7 +30,7 @@ func NewCarrier(t *Type) Value {
 
 // NewDynamicCarrier constructs a bounded gradual carrier dynamic(t):
 // a carrier whose Parent is the BOUND t and whose Dynamic flag flips
-// matching to the not-disjoint rule (design/dynamic-modality-report.10.md).
+// matching to the not-disjoint rule (design/legacy/dynamic-modality-report.10.ignore).
 // dynamic(Any) is the classic gradual `any` — compatible with every
 // slot. Use this at an escape hatch where the checker has a best static
 // bound but cannot prove the exact type.

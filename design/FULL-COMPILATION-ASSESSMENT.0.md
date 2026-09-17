@@ -375,9 +375,9 @@ expensive to leave open:
 These are judgement estimates, calibrated on the rates in §3, the
 structure of the remainder in §4, and one piece of history the tree
 records: this is the fourth completion programme run against this
-compiler in ten weeks. `P7-ENDGAME.10.md` landed on 2026-07-04 claiming
-runtime independence; `RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md` (07-13)
-and `REFUSAL-CLOSURE.0.md` (07-15) each reached their own ratchet finish
+compiler in ten weeks. `legacy/P7-ENDGAME.10.ignore` landed on 2026-07-04 claiming
+runtime independence; `legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore` (07-13)
+and `legacy/REFUSAL-CLOSURE.0.ignore` (07-15) each reached their own ratchet finish
 lines ("census 6000/6000 native, refusals 0, bails 0"); and
 `FULL-COMPILATION.0.md` (08-25) opened by measuring that those zeroes hid
 184 rows and 959 entries of live interpretation. Each programme's finish

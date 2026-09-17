@@ -1,7 +1,7 @@
 # boru Language Specification: the higher-order audit's §1 programs, pinned
 # Format: input<TAB>expected<TAB>description
 #
-# Provenance: design/HIGHER-ORDER-FUNCTIONS.0.md §1 ("What works — the
+# Provenance: design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §1 ("What works — the
 # evidence"), the 2026-08-19 capability audit re-assessed 2026-08-21. Its
 # programs were transcripts — run on audit days, quoted verbatim, and
 # re-checked only when someone re-ran the note. These rows make the §1

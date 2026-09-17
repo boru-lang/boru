@@ -3,8 +3,8 @@
 How **hot code reloading** and **transparent compilation** coexist without
 making compiled code slower — the mechanism design that closes the gap
 between `HOT-CODE-LOADING.0.md` (reload as a protocol) and the shipped
-compiled-by-default execution story (`P7-ENDGAME.10.md`,
-`RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md`). Grounded in a survey of how
+compiled-by-default execution story (`legacy/P7-ENDGAME.10.ignore`,
+`legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore`). Grounded in a survey of how
 production VMs solve the same problem (§4) and an audit of boru's current
 freshness machinery (§2–3), including one **new, empirically confirmed
 divergence bug** (§3 F1). Suffix `.0`: design only, nothing here is
@@ -36,7 +36,7 @@ tier needs anyway.
 
 ### 2.1 The three compiled-unit kinds and their freshness
 
-(Per `REFUSAL-CLOSURE.0.md` §7, `RUNTIME-STAMPING.0.md`, and the emitter.)
+(Per `legacy/REFUSAL-CLOSURE.0.ignore` §7, `legacy/RUNTIME-STAMPING.0.ignore`, and the emitter.)
 
 | | whole-program `CALL_USER` unit | compile-time stored ref | runtime-stamped detached ref |
 |---|---|---|---|
@@ -80,7 +80,7 @@ at `do`/REPL/built binaries. The silence makes it worse, not better — a
 failure that hides itself is one nobody is tracking. Runtime stamping is
 armed on every compiled-mode request and kept armed across that
 interpreter re-run, so callbacks still earn the VM under a refused top
-level (`NET-COMPILE-FRONTIER.0.md` Addendum 6: mini-s3's driver refuses
+level (`legacy/NET-COMPILE-FRONTIER.0.ignore` Addendum 6: mini-s3's driver refuses
 whole-program — an open defect — while all 23 callback units run
 stamped); that bounds how much of the program the defect costs, it does
 not settle the defect. Stage J's end state makes refusal a compile error

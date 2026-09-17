@@ -301,14 +301,14 @@ type FnSig struct {
 	NoEvalMapArgs map[int]bool
 	// RawParens marks arg positions where a forward ParenExpr is captured
 	// RAW (not pre-evaluated) so the handler receives the paren as code.
-	// Opt-in; see Signature.RawParens and design/PAREN-REPRESENTATION.9.md.
+	// Opt-in; see Signature.RawParens and design/legacy/PAREN-REPRESENTATION.9.ignore.
 	RawParens map[int]bool
 	// FormArgs marks arg positions captured as a raw FORM — a generalization
 	// of RawParens (don't pre-eval a paren) and QuoteArgs (capture a bare word
 	// as data) to ANY operand: a word stays a Word, a paren/list/literal is
 	// captured unevaluated, with no def resolution, no dispatch, and no
 	// Word→Atom coercion. The macro definer sets it on every param so a macro
-	// receives its operands as code. See design/MACROS-PHASE1.10.md §3.
+	// receives its operands as code. See design/legacy/MACROS-PHASE1.10.ignore §3.
 	FormArgs map[int]bool
 
 	// --- Run implementation + dispatch metadata. ---
@@ -777,7 +777,7 @@ type FnDefInfo struct {
 	Anonymous bool
 	// Macro is true iff the FnDef was produced by the `macro` definer. A
 	// macro is an fn the expander runs on UNEVALUATED operand forms (every
-	// param is FormArgs raw-capture; §3 of design/MACROS-PHASE1.10.md), whose
+	// param is FormArgs raw-capture; §3 of design/legacy/MACROS-PHASE1.10.ignore), whose
 	// returned token list is spliced into the call site rather than left as a
 	// value. Read at dispatch (stepWord / execFnDefLiteral) to branch to the
 	// expander before normal forward collection. Unlike Anonymous (check-mode
@@ -820,7 +820,7 @@ type FnDefInfo struct {
 	// models the result by re-stepping exactly as runtime does.
 	//
 	// Macros are deliberately NOT covered: applying a macro is never a
-	// stack-value dispatch (design/MACROS-PHASE1.10.md §5, D4).
+	// stack-value dispatch (design/legacy/MACROS-PHASE1.10.ignore §5, D4).
 	Applied bool
 
 	// ArgsReversed marks a value built by UsurpFunction (the `usurp` word and
@@ -869,7 +869,7 @@ type FnDefInfo struct {
 	// fns. Dispatch admission rides the placeholder nodes' Behaviors;
 	// at each call the inferred bindings are installed as body-scoped
 	// type bindings so `of [T]` / `make (Box of [T])` resolve. See
-	// design/GENERICS.10.md Phase 4.
+	// design/legacy/GENERICS.10.ignore Phase 4.
 	Gen *GenSpecInfo
 	// Captured holds enclosing-fn-local bindings snapshotted at fn-
 	// construction time — the implementation of lexical closures.
@@ -1111,7 +1111,7 @@ type DisjunctInfo struct {
 // negation is the kernel's set-theoretic complement; together with
 // DisjunctInfo (union) and TandValues (intersection) it closes the type
 // algebra under Boolean operations — see
-// design/elixir-types-in-boru-report.10.md.
+// design/legacy/elixir-types-in-boru-report.10.ignore.
 type NegationInfo struct {
 	Inner Value
 }
@@ -1605,7 +1605,7 @@ type Value struct {
 	tmeta *typeMeta
 	// pos is the source position for error reporting, behind a pointer so
 	// the ~24 inline bytes of SrcPos (Row/Col/Src) don't ride on every
-	// Value copy — nil means "unknown" (design/INTERPRETER-SPEED-PLAN.10.md
+	// Value copy — nil means "unknown" (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore
 	// #1A, Pos follow-up). A position is minted once at parse time; the
 	// interpreter then THREADS it by copying the pointer (WithPos, the
 	// internal `.pos = other.pos` assignments), so no per-value SrcPos is
@@ -1670,7 +1670,7 @@ type Value struct {
 	// FailedDispatch marks a named Function value that a dispatch attempt
 	// left on the tape because no signature matched. CHECK MODE ONLY: at
 	// runtime the failure raises at the dispatch site
-	// (design/FN-VALUE-DISPATCH.0.md), so no such value survives. Analysis
+	// (design/legacy/FN-VALUE-DISPATCH.0.ignore), so no such value survives. Analysis
 	// continues past the finding, so the marker is how a later check-mode
 	// consumer tells dispatch wreckage from a value the program meant to
 	// produce (defWordExtension reads it).
@@ -1685,7 +1685,7 @@ type Value struct {
 	ReachGroup bool
 	Carrier    bool // static-typecheck carrier (type-only, Data stripped of concrete payload)
 	// Dynamic marks a carrier as a bounded gradual value (Elixir-style
-	// dynamic(T) — design/dynamic-modality-report.10.md). Implies Carrier.
+	// dynamic(T) — design/legacy/dynamic-modality-report.10.ignore). Implies Carrier.
 	// Its Parent/Data is a BOUND, not a proven type: at a signature
 	// boundary it matches the slot unless PROVABLY disjoint from it
 	// (not-disjoint rule), rather than by strict ConformsTo. Set only on
@@ -1744,7 +1744,7 @@ type typeMeta struct {
 	// inhabitant, …), nil for kinds with no structure (builtins, bare
 	// refine newtypes) and for adopted aliases (their content is the
 	// adopted node's own). It makes the declaration's structure
-	// recoverable FROM the node (design/TYPE-REPRESENTATION.1.md §N2),
+	// recoverable FROM the node (design/legacy/TYPE-REPRESENTATION.1.ignore §N2),
 	// generalizing the per-kind recoveries (SurfaceInfoOf, SchemaInfoOf,
 	// UnionCarrierForType, ResolveTypeLiteralDef) into one accessor,
 	// TypeBody. Stamped once at install; shared through the tmeta
@@ -1783,7 +1783,7 @@ func (v Value) Behavior() TypeBehavior {
 
 // TypeBody returns the structural content the type node was declared
 // with, and whether one was recorded — the node-side recovery of the
-// declaration's structure (design/TYPE-REPRESENTATION.1.md §N2). A
+// declaration's structure (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). A
 // kind with no structure (a builtin, a bare refine newtype) and an
 // ordinary value both answer false. The returned Value is a copy; the
 // stored content is written once at install and never mutated.
@@ -1809,7 +1809,7 @@ func (v *Value) SetTypeBody(body Value) {
 // bases, describe/inspect schema views, the type-algebra words — call
 // this at entry so a name (which evaluates to its node after the
 // Stage 2 flip) and an inline body are one case
-// (design/TYPE-REPRESENTATION.1.md §N2).
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 func TypeContentOf(v Value) (Value, bool) {
 	if IsBareTypeNode(v) {
 		return v.TypeBody()
@@ -2099,7 +2099,7 @@ func IDPrefixForType(t *Type) string {
 // consumer class — the emit recorder's provenance maps, which key
 // producedBy / locals / captures on the ID minted at value creation and
 // shared across copies — and that machinery only runs during a pass. A
-// full audit (design/INTERPRETER-PYTHON-PARITY.10.md Phase B) found NO
+// full audit (design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore Phase B) found NO
 // run-mode reader of a concrete value's ID, so minting is gated: pure
 // runtime execution skips GenerateID entirely (~21% of all interpreter
 // allocations), while any live pass anywhere in the process keeps every
@@ -3795,7 +3795,7 @@ func AsMutableMap(v Value) (*OrderedMap, error) {
 func (v Value) String() string {
 	// A dynamic carrier renders as dynamic(<bound>) so the gradual
 	// modality is legible in traces / `boru check` output instead of
-	// masquerading as its bare bound (design/dynamic-modality-report.10.md).
+	// masquerading as its bare bound (design/legacy/dynamic-modality-report.10.ignore).
 	// Render the bound by clearing the flag and recursing.
 	if v.Dynamic {
 		inner := v

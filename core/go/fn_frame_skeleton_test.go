@@ -1,7 +1,7 @@
 package core
 
 // Tests for the leaf-fn frame-skeleton memoization in buildFnBodyHandler
-// (design/INTERPRETER-PYTHON-PARITY.10.md Phase A / F5-full): the constant
+// (design/legacy/INTERPRETER-PYTHON-PARITY.10.ignore Phase A / F5-full): the constant
 // token skeleton is built once per signature and copied per call with the
 // arg cells patched, and the per-call args list is elided (a shared empty
 // list) when the body provably never reads `args`.

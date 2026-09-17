@@ -65,7 +65,7 @@ def z fn [[][Integer][42]]  def h fn [[f:Function][Any][f/v]]  typeof ((h z/v))	
 def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an application is ASKED for
 #
 # §5  a failed dispatch is LOUD, wherever the value would have gone
-#     (design/FN-VALUE-DISPATCH.0.md). The old contract marked the value
+#     (design/legacy/FN-VALUE-DISPATCH.0.ignore). The old contract marked the value
 #     and let the end-of-run drain judge it, so any consumer at all — a
 #     `print`, a `def`, an Any slot — silenced a real dispatch failure.
 #     The judgement is now made where the call is, so what happens to the
@@ -85,7 +85,7 @@ def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an
 #     check mode evaluates a code body's parens on its own straight line, so
 #     it reports the call as an error while the run traps it, and a row would
 #     read as a checker false positive. The divergence is pre-existing and
-#     unchanged by this contract (design/FN-VALUE-DISPATCH.0.md §6).
+#     unchanged by this contract (design/legacy/FN-VALUE-DISPATCH.0.ignore §6).
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w "x"	ERROR:uncalled_function	a named export called with a mismatched arg raises AT THE CALL
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  print (M.w "x")	ERROR:uncalled_function	and a consumer around it does not silence it — the old drain never fired here
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def y (M.w "x")  y	ERROR:uncalled_function	nor does binding the result with def

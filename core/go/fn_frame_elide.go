@@ -1,7 +1,7 @@
 package core
 
 // Tail-call elimination for direct self-recursion
-// (design/TCO-STAGED.10.md Stages 3 and 4a).
+// (design/legacy/TCO-STAGED.10.ignore Stages 3 and 4a).
 //
 // When a fn-body dispatch is a direct self-recursive tail call, the
 // enclosing frame's cleanup tail — already on the tape, already
@@ -151,7 +151,7 @@ func (e *Engine) tcoEligible(scan frameTailScan, sig *Signature, defMutsBefore i
 	// truncation removes nothing — trivially covered, no need to walk the
 	// def table. Without this shortcut the nil Snapshot would read every
 	// depth as 0 and spuriously decline eager teardown, regressing tail
-	// recursion (design/INTERPRETER-SPEED-PLAN.10.md #5).
+	// recursion (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
 	if !dcInfo.SkipCleanup && !e.Registry.Defs.TruncationCoveredBy(dcInfo.Snapshot, covered) {
 		return false
 	}

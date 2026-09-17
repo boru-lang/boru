@@ -1,7 +1,7 @@
 package core
 
 // IsTypeContent — the sealed-payload half of the one type-recognition
-// seam (design/TYPE-REPRESENTATION.1.md §N4). Every Payload variant
+// seam (design/legacy/TYPE-REPRESENTATION.1.ignore §N4). Every Payload variant
 // answers "am I a TYPE's structural content?" here, replacing the
 // 18-arm shape enumeration IsTypeBody used to carry. The answers below
 // mirror that enumeration exactly (the per-shape predicates' payload

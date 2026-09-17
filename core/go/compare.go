@@ -649,7 +649,7 @@ func DeepEqual(a, b Value) bool {
 	// Point even with equal visible fields — and field-wise deep
 	// equality. The key set is the union of schema fields and own
 	// fields; both instance kinds store a flat Fields map, so a lookup
-	// is a plain map hit. See design/CLASS-OBJECT.10.md.
+	// is a plain map hit. See design/legacy/CLASS-OBJECT.10.ignore.
 	if IsFlatInstance(a) && IsFlatInstance(b) {
 		if !a.Parent.Equal(b.Parent) {
 			return false

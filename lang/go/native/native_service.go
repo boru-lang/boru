@@ -24,7 +24,7 @@ import (
 // next handler down the chain (SERVICES.0.md §1 "prior"/"wrap").
 //
 // Divergences from the RFC (recorded in
-// design/NETWORK-IMPLEMENTATION-PLAN.0.md):
+// design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore):
 //   - The state accessor is `state-of` (not `state`): handler params
 //     cannot shadow a built-in word, and the RFC's handler contract
 //     names its second param `state` in every example.

@@ -6,7 +6,7 @@ import (
 )
 
 // bytecode_quote_lambda_test.go pins the quote-polarity screen
-// (design/checker-compiler-completeness-review.0.md §2.2). An Atom-typed
+// (design/legacy/checker-compiler-completeness-review.0.ignore §2.2). An Atom-typed
 // lambda param is a quote-capture slot the runtime never binds from a
 // delivered stack value, so the interpreter leaves such a lambda as DATA in
 // the HOF callback position. Until 2026-08-02 the compiled path admitted it

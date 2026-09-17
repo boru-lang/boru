@@ -2,7 +2,7 @@ package compiler
 
 import core "github.com/boru-lang/boru/core/go"
 
-// Runtime (detached) fn-unit stamping — design/RUNTIME-STAMPING.0.md.
+// Runtime (detached) fn-unit stamping — design/legacy/RUNTIME-STAMPING.0.ignore.
 //
 // The compile-time store-fn bake (RecordCallOperands → compileStoredFnUnit →
 // stampCompiledRef) stamps a CompiledFnRef only onto a fn value that is a

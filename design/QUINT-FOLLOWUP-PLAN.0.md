@@ -2,8 +2,8 @@
 
 **Status:** plan (`.0`, draft). No code change. Nothing here is an accepted
 decision; the waves are a proposal for a maintainer to accept, reorder, or
-reject. Companion to [`QUINT-COMPARISON.0.md`](QUINT-COMPARISON.0.md) and
-[`roc-in-boru-report.0.md`](roc-in-boru-report.0.md).
+reject. Companion to [`legacy/QUINT-COMPARISON.0.ignore`](legacy/QUINT-COMPARISON.0.ignore) and
+[`legacy/roc-in-boru-report.0.ignore`](legacy/roc-in-boru-report.0.ignore).
 
 **Method.** Eleven work items, each scoped by an independent pass that
 read the code and ran the binary, then sequenced, then criticised. Claims
@@ -15,10 +15,10 @@ kept — §9 lists three.
 
 ## 1. What changed while the surveys were being written
 
-Two things arrived after `QUINT-COMPARISON.0.md` was drafted, and both
+Two things arrived after `legacy/QUINT-COMPARISON.0.ignore` was drafted, and both
 move the plan's centre of gravity.
 
-**`roc-in-boru-report.0.md` landed** with its own ranked list (A1–A14) and
+**`legacy/roc-in-boru-report.0.ignore` landed** with its own ranked list (A1–A14) and
 four reproduced defects. It is not a parallel queue — it converges with
 the Quint survey on four items, and independent convergence is the
 strongest prioritisation evidence available here:
@@ -309,7 +309,7 @@ do not interleave them with behaviour-change reviews.
 
 ## 9. Corrections to the briefs, and defects recorded in passing
 
-The scoping passes were given briefs drawn from `QUINT-COMPARISON.0.md`.
+The scoping passes were given briefs drawn from `legacy/QUINT-COMPARISON.0.ignore`.
 Three were wrong, and the corrections are kept here rather than quietly
 absorbed:
 
@@ -330,7 +330,7 @@ absorbed:
    heuristic instead of the signature's `Returns`. This is why
    W-DESCRIBE-JSON must separate `returns` from `returns_inferred` rather
    than publishing the guess as fact — recorded in
-   `QUINT-COMPARISON.0.md` §6.7.
+   `legacy/QUINT-COMPARISON.0.ignore` §6.7.
 
 **Latent defects found while scoping, not acted on here.** Each needs its
 own record and decision:

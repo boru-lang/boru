@@ -10,11 +10,11 @@ import (
 )
 
 // The C1 effect fence on RunCompiled's two fallback arms (eng effects.go,
-// design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md): a silent interpreter
+// design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore): a silent interpreter
 // re-run is permitted only while no observable effect escaped since before
 // the check pass — RestoreForCompile rolls back registry scopes but cannot
 // un-print, so a re-run after an effect DUPLICATES it (the L-DUP class,
-// design/VOXGIG-COMPILE-LEAVES.2.md — the whole trie smoke suite printed
+// design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore — the whole trie smoke suite printed
 // twice). The pure-value differential corpus never exercises
 // emit-then-fall-back, so these are the pins.
 

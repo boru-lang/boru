@@ -66,7 +66,7 @@ func IsDisjunctTypeNode(v Value) bool {
 // (the typed-def swap hazard). A concrete non-member fails
 // definitively; a type-level pair defers to the structural rule. The
 // Unify capability every membership kind carries
-// (design/TYPE-REPRESENTATION.1.md §N3), so `def x:Maybe 5` against the
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §N3), so `def x:Maybe 5` against the
 // node constraint runs the alternatives.
 func (d *DisjunctUnifier) Unify(a, b Value) (Value, *UnifyError) {
 	// The alternatives rule decides whenever exactly one side IS this

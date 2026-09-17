@@ -17,7 +17,7 @@ import (
 // typeNatives covers the type-system words: refine, pathof, enum,
 // typeof, is, teq, tpartial, guard, base, tor, tand, tany, tall,
 // convert. New type ops follow the `t`-prefix convention — see
-// design/TYPE-OPERATIONS.8.md.
+// design/legacy/TYPE-OPERATIONS.8.ignore.
 //
 // `Resource` and `Entity` (the builtin object types) are NOT installed
 // via NativeFunc — they are user-typed values pushed onto the type
@@ -25,7 +25,7 @@ import (
 var typeNatives = []NativeFunc{
 	{
 		// refine is the uniform type constructor — see
-		// design/TYPE-UNIFORM.10.md. `refine BaseType arg`
+		// design/legacy/TYPE-UNIFORM.10.ignore. `refine BaseType arg`
 		// builds a (sub)type:
 		//   class {fields}              → class type (see the `class` word)
 		//   refine <classtype> {fields} → class subtype (inheritance)
@@ -68,7 +68,7 @@ var typeNatives = []NativeFunc{
 		// the value's own type). Instances are flat (defaults resolved
 		// eagerly at make) and sealed (writing an undeclared field is a
 		// sealed_field error). Subclassing reuses refine:
-		// `def Bar refine Foo {…}`. See design/CLASS-OBJECT.10.md.
+		// `def Bar refine Foo {…}`. See design/legacy/CLASS-OBJECT.10.ignore.
 		Name: "class",
 
 		Signatures: []Signature{{
@@ -83,7 +83,7 @@ var typeNatives = []NativeFunc{
 		// of operation name → fnsig shape with Self marking the
 		// conforming type's positions. `def Shape surface {…}` mints it
 		// under Ideal/Surface; `<Type> exposes Shape` declares (and
-		// loudly checks) conformance. See design/SURFACES.10.md.
+		// loudly checks) conformance. See design/legacy/SURFACES.10.ignore.
 		Name: "surface",
 
 		Signatures: []Signature{{
@@ -155,7 +155,7 @@ var typeNatives = []NativeFunc{
 			// Membership reads the VALUE slot's lattice tag / runs the type's
 			// own Match predicate over it — a fn value there (`(+re/…/) is
 			// (MiniLang.Re)`, module-minilang.tsv) is DATA, never invoked
-			// (Stage M2d, design/STAGE3-INLINING-DESIGN-ROUND.0.md). The TYPE
+			// (Stage M2d, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The TYPE
 			// slot (position 0) is deliberately NOT inert: a concrete Function
 			// there is a PREDICATE the handler INVOKES via RunPredicate
 			// (`5 is Positive`), so whole-sig CompileReadsFn would miscompile —
@@ -424,7 +424,7 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 	// A NAMED base or argument evaluates to its minted node (the Stage
 	// 2 flip); the kind dispatch and the constructors operate on the
 	// declared structural content, which the node records
-	// (design/TYPE-REPRESENTATION.1.md §N2). Bare bases with no content
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). Bare bases with no content
 	// (refine Integer, refine P) pass through unchanged.
 	if body, ok := TypeContentOf(base); ok && IsBareTypeNode(base) {
 		base = body
@@ -458,7 +458,7 @@ func refinePlain(base, arg Value, r *Registry) ([]Value, error) {
 // paired `def Name` then mints a fresh subtype parented at BaseType
 // (InstallType → MintType). `def Foo refine List` thus produces a
 // distinct List subtype that can serve as a dispatch surface for
-// `behave` — see design/TYPE-UNIFORM.10.md.
+// `behave` — see design/legacy/TYPE-UNIFORM.10.ignore.
 func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	base := args[0]
 	if !IsTypeBody(base) {
@@ -479,7 +479,7 @@ func refineBareHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		// predicate constraint), return that content verbatim so the
 		// paired `def` re-enters its branch dispatch exactly as it did
 		// when the name denoted the body — the newtype inherits the
-		// schema (design/TYPE-REPRESENTATION.1.md §N2).
+		// schema (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 		if content, ok := TypeContentOf(base); ok {
 			return []Value{content}, nil
 		}
@@ -506,7 +506,7 @@ func installIdeals(r *Registry) {
 			// An existing class type builds a subtype of it
 			// (`def Bar refine Foo {…}`). The bare-Object form is
 			// REMOVED: classes are defined with the `class` word
-			// (design/CLASS-OBJECT.10.md — no deprecated aliases).
+			// (design/legacy/CLASS-OBJECT.10.ignore — no deprecated aliases).
 			if IsClassType(base) {
 				return objectWithParentHandler([]Value{arg, base}, nil, nil, r)
 			}
@@ -799,7 +799,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 	// A NAMED structural type RHS evaluates to its minted node (the
 	// Stage 2 flip); recover the declared content so the redirect and
 	// Unify arms below see the body shapes they have always answered
-	// (design/TYPE-REPRESENTATION.1.md §N2). The Object/Table/Micron
+	// (design/legacy/TYPE-REPRESENTATION.1.ignore §N2). The Object/Table/Micron
 	// redirect kinds resolve unconditionally — their `is` verdict is
 	// the tag-identity redirect below, which only their content shape
 	// selects. Other nodes whose kind enforces membership through the

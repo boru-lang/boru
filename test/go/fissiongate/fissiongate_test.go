@@ -1,6 +1,6 @@
 // fissiongate_test.go gates the type-handling code against re-fission.
 //
-// The type-node fusion (issue #392, design/TYPE-REPRESENTATION.1.md)
+// The type-node fusion (issue #392, design/legacy/TYPE-REPRESENTATION.1.ignore)
 // established one rule: a named type IS its minted lattice node, and every
 // consumer routes membership and constraint handling through the node's
 // Behavior — Match/Unify keyed by core.HasConstraintUnify — never through
@@ -57,7 +57,7 @@ var kindPredicates = map[string]bool{
 var pinnedKindRoutingSites = map[string]int{
 	// The `is` word's strict-disjunct routing: dispatch through a union
 	// param stays loose on the newtype-alternative swap while `is` stays
-	// strict — the DIVERGENCE PIN of design/TYPE-REPRESENTATION.1.md §6.
+	// strict — the DIVERGENCE PIN of design/legacy/TYPE-REPRESENTATION.1.ignore §6.
 	"lang/go/native/native_type.go": 2,
 	// (compiler/go/emit.go was pinned at 1 — the recorder refusing a
 	// predicate-type node at a fn-invoking word "exactly as the fn value it
@@ -69,7 +69,7 @@ var pinnedKindRoutingSites = map[string]int{
 	// the table to be tightened.)
 	// The typed-def gate splits a Function-parented constraint from a
 	// predicate-type node so `def x:T v` runs the predicate rather than
-	// binding the fn shape — design/TYPE-REPRESENTATION.1.md §6.
+	// binding the fn shape — design/legacy/TYPE-REPRESENTATION.1.ignore §6.
 	"basic/go/native_definition.go": 1,
 }
 

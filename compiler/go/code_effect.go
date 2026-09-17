@@ -5,7 +5,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Typed code values — stage 1 of design/checker-precision-fronts.0.md §1
+// Typed code values — stage 1 of design/legacy/checker-precision-fronts.0.ignore §1
 // (the `do` escape hatch). A QUOTED code list stored in data (a dispatch
 // table, a rule list, a callback slot) is statically described by its
 // STACK EFFECT — Code[in → out]. The effect is computed by the same

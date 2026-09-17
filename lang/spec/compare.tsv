@@ -710,7 +710,7 @@ def Cat class {color:String} (make Cat {color:'a'}) tcmp (make Cat {color:'a'})	
 def Person refine Record [name:String age:Integer] Person tcmp Person	0
 def Person refine Record [name:String age:Integer] def House refine Record [addr:String] Person tcmp House	1
 def Person refine Record [name:String age:Integer] def House refine Record [addr:String] House tcmp Person	-1
-def Person refine Record [name:String age:Integer] (make Person {name:'a' age:1}) tcmp Person	-1	# Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6, tcmp row): the name denotes its minted node, which orders in the type band
+def Person refine Record [name:String age:Integer] (make Person {name:'a' age:1}) tcmp Person	-1	# Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6, tcmp row): the name denotes its minted node, which orders in the type band
 def Person refine Record [name:String age:Integer] Person tcmp Record	-1	# Person is a Map-typed body (Node band) — Record kernel is in Ideal band
 def Person refine Record [name:String age:Integer] Record tcmp Person	1
 

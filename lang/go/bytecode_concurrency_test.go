@@ -10,7 +10,7 @@ import (
 	eng "github.com/boru-lang/boru/eng/go"
 )
 
-// Stage 6 island reuse (design/boru-bytecode-plan.0.md Stage 6): the VM
+// Stage 6 island reuse (design/legacy/boru-bytecode-plan.0.ignore Stage 6): the VM
 // reuses ONE sub-engine across every OpFallback in a RunProgram,
 // reloading its tape in place rather than allocating a fresh engine+tape
 // per island — a hot fallback island in a loop is no longer a
@@ -50,7 +50,7 @@ func TestCompiledIslandReuseNoStateLeak(t *testing.T) {
 	}
 }
 
-// Stage 5 concurrency (design/boru-bytecode-plan.0.md §Stage 5): a
+// Stage 5 concurrency (design/legacy/boru-bytecode-plan.0.ignore §Stage 5): a
 // compiled Program and all its tables (Code, Consts, Types, Sigs,
 // Fallbacks, Fns, Debug) are IMMUTABLE after compile, so concurrent
 // executions can share one *Program. All mutable VM state — the

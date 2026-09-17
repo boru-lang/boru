@@ -507,7 +507,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 	}
 	narrowDynamicUses(r, word, sig, args)
 	// Per-alternative dispatch for strict disjunct inputs
-	// (design/checker-accuracy-review.10.md A1). matchSignature tested
+	// (design/legacy/checker-accuracy-review.10.ignore A1). matchSignature tested
 	// the disjunct as a single value, so the matched sig may not be
 	// the one runtime dispatch takes for every alternative — e.g.
 	// Integer|String reaches add's [Scalar Scalar]→String catch-all
@@ -800,7 +800,7 @@ func isConcreteContainerReturn(v core.Value) bool {
 // value where a value-returning sibling overload is reachable (gated to
 // consumed results under a real compile — see CarrierResults' doc).
 func applyGradualContagion(r *core.Registry, word string, args []core.Value, out []core.Value, pos core.SrcPos, tailConsumed bool) []core.Value {
-	// Gradual contagion (design/dynamic-modality-report.10.md): a result
+	// Gradual contagion (design/legacy/dynamic-modality-report.10.ignore): a result
 	// derived from a dynamic carrier is itself dynamic, so the modality
 	// flows downstream instead of dying after one dispatch. The bound is
 	// the sig's declared return (the first-cut result; the full
@@ -867,7 +867,7 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 			}
 			out[i].Dynamic = true
 		}
-		// First-match partition (design/dynamic-modality-report.10.md): a
+		// First-match partition (design/legacy/dynamic-modality-report.10.ignore): a
 		// dynamic bound can reach MULTIPLE of the word's overloads, whose
 		// returns may differ. The single matched-sig return is then too
 		// narrow — it would wrongly reject a downstream use of one of the
@@ -1735,7 +1735,7 @@ func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) [
 }
 
 // narrowDynamicUses implements narrowing-through-use
-// (design/dynamic-modality-report.10.md): when a dynamic carrier resolved
+// (design/legacy/dynamic-modality-report.10.ignore): when a dynamic carrier resolved
 // from a binding is consumed by a typed slot, the binding tightens to
 // dynamic(bound ∩ slot) for downstream uses, so a later provably-disjoint
 // use of the same name fails the match rule and is flagged — no explicit
@@ -2047,7 +2047,7 @@ func ReturnsFreshInstance(mapping ...int) core.ReturnsFunc {
 				// A NAMED target evaluates to its minted node (the Stage 2
 				// flip); the structural content the branches below inspect —
 				// a generic schema, a record body — is the node's recorded
-				// declaration (design/TYPE-REPRESENTATION.1.md §N2).
+				// declaration (design/legacy/TYPE-REPRESENTATION.1.ignore §N2).
 				target := args[m]
 				if content, ok := core.TypeContentOf(target); ok && core.IsBareTypeNode(target) {
 					target = content
@@ -2287,7 +2287,7 @@ const loopAnalysisRounds = 3
 const FnAnalysisQuota = 64
 
 // AnalyseLoopBody analyses a loop body to a bounded fixed point
-// (design/checker-accuracy-review.10.md A4). Each round binds the
+// (design/legacy/checker-accuracy-review.10.ignore A4). Each round binds the
 // loop's own names (iterator …) as carriers, runs the body, and
 // JOINS the body's net def additions back into the enclosing
 // bindings — "the loop may run zero times" is the join with the
@@ -2489,7 +2489,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 // scopeID is the AnalysisScopeID of the registry whose body is being
 // analysed. It namespaces the key so a module sub-registry's fn cannot
 // alias a same-named, same-positioned parent fn once a check pass is
-// shared across registries (design/module-fn-checkstate-ownership.1.md
+// shared across registries (design/legacy/module-fn-checkstate-ownership.1.ignore
 // §5a) — the position suffix alone does not disambiguate, because parent
 // and module are parsed from independent sources whose positions overlap.
 // core_helpers' compile hook must build the SAME key (its FnSummaries
@@ -2785,7 +2785,7 @@ func isCallbackBodyName(name string) bool {
 //
 // declared is the signature's declared return types (nil =
 // unchecked). It is the induction hypothesis for recursion
-// (design/checker-accuracy-review.10.md A2): an in-flight recursive
+// (design/legacy/checker-accuracy-review.10.ignore A2): an in-flight recursive
 // call yields carriers of the DECLARED returns — the end-of-body
 // return check is the matching proof obligation — instead of the
 // everything-matches Any. For unchecked fns the Any bail-out

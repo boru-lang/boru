@@ -1382,7 +1382,7 @@ restricted words refuse. See
 > Integer [add nn x])]` then `def c (mkc n)` snapshots today's `n`
 > permanently. Pinned in `lang/spec/frontier/frontier-hof-audit.tsv`
 > §8; recorded as NUR097, and discussed with the cross-language
-> positioning in `design/HIGHER-ORDER-FUNCTIONS.0.md` §5.6.
+> positioning in `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.6.
 
 #### Splices and spread — `word`
 
@@ -2198,7 +2198,7 @@ iota 6 ArrayUtil.reshape [2,3]        # returns [[0 1 2] [3 4 5]]
 ### The `boru:fn-util` module
 
 The point-free function vocabulary
-(`design/HIGHER-ORDER-FUNCTIONS.0.md` §6.4). Every word takes function
+(`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §6.4). Every word takes function
 VALUES — pass a named fn as `name/v` (or a bare name into the
 `Function`-typed slots) — and the constructors return ordinary
 first-class `Function` values: storable, passable, applied like any fn.

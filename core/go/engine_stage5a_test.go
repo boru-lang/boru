@@ -879,7 +879,7 @@ func TestS5AStepWordTypeBodyPlain(t *testing.T) {
 
 func TestS5AStepWordTypeBodyFnShape(t *testing.T) {
 	// A type name denotes its lattice NODE (the Stage 2 flip of
-	// design/TYPE-REPRESENTATION.1.md), so a predicate-type name pushes
+	// design/legacy/TYPE-REPRESENTATION.1.ignore), so a predicate-type name pushes
 	// the bare node — inert by nature, no Quoted mark needed (the body
 	// push this replaced had to be Quoted so the fn would not dispatch).
 	r := covRegistry(t, nil)

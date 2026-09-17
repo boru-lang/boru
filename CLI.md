@@ -128,7 +128,7 @@ entries; crossing 90/95/99% of it warns on stderr and exceeding it fails
 loudly with `[boru/tape_exhausted]` — the engine never consumes unbounded
 space. Raise `tape:initial` (or `tape:grows`) for a legitimately large
 program (deep recursion, huge generated programs); lower it to trip a
-runaway sooner. See `design/TAPE-DATA-STRUCTURE.10.md`.
+runaway sooner. See `design/legacy/TAPE-DATA-STRUCTURE.10.ignore`.
 
 
 ### Bytecode compilation

@@ -8,7 +8,7 @@ import (
 )
 
 // TestFnValueApplicationCompiles pins the fn-value application milestone
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md Stage M2, boru-bytecode-plan.0.md
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore Stage M2, boru-bytecode-plan.0.md
 // §2.4b): the `OpCallDynamic`-family lowerings compile every fn-value
 // application SHAPE the corpus exercises. Positive rows must produce a native
 // Program (no interpreter island); the deliberate miscompile-E auto-dispatch

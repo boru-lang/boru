@@ -3005,7 +3005,7 @@ func TestRecordTypeWithDef(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("got %d values, want 1", len(result))
 	}
-	// The name denotes its NODE (design/TYPE-REPRESENTATION.1.md
+	// The name denotes its NODE (design/legacy/TYPE-REPRESENTATION.1.ignore
 	// Stage 2); the record schema stays recoverable from it.
 	if result[0].String() != "Point" {
 		t.Errorf("Point must denote its node, got %s", result[0].String())

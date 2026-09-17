@@ -1,9 +1,9 @@
 # CONTENT-ADDRESSING.0 — identity by hash, and what it would actually take
 
 > **Status: discovery / design note — not implemented.** It consolidates
-> two documents into one design: `unison-in-boru-report.0.md` (the
+> two documents into one design: `legacy/unison-in-boru-report.0.ignore` (the
 > applicability study — *should* boru do this?) and
-> `unison-hash-identity-probe.0.md` (the proof of concept — *can* it,
+> `legacy/unison-hash-identity-probe.0.ignore` (the proof of concept — *can* it,
 > today?). Read this one first; the other two are the argument and the
 > measurements behind it.
 >
@@ -310,7 +310,7 @@ programme and should not be entered by accident.
   as a surface rule.
 - **Inlining the closure** (§4.3 option c) — destroys late binding.
 - **Abilities / algebraic effects.** Out of scope here; analysed in
-  `effect-oriented-programming-in-boru-report.0.md`, whose idea #1 (effect
+  `legacy/effect-oriented-programming-in-boru-report.0.ignore`, whose idea #1 (effect
   rows inferred by the carrier checker) is the same design Unison ships,
   and whose recorded ceiling — no multi-shot continuations under the tape
   model — is unaffected by anything in this note. Phase 4's test-caching
@@ -319,9 +319,9 @@ programme and should not be entered by accident.
 
 ## 7. Evidence index
 
-- `unison-in-boru-report.0.md` — the applicability study, corrected in
+- `legacy/unison-in-boru-report.0.ignore` — the applicability study, corrected in
   place by the probe.
-- `unison-hash-identity-probe.0.md` — the measurements (P1–P10).
+- `legacy/unison-hash-identity-probe.0.ignore` — the measurements (P1–P10).
 - `scripts/hash-identity-probe.boru`, `scripts/hash-identity-probe.sh` —
   the runnable probe.
 - `RELOAD-INVALIDATION.0.md` §1, §2.2, §3 (F1), §4, §5 — the hot-path

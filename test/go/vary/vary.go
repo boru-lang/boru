@@ -1,7 +1,7 @@
 // Package vary generates STRUCTURED VARIATIONS of currently-passing spec
 // rows and classifies each variant through the dual interpreter/compiler
 // pipeline, to find compiler gaps the curated corpus does not exercise
-// (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, the test-first frontier
+// (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, the test-first frontier
 // suite's WS3).
 //
 // The idea: every lang/spec row is a program a human thought to write. Each

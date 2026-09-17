@@ -5,7 +5,7 @@ package check
 // fallback positions), check-result splicing, mixed-form advisories,
 // stranded-operand refusals, and the check-state sharing brackets.
 // Extracted from engine.go in Stage 0c of the four-piece split
-// (design/ENG-FOUR-PIECE.0.md): this file is the CHECK piece's half of
+// (design/legacy/ENG-FOUR-PIECE.0.ignore): this file is the CHECK piece's half of
 // the interpreter's dispatch machinery and moves behind seam S1
 // (AnalysisHooks) when the packages cut.
 
@@ -455,7 +455,7 @@ func spliceAnonCheckResult(e *core.Engine, valIdx, nArgs int, sig *core.FnSig, a
 // BuildFnBodyReturnsFn ARMS the body analysis via StartFnCompile, so the body
 // (with its `__pa` tail) is captured INSIDE its own CALL_USER unit and the
 // call site records a CALL_USER — identical to the named-fn path. See
-// design/boru-bytecode-stage3-inlining-plan.0.md "THE shared crux:
+// design/legacy/boru-bytecode-stage3-inlining-plan.0.ignore "THE shared crux:
 // body-bearing fn-VALUE dispatch (__pa)".
 func SpliceFnValueCheckResult(e *core.Engine, valIdx, nArgs int, fnDef core.FnDefInfo, sig *core.FnSig, args []core.Value) error {
 	returns := BuildFnBodyReturnsFn(e.Registry, fnDef.Name, *sig, fnDef)
@@ -516,7 +516,7 @@ func spliceFnCheckTail(e *core.Engine, valIdx, nArgs int, result []core.Value) {
 // returns a restore function (a no-op when no sharing applies). The shared memo
 // keys stay disjoint across the boundary via the per-registry scopeID prefix
 // (§5a), so a module fn and a parent fn of the same name cannot alias. See
-// design/module-fn-checkstate-ownership.1.md §5b.
+// design/legacy/module-fn-checkstate-ownership.1.ignore §5b.
 func shareCheckState(e *core.Engine, capturedReg *core.Registry) func() {
 	return shareCheckStateFrom(capturedReg, e.Registry)
 }
@@ -526,7 +526,7 @@ func shareCheckState(e *core.Engine, capturedReg *core.Registry) func() {
 // returned func), no-op when the registries coincide, either is nil, or the
 // caller is not in check mode. Split out so the MERGED-WORD seam can share at
 // the ReturnsFn boundary itself (BuildFnBodyReturnsFn — Stage M1,
-// design/STAGE3-INLINING-DESIGN-ROUND.0.md §5): a transplanted word-extension
+// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §5): a transplanted word-extension
 // sig dispatches as a BARE word on the importer's engine, where no
 // execFnDefLiteral wrapper exists to share around the call, and the sig's
 // owning registry is known only to the ReturnsFn closure (the transplant
@@ -746,7 +746,7 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 		// fallback path bypasses). Resolve it the way the forward scan
 		// would — via the def stack — so a def-bound surface carrier
 		// (e.g. a generic fn's surface-bounded `x:T` param inside
-		// AnalyseFnBody, design/GENERICS.10.md Phase 5) is visible to
+		// AnalyseFnBody, design/legacy/GENERICS.10.ignore Phase 5) is visible to
 		// the S2 scan.
 		if core.IsWord(v) {
 			if wv, werr := core.AsWord(v); werr == nil {
@@ -927,7 +927,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		}
 		args[i] = av
 	}
-	// Strict disjunct rescue (design/checker-accuracy-review.10.md A1):
+	// Strict disjunct rescue (design/legacy/checker-accuracy-review.10.ignore A1):
 	// the whole disjunct matched no signature, but individual
 	// alternatives may dispatch fine. If at least one does, splice the
 	// per-alternative join — the failing alternatives have already
@@ -1283,7 +1283,7 @@ func init() { installAnalysisImpl() }
 // exits 0 — the minted lattice node is placed, the 5 is never consumed,
 // and nothing anywhere says so. The combinator literature is all capitals
 // (S, K, I, B, C, W, Y), so a reader transcribing it lands here first
-// (design/HIGHER-ORDER-FUNCTIONS.0.md §5.1, recommendation 2).
+// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1, recommendation 2).
 //
 // The gate is deliberately narrow, because this is a hint and a false one
 // costs more than a missed one. It fires on a bare lattice node whose

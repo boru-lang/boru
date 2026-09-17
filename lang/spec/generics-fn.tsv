@@ -11,7 +11,7 @@
 # in the per-call scope, so body-internal `of [T]` / `make (Box of
 # [T])` resolve, and torn down with the body's locals. Bounds reject
 # at dispatch (no matching signature) and at the return check.
-# See design/GENERICS.10.md.
+# See design/legacy/GENERICS.10.ignore.
 #
 # §1  basics — one definition, every type
 def idg gen [T] fn [[x:T] [T] [x]] end idg 5	5	a generic identity passes an Integer through

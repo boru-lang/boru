@@ -1,5 +1,5 @@
 // Landing tests for the Phase-4.3 G7 return-annotation sweep
-// (design/CHECKER-BYTECODE-COMPLETION-PLAN.0.md): per-family positive
+// (design/legacy/CHECKER-BYTECODE-COMPLETION-PLAN.0.ignore): per-family positive
 // pins (a precise Returns/ReturnsFn flows downstream, so a former
 // declared-Any frontier row now checks clean with a NARROW residual) and
 // negative pins (the same precision makes a wrong-typed downstream use

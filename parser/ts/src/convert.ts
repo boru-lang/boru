@@ -897,7 +897,7 @@ export function groupModifier(
 // pos is the source position of item (caller has already deSited it).
 //
 // Word-context paren groups become a single ParenExpr value (paren-nesting
-// Step 1, design/PAREN-REPRESENTATION.9.md), the same representation data
+// Step 1, design/legacy/PAREN-REPRESENTATION.9.ignore), the same representation data
 // context already uses. The engine evaluates it via evalParenExprResults
 // (Step 2 at the pointer, Step 3 in a forward window).
 function emitPrimary(dst: Value[], item: unknown, pos: SrcPos, d: ParseDepth): void {

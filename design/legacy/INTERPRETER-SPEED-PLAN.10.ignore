@@ -1,0 +1,423 @@
+# Interpreter-speed fix plan — root causes 1–6
+
+> **Status: DONE.** All six root causes landed as individually gated
+> commits (fmt/vet/lint/test + 100% cover-gate each). Measured outcome —
+> interpreter ~1.5–2.4× faster end-to-end, interp↔compiled gap roughly
+> halved, allocs/op down 30–50%; see the Results section of
+> `INTERPRETER-SPEED-INVESTIGATION.10.ignore`. Commits, in order: #2 dispatch
+> cache, #6 trace gating, #1B lock-free/single-alloc IDs, #3
+> forward-collection scratch reuse, #5 frame-snapshot skip, #4 loop
+> re-splice buffer, #1A Value shrink (184→152 B). The allowlist churn a
+> mid-`engine.go` edit causes was handled by a diff-hunk delta
+> re-anchor rather than the proposed `covergate -reanchor` subcommand
+> (kept the coverage tool unchanged). #1A shrank `Value` across a series
+> of five commits: first the five immutable integer lattice fields
+> (FixedID/Rank/Depth/In/Out) behind a shared `*typeMeta`, then `Name`,
+> then `Behavior` into the same `*typeMeta` (each with exported
+> `Set*` accessors since external packages can no longer touch the
+> fields); `Pos` behind a `*SrcPos` and `DynFrom` behind a `*string`
+> (both nil-when-unset, threaded/set off the hot path); and a **field
+> reorder** that clusters the seven bool flags + `Origin` at the tail so
+> they pack with no alignment padding (the bool-packing win, by field
+> ORDER rather than a bitfield — no churn to the ~575 flag sites).
+> **`Value` went 184 → 152 → 136 → 112 → 96 → 80 → 72 bytes (−61%).**
+> `Behavior` moving into the shared `*typeMeta` also closed the
+> orphan-`*Type` gap the CanonicalType discipline works around (a `behave`
+> rewrite is now visible through every copy). The last inline 16-byte
+> field, `ID`, is left as-is: the bytecode emitter's provenance keys on
+> the ID being minted at value creation and shared across copies, so a
+> lazy ID diverges across copies, an eager `*string` adds a per-value
+> alloc, and a `[14]byte` forces the type-registry map key type to change
+> across ~293 sites — none a clean win for 8 bytes.
+
+Companion to `design/legacy/INTERPRETER-SPEED-INVESTIGATION.10.ignore` (the data +
+diagnosis). This note is the **implementation plan**: for each root
+cause, the grounded diagnosis (file:line), the fix, blast radius, risk,
+coverage/test strategy, and expected win — then a PR sequence and a
+measurement protocol.
+
+Baseline to beat (`bench/interp/`, `BenchmarkStage6/*/interp`): interp
+is ~28–50× the compiled VM and ~140–3000× CPython; ~100 allocs/dispatch,
+~340 allocs/fn-frame. Target: get the interpreter into the CPython/Ruby
+band on `loopsum`/`nestloop` and within ~1 order of magnitude of the VM
+on recursion.
+
+## Cross-cutting constraints (read first)
+
+1. **100% coverage gate (ADR-008)** + a **line-keyed allowlist**
+   (`test/go/covergate/allowlist.tsv`, 66 `engine.go` entries by
+   `line.col` range, hand-maintained, no auto-regen). *Any* edit to
+   `engine.go` shifts every allowlisted block below it and fails
+   `make cover-gate` with "stale entry" errors. Mitigations, in order of
+   preference:
+   - **Land new logic in new/other files** (`registry.go`, `deftable.go`,
+     a new `dispatch_cache.go`, `value.go`) rather than mid-`engine.go`.
+   - When `engine.go` must change, **batch all edits for that PR into one
+     pass** and re-anchor the allowlist once (add the net line delta to
+     every `engine.go` entry below the first edit; the *reasons* are
+     unchanged — only line numbers move). Verify each re-anchored block
+     is still the same defensive guard.
+   - Consider adding a `covergate -reanchor` mode (reads the fresh
+     profile, rewrites stale `engine.go` keys to the block that now
+     occupies the same guard) as a **prerequisite tooling task** — it
+     pays for itself across these six PRs. Keep the reason column.
+2. **No panics** (ADR-005). Every new fast path needs the same nil/shape
+   guards as the slow path it shortcuts.
+3. **Pair positive with negative tests.** Each optimization needs a test
+   proving the fast path and the fallback agree (differential), plus the
+   invalidation/eviction edge.
+4. **The compiled VM is the correctness oracle.** None of these change
+   observable semantics; the `lang/spec/*.tsv` suite and the
+   interp-vs-compiled differential must stay green.
+
+## The dependency graph (why order matters)
+
+`#1` (Value) is foundational — it *multiplies* the others:
+
+- **`#1B` lazy IDs** removes a mutex+RNG+2-string-alloc from `GenerateID`,
+  which every synthesized token in `#5` (frame tail), every `Forward`/
+  `Mark` in `#3`, and every scalar result pays today.
+- **`#1A` shrink Value** attacks `runtime.duffcopy` (15% flat), which is
+  the body-copy in `#5`, the arg/stack copies in `#3`, and every tape
+  `Splice`.
+
+So the cheap, isolated wins (`#6`, `#2`) go first for fast payoff; lazy
+IDs (`#1B`) next because it de-risks and pre-pays `#3`/`#5`; the
+per-op/per-frame alloc cuts (`#3`, `#5`) and pool work (`#4`) follow; the
+big structural `Value` shrink (`#1A`) lands last, when the churn it
+causes is the only remaining churn.
+
+---
+
+## #6 — Dead trace-string build on every dispatch  *(trivial, do first)*
+
+**Diagnosis.** `stepWord` builds `e.traceNote = "... " + traceSigStr(...)`
+at `engine.go:2368` and `:2393` on *every* dispatch, but `traceNote` is
+only read when `e.trace != nil` (`engine.go:909`). `traceSigStr`
+(`engine.go:715`) formats a signature via `fmt`. ~5% CPU + string allocs,
+pure waste. (Also `engine.go:3339,4428,5428` set `traceNote`
+unconditionally — same gate applies, less hot.)
+
+**Fix.** Wrap each `traceNote` assignment in `if e.trace != nil { … }`.
+Prototyped already: ~10–17% faster on `arith_chain64`/`for_tight`, ~500
+fewer allocs/op, trace tests unaffected.
+
+**Blast radius / risk.** ~5 lines in `engine.go`. Low. **Coverage:** the
+guarded assignments stay covered by existing trace tests (verified: the
+prototype's new blocks profiled `count=1`); the skip path is covered by
+ordinary runs. **Allowlist:** this is the churn trigger — small line
+shift; re-anchor `engine.go` entries below `:2368` (or land the
+`covergate -reanchor` tool in the same PR).
+
+**Win:** ~5–15% on dispatch-hot shapes.
+
+---
+
+## #2 — `Registry.Lookup` rebuilds the dispatch table every call  *(high value, low risk)*
+
+**Diagnosis.** `Registry.Lookup(name)` (`registry.go`) runs on every word
+dispatch and, for `add`/`if`/`fib`/…, calls `r.Defs.Stack(name)` (fresh
+`[]DefEntry` copy) then `aggregateDispatch(name, entries)` — which builds
+a fresh `[]Signature`, `SortSignatures`, and a new `*FnDefInfo`. ~14% of
+interp allocations. In a hot loop the bindings for these names never
+change, so this is pure repeated work.
+
+**Fix.** Memoize the aggregate per name, invalidated by a **per-name
+version counter**.
+- `DefTable` already has a monotone global `mutations int64`
+  (`deftable.go:34`) but it's too coarse (a param push for `n` bumps it,
+  invalidating the `add` cache every call). Add a **per-name generation**:
+  `gen map[string]uint64` bumped in the 8 mutators (`Push`, `PushType`,
+  `Pop`, `PopEntry`, `Replace`, `Truncate`, `Delete`, `Set`,
+  `deftable.go:70–228`) for the mutated name only. Expose
+  `dt.Gen(name) uint64`.
+- Add a cache on `Registry`: `dispatchCache map[string]struct{gen uint64;
+  fn *FnDefInfo}`. `Lookup` returns the cached `fn` when
+  `cache.gen == Defs.Gen(name)`, else rebuilds and stores. Reset in
+  `ForkConcurrent` (per-execution state, like `enginePool`).
+
+**Blast radius / risk.** `registry.go` (Lookup + cache field +
+ForkConcurrent reset), `deftable.go` (per-name gen). **Not `engine.go`**
+→ no allowlist churn. Risk: correctness of invalidation — a missed bump
+serves a stale table. Mitigate: bump in the mutators themselves (single
+choke point), and a **differential test** that defs/undefs/word-extends a
+name in a loop and asserts `Lookup` equals a from-scratch aggregate every
+step. Word-extension clones (`Extends != ""`, the occlusion rule in
+`Lookup`) and `undef` restore must be in the negative tests.
+
+**Coverage:** cache-hit and cache-miss arms both need a test; the
+eviction/reset path (ForkConcurrent) too.
+
+**Win:** removes ~14% of allocations and the repeated sort; largest
+value-for-effort after #6.
+
+---
+
+## #1B — Lazy value IDs  *(foundational, moderate)*
+
+**Diagnosis.** `NewValueRaw` (`value.go:1196`) stamps
+`ID: GenerateID(IDPrefixForType(t))` on *every* value. `GenerateID`
+(`value.go:1149`) takes a global mutex, draws a PCG rand, hex-encodes,
+and concatenates a prefix — 2 string allocs + lock per value.
+`IDPrefixForType` walks the parent chain. Every synthesized frame token
+(#5), `Forward`/`Mark` (#3), and scalar result pays this. **Who reads
+`Value.ID`?** For *ordinary runtime values*: only the **bytecode
+emitter's provenance maps** (`emit.go:1051+`, `producedBy[v.ID]` etc.) —
+at compile time. Type nodes need eager IDs (Equal fallback `types.go:300`,
+canon `canon.go:106`, registry key `LookupByID`, wire/FixedID). Concrete-
+value equality/compare never read `.ID` (`equal.go`, `compareStructural`).
+
+**Fix.** Make the ID lazy for non-type-node values.
+- Keep eager IDs on **type nodes** (Behavior != nil) — unchanged.
+- For ordinary values, defer: store no ID at mint; add `EnsureID(*Value)`
+  (or an `id()` accessor) that lazily fills it on first read. Materialize
+  **eagerly at the two boundaries that need it**: (a) the emit-provenance
+  sites (`emit.go` — call `EnsureID` when keying the maps), (b) anywhere a
+  runtime value's ID crosses into serialization.
+- Simpler, lower-risk variant if lazy proves invasive: **cheaper
+  `GenerateID`** — replace the mutexed global PCG + hex + concat with a
+  per-Engine monotone counter (values are engine-local) formatted once,
+  killing the lock and one alloc. This alone removes the mutex from the
+  hot path.
+
+**Blast radius / risk.** `value.go` (mint + accessor), `emit.go`
+(materialize at provenance keys), audit the ~244 `.ID` read sites (many
+are `TypeRef.ID`/`MarkInfo.ID`, not `Value.ID`). Risk: a runtime `.ID`
+read we didn't route through `EnsureID` sees `""`. Mitigate: grep-audit
+`Value.ID` reads; a debug-build assertion that a read of an empty runtime
+ID triggers lazy fill (never returns `""`). **Coverage:** both the
+lazy-fill-on-first-read and already-filled arms.
+
+**Win:** removes `GenerateID` (~4% CPU + a large slice of the alloc
+count, because #5 mints ~7 tokens/frame each paying it) and the global
+lock. Pre-pays #3 and #5.
+
+---
+
+## #3 — Forward-collection allocates per dispatch  *(engine.go, scratch reuse)*
+
+**Diagnosis.** Per forward-collecting dispatch:
+- `resolveForwardArgs` (`engine.go:1368`): `viable := make([]viableSig,…)`
+  (`:1376`).
+- `effectiveResolved` (`engine.go:6087`): `excludeIndices :=
+  make(map[int]bool)` (`:6089`) + `resolved []Value` grown by `append`
+  (`:6115`).
+- `rearrangeForForward` (`engine.go:3028`): a `[]int` (`resolvedIndices
+  Before`) + `values := make([]Value, total)` (`:3040`) + `reordered :=
+  make([]Value, total)` (`:3047`).
+- `matchSignature` (`engine.go:6364`): `positions := make([]int, nArgs)`
+  per candidate sig (`:6460`).
+- `stepMoveCont` (`engine.go:5496`): per continuation iteration allocates
+  `tokens`, `bodyCopy`, a new `Mark` body, a `MoveCont` (`:5522–5527`).
+
+**Fix.** These run on a single-threaded engine → **reuse per-Engine
+scratch buffers** instead of allocating each call:
+- Add `Engine` scratch fields: `scratchViable []viableSig`,
+  `scratchVals []Value`, `scratchIdx []int`, reset to `[:0]` at entry.
+- Replace `excludeIndices map[int]bool` with a **reused sorted `[]int` or
+  a bitset over tape indices** (indices are small and bounded by the
+  open-paren window) — maps are the expensive part here.
+- `positions`: reuse a single `[]int` sized to max arity across the
+  candidate-sig loop.
+- `stepMoveCont`: the body template is constant per mark — avoid the
+  per-iteration `bodyCopy` by referencing an immutable shared body slice
+  (copy-on-write only if a splice would mutate it).
+
+**Blast radius / risk.** `engine.go`-heavy (allowlist churn — batch with
+#6 or do after the reanchor tool). Risk: aliasing bugs — a reused buffer
+handed to something that retains it. Mitigate: reused buffers must be
+consumed-before-next-use (assert with a reentrancy guard in debug), and
+the differential interp-vs-compiled suite catches semantic drift.
+
+**Coverage:** buffer-grow (first small, then larger input) and reuse
+paths both exercised.
+
+**Win:** ~19% of interp allocations (the forward-collection cluster).
+
+---
+
+## #5 — Fn-call frame: two full-table snapshots + template rebuild  *(highest per-call win)*
+
+**Diagnosis** (per `fib` call, `core_helpers.go:224` handler):
+1. **Two `DefTable.Snapshot()` maps** — `r.Defs.Snapshot()` at
+   `core_helpers.go:268` (FnBaseline) and `:316` (defSnapshot). Each
+   (`deftable.go:274`) allocates a `map[string]int` sized to **every
+   bound name in the whole registry** (all module globals + kernel words
+   bound as defs + live frame bindings), not just this fn's params. This
+   O(total-names) map, twice per call, is the dominant term behind
+   ~340 allocs/frame. Teardown adds `Defs.Names()` (`deftable.go:261`), an
+   all-names `[]string`.
+2. **Frame token template rebuilt every call** — `result`/`tokens`
+   slices, `NewFrameOpen`, a copied `body` slice (`core_helpers.go:327`),
+   and `AppendFrameTail` (`fn_frame.go:156`: `__DC`, `__pa`, `undef`+name,
+   `__RC`). The *shape* is identical for every `fib` call; only the arg
+   values and the two maps differ. Each token pays `NewValueRaw` →
+   `GenerateID` (2 string allocs) + payload box.
+
+**Fix.**
+- **Kill the two full-table maps.** The FnBaseline only needs the
+  def-depth of names the body might capture; the defSnapshot only needs
+  to detect *body-local* defs added during the call so cleanup can pop
+  them. Replace both with an **incremental per-frame record**: a small
+  slice the `def` word appends to when it pushes a body-local binding
+  (O(defs-actually-added), typically 0 for `fib`), and resolve capture
+  baseline via the existing `FnBaselines` depth without a full map.
+  `stepDefCleanup` then pops exactly the recorded names — no `Defs.Names()`
+  scan. (Cross-check `design/legacy/TCO-STAGED.10.ignore` Stage 3, which relies on
+  the `mutations` counter; keep that invariant.)
+- **Memoize the frame template.** Build the constant token skeleton
+  (frame-open, body copy, tail shape) **once per signature** at
+  `compileFnSigs` time (alongside the existing `BoruImpl.FnFrame` /
+  `InstallNames`), and per call only splice it with arg values patched in
+  — no re-`GenerateID`, no re-copy. Lazy IDs (#1B) makes the residual
+  token mints free; Value shrink (#1A) makes the unavoidable body copy
+  cheap.
+
+**Blast radius / risk.** `core_helpers.go`, `fn_frame.go`, `deftable.go`,
+`engine.go` (stepDefCleanup). The snapshot-avoidance is the highest-risk
+change here: the two snapshots + DefCleanup + FnBaseline are a coordinated
+set (`eng/go/CLAUDE.md` "Per-Call Stacks"); getting cleanup wrong corrupts
+the caller's `args`/def stacks on `break`/`continue` unwind
+(`unwindLiveFrames`). Mitigate: keep the snapshot path behind a flag and
+run the **full spec suite + recursion/closure/`break`-in-loop tests**
+differentially against it before deleting the old path. `execFnDefSig`
+(`engine.go:5073,5123`) and `CallBoru` (`registry.go:1569,1622`) take the
+same two snapshots — fix all three or none.
+
+**Coverage:** body-local `def` present vs absent; capture vs no-capture;
+tail vs non-tail; `break`/`continue` escaping a live frame.
+
+**Win:** the biggest per-call reduction; recursion is ~340→(target tens)
+allocs/frame, directly closing the ~3000× fib gap.
+
+**Follow-up (splice-macro capture hole).** The static skip
+(`bodyNeedsFrameState`, `fn_capture.go`) originally scanned only for the
+literal `frameStateWords` (`fn`/`def`/…). A `word`-macro hides those: `def
+mk word [fn …]` used in an outer body shows only the bare word `mk`, so
+the scan skipped the baseline and the inner `fn` reached through the
+splice never captured the outer param (interp returned an
+`undefined_word`/`no_signature` error where a literal `fn` gave the
+capture). Fixed by resolving each body word against the registry at
+construction: a splice (`__SP`) binding has its payload walked too, with a
+cycle guard for mutually-recursive macros. Pinned by
+`eng/frame_state_test.go::TestBodyNeedsFrameState` and
+`native/word_splice_test.go::TestWordSpliceMacroFnCapture`.
+
+---
+
+## #4 — Sub-evaluation tape allocations  *(reframed by the profile)*
+
+**Diagnosis (corrected).** The in-frame paren operand path
+(`evalParenGroupAt`, `engine.go:1667`) already runs **in place** on the
+caller's tape — no tape alloc. `NewTapeWith` (13% of bytes) comes from
+`runPooledSub` → `Engine.Run` (`engine.go:846`) when a pooled engine is
+**cold or its buffer is too small**, reached by: (a) per-element /
+per-iteration body evaluation in higher-order & loop words
+(`each`/`fold`/`do`/`for` bodies), and (b) the **map-data-context**
+(`evalParenExprResults`, `engine.go:3780`) and **reach/apply**
+(`ApplyReach`, `engine.go:3764`) paren paths. The pool
+(`registry.go:240`, cap `maxPooledEngines=16`) returns to `Reload`
+(in-place) once warm, but nesting/iteration that outruns the pool or grows
+tapes re-allocates.
+
+**Fix.**
+- **Keep iteration bodies warm.** For `for`/`each`/`fold`/`scan`,
+  evaluate every element on **one** pooled engine held across the loop
+  (take once, `Reload` per element, put once) instead of take/put per
+  element. Or, where the body is a simple expression, evaluate it
+  **in-place** the way `evalParenGroupAt` handles parens.
+- **Right-size pool/tape reuse:** raise or adapt `maxPooledEngines` for
+  deep-but-bounded nesting; the `pooledTapeMaxEntries=4096` drop rule
+  (`registry.go:276`) already prevents unbounded retention.
+
+**Blast radius / risk.** `invoke.go`/`engine_pool.go`/the HO-word handlers
+(`native/`), plus `registry.go` constants. Risk: the reuse-across-
+iterations aliasing (a body that captures/returns a tape-aliased slice) —
+`runPooledSub` already copies results out (`invoke.go:52`); preserve that
+for the held-engine variant. Reentrancy: nested HO words must still take
+*different* engines (the pool pops), so "hold across the loop" must
+re-take for a nested loop.
+
+**Coverage:** empty/one/many-element bodies; nested HO words; a body that
+returns a freshly-built list (aliasing check).
+
+**Win:** cuts the 13% `NewTapeWith` on `each`/`fold`/`do`/map-paren
+shapes; recursion is unaffected (it splices frames in-place, already
+tape-grow-amortised).
+
+---
+
+## #1A — Shrink `Value` from 184 bytes  *(biggest structural win, land last)*
+
+**Diagnosis.** `type Type = Value` (`typetable.go:55`), so every runtime
+value inlines the **nine type-node-only fields** (`Name, FixedID, Rank,
+Depth, In, Out, IsInternal, Origin, Behavior` ≈ 66B). Result:
+`runtime.duffcopy` 15% flat + `duffzero`/`memclr` ~7% + GC scan, on every
+stack slot, arg, tape cell, and body copy. Reads are **already** almost
+all spelled `v.Parent.<field>` (`.Behavior` 113 sites, `.Rank` 20, mostly
+in `typetable.go`/`compare_types.go`/`convert_ideal.go`).
+
+**Fix (feasible direction).** Move the nine lattice fields **behind
+`Parent *Type`**: a runtime `Value` keeps `Parent, Data, ID, Pos`, the
+handful of flags, and the type node it points at owns the lattice
+metadata. Because reads are already `v.Parent.<field>`, most read sites
+are unchanged.
+
+**The crux to design around:** `type Type = Value` is an *alias*, so
+`&v`-of-a-by-value-Value is used *as* a `*Type` in the type-literal
+duality (`NewTypeLiteral`, `NewCarrier`, `valuesEqualDefault`'s
+`a.Equal(&b)` at `equal.go:68`, the `CanonicalType` orphan sites listed in
+`eng/go/CLAUDE.md`). Options:
+1. **Two structs.** `Value` (small runtime) and a distinct `Type` (lattice
+   node), with explicit `NewTypeLiteral(t *Type) Value`. Removes the alias
+   hazard permanently but requires writing `Value↔*Type` at the ~590
+   construction sites that set lattice fields (most funnel through
+   `typetable.go` + a dozen helpers — smaller than the raw grep).
+2. **Keep the alias, split payload.** Leave `type Type = Value` but move
+   the nine fields into a `*latticeMeta` pointer on the struct; type nodes
+   allocate it, runtime values leave it nil. Smaller diff, keeps the
+   duality, but the struct is still one word bigger than ideal and adds an
+   indirection on lattice reads.
+
+Recommend **(1)** if we can afford the churn (cleanest, ends the
+"orphan `*Type`" class of bugs the canonicalization discipline exists to
+paper over), **(2)** as the incremental fallback.
+
+**Blast radius / risk.** Highest of the six. ~590 construction sites (most
+in `typetable.go` + helpers), the `&v`-as-`*Type` sites (enumerated in
+CLAUDE.md's canonicalization list), and the emit/carrier `.ID` gates.
+Touches `eng` and `lang`. **Land last, in its own PR series**, so its
+churn doesn't collide with #2–#5. Correctness oracle: the full
+`lang/spec` suite + type-ordering (`compare.tsv`) + generics/unify tests.
+
+**Win:** attacks the ~22% `duffcopy`+`duffzero` directly and shrinks GC
+scan across interp *and* the compiled VM — the one fix that also speeds
+compiled boru.
+
+---
+
+## PR sequence & measurement
+
+Land as independent, individually-measured PRs (benchstat against
+`bench/interp/run.sh` + `BenchmarkStage6` + the alloc-guard gates
+`TestInterpAllocCeilings`/`TestCompiledAllocCeilings`, lowering ceilings
+as each lands):
+
+0. **(prereq)** `covergate -reanchor` tooling — makes every later
+   `engine.go` PR cheap.
+1. **#6** trace gating + **#2** Lookup cache — quick, low-risk, big alloc
+   cut. (Expect the first visible interp drop.)
+2. **#1B** lazy / lock-free IDs — de-risks and pre-pays #3/#5.
+3. **#3** forward-collection scratch reuse.
+4. **#5** frame snapshot avoidance + template memoization — the recursion
+   win.
+5. **#4** warm-pool / in-place HO-word bodies.
+6. **#1A** `Value` shrink — the structural finale (also speeds the VM).
+
+Each PR: `make fmt && make vet && make lint && make test && make
+cover-gate`; re-anchor the allowlist in the same commit as any
+`engine.go` edit; add the differential fast-path/slow-path test before
+deleting a slow path. Re-run `bench/interp/run.sh` and update the
+snapshot in `INTERPRETER-SPEED-INVESTIGATION.10.ignore` after each stage so
+the cross-language gap is tracked to the goal (interp ≈ CPython/Ruby on
+`loopsum`/`nestloop`, within ~1 order of the VM on recursion).

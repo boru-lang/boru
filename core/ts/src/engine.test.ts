@@ -1,6 +1,6 @@
 // Unit campaign for engine.ts — the step loop.
 //
-// design/CORE-TS-COVERAGE.0.md stages 4 and 5. engine.ts held 947 of core/ts's
+// design/legacy/CORE-TS-COVERAGE.0.ignore stages 4 and 5. engine.ts held 947 of core/ts's
 // 1,945 uncovered lines across 44 methods, and the corpus could not reach them:
 // core/spec registers ONE fixture word and its notation is deliberately
 // parser-free, so user function definitions, check-mode passes, paren

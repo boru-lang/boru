@@ -3,7 +3,7 @@ package check
 import core "github.com/boru-lang/boru/core/go"
 
 // method_shape.go — the shaped-instance-method dispatch model (Phase 6
-// Stage M2c, design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 M2c).
+// Stage M2c, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 M2c).
 //
 // A module word like Log.with / Log.counter / Rand.with-seed returns an
 // INSTANCE — a Map of trivial-delegation method wrappers closing over

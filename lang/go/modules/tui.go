@@ -13,7 +13,7 @@ import (
 )
 
 // Tier-1 raw-terminal words for boru:tui — the executable slice of
-// design/TUI.0.md §4 (Stage P1 of design/TUI-IMPLEMENTATION-PLAN.0.md):
+// design/TUI.0.md §4 (Stage P1 of design/legacy/TUI-IMPLEMENTATION-PLAN.0.ignore):
 //
 //	open {mouse: Bool title: "…"}        -> Terminal      (terminal.open gated)
 //	close <Terminal>                                       (restore; idempotent)

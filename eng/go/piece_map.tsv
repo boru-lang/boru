@@ -3,7 +3,7 @@
 # modules and eng imports them directly; the generated facade that used to
 # stand between them was retired once nothing referenced it. This map now
 # tracks only the eng piece itself — the bytecode VM.
-# See design/ENG-FOUR-PIECE.0.md.
+# See design/legacy/ENG-FOUR-PIECE.0.ignore.
 collect_seam_host_test.go	eng	foreign-host proof for core's exported collection seam (Stage 4)
 compiled_runtime_vm.go	eng	
 region_host.go	eng	

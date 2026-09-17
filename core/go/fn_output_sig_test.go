@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// Unit pins for the output-slot rework (design/FN-OUTPUT-SIG.0.md): the
+// Unit pins for the output-slot rework (design/legacy/FN-OUTPUT-SIG.0.ignore): the
 // `name:Type` return unwrap, the declaration-span fallback that makes the
 // two spellings of one declaration diagnose alike, and the value
 // renderer. The end-to-end behaviour lives in lang/spec/fn-triple.tsv §7;

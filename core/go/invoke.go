@@ -25,7 +25,7 @@ func InvokeBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
 	// Pooled + resolved: the engine and its tape are reused across
 	// invocations (runPooledSub / the registry sub-engine pool), and the
 	// inputs enter as RESOLVED stack data rather than being re-stepped —
-	// arguments are inert (design/ARG-SEMANTICS-UNIFICATION.0.md, via
+	// arguments are inert (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore, via
 	// RunResolved's start offset).
 	//
 	// A code-body word (each/fold/do/…) does NOT strip a dispatch ascription

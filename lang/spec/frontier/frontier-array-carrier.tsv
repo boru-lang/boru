@@ -1,6 +1,6 @@
 # Parameterised-mutable-Array carrier (plan Phase 9, radix-msd class): Array
 # get over a non-concrete carrier returns gradual Any and cascades
-# (design/MODULE-FN-PARAM-SLOT-COMPILATION.0.md §16).
+# (design/legacy/MODULE-FN-PARAM-SLOT-COMPILATION.0.ignore §16).
 #
 # DROPPED 2026-07-13 (investigative rule, RUNTIME-INDEPENDENCE plan §WS2.3):
 # a minimal in-repo repro could not be constructed this round — the

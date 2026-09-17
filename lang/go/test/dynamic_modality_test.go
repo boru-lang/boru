@@ -7,7 +7,7 @@ import (
 )
 
 // TestDynamicContextGetGradualMatch demonstrates the bounded dynamic(T)
-// modality end to end (design/dynamic-modality-report.10.md): `context
+// modality end to end (design/legacy/dynamic-modality-report.10.ignore): `context
 // get` on a statically-untracked key is an escape hatch that emits
 // dynamic(Any) — optimistically compatible — instead of strict
 // Carry<Any>. That dynamic carrier then matches a typed slot under

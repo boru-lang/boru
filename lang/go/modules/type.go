@@ -29,7 +29,7 @@ import (
 //     written with args[0] = surface-LEFT (top of stack), args[1]
 //     = surface-RIGHT (deeper).
 //
-// See design/TYPE-OPERATIONS.8.md.
+// See design/legacy/TYPE-OPERATIONS.8.ignore.
 func BuildTypeModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg, err := newModuleRegistry("boru:type-util", typeModuleNatives)
 	if err != nil {

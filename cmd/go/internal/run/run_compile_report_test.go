@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// The -compile-report flag (design/RUNTIME-STAMPING.0.md Phase 5): a
+// The -compile-report flag (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5): a
 // compiled-mode run that stamps a runtime-constructed callback prints its
 // attribution to stderr; without the flag nothing prints; under -no-compile
 // the header line explains the empty report.

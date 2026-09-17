@@ -23,7 +23,7 @@
 # common denominator.
 #
 # Seeded from parser/go. parse-battery.test.ts named it the reference while
-# nothing checked that claim (design/TS-PARITY-AUDIT.0.md).
+# nothing checked that claim (design/legacy/TS-PARITY-AUDIT.0.ignore).
 'a\\nb'	'a\\nb'	-
 't\\tt'	't\\tt'	-
 'r\\rr'	'r\\rr'	-

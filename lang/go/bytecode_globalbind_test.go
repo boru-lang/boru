@@ -7,7 +7,7 @@ import (
 )
 
 // OpBindGlobal — the cross-request persistence twin of a top-level computed
-// `def` (design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md, the 2026-07-15
+// `def` (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, the 2026-07-15
 // flip composite's root cause). A compiled request's check pass installs the
 // def binding as a CARRIER and keep-on-compile persists it; without the
 // write-back, the NEXT request (either engine) resolved a type literal where

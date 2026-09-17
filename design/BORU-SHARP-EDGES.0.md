@@ -197,7 +197,7 @@ def f fn [[a:Integer] [Map] [ {x: (a add 1)} ]]      # single-token body
 
 A function whose *entire body is one bare computed `{…}` (or `[…]`) literal* is
 a deferred residual the compiler cannot lower. **Note the narrowness:** the
-compiler was widened on **2026-07-11** (`design/NET-COMPILE-FRONTIER.0.md`
+compiler was widened on **2026-07-11** (`design/legacy/NET-COMPILE-FRONTIER.0.ignore`
 ADDENDUM 5) so a **multi-token** body ending in a pending container now records
 an in-frame `OpMakeMap` and compiles:
 
@@ -302,7 +302,7 @@ fixed."*
 
 Re-verified against the binary 2026-07-30; per-item NUR records and
 verdicts issued 2026-07-31 (the NUR029 umbrella was split — see NUR.md
-and `design/NUR-RESOLUTION-PLAN.0.md`).
+and `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`).
 
 | # | Finding | Class | Status → action |
 |---|---|---|---|

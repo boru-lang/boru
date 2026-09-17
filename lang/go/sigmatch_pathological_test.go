@@ -10,7 +10,7 @@ import (
 // This suite stresses the boru signature matcher with USER functions
 // (`def f fn [...]`) carrying pathological argument signatures, focusing on
 // the structure-first, lazy forward-argument resolution
-// (design/LAZY-ARG-RESOLUTION.10.md). It complements lazy_arg_test.go (which
+// (design/legacy/LAZY-ARG-RESOLUTION.10.ignore). It complements lazy_arg_test.go (which
 // exercises the real `import` native) by driving the same dispatch machinery
 // through user-defined overloads, patterns, refinements, barriers, recursion
 // and call-site modifiers.

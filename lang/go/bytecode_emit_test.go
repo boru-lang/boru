@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Stage-1 bytecode emitter goldens (design/boru-bytecode-plan.0.md
+// Stage-1 bytecode emitter goldens (design/legacy/boru-bytecode-plan.0.ignore
 // Stage 1 gate): the recording pass lowers straight-line monomorphic
 // code to the expected instruction stream, and everything beyond the
 // stage is refused with a precise reason — never lowered wrongly.
@@ -226,7 +226,7 @@ func TestEmitStage2CompletionShapes(t *testing.T) {
 	}
 }
 
-// P5 multi-result lowering (design/boru-bytecode-runtime-independence.0.md):
+// P5 multi-result lowering (design/legacy/boru-bytecode-runtime-independence.0.ignore):
 // 0-result side-effect words (set/raise/drop/…) and genuine multi-result
 // words now record and lower, where they previously refused "returns N
 // values". The (seq, idx) operand model distinguishes a multi-result call's
@@ -1280,7 +1280,7 @@ func TestEmitTypeOperands(t *testing.T) {
 	if errG != nil || !compiledG {
 		t.Fatalf("scalar-default generic body: compiled=%v err=%v", compiledG, errG)
 	}
-	// Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6): the type
+	// Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6): the type
 	// argument denotes its minted NODE, so the instantiated body renders
 	// the field's type by NAME (`item:Circle`), not as the class body.
 	// The differential gate above still confirms compiled/interp parity.

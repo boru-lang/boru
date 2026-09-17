@@ -64,7 +64,7 @@ func parseObjectFields(fieldsMap *OrderedMap, r *Registry) *OrderedMap {
 // classHandler implements `class {schema}` — a sealed nominal record
 // type minted under Ideal/Class (NOT under Object: classes and the
 // open mutable Object container are separate branches — see
-// design/CLASS-OBJECT.10.md). The schema map follows the object rules:
+// design/legacy/CLASS-OBJECT.10.ignore). The schema map follows the object rules:
 // a type value declares a required field, a concrete value declares a
 // default. Subclassing reuses `refine <ClassType> {…}`, which routes
 // through objectWithParentHandler and propagates the Class flag.

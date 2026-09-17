@@ -1,7 +1,7 @@
-# Defect investigation — root causes for `verse-in-boru-report.0.md` §6
+# Defect investigation — root causes for `legacy/verse-in-boru-report.0.ignore` §6
 
 The Verse comparison report
-([`verse-in-boru-report.0.md`](verse-in-boru-report.0.md)) verified its boru
+([`legacy/verse-in-boru-report.0.ignore`](legacy/verse-in-boru-report.0.ignore)) verified its boru
 claims by running them, and seven defects fell out. This note is the
 follow-up: for each, the cause **in the source**, the blast radius as
 *tested*, and what a fix has to decide. Reproduced against `main` @
@@ -1670,7 +1670,7 @@ fail when the `!Compiling` gate is removed.
   unchanged from before.
 - **A nested body draws no advisory entry.** The advisory lands on
   `parent.Check`, and a module sub-registry owns its own `CheckState` by
-  design (`design/module-fn-checkstate-ownership.1.md` §3.2), so a nested
+  design (`design/legacy/module-fn-checkstate-ownership.1.ignore` §3.2), so a nested
   entry would be recorded where nothing reads it. The nested body IS
   modelled — verified by `TestModelledEffectsPropagateThroughNestedImports`
   — only its report is missing. Fixing it means routing diagnostics to a
@@ -1925,7 +1925,7 @@ and the capability section now shows the dispatch idiom.
 The original plan was to generate the table FROM a registry-side
 enumeration of codes — the doctrine that makes `boru describe` unable to
 drift, and the data source `boru explain <code>` would need (R4 in
-`rust-zig-roc-faber-in-boru-report.0.md`). It exists now:
+`legacy/rust-zig-roc-faber-in-boru-report.0.ignore`). It exists now:
 `eng/go/errorcodes.go` owns the mechanism and the kernel's 45 codes;
 `lang/go/native/errorcodes.go` registers the language layer's 188.
 `eng.ErrorCodes()` / `eng.LookupErrorCode(code)` are the accessors.
@@ -2344,7 +2344,7 @@ The tests that would have caught it, in order of leverage:
 
 ### Not a new defect
 
-`design/ERRORS.8.md:188-206` records this as VOXGIG **B2a**:
+`design/legacy/ERRORS.8.ignore:188-206` records this as VOXGIG **B2a**:
 
 > `(1 add 1) print (2 add 2) print` prints `4` then `2` — un-separated
 > chained forward calls evaluate right-to-left.
@@ -2386,7 +2386,7 @@ invalidate a test silently is more expensive than an ordering surprise.
 
 **Three of the seven are compiled-vs-interpreted divergences** (B, C, and
 the compiled half of G's neighbourhood), all in the same architectural
-seam: body invocation. `design/MISCOMPILE-HUNT-FINDINGS.0.md` records 23
+seam: body invocation. `design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore` records 23
 prior `--compile != interpret` divergences and the same seam keeps
 producing them, which argues for a differential gate specifically over
 *body-invoking words × observable side effects* rather than over the

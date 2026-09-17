@@ -10,8 +10,8 @@ The **same mechanism generalizes to user boru code built into a binary** via
 
 This is a **design RFC** — no implementation here. It builds on the landed
 bytecode compiler and the runtime-stamping machinery
-(`design/boru-bytecode-*.md`, `design/RUNTIME-STAMPING.0.md`,
-`design/NET-COMPILE-FRONTIER.0.md`). The claims below were adversarially
+(`design/boru-bytecode-*.md`, `design/legacy/RUNTIME-STAMPING.0.ignore`,
+`design/legacy/NET-COMPILE-FRONTIER.0.ignore`). The claims below were adversarially
 verified against the code; the sharp edges that survived are called out inline.
 
 > **Decisions proposed at design time** (the forks this RFC closes; a reviewer
@@ -47,11 +47,11 @@ verified against the code; the sharp edges that survived are called out inline.
 
 The codebase deliberately decided **not** to persist compiled bytecode:
 "bytecode is an execution mode, not a build artifact… eager compile-at-load,
-**no build step, no persisted `.boruc`**" (`design/boru-bytecode-plan.0.md:71-72`).
+**no build step, no persisted `.boruc`**" (`design/legacy/boru-bytecode-plan.0.ignore:71-72`).
 The bytecode report evaluated a `boru compile → .boruc` step explicitly and chose
 eager-at-load, warning: "`.boruc` files baked across versions risk mismatches.
 Either version-tag the file and recompile on mismatch, **or never persist**"
-(`boru-bytecode-report.0.md:1338-1556`).
+(`legacy/boru-bytecode-report.0.ignore:1338-1556`).
 
 The hazard was a compiled artifact that **outlives or crosses the compiler
 version that produced it**, silently miscompiling against a changed
@@ -330,7 +330,7 @@ closure's entry-point fns at build time and storing the serialized units in
 ## 6. Correctness & verification
 
 The most damaging outcome is a baked unit that **miscompiles** — diverges from
-the interpreter (`NET-COMPILE-FRONTIER.0.md:312-313`). It is not the only
+the interpreter (`legacy/NET-COMPILE-FRONTIER.0.ignore:312-313`). It is not the only
 failure: a root the codec or the compiler refuses has failed too, and is filed
 as a defect rather than waved through. Every existing guard applies, plus new
 gates:
@@ -411,7 +411,7 @@ bytecode in a `boru pack` zip consumed by a *different* `boru` version reintrodu
 the cross-version staleness class (§1). `pack` stays source-only; compiled units
 live only inside version-pinned binaries. A registry that ever ships bytecode must
 carry the report's full version-header + recompile-on-mismatch machinery
-(`boru-bytecode-report.0.md:1542-1556`) — out of scope.
+(`legacy/boru-bytecode-report.0.ignore:1542-1556`) — out of scope.
 
 ---
 

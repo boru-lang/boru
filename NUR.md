@@ -91,7 +91,7 @@ keep the two in sync in the same commit.
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
-| [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/unison-hash-identity-probe.0.md` P4 (flagged for NUR by the PR #376 review, Codex P1) |
+| [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
 | [NUR079](#nur079) | Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
@@ -100,8 +100,8 @@ keep the two in sync in the same commit.
 | [NUR082](#nur082) | Three tree-walking subcommands, two rules for `.boru/`: `fmt` and (now) `check` skip the package directory, `boru test`'s `discover()` walks it — VERDICT 2026-08-18: resolve by fix, one shared walk helper carrying the skip | giving `boru check` directory targets, 2026-08-18 (W-CLI-CHECK) |
 | [NUR083](#nur083) | `check` and `build` anchor relative imports to the FILE's directory, `run` and `debug` to the process cwd, so `boru check sub/m.boru` now accepts a program `boru run sub/m.boru` refuses from the same cwd — VERDICT 2026-08-18: resolve by fix, `run`/`debug` adopt the file anchor (the multi-target `check` cannot use cwd at all) | multi-file `boru check`, 2026-08-18 (W-CLI-CHECK) |
 | [NUR084](#nur084) | `-h` is not a uniform surface: FlagSet commands print their flags to stderr, `fmt` reads `-h` as a filename, and none exits 0 — though `boru help <cmd>` tells users to run it — VERDICT 2026-08-18: resolve by fix, `fmt` gains a FlagSet and `flag.ErrHelp` exits 0 | `boru check -h` failing as a missing file, 2026-08-18 (W-CLI-CHECK) |
-| [NUR088](#nur088) | One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/HIGHER-ORDER-FUNCTIONS.0.md` §4.2) |
-| [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/HIGHER-ORDER-FUNCTIONS.0.md` §1.1) |
+| [NUR088](#nur088) | One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2) |
+| [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §1.1) |
 | [NUR091](#nur091) | A malformed `fn` declaration fails LOUDLY or SILENTLY depending on its output slot: `fn List [Integer] [size]` raises signature_error, `fn List Any [1]` strands its operands and binds nothing, exit 0 | the function-type prototype, 2026-08-19 |
 | [NUR096](#nur096) | The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
 | [NUR092](#nur092) | `varyRefusalLedger`'s stale arm is corpus-sensitive: adding an UNRELATED spec row can displace a seed from the hash-ordered 32-seed sample, empty a bucket, and instruct the author to delete a ledger entry whose refusal class is still live at larger breadth | adding NUR091's spec rows, 2026-08-19 |
@@ -117,7 +117,7 @@ keep the two in sync in the same commit.
 | [NUR101](#nur101) | BROAD's placement depended on ENCLOSING CONTEXT: `(mk 1) 2` places (`fn (Integer) 2`) while `((mk 1) 2)` dispatches (`3`). **RULED 2026-08-26 "place uniformly"; the ruling's PREMISE was then FALSIFIED 2026-08-27** — the survivor count IS the question, and the enclosing group is a SECOND decision, not a modifier of the first. The interpreter was right all along; the COMPILER carried five silent miscompiles in both directions, hidden by 75 parity assertions that use post-Stage-J `Run` (the compiled path) as their interpreter oracle. See [design/PAREN-RESTEP-RULE.0.md](design/PAREN-RESTEP-RULE.0.md) | re-measuring §5.4 after #402, 2026-08-25; ruled 2026-08-26; ruling's premise falsified by measurement 2026-08-27 |
 | [NUR099](#nur099) | `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
 | [NUR100](#nur100) | ADR-016 ("arity and origin never change function behaviour") is contradicted by live code: `RunPredicate` admits or refuses a function as a predicate purely on its parameter count, and `smallerArityOverload` gates a compile refusal the same way | the maintainer's ruling that the ADR-016 rule is absolute, 2026-08-25 |
-| [NUR097](#nur097) | One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/HIGHER-ORDER-FUNCTIONS.0.md`) |
+| [NUR097](#nur097) | One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`) |
 | [NUR102](#nur102) | A predicate body runs a different number of times in each lane — overload pruning evaluates it 4× interpreted and 2× compiled, an effect-count divergence no differential gate can see because both lanes return the same value | the Stage-2 collection-kernel feasibility probe, 2026-08-25 |
 | [NUR103](#nur103) | The checker's answer depends on who is asking: the same program yields a clean `boru check` and a refusing compile, so the tool a user would reach for reports the program fine — **one instance fixed 2026-08-26** (a nameless `undefined_word` from a Word-typed carrier); the mini-redis instance is diagnosed and OPEN, and its first fault is a coverage hole — `boru check` does not analyse a service-handler body at all, so a bare undefined word inside one ships clean | the server-concurrency corpus, 2026-08-26 |
 | [NUR105](#nur105) | `boru check` does not analyse the body of a function VALUE constructed in ARGUMENT position — all three anonymous spellings (`=>`, `fn`, `afn`) — so `each ([e:Any] => [nosuchw e]) [1 2 3]` checks clean and then raises `undefined_word` at run time, an error the checker catches without difficulty when the identical body is `def`-bound. A code BLOCK argument and a named fn REFERENCE are both analysed, so position decides it, not spelling; measured matrix in the record | bounding NUR103's mini-redis half, 2026-08-26 |
@@ -223,7 +223,7 @@ become refusable at the declaration — the outcome this record exists for.
 **Related.** The 1-argument cases (`def I …`, and the capitalised-constructor
 convention `def New fn opts:Map Service […]` used by `design/examples/`) stay
 reachable only at the USE site until this lands, which is what
-`stranded_type_call` reports (`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.1).
+`stranded_type_call` reports (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.1).
 
 ---
 
@@ -1113,7 +1113,7 @@ report a property of the code.
 sub-registry's check is INACTIVE by design: the body must execute for real so
 its exports get concrete names ("check mode is not propagated into a module
 body — carrier-stripping would destroy the concrete export names",
-`native_module_module.go`; `design/module-fn-checkstate-ownership.1.md` §3.2).
+`native_module_module.go`; `design/legacy/module-fn-checkstate-ownership.1.ignore` §3.2).
 So a module fn's body is only ever analysed under whatever call shapes a
 program happens to use. Measured on HEAD, the same fn either way:
 
@@ -2599,7 +2599,7 @@ without checking what that answer rested on.
 ## NUR101 — BROAD places a REFERENCED fn but still dispatches a COMPUTED one {#nur101}
 
 **Status:** Pending · **Recorded:** 2026-08-25 · **Surfaced by:** re-measuring
-`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.4 against the post-#402 tree; the
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.4 against the post-#402 tree; the
 diagnosis below is the maintainer's correction of this record's first version
 
 **Rule:** ADR-011's 2026-08-24 amendment, implementing NUR073's BROAD verdict
@@ -2686,7 +2686,7 @@ inside an enclosing group place, or dispatch?** ADR-011's carve-out is
 written for *"a bare WORD inside a group"*, and `(mk 1)` is not a bare word,
 which is how this register came to hold two contradictory readings (see
 below). Options, costs and a recommendation:
-[design/O1-RELITIGATION.0.md](design/O1-RELITIGATION.0.md).
+[design/legacy/O1-RELITIGATION.0.ignore](design/legacy/O1-RELITIGATION.0.ignore).
 
 **RULED 2026-08-26 — place uniformly.** A computed function applied inside
 an enclosing group PLACES, exactly as its unwrapped twin does. `((mk 1) 2)`
@@ -2698,7 +2698,7 @@ is not one.
 Both lanes move. The compiled lane is NOT already at this answer for the
 enclosing-group case — `lang/go/bytecode_curried_test.go:17-24` pins compiled
 `((mk 1) 2)` as `[3]` — so the fix is interpreter AND compiler, and that
-fixture is rewritten with it. `design/HIGHER-ORDER-FUNCTIONS.0.md` §5.4's
+fixture is rewritten with it. `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.4's
 `((mk 1) 2)` → `3` transcripts and its `def h (mk 1)` / `2 h/v apply`
 workaround are re-spelled, as every §1 program was when BROAD's first half
 landed. `def h (mk 1) end  h 2` → `3` must keep working: a bare NAME bound to
@@ -2886,7 +2886,7 @@ non-Boolean targets.
   (`'false' convert Boolean` → `true` pinned explicitly).
 
 **Review (2026-07-31):** re-affirmed by the maintainer
-(`design/NUR-RESOLUTION-PLAN.0.md`). The single coercion rule this
+(`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`). The single coercion rule this
 record leans on is now specified once — with every consuming construct
 enumerated — in `design/TRUTHINESS.0.md` (the One Truthiness Model);
 an ADR stating the model as a language principle is a recorded
@@ -2934,7 +2934,7 @@ presenting Boolean as special.
 
 Finite **dependent scalar types** also define finite domains, and
 should eventually enter the same coverage channel. Two items to
-investigate (`design/NUR-RESOLUTION-PLAN.0.md`):
+investigate (`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):
 
 - **Ergonomics** — allow a finite dependent type to be declared by
   enumerating its values (a `{2,3,4}`-style literal domain) rather
@@ -2990,7 +2990,7 @@ the non-uniform return type never degrades static analysis to `Any`.
   coerced boolean.**"
 
 **Review (2026-07-31):** re-affirmed by the maintainer
-(`design/NUR-RESOLUTION-PLAN.0.md`). The operand-return semantics —
+(`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`). The operand-return semantics —
 short-circuit behaviour, evaluation order, which operand is returned,
 and the interaction with static typing — are specified in
 `design/TRUTHINESS.0.md` §"The connectives", which this record now
@@ -3062,7 +3062,7 @@ distinctions into the structural layer — the wrong home for them.
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
 2026-07-22; verdict and rewritten wording: maintainer, via
-`design/NUR-RESOLUTION-PLAN.0.md`)
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3140,7 +3140,7 @@ refinement construction.
 unstated deliberate scoping or an omission; needs a verdict.
 
 **Verdict direction (maintainer, 2026-07-31 — architectural
-remediation, `design/NUR-RESOLUTION-PLAN.0.md`):** the Bytes omission
+remediation, `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** the Bytes omission
 exposes a deeper **ownership** problem in the kernel type hierarchy,
 and the fix is architectural rather than a one-line addition to
 `canonicalBaseType`. The proposed rule: **all globally visible
@@ -3236,7 +3236,7 @@ remains the aliasing probe.
   on a scalar; `sameContainer` identity arms for compounds).
 - REFERENCE.md §Comparison ("**`eq` is identity for compounds; `deq`
   is structural — by design**"); EXPLANATION.md §"Type ordering", the "**Two equalities, one rule.**"
-  lead-in (added with this verdict); `design/LISP-ANALYSIS.5.md` (the original
+  lead-in (added with this verdict); `design/legacy/LISP-ANALYSIS.5.ignore` (the original
   argument).
 - `core/go/compare.go` — the carve-out arms themselves
   (`opaqueIdealExactEqual` / `opaqueIdealDeepEqual`, `storeDeepEqual`,
@@ -3248,7 +3248,7 @@ remains the aliasing probe.
   words' `deq`-basis battery pins the value side of the rule.
 
 **Modification recorded (maintainer, 2026-07-31,
-`design/NUR-RESOLUTION-PLAN.0.md`):** the two-level model is to grow
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** the two-level model is to grow
 into a complete equality family with a third word — **`req`**,
 reference equality (pointer identity only, uniformly for compounds
 and scalars) — separating three notions many languages conflate:
@@ -3268,7 +3268,7 @@ unchanged.
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; the 2026-07-31 investigation verdict discharged below;
 verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3348,7 +3348,7 @@ semantic-vs-deterministic split applied to the other special value.
 
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3404,7 +3404,7 @@ arithmetic a defined error. The behaviour is Python's
 
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22; verdict: maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3464,7 +3464,7 @@ route.
 **Status:** Allowed · **Date:** 2026-08-02 (recorded Pending
 2026-07-22 as "the String family's core straggler"; verdict:
 maintainer, accepting the recommendation in
-`design/NUR-EFFORT-TRIAGE.0.md`)
+`design/legacy/NUR-EFFORT-TRIAGE.0.ignore`)
 
 ### The uniform rule
 
@@ -3516,7 +3516,7 @@ that is the sequence home.
 ## NUR020 — `print` stays in core; every other IO word is namespaced {#nur020}
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
-2026-07-22; verdict: maintainer, via `design/NUR-RESOLUTION-PLAN.0.md`)
+2026-07-22; verdict: maintainer, via `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3591,7 +3591,7 @@ context for the verdict below, not a separate record: bringing `del`
 into line with `set` is the step that was directed.
 
 **Verdict (maintainer, 2026-07-31 — resolve by fix,
-`design/NUR-RESOLUTION-PLAN.0.md`):** bring `del` into symmetry with
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** bring `del` into symmetry with
 `set` across the container set. **First investigation step:** confirm
 that boru distinguishes an *absent key* from a *present key bound to
 `none`* — the deletion semantics hang on that distinction being real
@@ -3700,7 +3700,7 @@ distinct miss sentinel exists; it does not reopen this record.
 ## NUR024 — Two orderings by design: semantic (`cmp`) and deterministic (`tcmp`) {#nur024}
 
 **Status:** Allowed · **Date:** 2026-07-31 (recorded Pending
-2026-07-22; verdict: maintainer, via `design/NUR-RESOLUTION-PLAN.0.md`)
+2026-07-22; verdict: maintainer, via `design/legacy/NUR-RESOLUTION-PLAN.0.ignore`)
 
 ### The uniform rule
 
@@ -3783,7 +3783,7 @@ severed from jsonic purely to bolt on interpolation, and the
 replacement escape handler was never brought to parity.
 
 **Verdict (maintainer, 2026-07-31 — resolve by fix,
-`design/NUR-RESOLUTION-PLAN.0.md`):** boru shall **not** use the
+`design/legacy/NUR-RESOLUTION-PLAN.0.ignore`):** boru shall **not** use the
 jsonic JSON string lexer as-is for strings. Instead: a **custom
 unified string lexer** — a vendored copy of jsonic's string lexer,
 extended to also handle backtick templates (i.e. `${…}`
@@ -4106,7 +4106,7 @@ form.
 
 **The mechanism (corrected 2026-08-02).** This record originally
 proposed that "the first pass measures widths against a pre-wrap layout
-decision it then invalidates". `design/NUR-EFFORT-TRIAGE.0.md:139-148`
+decision it then invalidates". `design/legacy/NUR-EFFORT-TRIAGE.0.ignore:139-148`
 (the NUR046 bullet; the cause statement at :140-141) investigated and
 found otherwise: the true cause is **re-parse
 statement-segmentation drift** (root-level newlines emitted by pass 1
@@ -4709,7 +4709,7 @@ them revealed.
 ## NUR074 — `canon` renders a function's parameter names, so alpha-equivalent functions render differently {#nur074}
 
 **Status:** Pending · **Recorded:** 2026-08-16 · **Surfaced by:**
-`design/unison-hash-identity-probe.0.md` P4, a proof-of-concept pass over the
+`design/legacy/unison-hash-identity-probe.0.ignore` P4, a proof-of-concept pass over the
 canon contract; flagged for this register by the PR #376 review (Codex P1).
 
 **Rule:** a value's canonical rendering should depend on the **value**, not on
@@ -4753,7 +4753,7 @@ candidate 1 below. Nothing about NUR031's fix depends on the answer — it
 compares whatever canon renders — so this stays independently decidable.
 
 **Evidence:** `scripts/hash-identity-probe.boru` P4 and its wrapper
-`scripts/hash-identity-probe.sh`; `design/unison-hash-identity-probe.0.md` §4;
+`scripts/hash-identity-probe.sh`; `design/legacy/unison-hash-identity-probe.0.ignore` §4;
 `core/go/compare.go` `fnStructurallyEqual` (the canon-as-equality path);
 `NUR.md` §NUR031 (retired 2026-08-16 — `git log -S NUR031` for the
 binding-name half and its 2026-08-15 refinement).
@@ -4901,7 +4901,7 @@ designed behaviour ("the planner's designed TFunction intercept"); two
 more bare uses sit in the frontier divergence ledger (§3.3's count of 3).
 
 **RE-AFFIRMED 2026-08-26 — implement as amended.** Re-litigated under O1
-(`design/O1-RELITIGATION.0.md` §2) and the amendment stands: a bare name
+(`design/legacy/O1-RELITIGATION.0.ignore` §2) and the amendment stands: a bare name
 bound to a function CALLS, universally, and passing one as an argument is
 explicit. The slot type must stop deciding what a token means — that is the
 same class of context-sensitivity Stage 4's descriptor would otherwise have
@@ -4926,7 +4926,7 @@ when that fix lands.
 ## NUR079 — Gated words inside an imported file-module body escape the policy that governs the same call at top level {#nur079}
 
 **Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
-Roc comparison study (`design/roc-in-boru-report.0.md` §7.1), while
+Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.1), while
 checking Roc's claim that `roc check`/`roc build` perform no dependency
 I/O
 
@@ -5035,7 +5035,7 @@ permission flags they document. The record stays Pending until both land.
 ## NUR080 — A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one {#nur080}
 
 **Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
-Roc comparison study (`design/roc-in-boru-report.0.md` §7.2), while
+Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.2), while
 measuring boru's nominal-newtype guarantee against Roc's opaque types
 
 **Rule:** the two engines agree. A bare `refine` is a nominal newtype
@@ -5067,7 +5067,7 @@ A String newtype (`def Name (refine String)`) did not reproduce it.
 whether a typed def elsewhere in the program mentioned it — points at the
 const-pool entry for the literal being reparented rather than a fresh
 value being minted, i.e. the residual of
-`design/MISCOMPILE-HUNT-FINDINGS.0.md` §B, whose July-2026 update states
+`design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore` §B, whose July-2026 update states
 "The static/concrete path is untouched." No `lang/spec/*.tsv` row covers
 `typeof` or `is` over a typed def of a literal in both source orders,
 which is why `make verify-bytecode` is blind to it.
@@ -5290,7 +5290,7 @@ normalises from the canonical form only, rather than canonicalising the
 intermediates first and then reducing.
 
 **Evidence:** the table above, measured against this tree by running
-`boru fmt` on each spelling; `design/HIGHER-ORDER-FUNCTIONS.0.md` §4.2;
+`boru fmt` on each spelling; `design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2;
 `STYLE-GUIDE.md` §S1 carries the same table as the formatter-status note.
 `boru describe fn` documents the underlying two-form rule (*"a list input
 always selects the spec-list form"*), which is what makes
@@ -5319,7 +5319,7 @@ record retires when each of the five rewrites to
 ## NUR089 — an inline lambda and a named reference to the same function are not equally checkable {#nur089}
 
 **Status:** Pending · **Recorded:** 2026-08-19 · **Surfaced by:** the
-function-type prototype (`design/FUNCTION-TYPES.0.md`), while
+function-type prototype (`design/legacy/FUNCTION-TYPES.0.ignore`), while
 establishing which of the audit's combinator blocks check clean and why
 
 **Rule:** a function value is a function value. ADR-011's "calling is an
@@ -5375,7 +5375,7 @@ combinator without calling it is clean in both spellings, so the defect
 is in the analysis of the *call*, not the body.
 
 **Not fixed by declaring a function type.** Replacing `f:Function` with
-a declared `f:IntToInt` (`design/FUNCTION-TYPES.0.md`) leaves the lambda
+a declared `f:IntToInt` (`design/legacy/FUNCTION-TYPES.0.ignore`) leaves the lambda
 call site failing — re-confirmed 2026-08-20 on the type-node-fusion
 tree, where the diagnostic becomes `no_signature: cannot call bb … got
 (Function); nearest [IntToInt]` (the named fn-shape param now carries
@@ -5406,7 +5406,7 @@ spellings, pinned as a spec row.
 
 **Status:** Pending · **Recorded:** 2026-08-19 · **Surfaced by:** probing
 `fn`'s `(tnot List)` input guard while investigating NUR090 (retired
-2026-08-20 — the name→node flip, `design/TYPE-REPRESENTATION.1.md`)
+2026-08-20 — the name→node flip, `design/legacy/TYPE-REPRESENTATION.1.ignore`)
 
 **Rule:** boru refuses loudly. `lang/spec/fn-triple.tsv` §4 pins the
 input guard's refusal as an ERROR row — *"a bare List type literal input
@@ -5580,7 +5580,7 @@ can live in `class.tsv` with the soundness pin still at 0.
 
 **Status:** Pending · **Recorded:** 2026-08-21 · **Surfaced by:** the
 higher-order capability audit's §5.6
-(`design/HIGHER-ORDER-FUNCTIONS.0.md`), re-assessed and pinned 2026-08-21
+(`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`), re-assessed and pinned 2026-08-21
 
 **Rule:** one binding store, one resolution rule. A name in a fn body
 should mean the same kind of thing wherever it was bound.
@@ -5614,7 +5614,7 @@ one syntax is the non-uniformity.
 as `lang/spec/frontier/frontier-hof-audit.tsv` §8 (all three rows). The
 contract is documented in `REFERENCE.md` §"Definition and scoping" and
 argued, with the cross-language positioning, in
-`design/HIGHER-ORDER-FUNCTIONS.0.md` §5.6.
+`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §5.6.
 
 **Verdict proposed:** **Allowed, plus a diagnostic.** The late half is
 load-bearing: top-level liveness — redefinition reaching existing words —

@@ -1,0 +1,133 @@
+# Pre-existing miscompile: user-fn param type-guard skipped over a gradual arg
+
+Found by the Stage-D-2/4 suspend-skip adversarial workflow (a 4-family,
+~413-program sweep). This is a **real `compile == interpret` VIOLATION** — the
+compiled path returns a value where the interpreter raises — distinct from the
+`--force-compile` refusals the voxgig leaves are about (those are open defects
+in their own right, each owed a fix; this one is worse still, because it
+answers, and answers wrongly). It is **pre-existing** (reproduces on a clean
+tree, independent of this session's commits) and fires under **both**
+`--compile` and `--force-compile`.
+
+## Repro
+
+```
+def id fn [[x:Any] [Any] [x]]          # transparent identity, declared [Any]
+def f  fn [[m:Map] [Integer] [m size]]
+def r (id [10 20 30])                  # r is statically Any, a List at runtime
+(r f)                                  # compiled → 3   ;  interpreter → type error
+```
+
+`f`'s body `m size` runs over a `List` bound to its `m:Map` param and returns
+`3`; the interpreter refuses the call (a `List` is not a `Map`). Variants:
+`Integer`→`s:String`, laundering via a 0-arg `[Any]`-returning fn, etc. — the
+whole class reproduces.
+
+## Root cause
+
+The **gradual-Any** feature (`design/legacy/CLIENT-FIXES-2026-06-24.ignore`): a value of
+static type exactly `Any` (a `:Any` param, an `[Any]`-returning helper) becomes a
+gradual (`Dynamic`) carrier that **optimistically matches a concrete param** at
+check time (`sigTypeMatches`, `signature.go:265` `if v.Dynamic`), instead of
+failing `no_signature`. Added so the trie/decision node walkers
+(`get`/`find-kid` over an `[Any]`-typed node) type-check.
+
+For a **native** word this is sound: the no-signature recovery records
+`OpCallNativePoly`, which **re-matches at run time** (interpreter-faithful;
+`vm.go` `callPoly`). But for a **user fn** the call records a plain `OpCallUser`
+(`vm.go:791`), which pops the args into the new frame's locals and enters the
+body **with NO param-type check** — while the interpreter runtime-matches the
+concrete value. So a runtime mismatch diverges: compiled runs the body, the
+interpreter raises.
+
+`OpRet` already does the symmetric thing on the OTHER boundary — it enforces the
+declared RETURN types via `v.Is(exp)` (`vm.go:825`, `CompiledFn.Returns`). The
+param boundary has no equivalent.
+
+## Why the obvious move (refuse) is not a fix
+
+A conservative refusal — "a gradual `Dynamic` arg to a concrete param refuses,
+and the runtime SILENTLY re-runs the program on the interpreter" (tried in
+`buildFnBodyReturnsFn`, `core_helpers.go`) — DOES remove the wrong answer, and
+passes `verify-bytecode` (the `minCompiledRows` differential gate) and the
+voxgig sweep (13/26, unchanged). But it fixes nothing: it trades a miscompile
+for a compile failure — code a developer expects to compile, silently demoted
+to the interpreter, the silence making it worse — and that is an open defect
+owed a fix, not a resting state. On top of that it **OVER-refuses a legitimate
+compilation**: `TestRunSpecHarnessCompiles`'s `Test.run-spec` harness applies a
+single-overload `double fn [[n:Integer]…]` to its spec's case inputs
+(gradual-`Any`, but genuinely `Integer` at runtime), which must compile.
+Statically the laundered-`List` and the matching-`Integer` are
+INDISTINGUISHABLE (both gradual-`Any` → concrete param), so the refusal cannot
+even be narrowed cleanly.
+
+## The correct fix: a runtime param guard at OpCallUser
+
+Mirror the `OpRet` return-check on the param boundary:
+
+1. Add `Params []*Type` to `CompiledFn` (`bytecode.go`).
+2. Thread the declared param types: `core_helpers.go`'s `StartFnCompile` call has
+   `sigParams` in scope — pass `sigParams[i].Type` through `StartFnCompile`
+   (`emit.go:1411`, new arg) → `fnUnitRec` (new field) → the `CompiledFn{…}`
+   build (`emit.go:3505`). Closures (`callable_words.go:50`) declare `[Any]`
+   inputs, so pass nil / `Any` there (a guaranteed-pass check, like their
+   `Returns=[Any]`).
+3. In the VM `OpCallUser` handler (`vm.go:791`), after popping args into `nl`,
+   check each `nl[i]` against `Params[i]` via `v.Is(Params[i])` (the SAME
+   membership the param boundary and `OpRet` use); on mismatch raise the
+   byte-identical `signature_error` the interpreter raises for "no matching
+   signature for `<fn>`". A nil / `Any` param is a guaranteed pass (skip).
+4. **Multi-overload**: the compiled `OpCallUser` targets ONE chosen overload; a
+   gradual arg could match a DIFFERENT overload at run time, where a single-unit
+   guard would raise but the interpreter re-dispatches. The move that finishes
+   the job is to record a user-fn poly (re-match across overloads at run time,
+   the OpCallNativePoly analogue). Restricting the guard to single-overload fns
+   is a stopgap only: it leaves multi-overload gradual calls refusing, and such
+   a refusal is an open defect owed a fix and tracked to closure, never a
+   second branch of the design. First determine whether multi-overload gradual
+   calls even compile today (if they already refuse, that standing refusal is
+   itself an outstanding defect, and the guard can land ahead of it without
+   over-raising).
+
+## Verification discipline (mandatory — the differential is blind here)
+
+The laundered shapes are NOT in the langspec corpus, so `verify-bytecode` cannot
+witness this class. Gate any fix with hand-pinned `RunCompiledStrict` /
+`RunCompiled`-vs-`Run` regressions across the laundered class AND the
+matching-value class (the harness shape must keep compiling), plus an adversarial
+sweep — a guard that raises where the interpreter succeeds is a NEW divergence the
+corpus won't catch.
+
+## Status — IMPLEMENTED for plain types (one residual)
+
+The runtime param guard LANDED: `CompiledFn.Params` (threaded from `sigParams`
+via `SetUnitParamTypes`) is enforced at `OpCallUser` entry by `checkParamContract`
+(`vm.go`), raising the byte-identical `signature_error` the interpreter raises.
+The reported `List`→`m:Map` laundering (and the whole PLAIN-type class) is fixed:
+compiled and interpreter both raise `[boru/signature_error]`.
+
+An adversarial sweep (~137 programs, 4 families) verified two things and found
+one residual:
+
+- **No over-raise** — the guard uses `sigTypeMatches`, NOT `v.Is`. `v.Is` is a
+  strict subset that rejects a concrete map at an `Options` slot (`TMap ⋢
+  TOptions`); the interpreter's `sigTypeMatches` accepts it (signature.go's
+  Options/Record special-cases). The first cut used `v.Is` and OVER-RAISED on
+  every `Options` / optional-`Options` param (a regression); switching to
+  `sigTypeMatches` fixes it. Captures align correctly (the guard checks only the
+  leading `len(Params)` param slots, never a capture slot).
+- **Inline-`Pattern` under-catch — NOW CLOSED.** A constraint carried in
+  `FnParam.Pattern` rather than `.Type` — an INLINE disjunct (`x:(Integer tor
+  String)` → `Type=TAny`), an inline predicate/DepScalar (`b:(Integer gt 10)` →
+  `Type=TInteger`), a bounded `T/t`, or a structural map/list pattern — is now
+  threaded into `CompiledFn.ParamPatterns` and checked at CALL_USER via the SAME
+  `OpenUnifyMap`/`Unify` the interpreter's dispatch runs (engine.go:4346-4360), so
+  a value laundered past such a param raises the same signature_error. Members
+  still compile (no over-raise — the check is the interpreter's exact logic).
+  NAMED user types (`def Maybe …; x:Maybe`) were already fine via `sigTypeMatches`.
+- A SEPARATE pre-existing **return**-contract gap surfaced too — a `[Map]`-declared
+  fn TAIL-CALLING an `[Integer]`-returning one bypassed the caller's return-check
+  (the tail call replaces the frame). Fixed independently (`markTailCalls` now
+  tail-marks only when the callee's returns conform to the caller's). Not this
+  param guard.
+```

@@ -1,0 +1,130 @@
+# Checker precision fronts: typed code values & store-identity contexts
+
+> **SHIPPED (annotated 2026-08-02).** Both fronts landed: typed code
+> values stage 1 in `eng/go/code_effect.go` (0-input bodies; nesting
+> declines past depth 1) and store-shape typing in
+> `eng/go/store_shape.go`. The staged plans below are the historical
+> design record; the stage-2/3 residuals they defer are still open.
+
+Status: **design note — analysis and staged plan, no code yet.** The two
+remaining Tier-3 items from `checker-comprehensive-review.0.ignore` §5 that need
+design before implementation. Grounded at the post-Tier-2 tree (strict mode,
+frontier ratio gate, and the tand/DepScalar carrier fixes landed).
+
+## 1. Typed code values (the `do` escape hatch)
+
+### The gap
+
+`do [literal body]` is fully analysable — the checker runs the body tokens.
+`ops get 0 do` (a body READ from a data structure) sees `Carry<Any>`: a list
+of code has element type "whatever", so the checker knows nothing about what
+`do` produces. `CARRIER-STATIC-TYPECHECK-REPORT.10.ignore` rates this "Severe" —
+it is the canonical escape hatch, and every DSL that stores code in data
+(dispatch tables, rule lists, callback maps) funnels through it.
+
+### Design: stack-effect-carrying code carriers
+
+A code value's static description is its **stack effect**: `Code[in → out]`
+— it consumes `in` values of given types and nets `out` values of given
+types. The pieces:
+
+1. **A `CodeEffectInfo` carrier payload** (new, mirrors `ChildTypeInfo`):
+   `{In []*Type, Out []*Type, Analysed bool}`. A carrier with
+   `Parent=TList` may carry it the way typed-list carriers carry
+   `ChildTypeInfo`.
+2. **Producers.** A LITERAL code list (`[1 add]` in code position) gets its
+   effect from the same body analysis the closure path already runs
+   (`analyseHigherOrderBody` — the machinery exists; the effect is the
+   residual arity/types against synthetic inputs). A list literal WHOSE
+   ELEMENTS are code lists propagates per-element effects into the
+   ChildTypeInfo — this is the key move: `def ops [[1 add] [2 mul]]` gives
+   ops a `ChildType = Code[Integer → Integer]` when the element effects
+   JOIN cleanly (same shape), else the child stays untyped.
+3. **Consumers.** `do`/`call`'s ReturnsFn, on a non-literal body carrier,
+   reads the CodeEffectInfo: result = the effect's `out` carriers instead of
+   dynamic Any. `each/fold/filter` bodies could consume it the same way
+   later.
+4. **Decay.** Any list operation that cannot preserve the effect
+   (`concat` with an untyped list, `set` of a non-code element) drops to
+   the plain child type — same decay philosophy as the container-refine
+   design.
+
+### Why not yet
+
+- The effect join for heterogeneous op-tables (`[[dup mul] [drop 0]]` — one
+  is 1→1, the other 1→1 with different types) needs the same
+  disjunct-vs-widen decisions JoinCarriers makes, but over effect SHAPES;
+  arity mismatches must decay loudly (an `analysis_truncated`-style info).
+- The compile pass must refuse (not island) a `do` over an effect-carrying
+  carrier until the VM grows a code-value invocation path — the checker
+  precision must not imply compile coverage.
+- Estimated as the single largest precision unlock (it feeds the patrun /
+  parselang / DSL families that dominate the 345-row Any frontier), and the
+  most design-sensitive: effects are a NEW abstract domain, and every
+  list-word ReturnsFn becomes a potential effect-preservation site.
+
+**Recommended sequencing:** (1) `CodeEffectInfo` + literal-list producers +
+`do` consumer only, gated by the frontier ratio (expected several-point
+drop); (2) op-table element propagation; (3) higher-order consumers.
+
+## 2. Store-identity context typing
+
+### The gap
+
+`CheckState.ContextTypes` is ONE flat string-keyed namespace for the whole
+pass: `ctx-set 'K' v` records `K → typeof(v)`, `ctx-get 'K'` reads it back,
+unknown keys read as `dynamic(Any)`. Two stores' same-named keys JOIN; a
+set-after-get in source order is invisible (flow-insensitive); a context
+STACK (PushContext/PopContext layers) is flattened.
+
+### Why the obvious fix does not work yet
+
+Keying by store identity requires the checker to KNOW which
+`StoreInstanceInfo` a `ctx-get` reads — but `toCarrier` strips
+`*StoreInstanceInfo`, so at check time every store value is an opaque
+carrier. Unlike the DepScalarInfo preservation (landed — a constraint is an
+immutable type definition), a Store CANNOT simply be kept concrete in check
+mode:
+
+- **Stores are mutable runtime state.** A concrete store flowing through
+  check mode means check-time `ctx-set`/`set` handlers would mutate REAL
+  shared state (the check pass must be observation-free; the module-fn
+  CheckState-ownership refactor §5b exists precisely because real execution
+  during Check leaked state).
+- The correct carrier is a **store-shaped carrier**: a fresh
+  `StoreTypeCarrier{ID, KeyTypes}` payload minted per store-creating word at
+  check time — an ABSTRACT store the check-mode ctx/set/get handlers
+  read/write instead of the real one. That is a new payload + handler
+  discipline (every store-touching word needs the check-mode twin), not a
+  one-line preservation.
+
+### Staged plan
+
+1. **Abstract store carriers**: `StoreShapeInfo{Scope int, KeyTypes
+   map[string]*Type}` payload; store-creating words
+   (`context`/`PushContext`, `make Store`) mint one per creation site in
+   check mode; `ctx-set`/`ctx-get`/`set`/`get` over a store carrier
+   read/write ITS KeyTypes instead of the flat `ContextTypes`.
+2. **Layering**: PushContext copies the parent shape (copy-on-write, like
+   the runtime); PopContext restores — giving scope-correct typing for the
+   context stack.
+3. **Retire `CheckState.ContextTypes`** once every reader is store-shaped;
+   the flat map is the compatibility fallback until then.
+4. Flow-sensitivity (set-after-get ordering) falls out for free: the shape
+   is threaded through the same sequential analysis every other carrier is.
+
+**Risk**: the ctx words are used heavily by modules (`boru:test` state,
+`boru:log` spans); stage 1 must keep the flat-map behavior for any store the
+minting misses (unknown store carrier → today's `dynamic(Any)`), so
+precision only increases.
+
+## 3. What landed alongside this note (context)
+
+The cheap Tier-3 items shipped directly: `boru check --strict` (the
+dynamic-dispatch advisory surface), the Any-frontier RATIO gate (12%
+ceiling; count informational), the A8 macro_not_expandable advisory, the
+tand/DepScalar check-mode fixes (TandReturnsFn; toCarrier preserves
+DepScalarInfo — bounds are type definitions, immutable, so preservation is
+safe where store preservation is not), and the sibling-DepScalar-meet
+pinning (the unify_lca "limitation" was stale; the residual limitation is
+opaque predicate bodies, by design).

@@ -60,7 +60,7 @@ var langNew = lang.New
 
 // registerTerminalBackend wires the real-TTY tuikit backend onto the
 // runtime's registry so `import "boru:tui"` words reach the terminal
-// (design/TUI-IMPLEMENTATION-PLAN.0.md P3). Registration is cheap and
+// (design/legacy/TUI-IMPLEMENTATION-PLAN.0.ignore P3). Registration is cheap and
 // pre-import-safe; failure means a backend is already registered on
 // this registry, which is exactly the state we want.
 func registerTerminalBackend(a *lang.Boru) {
@@ -85,7 +85,7 @@ func EvalColor(w io.Writer, source string, o lang.Options, mode CompileMode, col
 // EvalReport is Eval plus the -compile-report surface, a compilation-refusal
 // warning stream, and caller-resolved color. When report is non-nil, the
 // instance's detached-stamp attribution (lang.Boru.StampReport —
-// design/RUNTIME-STAMPING.0.md) is printed to it after the run, one line per
+// design/legacy/RUNTIME-STAMPING.0.ignore) is printed to it after the run, one line per
 // runtime-constructed callback with its outcome or refusal reason. When warn is
 // non-nil and the default compile-try mode falls back because the WHOLE program
 // refused to compile, a one-line performance warning naming the refusal reason

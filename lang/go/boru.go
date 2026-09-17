@@ -279,7 +279,7 @@ func (a *Boru) Policy() Policy {
 // every committed dispatch over a dynamic operand emits a non-gating
 // dynamic_dispatch info diagnostic, making the gradual frontier loud —
 // the Typed-Racket-style migration surface
-// (design/checker-accuracy-review.10.md). Persistent on the instance
+// (design/legacy/checker-accuracy-review.10.ignore). Persistent on the instance
 // until toggled off.
 func (a *Boru) SetStrictCheck(on bool) {
 	if a.registry.Check.Strict != on {
@@ -351,7 +351,7 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 
 // Program is the bytecode unit the compile pass produces — re-exported
 // from the engine kernel for host callers (Stage 1 of
-// design/boru-bytecode-plan.0.md).
+// design/legacy/boru-bytecode-plan.0.ignore).
 type Program = compiler.Program
 
 // StampEvent is one detached-stamp attempt (re-exported for hosts and the
@@ -359,7 +359,7 @@ type Program = compiler.Program
 type StampEvent = core.StampEvent
 
 // StampReport returns the detached-stamp attribution recorded on this
-// instance's registry (design/RUNTIME-STAMPING.0.md Phase 5): one event per
+// instance's registry (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5): one event per
 // stamp ATTEMPT — runtime-constructed codec fns, service handlers, and
 // module fns — with the refusal reason when the compile declined. Nil when
 // runtime stamping was never armed (a plain Run / -no-compile execution).
@@ -968,8 +968,8 @@ func convertResults(result []core.Value) []any {
 //     rather than a raw failure (the differential gate's row-count floor still
 //     catches the regression). EXCEPT when observable output already escaped:
 //     rolling back cannot un-print, so a re-run would duplicate every effect
-//     (the L-DUP class, design/VOXGIG-COMPILE-LEAVES.2.md). The effect fence
-//     (eng effects.go, design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md C1)
+//     (the L-DUP class, design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore). The effect fence
+//     (eng effects.go, design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore C1)
 //     then PROPAGATES the internal_error, annotated with a run-with
 //     --no-compile hint, instead of silently re-running.
 //   - The step budget. The interpreter counts it per tape token stepped, the
@@ -1296,7 +1296,7 @@ func checkDiagnosticsDetail(reason string, res CheckResult) string {
 
 // fenceBlockedFallback annotates a compiled-mode error whose silent
 // interpreter re-run the effect fence blocked (eng effects.go,
-// design/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.md C1): observable output
+// design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore C1): observable output
 // already escaped, so re-running the source would duplicate it. The original
 // error survives — a BoruError gains an explanatory note; a foreign Go error
 // is wrapped in an internal_error carrying its text — so the caller sees both

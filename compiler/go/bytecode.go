@@ -8,7 +8,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Bytecode Program model — Stage 1 of design/boru-bytecode-plan.0.md.
+// Bytecode Program model — Stage 1 of design/legacy/boru-bytecode-plan.0.ignore.
 //
 // A Program is the flat, linear lowering of the typed region the
 // carrier checker resolved: literal pushes, fixed-arity native calls
@@ -377,7 +377,7 @@ const (
 	// constructing a fresh List/Map each time — so a pooled const pushed from a
 	// compiled fn unit must not leak one shared identity across calls
 	// (`def mk fn [[] [List] [[1]]]  (mk) eq (mk)` must stay false; miscompile
-	// mechanism A, design/MISCOMPILE-HUNT-FINDINGS.0.md §A). The finalize pass
+	// mechanism A, design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A). The finalize pass
 	// rewrites OpPushConst → OpPushConstFresh in place (freshenFnUnitConsts,
 	// emit.go) exactly for fn-unit consts that (a) materialised from a literal
 	// written in the body — an ENCLOSING binding's value read by name keeps the

@@ -1,4 +1,4 @@
-// Compiled-mode differential gate (design/boru-bytecode-plan.0.md,
+// Compiled-mode differential gate (design/legacy/boru-bytecode-plan.0.ignore,
 // ground rule "differential gate from day one"): every spec value
 // row the Stage-1 emitter accepts must produce IDENTICAL results
 // through the bytecode VM and the interpreter. The compiled-row

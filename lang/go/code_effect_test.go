@@ -1,6 +1,6 @@
 package lang
 
-// Typed code values, stage 1 (design/checker-precision-fronts.0.md §1 —
+// Typed code values, stage 1 (design/legacy/checker-precision-fronts.0.ignore §1 —
 // the `do` escape hatch): a QUOTED code list stored in data carries its
 // analysed stack effect (compiler.CodeEffectInfo) on the carrier the checker
 // holds for it, so `do` over the NON-literal body types the effect's

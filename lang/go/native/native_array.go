@@ -1753,7 +1753,7 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 }
 
 // foldAccumFixedPoint iterates the fold/scan body analysis until the
-// accumulator type stabilises (design/checker-accuracy-review.10.md
+// accumulator type stabilises (design/legacy/checker-accuracy-review.10.ignore
 // A4): a body like [add 0.5] widens an Integer accumulator to Float
 // on the first round, and the second round must see the widened
 // accumulator or downstream consumers type against the init only.

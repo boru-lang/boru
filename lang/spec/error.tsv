@@ -4,7 +4,7 @@
 # `raise` constructs the same Ideal/Error the runtime produces and
 # raises it: uncaught it aborts with [boru/<code>]; `do [body] error
 # [handler]` catches it as an Error value carrying code, message, and
-# any extra spec-map payload keys (design/ERRORS.8.md §2, T9.6).
+# any extra spec-map payload keys (design/legacy/ERRORS.8.ignore §2, T9.6).
 # Also pinned here: the §3 blame-shift fix (a paren expression that
 # produces NO value is reported at the causing site) and the §5
 # runtime uncalled_function residue check.

@@ -100,7 +100,7 @@ def identity gen [T] fn x:T [T] [x]  identity 42	42	generic fn via the triple fo
 # body. It reads a `name:Type` pair exactly as the input slot does, so the
 # two spellings of one declaration cannot mean different things — and a
 # literal is a literal TYPE, admitting exactly itself (a value is a type,
-# ADR-010). See design/FN-OUTPUT-SIG.0.md for the sugar this replaced.
+# ADR-010). See design/legacy/FN-OUTPUT-SIG.0.ignore for the sugar this replaced.
 def si1 fn [s:String i:Integer [convert Integer s]]  si1 '1'	1	named return, spec-list form
 def si1 fn s:String i:Integer [convert Integer s]  si1 '1'	1	named return, triple form
 def w fn [[s:String] [i:Integer] [2]]  def t fn [s:String i:Integer [2]]  (w 'a') add (t 'a')	4	fn [x:A y:B [b]] ≡ fn [[x:A] [y:B] [b]] in the output slot too
@@ -127,7 +127,7 @@ def f fn [[Integer] [(Integer tor String)] [true]]  f 1	ERROR:type_error	the unn
 # ─────────────────────────────────────────────────────────────────────
 # §8  named-type params — every declaration kind agrees (NUR090 retired)
 #
-# A type NAME evaluates to its minted node (design/TYPE-REPRESENTATION.1.md
+# A type NAME evaluates to its minted node (design/legacy/TYPE-REPRESENTATION.1.ignore
 # §N1), so the bare triple form binds the same constraint the wrapped
 # spec-list form always did — for every declaration kind in NUR090's table.
 def P refine Integer  def x:P 5  def f fn P Any [1]  f x	1	refine newtype param, bare triple form

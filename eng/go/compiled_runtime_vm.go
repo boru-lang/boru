@@ -6,7 +6,7 @@ import (
 )
 
 // vmCompiledRuntime is the bytecode runner's CompiledRuntime — the real
-// implementation of core's S4 seam (design/ENG-FOUR-PIECE.0.md). It
+// implementation of core's S4 seam (design/legacy/ENG-FOUR-PIECE.0.ignore). It
 // owns the stamped-ref freshness/JIT-re-stamp dance, the C1 effect
 // fence around the attempt, and the internal-error degrade decision;
 // core's InvokeCallback sees only ran/declined.

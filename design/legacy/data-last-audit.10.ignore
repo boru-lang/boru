@@ -1,0 +1,276 @@
+# Data-Last Sig Audit
+
+Branch: `claude/extract-boru-engine-ZpBq4`
+Base commit: `4f9b6d6`
+
+## Principle
+
+For every native word's signature `Args: [T0, T1, …, T(n-1)]`, the
+argument carrying the most "data" (container/collection/record/store)
+must be at the last sig position. Lightweight scalar args
+(numbers/booleans/strings) make the rule vacuous. The
+condition arg of `if`, forward-only arguments of `def`/`type`/`fn`,
+math/boolean/stack/comparison sigs, and FullStack sigs are excluded.
+
+## Inventory
+
+### `lang/go/internal/engine` (engine builtins)
+
+| File | Word | Sig(s) | Verdict |
+|---|---|---|---|
+| native_array.go | iota | [Int] | OK (1-arg) |
+| native_array.go | shape | [List] | OK |
+| native_array.go | rank | [List] | OK |
+| native_array.go | size | [Any] | OK |
+| native_array.go | reshape | [List, List] | AMBIG (two list args; shape vs data) |
+| native_array.go | arr-flatten | [List] | OK |
+| native_array.go | arr-transpose | [List] | OK |
+| native_array.go | reverse | [List] | OK |
+| native_array.go | take | [Int, List] | OK (data last) |
+| native_array.go | shed | [Int, List] | OK |
+| native_array.go | where | [List] | OK |
+| native_array.go | unique | [List] | OK |
+| native_array.go | grade | [List] | OK |
+| native_array.go | at | [List(idx), List] | AMBIG (two list args) |
+| native_array.go | sortby | [List(keys), List] | AMBIG |
+| native_array.go | member | [List(needles), List(haystack)] | AMBIG |
+| native_array.go | arr-indexof | [List, List] | AMBIG |
+| native_array.go | group | [List, List] / [List] | AMBIG |
+| native_array.go | replicate | [List(counts), List(data)] | OK (data last) |
+| native_array.go | expand | [List(mask), List(data)] | OK |
+| native_array.go | window | [Int, List] | OK |
+| native_array.go | pairs | [List] | OK |
+| native_array.go | each | [List(body), List(data)] | OK (body=code, data last) |
+| native_array.go | fold | [Any(init), List(body), List(data)] / [List(body), List(data)] | OK |
+| native_array.go | scan | [List(body), List(data)] | OK |
+| native_array.go | outer | [List(body), List, List] | OK |
+| native_array.go | inner | [List(pair-op), List(agg-op), List, List] | OK |
+| native_storage.go | set | [Key, Any, Store/Object/Array] | OK (container last) |
+| native_storage.go | get | [Key, Container] | OK |
+| native_storage.go | context | [] | OK |
+| native_accessor.go | getr | [Key, Container] | OK |
+| native_string.go | upper / lower | [String]/[Atom] | OK |
+| native_string.go | concat | [List, Map(opts)] / [List] | AMBIG (opts trailer) |
+| native_string.go | split | [String, String, Map] / [String, String] | VACUOUS (strings ≈ scalars; opts trailer) |
+| native_string.go | trim | [String, Map] / [String] | OK |
+| native_string.go | contains | [String, String, Map] / [String, String] | VACUOUS |
+| native_string.go | indexof | [String, String, Map] / [String, String] | VACUOUS |
+| native_string.go | replace | [String, String, String, Map] / [String, String, String] | VACUOUS |
+| native_string.go | changecase | [String, Map] / [String] | OK |
+| native_string.go | normalize | [String, Map] / [String] | OK |
+| native_string.go | repeat | [String, Int, Map] / [String, Int] | VACUOUS (input string + scalar) |
+| native_string.go | pad | [Int, Map, String] / [Int, String] | OK (data last, opts mid) |
+| native_string.go | match | [String, String, Map] / [String, String] | VACUOUS |
+| native_string.go | escape | [String, Map] / [String] | OK |
+| native_misc.go | read | [Path, Map] / [Path] / [Map, Path] (rev) | AMBIG (intentional bidirectional) |
+| native_misc.go | write | [Path, String/Any, Map] / [Path, String] | AMBIG (path = address vs content = data) |
+| native_misc.go | stdin/stdout/stderr | [] | OK |
+| native_misc.go | help | [String]/[Atom]/[] | OK |
+| native_misc.go | module | [List] | OK |
+| native_misc.go | import | various incl. [List, Module] | OK |
+| native_misc.go | timeout | [Int, List/Atom] | OK (callback last) |
+| native_misc.go | await | [Options, List] / [List] | OK |
+| native_module_module.go | export | [Atom, Map] / [String, Map] | OK (map=data last) |
+| native_control.go | do | [List]/[Map] | OK |
+| native_control.go | if | [Any, Any, Any] / [Any, Any] | EXCLUDED (cond arg) |
+| native_control.go | for | [Int, List] / [List, List] | OK (body last) |
+| native_control.go | break/continue | [] | OK |
+| native_control.go | error | [List(handler), Error] | OK |
+| native_definition.go | def | [Map/Atom/String, Any] | EXCLUDED (forward-only name) |
+| native_definition.go | undef | [String]/[Atom]/[…, FnUndef] | OK |
+| native_definition.go | var/fn/call | [List] | OK |
+| native_definition.go | dblcall | [Int, List] | OK |
+| native_definition.go | args / __pa | [] | OK |
+| native_type.go | record/table/object | [List]/[Any]/[Map]/[Map, Object] | OK |
+| native_type.go | make | various position-agnostic overloads | AMBIG (position-agnostic) |
+| native_type.go | type/untype | [name, body] / [name] | EXCLUDED (forward-only name) |
+| native_type.go | typeof / fulltypeof / inspect / base | [Any]/[Word]/[Atom]/[Node]/[Scalar] | OK |
+| native_type.go | is / guard / tor / tand | [Any, Any] | VACUOUS |
+| native_type.go | any/all/tany/tall | [List] | OK |
+| native_type.go | convert | [ScalarType, Map, Scalar] / [ScalarType, Scalar] | OK |
+| native_query.go | star/from/as/select/where/order/by/limit/offset/distinct/group/having/on/using/joins/setops | DSL chain shape: [Table, Spec] | AMBIG (SQL-style left-to-right DSL; intentionally table-first for chainable infix syntax — currently disabled) |
+
+### `lang/go/internal/native` (data ops)
+
+| Word | Sig(s) | Verdict |
+|---|---|---|
+| implies | [Bool, Bool] / [Any, Any] | VACUOUS |
+| quote | [Word] / [Any/no-eval] | OK |
+| folder | [Options, Path] / [Path] | OK (path last) |
+| slice | [Int, Int, String/List] / [Int, String/List] / [String/List] | OK (data last) |
+| stack | [Int] FullStack | EXCLUDED |
+| now / sleep | []/[Int] | OK |
+| interval | [Int, List/Atom] | OK |
+| cancel | [Timeout]/[Interval] | OK |
+| list/create/load/update/remove | many overloads incl. [Entity, Map], [List, Map], [Map, Map] | AMBIG (SDK-shape DSL; entity/api/table forms each have intentional positional conventions) |
+| **transform** | [Map(spec), Any(data)] | OK (already data-last) |
+| merge | [List, Map] / [Map, List] / [Any, Any] | AMBIG (symmetric) |
+| **validate** | was [Any, Map] → now [Map, Any] | **REORDERED** (data last) |
+| **getpath** | was [Any, String] → now [String, Any] | **REORDERED** |
+| setpath | [String, Any, Any] / [Any, String, Any] | AMBIG (position-agnostic; finds string=path by type) |
+| inject | [Any, Any] | AMBIG (template + store both data) |
+| clone | [Any] | OK |
+| **walk** | was [Any, Fn, Fn] / [Any, Fn] / [Any] → now [Fn, Fn, Any] / [Fn, Any] / [Any] | **REORDERED** |
+| **selector** | was [Any, Map] → now [Map, Any] | **REORDERED** |
+| size | [Any] | OK |
+| **pad** (native) | was [Any, Int] / [Any] → now [Int, Any] / [Any] | **REORDERED** |
+| items | [Any] | OK |
+| fetch | [String, Map] / [Map] / [String] | AMBIG (URL=address vs opts) |
+| prepare / direct | [Map] | OK |
+| **flatten** | was [List, Int] / [List] → now [Int, List] / [List] | **REORDERED** |
+| **filter** | was [Any, Fn] → now [Fn, Any] | **REORDERED** |
+| **join** | was [List, String] / [List] → now [String, List] / [List] | **REORDERED** |
+| **jsonify** | was [Any, Map] / [Any] → now [Map, Any] / [Any] | **REORDERED** |
+| push / unshift | [Any, List] | OK (list last) |
+| pop / shift | [List] | OK |
+| istype | [Any] | OK |
+
+### `lang/go/modules/matrix` (matrix module — Go-implemented words)
+
+| Word | Sig(s) | Verdict |
+|---|---|---|
+| matrix-make | [List] | OK |
+| matrix-zeros / ones | [Int, Int] | VACUOUS |
+| matrix-eye | [Int] | OK |
+| matrix-fill | [Int, Int, Number] | VACUOUS |
+| matrix-rows / cols / size | [Matrix] | OK |
+| **matrix-at** | was [Matrix, Int, Int] → now [Int, Int, Matrix] | **REORDERED** |
+| **matrix-row** | was [Matrix, Int] → now [Int, Matrix] | **REORDERED** |
+| **matrix-col** | was [Matrix, Int] → now [Int, Matrix] | **REORDERED** |
+| matrix-mat-add / sub / mul / emul | [Matrix, Matrix] | AMBIG (binary op) |
+| **matrix-scale** | was [Matrix, Number] → now [Number, Matrix] | **REORDERED** |
+| matrix-transpose / flatten / sum / trace / det | [Matrix] | OK |
+| matrix-dot | [List, List] | AMBIG |
+
+The matrix-* FnDef wrappers retain user-facing positional order
+(`mat row col matrix.at`) because FnDef param matching is
+deepest-first while the underlying NativeFunc sig matching is
+top-of-stack-first. The two compose: stack [mat,1,0] →
+FnDef-args [mat,1,0] → CallBoru pushes them as tokens [mat,1,0] →
+NativeFunc sig [Int,Int,Matrix] matches stack [mat,1,0]
+(top=0→sig[0], mid=1→sig[1], deep=mat→sig[2]).
+
+### `lang/go/modules/time` (time module)
+
+| Word | Sig(s) | Verdict |
+|---|---|---|
+| date / datetime / instant / time-of-day / tz / unix / unix-ms / unix-ns | [String/Int] | OK |
+| now-local / today / today-utc | [] | OK |
+| year / month / day / weekday / year-day / iso-week / quarter / days-in-month / days-in-year / weekday-name / month-name / is-leap-year | [Date] | OK |
+| to-unix / to-unix-ms / to-utc / elapsed | [Instant] | OK |
+| is-before / is-after / is-equal / until / since / diff / earliest / latest / time-compare | [Date, Date] / [Instant, Instant] | VACUOUS (homogeneous) |
+| to-string / to-iso | [Date] | OK |
+| **format** | was [Date, String] → now [String, Date] | **REORDERED** |
+| **add-days / add-months / add-years** | was [Date, Int] → now [Int, Date] | **REORDERED** |
+| years/months/weeks/days/hours/minutes/seconds/ms/us/ns | [Int]/[Number] | OK |
+| cal-dur | [Int, Int, Int] | VACUOUS |
+| ~~time-duration~~ (ISO form) | ~~[String]~~ | **REMOVED** (TYPE-DECOUPLING.10.ignore Step 11) |
+| total-hours / total-minutes / total-seconds / total-ms / dur-years / dur-months / dur-days / dur-sign | [Duration] | OK |
+| is-between | [Date, Date, Date] | VACUOUS |
+| to-date | [DateTime] / [Instant] | OK |
+| to-time-of-day | [DateTime] / [Instant] | OK |
+| to-datetime | [Date] | OK |
+| to-instant | [Timezone, DateTime] | OK (DateTime last) |
+| to-local | [Timezone, Instant] | OK |
+| **start-of / end-of** | was [Date, String] → now [String, Date] | **REORDERED** |
+| tz-utc / tz-local | [] | OK |
+| tz-name | [Timezone] | OK |
+| tz-offset / is-dst | [Timezone, Instant] | OK |
+| ~~parse-date / parse-datetime~~ | ~~[String, String]~~ | **REMOVED** (TYPE-DECOUPLING.10.ignore Step 11) |
+| ~~auto-date~~ | ~~[String]~~ | **REMOVED** (TYPE-DECOUPLING.10.ignore Step 11) |
+
+For the time module, FnDef wrapper params keep the user-facing order
+(`date n add-days`, `date "month" start-of`); the NativeFunc sig is
+the corresponding data-last reverse.
+
+### `borueng/go` (cross-module)
+
+| Word | Sig | Verdict |
+|---|---|---|
+| print / printstr | [Any] | OK |
+| trace | [List] | OK |
+| unify | [Any, Any] | VACUOUS |
+| lt / gt / lte / gte | [Any, Any] | EXCLUDED (comparison) |
+| eq / neq / deq | [Any, Any] | EXCLUDED |
+| between | DepScalar constructor | EXCLUDED |
+
+## Reorders summary
+
+19 words reordered:
+
+- **native:** validate, getpath, walk, selector, pad, flatten, filter,
+  join, jsonify (9)
+- **matrix:** matrix-at, matrix-row, matrix-col, matrix-scale (4)
+- **time:** add-days, add-months, add-years, format, start-of, end-of (6)
+
+Each reorder: moved the data-bearing arg (TList / TMap / TMatrix /
+TDate / TAny treated as data) to sig[N-1]; reorganised the handler
+body to read args from the new positions; left FnDef wrapper Params
+in user-facing positional order so existing call-site syntax stays
+correct (FnDef matches deepest-first, NativeFunc matches
+top-of-stack-first — they compose).
+
+## Ambiguous cases — user decisions
+
+The user resolved the ambiguous cases as follows:
+
+- **engine/string concat [List, Map(opts)]** → **REORDERED to [Map, List]**.
+  Decision: opts goes BEFORE data when both are present.
+  Other string handlers ([String, Map], [String, String, Map], etc.) stay
+  as-is because their non-opts args are scalars (VACUOUS).
+
+- **engine/array reshape, at, sortby, member, arr-indexof, group,
+  replicate, expand** — leave as-is. Two-list semantics are
+  per-handler-specific; no global convention adopted.
+
+- **engine/misc read / write** — leave as-is. Path is the address
+  (universal I/O convention), not the data.
+
+- **engine/native make** — leave as-is. Position-agnostic
+  type-dispatch.
+
+- **engine/query DSL** — leave as-is. Table-first chainable syntax;
+  to be revisited if DSL is re-enabled.
+
+- **native list / create / load / update / remove** — leave as-is.
+  SDK-shape convention.
+
+- **native merge / inject / setpath / fetch** — leave as-is.
+  Symmetric, position-agnostic, or URL-as-address conventional.
+
+- **matrix mat-add / sub / mul / emul, dot** — leave as-is.
+  Homogeneous binary ops.
+
+- **time is-before / is-after / is-equal / until / since / diff /
+  earliest / latest / compare / is-between** — leave as-is.
+  Homogeneous binary ops.
+  *Question:* is URL "data" or "address"?
+  *Recommendation:* leave alone (URL-as-address convention is universal).
+
+- **matrix mat-add / sub / mul / emul, dot**: binary ops over homogeneous types.
+  *Recommendation:* leave alone.
+
+- **time is-before / is-after / is-equal / until / since / diff / earliest / latest / compare / is-between**: homogeneous date/instant operands.
+  *Recommendation:* leave alone.
+
+## Test deltas
+
+Baseline (HEAD = `4f9b6d6`):
+- engine FAILs: 9
+- nativemod FAILs: 13
+- native FAILs: 0
+
+After all data-last reorders:
+- engine FAILs: 9 (no change)
+- nativemod FAILs: 3 (10 matrix/time tests now pass — the data-last
+  swap actually repaired the alignment that the §1.4 math handler
+  swap had broken)
+- native FAILs: 9 (tests pinning the old arg positions now fail —
+  expected, mirrors the test churn from `4f9b6d6`)
+
+## Commits
+
+1. `0fdc3e2` — borueng: data-last sig review — native data-ops
+2. `d64354a` — borueng: data-last sig review — nativemod matrix and time
+3. `fcf6fbf` — initial audit report
+4. *(this update)* — concat reordered to [Map, List]; ambiguous cases resolved per user decision

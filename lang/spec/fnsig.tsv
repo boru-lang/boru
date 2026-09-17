@@ -13,7 +13,7 @@
 # The pair form's input slot carries the same `tnot List` Pattern as
 # fn's triple: a LIST input always selects the spec-list form, so 2+
 # parameters, zero parameters and overload sets keep the bracketed
-# spelling. See design/FUNCTION-TYPES.0.md.
+# spelling. See design/legacy/FUNCTION-TYPES.0.ignore.
 #
 # Bound to a capitalised name, a FunctionSignature is a TYPE that
 # dispatch enforces (core/go/unify_fnundef_named.go): a parameter

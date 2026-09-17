@@ -8,7 +8,7 @@ import (
 )
 
 // objSchema resolves an evaluated class NAME — its NODE, post the
-// Stage 2 flip of design/TYPE-REPRESENTATION.1.md — to the class
+// Stage 2 flip of design/legacy/TYPE-REPRESENTATION.1.ignore — to the class
 // schema the node records.
 func objSchema(v native.Value) native.Value {
 	if body, ok := native.TypeContentOf(v); ok {
@@ -30,7 +30,7 @@ func TestObjectTypeDefine(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	// The name DENOTES its node (design/TYPE-REPRESENTATION.1.md
+	// The name DENOTES its node (design/legacy/TYPE-REPRESENTATION.1.ignore
 	// Stage 2): evaluating `Foo` yields the Foo node, and the schema
 	// stays recoverable from it.
 	if s := result[0].String(); s != "Foo" {

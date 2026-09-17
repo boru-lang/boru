@@ -1406,7 +1406,7 @@ occupied by unrelated code. Corrected, and now written as `file:line
 
 The wider rot is NOT swept here, only measured: `eng/go/emit.go` — a path
 that has not existed since the four-module split — is cited **52 times** in
-`design/REFUSAL-CLOSURE-S94-AUDIT.10.md` and appears in ten further design
+`design/legacy/REFUSAL-CLOSURE-S94-AUDIT.10.ignore` and appears in ten further design
 files. That is a mechanical sweep of its own, and bundling it into a findings
 commit would bury both.
 

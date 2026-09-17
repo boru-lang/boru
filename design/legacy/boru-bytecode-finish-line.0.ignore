@@ -1,0 +1,166 @@
+# boru Bytecode — Finish-Line Plan (to re-scoped P7)
+
+Status: design + live tracker. Companion to `boru-bytecode-completion.0.ignore`
+(the cluster-by-cluster roadmap) and `boru-bytecode-runtime-independence.0.ignore`
+(the P5–P7 machinery). This doc reconciles those with the **measured live
+state** and sequences the remaining work to the goal.
+
+## Goal (re-scoped P7)
+
+Runtime independence: every supported program runs entirely in the VM, so the
+interpreter dependencies can be retired. Per `completion.0.md` §3/§5 the target
+is **re-scoped**, not literal:
+
+- Keep the `OpFallback` island machinery, but **confined to tier-1** words that
+  execute runtime-computed code (`Vm.run`). That category is genuinely
+  irreducible (there is no ahead-of-time instruction sequence for code computed
+  at runtime).
+- Delete only the **unbounded whole-program fallback** in `RunCompiled` once the
+  reducible + compute ratchets reach 0, so the island is provably confined to
+  tier-1 spans.
+- **Error rows compile to error programs**: a spec ERROR row that the checker is
+  lenient about must lower to an `OpTrap`/`RAISE` program raising the
+  byte-identical taxonomy, so every row yields a `Program`.
+
+## Live state
+
+> **Update (2026-06): refusalCeiling is now 6, islandCeiling 0.** The numbers in
+> the table below are the ORIGINAL baseline; the authoritative live state is
+> `test/go/langspec/COMPILED_STATUS.md` (`make status`). **Update (2026-06):
+> refusalCeiling is now 0 — the P7 floor.** The last two refusals landed:
+> `macro.tsv:45` (divergent macro → terminal OpTrap) and `def-node-binding.tsv:54`
+> (fn-body `[[c1]]` deferred list → a TRANSPARENT deferred-list-body fn whose raw
+> residual folds in module scope through the existing check-pass fold; no VM
+> change — see `boru-bytecode-final-two-refusals.0.ignore`). Every compilable spec row
+> now produces a Program (100%, 0 whole-program fallbacks, 0 islands). Deleting
+> the interpreter fallback (the rest of P7) is unblocked.
+
+Measured by `go test ./test/go/langspec -run TestCompiledCoverage|TestOnlyMetaFallsBack`
+and generated into `test/go/langspec/COMPILED_STATUS.md` (`make status`).
+
+| ratchet (const, file) | current | finish |
+| --- | ---: | --- |
+| `refusalCeiling` (compiled_coverage_test.go) | 24 | → 0 |
+| `islandCeiling` (compiled_coverage_test.go) | 2 | → 0 (or tier-1 only) |
+| `interpreterOnlyCeiling` (compiled_metafallback_test.go) | 0 used / cap 3 | capped (permanent) |
+| `reducibleCeiling` (compiled_metafallback_test.go) | 3 | → 0 |
+| `computeRefusalCeiling` (compiled_metafallback_test.go) | 18 used / 86 | → 0 |
+
+Of the 26 not-fully-native rows: **0** tier-1, **3** tier-2 reducible, **5**
+error-rows, **18** compute-gap (one of which is the 2nd island).
+
+## Remaining rows (the concrete inventory)
+
+The full enumeration of every non-native row (refused/islanded), as of this
+writing — the work list the clusters below address:
+
+- **Reducible (3):** `quote` (`macro.tsv` macroexpand-with-quote residual),
+  `word` (`word-splice.tsv` splice whose inlined body reaches an
+  un-compilable word), `Test/Assert` (`module-test.tsv` run-spec residual).
+- **Error rows (5):** `MathUtil!.nope` (module-instance, not_found),
+  `+re/[a-z]+/` & `mini re 'a'` (module-minilang), `parse calc 'x'`
+  (module-parselang), and the case-island error row
+  `case [f 1] [...]` where `f` returns 0 values.
+- **Compute gap (18):** operand-provenance cascades (7 — class typed-instance
+  field defaults, user-fn-result-in-map, factory closures, rand/struct module
+  receivers), dynamic input (4 — flex mutation, IO context set, struct getpath,
+  reach setpath), if-branch lowering (1), fn-value-call boundary (1 —
+  `m.f` method-through-map), function-value-reaches-word (1 — patrun dispatch),
+  dispatch recovery (1 — `(3 and "x") add 1`), residual lowering Stage-1 (1 —
+  parselang register), the `fn m:` extra-values branch (1), and the computed-
+  scrutinee `case [1 add 1] [...]` island (1).
+
+## Clusters (sequenced by leverage ÷ risk)
+
+Each lands gate-clean (see Verification), lowers its ceiling monotonically, and
+is committed with before/after numbers. Gate-clean-or-revert.
+
+1. **Error-row trap programs.** ✅ **LANDED for the dominant class (error-row
+   bucket 83 → 13).** The live bucket (re-counted after the P7 re-scope pulled
+   every refused ERROR row in) was dominated by ONE mechanism: "unmatched
+   dispatch recovered at X" — check-mode dispatch recovery
+   (`checkModeAssumeSig`) knows the dispatch failed but discarded that fact,
+   refusing the program while the interpreter raises the plain
+   `signature_error` / "no matching signature for X" at the same point. A
+   STATICALLY-DEFINITE failure — every value any candidate signature examined
+   is identical at run time (concrete consts, bare type literals, raw word
+   tokens; no carrier / dynamic / undefined-placeholder / deferred-expression
+   operand, no 0-arg courtesy-dispatchable sig) — now compiles to a terminal
+   `OpTrap` raising the byte-identical error
+   (`eng/go/engine.go tryRecordUnmatchedDispatchTrap`), including the
+   void-argument-group taxonomy (`def_error` / `no_value_error` via the same
+   `voidArgErrorFor` the interpreter consults). An unfinished fn unit cut
+   short by the trapping dispatch (`{f}` evaluating a 1-arg fn with no args)
+   lowers as an unreachable defensive stub (`eng/go/emit.go` Finalize).
+   Landing pins: `lang/go/bytecode_findings_test.go`
+   TestUnmatchedDispatchTrap{Compiles,PreservesPriorEffects,Negatives} —
+   the negatives pin the carrier decline, the splice decline, and the
+   flex-reach VALUE row (flex.tsv L88/L95) whose raw-Reach static mismatch
+   resolves fine at run time (the soundness counterexample that shaped the
+   deferred-token decline). Earlier partial landing: the two `illegal_ref`
+   rows (`def x 5  x/r`, `x/u`) via top-level `RecordTrap` at the
+   `!IsFunctionRef(v)` branches.
+   **Remaining (13 error rows), classified:** (a) 7 carrier-operand rows
+   (apply.tsv:37,38; convert-ideal.tsv:30; generics-sugar.tsv:37;
+   generics.tsv:60; open-words.tsv:32,100) — the failing dispatch reads a
+   fn/make result carrier whose runtime tag could refine, so the failure is
+   not statically definite; compiling these means proving the carrier's
+   runtime tag cannot match any sig (type-disjointness over the lattice).
+   (b) 1 disjunct-carrier row (forward-barrier.tsv:80) — a branch-result
+   operand; needs the conditional-trap/arm modeling. (c) 3 rows refused
+   BEFORE the failing dispatch (open-words.tsv:83,84,90 — typed-def `v`
+   store-with-reparent, cluster 3 territory): the trap seam never sees them
+   while the earlier refusal latches. (d) 1 registry-state row
+   (module-log.tsv:83 sink-exists — depends on which sinks are registered)
+   and 1 deferred-splice row (word-splice.tsv:115 — `f p` where p is a
+   `word` splice) — both legitimately non-definite at the trap seam today.
+   `RecordTrap` still fires top-level only; a nested error row needs the
+   conditional-trap modeling that also unblocks branch error rows.
+
+2. **Tier-2 reducible (3 → 0).** `quote`/`word`/`Test/Assert` residuals — each
+   a named residual of an already-mostly-compiled feature. Files:
+   `eng/go/carrier.go`, `eng/go/emit.go`, `lang/go/modules/test.go`.
+
+3. **Operand-provenance cascade (7, soundness).** Dominated by `make` class
+   typed-instance field defaults (`completion.0.md` item 3, deferred — needs a
+   "suppress event recording inside a const-baked schema construction"
+   primitive); the rest cascade when their producer compiles. Files:
+   `eng/go/emit.go`, `eng/go/carrier.go`.
+
+4. **Dynamic-input (4, soundness).** flex reference cells, IO-context set
+   receiver, struct getpath, reach setpath — poly-extension to non-core safe
+   builtins + a VM value-model reference cell for flex. Files:
+   `eng/go/carrier.go`, `eng/go/vm.go`.
+
+5. **Stage-2 branch-result lowering (4+1+1).** The variadic-merge /
+   branch-result-modeling refactor so an arm can leave 0-or-N values and merge
+   (computed-else, `fn m:` extra values). The one structural refactor. Files:
+   `eng/go/lower.go`, `eng/go/emit.go`, `eng/go/bytecode.go`/`vm.go`.
+
+6. **Fn-value frontier (3).** `m.f` method-through-map call boundary, patrun
+   dispatch, dispatch-recovery — follow-ons to the apply/introspection work.
+   Files: `eng/go/emit.go`, `eng/go/carrier.go`.
+
+7. **Code-body-scrutinee `case` islands (2 → islands 0).** `case [1 add 1] […]`
+   — inline scrutinee recording seated as a value-def local across the
+   desugared if-chain. Files: `eng/go/emit.go`, `eng/go/lower.go`,
+   `lang/go/native/native_control.go`.
+
+8. **Re-scoped P7 deletion** — gated on 1–7 reaching 0. `RunCompiled` becomes
+   `Compile` + `RunProgram` (a refusal surfaces as a compile error); the
+   `OpFallback` island stays but a new gate asserts every span classifies
+   tier-1; re-baseline perf/alloc.
+
+## Verification (per item)
+
+1. `make fmt && make vet && make lint && make test`.
+2. `make verify-bytecode` — differential + whole-corpus compile-or-fallback
+   (0 value + taxonomy divergences) + combinations + property fuzz + `-race` +
+   alloc ceilings + `-tags borudebug`.
+3. Ratchets only move DOWN (lower the ceiling const with a one-line rationale);
+   `correct-error` stays 0.
+4. `make status` to refresh `COMPILED_STATUS.md` (`TestCompiledStatus` fails if
+   stale).
+5. A per-row landing test in `lang/go/bytecode_findings_test.go` (positive +
+   negative).
+6. Commit each landed item separately with its before/after ratchet delta.

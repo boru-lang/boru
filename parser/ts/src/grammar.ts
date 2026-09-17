@@ -1676,7 +1676,7 @@ export function setupInterpGrammar(j: any, t: ParserTokens): void {
 }
 
 // setupAngleGrammar defines the generics angle-bracket sugar rules
-// (design/GENERICS.10.md Phase 6, decisions D14/D15): `Box<Integer>`.
+// (design/legacy/GENERICS.10.ignore Phase 6, decisions D14/D15): `Box<Integer>`.
 //
 // The consumer is CONTEXTUALLY GATED (D14): an angle group opens only
 // when the value that just closed is a capitalised bare name — the

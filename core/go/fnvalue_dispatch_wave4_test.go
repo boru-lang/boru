@@ -149,7 +149,7 @@ func TestAnonFnValueZeroArgAppliedDispatches(t *testing.T) {
 // TestAppliedMarkIsOneShot pins that the mark is SPENT by the re-step that
 // reads it, whether or not that re-step dispatches. A macro is the case that
 // makes this observable: applying a macro is never a stack-value dispatch
-// (design/MACROS-PHASE1.10.md §5, D4), so the value parks — and it must park
+// (design/legacy/MACROS-PHASE1.10.ignore §5, D4), so the value parks — and it must park
 // UNMARKED, or the stale flag rides into whatever binding or container takes
 // it and fires a call at some later, unrelated step.
 func TestAppliedMarkIsOneShot(t *testing.T) {
@@ -385,7 +385,7 @@ func TestUnresolvableFnValueIsData(t *testing.T) {
 func TestNamedFnValueFailedDispatchRaises(t *testing.T) {
 	// A named fn value whose candidate args match no sig raises
 	// uncalled_function at the dispatch site
-	// (design/FN-VALUE-DISPATCH.0.md).
+	// (design/legacy/FN-VALUE-DISPATCH.0.ignore).
 	r := covRegistry(t, nil)
 	fnv := namedFnVal("intonly",
 		[]FnParam{{Name: "x", Type: TInteger}},

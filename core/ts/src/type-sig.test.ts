@@ -1,5 +1,5 @@
 // Unit campaign for type.ts's constructor/lattice tails and signature.ts's
-// scoring — design/CORE-TS-COVERAGE.0.md stage 2.
+// scoring — design/legacy/CORE-TS-COVERAGE.0.ignore stage 2.
 //
 // newType's short-name expansion is the load-bearing one: "Integer" must
 // expand to "Scalar/Number/Integer" here exactly as Go's NewType +

@@ -1,4 +1,4 @@
-# Macro system — design/MACROS.8.md + design/MACROS-PHASE1.10.md.
+# Macro system — design/MACROS.8.md + design/legacy/MACROS-PHASE1.10.ignore.
 #
 # Columns: <input><TAB><expected>[<TAB><note>]. Output is eng.Canon, so a bare
 # atom renders name/q. Each spec row runs on a fresh registry, so gensym's

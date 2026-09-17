@@ -6,16 +6,16 @@ non-conforming write at BOTH check and runtime), which is impossible under the
 current value model. This document specifies the value-model change that makes it
 possible.
 
-Companion reading: `TYPED-CONTAINER-ELEMENT-PRECISION.0.md` (D2 — reads/writes,
+Companion reading: `legacy/TYPED-CONTAINER-ELEMENT-PRECISION.0.ignore` (D2 — reads/writes,
 the doc this one unblocks), `REFINE-NEWTYPE-VS-SUBSET.10.md` (the reparent
-machinery a subtype representation would reuse), `INTERPRETER-SPEED-PLAN.10.md`
+machinery a subtype representation would reuse), `legacy/INTERPRETER-SPEED-PLAN.10.ignore`
 (why `Value` is size-optimized — constrains the representation).
 
 ---
 
 ## Why the existing D2 doc is blocked (discovered this cycle)
 
-`TYPED-CONTAINER-ELEMENT-PRECISION.0.md` assumed a `{:T}` value **retains** its
+`legacy/TYPED-CONTAINER-ELEMENT-PRECISION.0.ignore` assumed a `{:T}` value **retains** its
 element type after construction ("the result stays statically `{:Integer}`"). It
 does not. Three measured facts:
 

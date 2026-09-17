@@ -5,7 +5,7 @@ import core "github.com/boru-lang/boru/core/go"
 // The VM piece's interpreter-facing entry helpers: the designed
 // defer-to-interpreter choke points (vmDefer / vmDeferAlt) and the
 // fallback-island runner with the flow-escape contract. Regrouped in
-// Stage 1b of the four-piece split (design/ENG-FOUR-PIECE.0.md) — the
+// Stage 1b of the four-piece split (design/legacy/ENG-FOUR-PIECE.0.ignore) — the
 // only callers are vm*.go.
 
 // vmDefer builds a designed defer-to-interpreter error (the internal_error

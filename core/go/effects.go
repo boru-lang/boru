@@ -13,7 +13,7 @@ import (
 // sound only while the compiled request has emitted NO observable effect:
 // SnapshotForCompile/RestoreForCompile roll back registry scopes, but nothing
 // can un-print already-written output or un-send a network payload, so a
-// re-run after an effect DUPLICATES it (design/VOXGIG-COMPILE-LEAVES.2.md
+// re-run after an effect DUPLICATES it (design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore
 // §L-DUP — the full trie smoke suite printed twice). The pure-value
 // differential corpus never exercises emit-then-fall-back, which is exactly
 // why the class ships latent; the ledger makes the fallback arms prove

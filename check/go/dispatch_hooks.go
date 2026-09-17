@@ -3,7 +3,7 @@ package check
 import core "github.com/boru-lang/boru/core/go"
 
 // The dispatch-record hook layer — the four-piece split's S3 seam
-// (design/ENG-FOUR-PIECE.0.md). Every call the CHECK piece makes into
+// (design/legacy/ENG-FOUR-PIECE.0.ignore). Every call the CHECK piece makes into
 // the compiler's recording / folding / poly-bake machinery routes
 // through the DispatchBraid slot table below, so check files carry no
 // named compiler symbols: the compiler piece installs its

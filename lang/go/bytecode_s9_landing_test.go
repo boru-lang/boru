@@ -169,7 +169,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// program that cannot run.)
 	//
 	// The interpreter's half changed with the loud dispatch contract
-	// (design/FN-VALUE-DISPATCH.0.md): the failure is raised AT THE
+	// (design/legacy/FN-VALUE-DISPATCH.0.ignore): the failure is raised AT THE
 	// DISPATCH SITE, which is inside this `do [...]`, so the region's own
 	// error handler catches it and the program yields the caught code.
 	// Under the old residue model the error surfaced from the end-of-run

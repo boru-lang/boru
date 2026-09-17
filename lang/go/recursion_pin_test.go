@@ -8,7 +8,7 @@ import (
 )
 
 // These tests pin the RESOURCE shape of recursion through the public
-// lang API (design/TCO-STAGED.10.md Stage 0, updated at Stage 4a):
+// lang API (design/legacy/TCO-STAGED.10.ignore Stage 0, updated at Stage 4a):
 //
 //   - TAIL self-recursion runs in O(1) tape — full frame replacement
 //     elides each frame, so depth is bounded by CPU (evaluation_limit),

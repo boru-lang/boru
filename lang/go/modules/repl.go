@@ -11,7 +11,7 @@ import (
 // server and client whose implementation is WRITTEN IN boru (the
 // replBoruPreamble below), following the boru:test hybrid pattern. It is
 // the first verification app of the networking stack
-// (design/NETWORK-IMPLEMENTATION-PLAN.0.md §1.5): a service over the
+// (design/legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore §1.5): a service over the
 // `lines` codec whose handler evaluates each received line and replies
 // with the rendered result.
 //

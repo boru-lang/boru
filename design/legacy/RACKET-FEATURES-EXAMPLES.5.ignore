@@ -1,0 +1,643 @@
+# Racket Features for boru — Use Cases & Worked Syntax
+
+**Status:** analysis / design note — companion to `RACKET-ANALYSIS.5.ignore`
+**Scope:** for each feature proposed in `RACKET-ANALYSIS.5.ignore`, this note
+gives **concrete use cases** and **worked examples of the proposed boru
+syntax**, including desugarings and how each reuses existing engine
+machinery. Syntax here is a *proposal*, written to match boru's real
+surface (`[x:T] => [body]` lambdas, `do […] error […]`, subset
+refinements `def Big (Integer gt 10)`, `export "Mod" {…}`, guards
+`if (c) [t] [e]`). Where a form is speculative it is marked **(proposed)**.
+
+> Read `RACKET-ANALYSIS.5.ignore` first for the *why* and the priority
+> ordering. This note is the *how it would look* layer.
+
+## Contents
+
+1. [Contracts with blame](#1-contracts-with-blame)
+2. [Occurrence typing](#2-occurrence-typing)
+3. [Delimited continuations](#3-delimited-continuations)
+4. [Structural `match`](#4-structural-match)
+5. [Parameters](#5-parameters)
+6. [Language-oriented programming](#6-language-oriented-programming)
+7. [Custodians & sandboxing](#7-custodians--sandboxing)
+8. [Smaller borrowings](#8-smaller-borrowings)
+
+---
+
+## 1. Contracts with blame
+
+### What it is
+
+A runtime obligation attached to a value where it **crosses a boundary**
+(most importantly a module export). Unlike a refinement, a contract can
+police a *function* on every later call, and on failure it names *which
+party* broke the deal — the module that promised it, or the caller that
+misused it.
+
+### Use cases
+
+- **Library authors guarding a public API.** A module wants to promise
+  "`withdraw` never returns a negative balance, and refuses a
+  non-positive amount" — and have violations point at the *actual*
+  offender, not a deep internal stack frame.
+- **Higher-order callbacks.** A `retry` word takes a user `fn` and
+  promises to call it with a positive attempt counter. If the user's fn
+  later returns the wrong type, blame should fall on *the user's fn*, not
+  on `retry`'s internals.
+- **Catching bad data at the seam, not three calls later.** Today a bad
+  value flows inward and fails somewhere confusing; a contract fails it
+  *at the import boundary* with a clear culprit.
+
+### Proposed syntax
+
+A `:::` rider on an export (a boundary contract), and a `/c` modifier to
+contract a bare `fn`. The contract body is an ordinary signature — the
+shapes boru already type-checks — reused as a *boundary* obligation.
+
+```
+# (proposed) contracted export — argument blames caller, result blames Bank
+export "Bank" {
+  withdraw: withdraw/r ::: [[acct:Account amt:(Integer gt 0)] [Account]]
+  deposit:  deposit/r  ::: [[acct:Account amt:(Integer gt 0)] [Account]]
+}
+```
+
+### Worked example — flat (first-order) contract
+
+```
+import "boru:bank" end
+
+# caller violates the precondition: amount must be > 0
+acct withdraw -5
+# Error{code:'contract_violation, blame:'caller,
+#   detail:"Bank.withdraw: amt expected (Integer gt 0), got -5"}
+
+# Bank violates its own postcondition (a bug inside withdraw returns a
+# bad Account): blame flips to the module
+acct withdraw 10
+# Error{code:'contract_violation, blame:'Bank,
+#   detail:"Bank.withdraw: result expected Account, got {balance:-3 …}"}
+```
+
+The first error is the *caller's* fault (bad argument); the second is the
+*module's* fault (bad result). That flip is the whole point — and it
+reuses the renderer behind `boru policy explain`, which already prints a
+blame chain for capability decisions.
+
+### Worked example — higher-order contract
+
+A contracted function *parameter* is wrapped, so a later misuse is caught
+at the offending call:
+
+```
+# (proposed) retry promises to call `body` with a positive Integer and
+# expects an Any back; the `->` shape contracts the callback itself.
+def retry fn [
+  [body:([[n:(Integer gt 0)] [Any]] /c)  times:Integer] [Any]
+  [ ... body invoked internally with the attempt counter ... ]
+] end
+
+# user passes a fn that wrongly returns nothing useful on attempt 2;
+# blame lands on the USER's fn (the callback violated its result promise),
+# not inside retry:
+retry ([n:Integer] => [ if (n eq 2) [raise "boom"] [n] ]) 3
+# Error{code:'contract_violation, blame:'caller-callback, …}
+```
+
+### How it reuses existing machinery
+
+- **Flat contracts already exist** as subset refinements: `(Integer gt
+  0)` is a value-sensitive membership test checked symmetrically (the
+  `../REFINE-NEWTYPE-VS-SUBSET.10.md` discipline).
+- **The `->` shape** is the `fn` signature matcher applied at a boundary.
+- **Blame attribution** is the `policy explain` blame chain reused for
+  value boundaries instead of effect gates.
+- The one new primitive is a **value-interposition wrapper** (the
+  chaperone, §1 of the analysis) that intercepts *apply* — the same shape
+  as the capability gate that already intercepts side-effecting words.
+
+---
+
+## 2. Occurrence typing
+
+### What it is
+
+Flow-sensitive narrowing: a predicate test tightens a union type inside
+the branch it guards (and to the complement in the `else`). boru already
+does this for a single `is` guard — the extension is to thread narrowing
+through boolean connectives and user predicates.
+
+### Use cases
+
+- **Union-typed inputs.** A word accepts `(String tor Integer)` and wants
+  to use string ops in one branch, arithmetic in the other, *without* a
+  cast and without a checker false positive.
+- **Compound guards.** `if (and (x is Account) (y is Account)) […]`
+  should narrow *both* `x` and `y` in the then-branch.
+- **Reusing a domain predicate as a type-test.** A `Boolean`-returning
+  `fn` whose parameter is a refinement should, when used as a guard,
+  narrow its argument.
+
+### Proposed syntax
+
+No new syntax — the *checker* gets smarter. These already parse; today
+some still produce checker false positives that the extension removes.
+
+### Worked example — single guard (works today)
+
+```
+def describe fn [[x:(String tor Integer)] [String] [
+  if (x is String)
+    [ StringUtil.upper x ]          # x : String here — checks clean
+    [ "n=" add (convert String x) ] # x : Integer here (the complement)
+]] end
+```
+
+### Worked example — compound guard (proposed extension)
+
+```
+import "boru:logic-util" end
+
+def combine fn [[a:(Account tor None) b:(Account tor None)] [Account] [
+  if (and (a is Account) (b is Account))
+    [ a merge-balances b ]   # (proposed) BOTH a and b narrowed to Account
+    [ raise "need two accounts" ]
+]] end
+```
+
+Today only the leading conjunct narrows; the proposal propagates facts
+through `boru:logic-util`'s `and`/`or`/`not`, using boru's existing
+`tor`/`tand`/`tnot` algebra (and its De Morgan identities) as the
+proposition calculus — the Typed Racket model.
+
+### Worked example — user predicate as type-test (proposed)
+
+```
+def Adult (Integer gte 18) end
+def adult? fn [[n:Integer] [Boolean] [n gte 18]] end   # latent: narrows to Adult
+
+def gate fn [[age:Integer] [String] [
+  if (adult? age)
+    [ "n=" add (convert String age) ]   # (proposed) age : Adult in this branch
+    [ "minor" ]
+]] end
+```
+
+### How it reuses existing machinery
+
+`ApplyGuardNarrowing` / `ApplyComplementNarrowing` (the
+`checker-accuracy-review.10.ignore` work), the `tor`/`tand`/`tnot` type
+algebra, and the bidirectional checker's forward-propagate-then-join
+structure. The payoff is the metric the recent commits track: fewer
+false positives on union-typed code.
+
+---
+
+## 3. Delimited continuations
+
+### What it is
+
+A pair of words — a **prompt** (`reset`) marking a boundary and a
+**capture** (`shift`) that grabs the computation *up to that boundary* as
+a resumable value. Because boru's tape *is* the continuation ("everything
+beyond the pointer is exactly the work that remains" — EXPLANATION), this
+is reifying a structure the engine already manipulates.
+
+### Use cases
+
+- **Generators / lazy producers.** Emit values one at a time without
+  building the whole list (cf. `../STREAM-WORDS.0.md`).
+- **Cooperative coroutines.** Two routines that hand control back and
+  forth (a producer/consumer pipeline).
+- **Backtracking search.** Try a choice, and on failure *resume* at the
+  decision point with the next option — a natural partner for the
+  Prolog-flavoured `unify`.
+- **Early exit / non-local return** from deep inside an `each`/`fold`
+  without threading a sentinel.
+
+### Proposed syntax
+
+```
+reset [ … shift ([k] => [ … ]) … ]
+```
+
+`shift` binds `k`, the captured continuation (a one-argument `Function`);
+calling `k v` resumes the delimited computation with `v`.
+
+### Worked example — early exit from a fold
+
+```
+# (proposed) find first element over 100; shift abandons the rest of the fold
+reset [
+  [3 40 7 250 9] fold ([acc:Any x:Integer] => [
+    if (x gt 100) [ shift ([_] => [x]) ] [acc]
+  ]) none
+]                                     # returns 250 — the fold is abandoned at 250
+```
+
+### Worked example — a generator
+
+```
+# (proposed) a producer that yields three values lazily
+def gen fn [[] [Function] [
+  => [ 1 yield  2 yield  3 yield ]    # `yield` = shift to the enclosing prompt
+]] end
+
+# driver pulls values on demand
+def g (reset (gen)) end
+g next                                # returns 1
+g next                                # returns 2  (resumes where it left off)
+```
+
+Here `yield` is sugar for a `shift` that returns the value *and* stores
+the continuation so `next` can resume it.
+
+### Worked example — backtracking with `unify`
+
+```
+# (proposed) choose returns each option in turn on backtracking
+reset [
+  def x (choose [1 2 3]) end
+  def y (choose [10 20]) end
+  if ((x add y) eq 22) [ [x y] ] [ fail ]   # fail backtracks to the last choose
+]                                            # returns [2 20]
+```
+
+### How it reuses existing machinery
+
+The tape as a reified continuation; **TCE** already runs a *parked tail*
+(a delimited slice) early; **`do [...]`** already establishes a boundary
+that reifies an unwind into an `Error`; **`await`** already forks delimited
+slices into sub-engines. A `reset`/`shift` unifies these. Immutability
+(EXPLANATION → Immutability) is what makes re-entering a captured
+continuation *safe*: immutable values re-enter freely, and mutable Ideals
+are already barred from crossing sub-engine boundaries.
+
+> **Caveat (from the analysis):** prototype the *delimited* form only —
+> not undelimited `call/cc` — and start with the single-prompt
+> `yield`/generator case, which may subsume `STREAM-WORDS`.
+
+---
+
+## 4. Structural `match`
+
+### What it is
+
+One construct that does value-dispatch, list/map destructuring, predicate
+guards, nesting, and rest-capture — unifying what `case` (values),
+`unpack` (map keys), and type-dispatch (types) each do partially.
+
+### Use cases
+
+- **Parsing tagged data** — an AST node, a JSON shape, a result envelope
+  `{status:'ok value:…}` — in one readable cascade.
+- **List shape + arity** — "exactly two elements," "head plus rest,"
+  "empty."
+- **Refinement-as-guard** — match only when an element is a `Big`,
+  reusing the type predicate.
+
+### Proposed syntax
+
+`match subject [ pattern body  pattern body  … ]`, patterns:
+
+| Pattern | Matches |
+|---|---|
+| `42`, `'ok`, `"x"` | a literal (the `case` behaviour) |
+| `[a b]` | a 2-element list, binding `a`, `b` |
+| `[h rest...]` | head + rest (ellipsis) |
+| `{status value}` | a map with those keys, bound (the `unpack` behaviour) |
+| `(n is Big)` | a value satisfying a type/predicate, bound as `n` |
+| `[a [x y]]` | nested structure |
+| `_` | wildcard |
+
+### Worked example — a result envelope
+
+```
+# (proposed)
+match (do [risky-call]) [
+  {status:'ok value}        [ value ]
+  {status:'error code}      [ "failed: " add (convert String code) ]
+  (e is Error)              [ raise e ]
+]
+```
+
+### Worked example — list shapes and recursion
+
+```
+# (proposed) sum a list by structure — the canonical match exercise
+def sum fn [[xs:List] [Integer] [
+  match xs [
+    []            [ 0 ]
+    [h rest...]   [ h add (sum rest) ]
+  ]
+]] end
+sum [1 2 3 4]                         # returns 10
+```
+
+### Worked example — predicate patterns reusing refinements
+
+```
+def Big (Integer gt 10) end
+
+# (proposed) classify with a type-guard pattern
+def label fn [[n:Integer] [String] [
+  match n [
+    (b is Big)   [ "big: " add (convert String b) ]
+    0            [ "zero" ]
+    _            [ "small" ]
+  ]
+]] end
+```
+
+### How it reuses existing machinery
+
+`case` becomes the scalar special case; `unpack`'s key-binding becomes the
+`{…}` pattern; refinement membership (`is`) powers predicate patterns;
+errors-as-values handle no-match (fall through or `raise`).
+
+---
+
+## 5. Parameters
+
+### What it is
+
+A first-class, typed, dynamically-scoped cell with a default, rebindable
+for the **dynamic extent** of a block and **automatically restored on any
+exit** — including an error unwind or an `await` branch boundary. It is
+`Store` with guaranteed restore and a named handle.
+
+### Use cases
+
+- **Ambient configuration** — current precision, locale, output port,
+  active policy profile — set for a region without threading it through
+  every call.
+- **Safe temporary override** — bump verbosity inside one block and be
+  *sure* it reverts even if the block raises.
+- **Per-branch context in `await`** — each parallel branch inherits the
+  snapshot, and its rebinds don't leak to siblings.
+
+### Proposed syntax
+
+```
+def p (parameter Default) end          # a typed cell with a default
+p                                       # returns current value
+with-param p v [ body ]                 # rebind for body's dynamic extent
+```
+
+### Worked example — ambient precision restored across an unwind
+
+```
+# (proposed)
+def precision (parameter 2) end
+
+def render fn [[x:Float] [String] [ format x {digits: precision} ]] end
+
+render 3.14159                          # returns '3.14'  (default 2)
+
+with-param precision 5 [
+  render 3.14159                        # returns '3.14159'
+  do [ raise "boom" ] error [ drop ]    # even though this unwinds…
+]
+render 3.14159                          # returns '3.14'  — restored, guaranteed
+```
+
+Contrast `context set precision 5` today: nothing restores it after the
+block, and an unwind leaves it dangling.
+
+### Worked example — per-branch isolation under `await`
+
+```
+# (proposed) each branch sees the snapshot; rebinds stay branch-local
+def mode (parameter 'safe) end
+
+await [
+  [ with-param mode 'fast [ run-job ] ]   # this branch: 'fast
+  [ run-job ]                              # sibling: still 'safe
+]
+```
+
+### How it reuses existing machinery
+
+The `Store` prototype chain and sub-engine inheritance
+(`do`/`for`/`each`/`await` already snapshot the parent store). Parameters
+add (a) restore-on-exit tied to the dynamic extent and (b) a typed, named
+value instead of an ad-hoc string key.
+
+---
+
+## 6. Language-oriented programming
+
+### What it is
+
+boru already has `mini` + `boru:minilang` (embedded notations behind one
+macro and a standard signature) and `+re/…/` reader sugar. The Racket
+`#lang` *headroom* above that is a **replaceable reader** (a whole region
+in a different surface syntax) and **dialects packaged as modules**.
+
+### Use cases
+
+- **A query sub-language** with its own infix grammar embedded in a boru
+  program (today: a `mini` kind operating on a string `src`).
+- **A whole-file dialect** — a `.boru` file that opts into a curated word
+  set + a custom reader (the `#lang` horizon).
+
+### Today's syntax (landed — for contrast)
+
+```
+import "boru:minilang" end
+"AbcD" mini re '[a-z]+'                  # → 'bc'   (explicit form)
+"AbcD" +re/[a-z]+/                       # → 'bc'   (reader sugar, desugars to mini)
+mini math 'x^2 + 3*y' {x:10, y:2}        # → 106
+```
+
+### Proposed extension — registering a region reader
+
+```
+# (proposed) a dialect = a reader + an exported word set, packaged as a module
+import "myorg:sqlish" as Sql end
+
+# a region parsed by Sql's reader, lowered to boru words underneath
+Sql.region ``
+  select name, age from users where age > 18 order by age
+``                                       # → a Table value
+```
+
+The region's body is handed to the dialect's reader (an extension of the
+existing jsonic `LexMatcher` that powers `+re/…/`), which lowers it to
+ordinary typed word calls — so the static checker still sees through it,
+exactly as it sees through a `mini` expansion.
+
+### How it reuses existing machinery
+
+`mini`'s macro + standard-signature discipline, the `LexMatcher` behind
+`+re/…/`, compile hooks for staging (parse once, splice tokens), and the
+module system as the packaging unit. The only genuinely new capability is
+*region/file-level reader selection*; everything below it exists.
+
+> **Recommendation stays Tier 3:** `mini` is right-sized today. This is
+> the upper bound to grow *toward* if demand moves from one-line notations
+> to whole-surface dialects.
+
+---
+
+## 7. Custodians & sandboxing
+
+### What it is
+
+A **custodian** is a hierarchical *owner* of resources (goroutines, ports,
+sub-engines, memory): shutting it down reclaims everything it owns,
+transitively, in one call. A **sandbox** layers a memory cap + time cap +
+policy on top, so untrusted code runs fully bounded with one-call
+teardown.
+
+### Use cases
+
+- **Cancel a whole parallel branch.** `await {mode:'first}` selects a
+  winner today but doesn't *reclaim* the losers' goroutines/ports; a
+  custodian per branch does.
+- **Bounded untrusted eval** for the `exec` HTTP endpoint and the Wasm
+  playground — time *and* memory *and* capability, with a guaranteed
+  cleanup.
+- **Supervisor shutdown.** `serve` already aims for graceful shutdown;
+  making service ownership a custodian tree means "shut the parent → all
+  child services and their ports die, in order."
+
+### Proposed syntax
+
+```
+custodian [ body ]                      # owns all resources body creates
+sandbox {mem: 64MB, time: 2s, perms: 'restricted} [ body ]
+```
+
+### Worked example — race that reclaims the losers
+
+```
+# (proposed) first result wins; the other branch's resources are reclaimed
+custodian [
+  await {mode:'first} [
+    [ fetch "https://a.example/slow" ]
+    [ fetch "https://b.example/fast" ]   # wins → the slow fetch is torn down
+  ]
+]                                         # on exit, ALL goroutines/sockets reclaimed
+```
+
+### Worked example — bounded untrusted eval (the `exec`/Wasm case)
+
+```
+# (proposed) run caller-supplied source under hard limits + one-call teardown
+sandbox {mem: 32MB, time: 500ms, perms: 'no-network} [
+  do [ user-src ]
+] error [
+  dup .code eq 'resource_exhausted if
+    [ drop "rejected: over budget" ]
+    [ "error: " add (convert String (get message)) ]
+]
+```
+
+A blown memory or time budget surfaces as an ordinary catchable
+`Error{code:'resource_exhausted}` — the same shape as `cap_denied` today.
+
+### How it reuses existing machinery
+
+Capabilities + policy profiles (the *whether*), step/tape budgets (a
+time-like *how much*), and the `serve` supervisor (already an
+ownership-and-lifetime manager). Custodians add the missing axis:
+**ownership and reclamation** — *when* a resource dies and *who* tears it
+down — and `sandbox` packages all four into one bounded evaluation.
+
+---
+
+## 8. Smaller borrowings
+
+### 8a. Units / signature-linked modules
+
+boru "surfaces" are already a named set of required operations — half a
+Racket *unit signature*. The other half is **linking a module against an
+abstract surface at load time** (dependency injection without a global).
+
+```
+# (proposed) a module that requires a Store surface, linked to a backend
+import "myorg:cache" linking {Store: boru:store-redis} end
+```
+
+**Use case:** swap a `Store` backend (memory / file / remote) by *linking*
+rather than editing imports — pluggable backends named by signature.
+
+### 8b. Submodules (`module+ test`)
+
+Co-locate a battery (or an entry point) inside the source file; the runner
+picks it up, `boru build` strips it.
+
+```
+# (proposed) a file carrying its own battery
+def double fn [[n:Integer] [Integer] [n mul 2]] end
+
+submodule test [
+  Assert.equal (double 3) 6
+  Assert.equal (double 0) 0
+  do [double "x"] error [drop]          # the required negative case
+]
+```
+
+**Use case:** a single `.boru` library file ships with its tests attached,
+honoring "pair every positive test with a negative one," with no separate
+spec file.
+
+### 8c. Generators via the sequence protocol
+
+If §3 lands, a unified `Iterable` Ideal lets `each`/`fold` consume *lazy*
+sequences uniformly with eager lists:
+
+```
+# (proposed) lazy range; nothing is materialized
+naturals take 5 each [dup mul]          # returns [0 1 4 9 16], lazily
+```
+
+**Use case:** process or short-circuit an infinite/expensive sequence
+without building it — the array words and `STREAM-WORDS` tied together by
+one protocol.
+
+### 8d. Scribble-style tested docs
+
+boru already runs `# returns …` examples as spec rows and generates
+`describe` from the live engine. The remaining Scribble idea is prose docs
+whose code blocks are *executed at build time* and whose identifiers
+*link* to `describe` output — closing the loop between the four manuals
+and the live word definitions. **Use case:** a doc example can never drift
+from the engine, because the build fails if it stops returning what it
+claims.
+
+---
+
+## Cross-feature example: where they compose
+
+Several proposals reinforce each other. A contracted, sandboxed,
+match-driven request handler:
+
+```
+# (proposed) — contracts (§1), sandbox (§7), match (§4), parameters (§5)
+def request-timeout (parameter 1s) end
+
+export "Api" {
+  handle: handle/r ::: [[req:Request] [Response]]
+}
+
+def handle fn [[req:Request] [Response] [
+  with-param request-timeout 2s [
+    sandbox {time: request-timeout, perms: 'no-disk} [
+      match (parse-body req) [
+        {action:'get key}     [ Store.lookup key ]
+        {action:'set key val} [ Store.put key val ]
+        _                     [ raise "bad request" ]
+      ]
+    ] error [ ([e:Error] => [ {status: 500, error: e.message} ]) ]
+  ]
+]] end
+```
+
+Every piece reuses something boru already has — refinements, `Store`,
+`await`/sub-engines, policy, `case`/`unpack`, errors-as-values — recombined
+into surfaces (a blame-aware boundary, a bounded evaluation, a structural
+matcher, a restorable ambient value) that boru doesn't yet name but is
+unusually close to being able to.

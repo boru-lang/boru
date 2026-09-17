@@ -35,7 +35,7 @@ const emitImp = `import "boru:emitlang"  `
 // runEmitTop is runEmit through a TOP-LEVEL engine (native.NewTop — the CLI /
 // spec-runner shape), the surface the dispatch-rejection pins below are
 // written against: a call whose args match no signature raises
-// uncalled_function at the dispatch site (design/FN-VALUE-DISPATCH.0.md).
+// uncalled_function at the dispatch site (design/legacy/FN-VALUE-DISPATCH.0.ignore).
 func runEmitTop(t *testing.T, src string) (string, error) {
 	t.Helper()
 	reg, err := native.DefaultRegistry()

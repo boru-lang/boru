@@ -1,7 +1,7 @@
 package core
 
 // CompiledRuntime is the core→eng inversion seam (Stage 1 of the
-// four-piece split, design/ENG-FOUR-PIECE.0.md seam S4): everything the
+// four-piece split, design/legacy/ENG-FOUR-PIECE.0.ignore seam S4): everything the
 // pure interpreter needs FROM the bytecode runtime goes through this
 // interface, generalizing the Registry.Invoker precedent. The core
 // default declines every operation, so a core-only build simply takes

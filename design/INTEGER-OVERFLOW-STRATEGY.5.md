@@ -1,7 +1,7 @@
 # Integer Overflow — Strategy
 
 Status: **Phase 0 implemented; Phase 1 proposed**. This document expands
-[WAT-AUDIT](WAT-AUDIT.5.md) Exhibit K ("Integer overflow has two
+[WAT-AUDIT](legacy/WAT-AUDIT.5.ignore) Exhibit K ("Integer overflow has two
 contradictory silent behaviours"), establishes what boru did before the
 fix (which was worse than the audit recorded), surveys what other
 languages do, and recommends a phased strategy. **Phase 0 (the real
@@ -330,7 +330,7 @@ user mistake; erroring there is a sharp edge bignum removes for free.
 The error policy is the right *interim* and the right *floor*, but exact
 unbounded integers are the right *destination*.
 
-**This is not separate work.** [NUMERIC-TOWER](NUMERIC-TOWER.0.md) §
+**This is not separate work.** [NUMERIC-TOWER](legacy/NUMERIC-TOWER.0.ignore) §
 "Adjacent decision (Exhibit K)" already calls for exactly this and notes
 it shares the parser-literal-exactness, payload, and promotion machinery
 with the exact-`Decimal` proposal. Open decision #4 there

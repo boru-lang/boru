@@ -8,7 +8,7 @@ import (
 )
 
 // ParseTLSOpts reads a guest `tls: {…}` option map into a resolved
-// TLSProfile, per design/NETWORK-TLS-PLAN.0.md §4.3. One parser serves
+// TLSProfile, per design/legacy/NETWORK-TLS-PLAN.0.ignore §4.3. One parser serves
 // every call site (fetch today, connect-raw next) so the two cannot
 // drift apart.
 //

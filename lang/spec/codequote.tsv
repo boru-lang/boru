@@ -8,7 +8,7 @@
 #   codequote (1 add 2)  -> the paren as code (NOT evaluated)
 # Words -> atoms and lists -> raw list behave exactly like `quote`.
 # Expected values use the canon renderer.
-# See design/PAREN-REPRESENTATION.9.md Step 4.
+# See design/legacy/PAREN-REPRESENTATION.9.ignore Step 4.
 # =====================================================================
 
 # --- word / scalar / list forms behave like quote ---

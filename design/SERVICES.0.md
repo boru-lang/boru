@@ -77,7 +77,7 @@ This began as a **design RFC only**; that is no longer the whole truth:
 > tiers 1–2 (raw sockets incl. TLS, codecs, `listen {tcp codec} <svc>`,
 > `connect → Endpoint` where an Endpoint IS a `Service`,
 > `lang/go/modules/net_socket.go` / `net_codec.go`) — with divergences
-> recorded in `NETWORK-IMPLEMENTATION-PLAN.0.md` (notably: services
+> recorded in `legacy/NETWORK-IMPLEMENTATION-PLAN.0.ignore` (notably: services
 > serialize with an internal mutex instead of running as served
 > processes; the state accessor is `state-of`; state is a flex map).
 > `server`/`serve`/`pool`/supervision-as-a-value, `defer`/`reply`,

@@ -308,13 +308,13 @@ type CheckState struct {
 	// declaration instead and don't count). AnalyseFnBody compares
 	// the counter around a body run to know whether its summary was
 	// computed under the weakest hypothesis and needs refinement
-	// before being cached (design/checker-accuracy-review.10.md A2).
+	// before being cached (design/legacy/checker-accuracy-review.10.ignore A2).
 	InflightBails int
 
 	// Emit is the bytecode recorder seam (EmitRecorder). A real
 	// *EmitState — installed by the compile entry points after Begin —
 	// turns the check pass into the bytecode recording pass (Stage 1 of
-	// design/boru-bytecode-plan.0.md): every dispatch through
+	// design/legacy/boru-bytecode-plan.0.ignore): every dispatch through
 	// carrierResults records a classified call event and Finalize
 	// linearises the trace into a Program. A plain check runs against
 	// the inactive no-op recorder (Begin installs it). READ through
@@ -382,7 +382,7 @@ type CheckState struct {
 	// declaration or dynamic(Any) — and emits ONE analysis_truncated
 	// diagnostic naming the fn, so heavy polymorphic use degrades loudly
 	// instead of silently eating the whole step budget
-	// (design/checker-accuracy-review.10.md A9).
+	// (design/legacy/checker-accuracy-review.10.ignore A9).
 	FnAnalysisCounts map[string]int
 
 	// StepCount is the running total of engine steps consumed by
@@ -487,7 +487,7 @@ type CheckState struct {
 	// reads can produce a typed carrier rather than falling back to
 	// Any. Shared across the entire check run — not keyed by store
 	// identity. It remains the COMPATIBILITY FALLBACK for any store
-	// the shape minting misses (design/checker-precision-fronts.0.md
+	// the shape minting misses (design/legacy/checker-precision-fronts.0.ignore
 	// §2 stage 3 retires it only when every reader is store-shaped);
 	// store-identity-keyed typing lives on StoreShapeInfo carriers
 	// (store_shape.go).
@@ -548,7 +548,7 @@ type CheckState struct {
 	// 0 do]`) would recurse through the element-read producer
 	// unboundedly, so the producer declines past depth 1 — nested code
 	// stays dynamic(Any), a stage-2/3 precision
-	// (design/checker-precision-fronts.0.md §1).
+	// (design/legacy/checker-precision-fronts.0.ignore §1).
 	CodeEffectDepth int
 
 	// FnBodyDepth counts the AnalyseFnBody nesting around the
@@ -749,7 +749,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	"parse_bad_matcher": SeverityError,
 	"parse_bad_abnf":    SeverityError,
 	"parse_bad_rule":    SeverityError,
-	// Generics (design/GENERICS.10.md §9.2).
+	// Generics (design/legacy/GENERICS.10.ignore §9.2).
 	"constraint_violation": SeverityError,
 	"unbound_param":        SeverityError,
 	"arity_mismatch":       SeverityError,
@@ -864,7 +864,7 @@ type CheckDiagnostic struct {
 	FnName   string        `json:"fnName,omitempty"`   // enclosing named fn for an FnBody diagnostic — the reader for the dynamic-scope rescue
 
 	// RuntimeMirror marks a diagnostic that mirrors a GUARANTEED runtime
-	// error over exactly-known operands (design/CHECKER-COMPLETION.0.md):
+	// error over exactly-known operands (design/legacy/CHECKER-COMPLETION.0.ignore):
 	// the finding gates `boru check`, but the recording MODEL underneath it
 	// is exact — the program compiles and raises the identical error at
 	// runtime (a trap, the VM RET check, the same pure handler) — so the
@@ -899,7 +899,7 @@ type CheckDiagnostic struct {
 // NewCheckState builds the registry's initial analysis state: analysis
 // off, the step budget at its "unset" sentinel (resolved to the project
 // default at run time), and the inactive no-op recorder standing in for
-// the emit surface (design/CHECKER-COMPLETION.0.md). Registry
+// the emit surface (design/legacy/CHECKER-COMPLETION.0.ignore). Registry
 // construction calls this so the check piece owns its own zero state.
 func NewCheckState() *CheckState {
 	return &CheckState{StepBudget: -1, Emit: TheInactiveEmit}
@@ -929,7 +929,7 @@ type PendingFnBody struct {
 // snapshot (and a restore cannot bleed back). Emit is copied by pointer
 // (the recorder is shared, not snapshotted). Used by the predicate /
 // compile sandboxes, which since the Check-pointer conversion
-// (design/module-fn-checkstate-ownership.1.md §3.2) must snapshot the
+// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2) must snapshot the
 // POINTEE rather than alias it.
 func (c *CheckState) Clone() *CheckState {
 	if c == nil {

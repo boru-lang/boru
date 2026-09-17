@@ -238,7 +238,7 @@ type EmitRecorder interface {
 	// data (Engine.noteFnResultReSteps, NUR124). The recorder plans a
 	// re-step deopt over the call's results for it, or declines the unit.
 	NoteFnResultReStep(v Value, resume SrcPos)
-	// Stage-0b promotions (design/ENG-FOUR-PIECE.0.md): the probes that
+	// Stage-0b promotions (design/legacy/ENG-FOUR-PIECE.0.ignore): the probes that
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
 	InClosureUnit() bool

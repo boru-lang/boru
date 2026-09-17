@@ -1,0 +1,348 @@
+# Making the boru Type Checker Catch Silent-Dispatch Failures: Implementation Plan
+
+## Scope
+
+boru's `boru check` is a capable flow-sensitive abstract interpreter
+(`design/legacy/CARRIER-STATIC-TYPECHECK-REPORT.10.ignore`), yet the pain that
+dominates every DX report — dispatch that fails **quietly** instead of
+loudly — slips straight through it. This note plans the additive "loud
+diagnostics" layer that closes that gap. It is the operational companion
+to items 2 (`dynamic(T)`) and 3 (dead-overload detection) of
+`elixir-types-in-boru-report.10.ignore`; where that report argues *what* the
+type system should gain, this one plans *how* the checker starts catching
+the bugs users actually hit.
+
+Nothing here changes the analysis engine or runtime semantics. Every
+addition is gated behind `r.IsCheckMode()`.
+
+## The problem (from the DX reports)
+
+Both voxgig reports (`VOXGIG-DX-REPORT.5.ignore`) and the decision-module
+report (`BORU-DX-REPORT.5.ignore`) independently reach the same diagnosis:
+**"nearly every hour lost went to behaviour that failed quietly rather
+than loudly."** The headline shapes, all ❌ open against current `main`:
+
+- **T1 / B1** — a namespace/FnDef word whose top-of-stack type doesn't
+  match the first signature parameter leaves the **function value on the
+  stack as data, with no error**. A plain (non-namespace) word *does*
+  error in the same case. (`b set k v` silently not mutating; a
+  wrong-order namespace call printing `a fn my-get(Map, String)`.)
+- **B3** — `def _ (void-call)` leaves stack residue; the next word
+  mis-dispatches.
+- **T6** — forward `get` grabs the bare word `i` instead of its binding,
+  returning `none`.
+
+The VOXGIG report's **P0** is literally "make silent failures loud," and
+its first recommendation is to **align namespace-word dispatch with
+plain-word dispatch** so a type miss errors instead of no-oping.
+
+### Why the checker doesn't already catch them
+
+The checker achieves runtime/check **parity** by running the same
+dispatch machinery in carrier mode. That is its great strength — and the
+reason it inherits the silent-dispatch blind spot. Confirmed in the tree:
+
+- The documented diagnostic surface (`../LANGREF.10.md`) has **no** code for
+  "a Function left unconsumed on the stack" or "residual at a statement
+  boundary." `no_signature` (`eng/go/engine.go:3897`) fires for
+  *plain-word* misses only — exactly the case T1 says namespace words do
+  **not** cover.
+- Tests **enshrine** leave-as-data as normal: `usurp_word_test.go:136`
+  ("reffed wrapper is left on the stack as data"), `fn_arg_cleanup_test.go:8`
+  ("Unconsumed unnamed args should be discarded").
+
+And the tell: **neither report's authors ever ran `boru check`** — it is
+absent from the developer loop. A sophisticated checker that nobody
+reaches for has ~zero impact on the reported pain.
+
+## Current checker baseline
+
+What `boru check` already does (so the plan only adds, never rebuilds):
+
+- Carrier-based abstract interpretation with runtime parity; flow typing
+  / guard narrowing; branch join (`JoinCarriers`); recursion via memoised
+  fn-body summaries (`AnalyseFnBody`); DepScalar interval reasoning.
+- Diagnostics today: `no_signature`, `undefined_word`, `illegal_ref`,
+  `record_shape_mismatch`, `unused_def`, `unreachable_branch`,
+  `missing_returns`, `step_budget_exceeded`, `fn_body_error`,
+  `branch_error`, `body_error`, `type_error`, `invalid_word_name`,
+  `fnsig_invalid_spec`.
+- Already DX-relevant: `undefined_word` (check mode keeps the lenient
+  "undefined → Any carrier + diagnostic" path), `unused_def`,
+  `record_shape_mismatch`, `unreachable_branch`.
+
+The gaps are exactly three: the namespace/FnDef leave-as-data path, dead
+overloads, and adoption.
+
+## Decisions (pinned 2026-06-04)
+
+1. **Home — a dedicated note** (this file), cross-referencing the Elixir
+   report rather than enlarging it.
+2. **Residual diagnostic — a residual Function/FnDef → error**, fired at
+   the failed-match call site (high precision, not a residual-stack
+   scan).
+3. **Dead-overload detection — both** user fns at `boru check` time **and**
+   native signature tables at registration (behind a dev/lint flag +
+   whole-vocabulary regression test).
+4. **Adoption — opt-in.** Keep bare `boru run` unchanged; add a prominent
+   `run --check` flag, promote the existing `boru check`, and surface
+   diagnostics through the LSP. No latency change to `run`.
+
+## Plan
+
+### Phase 1 — `uncalled_function`: align the FnDef path with plain words
+
+The headline fix; kills T1 (and, per the report, likely B1).
+
+**Mechanism.** `execFnDefLiteral` (`eng/go/engine.go`) is the gate that
+already decides "anonymous + no positions matched → treat as data;
+otherwise dispatch" (see `lang/go/CLAUDE.md`, "0-arg lambdas as values vs
+as calls"). In check mode, add a diagnostic in its **no-match branch**,
+fired only when all three hold:
+
+- the FnDef is **named** (not an anonymous lambda),
+- it was reached **as a call** (resolved from a word / dot-access), not an
+  explicitly inert value — i.e. **`!val.Quoted`** and not produced by
+  `/r` / `ref` (engine.go:853, 1597 already treat those as data), and
+- there were **candidate args present** that failed to match any
+  signature — distinguishing "no matching signature" (the bug) from "no
+  args available to apply" (an intentional 0-arg function value).
+
+That last clause is what keeps `def f ([] => [body])` and
+`def add5 (make-adder 5)` quiet while flagging `xs my-get "k"` in the
+wrong order. Emit `uncalled_function` (Error) carrying the function name,
+the arg types seen, and the source position — mirroring what plain words
+already do via `signatureError` → `no_signature`.
+
+**Tests.** Positive: the `t1_ns_dispatch` shape (wrong-order namespace
+call) now errors in check mode. Negative (per `lang/go/CLAUDE.md` test
+discipline): a `def`-bound function, a `/r`-reffed wrapper, and a
+deliberately-stacked 0-arg lambda must **not** fire.
+
+**Effort.** ~2 d *(revised — see findings; the dispatch-side flag is ~2 d
+but the prerequisites below are larger).*
+
+**Implementation findings (2026-06-04 — first attempt, reverted).** A
+spike implemented the dispatch-side flag and proved the *mechanism* but
+also surfaced two prerequisites that make the marquee T1/B1 (module
+namespace dispatch) unreachable without prior work. The flag fires
+correctly for any FnDef **value** the checker can observe — a named,
+non-anonymous, non-quoted function reached as a call with mismatched or
+insufficient args, in either form: stack/swap (`"x" (usurp f)`) and
+forward (`Pkg.fn a b`). The hook is the no-match fall-through in
+`execFnDefSigStackMatch` (not `execFnDefLiteral`), and "args present"
+must consider **both** the stack-before values *and* the upcoming forward
+tokens up to the next statement/group boundary (`End`/`CloseParen`/`Mark`/
+`Move`). Verified: `(usurp f) "hello"` → `uncalled_function`; correct
+call, bare value, and 0-arg reference stay quiet.
+
+The blockers:
+
+1. **Module exports resolve to `Any` in check mode.** `Pkg.fn` (a
+   `get` on a `ModuleExport`) returns an `Any` carrier under check, so
+   there is **no FnDef value at the call site to flag** — `execFnDefLiteral`
+   isn't even reached. Catching module-namespace T1 therefore requires a
+   prerequisite: a `ModuleExport`'s `get` must carry the export's
+   function/signature type through check mode (return the typed FnDef
+   carrier, not `Any`). This is the highest-value enabling change and
+   should precede the flag.
+2. **Trivial-delegation wrappers mask inner mismatches.** A module
+   wrapper declares loose `Any` display-params, so even when the inner
+   native's signature rejects the args, the wrapper's loose sig "matches"
+   and dispatches — the mismatch never reaches the no-match branch.
+   Catching this means consulting the *inner* resolution result
+   (`reg.Lookup(name)`'s match in `execFnDefLiteral`), not the wrapper's
+   loose `OwnSigs`.
+
+A third, smaller edge: `(f/r) arg` can lose its `Quoted` flag through the
+paren group and false-fire, so the inert-value guard must be made robust
+across the `/r`-through-paren path before the flag is trustworthy as an
+**error** severity.
+
+**Revised plan.** (0) Module-export type propagation in check mode
+(~2–3 d) — the prerequisite, and a precision win in its own right;
+(1) the dispatch-side flag with the stack+forward "args present" guard
+and a robust inert check (~2 d); (2) inner-vs-wrapper sig resolution so
+loose wrappers don't mask inner mismatches (~1–2 d). The dispatch-side
+flag alone (without 0) already covers the non-module FnDef-value footgun
+and could land first as a Warning, promoted to Error once the `/r` edge
+is nailed.
+
+**Prerequisite (0) — LANDED 2026-06-04.** `get`/`getr` on a
+`ModuleExport` now carry a `ReturnsFn` (`moduleExportGetReturns`,
+`native_module_types.go`) that resolves the concrete export in check
+mode instead of synthesising an `Any` carrier. The key arrives as a
+/q-captured atom and the `ModuleExport` is concrete under check, so both
+args are available; a function export keeps its `FnDefInfo` (so it stays
+dispatchable/checkable downstream), a data export becomes a carrier of
+its real type, and anything unresolved degrades to `Any` as before. The
+precision win is immediate and independent of the flag: every imported
+member now checks with its real type — `import "boru:math-util" end 16.0
+MathUtil.sqrt` checks as `Decimal` (was `Any`), `Decision.cond age "gt"
+18` as `Map` (was `Any`). This also removes the spurious `missing_returns`
+that `getr` on an export used to emit in check mode. Covered by
+`TestCheckModuleExportTypePropagation`.
+
+**Piece (1) — LANDED 2026-06-04.** The `uncalled_function` diagnostic
+fires at the no-match fall-through in `execFnDefSigStackMatch`
+(`eng/go/engine.go`): a *named*, non-anonymous, non-`Quoted` function
+value reached as a call whose args (stack-before *or* upcoming forward
+tokens, via `upcomingArgs`, up to the next boundary) match no signature
+is flagged as a silent-dispatch failure (severity error, `registry.go`).
+With prerequisite (0) in place this covers the marquee cases: module
+namespace dispatch — both typed-param preamble fns (`Decision.cond 5 6 7`)
+and wrapper-exported natives (`MathUtil.sqrt "hello"`) — and local
+function values (`(usurp f) "hello"`); correct calls and bare zero-arg
+references stay quiet. Covered by `TestCheckUncalledFunction`; in the
+`LANGREF` diagnostics table.
+
+The `/r` edge dissolved on inspection: `(f/r) arg` actually
+*re-dispatches* (`(f/r) 5 → 25` at runtime), so flagging `(f/r) "hello"`
+is a true positive, not the feared false one; only the genuinely-inert
+`f/r arg` (no paren, `Quoted` preserved) stays quiet, which it does.
+
+**Piece (2) — largely unnecessary.** The loose-wrapper masking concern
+did not materialise: prerequisite (0) makes a wrapper export resolve to
+the *real typed* function in check mode, so the inner signature is what
+gets matched — `MathUtil.sqrt "hello"` already flags. Left as a watch
+item rather than planned work.
+
+### Phase 2 — `unreachable_signature`: dead-overload detection
+
+Elixir-note item 3. A signature `S` is unreachable when an earlier,
+higher-priority signature `S'` (per `SortSignatures`, which runs at
+registration) subsumes it: every positional type of `S'` is a
+supertype-or-equal of `S`'s corresponding type, **and** the full
+discriminator set agrees.
+
+**Subsumption check.** Reuse `Type.Matches` and the subsumption notion
+already in `SimplifyDisjunctAlts` (`eng/go/core_helpers.go:755`).
+**Critically, honour every discriminator**, not just positional `Parent`:
+`TypeArgs` slots (type-literal expectations), structural patterns
+(`sigPattern` / `Unify`), arity, and `BarrierPos`. Ignoring these would
+false-positive on native overloads that differ only by `TypeArgs` or
+barrier (the kernel has many — e.g. the arithmetic and `add` temporal
+sigs). This is the main correctness risk and the bulk of the effort.
+
+**Two surfaces (both, per the decision):**
+
+- *User fns at check time.* During `boru check`, run the check over each
+  user `FnDef`'s sorted signatures; emit `unreachable_signature` (Warning)
+  with the dead sig and the shadowing sig's positions.
+- *Natives at registration, behind a dev/lint flag.* Gate a pass over
+  every registered word's `NativeSig` table behind an env var / build tag
+  (audience: kernel authors, not end users — production startup stays
+  quiet). The natural home is a **whole-vocabulary regression test**,
+  `TestNoDeadNativeOverloads`, that fails CI if a kernel sig table has an
+  unreachable entry — catching `SortSignatures` ordering mistakes the way
+  `fixedid_stability_test.go` catches FixedID drift.
+
+**Effort.** ~3 d (most of it in the discriminator-complete subsumption
+check and the vocabulary sweep).
+
+**Phase 2 — LANDED 2026-06-04.** `eng/go/deadsig.go` implements the
+subsumption rule (`sigSubsumes` / `DeadSignatures`): same arity, same
+`BarrierPos`, same per-position `TypeArgs` *and* `QuoteArgs` kind, no
+structural patterns on either side, and every later-sig type a subtype
+of the earlier-sig type (`t2.Matches(t1)`). Both surfaces shipped:
+`unreachable_signature` (warning) is emitted at `fn` construction in
+check mode (`native_definition.go`) for user overloads, and
+`TestNoDeadNativeOverloads` sweeps the whole built-in vocabulary as a
+CI gate — which came back clean once `QuoteArgs` was added as a
+discriminator (it was the only thing distinguishing `describe`'s two
+`[Atom]` sigs). Piece (2)'s "loose-wrapper" worry from Phase 1 is
+unrelated here. Tests: `TestCheckUnreachableSignature`,
+`TestNoDeadNativeOverloads`; in the `LANGREF` diagnostics table.
+
+### Phase 3 — Adoption: get the checker into the loop
+
+`boru check [--json] [--soft]` already exists
+(`cmd/go/internal/check/check.go`; `--soft` downgrades to advisory, else
+any Error-severity diagnostic exits non-zero for CI). The gap is reach,
+not capability.
+
+- **`boru run --check` flag.** Run the check pass first, print diagnostics,
+  then run (or abort on Error unless `--soft`). Bare `boru run` is
+  unchanged — opt-in only, no latency cost by default.
+- **LSP.** Ensure the `lsp` service (`cmd/go serve lsp`) runs the check
+  pass and surfaces `CheckDiagnostic`s as editor diagnostics on change.
+  Verify current wiring; fill the gap if diagnostics aren't already
+  pushed.
+- **Docs.** A "Catch bugs early with `boru check`" section in `TUTORIAL` /
+  `CLI.md`, and the one-page "Gotchas / Idioms" reference the DX reports
+  asked for (the still-load-bearing items: arg order, `fold` binding
+  order, deep `merge`, `do`-evaluates-words, list `eq` identity,
+  forward-`get`). Promote the existing `boru check` so it stops being
+  invisible.
+
+**Effort.** ~1.5 d.
+
+**Phase 3 — LANDED 2026-06-04.** Mostly already built, plus one fix:
+- **`boru run --check`** existed (`run.go`) but passed `soft=true`, so it
+  never aborted despite its "abort on error" help. Fixed to a clean
+  pre-flight: a new `check.Preflight` prints diagnostics to stderr and
+  returns an error on any Error-severity finding, so `boru --check`
+  aborts before executing while leaving stdout entirely for the program.
+- **LSP** already publishes the same `lang.Check` diagnostics on change
+  (`cmd/go/internal/lsp/diagnostics.go`) — so `uncalled_function` and
+  `unreachable_signature` surface in-editor for free.
+- **Docs.** The `CLI.md` `boru check` section now documents what the
+  checker catches (with the new codes), the `boru run --check`
+  pre-flight, and the LSP pointer. (The standalone "Gotchas / Idioms"
+  page remains a separate docs task.)
+
+### Out of scope (cross-referenced, not solved here)
+
+- **T6 / B3 fully** are partly *runtime* forward-collection semantics
+  (VOXGIG "Cross-cutting suggestion"), not pure checker fixes. Phase 1's
+  call-site alignment helps the dispatch-miss half; the forward-collection
+  half is tracked under the `/s` / `/f` / `/N` modifier work.
+- **`dynamic(T)`** (Elixir-note item 2) is the complementary precision
+  win — it lets the checker flag mismatches *through* escape hatches
+  instead of degrading to `Any`. Sequenced after this note's Phase 1–2.
+
+## Diagnostics added
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `uncalled_function` | error | A named FnDef / namespace call found args but matched no signature and was left as data (T1/B1). |
+| `unreachable_signature` | warning | An overload is fully subsumed by an earlier, higher-priority signature (honouring TypeArgs / patterns / arity / barrier). |
+
+Both slot into the existing `CheckDiagnostic` structure and the
+`../LANGREF.10.md` diagnostics table.
+
+## Effort summary
+
+| Phase | Work | Effort |
+|---|---|---|
+| 1 | `uncalled_function` at the FnDef no-match branch + intentional-value exemptions + tests | ~2 d |
+| 2 | discriminator-complete subsumption; user-fn check + gated native sweep + `TestNoDeadNativeOverloads` | ~3 d |
+| 3 | `run --check` flag, LSP diagnostic wiring, docs/gotchas page | ~1.5 d |
+
+**Total ≈ 6–7 dev days.**
+
+## Risks
+
+- **False positives on intentional function-as-value (Phase 1).**
+  Mitigated by firing at the failed-match call site under the three-part
+  guard (named + called + args-present-but-unmatched), not by scanning
+  the residual stack. The negative tests are the contract.
+- **False positives in dead-overload (Phase 2)** from ignoring
+  `TypeArgs` / patterns / `BarrierPos`. The check must consume the full
+  discriminator set; the kernel's own overloaded words are the test
+  oracle (a clean run over the whole vocabulary is the bar).
+- **Parity drift.** These are check-mode-only additions; runtime still
+  leaves-as-data. Keep every new diagnostic behind `r.IsCheckMode()` so
+  runtime behaviour is untouched.
+
+## Verdict
+
+The fix is additive and well-scoped. Aligning the namespace/FnDef
+dispatch path with the plain-word path in check mode (Phase 1) kills the
+single dominant DX footgun; dead-overload detection (Phase 2) makes
+dispatch *resolution* loud and gives the kernel a CI guard; opt-in
+surfacing (Phase 3) finally puts the checker where the pain is — without
+touching the analysis engine or runtime semantics. Combined with
+`dynamic(T)` (Elixir-note item 2) for escape-hatch precision, it turns a
+capable-but-unused checker into the safety net the DX reports keep asking
+for.

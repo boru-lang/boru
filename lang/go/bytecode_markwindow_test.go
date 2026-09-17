@@ -98,7 +98,7 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// beyond Stage 1 (call result above a literal)" decline this row used to
 	// surface. Same refusal, earlier and truer diagnosis.
 	//
-	// Re-diagnosed again 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the
+	// Re-diagnosed again 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the
 	// region's `M.dec` call fails dispatch, and that is now an error-severity
 	// check diagnostic in the model-undermining class (dispatch did not
 	// resolve, so there is nothing to compile), so the pipeline refuses on the

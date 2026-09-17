@@ -15,7 +15,7 @@ is applied, bound to a name, or passed through a native callback. See
 because a dozen code comments cite this path.
 
 The defect is not recorded anywhere else in `design/` — the closest prior
-mentions (`FN-VALUE-DISPATCH.0.md` §, `VOXGIG-COMPILE-LEAVES.1.md`) are
+mentions (`legacy/FN-VALUE-DISPATCH.0.ignore` §, `legacy/VOXGIG-COMPILE-LEAVES.1.ignore`) are
 compile-time emitter findings of the same *shape* but a different problem.
 This is the first statement of the runtime rule.
 
@@ -764,7 +764,7 @@ with it since the M1 wave.
   until `def` of an already-frame-bound name becomes write-through —
   which collides with `InstallFrameBinding`'s deliberate shadowing
   (`core/go/core_helpers.go:37-39`), whose reason is a fixed correctness
-  bug (`design/ACCESSOR-SPLIT-AND-CLEANUP-BUG.md`).
+  bug (`design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore`).
 
   **(b) The counter idiom's closure never captures the name at all.**
   Rule 2 justifies itself with "the universal counter idiom silently does

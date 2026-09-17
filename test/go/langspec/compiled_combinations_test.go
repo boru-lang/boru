@@ -1,4 +1,4 @@
-// Curated bytecode combination matrix (design/boru-bytecode-plan.0.md
+// Curated bytecode combination matrix (design/legacy/boru-bytecode-plan.0.ignore
 // Stage 6 follow-on; the regression net for the residual work). Rather
 // than a generator over the full Cartesian product, this is a curated
 // set of high-value pairwise/triple feature combinations plus "stranger"

@@ -8,7 +8,7 @@ import (
 
 // uncalled_dispatch_trap_test.go is the whole-program half of the
 // forty-ninth increment: a NAMED fn value reached as a call whose match
-// failed — the `uncalled_function` finding of design/FN-VALUE-DISPATCH.0.md.
+// failed — the `uncalled_function` finding of design/legacy/FN-VALUE-DISPATCH.0.ignore.
 //
 // The site's own note used to read "NOT a RuntimeMirror … there is no call
 // here to compile". Every clause of that is true; the conclusion is not,

@@ -1,4 +1,4 @@
-// Stage-5 compile-or-fallback gate (design/boru-bytecode-plan.0.md
+// Stage-5 compile-or-fallback gate (design/legacy/boru-bytecode-plan.0.ignore
 // §Stage 5: "every program either compiles or falls back, so the whole
 // suite must pass in compiled mode"). Where the span-level differential
 // gate (compiled_differential_test.go) checks ONLY the rows the emitter

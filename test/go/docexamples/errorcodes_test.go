@@ -76,7 +76,7 @@ import (
 // so the gate has to link the layers it means to check. `basic/go` carries
 // the fundamental words' minting sites (def / if / case / fn / var / gen …)
 // since the ADR-013 layering split; `core/go` carries the kernel sites that
-// moved with the interpreter-core cut (design/ENG-FOUR-PIECE.0.md Stage 4);
+// moved with the interpreter-core cut (design/legacy/ENG-FOUR-PIECE.0.ignore Stage 4);
 // `parser/go` carries the syntax sites (float_overflow, integer_overflow,
 // syntax_error …) that moved with the parser cut.
 //

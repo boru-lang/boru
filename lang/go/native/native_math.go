@@ -354,7 +354,7 @@ var mathNatives = []NativeFunc{
 			// match NEITHER overload and raise a no-signature error — the type
 			// system expresses "string-or-bust" directly rather than
 			// silently stringifying any Scalar pair. See
-			// design/WAT-AUDIT.5.md §G.
+			// design/legacy/WAT-AUDIT.5.ignore §G.
 			{Args: []*Type{TString, TScalar}, Impl: Go(addConcatHandler), ReturnsFn: ReturnsAddConcat(), BarrierPos: -1},
 			{Args: []*Type{TScalar, TString}, Impl: Go(addConcatHandler), ReturnsFn: ReturnsAddConcat(), BarrierPos: -1},
 			// The temporal overloads (Date+CalendarDuration, Instant+ClockDuration, …)

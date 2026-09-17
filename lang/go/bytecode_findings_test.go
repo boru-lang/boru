@@ -480,7 +480,7 @@ func TestFnValueIntrospectionLowers(t *testing.T) {
 	}{
 		{`typeof (fn [[a:Integer][Integer][a add 1]])`, "[Function]"},
 		{setup + `Positive tcmp Positive`, "[0]"}, // equal
-		// Stage 2 flip (design/TYPE-REPRESENTATION.1.md §6, tcmp row): the
+		// Stage 2 flip (design/legacy/TYPE-REPRESENTATION.1.ignore §6, tcmp row): the
 		// name denotes its minted node, so a named predicate type orders as
 		// a TYPE (lattice band: the subtype below its base), not as a
 		// concrete fn value above the Function literal.
@@ -2528,7 +2528,7 @@ func TestRunSpecHarnessCompiles(t *testing.T) {
 	// run-spec) hits the recursive-closure-compilation limit the inline path used to
 	// mask via data-driven recursion termination. So run-spec falls back to the
 	// interpreter (sound). Restoring native compilation is the
-	// recursive-code-body-closure follow-up (design/MODULE-FN-PARAM-SLOT-COMPILATION.0.md
+	// recursive-code-body-closure follow-up (design/legacy/MODULE-FN-PARAM-SLOT-COMPILATION.0.ignore
 	// §8); until then this asserts the soundness invariant, not native coverage.
 	const harness = `"boru:test" import end  def double fn [[n:Integer] [Integer] [n 2 mul]] end def s {name: "doubling" subject: double/q cases: [{name: "d3" in: [3] out: 6} {name: "d0" in: [0] out: 0}] subs: []} end s Test.run-spec end Test.summary`
 	gotC, _, errC := mustNew(t).RunCompiled(harness) // fallback allowed
@@ -3574,7 +3574,7 @@ func TestOuterCompilesNoIsland(t *testing.T) {
 	}
 }
 
-// Mechanism A (design/MISCOMPILE-HUNT-FINDINGS.0.md §A) — a compound VALUE
+// Mechanism A (design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A) — a compound VALUE
 // literal in a fn body is re-constructed per call by the interpreter, so
 // compiled code must not leak one pooled identity across calls
 // (OpPushConstFresh). Reads of one per-call binding still share within a
@@ -3641,7 +3641,7 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	}
 }
 
-// Mechanism E remainders (design/MISCOMPILE-HUNT-FINDINGS.0.md). The
+// Mechanism E remainders (design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore). The
 // deferred-field auto-invoke family GRADUATED (the break-2 closure,
 // FN-VALUE-OPEN-WORK §4): a pinpointed genuine-0-arg member read compiles
 // as an arity-0 OpCallDynMethod — its rows moved to `preserved` below. A
@@ -3819,7 +3819,7 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 			"code-body word walk"},
 		// (The two-lambda ascend shape moved to the PARITY table above at
 		// Stage M2d: the ascend lambda now compiles to its own closure unit,
-		// per design/STAGE3-INLINING-DESIGN-ROUND.0.md M2d.)
+		// per design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore M2d.)
 		{"capturing ascend lambda (lexical capture — stays refused)",
 			`def f fn [[p:String] [Map] [walk {mode: "depth"} {a:1} (m:Any => [m.path drop]) (m:Any => [p drop])]] f "s"`,
 			"code-body word walk"},
@@ -4137,7 +4137,7 @@ func TestUnmatchedDispatchTrapSpliceGraduated(t *testing.T) {
 }
 
 // Typed-def store-with-reparent (the compiled closure of miscompile B,
-// design/MISCOMPILE-HUNT-FINDINGS.0.md §B): a typed value-def whose refinement
+// design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §B): a typed value-def whose refinement
 // constraint guards a DYNAMIC body (`def v:Flag b` over a param / computed
 // carrier) compiles to an OpBindTyped that runs the interpreter's own
 // validate/reparent (RunTypedBind) at run time instead of refusing the whole
@@ -4360,7 +4360,7 @@ func TestPR225P1Refusals(t *testing.T) {
 }
 
 // Filter-lambda closures with LEXICAL captures + computed collections
-// (design/RUNTIME-STAMPING.0.md Phase 3): the BODY lambda admits captures —
+// (design/legacy/RUNTIME-STAMPING.0.ignore Phase 3): the BODY lambda admits captures —
 // resolved to compiled homes, threaded at OpPushClosure, bound to trailing
 // unit slots — and a typed non-dynamic carrier data operand. Positives
 // compile natively (no island) with compiled == interpreted parity; the

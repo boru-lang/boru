@@ -39,7 +39,7 @@ type census struct {
 	refusalBuckets map[string]int // normaliseReason -> count, over refused rows only
 	refusedRows    []refusedRow   // one entry per refused row, in corpus order
 
-	// Re-scoped P7 partition (design/boru-bytecode-completion.0.md §3) over the
+	// Re-scoped P7 partition (design/legacy/boru-bytecode-completion.0.ignore §3) over the
 	// not-fully-native rows (refused OR islanded): tier 1 interpreter-only
 	// (permanent), tier 2 reducible (TODO), allowlisted error rows, and the
 	// remaining compute frontier.

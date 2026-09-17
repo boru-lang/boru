@@ -30,7 +30,7 @@ package core
 
 // resolveTypeOperand resolves a NAMED type operand — a bare node,
 // which is what a type name evaluates to after the Stage 2 flip
-// (design/TYPE-REPRESENTATION.1.md §5) — to its declared content for
+// (design/legacy/TYPE-REPRESENTATION.1.ignore §5) — to its declared content for
 // the type-algebra words, which operate on STRUCTURE: `M tor String`
 // flattens M's alternatives exactly as it did when the name evaluated
 // to its body. Builtin and refine nodes record no content and stay

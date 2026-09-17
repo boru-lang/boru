@@ -58,7 +58,7 @@ are listed in §D.
 | `archive/zip` (read) | `boru:io` `mount` (a zip mounts as a read-only `FileOps` backend) | shipped — `lang/go/capabilities/zipfs.go` |
 | `log`, `log/slog` | `boru:log` | shipped — [LOG-MODULE](LOG-MODULE.10.md) (phases 1–5) |
 | `crypto/{aes,cipher,subtle}`, KDFs, `crypto/rand` | `boru:crypto` | designed — [BORU-CRYPTO](BORU-CRYPTO.0.md), [BORU-CRYPTO-EXTRA](BORU-CRYPTO-EXTRA.0.md) |
-| `crypto/tls`, `crypto/x509` (verification only) | `boru:net` — `tls: {…}` options on `fetch` / `connect-raw`, incl. mutual TLS via host-registered identities | shipped — [NETWORK-TLS-PLAN](NETWORK-TLS-PLAN.0.md) phases 1-4 |
+| `crypto/tls`, `crypto/x509` (verification only) | `boru:net` — `tls: {…}` options on `fetch` / `connect-raw`, incl. mutual TLS via host-registered identities | shipped — [NETWORK-TLS-PLAN](legacy/NETWORK-TLS-PLAN.0.ignore) phases 1-4 |
 | `io`, `io/fs`, all `os` filesystem | `boru:io` (all filesystem) | shipped + designed — [IO](go-modules/IO.10.md) |
 | `os` (env/args/identity/exit) | `boru:os` | designed — [OS](go-modules/OS.10.md) |
 | `os/exec` (run a command, capture output) | `boru:exec` | designed — [EXEC](go-modules/EXEC.10.md) |
@@ -125,7 +125,7 @@ The map's families predate these; nothing points at them.
 | `weak` | 1.24 | Weak pointers. Runtime mechanic (already used internally by `eng/go/weak_flex.go`). | B |
 | `structs` | 1.24 | `HostLayout` marker — pure Go memory layout. | B |
 | `hash/maphash` | 1.19 | Fast non-cryptographic hashing of strings/bytes; the `hash/{fnv,crc32,crc64}` row stops short of it. | C — `boru:bin-util` |
-| `math/rand/v2` | 1.22 | The modern PRNG. `boru:rand` wraps v1; only [BATTERIES-INCLUDED](BATTERIES-INCLUDED-REPORT.5.md) (historical) names v2. | C — `boru:rand` |
+| `math/rand/v2` | 1.22 | The modern PRNG. `boru:rand` wraps v1; only [BATTERIES-INCLUDED](legacy/BATTERIES-INCLUDED-REPORT.5.ignore) (historical) names v2. | C — `boru:rand` |
 | `crypto/sha3` | 1.24 | Nominally swept by this map's `crypto/{sha*}` glob but **never enumerated** — [BIN-UTIL](go-modules/BIN-UTIL.10.md) lists only sha1/256/512. | C — `boru:bin-util` |
 | `crypto/hkdf` | 1.24 | [BORU-CRYPTO](BORU-CRYPTO.0.md) §12 cites `golang.org/x/crypto/hkdf`; the stdlib promotion supersedes it. | C — `boru:crypto` |
 | `crypto/pbkdf2` | 1.24 | [BORU-CRYPTO-EXTRA](BORU-CRYPTO-EXTRA.0.md) names PBKDF2 as a candidate KDF but no package. | C — `boru:crypto` |
@@ -158,7 +158,7 @@ The parent is bucketed; these were never individually ruled on.
 | `net/netip` | `net` (A) | Typed IP/prefix values. boru already **has** a `Cidron` type ordered by `net/netip`, but no address-manipulation words. | C — `boru:net` |
 | `net/http/{cgi,fcgi,pprof}` | `net/http` (A) | Host deployment / profiling endpoints — same rationale as `runtime/pprof`. | B |
 | `net/http/{httptest,httptrace}` | `net/http` (A) | Go-side test harness and connection tracing. | B |
-| `testing/quick` | `testing` (A) | Property-based testing — boru already has its own PBT ([PBT-PLAN](PBT-PLAN.10.md)); worth an explicit "superseded" ruling. | B (superseded) |
+| `testing/quick` | `testing` (A) | Property-based testing — boru already has its own PBT ([PBT-PLAN](legacy/PBT-PLAN.10.ignore)); worth an explicit "superseded" ruling. | B (superseded) |
 | `testing/fstest` | `testing` (A) | In-memory FS. boru's equivalent is the `FileOps` capability seam (`overlay.go`, `zipfs.go`) — likewise worth an explicit ruling. | B (superseded) |
 | `testing/iotest` | `testing` (A) | Go `io` error-injection readers. | B |
 | `runtime/{cgo,coverage,metrics,race}` | `runtime` (A) / `runtime/{pprof,trace,debug}` (B) | Host/runtime internals; same rationale as the bucket-B runtime row. | B |

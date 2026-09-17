@@ -1,0 +1,520 @@
+# Stage-3 module-fn call-site inlining — verified implementation plan
+
+_Status: refusals 5 -> 4 -> 3 -> 2 -> 1 -> **0** (the P7 floor). The three module
+feature rows, macro:45 AND def-node-binding:54 are all DONE.
+**def-node-binding:54** was the last: it compiles via a TRANSPARENT
+deferred-list-body fn (the raw `[[c1]]` residual rides as the call result and the
+existing check-pass deferred-list fold materialises it in module scope — NO VM
+deferred-auto-eval pass was needed; see design/legacy/boru-bytecode-final-two-refusals.0.ignore).
+macro:45 was landed via compile-to-trap after its
+true prerequisite was found (a check-mode help-eval budget leak, NOT the macro
+path — see that note). Rows DONE this effort:_
+- _**module-parselang:23 DONE** — sound check-mode parser registration +
+  body-bearing fn-VALUE `__pa` dispatch fix (`spliceFnValueCheckResult` →
+  `buildFnBodyReturnsFn`). refusals 5 -> 4._
+- _**module-rand:38 DONE** — carrier-receiver closure-word dispatch:
+  `Rand.with-seed`'s check-mode ReturnsFn surfaces the static method SHAPE (a
+  concrete instance Map, no rng baked) and `getNodeReturns` folds a
+  closure-bearing wrapper field so `r.list-of [body] n` lowers to `PUSH_CLOSURE`
+  (per-iteration over the runtime receiver) like the direct `Rand.list-of` form.
+  The SOUND RNG freeze-gate is never crossed (no draw is const-folded). refusals
+  4 -> 3. Pins: refusalCeiling 3, pinnedAnyFrontierRows 253,
+  pinnedTypeSoundnessViolations 12 (all sound improvements, differential-clean)._
+
+- _**module-test:38 DONE** — the boru:test spec runner compiles FULLY NATIVE
+  (usedVM, no island), byte-identical incl. test-record side effects
+  (`{total:2 passed:2 failed:0}`). The deep blocker reduced (post-`__pa`/closure
+  machinery) to zero-count `for` PRUNING: `s get "subs"` folds to concrete `[]`,
+  `subs size` now folds to concrete `0` (new `sizeReturns`), and a `for` over a
+  concrete ≤0 count prunes its body (new `forCarrierAnalyse` /`loopIterations`),
+  so the dead recursive `run-spec` branch is never analysed. All in
+  `lang/go/native/` (size.go, native_control.go, forloop.go); zero eng/ changes.
+  refusals 3 -> 2._
+
+_Remaining (refusals = 2 — the current static-analysis floor): **def-node-binding:54**
+and **macro:45**. Both REFUSE conservatively and fall back faithfully (the rows
+PASS — the interpreter returns the correct `[1]` and raises "expansion too deep"
+respectively). They are NOT "must not compile": a sound compilation exists for
+each (macro:45 via a compile-to-trap; def-node-binding:54 via deferred-eval-scope
+provenance modeling). See `design/legacy/boru-bytecode-final-two-refusals.0.ignore` for the
+per-row decision (compile-to-trap vs keep-refusing) — reaching 0 (plan P7, delete
+the interpreter fallback) is a scoped decision, not a semantics conflict. The
+bytecode compiler is interpreter-independent for every row it compiles today._
+
+_This note records the code-level findings (tracing the 3 module rows to ground
+truth) the build started from._
+
+## Why these 3 rows refuse (and the 2 that must)
+
+Live refusals (5), from the corpus census:
+
+| row | reason | disposition |
+| --- | --- | --- |
+| `def-node-binding:54` | `fn mk: body result of unknown provenance` | **correct refusal** |
+| `macro:45` | `residual value not statically materialisable` | **correct refusal** (error row) |
+| `module-parselang:23` | operand provenance at `get` | Stage-3 |
+| `module-rand:38` | residual value of unknown provenance | Stage-3 |
+| `module-test:38` | `code-body word test-describe (Stage 2)` | Stage-3 |
+
+Two refusals are PROVEN unsound to compile **as written today** — running the
+interpreter shows what a naive lowering would get wrong. That makes each a
+refusal in place of a miscompile, which is the better of two failures; it does
+not make either acceptable. Both are open defects, owed a faithful lowering:
+
+- `def c1 1 def mk fn [[c1:Integer] [List] [[c1]]] mk 9` → `[1]`. The
+  returned `[[c1]]` resolves `c1` against the MODULE binding (1) at
+  top-level auto-eval, not the param (9). Any compile that binds the
+  param in body scope yields `[9]` → differential-gate divergence. The
+  `body result of unknown provenance` guard is what keeps it sound.
+- `def loopy (macro [[a] [quote [loopy unquote a]]]) macroexpand (loopy 1)`
+  → raises `expansion too deep`, exactly the `ERROR:` the spec requires.
+  Static divergence is undecidable, so no STATIC lowering decides it —
+  which is an argument for lowering the expansion generically (residual code
+  that runs the interpreter's own decision at runtime and raises the same
+  error), not for refusing the program.
+
+So `refusalCeiling=0` is not reachable by any shortcut that keeps the answers
+right — but it remains the target, because every refusal above is a defect on
+the books. The nearest reachable step is the 3 module rows; the two here are
+owed a generic lowering, not a permanent exemption.
+
+## The single root cause of the 3 module rows
+
+A module-preamble boru fn (`run-spec`, `run-cases`, `run-case`;
+`Rand.list-of`; `ParseLang.parse_calc`) is an `FnFrame` fn. In
+check+emit mode its `buildFnBodyReturnsFn` (`eng/go/core_helpers.go:271`)
+compiles the body as a **shared, type-memoized unit** against
+GENERALISED carrier args:
+
+```go
+// core_helpers.go:371-380 — the deliberate invariant
+genArgs := make([]Value, len(args))
+for i, a := range args {
+    genArgs[i] = NewCarrier(a.Parent) // concrete values would const-fold
+}                                     // into the shared unit — wrong for
+                                      // other call sites.
+```
+
+Because the param is a carrier, every field read inside the body
+(`(s get "name")`, `(s get "cases")`) is `Any` (the `getNodeReturns`
+fold only fires on CONCRETE containers — landed this session, see
+below). `Any` then can't dispatch the body's typed code-body word
+(`test-describe [String List]`), can't materialise the `for (subs size)`
+count to prune the recursion, and can't type the parser/RNG residual.
+
+A unit-body `MarkUncompilable` sets `es.Compilable=false` GLOBALLY
+(no per-call isolation), so the body's refusal becomes the whole
+program's refusal — that is why `module-test:38`'s program-level reason
+is the deep `test-describe` one.
+
+## What must be built (4 interdependent features)
+
+None clears a row alone; only all four together flip `module-test:38`.
+
+1. **Call-site inlining (the new compilation mode).** When a non-generic
+   `FnFrame` fn is called with CONCRETE args, record the body's events
+   INTO THE CALLER'S STREAM with the concrete args bound (not a shared
+   CALL_USER unit), so field reads fold. This mode does not exist:
+   `RecordUserCall` only emits `CALL_USER` to a type-memoized unit. The
+   inline fragment must be keyed by call site / concrete value, never by
+   arg TYPE (else a second call with same types, different values, reuses
+   baked constants). Gate it PROBE-FIRST in an isolated `EmitState`
+   (`IsolateEmit`) so a body that does not fully inline falls back to
+   today's shared-unit path with zero regression.
+
+2. **Zero-count `for` pruning.** A `for` whose count is concretely 0 has
+   an unreachable body and yields `[]`. Required so the inlined
+   `for (subs size) [ subspec run-spec ]` (subs=`[]`) drops the recursive
+   branch instead of analysing it. Sound and bounded, but inert until (1)
+   makes `subs` concrete inside the body (prototyped+reverted earlier for
+   exactly this reason).
+
+3. **Module closure code-bodies.** `test-describe`/`test-test` bodies
+   already declare a `CallableSpec` (`lang/go/modules/test.go:232,279`);
+   they need the closure path (`tryRecordClosure`) to admit them once
+   their name arg is a concrete String (depends on (1)).
+
+4. **Fn-value dispatch.** `run-case` does `(in subject test-invoke)`,
+   where `subject` is the fn-VALUE `double/q`. `test-invoke` invokes it —
+   currently `anonymous function dispatch (Stage 3)`. Compiling this is
+   the LAST feature; it is the one that finally clears `module-test:38`.
+
+`module-rand:38` needs (1)+(2)-style residual typing; `module-parselang:23`
+needs (1) plus typing a user-registered fn's return — both narrower than
+`module-test:38` but still rooted in (1).
+
+## Landed this session (sound, gate-clean prerequisites)
+
+- **`getNodeReturns` container fold** (`lang/go/native/native_storage.go`):
+  a concrete list/map field read folds to the cloned container value
+  (fresh ID), not a bare type carrier. 5 rows off the Any frontier
+  (254→249). This is the precise prerequisite that makes the inlined
+  body's field reads concrete in feature (1).
+- Corrected the earlier (wrong) root-cause pin; this note supersedes it.
+
+## REFINED (deeper trace): the get-fold already advanced the concrete pass
+
+A later dispatch-level trace (`EXPDISP` at engine.go:2475 + `MARK` at
+MarkUncompilable, both reverted) corrects the picture above. Run-spec's
+body is analysed in TWO passes, and the get-fold landed this session
+already fixed the concrete one:
+
+- **Concrete pass** (the real call's args): with the get-fold,
+  `(s get "name")` folds to `ProperString` over a concrete `Map`, so
+  `test-describe` DISPATCHES (`EXPDISP test-describe ProperString/F
+  List/T`). `run-cases`/`run-case` also dispatch. The only remaining
+  blocker here is that `test-describe`'s code body (a closure) does not
+  compile via `tryRecordClosure` → `code-body word test-describe (Stage 2)`.
+- **Carrier shared-unit pass** (genArgs = carriers, core_helpers.go:377):
+  carrier `s` → `(s get "name")` = `Any` → `test-describe` cannot match
+  `[String List]` → `unmatched dispatch recovered at test-describe`, which
+  fails the shared unit and poisons the program.
+
+So the two MARKs observed (`unmatched dispatch recovered` THEN `code-body
+word`) are the carrier pass and the concrete pass respectively. The
+implication SHARPENS feature (1): the shared **carrier** unit must be
+BYPASSED for a concrete-arg call (call-site inlining), AND
+`test-describe`'s closure body must compile. The closure body captures
+concrete `s`, calls `run-cases` (now dispatching), and recurses into
+`run-spec` over `subs` — so it also needs feature (2) zero-count `for`
+pruning (subs=`[]`) and ultimately feature (4) for `test-invoke`'s
+fn-value call. Net: the get-fold moved the concrete pass from "name is
+Any, can't dispatch" to "dispatches; closure-body compilation is the next
+wall" — measurable progress toward feature (1).
+
+## Earlier prerequisite note (kept for the carrier-pass boundary)
+
+Tracing `args` into `run-spec`'s `buildFnBodyReturnsFn` (temporary
+instrumentation, reverted) shows the concrete map is ALREADY LOST before
+the body is ever compiled:
+
+```
+EXP run-spec arg 0 parent Any concrete false
+```
+
+At top level `def s {…} end (s get "name")` compiles (the map is concrete
+and the get-fold fires). But passing the same `s` through the module-fn
+dispatch boundary `s Test.run-spec` delivers arg 0 as a bare `Any`
+carrier — not even `Map`. So specialising the body unit to "concrete
+args" is inert (verified: forcing `genArgs[i]=a` when `IsConcrete(a)`
+left `module-test:38`'s refusal reason byte-identical) because the arg
+that reaches the ReturnsFn is not concrete in the first place.
+
+**Therefore feature (1) has a sub-prerequisite (1a): the module-fn /
+dot-access dispatch boundary must PRESERVE the concrete arg** (today it
+hands the callee an `Any` carrier in check+emit mode).
+
+Pinpointed (instrumentation in `buildFnBodyReturnsFn`, reverted): for the
+`s Test.run-spec` call,
+
+```
+EXP run-spec param 0 type Map arg Any/conc=F
+```
+
+— the SIG PARAM is correctly typed `Map`, but the ARG VALUE delivered to
+the ReturnsFn is a bare `Any` carrier (not concrete, not even `Map`). And
+the same map read DIRECTLY (`def s {…full module-test shape…} end
+(s get "name")`) compiles — the value IS concrete until it crosses the
+module call. So the erasure is neither at def-time nor in matchSignature
+(which matched `Map`); it is in the **cross-registry module-dispatch
+arg-passing** (the path that resolves `Test.run-spec` and invokes
+run-spec's ReturnsFn — execFnDefLiteral/execFnDefSig + shareCheckState).
+That path substitutes an `Any` carrier for the concrete operand. Fix:
+thread the concrete operand through to the callee's check-mode analysis
+(it sits in the hot, shared cross-registry dispatch — gate behind the
+full differential before landing). Only then can (1) fold anything.
+
+## module-rand:38 is the CLOSEST row — a different (narrower) root than module-test
+
+Deep tracing (dispatch + mark + residual-provenance, all reverted) shows
+`"boru:rand" import end def r (Rand.with-seed 2) r.list-of [Rand.int 0 10] 3`
+is NOT blocked by the inlining stack at all:
+
+- NO `MarkUncompilable` fires — the body records cleanly. `rand-with-seed`
+  and `rand-int` both reach `carrierResults` and record (`CARRES rand-int …
+  rc false` → generic CALL_NATIVE). The `[Rand.int 0 10]` generator and the
+  count compile.
+- The SOLE failure is at lowering (emit.go:3226): the program's final
+  residual — the concrete `List` returned by `list-of` — has NO `producedBy`
+  entry (`RESIDUAL-UNKNOWN rv.ID N_… nEvents 2`, and the 2 events are
+  `rand-with-seed` + `rand-int`, not `list-of`). So `list-of`'s own dispatch
+  recorded NOTHING.
+
+Root cause: `r.list-of` is a NoEvalArgs / code-body module wrapper
+(`wrapRandFnDefNoEval`, BodyPos 0, BodyOut 1). Unlike the plain wrappers
+(`rand-int`, `rand-with-seed`) which short-circuit to `execMatch` →
+`carrierResults` → record, the NoEvalArgs/code-body wrapper dispatch does
+NOT pass through `carrierResults` (no `CARRES rand-list-of` line), so its
+result carrier is produced but never recorded as a closure call. The
+residual is then untraceable → refuse.
+
+**Fix (narrower than module-test's 4-feature stack): make `list-of`'s
+dispatch RECORD a closure call** so its `[Rand.int 0 10]` body → a closure
+unit and its result → a tracked operand.
+
+CORRECTION (further tracing): `r.list-of`'s dispatch goes through NEITHER
+the `execFnDefSig`/`CallBoru` path (a `FNDEFSIG` probe never fired) NOR
+`carrierResults` (no `CARRES rand-list-of`/`list-of` line). So the result
+`N_…` (the final `List`) is produced by some OTHER path — most likely the
+Rand-instance `get`/method dispatch for `r.list-of` (where `r =
+(Rand.with-seed 2)` is a Rand instance, not the module export). That exact
+dispatch function is NOT yet pinned; pin it FIRST (instrument the Rand
+instance's method/get handling), then route it through the
+closure-recording machinery (`tryRecordClosure` / `RecordClosureCall`).
+The fix does NOT need call-site inlining, zero-count-for, or fn-value
+dispatch, and MUST be gated behind the full `make verify-bytecode` (the
+path is shared). If it lands clean, `module-rand:38` clears
+(refusalCeiling 5→4) and likely helps `map-from`. Recommended NEXT row —
+but the dispatch site needs pinning before the one-line claim holds.
+
+## REJECTED shortcut (tested empirically): get-returns-concrete-FnDef
+
+Hypothesis: `r` (the `Rand.with-seed` result) is a plain Map, so
+`r get list-of` runs `getNodeReturns`, which returns `dyn`(Any) for an
+FnDef field — so list-of never dispatches and its gen body `[Rand.int 0
+10]` is left as the untracked residual. Hoped fix: return the CONCRETE
+FnDef for a (module-wrapper) FnDef field so it resolves like a module word
+and dispatches.
+
+Tested (reverted): forcing `getNodeReturns` to return `CloneValue(val)`
+for FnDef fields did NOT compile `module-rand:38` — it still refuses
+`residual value of unknown provenance`. (And `m.f 2 3` from fn-value.tsv
+compiles independently either way.) So the get-typing is NOT the blocker:
+even with the concrete FnDef in hand, list-of's dispatch records no event.
+
+Deeper confirmation (FDL trace, reverted): even with `getNodeReturns`
+returning the concrete list-of FnDef, `execFnDefLiteral` is called for
+`rand-with-seed` and `rand-int` but NEVER for `rand-list-of`/`list-of` —
+the concrete FnDef value sits on the check stack as DATA and never
+dispatches, so `[Rand.int 0 10]` and `3` are left unconsumed and the gen
+body list becomes the untracked residual. So module-rand:38 needs THREE
+interlocking pieces, each revealing the next: (a) get resolves the
+concrete module-wrapper FnDef, (b) that value actually DISPATCHES in
+check+emit mode (it currently does not — the fn-value-on-stack-with-args
+dispatch is not driven here), and (c) the dispatch RECORDS (closure /
+OpCallDynamic) so the result is tracked. This is the fn-value-dispatch
+feature module-test:38 also needs for `test-invoke`. Do not re-attempt the
+get-typing shortcut alone; the work is the full dispatch path.
+
+## SHARED ROOT (traced this session): module-fn results are CARRIERS in check mode
+
+Attempting the build (user-greenlit) traced module-rand:38 through its full
+stack and CORRECTED the earlier "closest row" claim — it is not shallow:
+
+1. `def r (Rand.with-seed 2)` — `Rand.with-seed`'s handler does NOT run in
+   check mode, so `r` is an abstract **Map carrier** (no field payload).
+2. `r get list-of` therefore hits `getNodeReturns`'s `!IsConcrete(container)`
+   guard and returns Any — the FnDef-field branch is never even reached
+   (a module-wrapper-FnDef fold there is INERT; verified, reverted).
+3. So `list-of` stays Any → never dispatches → its NoEvalArgs gen body
+   `[Rand.int 0 10]` is auto-evaluated and stranded as an untracked residual
+   (`resolveDynamicApply` would emit OpCallDynamic on the leading dynamic,
+   but the ops loop still refuses the untraced gen-list).
+
+This is the SHARED ROOT of all 3 module rows: a module-fn CALL result is an
+abstract carrier in check mode (`with-seed`→Map carrier; `parse`→Any;
+`run-spec`'s `s` param→carrier), so every downstream field/method access over
+it is Any and cannot resolve or dispatch. The fix is NOT compile-time
+evaluation (unsound for rand/side-effecting/`run-spec`): it is to **record the
+module-fn / fn-value dispatch** (OpCallDynamic-style) so the VM produces the
+real value at run time while the checker keeps a typed (non-Any) carrier with
+enough shape for downstream access. That carrier-shape + dispatch-recording is
+the fn-value-dispatch feature, and it sits BENEATH the call-site inlining
+(module-test:38) — all three rows share it. Revised ranking: there is no
+"shallowest" row; the shared dispatch-recording feature is the single
+prerequisite for all three, and should be built first against the simplest
+shape (a fn value resolved from a concrete map, then `m.f args`).
+
+## BOUNDARY (verified): fn-value dispatch ALREADY works for the simple case
+
+Tested clean (no source changes): `def m {f:(fn [[a:Integer b:Integer]
+[Integer] [a add b]])} m.f 2 3` COMPILES, via **CALL_DYNAMIC** (so does the
+explicit `(m get f) 2 3`). So the fn-value-dispatch machinery already exists
+for: a fn value resolved from a CONCRETE map, with PLAIN (evaluated) args. The
+get returns the concrete FnDef → `resolveDynamicApply` sees a leading
+fn-typed/dynamic value with static args → OpCallDynamic → the VM applies it.
+
+The 3 module rows each need a DIFFERENT extension on top of that working base:
+
+- **module-rand:38** — TWO extensions: (i) a CARRIER receiver (`r` from
+  `Rand.with-seed` is a shapeless Map carrier, so `r get list-of` is Any, not a
+  fn carrier — needs with-seed to declare a record/shaped return typing its
+  methods as Function, so get resolves a fn-typed carrier that flows to
+  OpCallDynamic); and (ii) a NoEvalArgs CODE-BODY arg (`[Rand.int 0 10]`) —
+  plain OpCallDynamic evaluates args, but list-of's body must stay a closure.
+  So CALL_DYNAMIC must carry the callee's NoEvalArgs/closure shape.
+- **module-parselang:23** — `ParseLang.parse_calc` is a user-REGISTERED fn;
+  its call result is a List carrier and `(…) get 1` over it refuses operand
+  provenance. Needs user-fn-call recording (the call itself), then get over the
+  tracked result.
+- **module-test:38** — call-site inlining of `run-spec` (its `s` param is a
+  carrier) + closure bodies + recursion + fn-value dispatch for `test-invoke`.
+
+Recommended first implementable unit: extend the working CALL_DYNAMIC path to a
+fn value resolved from a SHAPED map carrier (no code-body), i.e. make
+`getNodeReturns`/a record-typed-map carrier yield a Function-typed carrier that
+`resolveDynamicApply` already lowers — then layer NoEvalArgs/closure carriage
+for module-rand:38. The base mechanism (OpCallDynamic) is already in the VM and
+emitter; the work is feeding it the right carriers from carrier receivers.
+
+## All 3 traced to DISTINCT deep blockers (mark-trail verified)
+
+Each module row was traced to its single actual MARK this session:
+
+> **Historical (2026-07):** `ParseLang.register` (and the register-ReturnsFn
+> mechanism analysed below) has since been REMOVED — the kind namespaces are
+> frozen; custom parsers are fn VALUES (`def calc (fn …)` / `Parse.parser`)
+> whose dispatch compiles via the recorded `parselang-fn-dispatch` call.
+
+- **module-parselang:23** — ONE mark: `operand of unknown provenance … at get`.
+  Everything before the final `get 1` compiles. But the get's RECEIVER resolves
+  to an untracked **ModuleExport** (`ParseLang` itself, empty ID), NOT the parse
+  result — because `parse_calc` is registered DYNAMICALLY (`ParseLang.register
+  calc …`) and is not a statically-tracked call in check+emit mode, so
+  `ParseLang.parse_calc …` does not record a tracked result. Blocker:
+  dynamic-word-registration tracking (a distinct hard area).
+- **module-rand:38** — carrier receiver (`with-seed`→Map carrier) + NoEvalArgs
+  code-body. The `get list-of` never reaches the FnDef branch (carrier guard).
+- **module-test:38** — call-site inlining (`s` param carrier) + closure bodies +
+  recursion + fn-value dispatch (`test-invoke`).
+
+So there is no single shared fix that clears all three, and none is bounded:
+the rows exercise three different frontiers (dynamic registration; carrier
+receiver + code-body; recursive inlining), all sitting on the fn-value/module-fn
+dispatch-recording base. The base (`OpCallDynamic`) exists and works for the
+simple `m.f 2 3` shape; each row needs a different extension to feed it. This is
+the multi-session build, partitioned by row.
+
+## module-parselang:23 ROOT CAUSE pinned + fix lead
+
+Confirmed at code level: `ParseLang.register calc (fn …)` is a HANDLER-ONLY
+native (`parselang.go` ~line 57-67: `CompileEffect: CompileStoresFn`, a
+`Handler`, NO `ReturnsFn`). In check mode native handlers do NOT run, so
+`parseRegisterHandler` never installs `parse_calc` into the export
+`OrderedMap`. Therefore `ParseLang.parse_calc …` does not resolve in check
+mode — `ParseLang get parse_calc` misses, the call collapses, and the bare
+`ParseLang` ModuleExport (empty ID, untracked) flows into the final `get 1`,
+which refuses ("operand of unknown provenance at get"). Everything else in the
+row compiles (single mark, at the final get).
+
+FIX LEAD (tractable, scoped to lang/go/modules): give `parselang-register` (and
+the mirror `minilang-register`) a check-mode `ReturnsFn` that performs the SAME
+export installation `parseRegisterHandler` does — register `parse_<name>` into
+the exports `OrderedMap` at check time from the concrete atom+fn args (both are
+statically available: the atom is QuoteArgs, the fn is a concrete Function
+literal). Then `ParseLang.parse_calc` resolves to the installed wrapper and
+dispatches like any module wrapper; the remaining step is recording that
+wrapper call so `get 1` sees a tracked List. SAFETY to verify: the export-map
+mutation is per-import-instance and idempotent with the runtime register, but
+confirm it does not leak across check passes (BeginCheckMode reset) and that the
+differential gate stays green (the row's runtime answer must be unchanged).
+
+## module-parselang:23 — register-ReturnsFn attempt (IMPLEMENTED, tested, reverted)
+
+Implemented the fix lead: extracted `parseRegisterInstall` and added a check-mode
+`ReturnsFn` (`parseRegisterReturns`) to `parselang-register` that installs
+`parse_<name>` into the exports map during check. RESULT (probed):
+- It WORKS as intended — `parse_calc` becomes statically resolvable and the row's
+  refusal MOVES from `operand of unknown provenance at get` to
+  `context-dependent word __pa`. So the get-receiver problem is solved by it.
+- BUT it breaks the differential gate (1 mismatch, module-parselang.tsv:L26):
+  check-mode mutation of the exports map LEAKS into the shared runtime registry,
+  so the runtime `register` handler then raises `parse_kind_exists` ("already
+  registered"). Confirmed: check and run share the module-export instance.
+- AND even a sound version would NOT clear the row: the remaining `__pa` blocker
+  is the body-bearing fn-VALUE dispatch problem (below). So this change is
+  necessary-but-not-sufficient and currently gate-breaking → reverted.
+
+Two requirements to clear module-parselang:23, BOTH needed:
+1. SOUND check-mode registration of a dynamically-registered parser WITHOUT
+   leaking into runtime state. Candidate: make the runtime `register` handler
+   idempotent for a re-register of the SAME source call (compare fn `Pos`); a
+   genuine user double-register (different Pos) still errors. Or a transient /
+   check-only registration table consulted by `moduleExportGet` in check mode.
+2. The `__pa` fix — see next.
+
+## THE shared crux: body-bearing fn-VALUE dispatch (`__pa`)
+
+VERIFIED at code level this session:
+- A NAMED user fn compiles fine: `def myf (fn [[a:Integer] [Integer] [a add 1]])
+  myf 5` → `CALL_USER` unit (via `buildFnBodyReturnsFn` → `StartFnCompile`, which
+  ARMS the body so `__pa` is captured INSIDE the unit).
+- A fn VALUE with a real body, dispatched at the pointer (a module export like
+  `ParseLang.parse_calc`, or `Rand.list-of`'s wrapper), goes through
+  `execFnDefLiteral` → inline `CallBoru` analysis, whose synthesized body tail
+  contains `__pa` (pop Args/FnBaseline). That `__pa` leaks into the TOP-LEVEL
+  residual and `emit.go:1920` refuses it (`context-dependent word __pa`).
+- The machinery to fix it EXISTS: `eng/go/callable_words.go` `compileClosureBody`
+  / `tryRecordClosure` already compile a code body into its own fn unit via
+  `StartFnCompile` (used by each/fold/scan and a "fnval" factory path). The gap
+  is routing the body-bearing fn-VALUE dispatch path through that same
+  `StartFnCompile` arming instead of inline `CallBoru`.
+
+This `__pa` crux is SHARED by module-parselang:23 (parse_calc body) and
+module-rand:38 (list-of's wrapper body + its NoEvalArgs gen). Cracking
+body-bearing fn-value dispatch unblocks the fn-body half of BOTH rows. (rand
+additionally needs the carrier-receiver→fn-carrier resolution; parselang
+additionally needs the sound dynamic-registration above.)
+
+## module-rand:38 — full root-cause trace (worktree subagent, no source changed)
+
+KEY FORK resolved with hard data (disassembly + residual instrumentation):
+- Direct `Rand.list-of [Rand.int 0 10] 3` (module-export form) **COMPILES** — via
+  `PUSH_CLOSURE` (the generator body is a closure unit re-run per iteration).
+- Target `def r (Rand.with-seed 2) r.list-of [Rand.int 0 10] 3` (carrier-receiver
+  form) **REFUSES** (`residual value of unknown provenance`, emit.go:3155).
+
+Chain (each step verified):
+1. `Rand.with-seed`'s handler doesn't run in check mode → `r` is a shapeless
+   `Map` carrier → `r get list-of` hits the `!IsConcrete(container)` guard
+   (native_storage.go:413) and returns dynamic `Any`. So `list-of` never
+   dispatches as a closure word (no `sig.Callable` on dynamic Any →
+   `tryRecordClosure` never reached); it lowers to `CALL_NATIVE_POLY get/2` +
+   `CALL_DYNAMIC`.
+2. Because `list-of` didn't consume the body as NoEvalArgs, the body
+   `[Rand.int 0 10]` is unconsumed → auto-evaluated (`autoEvalStack`); concrete
+   `Rand.int` fully dispatches, producing ONE Integer.
+3. `RecordMakeList` (emit.go:2085-2095) then **REFUSES to const-bake** that
+   list: its element came from a stateful module word (`!IsBuiltinWord("rand-int")`).
+   Baking it would freeze ONE rng draw and replicate it instead of re-running per
+   iteration — a WRONG answer. **Declining to const-fold here is correct**: it is
+   a choice about which lowering is faithful, and the faithful lowering is
+   per-iteration code, not a baked constant.
+
+   What is NOT correct is where that leaves the row. Today the declined bake
+   escalates into a whole-program refusal, so `module-rand:38` does not compile
+   at all — and that is the defect: the answer to "cannot const-fold" is
+   residual code that re-runs the draw per iteration, not a refusal.
+
+So module-rand:38's blocker is the freeze-gate (like def-node-binding:54 and
+macro:45): every shortcut to compile it as written hits that gate, so the row
+needs the per-iteration lowering rather than a shortcut.
+Confirmed unsound shortcuts:
+- Baking the module-word body in RecordMakeList → wrong answer (differential gate
+  catches it).
+- Const-folding/shaping `with-seed`'s return so `getNodeReturns` resolves the
+  `list-of` FnDef → unsound: each `with-seed` mints a FRESH sub-registry/RNG
+  (rand.go:51-77,132-139), so a check-time-resolved FnDef references a different
+  RNG than runtime.
+
+Isolating near-miss (verified differential-clean, `[1 1 2 2 2 0 0 2]`):
+`r.list-of [r.int 0 10] 3` COMPILES — `r.int` resolves to a DYNAMIC carrier that
+does NOT auto-apply, so `MAKE_LIST` preserves the raw body tokens and runtime
+`CALL_DYNAMIC` re-runs them. The target uses `Rand.int` (concrete, fully-applies)
+which is exactly what trips the sound freeze-gate.
+
+The ONLY correct fix: make the carrier-receiver `r.list-of` dispatch as a closure
+word like the direct path — i.e. `CALL_DYNAMIC` must carry the callee's
+NoEvalArgs/closure shape so the body compiles to `PUSH_CLOSURE` and re-runs per
+iteration over the RUNTIME receiver. That is the deep, hot-path,
+multi-session "shaped-carrier receiver + NoEvalArgs code-body dynamic dispatch"
+frontier — not a localized change.
+
+## Discipline for the build
+
+Probe-first per feature (isolate, commit only on full success, fall back
+otherwise). `make verify-bytecode` (differential + fuzz + race + borudebug,
+0 divergences) gates every step; ceilings re-baseline only when a row
+actually clears, with rationale. Expect features (1)-(3) to clear NO row
+on their own — the ceiling moves only when (4) lands. Gate-clean-or-revert
+throughout.

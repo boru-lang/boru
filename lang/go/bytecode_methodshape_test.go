@@ -13,7 +13,7 @@ import (
 )
 
 // Stage M2c landing tests — shaped-instance-method dispatch
-// (design/STAGE3-INLINING-DESIGN-ROUND.0.md §6 M2c; eng/go/method_shape.go).
+// (design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §6 M2c; eng/go/method_shape.go).
 //
 // A module instance (logger / instrument / span / rand handle) is a Map of
 // trivial-delegation method wrappers closing over per-instance state. The

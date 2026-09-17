@@ -386,7 +386,7 @@ crossdiff:
 # it. Three real defects were living in that blind spot — a disjunction
 # rendering as the literal '[object Object]', the None type literal
 # rendering as the none value, and every type literal rendering by full path
-# instead of leaf name (design/TS-PARITY-AUDIT.0.md).
+# instead of leaf name (design/legacy/TS-PARITY-AUDIT.0.ignore).
 #
 # parser/spec is the curated contract; this is the breadth sweep over the
 # 1765 rows of eng/spec that the contract does not enumerate.
@@ -434,7 +434,7 @@ status:
 # ---- bytecode verification gate ----------------------------------------
 #
 # The strict, runnable regression gate for the bytecode compiler
-# (design/boru-bytecode-plan.0.md). It is the single command to validate a
+# (design/legacy/boru-bytecode-plan.0.ignore). It is the single command to validate a
 # change to the compiler/VM and catch regressions:
 #
 #   1. fmt / vet / lint across every module.
@@ -645,7 +645,7 @@ cover-gate:
 # (node --test line-coverage threshold) — the two gates are the parity
 # pair (Go statements ≡ TS lines).
 #
-# RE-BASED at the four-piece Stage 4 cut (design/ENG-FOUR-PIECE.0.md):
+# RE-BASED at the four-piece Stage 4 cut (design/legacy/ENG-FOUR-PIECE.0.ignore):
 # the interpreter core's statements and ~120 kernel test files moved to
 # core/go, taking their incidental eng-side coverage with them. The
 # measurement universe changed — the pre-cut floor of 89 is not
@@ -669,7 +669,7 @@ cover-gate-eng:
 	@cd test/go && go run ./covergate -threshold $(ENG_GATE_FLOOR) -root $(CURDIR) $(abspath $(COVER_DIR))/eng_standalone.engout
 
 
-# cover-gate-core — the CORE kernel's own gate (design/ENG-FOUR-PIECE.0.md
+# cover-gate-core — the CORE kernel's own gate (design/legacy/ENG-FOUR-PIECE.0.ignore
 # Stage 5): core/go profiled by ITS OWN suite alone. The floor is a
 # RATCHET towards 100%: raise it as core-standalone coverage grows;
 # never lower it. Same .engout-family isolation as the eng gate so the
@@ -690,7 +690,7 @@ cover-gate-core:
 	@echo "==> [cover-gate-core] ALL STAGES PASSED (floor $(CORE_GATE_FLOOR)%)"
 
 # cover-gate-check / cover-gate-compiler — the standalone gates for the
-# two middle pieces (design/ENG-FOUR-PIECE.0.md Stage 6), the twins of
+# two middle pieces (design/legacy/ENG-FOUR-PIECE.0.ignore Stage 6), the twins of
 # cover-gate-core and cover-gate-eng: each module profiled by ITS OWN
 # suite alone. Both floors are RATCHETS toward 100 — raise them in the
 # same change that raises coverage, never lower them. The merged

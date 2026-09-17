@@ -324,7 +324,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	genSpec := fnDef.Gen
 	sigParams := append([]core.FnParam(nil), s.Params...)
 	return func(args []core.Value, caller *core.Registry) []core.Value {
-		// The MERGED-WORD seam (Stage M1, design/STAGE3-INLINING-DESIGN-ROUND.0.md
+		// The MERGED-WORD seam (Stage M1, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore
 		// §2.4a/§5): a transplanted word-extension sig (open words — a module-
 		// defined `add` merged into the importer's dispatch table) dispatches as a
 		// BARE word on the importer's engine, so no execFnDefLiteral wrapper

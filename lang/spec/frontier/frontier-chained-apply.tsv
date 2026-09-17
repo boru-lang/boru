@@ -1,5 +1,5 @@
 # Chained forward application of Function-typed params — the compose family
-# (design/checker-compiler-completeness-review.0.md §2.1, found 2026-08-02 as
+# (design/legacy/checker-compiler-completeness-review.0.ignore §2.1, found 2026-08-02 as
 # a live miscompile: the whole-frame replay's flat window lost the source's
 # paren structure, so `f (g x)` compiled the RET count error where the
 # interpreter applies both fns; noteDynFrameReplay then refused the >1-

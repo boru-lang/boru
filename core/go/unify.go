@@ -347,7 +347,7 @@ func unifyInner(a, b Value) (Value, *UnifyError) {
 	// disjunct node's alternatives before None's self-only rule, exactly
 	// as the disjunct fold preceded the None fold when the name
 	// evaluated to the DisjunctInfo body (the Stage 2 flip,
-	// design/TYPE-REPRESENTATION.1.md). One side only — a pair of
+	// design/legacy/TYPE-REPRESENTATION.1.ignore). One side only — a pair of
 	// constraint nodes keeps the table order.
 	aCons := IsBareTypeNode(a) && HasConstraintUnify(&a)
 	bCons := IsBareTypeNode(b) && HasConstraintUnify(&b)

@@ -62,7 +62,7 @@ Their representations already differ in the kernel:
   registry.
 
 *(Update, 2026-08-20: since the type-node fusion
-([TYPE-REPRESENTATION.1.md](TYPE-REPRESENTATION.1.md) §6) a NAMED
+([legacy/TYPE-REPRESENTATION.1.ignore](legacy/TYPE-REPRESENTATION.1.ignore) §6) a NAMED
 predicate refine also evaluates to its minted node; the
 `DepScalarInfo`-carrying body is the node's recorded content, recovered
 via `core.TypeContentOf`. Membership is unchanged — the §5 net table

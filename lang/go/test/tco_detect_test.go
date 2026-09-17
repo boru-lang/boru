@@ -8,7 +8,7 @@ import (
 )
 
 // End-to-end battery for the tail-call detection probe
-// (design/TCO-STAGED.10.md Stage 2): real programs through the
+// (design/legacy/TCO-STAGED.10.ignore Stage 2): real programs through the
 // production registry, asserting exactly how many fn-body dispatches
 // the probe classifies as tail calls. Detection is telemetry-only —
 // these counts are the contract the optimisation stages act on, so

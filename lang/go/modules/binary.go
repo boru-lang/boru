@@ -84,7 +84,7 @@ func BuildBinaryModule(parent *native.Registry) (native.ModuleDesc, error) {
 	// most-universal stdlib batteries (16/20 TIOBE languages ship base64)
 	// and the canonical way to carry binary data through text channels —
 	// API tokens, content addressing, embedding bytes in JSON.
-	// See design/BATTERIES-INCLUDED-REPORT.5.md (Phase 1, encoding).
+	// See design/legacy/BATTERIES-INCLUDED-REPORT.5.ignore (Phase 1, encoding).
 	exports.Set("base64-encode", makeTypedFnDef("base64-encode", subReg, native.TString, native.TString))
 	exports.Set("base64-decode", makeTypedFnDef("base64-decode", subReg, native.TString, native.TString))
 	exports.Set("hex-encode", makeTypedFnDef("hex-encode", subReg, native.TString, native.TString))

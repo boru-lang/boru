@@ -7,7 +7,7 @@
 # OpStackMark via OpCallDynMixedFromMark. The def-msg rows and the bare
 # module-export row below keep their refusals (a promoted def read /
 # a non-event region entry decline the window).
-# RE-PINNED 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the def-msg rows'
+# RE-PINNED 2026-07-30 (design/legacy/FN-VALUE-DISPATCH.0.ignore): the def-msg rows'
 # region call fails dispatch, which now raises AT THE CALL — inside this very
 # `do` — so the region's own `error […]` handler catches it and the program
 # yields the code as a value. It used to surface from the end-of-run residue

@@ -1,0 +1,147 @@
+# Accessor split (landed) + per-call cleanup over-pop bug (next session)
+
+This note records the get/dot accessor split that landed this session and
+hands off the one remaining bug it surfaced — a per-call frame-cleanup
+over-pop — with a ready-to-use next-session prompt.
+
+> **Note (branch `claude/dx-driven-language-improvements`):** this bug was
+> fixed independently and identically on `main` by PR #193
+> (`claude/frame-cleanup-over-pop`) — same `InstallFrameBinding` shadow
+> approach, recorded below under "RESOLVED (branch
+> `claude/frame-cleanup-over-pop-dzhf04`)". After merging `main`, this branch
+> takes that canonical fix (which also routes the macro expander) and drops
+> its own duplicate, keeping only the complementary Go-level regression tests
+> in `lang/go/test/closures_test.go`
+> (`TestFrameParamShadowsCollidingFunctionParam` + `TestDefWordOverlapStillRedefines`).
+
+## Landed this session (branch `claude/boru-client-lib-issues-lev8cs`)
+
+1. **`slice` element-type preservation** — `slice` no longer stringifies
+   scalar list elements (`[3 1 2] slice 0 2` keeps `Integer`). Fix in
+   `native/helpers.go` (`valueToSliceArg` boxes element Values verbatim).
+2. **Mixed-arity gradual dispatch (compile)** — `set` over a dynamic
+   receiver in paren-tail position now models one gradual value under a
+   real compile, so `def k2 ((nd "a" get) set "x" 1)` compiles
+   byte-identically instead of refusing (`carrier.go` `tailConsumed`).
+3. **get/getr → evaluate-key; new dot/dotr → literal-key.** The `.` / `!.`
+   sugar lowers to `dot` / `dotr` (`lowerReach`). `get`/`getr` dropped
+   their QuoteArgs atom sigs (so `lst get i` evaluates `i` — fixes the
+   §2.1 silent-None client report). `dot`/`dotr` carry the full sig set;
+   both share `accessorGetSignatures`/`accessorGetrSignatures` with
+   `get`/`getr` using the `dropQuoteAtomSigs` subset. Compiler/checker/VM
+   fold sites route through `isGetWord`/`isGetrWord` (`eng/go/get_words.go`)
+   so dot-access keeps full compiled coverage.
+4. **getr/dotr over class instances** — added the `TClass` sigs so
+   `(make P {})!.x` works (was a pre-existing gap).
+5. **Coverage + docs** — new `lang/spec/accessor.tsv` (the cross-type
+   contract for get/getr/dot/dotr/./!.); `pinnedUnflaggedErrorRows`
+   178→183 (accessor strict-miss negatives are runtime-only, documented);
+   `COMPILED_STATUS.md` regenerated; help/describe + `lang/go/CLAUDE.md`
+   updated.
+
+All gated: `make test`, `verify-bytecode`, `crossdiff` (1787 rows, 0
+divergences), `test-ts` (3622), langspec census/status/coverage/accuracy.
+
+## RESOLVED (branch `claude/frame-cleanup-over-pop-dzhf04`)
+
+Fixed — but the actual root cause was **not** a teardown over-pop; it
+was a *shadow-destroying install*. A fn-frame param/capture whose value
+is a `Function`/`FnDef` was installed through `InstallDef`, whose
+**redefinition overlap-removal** (`core_helpers.go`, `r.Defs.Set`) drops
+any existing same-named entry with an overlapping signature. For the
+repro, installing the callee `h`'s `comp` param therefore *deleted the
+caller `t`'s `comp` binding outright* (the callee's `comp` never even
+reached depth 2 — confirmed by tracing `DefTable.Push`/`PopEntry`). The
+frame's `undef comp` tail then popped the only remaining entry, leaving
+`comp` unbound for `def b`.
+
+The fix is at the **install** site, not the teardown: a new
+`InstallFrameBinding` performs a lexical **shadow** (a plain push that
+keeps the outer entry) and is used by all per-call binding sites
+(`buildFnBodyHandler`, `execFnDefSig`, `CallBoru`, and the macro
+expander). The existing `undef`/`DefCleanup` teardown is then already
+depth-correct (`comp` reaches depth 2, `undef` pops exactly one). No
+teardown rewrite, no TCO-twin change — the eager
+`teardownFrameState`/`UninstallDef` path is unaffected because the depth
+arithmetic is now right by construction. This also fixes a latent twin:
+a fn param shadowing a same-named **module/global** fn no longer
+destroys the global (`runner (doubler/r) 5` returns the param's result,
+and the global is restored after the frame). Regression rows:
+`lang/spec/recursion.tsv` §12 (positive: shadow + restore; negative:
+the fn-valued param must not leak). Gated with `make test`,
+`verify-bytecode`, `crossdiff` (1787 rows, 0 divergences), `test-ts`
+(3622), and the recursion/closure/TCO suites — nothing regressed.
+
+The original (incorrect) diagnosis and the deferred depth-precise
+teardown plan are kept below for the historical record; that plan was
+*not* needed (and on its own would have leaked the inner binding rather
+than restoring the caller's).
+
+## The original diagnosis — per-call cleanup over-pops a colliding param
+
+**Symptom** (client report §1.1, root-caused tighter than the report):
+
+```boru
+def g ([x:Integer] => [x add 1])
+def h fn [[comp:Function v:Integer] [Integer] [v comp/r apply]]
+def t fn [[comp:Function] [Integer] [ def a (5 comp/r h)  def b (7 comp/r h)  a add b ]]
+print ((g/r t))     # => error: undefined word: comp  (was: should be 13; actual correct value is 14)
+```
+
+**Root cause.** Each `comp/r h` call over-pops `comp` by one extra shadow
+level. Confirmed by tracing the def-stack: `comp` installs at depth 1
+(caller `t`'s param) then depth 2 (callee `h`'s param), and the teardown
+pops it to **0** instead of 1 — destroying the caller's binding. The
+per-call cleanup tail tears params down with `undef <name>`
+(`AppendFrameTail`, `fn_frame.go`), which pops the **top** binding of the
+name; by the time it runs, the callee's own `comp` has already been removed
+by another path, so `undef comp` pops the **caller's** `comp`.
+
+**Required trigger:** (a) callee param name collides with a live caller
+binding, AND (b) the arg is a `/r`-parked function value. Plain tail
+recursion (where the name also shadows) works, because the frame is
+genuinely replaced. Genuine tail-position calls work (the caller frame is
+dying anyway); only **non-tail + reuse** errors — which is why the report's
+"box pattern" (bind to a *differently-named* local) sidesteps it.
+
+**Files in play:** `eng/go/core_helpers.go` (`buildFnBodyHandler` — snapshot
+is taken AFTER param install, line ~225), `eng/go/fn_frame.go`
+(`AppendFrameTail` emits the `undef <name>` tail), `eng/go/engine.go`
+(`stepDefCleanup` — snapshot-based truncation), `eng/go/fn_frame_elide.go`
+(`teardownFrameState` — the eager TCO twin). The two teardown mechanisms
+(snapshot-truncate for body-locals; `undef`-tail for params) can desync.
+
+**Fix direction (sound, but high blast radius).** Make param teardown
+**depth-precise** instead of "pop top by name": take the DefCleanup
+snapshot BEFORE installing params so `stepDefCleanup` truncates params to
+their pre-frame depth exactly (immune to mid-body pops), and drop the
+fragile `undef`-tail — BUT preserve `undef`'s **type-retire** path for
+capitalised param names (a `def X` param Retires its minted lattice node;
+plain truncate would leak it — see the `tcoEligible` "capitalised name
+takes undef's type-retire path" comment). The eager TCO twin
+(`teardownFrameState`) must stay in lockstep.
+
+**Why it was deferred:** this is the per-call cleanup path that runs on
+*every* function call and is entangled with TCO elision, closure capture,
+and type-retire. It must be landed with the FULL gate suite (recursion /
+closure / loop suites, TCO regression tests, `verify-bytecode` property
+fuzz, `crossdiff`, `test-ts`), which needs a dedicated budget.
+
+---
+
+## Next-session prompt (paste this to start)
+
+> Fix the per-call frame-cleanup over-pop documented in
+> `design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore`. Repro:
+> `def g ([x:Integer] => [x add 1])  def h fn [[comp:Function v:Integer] [Integer] [v comp/r apply]]  def t fn [[comp:Function] [Integer] [ def a (5 comp/r h)  def b (7 comp/r h)  a add b ]]  print ((g/r t))`
+> currently errors `undefined word: comp` (should be 13). The callee's
+> param `comp` teardown pops the caller's same-named `comp` because the
+> `undef <name>` cleanup tail pops the top binding rather than the frame's
+> own level. Make param teardown depth-precise (pre-param-install snapshot
+> + truncate via `stepDefCleanup`, keeping the capitalised-name type-retire
+> path), and keep the eager TCO twin `teardownFrameState` in lockstep.
+> Add a positive+negative regression test (callee param name colliding with
+> a caller param, via a `/r`-parked fn arg, reused after the call), plus a
+> spec row. Gate with `make test`, `verify-bytecode`, the recursion /
+> closure / TCO suites, `crossdiff`, and `test-ts`; nothing may regress.
+> Develop on `claude/boru-client-lib-issues-lev8cs`.

@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// Bytecode Stage-0 baseline corpus (design/boru-bytecode-plan.0.md
-// Stage 0; results in design/boru-bytecode-baseline.0.md). One
+// Bytecode Stage-0 baseline corpus (design/legacy/boru-bytecode-plan.0.ignore
+// Stage 0; results in design/legacy/boru-bytecode-baseline.0.ignore). One
 // benchmark per dispatch shape, measuring the CURRENT tape
 // interpreter so the bytecode go/no-go decision is made against
 // post-tape, post-TCO numbers rather than the original report's

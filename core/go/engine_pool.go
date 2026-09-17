@@ -11,7 +11,7 @@ package core
 //     are call-site-resolved arguments and enter as stack data below
 //     the pointer, never re-stepped — the sub-engine twin of
 //     FrameOpenInfo.ArgSpan (arguments are inert;
-//     design/ARG-SEMANTICS-UNIFICATION.0.md);
+//     design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore);
 //   - top-engine semantics (Engine.isTop) for callback sites that
 //     historically spawned NewTop (behave bodies): an unhandled
 //     break/continue at end-of-Run errors instead of propagating, and

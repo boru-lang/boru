@@ -7,7 +7,7 @@ import (
 
 // This file holds the surface words — `surface` (declare a pure
 // operation contract) and `exposes` (declare + check that a type
-// provides it). See design/SURFACES.10.md.
+// provides it). See design/legacy/SURFACES.10.ignore.
 //
 //	def Shape surface {area: fnsig [[Self] [Float]]}
 //	Circle exposes Shape          # loud completeness check, then membership

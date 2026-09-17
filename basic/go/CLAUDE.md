@@ -39,7 +39,7 @@ whose analysis half is filed in the wrong module.
 
 - **check: removed (2026-08-08), by moving code, not by forwarding it.**
   Full reasoning, the moved-symbol table and the gate arithmetic:
-  [design/BASIC-CHECK-CUT.0.md](../../design/BASIC-CHECK-CUT.0.md).
+  [design/legacy/BASIC-CHECK-CUT.0.ignore](../../design/legacy/BASIC-CHECK-CUT.0.ignore).
   The 2026-08-07 amendment kept check on the grounds that basic's 23
   check symbols were "written in the checker's vocabulary" and that
   routing them through a table would be a mailbox rather than a seam.

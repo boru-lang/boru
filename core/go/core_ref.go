@@ -37,7 +37,7 @@ func ResolveRef(r *Registry, name string) (Value, bool) {
 	// public words (the canonical `export "X" { f: impl/v }` form).
 	// A type binding resolves through Top like every other binding, so it
 	// yields what the name DENOTES — the minted lattice node, the same
-	// value the bare name evaluates to (design/TYPE-REPRESENTATION.1.md
+	// value the bare name evaluates to (design/legacy/TYPE-REPRESENTATION.1.ignore
 	// §6); the declared body is the node's CONTENT (`TypeContentOf`), not
 	// the binding's value.
 	r.noteAnalysisUse(name)

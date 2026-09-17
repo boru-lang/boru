@@ -271,7 +271,7 @@ func TestS3IsPredicateTypeNodeShapes(t *testing.T) {
 }
 
 // The Any-input predicate mints under Function itself — a dispatch
-// category with no concrete base (design/TYPE-REPRESENTATION.1.md §N3).
+// category with no concrete base (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
 func TestS3AnyInputPredicateMintsUnderFunction(t *testing.T) {
 	r := newTestRegistry(t)
 	pred := NewFunction(FnDefInfo{Name: "s3any", Signatures: []Signature{{

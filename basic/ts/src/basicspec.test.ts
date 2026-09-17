@@ -4,7 +4,7 @@
 // code — they read the same files and each builds the registry and renders
 // the residual independently, exactly as core/spec's and parser/spec's
 // pairs do. That independence is the point: shared scaffolding can hide
-// the same bug from both engines (design/CORE-GO-TS-DEFECTS.0.md, blind
+// the same bug from both engines (design/legacy/CORE-GO-TS-DEFECTS.0.ignore, blind
 // spot 9).
 //
 // This is a SPEC, not a differential: the `expected` column is the

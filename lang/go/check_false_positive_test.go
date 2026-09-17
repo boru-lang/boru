@@ -7,7 +7,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/capabilities"
 )
 
-// design/CHECK-FALSE-POSITIVES.0.md — corpus of programs that RUN CORRECTLY yet
+// design/legacy/CHECK-FALSE-POSITIVES.0.ignore — corpus of programs that RUN CORRECTLY yet
 // the static pre-flight check emitted ERROR-severity diagnostics, which blocks
 // `boru run` by default. Each case asserts the plain `Check` pass — the one the
 // run pre-flight gates on — produces no error-level diagnostic (info/warning

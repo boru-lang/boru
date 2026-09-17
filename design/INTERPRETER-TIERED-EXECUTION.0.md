@@ -3,7 +3,7 @@
 **Status:** Design / roadmap. The concrete architecture for closing the
 remaining interpreter↔Python gap, grounded in the machinery verified
 during the 2026-07 second-pass optimization series
-(`INTERPRETER-PYTHON-PARITY.10.md`). Not yet implemented.
+(`legacy/INTERPRETER-PYTHON-PARITY.10.ignore`). Not yet implemented.
 
 ## Why this is the path
 

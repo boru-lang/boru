@@ -44,7 +44,7 @@ correct-lowering fix (with a refusal as interim containment only).
 Root-cause family: the residual-window operand accounting across a
 reified-error boundary — adjacent to the statement-boundary absorption
 class the M2c landing already closed for method dispatch
-(`design/CHECKER-BYTECODE-COMPLETION-PLAN.0.md`, Phase 3.5 log). The
+(`design/legacy/CHECKER-BYTECODE-COMPLETION-PLAN.0.ignore`, Phase 3.5 log). The
 fix is to model the handler residual as a barrier the `add` window
 cannot cross; refusing the shape only contains the defect until that
 lands.
@@ -172,7 +172,7 @@ a candidate for a checker-precision follow-up.
   standing soundness pins already document, not a wrong-acceptance.
 
 These belong to the same checker-precision track as
-`checker-precision-fronts.0.md`; folding them in is a pin-raise
+`legacy/checker-precision-fronts.0.ignore`; folding them in is a pin-raise
 decision for a maintainer, kept out of this test-expansion landing.
 
 ## 4. `args.N` accessor diverges inside a compiled fn body

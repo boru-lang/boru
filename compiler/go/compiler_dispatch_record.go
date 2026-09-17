@@ -8,7 +8,7 @@ import (
 // The dispatch-outcome recording family — the compiler's half of check's
 // carrierResults: constant folding, poly events, dyn-body closures, and
 // fallback islands. Extracted from carrier.go in Stage 0b of the
-// four-piece split (design/ENG-FOUR-PIECE.0.md): these functions hold
+// four-piece split (design/legacy/ENG-FOUR-PIECE.0.ignore): these functions hold
 // the compiler piece's concrete *EmitState* and become the
 // DispatchRecorder implementation when the packages cut (seam S3).
 

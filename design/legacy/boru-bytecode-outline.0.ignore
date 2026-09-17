@@ -1,0 +1,123 @@
+# boru Bytecode Compilation — Outline
+
+Short outline of the full report (see `boru-bytecode-report.0.ignore`;
+revisions against main June 2026 in `boru-bytecode-revisions.0.ignore`,
+implementation plan in `boru-bytecode-plan.0.ignore`).
+
+## 1. Premise
+
+- The carrier-based static type-checker already decides, per call site,
+  which signature dispatches and what each forward-collected arg is.
+- With that information, the text-stream engine's runtime work
+  (signature matching, forward collection, mark/move splicing,
+  auto-evaluation, DefStack lookup) can be folded into an ahead-of-time
+  pass that emits a dense bytecode for a small stack VM.
+- Goal: remove per-token dispatch, replace dynamic token-stream
+  manipulation with direct opcodes, and execute on a pure stack VM
+  implemented in Go.
+
+## 2. Approach
+
+1. **Phase A — checker reuse.** Run the carrier checker; record each
+   resolved `(site → Signature)` binding and final carrier stack
+   layout at every program point.
+2. **Phase B — lowering.** Walk the token stream in checker order and
+   emit bytecode: literal pushes, `CALL_NATIVE sig_id`, branches
+   (replacing mark/move), loops (replacing `for` splicing), and
+   structural ops (list build, map build, get, set).
+3. **Phase C — link.** Build a table of native handlers keyed by
+   `sig_id`. Each entry has fixed arity and a typed calling
+   convention (stack args only, popped in known order, result pushed).
+4. **Phase D — VM.** A `for { switch op {...} }` loop in Go over a
+   `[]Instr` program with a `[]Value` stack and a small call-frame
+   stack for user functions.
+
+## 3. Instruction set (sketch)
+
+- `PUSH_CONST k`, `PUSH_LOCAL n`, `POP`, `DUP`, `SWAP`, `PICK n`, `ROLL n`
+- `CALL_NATIVE sig_id` — fixed arity known from sig, no type check
+- `CALL_USER fn_id sig_idx` — user fn, sig index pre-resolved
+- `RET`
+- `JMP label`, `JMP_IF_FALSE label`, `JMP_IF_TRUE label`
+- `FOR_SETUP`, `FOR_NEXT label` (fused iterator pattern)
+- `MAKE_LIST n`, `MAKE_MAP n`, `GET_KEY k`, `SET_KEY k`
+- `DEF_PUSH name`, `DEF_POP name` (scoped binding lifetime)
+- `TYPE_CHECK t` — emitted only at boundaries where checker had a
+  disjunct (runtime narrowing); elided for fully resolved sites
+
+## 4. Performance expectations
+
+- Dispatch: O(1) fixed-arity call vs. current O(S) signature scan
+  per word. Typical S is 1–7.
+- No forward collection state machine; all arg positions are
+  compile-time known.
+- No stack splicing for mark/move; control flow becomes `JMP`.
+- Expected speed-up on tight loops: 5–20× (eliminates ~80% of
+  per-token overhead — the sig-match + splice dominate current cost).
+- Hot-path memory: one `[]Value` stack + one `[]Instr` bytecode, no
+  per-step allocation for sig matching.
+
+## 5. Feasibility
+
+- **Straight-line code, arithmetic, comparisons, user fns, `if`/`for`,
+  list/map ops**: fully compilable. Matches what the checker can type.
+- **Partially compilable**: disjunct sites (emit a small dispatch
+  switch over the few surviving sigs); higher-order words with
+  literal bodies (inline or monomorphise the body).
+- **Escape hatches (fall back to interpreter)**: `do` on computed
+  lists, `context get/set` with unknown keys, conditional `def` that
+  changes shape after compile. A hybrid design keeps the interpreter
+  for these and jumps into bytecode for typed regions.
+
+## 6. Gotchas (preview)
+
+1. Forward-precedence requires checker-computed positions to be baked
+   into bytecode — editing source requires recompile.
+2. `def` splicing changes the token stream; bytecode lowering must
+   inline def bodies (or compile them as separate sub-programs).
+3. Intra-signature value-dependent return types (e.g. `add
+   [Number,Number]` → Integer or Decimal) still need a runtime type
+   tag check inside the handler, unless split into distinct sig_ids.
+4. Auto-evaluated lists need either early materialisation or a
+   separate `EVAL_LIST` opcode.
+5. Debuggability: the bytecode is no longer trivially traceable
+   against source tokens — need a source-map.
+6. `RunInCheckMode` signatures (def, fn, import, module) mutate
+   the registry; these must stay interpreted during the compile
+   phase, not emitted as ordinary ops.
+7. Stepwise semantics of `if`/`for` (mark/move) are replaced by
+   static branches, so error messages shift from "token N" to
+   "bytecode PC N → source span S".
+
+## 7. Prior art (preview)
+
+- **Forth → threaded code / subroutine threading.** Direct precedent
+  for concatenative bytecode. Gives 3–10× over interpretation.
+- **Factor's optimising compiler.** Concatenative language with a
+  stack checker and a bytecode/JIT backend — closest structural
+  analogue to what's proposed here.
+- **Lua 5 register VM → LuaJIT.** Shows the ceiling for small
+  dynamic-language VMs; trace-compiling boru hot loops is a credible
+  later stage.
+- **CPython bytecode.** Dynamic dispatch still dominates; the lesson
+  is that static arity alone is not enough — specialisation
+  (PEP 659) is where the real wins come from.
+- **V8 / SpiderMonkey inline caches.** Relevant if boru later adds
+  polymorphic dispatch at hot sites.
+- **Cat / Kitten (HM-typed concatenative).** Show that fully typed
+  concatenative code can be compiled directly with no runtime
+  dispatch at all — the ceiling if boru ever required full annotation.
+
+## 8. Verdict (preview)
+
+- **Feasible**: yes, as a second execution mode driven by the
+  existing checker. Not as a replacement for the interpreter —
+  dynamic features need a fallback.
+- **Worth it**: probably, for compute-heavy boru (numerical loops,
+  record/list transforms). Gains on orchestration-style code
+  (I/O, context, module wiring) will be small.
+- **Scope**: Phase 0 is completing return-type annotations (already
+  the Phase 0 of the checker). Phase 1 is emitting bytecode for the
+  straight-line + arithmetic + `if`/`for` subset. Phase 2 extends
+  to user fns and list/map ops. Phase 3 handles disjunct dispatch
+  and partial compilation.

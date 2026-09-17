@@ -3,7 +3,7 @@
 # Format: input<TAB>expected<TAB>description
 #
 # The module ships the audit's §6.4 recommendation
-# (design/HIGHER-ORDER-FUNCTIONS.0.md): compose, pipe, curry, partial,
+# (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore): compose, pipe, curry, partial,
 # const, identity, flip, on, memoize. Only the rows that COMPILE live
 # here (the main corpus holds refusalCeiling = 0). The behaviour rows
 # def-bind a computed fn — refused as "def-bound computed fn apply (closure

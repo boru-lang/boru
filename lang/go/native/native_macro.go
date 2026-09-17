@@ -6,7 +6,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Macro system words. See design/MACROS.8.md and design/MACROS-PHASE1.10.md.
+// Macro system words. See design/MACROS.8.md and design/legacy/MACROS-PHASE1.10.ignore.
 //
 // - gensym (Phase 0): fresh non-colliding atoms.
 // - macro (1c): the definer — an fn the expander runs on UNEVALUATED operand
@@ -332,7 +332,7 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 	// Every param is raw-capture: FormArgs (word/paren/literal raw), NoEvalArgs
 	// (a list operand stays un-evaluated), NoEvalMapArgs (a map operand keeps
-	// its values un-evaluated). See design/MACROS-PHASE1.10.md §3/§3.1.
+	// its values un-evaluated). See design/legacy/MACROS-PHASE1.10.ignore §3/§3.1.
 	form := make(map[int]bool, len(params))
 	for i := range params {
 		form[i] = true

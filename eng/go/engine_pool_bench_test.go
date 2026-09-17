@@ -7,7 +7,7 @@ import (
 )
 
 // Quantifies what the engine pool buys on the interpreter callback hot
-// path (design/SUB-ENGINE-MAIN-TAPE-REVIEW.0.md §3): a fresh sub-engine
+// path (design/legacy/SUB-ENGINE-MAIN-TAPE-REVIEW.0.ignore §3): a fresh sub-engine
 // pays the tape initial-size floor (1024 entries × 160-byte Values ≈
 // 164KB, allocated and zeroed) on EVERY invocation; a pooled engine
 // reloads its tape in place.

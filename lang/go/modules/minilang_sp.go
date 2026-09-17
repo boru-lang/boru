@@ -12,7 +12,7 @@ import (
 // full axis / predicate / function vocabulary (//, [pred], count(), sum(),
 // string(), contains(), position(), …) reaches into maps and lists — the
 // path-shaped query layer the XSLT-style rule engine wants (see
-// design/fmt-module-and-xslt.0.md). The document is the stack subject and
+// design/legacy/fmt-module-and-xslt.0.ignore). The document is the stack subject and
 // the result is a List, the same shape as `xp` / `jp` / `jq`:
 //
 //	{a:1 b:2} mini sp '/a'                       # → [1]

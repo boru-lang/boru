@@ -1,7 +1,7 @@
 package eng
 
 // The bytecode VM — the execution half of Stages 1–3 of
-// design/boru-bytecode-plan.0.md: straight-line natives, control flow
+// design/legacy/boru-bytecode-plan.0.ignore: straight-line natives, control flow
 // (JMP / JMP_IF_FALSE / FOR_SETUP / FOR_NEXT), and user-fn frames
 // with CALL_USER / TAIL_CALL_USER / RET.
 //
@@ -3250,7 +3250,7 @@ func checkParamContract(r *core.Registry, fn *compiler.CompiledFn, locals []core
 		// matches the interpreter exactly for a concrete runtime value. A
 		// constraint carried in FnParam.Pattern (inline disjunct / predicate /
 		// bounded / structural) is NOT threaded into Params and so is not enforced
-		// here — see design/PARAM-GUARD-SKIP-MISCOMPILE.0.md; this guard catches the
+		// here — see design/legacy/PARAM-GUARD-SKIP-MISCOMPILE.0.ignore; this guard catches the
 		// plain-type laundering (the reported bug) without over-raising.
 		if !core.SigTypeMatches(locals[i], pt) {
 			return core.RuntimeNoMatch(r, fn.Name, guardArgs(locals, fn.NArgs))

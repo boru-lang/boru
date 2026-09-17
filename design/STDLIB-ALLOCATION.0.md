@@ -2,7 +2,7 @@
 
 > **Status: recommendation.** One row has since SHIPPED — `crypto/tls`
 > as `tls: {…}` options on `boru:net`, with mutual TLS through a
-> host-registered identity seam ([NETWORK-TLS-PLAN](NETWORK-TLS-PLAN.0.md)
+> host-registered identity seam ([NETWORK-TLS-PLAN](legacy/NETWORK-TLS-PLAN.0.ignore)
 > phases 1-4). Everything else here is unimplemented and unapproved. It
 > takes the residue of [STDLIB-COVERAGE.10.md](STDLIB-COVERAGE.10.md) —
 > bucket **C** (coverable gaps) plus bucket **D** (never ruled on) — and
@@ -172,7 +172,7 @@ current driver — leave it in bucket C, low priority.
 | cookies | `net/http/cookiejar` | A client option (`{jar: …}`), not a value type — sessions are the common case and today every request is stateless. |
 | reverse proxy | `net/http/httputil` | `Net.proxy` for [SERVICES](SERVICES.0.md); the dump helpers go to `boru:debug` (§5.8). |
 | HTTP forms | `mime/multipart` | Encode/decode multipart form bodies — file upload. Shares its Go core with `boru:mail` (§5.7); two word surfaces, one implementation. |
-| TLS | `crypto/tls` | **SHIPPED** ([NETWORK-TLS-PLAN](NETWORK-TLS-PLAN.0.md) phases 1-4). Options on an existing verb, never a `TlsConfig` value: `fetch`/`connect-raw` take `tls: {ca: … verify: … sni: … min: … identity: …}`. CA roots arrive as `Bytes`; the client **private key** does NOT — it stays behind a host-registered `ClientIdentity` interface, since a credential modelled as bytes cannot express an HSM- or agent-backed key. Exposing `tls.Config` as a guest value would put a security-critical struct behind gradual typing — exactly what the sealed model exists to avoid. |
+| TLS | `crypto/tls` | **SHIPPED** ([NETWORK-TLS-PLAN](legacy/NETWORK-TLS-PLAN.0.ignore) phases 1-4). Options on an existing verb, never a `TlsConfig` value: `fetch`/`connect-raw` take `tls: {ca: … verify: … sni: … min: … identity: …}`. CA roots arrive as `Bytes`; the client **private key** does NOT — it stays behind a host-registered `ClientIdentity` interface, since a credential modelled as bytes cannot express an HSM- or agent-backed key. Exposing `tls.Config` as a guest value would put a security-critical struct behind gradual typing — exactly what the sealed model exists to avoid. |
 
 `boru:net` absorbs a lot here. It stays coherent because every entry is
 "the client or server does X" — the module's existing charter. The two
@@ -272,7 +272,7 @@ the residue so it stops being re-derived. Recommend bucket B for:
 | Build modes / interface roots | `crypto/fips140`, `crypto`, `encoding`, `hash` | A build toggle and three interface-only registries — nothing callable. |
 | Implementation-detail sub-packages | `regexp/syntax`, `text/template/parse`, `database/sql/driver` | ASTs and driver interfaces behind a surface that is already bucketed. (`go/build/constraint`, `go/doc/comment` and `image/color/palette` belong here too but are already swept by the `go/*` and `image/*` rows, so they are not counted again.) |
 | Host / runtime internals | `runtime/{cgo,coverage,metrics,race}`, `net/http/{cgi,fcgi,pprof}` | Same rationale as the existing bucket-B `runtime/{pprof,trace,debug}` row: host concerns, not language ones. |
-| Go-side test harnesses | `testing/{fstest,iotest,quick,slogtest}`, `net/http/{httptest,httptrace}` | boru has `boru:test`, its own PBT ([PBT-PLAN](PBT-PLAN.10.md)) and its own FS seam (`overlay.go`, `zipfs.go`). Worth an explicit *superseded* ruling rather than silence. |
+| Go-side test harnesses | `testing/{fstest,iotest,quick,slogtest}`, `net/http/{httptest,httptrace}` | boru has `boru:test`, its own PBT ([PBT-PLAN](legacy/PBT-PLAN.10.ignore)) and its own FS seam (`overlay.go`, `zipfs.go`). Worth an explicit *superseded* ruling rather than silence. |
 | Superseded by boru's own stack | `text/scanner`, `net/rpc`, `net/rpc/jsonrpc`, `net/textproto` | Tokenizing is `boru:parse`/`boru:minilang`; RPC is [SERVICES](SERVICES.0.md) with its own codecs. |
 
 Deferred rather than closed: `crypto/mlkem` (real, no driver yet) stays in

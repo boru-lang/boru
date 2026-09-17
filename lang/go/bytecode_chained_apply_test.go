@@ -3,7 +3,7 @@ package lang
 import "testing"
 
 // bytecode_chained_apply_test.go pins the chained-forward-apply family
-// (design/checker-compiler-completeness-review.0.md §2.1). History: until
+// (design/legacy/checker-compiler-completeness-review.0.ignore §2.1). History: until
 // 2026-08-02 the forward spelling `f (g x)` of two chained Function-param
 // applications slipped past the pending-apply refusal net — noteDynFrameReplay
 // armed the whole-frame replay on a window holding TWO applicable values, the

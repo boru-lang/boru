@@ -69,7 +69,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// KNOWN UNDERCOUNT, deliberate: a module imported from inside a module
 	// body draws no entry. The advisory lands on parent.Check, and a module
 	// sub-registry owns its own CheckState by design
-	// (design/module-fn-checkstate-ownership.1.md §3.2), so a nested body's
+	// (design/legacy/module-fn-checkstate-ownership.1.ignore §3.2), so a nested body's
 	// entry would be recorded where nothing reads it. The nested body IS
 	// modelled — only its report is missing.
 	inPureCheck := parent != nil && parent.Check.IsActive() && !parent.Check.Compiling
@@ -377,7 +377,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		return ModuleDesc{}, err
 	}
 
-	// Detached-stamp the module's fn bindings (design/RUNTIME-STAMPING.0.md
+	// Detached-stamp the module's fn bindings (design/legacy/RUNTIME-STAMPING.0.ignore
 	// Phase 4a): every module-scope def holding an eligible capture-free fn
 	// compiles to its own unit here, at load — the ONE pre-publication moment
 	// where the def binding and the export map still share each fn's impl

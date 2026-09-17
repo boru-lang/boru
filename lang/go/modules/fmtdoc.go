@@ -10,7 +10,7 @@ import (
 // renderDocNative implements Fmt.render: lay out a declarative document
 // tree, built as boru data, to a target width. It is the runtime entry to
 // the Wadler/Prettier document algebra an XSLT-style rule set emits into
-// (design/fmt-module-and-xslt.0.md). The doc-tree vocabulary is
+// (design/legacy/fmt-module-and-xslt.0.ignore). The doc-tree vocabulary is
 // documented on buildDoc. Call form: `Fmt.render <width> <doc>`.
 func renderDocNative() native.NativeFunc {
 	return native.NativeFunc{

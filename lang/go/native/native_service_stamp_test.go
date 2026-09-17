@@ -7,7 +7,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// Store-site stamping (Phase 2 of design/RUNTIME-STAMPING.0.md): `add` and
+// Store-site stamping (Phase 2 of design/legacy/RUNTIME-STAMPING.0.ignore): `add` and
 // `wrap` detached-stamp an eligible handler when runtime stamping is armed,
 // so a service built from an INTERPRETED context (the RunCompiled fallback,
 // a module fn's body the compile pass could not stamp) still dispatches its
