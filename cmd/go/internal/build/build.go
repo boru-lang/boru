@@ -120,10 +120,56 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	// the build-time cwd, so a multi-file program builds from anywhere.
 	// Like `boru check`, the pre-flight executes imported file-module
 	// bodies (with modelled writes) to learn their exports.
-	if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
+	checkSkipped := *noCheck || os.Getenv("BORU_NO_CHECK") != ""
+	if !checkSkipped {
 		color := lang.ResolveColor(nil, stderr, "auto")
 		if cerr := check.PreflightColorAt(stderr, cfg.Source, *registry, seed, false, color, cfg.EntryDir); cerr != nil {
 			fmt.Fprintf(stderr, "%s\n", cerr)
+			return 1
+		}
+	}
+
+	// COMPILE-BY-DEFAULT, ENFORCED AT BUILD TIME. The check gate above
+	// refuses to ship a binary whose first execution would abort on a check
+	// error; this is its compile-side twin, and it exists because the
+	// asymmetry was a hole. A program the emitter REFUSES used to build
+	// silently: the baked CompileTry mode meant the shipped binary dropped
+	// to the interpreter at run time, and `buildrt.Main` passes a nil warn
+	// writer, so the refusal warning `boru run` prints was never printed
+	// either. The author shipped a compile failure and was never told.
+	//
+	// Failure to compile is a failure (design/COMPILABLE-SUBSET.md §1), so
+	// `build` now names it and refuses. The opt-out is -no-compile, which is
+	// the honest way to ask for an interpreter binary: it bakes CompileOff,
+	// so the shipped tool is interpreted BY DECLARATION rather than by a
+	// silent fallback nobody sees. -force-compile is unaffected — it already
+	// required the bytecode path at run time; this makes the failure surface
+	// at build time instead, where the author can act on it.
+	if cfg.Compile != buildrt.CompileOff {
+		reason, cerr := compilePreflight(cfg.Source, *registry, seed, cfg.EntryDir)
+		// -no-check / BORU_NO_CHECK opts out of being gated on the CHECKER, and
+		// "check diagnostics" is the checker's verdict reaching the emitter as a
+		// sentinel rather than a named construct. Refusing on it here would make
+		// the compile gate a second check gate and defeat the opt-out, which
+		// `build` documents as "must still produce the artefact". A genuine
+		// construct refusal still stops the build either way.
+		//
+		// In the DEFAULT flow this carve-out is not a loophole: a program whose
+		// checker findings are errors never reaches here, because the gate above
+		// already returned 1. What reaches here with the sentinel has non-error
+		// findings and still does not compile — a real defect, and the single
+		// largest blocker for real programs (TestRealProgramsCompile).
+		if checkSkipped && reason == "check diagnostics" {
+			reason = ""
+		}
+		if cerr != nil {
+			fmt.Fprintf(stderr, "error: %s\n", cerr)
+			return 1
+		} else if reason != "" {
+			fmt.Fprintf(stderr, "error: bytecode compilation refused: %s\n", reason)
+			fmt.Fprintf(stderr, "  the binary would silently run on the interpreter instead, which is a\n")
+			fmt.Fprintf(stderr, "  compile defect, not a performance note. Fix the construct, or pass\n")
+			fmt.Fprintf(stderr, "  -no-compile to ship a declared interpreter binary.\n")
 			return 1
 		}
 	}
@@ -148,6 +194,39 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "wrote %s\n", outPath)
 	return 0
+}
+
+// compilePreflight reports the emitter's refusal reason for src, or "" when the
+// whole program compiles. It COMPILES ONLY — CompileCheck runs the checker with
+// the recording pass and linearises the trace; it never executes the program, so
+// a build cannot trigger the program's side effects. A non-nil error is an
+// init/parse failure, which is distinct from a refusal: the first means we could
+// not answer the question, the second is the answer.
+func compilePreflight(source, registry string, seed int64, baseDir string) (string, error) {
+	a, err := lang.New(lang.Options{Registry: registry, Seed: seed})
+	if err != nil { //covergate:allow lang.New returns a non-nil error only for an unreadable engine image, not for a bad -r path: a nonexistent or non-registry Registry resolves lazily and New succeeds (verified against /nonexistent and /etc/passwd), so no build invocation can reach this arm; kept because New's signature returns an error and swallowing it would hide a future failure (§misc)
+		return "", fmt.Errorf("init error: %s", err)
+	}
+	if baseDir != "" {
+		a.NativeRegistry().BaseDir = baseDir
+	}
+	prog, reason, _, cerr := a.CompileCheck(source)
+	if cerr != nil {
+		// CompileCheck reserves this for a source it could not PARSE, so we
+		// could not answer the compile question at all. Report it rather than
+		// swallow it: returning "no refusal" here would let an unparseable
+		// program through the gate under -no-check and ship a binary that
+		// cannot run. In the default flow the check pre-flight has already
+		// returned 1 on such a source, so this arm is the -no-check path.
+		return "", cerr
+	}
+	if prog != nil {
+		return "", nil
+	}
+	if reason == "" { //covergate:allow unreachable trio: CompileCheck returns (nil program, non-empty reason) on every refusal and (nil, "parse error", err) on a parse failure, which the cerr arm above already took, so a nil program with an empty reason and no error cannot occur; kept as a belt so a future emitter path that forgets to set reason reports something actionable instead of an empty refusal (§misc)
+		reason = "no program produced (reason not reported)"
+	}
+	return reason, nil
 }
 
 // resolveCompile maps the three flags to a CompileMode. The default is
