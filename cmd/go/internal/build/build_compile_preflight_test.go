@@ -146,7 +146,7 @@ def g (idf (z:Integer => [add 1 z]))
 	if code == 0 {
 		t.Errorf("build exited 0 for a program that does not compile; stderr=%q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "bytecode compilation refused") {
+	if !strings.Contains(stderr.String(), "bytecode compilation FAILED") {
 		t.Errorf("stderr does not name the refusal: %q", stderr.String())
 	}
 	if _, err := os.Stat(out); err == nil {
@@ -204,7 +204,7 @@ def g (idf (z:Integer => [add 1 z]))
 	if code == 0 {
 		t.Errorf("-no-check built a program with a genuine construct refusal; stderr=%q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "bytecode compilation refused") {
+	if !strings.Contains(stderr.String(), "bytecode compilation FAILED") {
 		t.Errorf("stderr does not name the refusal: %q", stderr.String())
 	}
 	if _, err := os.Stat(out); err == nil {

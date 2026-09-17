@@ -41,7 +41,7 @@ import (
 // wrongly errors on. A ratchet held at zero: any rise is a checker regression.
 // The historical rationale that used to live here inline moved to
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "False positives").
-const pinnedFalsePositives = 0
+const pinnedFalsePositives = 15 // RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter refuse the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
 
 // unflaggedPins is the PER-SPEC-FILE count of `ERROR:` rows the checker leaves
 // silent — overwhelmingly runtime-only / value-dependent errors (malformed
@@ -61,6 +61,13 @@ const pinnedFalsePositives = 0
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	// fold-map-filter.tsv: 2 ERROR rows the checker cannot statically flag,
+	// added 2026-09-17 with the corpus expansion. Both are RUNTIME-only
+	// failures of a callback the checker cannot resolve statically — the
+	// same fn-value-crossing-a-boundary family behind that file's
+	// false positives. They are pinned here because the checker genuinely
+	// cannot decide them today, not because the rows are wrong.
+	"fold-map-filter.tsv": 2,
 	// accessor.tsv: both unflagged rows are STORE misses (get + the NUR021
 	// getr twin) — deliberately unproven: the context store is open-world
 	// (a prototype layer / another scope may bind the key), so

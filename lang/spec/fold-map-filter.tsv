@@ -1,0 +1,249 @@
+# boru Language Specification: FOLD / MAP / FILTER / SORT and the collection
+# words, in the shapes REAL programs spell them.
+# Format: input<TAB>expected<TAB>description
+#
+# Family: fold-map-filter. Written to widen the corpus past the one-liner
+# shapes it had: every fold call form and accumulator kind (scalar, String,
+# List, Map); bodies written as a literal quotation, as a def-bound word, as
+# a def-bound fn VALUE, as a `=>` lambda and as a closure over an enclosing
+# binding; filter in all three predicate forms (quotation, Reach lens,
+# Function callback) over lists and over maps; sort / reverse / take / shed /
+# flatten / size; sorting BY A COMPUTED KEY (boru has no comparator sort —
+# ArrayUtil.sortby / ArrayUtil.grade are the idiom); and chained pipelines
+# that put each, filter, fold and sort in one statement, inside a fn, over
+# records, over class instances and over module results.
+#
+# EVERY row's expected column is the engine's OWN answer, captured from
+# `boru do -no-compile '<input> end canon'` — the INTERPRETER, and the same
+# canon rendering the spec runner compares against. Nothing here is guessed.
+# `-no-compile` is load-bearing: `boru do` defaults to compile-try, and one
+# candidate row (noted in §12) answers differently on the two engines.
+#
+# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, as OPEN DEFECTS.
+# Their descriptions carry the exact reason `BORU_FORCE_COMPILE=1` printed.
+# A compile refusal is WHOLE-PROGRAM and latches on the FIRST unsupported
+# construct, which is why the compiler scores ~96% on a corpus of 40-character
+# one-liners and ~65% on real files that combine constructs. These rows are
+# the gap made visible; they are not mistakes and must not be deleted to make
+# a ceiling green.
+#
+# NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
+# refusalCeiling = 0. The refusing rows below are NEW EVIDENCE, not
+# regressions — the ceiling must be re-based (or this file moved under
+# lang/spec/frontier/) when the corpus is next gated.
+#
+# A note on ARGUMENT ORDER, because it decides what a fold body means: a call
+# binds its arguments in SIGNATURE order, filling positions from the forward
+# stack first and the value stack afterwards, top-first. fold pushes the
+# accumulator and then the ELEMENT on top of it, so a two-argument word in the
+# body sees (element, accumulator) as (top, deeper) — `0 fold [sub] [1 2 3]`
+# is acc-minus-element all the way down, and `'' fold ([a e] => [a add e])`
+# does NOT concatenate left-to-right (§4).
+#
+# ─────────────────────────────────────────────────────────────────────
+# §1  fold — the call forms, with and without an initial accumulator
+0 fold [add] [1 2 3 4]	10	canonical form: init on the stack, body and data forward
+fold [add] [1 2 3 4] 0	10	fully-forward form: every operand written after the word
+fold [add] [1 2 3 4]	10	no-init form — the first element seeds the accumulator
+1 fold [mul] [1 2 3 4 5]	120	product, seeded with the multiplicative identity
+0 fold [sub] [1 2 3]	-6	acc-minus-element: the element is on TOP, the accumulator beneath
+0 fold [add] []	0	empty input returns the initial accumulator untouched
+fold [add] [7]	7	no-init over a singleton is just the seed
+fold [add] [1.5 2.5 3.0] 0.0	7.0	a Float accumulator over a Float list
+0 fold [add] [1 2.5 3]	6.5	a MIXED numeric list promotes the accumulator as it goes
+0 fold [add] (iota 10)	45	over a COMPUTED collection — the generator is a paren call
+fold [add] {a:1 b:2 c:3} 0	6	over a MAP: fold reduces the values
+#
+# §2  fold accumulators that are not scalars — String, List, Map
+'' fold [add] ['a' 'b' 'c']	'abc'	a String accumulator concatenates
+[] fold [push] [1 2 3]	[1 2 3]	a LIST accumulator: push sees (element, acc) as (top, deeper)
+[] fold [push] []	[]	the list-accumulator idiom over an empty collection
+{} fold [set 'k'] [1 2]	{k:2}	a MAP accumulator: `set 'k'` takes the key forward, value and map from the stack
+{} fold [dup set] ['a' 'bb']	{a:'a' bb:'bb'}	building a map keyed BY the element — dup makes the element both key and value
+def tally fn [[xs:List][Map][{} fold [dup set] xs]]  tally ['a' 'b' 'a']	{a:'a' b:'b'}	the map-accumulator fold wrapped in a fn, with a repeated key
+def keyed fn [[xs:List][Map][{} fold [set 'k'] xs]]  keyed [1 2]	{k:2}	a Map-returning fn whose whole body is a map-accumulator fold
+#
+# §3  fold bodies — literal quotation, def-bound word, def-bound fn VALUE,
+#     lambda, and a lambda closing over an enclosing binding
+def step fn [[a:Integer e:Integer][Integer][a add e]]  0 fold [step] [1 2 3]	6	a def-bound WORD named inside a literal body
+def step fn [[a:Integer e:Integer][Integer][a add e]]  0 fold step/v [1 2 3]	6	the same reducer parked as a fn VALUE with /v
+0 fold ([a:Integer e:Integer] => [a add e]) [1 2 3 4]	10	a `=>` lambda as the callback
+0 fold ([a:Integer e:Integer] => [if (e gt a) [e] [a]]) [3 1 4 1 5]	5	running maximum — a lambda body with a branch
+def k 10 end 0 fold ([a:Integer e:Integer] => [a add e add k]) [1 2]	23	a CLOSURE: the lambda reads an enclosing def
+def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  def f (mk 10)  0 fold f [1 2]	23	a closure MADE BY A FACTORY, bound, then folded with — REFUSES: "unmatched dispatch recovered at fold"
+0 fold ([a:Integer kv:Any] => [a add kv.v]) {a:1 b:2 c:3}	6	over a MAP a lambda is handed a KeyVal — read `.v`
+def Reducer class {step: Function} end def r (make Reducer {step: (fn [[a:Integer e:Integer][Integer][a add e]])}) end 0 fold r.step [1 2 3]	6	the reducer lives in a Function-typed CLASS FIELD — REFUSES: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+#
+# §4  fold's argument order, spelled out. `a add e` inside a lambda is NOT
+#     "a then e": add binds args[0] from the forward token and args[1] from
+#     the stack, so for a non-commutative operation the written order reads
+#     backwards. Integers hide this; Strings do not.
+'' fold ([a:String e:String] => [a add e]) ['x' 'y' 'z']	'zyx'	REVERSED: a String fold written the obvious way concatenates right-to-left
+'' fold [add] ['x' 'y' 'z']	'xyz'	the LITERAL body does concatenate left-to-right — the two spellings disagree
+#
+# §5  fold shapes that do NOT dispatch, and leave the callback stranded as
+#     data. Real code writes these and gets no error — just a wrong value.
+0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e)]]	a lambda WRAPPED IN A CODE BODY is not a callback: fold leaves it as data — REFUSES: "code-body word fold (Stage 2)"
+{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]	fn [[acc:Map e:Integer][Any][word(acc) word(add) word(e)]]	a Map initial accumulator with a lambda callback: fold does not dispatch at all
+10 fold ([a:Integer f:Function] => [(f a)]) [(fn [[n:Integer][Integer][n add 1]])]	fn [[a:Integer f:Function][Any][(f a)]]	folding a LIST OF FUNCTIONS into a value: no dispatch, the lambda strands
+each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]]]	the same trap on each — every element maps to the un-applied lambda — REFUSES: "code-body word each (Stage 2)"
+#
+# §6  each as MAP — the transform half of the pipeline
+0 fold [add] (each [size] ['a' 'bb' 'ccc'])	6	map-then-reduce over Strings
+each ([kv:Any] => [kv.v mul 10]) {a:1 b:2}	{a:10 b:20}	over a MAP: values transform, keys stay
+each ([kv:Any] => [kv.i]) {a:1 b:2}	{a:0 b:1}	the KeyVal carries the INDEX too
+each ([kv:Any] => [kv.k]) {a:1 b:2}	{a:'a' b:'b'}	…and the key
+each $.n [{n:1} {n:2} {n:3}]	[1 2 3]	a REACH LENS as the body: project one field out of every record
+def rows [{n:1} {n:2} {n:3}] end each [get 'n'] rows	[1 2 3]	the same projection spelled with get
+def sel (quote $.n) end each sel [{n:1} {n:2}]	[1 2]	the lens parked in a binding first (quote keeps it from evaluating)
+each ([n:Integer] => [each [add n] [1 2]]) [10 20]	[[11 12] [21 22]]	NESTED each — the inner map runs per outer element
+0 fold [add] (flatten (each ([n:Integer] => [each [add n] [1 2]]) [10 20]))	66	…flattened and summed, the way real code consumes a nested map
+#
+# §7  filter — all three predicate forms, over lists and over maps
+filter [gt 2] [1 2 3 4]	[3 4]	quotation predicate, infix spelling
+filter [2 gt] [1 2 3 4]	[3 4]	the same predicate written the other way round — same answer, see §4
+[1 2 3 4] filter [gt 2]	[3 4]	stack form: the collection is already on the stack
+filter [gt 2] (iota 6)	[3 4 5]	over a computed collection
+filter [gt 9] [1 2 3]	[]	nothing matches — an empty LIST, not none
+{a:1 b:5 c:3} filter [gt 2]	{b:5 c:3}	over a MAP the quotation filters BY VALUE and keeps the shape
+filter ([p:Any] => [p.value mod 2 eq 0]) [1 2 3 4 5 6]	[2 4 6]	Function form over a list: the callback gets a {key value} pair
+{a:1 b:5} filter ([kv:Any] => [kv.v gt 2])	{b:5}	Function form over a map: the callback gets a KeyVal
+filter $.active [{active:true n:1} {active:false n:2} {active:true n:3}]	[{active:true n:1} {active:true n:3}]	Reach-lens form — the everyday record filter
+def lens $.n end filter lens [{n:true} {n:false}]	[{n:true}]	the lens bound to a name first
+def big fn [[n:Integer][Boolean][n gt 2]]  filter [big] [1 2 3 4]	[3 4]	a def-bound predicate WORD named inside a quotation body
+def big fn [[p:Map][Boolean][p.value gt 2]]  filter big/v [1 2 3 4]	[3 4]	the same predicate as a fn VALUE — note it must take the {key value} PAIR
+def limit 2 end filter ([p:Map] => [p.value gt limit]) [1 2 3 4]	[3 4]	a predicate lambda closing over an enclosing threshold
+filter ([p:Any] => [(p.value size) gt 1]) ['a' 'bb' 'ccc']	['bb' 'ccc']	a predicate that computes over the element instead of comparing it
+def Pred class {ok: Function} end def p (make Pred {ok: (fn [[kv:Map][Boolean][kv.value gt 2]])}) end filter p.ok [1 2 3 4]	[3 4]	the predicate read out of a Function-typed class field — REFUSES: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+filter [add 1] [1 2 3]	ERROR:filter_error	a non-Boolean body is an ERROR, not a silent drop
+filter [gt 1] 7	ERROR:filter_error	the quotation form needs a concrete list or map
+#
+# §8  sort / reverse / take / shed / flatten / size
+sort [3 1 2]	[1 2 3]	numbers ascending, by the canonical total order
+sort ['c' 'a' 'b']	['a' 'b' 'c']	strings ascending
+sort {b:2 a:1}	{a:1 b:2}	a MAP sorts by KEY
+reverse (sort [3 1 2 5 4])	[5 4 3 2 1]	descending is sort-then-reverse
+take 2 (sort [5 3 1 4 2])	[1 2]	the two smallest
+take 3 (reverse (sort [5 3 1 4 2]))	[5 4 3]	…and the three largest — the top-N idiom
+shed 1 (sort [3 1 2])	[2 3]	drop the minimum
+size (filter [gt 2] [1 2 3 4 5])	3	count the matches
+flatten (each [iota] [2 3])	[0 1 0 1 2]	a body that grows each element, spliced back to one level
+sort (each $.n [{n:3} {n:1}])	[1 3]	project a field, then sort the projection
+each [mul 2] (sort [3 1 2])	[2 4 6]	sort first, map second
+sort 5	ERROR:signature_error	sort needs a collection
+#
+# §9  sorting BY A COMPUTED KEY. boru's `sort` takes no comparator; the
+#     idiom is a parallel key list through ArrayUtil.sortby, or the
+#     permutation ArrayUtil.grade returns.
+import "boru:array-util" end ArrayUtil.sortby [3 1 2] ['c' 'a' 'b']	['a' 'b' 'c']	reorder data by a parallel list of keys
+import "boru:array-util" end ArrayUtil.sortby (each [size] ['ccc' 'a' 'bb']) ['ccc' 'a' 'bb']	['a' 'bb' 'ccc']	sort strings BY LENGTH — the keys are computed with each
+def xs [3 1 2] end def by (each ([n:Integer] => [n mul 0 sub n]) xs) end import "boru:array-util" end ArrayUtil.sortby by xs	[3 2 1]	DESCENDING by negating the key — a comparator written as an arithmetic key
+def rows [{n:3} {n:1} {n:2}] end import "boru:array-util" end ArrayUtil.sortby (each ([r:Map] => [r.n]) rows) rows	[{n:1} {n:2} {n:3}]	sort RECORDS by a field, the shape every report writes
+import "boru:array-util" end ArrayUtil.at (ArrayUtil.grade [30 10 20]) [30 10 20]	[10 20 30]	grade gives the sorting permutation; at applies it
+import "boru:array-util" end ArrayUtil.unique (each [mod 3] [1 2 3 4 5 6])	[1 2 0]	distinct values of a computed projection, first-seen order
+import "boru:array-util" end ArrayUtil.where (each [gt 2] [1 2 3 4])	[2 3]	indices of the elements a predicate map marked true
+import "boru:array-util" end ArrayUtil.compress (each [gt 2] [1 2 3 4]) [1 2 3 4]	[3 4]	filter written as mask-then-compress, the APL spelling
+#
+# §10 scan — fold's running form, and fold consuming its output
+scan [add] [1 2 3 4]	[1 3 6 10]	running sums
+scan [mul] [1 2 3 4]	[1 2 6 24]	running products
+{a:1 b:2 c:3} scan [add]	{a:1 b:3 c:6}	over a map: running fold over the values, keys kept
+0 fold [add] (scan [add] [1 2 3])	10	scan feeding a fold — the prefix-sum-then-total shape
+#
+# §11 CHAINED PIPELINES. A function word is a barrier and never feeds forward
+#     collection, so a pipeline is written either with PARENS (inner call
+#     first) or with `end` between statements — never as a bare run of words.
+0 fold [add] (filter [gt 4] (each [mul 2] (iota 5)))	14	map, filter, fold in one statement, parenthesised inside-out
+[1 2 3 4 5] each [mul 2] end filter [gt 4]	[6 8 10]	the same two stages spelled with `end`, left to right
+[1 2 3 4 5] filter [gt 2] end each [mul 10]	[30 40 50]	filter first, then map
+0 fold [add] (each [mul 2] (filter [gt 1] (iota 5)))	18	filter before map — the other ordering
+sort (filter [gt 1] (each [mod 4] [5 6 7 8]))	[2 3]	map, filter, sort
+0 fold [add] (take 3 (sort [5 1 4 2 3]))	6	sort, take, fold — sum of the three smallest
+def xs [1 2 3 4 5] end def evens (filter ([p:Map] => [p.value mod 2 eq 0]) xs) end def doubled (each [mul 2] evens) end 0 fold [add] doubled	12	the same pipeline written as four named statements, the way real files spell it
+def xs [5 3 8 1] end def sorted (sort xs) end def top (take 2 (reverse sorted)) end 0 fold [add] top	13	sum of the top two, one stage per statement
+0 fold [add] (each ([s:String] => [convert Integer s]) ['1' '2' '3'])	6	parse-then-sum: the string-to-number pipeline
+import "boru:string-util" end 0 fold [add] (each [size] (StringUtil.split ',' 'a,bb,ccc'))	6	split, measure, total
+import "boru:string-util" end join '-' (sort (StringUtil.split ',' 'c,a,b'))	'a-b-c'	split, sort, re-join
+import "boru:string-util" end each ([s:String] => [StringUtil.upper s]) ['ab' 'cd']	['AB' 'CD']	a module word called from inside the map body
+def rows [{k:'a' v:1} {k:'b' v:2} {k:'a' v:3}] end import "boru:array-util" end each ([g:Any] => [0 fold [add] g.v]) (ArrayUtil.group (each ([r:Map] => [r.k]) rows) (each ([r:Map] => [r.v]) rows))	{a:4 b:2}	GROUP-BY then fold each bucket — map-reduce in one statement
+def rows [{n:1 ok:true} {n:2 ok:false} {n:3 ok:true}] end 0 fold [add] (each [get 'n'] (filter $.ok rows))	4	filter records by a flag, project a field, total it
+#
+# §12 the pipeline INSIDE a fn, over records, classes, flex and recursion
+def total fn [[xs:List][Integer][0 fold [add] xs]]  total [1 2 3]	6	a fold wrapped as a reusable word
+def total fn [[xs:List][Integer][0 fold [add] xs]]  each [total] [[1 2] [3 4]]	[3 7]	…and driven over a list of lists by each
+def pipeline fn [[xs:List][Integer][0 fold [add] (each [mul 2] (filter [gt 1] xs))]]  pipeline [1 2 3 4]	18	all three stages inside one fn body
+def summarize fn [[xs:List][Map][{count: (size xs) total: (0 fold [add] xs) sorted: (sort xs)}]]  summarize [3 1 2]	{count:3 total:6 sorted:[1 2 3]}	a fn returning a MAP whose fields are three different collection calls
+def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold ([a:Integer e:Integer] => [if (e gt a) [e] [a]]) xs)}]]  stats [1 5 3]	{n:3 sum:9 max:5}	…including a lambda-bodied fold for the maximum
+def top2 fn [[xs:List][List][take 2 (reverse (sort xs))]]  top2 [5 1 9 3]	[9 5]	the top-N helper as a word
+def norm fn [[xs:List][List][sort (each [size] xs)]]  norm ['ccc' 'a' 'bb']	[1 2 3]	project then sort, inside a fn
+def scaled fn [[xs:List][Integer][def k 10 0 fold [add] (each [mul k] xs)]]  scaled [1 2]	30	a fn-LOCAL def read by the map body
+def sq fn [[n:Integer][Integer][n mul n]]  def sumsq fn [[xs:List][Integer][0 fold [add] (each [sq] xs)]]  sumsq [1 2 3]	14	one user word composed into another's pipeline
+def classify fn [[n:Integer][String][if (n gt 2) ['big'] ['small']]]  each [classify] [1 2 3 4]	['small' 'small' 'big' 'big']	a branching user word as the map body
+def classify fn [[n:Integer][String][if (n gt 2) ['big'] ['small']]]  import "boru:array-util" end ArrayUtil.group (each [classify] [1 2 3 4]) [1 2 3 4]	{small:[1 2] big:[3 4]}	…its output used as the grouping key
+def fib fn [[n:Integer][Integer][if (n lte 1) [n] [(fib (n sub 1)) add (fib (n sub 2))]]]  0 fold [add] (filter ([p:Map] => [p.value mod 2 eq 0]) (each [fib] (iota 10)))	44	a RECURSIVE word mapped, filtered and folded in one statement
+def sum fn [[xs:List][Integer][0 fold [add] xs]]  def go fn [[n:Integer][Integer][if (n lte 0) [0] [(sum (iota n)) add (go (n sub 1))]]]  go 4	10	a fold called from inside a recursive word
+def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end 0 fold [add] (each ([i:Item] => [i.qty]) items)	7	project a field off CLASS INSTANCES and total it
+def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end filter ([p:Map] => [p.value.qty gt 3]) items	[{name:'b' qty:5}]	filter class instances on a field reached two levels down
+def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end sort (each ([i:Item] => [i.qty]) items)	[2 5]	project a field off class instances, then sort the projection
+# NOTE: composing those two stages — `each (…) (filter (…) items)` over class
+# instances — DIVERGES: the compiler answers 5 and the interpreter raises
+# `fold: step 0: signature_error: cannot call add` on the lambda it failed to
+# apply. No row can pin a value that the two engines disagree about, so it is
+# recorded here as prose instead of as a row.
+def m {a:1 b:2 c:3} end each [mul 2] (filter [gt 1] m)	{b:4 c:6}	filter then map over a MAP — the shape survives both stages
+def m {a:1 b:2 c:3} end sort (each [mul 2] m)	{a:2 b:4 c:6}	map a map, then sort it by key
+def xs (flex [3 1 2]) end 0 fold [add] xs	6	fold over a FLEX list
+def xs (flex [3 1 2]) end sort xs	[1 2 3]	…and sorting one
+def m (flex {a:1 b:2}) end 0 fold [add] m	3	fold over a flex MAP's values
+def xs {data: [1 2 3]} end 0 fold [add] xs.data	6	the collection reached through a dotted field
+def m {xs: [1 2 3]} end def k 'xs' end filter [gt 1] (m k get)	[2 3]	…and through a get with a bound key
+def fs [(fn [[n:Integer][Integer][n add 1]]) (fn [[n:Integer][Integer][n mul 2]])]  0 fold [add] (each ([f:Function] => [(f 10)]) fs)	31	a dispatch TABLE driven by each and totalled
+#
+# §13 OPEN DEFECTS — verified on the interpreter, refused by the compiler.
+#     Every row below produces the expected value on the tree-walker and
+#     aborts under BORU_FORCE_COMPILE=1 with the reason quoted in its
+#     description. Grouped by reason so the ledger reads as a work list.
+#
+# §13a the callback arrives as a Function-typed VALUE (class field, map
+#      field, /v binding) and the higher-order word cannot commit to an
+#      overload
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[a:Integer e:Integer][Integer][a add e]])}) 0 fold h.cb [1 2 3]	6	the reducer in a Function-typed class field, written WITHOUT `end` between statements — REFUSES: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[p:Map][Boolean][p.value gt 1]])}) filter h.cb [1 2 3]	[2 3]	the same field used as filter's predicate — REFUSES: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n add 1]])}) each h.cb [1 2 3]	[2 3 4]	…as each's body — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[a:Integer e:Integer][Integer][a add e]])}) scan h.cb [1 2 3]	[1 3 6]	…and as scan's — REFUSES: "higher-order `scan` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def ops {inc: (fn [[n:Integer][Integer][n add 1]])} end each ops.inc [1 2 3]	[2 3 4]	the callback read out of a plain MAP field — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def ops {inc: (fn [[n:Integer][Integer][n add 1]])} end each [ops.inc] [1 2 3]	[2 3 4]	the same map field NAMED INSIDE a quotation body — a different refusal — REFUSES: "fn each$body: result above a literal (Stage 3)"
+def inc fn [[n:Integer][Integer][n add 1]]  def hold {f: inc/v}  0 fold [add] (each hold.f [1 2 3])	9	a /v-parked word stored in a map, mapped, then folded — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def fs {sum: (fn [[a:Integer e:Integer][Integer][a add e]])} def use fn [[k:String][Integer][0 fold (fs k get) [1 2 3]]]  use 'sum'	6	the reducer looked up BY KEY inside a fn body — REFUSES: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+#
+# §13b a Function-typed PARAMETER or a computed closure reaching the word's
+#      argument slot
+def reduce fn [[f:Function xs:List][Integer][0 fold f xs]]  reduce (fn [[a:Integer e:Integer][Integer][a add e]]) [1 2 3]	6	the reusable reduce helper every codebase writes — REFUSES: "function-valued operand at fold (Stage 3)"
+def keep fn [[f:Function xs:List][List][filter f xs]]  keep (fn [[kv:Map][Boolean][kv.value gt 1]]) [1 2 3]	[2 3]	its filter twin — REFUSES: "function-valued operand at filter (Stage 3)"
+def apply2 fn [[f:Function xs:List][List][each f xs]]  apply2 (fn [[n:Integer][Integer][n mul 2]]) [1 2 3]	[2 4 6]	and its map twin — REFUSES: "function-valued operand at each (Stage 3)"
+def apply-cb fn [[f:Function][Integer][0 fold f [1 2 3]]]  def cb (fn [[a:Integer e:Integer][Integer][a add e]])  apply-cb cb	6	the callback bound first, then handed to the helper — REFUSES: "function-valued operand at fold (Stage 3)"
+def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  0 fold (mk 10) [1 2]	23	a closure BUILT AT THE ARGUMENT SLOT of fold — REFUSES: "function-valued operand at fold (Stage 3)"
+def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  filter (mk 1) [1 2 3]	[2 3]	a predicate closure built at filter's argument slot — REFUSES: "function-valued operand at filter (Stage 3)"
+def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  def f (mk 1)  filter f [1 2 3]	[2 3]	the same closure bound first — a DIFFERENT refusal — REFUSES: "unmatched dispatch recovered at filter"
+def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  each (choose true) [1 2 3]	[2 3 4]	the map body chosen by a BRANCH — REFUSES: "function-valued operand at each (Stage 3)"
+def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  def f (choose false)  each f [1 2 3]	[0 1 2]	…the same branch result bound first — REFUSES: "unmatched dispatch recovered at each"
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each (mk 10) [1 2 3]	[11 12 13]	a closure factory feeding each directly — REFUSES: "function-valued operand at each (Stage 3)"
+#
+# §13c a fn VALUE written into a mutable store, then used as the callback —
+#      the plugin-registry idiom
+def reg (flex {}) end def step fn [[a:Integer e:Integer][Integer][a add e]] end reg set 'f' step/v drop end 0 fold reg.f [1 2 3]	6	register a reducer in a flex map, fold with it — REFUSES: "function value reaches set (Stage 3)"
+def reg (flex {}) end def p fn [[kv:Map][Boolean][kv.value gt 1]] end reg set 'f' p/v drop end filter reg.f [1 2 3]	[2 3]	register a predicate, filter with it — REFUSES: "function value reaches set (Stage 3)"
+#
+# §13d a code body that names a binding the compiled context holds as a
+#      frame local
+def runner fn [[xs:List][Integer][def step fn [[a:Integer e:Integer][Integer][a add e]] 0 fold [step] xs]]  runner [1 2 3]	6	a fn-LOCAL reducer named inside the quotation body — REFUSES: "code-body word fold (Stage 2)"
+def k 5 end 0 fold [([a:Integer e:Integer] => [a add e add k])] [1 2]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e) word(add) word(k)]]	a closure wrapped in a code body — refused AND, on the interpreter, not applied — REFUSES: "code-body word fold (Stage 2)"
+{} fold [([acc:Map e:String] => [set e (size e) acc])] ['a' 'bb']	fn [[acc:Map e:String][Any][word(set) word(e) (size e) word(acc)]]	the map-building lambda wrapped in a code body — same double failure — REFUSES: "code-body word fold (Stage 2)"
+def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold [([a:Integer e:Integer] => [if (e gt a) [e] [a]])] xs)}]]  stats [1 5 3]	{n:3 sum:9 max:fn [[a:Integer e:Integer][Any][word(if) (e gt a) [word(e)] [word(a)]]]}	the wrapped-lambda trap inside a record-building fn: the `max` field is the raw callback — REFUSES: "code-body word fold (Stage 2)"
+#
+# §13e a gradual-Any collection whose runtime type the static model missed —
+#      these do not merely refuse, they abort with an INTERNAL error
+def Box class {data: Any} end def b (make Box {data: [1 2 3]}) end 0 fold [add] b.data	6	folding a List parked in an Any-typed class field — REFUSES: "[boru/internal_error]: bytecode: internal: DISPATCH_REMATCH at fold matched at run time where the static model failed; deferring to the interpreter (pc=13, src 1:70)"
+def Box class {data: Any} end def b (make Box {data: [1 2 3]}) end each [mul 2] b.data	[2 4 6]	mapping the same field — REFUSES: "[boru/internal_error]: bytecode: internal: DISPATCH_REMATCH at each matched at run time where the static model failed; deferring to the interpreter (pc=12, src 1:68)"
+def Box class {data: Any} end def b (make Box {data: [1 2 3]}) end scan [add] b.data	[1 3 6]	scanning it — REFUSES: "[boru/internal_error]: bytecode: internal: DISPATCH_REMATCH at scan matched at run time where the static model failed; deferring to the interpreter (pc=12, src 1:68)"
+def sum2 fn [[xs:Any][Integer][0 fold [add] xs]]  def go fn [[m:Map][Integer][sum2 m.xs]]  go {xs: [1 2 3]}	6	an Any-typed PARAMETER folded, called through a second fn — REFUSES: "unmatched dispatch recovered at fold"

@@ -1,0 +1,158 @@
+# boru Language Specification: CALLBACKS and higher-order shapes
+# Format: input<TAB>expected<TAB>description
+#
+# The shapes REAL boru programs use when a function travels as a value:
+# a fn handed to a word and applied; a fn parked in a map, a list, a
+# class field or a flex store and called back later; a fn RETURNED by a
+# fn; a closure over a parameter applied after its maker returned; a
+# callback driven by each / fold / filter / for-each; a fn-valued
+# argument with a declared Function (or fnsig) type; apply in its
+# several spellings; a curried chain; a callback that itself takes a
+# callback.
+#
+# EVERY row's expected column is the value the INTERPRETER produces —
+# measured, never guessed. Rows are then labelled with their
+# BORU_FORCE_COMPILE=1 status, and the ones that REFUSE are recorded
+# DELIBERATELY, as OPEN DEFECTS: the compiler scores ~96% on the old
+# one-liner corpus and ~65% on real files precisely because a refusal is
+# WHOLE-PROGRAM and latches on the first unsupported construct, and the
+# old corpus never combined constructs. A refusing row is the point of
+# this file; its description names the refusal reason verbatim, so the
+# reason text is the ledger of what is left to build.
+#
+# NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
+# refusalCeiling = 0. The refusing rows below are new evidence, not
+# regressions — the ceiling must be re-based (or this file moved under
+# lang/spec/frontier/) when the corpus is next gated.
+#
+# ─────────────────────────────────────────────────────────────────────
+# §1  A fn VALUE passed and applied — the /v suffix, valof, /uv, chained
+#     apply. The value is parked by /v and called by apply, by a bare
+#     dispatch, or by a paren call.
+def inc fn [[n:Integer][Integer][n add 1]]  def f inc/v  f 5	6	a def-bound fn value dispatches like a word (forward arg)
+def inc fn [[n:Integer][Integer][n add 1]]  def f inc/v  5 f	6	…and from the stack (mirror equivalence)
+def inc fn [[n:Integer][Integer][n add 1]]  def f inc/v  def g f/v  (g 5)	6	/v re-parks an already-parked fn value: the alias calls the same fn
+def inc fn [[n:Integer][Integer][n add 1]]  def f inc/v  5 f/v apply	6	apply over a def-bound fn value
+def inc fn [[n:Integer][Integer][n add 1]]  5 inc/v apply inc/v apply	7	apply CHAINS — each result feeds the next application
+def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  5 inc/v apply dbl/v apply	12	a two-stage pipeline written as two applies
+def sub2 fn [[a:Integer b:Integer][Integer][a sub b]]  10 3 sub2/uv apply add 100	107	the /uv (usurp) spelling reverses the signature order, and its result composes
+def inc fn [[n:Integer][Integer][n add 1]]  def g (valof inc)  (g 5)	6	the (valof f) spelling parks the same value the /v suffix does
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  5 (mk 1)/v apply	6	REFUSES: "computed closure at a word's argument slot (its apply did not collapse — Stage 2)"
+def adder fn [[k:Integer][Function][([n:Integer] => [n add k])]]  10 (adder 3) apply	13	REFUSES: "computed closure at a word's argument slot (its apply did not collapse — Stage 2)" — the closure is made and applied in one statement
+#
+# §2  A fn STORED in a container — map, list, class field, flex store —
+#     read back, then called. This is the plugin/handler-table idiom and
+#     it is everywhere in real code.
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  def g m.f  (g 5)	6	a map field read into a binding, then called
+def inc fn [[n:Integer][Integer][n add 1]]  def xs [inc/v]  (xs.0 5)	6	a fn value in a LIST, called through an index
+def xs [(fn [[a:Integer][Integer][a add 1]]) (fn [[a:Integer][Integer][a mul 2]])]  (xs.1 5)	10	a two-element dispatch table picks its second entry
+def xs [(fn [[a:Integer][Integer][a add 1]])]  5 (xs 0 get) apply	6	get reads the fn out of the list and apply calls it
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  5 (m 'f' get) apply	6	REFUSES: "apply over a dynamic lead (overload unprovable)" — the same read spelled with get
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  5 m.f/v apply	6	REFUSES: "apply over a dynamic lead (overload unprovable)" — /v on a map field, applied
+def ops {inc: (fn [[n:Integer][Integer][n add 1]]) dbl: (fn [[n:Integer][Integer][n mul 2]])}  (ops.inc (ops.dbl 5))	11	two table entries composed at the call site
+def reg {handlers: [(fn [[n:Integer][Integer][n add 1]]) (fn [[n:Integer][Integer][n mul 2]])]}  (reg.handlers.0 5)	6	a handler list NESTED in a map, reached by a two-step path
+def reg {handlers: [(fn [[n:Integer][Integer][n add 1]]) (fn [[n:Integer][Integer][n mul 2]])]}  each ([f:Function] => [(f 10)]) reg.handlers	[11 20]	every handler in the table driven over one input
+def cbs {a: (fn [[n:Integer][Integer][n add 1]]) b: (fn [[n:Integer][Integer][n mul 2]])}  each ([k:String] => [((cbs k get) 10)]) ['a' 'b']	[11 20]	the table looked up BY KEY inside the callback
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n add 1]])}) (h.cb 5)	6	a Function-typed CLASS FIELD holds the callback
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n add 1]])}) each h.cb [1 2 3]	[2 3 4]	REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def inc fn [[n:Integer][Integer][n add 1]]  def hold {f: inc/v}  each hold.f [1 2 3]	[2 3 4]	REFUSES: same gradual-Any each — the callback came out of a map field
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def fs [(mk 1) (mk 2)]  (fs.1 10)	12	a LIST of computed closures, called by index
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def fs {a: (mk 1) b: (mk 2)}  (fs.b 10)	12	REFUSES: "unannotated or opaque word dot" — the same closures in a MAP, called by name
+def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end ((reg.cb) 5)	6	REFUSES: "function value reaches set (Stage 3)" — the mutable-registry idiom
+def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end typeof (reg.cb)	Function	REFUSES: "function value reaches set (Stage 3)" — even just reading the stored callback's type
+#
+# §3  A fn RETURNED by a fn, then applied.
+def mk fn [[][Function][(fn [[a:Integer][Integer][a add 1]])]]  5 (mk) apply	6	a 0-arg factory's result applied straight away
+def mk fn [[][Function][(fn [[a:Integer][Integer][a add 1]])]]  def g (mk)  (g 5)	6	…or bound first, then called
+def adder fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def a3 (adder 3)  (a3 10)	13	the classic adder factory: bind the result, call it later
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def f2 (mk 2)  def f3 (mk 3)  (f3 (f2 10))	15	REFUSES: "def-bound computed fn `f3`: an argument is not an evaluation-fixed value (the read's statement window — Stage 1)"
+def sel fn [[b:Boolean][Function][if b [([n:Integer] => [n add 1])] [([n:Integer] => [n sub 1])]]]  ((sel true) 10)	11	a fn chosen by a BRANCH and applied in the same statement
+def sel fn [[b:Boolean][Function][if b [([n:Integer] => [n add 1])] [([n:Integer] => [n sub 1])]]]  def f (sel false)  (f 10)	9	REFUSES: "def-bound computed fn apply (closure shape unknown — Stage 1)" — the same branch result bound first
+def dispatch fn [[name:String][Function][if (name eq 'inc') [([n:Integer] => [n add 1])] [([n:Integer] => [n mul 2])]]]  ((dispatch 'inc') 5)	6	a fn selected BY NAME — the string-keyed dispatcher idiom
+def hof fn [[f:Function][Function][f/v]]  def inc fn [[n:Integer][Integer][n add 1]]  def g (hof inc/v)  (g 4)	5	REFUSES: "def-bound computed fn apply (closure shape unknown — Stage 1)" — identity over a fn value, bound and called
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def fs (each mk/v [1 2 3])  (fs.2 10)	13	REFUSES: "fn-value application bounded by a paren (dynamic value precedes args)" — a LIST of closures built by each
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  size (each mk/v [1 2 3])	3	…building that list of closures is fine; only calling one back is not
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  size (each [(mk 2)] [1 2 3])	3	a closure made in an each BODY is collected as data, never fired
+#
+# §4  CLOSURES — a lambda capturing a parameter or an enclosing binding,
+#     applied after the capture site is gone.
+def n 3  def f ([x:Integer] => [x mul n])  (f 4)	12	a lambda captures an enclosing def and is called through its binding
+def n 3  def f ([x:Integer] => [x mul n])  5 f/v apply	15	…and the same closure reached by apply
+def n 3  def f ([x:Integer] => [x mul n])  each f/v [1 2]	[3 6]	…and driven as an each callback
+def mkadd fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def a5 (mkadd 5)  each a5/v [1 2 3]	[6 7 8]	REFUSES: "unmatched dispatch recovered at each" — a captured-param closure as an each callback
+def mkadd fn [[k:Integer][Function][([n:Integer] => [n add k])]]  def a5 (mkadd 5)  each [a5] [1 2 3]	[6 7 8]	REFUSES: "code-body word each (Stage 2)" — the quotation spelling of the same call
+def counter fn [[start:Integer][Function][([n:Integer] => [start add n])]]  def c (counter 100)  fold [add] (each [c] [1 2 3]) 0	306	REFUSES: "code-body word each (Stage 2)" — closure in an each body, result folded
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each ([k:Integer] => [((mk k) 100)]) [1 2 3]	[101 102 103]	a closure MADE AND CALLED inside the callback compiles
+def sub2 fn [[a:Integer b:Integer][Integer][a sub b]]  def p ([b:Integer] => [sub2 10 b])  (p 3)	7	partial application written by hand as a capturing lambda
+def sub2 fn [[a:Integer b:Integer][Integer][a sub b]]  each ([b:Integer] => [sub2 10 b]) [1 2 3]	[9 8 7]	…driven over a list
+def sq fn [[n:Integer][Integer][n mul n]]  each ([x:Integer] => [(sq x) add 1]) [1 2 3]	[2 5 10]	a named fn CALLED inside a lambda callback, its result post-processed
+def inc fn [[n:Integer][Integer][n add 1]]  def i 0  while [i lt 3] [def i (i inc/v apply)] end i	3	REFUSES: "dynamic-scope def `i` of unpromoted computed value" — a callback applied in a LOOP body
+#
+# §5  A callback DRIVEN by each / fold / filter / for-each.
+def inc fn [[n:Integer][Integer][n add 1]]  [1 2 3] each inc/v	[2 3 4]	an `fn`-form callback over a list (stack spelling)
+def sum2 fn [[a:Integer b:Integer][Integer][a add b]]  0 fold sum2/v [1 2 3 4]	10	a two-parameter fn value as a fold callback (accumulator, element)
+def sum2 fn [[a:Integer b:Integer][Integer][a add b]]  fold sum2/v [1 2 3 4] 0	10	…and the forward spelling of the same fold
+def kvsum fn [[acc:Integer kv:KeyVal][Integer][acc add kv.v]]  0 fold kvsum/v {a:1 b:2 c:3}	6	a fold callback over a MAP receives (accumulator, KeyVal)
+def kvdbl fn [[kv:KeyVal][Integer][kv.v mul 2]]  each kvdbl/v {a:1 b:2}	{a:2 b:4}	an each callback over a map receives the KeyVal and the shape is kept
+def ev fn [[p:Any][Boolean][(p.value mod 2) eq 0]]  filter ev/v [1 2 3 4 5 6]	[2 4 6]	a named predicate as filter's Function form (list: {key value} pair)
+def kvf fn [[kv:KeyVal][Boolean][kv.v gt 2]]  filter kvf/v {a:1 b:5 c:3}	{b:5 c:3}	…and over a map, where the predicate gets a KeyVal
+def pred fn [[p:Any][Boolean][p.value gt 2]]  fold [add] (filter pred/v [1 2 3 4]) 0	7	filter's callback result feeding a fold — two higher-order words in one statement
+def acc (flex []) end def stp fn [[e:Integer][Any][acc push (e mul 2)]] end for-each stp/v [1 2 3] end acc	(flex [2 4 6])	a side-effecting callback accumulating into a flex list
+def acc (flex {}) end def stp fn [[kv:KeyVal][Any][acc set (kv.k) (kv.v mul 2)]] end for-each stp/v {a:1 b:2} end acc	(flex {a:2 b:4})	…and the map twin, keyed by the KeyVal's own key
+def inc fn [[n:Integer][Integer][n add 1]]  each [inc/v apply] [1 2 3]	[2 3 4]	apply INSIDE an each body, against the element on the stack
+def useit fn [[f:Function x:Integer][Integer][(f x)]]  def inc fn [[n:Integer][Integer][n add 1]]  each [useit inc/v] [1 2 3]	[2 3 4]	an each body that hands a fn value to a higher-order word
+def poly fn [[a:Integer][Integer][a add 1] [s:String][String][s]]  each poly/v [1 2 3]	[2 3 4]	a MULTI-OVERLOAD fn value as an each callback: the Integer signature is selected per element
+def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  each ([f:Function] => [(f 5)]) [inc/v dbl/v]	[6 10]	each over a LIST OF FUNCTIONS, applying every one to a fixed input
+def tag fn [[e:Integer][List][[e e]]]  each tag/v [1 2]	[[1 1] [2 2]]	a callback returning a LIST per element
+def sum fn [[xs:List][Integer][fold [add] xs 0]]  each sum/v [[1 2] [3 4]]	[3 7]	a callback that folds its own argument — nested higher-order words
+each ([r:List] => [each ([x:Integer] => [x add 1]) r]) [[1 2] [3]]	[[2 3] [4]]	an each callback whose body is itself an each with a lambda
+def inc fn [[n:Integer][Integer][n add 1]]  scan [add] (each inc/v [1 2 3])	[2 5 9]	a mapped list fed to scan
+def inc fn [[n:Integer][Integer][n add 1]]  fold [add] (each inc/v (each inc/v [1 2 3])) 0	12	two callback passes piped into a fold in one statement
+def inc fn [[n:Integer][Integer][n add 1]]  def s (each inc/v [1 2 3])  fold [mul] s 1	24	…and with the intermediate list bound between the two passes
+def inc fn [[n:Integer][Integer][n add 1]]  0 fold ([acc:Integer e:Integer] => [acc add (e inc/v apply)]) [1 2 3]	9	apply inside a fold LAMBDA
+#
+# §6  A fn-valued ARGUMENT with a declared type — `Function`, or a named
+#     fnsig — and what a body may do with it.
+def useit fn [[f:Function x:Integer][Integer][(f x)]]  def inc fn [[n:Integer][Integer][n add 1]]  useit inc/v 5	6	the plain Function parameter, applied in the body
+def useit fn [[f:Function x:Integer][Integer][(f x)]]  def inc fn [[n:Integer][Integer][n add 1]]  5 inc/v useit	6	…the full-stack spelling of the same call
+def twice fn [[f:Function x:Integer][Integer][(f (f x))]]  twice ([n:Integer] => [n mul 3]) 2	18	the callback applied TWICE in one body, with a lambda argument
+def cb fn [[f:Function][Integer][(f 10)]]  cb ([n:Integer] => [n add 5])	15	an anonymous lambda passed straight into a Function parameter
+def twice fn [[f:Function x:Integer][Integer][(f (f x))]]  def inc fn [[n:Integer][Integer][n add 1]]  twice inc/v 5	7	…and the named-fn argument of the same doubly-applying word
+def apply2 fn [[f:Function g:Function x:Integer][Integer][(f (g x))]]  def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  apply2 inc/v dbl/v 5	11	TWO Function parameters composed inside the body
+def IntToInt fnsig Integer Integer  def useit fn [[g:IntToInt x:Integer][Integer][(g x)]]  def inc fn [[n:Integer][Integer][n add 1]]  useit inc/v 7	8	a named fnsig TYPE constrains the callback's shape, and a matching fn passes
+def IntToInt fnsig Integer Integer  def useit fn [[g:IntToInt][Function][g/v]]  def inc fn [[n:Integer][Integer][n add 1]]  typeof (useit inc/v)	Function	an fnsig-typed parameter handed back out is still a Function
+def apply1 fn [[f:Function x:Integer][Integer][x f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply1 inc/v 5	6	apply at the TAIL of a fn body over the body's own Function parameter
+def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply-twice inc/v 5	7	REFUSES: "apply of a dynamic fn value not at the body tail (Stage 3)"
+def each2 fn [[f:Function xs:List][List][each f/v xs]]  def inc fn [[n:Integer][Integer][n add 1]]  each2 inc/v [1 2 3]	[2 3 4]	REFUSES: "function-valued operand at each (Stage 3)" — the generic map helper, THE commonest real-code callback shape
+def each2 fn [[f:Function xs:List][List][each f/v xs]]  each2 ([n:Integer] => [n mul 2]) [1 2 3]	[2 4 6]	REFUSES: "function-valued operand at each (Stage 3)" — same helper, lambda argument
+def fold2 fn [[f:Function xs:List][Integer][fold f/v xs 0]]  def sum2 fn [[a:Integer b:Integer][Integer][a add b]]  fold2 sum2/v [1 2 3 4]	10	REFUSES: "function-valued operand at fold (Stage 3)" — the generic reduce helper
+def tap fn [[f:Function xs:List][List][each ([e:Integer] => [(f e)]) xs]]  def inc fn [[n:Integer][Integer][n add 1]]  tap inc/v [1 2 3]	[2 3 4]	REFUSES: "function-valued operand at each (Stage 3)" — the parameter reached through a WRAPPING lambda
+def apply-all fn [[fs:List x:Integer][List][each ([f:Function] => [(f x)]) fs]]  def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  apply-all [inc/v dbl/v] 5	[6 10]	REFUSES: "function-valued operand at each (Stage 3)" — a LIST of callbacks passed in and driven
+def run fn [[f:Function n:Integer][Integer][if (n lte 0) [0] [(f n)]]]  def inc fn [[n:Integer][Integer][n add 1]]  run inc/v 5	6	REFUSES: "if: else-branch result of unknown provenance" — a callback applied in a GUARDED branch
+def run fn [[f:Function n:Integer][Integer][if (n lte 0) [0] [(f n)]]]  def inc fn [[n:Integer][Integer][n add 1]]  run inc/v 0	0	REFUSES: "if: else-branch result of unknown provenance" — even when the guard skips the callback
+def rep fn [[f:Function n:Integer x:Integer][Integer][if (n lte 0) [x] [rep f/v (n sub 1) (f x)]]]  def inc fn [[n:Integer][Integer][n add 1]]  rep inc/v 3 0	3	REFUSES: "unmatched dispatch recovered at rep" — a RECURSIVE word threading a callback through
+#
+# §7  A callback that itself takes a callback.
+def app fn [[f:Function][Integer][(f 3)]]  def outerfn fn [[g:Function][Integer][app g/v]]  def sq fn [[n:Integer][Integer][n mul n]]  outerfn sq/v	9	a fn value FORWARDED one level down to another higher-order word
+def app fn [[f:Function][Integer][(f 3)]]  def mk fn [[k:Integer][Function][([n:Integer] => [n mul k])]]  app (mk 5)	15	a freshly-made closure handed straight into a Function parameter
+def useit fn [[f:Function x:Integer][Integer][(f x)]]  def mkadd fn [[k:Integer][Function][([n:Integer] => [n add k])]]  useit (mkadd 4) 10	14	…and with a value argument beside it
+def hof2 fn [[f:Function][Integer][(f ([n:Integer] => [n add 1]))]]  def runner fn [[g:Function][Integer][(g 10)]]  hof2 runner/v	11	REFUSES: "unapplied fn-value in body residual (dynamic apply not compiled in a fn body)" — a body that BUILDS a callback for its callback
+def hof2 fn [[f:Function g:Function][Integer][(f g/v)]]  def runner fn [[g:Function][Integer][(g 10)]]  def inc fn [[n:Integer][Integer][n add 1]]  hof2 runner/v inc/v	11	REFUSES: "unapplied fn-value in body residual (dynamic apply not compiled in a fn body)" — one parameter applied TO another
+def comp2 fn [[f:Function g:Function][Function][([x:Integer] => [(f (g x))])]]  def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  ((comp2 inc/v dbl/v) 5)	11	hand-written compose: two callbacks in, one closure out, applied at once
+def comp2 fn [[f:Function g:Function][Function][([x:Integer] => [(f (g x))])]]  def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  def h (comp2 inc/v dbl/v)  (h 5)	11	…and the composed closure bound first, then called
+#
+# §8  Module-exported callbacks — the export map is a callback table.
+import module [def bump fn [[n:Integer][Integer][n add 1]] export "M" {bump: bump/v}] end each M.bump [1 2 3]	[2 3 4]	a module-exported fn value driven as an each callback
+import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc 5	6	one module export passed INTO another as its callback
+import module [def apply2 fn [[f:Function x:Integer][Integer][(f x)]] export "M" {apply2: apply2/v}] end M.apply2 ([n:Integer] => [n mul 4]) 3	12	a caller's lambda crossing the module boundary into a Function parameter
+#
+# §9  CURRIED CHAINS and the boru:fn-util combinators.
+def mk3 fn [[a:Integer][Function][([b:Integer] => [([c:Integer] => [(a add b) add c])])]]  def f1 (mk3 1)  def f2 (f1 2)  (f2 3)	6	a hand-written three-level curry, each level bound before the next call
+def mk3 fn [[a:Integer][Function][([b:Integer] => [([c:Integer] => [(a add b) add c])])]]  (((mk3 1) 2) 3)	6	REFUSES: "fn-value apply arity mismatch — curried chain or partial apply (Stage 3)" — the same chain written inline
+import "boru:fn-util"  def add3 fn [[a:Integer b:Integer c:Integer][Integer][(a add b) add c]] end def c (FnUtil.curry add3/v) end def c1 (c 1) end def c2 (c1 2) end (c2 3)	6	FnUtil.curry over a THREE-parameter fn: two intermediate levels, each def-bound
+import "boru:fn-util"  def inc x:Integer => [add 1 x] end def h (FnUtil.compose inc/v inc/v) end (h 5)	7	compose of a fn with itself
+import "boru:fn-util"  def inc x:Integer => [add 1 x] end def dbl x:Integer => [mul 2 x] end def h (FnUtil.compose inc/v dbl/v) end each h/v [1 2 3]	[3 5 7]	REFUSES: "unmatched dispatch recovered at each" — a COMPOSED fn driven as an each callback
+import "boru:fn-util"  def inc x:Integer => [add 1 x] end def dbl x:Integer => [mul 2 x] end def h (FnUtil.compose inc/v dbl/v) end each [h] [1 2 3]	[3 5 7]	REFUSES: "code-body word each (Stage 2)" — the quotation spelling of the same drive
+import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end def p (FnUtil.partial sub2/v 10) end each [p] [1 2 3]	[9 8 7]	REFUSES: "code-body word each (Stage 2)" — a PARTIALLY APPLIED fn as an each callback
+import "boru:fn-util"  def inc x:Integer => [add 1 x] end def m (FnUtil.memoize inc/v) end (m 4) add (m 4)	10	a memoized callback called twice: the second call is the cache hit
+import "boru:fn-util"  def inc x:Integer => [add 1 x] end def d (FnUtil.memoize inc/v) end each [d] [1 2]	[2 3]	REFUSES: "code-body word each (Stage 2)" — the memoized wrapper driven per element

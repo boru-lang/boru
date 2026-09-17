@@ -162,7 +162,7 @@ func runAndPrint(w, warn io.Writer, a *lang.Boru, source string, mode CompileMod
 		// stored callbacks still earn the VM path — the compiled mode's
 		// contract, exactly as the in-library armed fallback behaved.
 		if reason != "" && warn != nil {
-			fmt.Fprintf(warn, "warning: bytecode compilation refused — the program did not compile and was re-run on the interpreter. This is a defect, not a performance note: %s\n", reason)
+			fmt.Fprintf(warn, "warning: bytecode compilation FAILED — the program did not compile and was re-run on the interpreter. This is an error in need of fixing, not a performance note: %s\n", reason)
 		}
 		var refused *lang.BoruError
 		if errors.As(err, &refused) && refused.Code == "compile_refused" {

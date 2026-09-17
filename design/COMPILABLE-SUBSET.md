@@ -136,7 +136,32 @@ is identity, so two source literals must stay two consts with two IDs.
 
 ---
 
-## 5. What refuses today (the open-defect taxonomy)
+## 5. What fails to compile today (the open-error inventory)
+
+> **Islanding: zero, and not negotiable (maintainer, 2026-09-17).** An island
+> is a region of a COMPILED program that still runs on the interpreter — the
+> fallback in miniature, inside something the compiler has called a success.
+> There is no island budget and no island ledger; `islandGate` stays 0 and the
+> gate stays red until the count is 0.
+>
+> The corpus expansion of 2026-09-17 exposed **15 islanding rows**, all one
+> family: **the callback is a fn VALUE rather than a literal body, and usually
+> returns a compound value.** In full, so they are findable:
+>
+> | row | shape |
+> |---|---|
+> | `each-variants.tsv` L126, L127 | `each pair/v [1 2]` — a named fn value returning a List / a Map |
+> | `each-variants.tsv` L128, L129, L159 | a `KeyVal` lambda over a Map returning a Map or List |
+> | `callbacks.tsv` L104, L105, L106 | a POLY fn value as the callback; a branch-selected fn value; a fn value returning a List |
+> | `callbacks.tsv` L54, L75, L85 | a callback read from a container; a factory-built closure passed to `each` |
+> | `fold-map-filter.tsv` L87, L88, L200 | `fold` with a Map accumulator; a `Function`-typed accumulator; a list of fn values folded |
+> | `fold-map-filter.tsv` L168 | `each` over a grouped result with an `Any` lambda parameter |
+>
+> This is the same root family as the 113 compile ERRORS the same expansion
+> exposed:
+> a fn value crossing a boundary the emitter cannot follow. Closing it closes
+> both counts at once, which is why it is the highest-leverage target in §5.
+
 
 Every entry below is an unimplemented or unproven case — a defect against §1,
 owed a fix and tracked to closure, never a sanctioned design outcome.

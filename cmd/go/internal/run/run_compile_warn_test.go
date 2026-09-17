@@ -20,7 +20,7 @@ func TestExecuteCompileRefusalWarning(t *testing.T) {
 	// -no-check skips the pre-flight so the run reaches the compile-try
 	// fallback.
 	refuses := `def m {n: 3} def xs (for (m get "n") [1]) xs`
-	const wantWarn = "warning: bytecode compilation refused"
+	const wantWarn = "warning: bytecode compilation FAILED"
 
 	var stdout, stderr strings.Builder
 	Execute([]string{"-no-check", "-e", refuses}, strings.NewReader(""), &stdout, &stderr)

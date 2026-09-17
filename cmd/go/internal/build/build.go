@@ -166,10 +166,10 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "error: %s\n", cerr)
 			return 1
 		} else if reason != "" {
-			fmt.Fprintf(stderr, "error: bytecode compilation refused: %s\n", reason)
-			fmt.Fprintf(stderr, "  the binary would silently run on the interpreter instead, which is a\n")
-			fmt.Fprintf(stderr, "  compile defect, not a performance note. Fix the construct, or pass\n")
-			fmt.Fprintf(stderr, "  -no-compile to ship a declared interpreter binary.\n")
+			fmt.Fprintf(stderr, "error: bytecode compilation FAILED: %s\n", reason)
+			fmt.Fprintf(stderr, "  the binary would silently run on the interpreter instead. A program that\n")
+			fmt.Fprintf(stderr, "  does not compile is an ERROR in need of fixing, not a slower run. Fix the\n")
+			fmt.Fprintf(stderr, "  construct, or pass -no-compile to ship a declared interpreter binary.\n")
 			return 1
 		}
 	}
