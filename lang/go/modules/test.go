@@ -235,7 +235,7 @@ func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 		if fnDef.Registry == modReg {
 			return native.NewFunction(fnDef)
 		}
-		return v
+		return v //covergate:allow boru:test's preamble imports nothing, so no export value can carry a foreign home; the arm mirrors resolveModuleExport's re-export pass-through for the day it does (§modules)
 	}
 	var name string
 	switch {

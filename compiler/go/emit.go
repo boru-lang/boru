@@ -3127,13 +3127,8 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	ps := lamParamContract(lam)
 	// In the fn's HOME, with the caller's check state shared onto a foreign
 	// one — see compileStoredFnUnit for the measured divergence.
-	// In the fn's HOME, with the caller's check state shared onto a foreign
-	// one — see compileStoredFnUnit for the measured divergence.
-	r, _ := core.FnHome(es.reg, &fd)
-	if core.FnHomeForeign(es.reg, &fd) {
-		restore := check.ShareCheckStateFrom(r, es.reg)
-		defer restore()
-	}
+	r, restore := es.fnValueHome(&fd)
+	defer restore()
 	// PROBE in a throwaway emit state (mirrors recordClosureDispatch), so a body
 	// that refuses leaves THIS program untouched and the value stays unresolved.
 	probe := NewEmitState()
@@ -3189,6 +3184,24 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: fnValueRetSpec(&fd, lam, pos)}, true
 }
 
+// fnValueHome is the registry a fn VALUE's body compiles in — its home, never
+// whatever registry the emitter is bound to at this moment — and the undo of
+// sharing the caller's check state onto a foreign home (so the recorder still
+// writes into THIS program, tryRecordLambdaClosure's split). Shared by
+// compileStoredFnUnit and tryReturnedClosure: a main-program handler stored
+// from inside a module's fn (`M.run pub/v` — run's body compiles foreign, with
+// es.reg the module's) would otherwise get a unit stamped with the MODULE as
+// its owner and read main's free words (`secret`) against the module at run
+// time — measured as 105 for the interpreter's 6 (NUR152). The restore is a
+// no-op for a fn at home in es.reg.
+func (es *EmitState) fnValueHome(fd *core.FnDefInfo) (*core.Registry, func()) {
+	r, _ := core.FnHome(es.reg, fd)
+	if core.FnHomeForeign(es.reg, fd) {
+		return r, check.ShareCheckStateFrom(r, es.reg)
+	}
+	return r, func() {}
+}
+
 // compileStoredFnUnit compiles a CAPTURE-FREE store-fn handler body (the fn a
 // CompileStoresFn word stashes for later invocation — a serve-raw connection
 // handler) to its own fn unit, so the native word can run it on the VM via
@@ -3236,11 +3249,8 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if core.FnHomeForeign(es.reg, &fd) && core.IsDelegationFnDef(fd) {
 		return 0, false
 	}
-	r, _ := core.FnHome(es.reg, &fd)
-	if core.FnHomeForeign(es.reg, &fd) {
-		restore := check.ShareCheckStateFrom(r, es.reg)
-		defer restore()
-	}
+	r, restore := es.fnValueHome(&fd)
+	defer restore()
 	// bodyInFrame is the value's OWN anonymity, as every fn-value site
 	// passes it. For a stored body it changes nothing observable today: the
 	// recordability gate admits a "storedfn$body" by NAME regardless, because

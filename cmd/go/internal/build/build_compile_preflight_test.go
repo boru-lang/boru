@@ -238,3 +238,27 @@ func TestCompilePreflightHonoursBakedOptions(t *testing.T) {
 		t.Fatal("baked steps:7: the preflight must report the compile failure the artifact would hit")
 	}
 }
+
+// Under -no-check the check pre-flight is skipped, so an UNPARSEABLE program
+// first meets the compile preflight, whose parse error must stop the build
+// (the `cerr` arm in Run): returning "no refusal" there would ship a binary
+// that cannot run.
+func TestBuildNoCheckUnparseableFailsAtCompilePreflight(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "broken.boru")
+	if err := os.WriteFile(src, []byte("}{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "broken.bin")
+	var stdout, stderr strings.Builder
+	code := New().Run([]string{"-no-check", src, "-o", out}, nil, &stdout, &stderr)
+	if code == 0 {
+		t.Errorf("-no-check built an unparseable program; stderr=%q", stderr.String())
+	}
+	if !strings.HasPrefix(stderr.String(), "error: ") {
+		t.Errorf("stderr does not report the parse error: %q", stderr.String())
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("a binary was written for an unparseable program under -no-check")
+	}
+}
