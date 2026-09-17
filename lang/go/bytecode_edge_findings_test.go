@@ -8,8 +8,10 @@ import (
 
 // Landing tests for design/EDGE-SPEC-FINDINGS.0.md — four compile≠interpret
 // divergences the edge-spec expansion surfaced. Each was a shape the compiler
-// lowered to a WRONG value; the fix makes the compiler REFUSE (fall back —
-// §5) so the interpreter silently owns the shape. Every finding is pinned
+// lowered to a WRONG value; the fix makes the compiler REFUSE (§5), after
+// which the program is silently re-run on the interpreter — scaffolding
+// absorbing an open compile defect, not a path the design owns. Every
+// finding is pinned
 // three ways: the reproducer REFUSES with its reason, the reproducer's compiled
 // run falls back to interpreter PARITY, and a sibling that must keep compiling
 // natively still does (the negative that proves the refusal is not blanket).
@@ -326,8 +328,9 @@ func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 // conditional shadow while the interpreter keeps the outer fn when the branch
 // is not taken (or the loop runs zero times), so `if false [def g …] g 1`
 // returned the shadow's value compiled but the ORIGINAL interpreted. The fix
-// refuses to compile the redefinition (CondBodyDepth-gated) so the interpreter
-// owns the shape — contained, not fixed.
+// refuses to compile the redefinition (CondBodyDepth-gated), and the program
+// is silently re-run on the interpreter — contained, not fixed, and the shape
+// is still owed a lowering.
 func TestEdgeFindingConditionalFnShadowRefuses(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
@@ -364,7 +367,7 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		// the model declines — and the fetched fn reaches `apply` as an
 		// untyped carrier, which the record refuses ("apply over a dynamic
 		// lead", the BROAD-era mixed-arity guard) rather than lower an
-		// unprovable overload. Refusal; the interpreter owns it.
+		// unprovable overload. A refusal, and a defect while it stands.
 		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, false, "[true]"},
 		// A LIST member pinpoints by concrete index — the arrival model fires.
 		{"list member", `def d fn [[n:Integer][Integer][n mul 2]] def lst [d/v] 21 (lst get 0) apply eq 42`, true, "[true]"},

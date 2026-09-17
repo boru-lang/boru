@@ -44,7 +44,7 @@ func TestXmlInterpComputedCompiles(t *testing.T) {
 		`def f fn [[x:Integer] [] []] def g fn [[x:Integer] [Xml] [<p>${x}${f x}</p>]] g 1`,
 		"interpolated XML with a runtime-computed part")
 	// An inline COMPUTED LIST literal inside the hole declines operand
-	// resolution — refusal, the interpreter owns it.
+	// resolution — refusal, absorbed by the interpreter and owed a fix.
 	mustRefuseWithParity(t,
 		`def f fn [[x:Integer] [Xml] [<p>${[x (x add 1)]}</p>]] f 7`,
 		"interpolated XML with a runtime-computed part")

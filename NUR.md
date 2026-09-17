@@ -66,6 +66,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR149](#nur149) | A fn body's in-place redefinition of a MODULE-scope speculative-family name does not compile. `def m {e: true}  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] []  def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  g f 1` answers `6 2` interpreted. The seventy-third increment (#469) closed the miscompile — it no longer answers wrongly — but the shape now REFUSES and is silently re-run on the interpreter, so it still does not compile: the drop-then-push of an overlapping redefinition leaves def depth unchanged, so depth-based rollback cannot revert it and the shadow leaks past the frame. Owed the placement that makes the redefinition a compiled transition the frame does not unwind | the fn-local placement's collision measurement, 2026-09-16; reopened 2026-09-17 when the "resolved by refusing" reading was withdrawn |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
@@ -6375,13 +6376,15 @@ divergence surfaced in review is recorded, fixed or not.
 
 ## NUR149 — a fn body's redefinition of a speculative family's name does not compile {#nur149}
 
-**Status:** OPEN (recorded 2026-09-16 by the seventy-second increment;
-the miscompile half closed by the seventy-third, #469; the compile half
-still open). Reopened 2026-09-17: the seventy-third increment recorded
-this entry as "Resolved" and deleted it. That was wrong. It made the
-shape REFUSE instead of answering wrongly — the lesser of two failures —
-and the shape still does not compile, so the defect is open. Failure to
-compile is a failure; a refusal closes nothing.
+**Status:** Pending (recorded 2026-09-16 by the seventy-second
+increment; the miscompile half closed by the seventy-third, #469; the
+compile half still open). Reopened 2026-09-17: the seventy-third
+increment recorded this entry as Resolved and deleted it. That was
+wrong. It made the shape REFUSE instead of answering wrongly — the
+lesser of two failures — and the shape still does not compile, so the
+record is directed at a fix that has not landed, which is precisely what
+Pending means here. Failure to compile is a failure; a refusal closes
+nothing.
 
 **Found:** by the fn-local placement's collision measurement
 (`lang/go/fn_local_placed_test.go`'s disjoint-signature row is the

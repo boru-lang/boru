@@ -142,9 +142,9 @@ def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end m.p 5 end m.p 7	5 7	explicit
 #     baked the NAME (the island span, the CALL_NATIVE const-bake, the
 #     closure probe) turned a working program into undefined_word in the
 #     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now refuses
-#     the whole program at compile admission, so the interpreter silently
-#     owns it (design/COMPILABLE-SUBSET.md §5) — an open defect, not a
-#     sanctioned outcome. The refusing
+#     the whole program at compile admission, and it is then silently
+#     re-run on the interpreter (design/COMPILABLE-SUBSET.md §5) — an open
+#     defect, not a sanctioned outcome. The refusing
 #     shapes are pinned in lang/go/test/nur037_fnlocal_test.go — a spec
 #     value row must compile (refusalCeiling 0). The rows here pin the
 #     twins the refusal must NEVER over-match, holding both engines to
