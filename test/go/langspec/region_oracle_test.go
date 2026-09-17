@@ -75,6 +75,16 @@ var regionOracleFindings = map[string]string{
 	"module-sift.tsv:L69 keys@1078:16": "module-flex snapshot: `keys sift-path-detect` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
 	"module-sift.tsv:L74 keys@1042:55": "module-flex snapshot: `keys sift-catalog` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
 	"fnpred.tsv:L50 f@1:80":            "a predicate param (n:Even) claimed by the check pass, rejected by the runtime scan; an ERROR row on both lanes",
+	// NUR152's reverse-direction rows: a MAIN-program fn (`pub`, or the `=>`
+	// lambda) applied INSIDE a module fn (`M.run`). Its unit is compiled at
+	// its home (main) from inside `run`'s foreign compile, and its free word
+	// `secret` is a LIVE word-slot read against the unit's registry at run
+	// time (the program's, by enterUnit) rather than a baked const — so the
+	// record carries the name and the walk the resolved value. Both engines
+	// answer 6; the finding is the read's provenance, not its value.
+	"module-composition.tsv:L142 add@1:139": "NUR152: main's `secret` read live by name inside a foreign-compiled unit; both engines answer 6",
+	"module-composition.tsv:L143 add@1:158": "NUR152: main's `secret` read live by name inside a foreign-compiled unit (module has its own `secret`); both engines answer 6",
+	"module-composition.tsv:L144 add@1:148": "NUR152: the lambda form of L143; both engines answer 6",
 }
 
 type regionOracleTally struct {

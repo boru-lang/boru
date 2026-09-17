@@ -450,14 +450,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	`def m {l: ([x:Any] => [x])} end m.l 5 m.l 7`:                                       {why: "NUR038 seal: lambda twins", failsWith: "fn-value-call boundary"},
 	`def e fn [[] [Integer] [42] [x:Any] [Any] [x]] end def m {e: e/v} end m.e 5 m.e 7`: {why: "NUR038 seal: mixed 0/1-arg overload twins (NUR035 guard)", failsWith: "fn value read from a container auto-dispatches"},
 
-	// Namespace capture at a macro-expanded call site (the NUR038 wrapper
-	// retirement's re-bucketed refusal — see frontier-capture-namespace.tsv):
-	// an inner fn capturing a body-imported module namespace has no bakeable
-	// operand home at the `parse` macro's expanded call site. Successor to
-	// the graduated "closure captures a runtime-minted value" bucket (the
-	// wrapper refused earlier, at capture-slot numbering). Full graduation =
-	// a capture-slot lowering that materialises the namespace binding.
-	`def zzvfn fn [[] [] [import "boru:parselang"  import "boru:string-util"  def calc (fn [[source:Any opts:Map] [List] [StringUtil.split ' ' (ParseLang.source source)]])  end  (parse calc {trace:true} 'x + y') get 1]] zzvfn`: {why: "inner fn captures the body-imported ParseLang namespace; no bakeable operand home at the macro-expanded call site", failsWith: "capture ParseLang of calc unreachable at a call site"},
 	// GRADUATED 2026-07-17 (§9.1): the `do [M 3] error [dot code]` row
 	// compiles — an identity-less dyn-body out (the module-export instance)
 	// now mints a fresh ID at the record, restoring its tape placement and

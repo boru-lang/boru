@@ -86,6 +86,9 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR154](#nur154) | A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR155](#nur155) | A TYPED callback over a HETEROGENEOUS collection is applied to every element compiled where the interpreter applies it only to the matching ones: `each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]` is `[Integer fn… fn… fn… fn… fn…]` interpreted (a non-matching element leaves the fn VALUE as data, no_signature swallowed) and `[Integer ProperString List Map Boolean None]` compiled. The compiled callback dispatch drops the per-element signature match the interpreter performs; it must keep it, or refuse a collection it cannot prove homogeneous. Row `lang/spec/each-variants.tsv:L215` | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR156](#nur156) | A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR153](#nur153) | One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
@@ -6620,3 +6623,88 @@ the compiled tape-apply divergence — so the day any of them moves, this
 record is the first thing to update. `lang/spec/callbacks.tsv` carries the
 `fn`-word twin (parity); the diverging `=>` row stays out of the main
 corpus, as a divergence must.
+
+## NUR154 — a `case` over a factory-produced clause list miscompiles {#nur154}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/code-bodies.tsv:L142`);
+flagged by the Codex review of that PR as a row that must not join the
+main corpus while it diverges.
+
+**Rule:** a compiled program answers as the interpreter does; a compile
+that cannot honour a shape refuses it rather than answering differently.
+
+**Divergence, interpreter first.** `def mk fn [[n:Integer][List][quote [1
+'one' 'many']]] end case 1 (mk 0)` — interpreted `'one'`; compiled
+`[boru/case_error]: case: clause list must be a concrete list of
+match/block pairs (optional trailing default)`, raised at run time on the
+DEFAULT lane. `TestRegionCollectOracle` sees the same row error under the
+oracle where the interpreter does not.
+
+**Mechanism (located, not fixed).** `case` lowers its clause list as a
+static literal operand; a quoted list a fn RETURNS is a run-time value
+the lowering never reads. Either the clause operand is read live at the
+`case` dispatch, or a non-literal clause operand refuses — and a refusal
+is itself a defect owed a fix.
+
+**Fence.** The differential (`TestSpecCompiledDifferential`) and the
+region oracle both name the row; it stays in the main corpus so neither
+can go quiet on it.
+
+## NUR155 — a typed callback over a heterogeneous collection is applied to every element {#nur155}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/each-variants.tsv:L215`);
+flagged by the Codex review of that PR.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence, interpreter first.** `each ([x:Integer] => [typeof x]) [1
+'a' [2] {b:1} true none]` — interpreted `[Integer fn [[x:Integer][Any]
+[word(typeof) word(x)]] fn … fn … fn … fn …]`: the lambda is applied to
+the one Integer, and for every element its signature rejects, the
+dispatch falls through and the fn VALUE itself is the element's result.
+Compiled `[Integer ProperString List Map Boolean None]`: the closure unit
+is entered for every element with no signature check.
+
+**Mechanism (located, not fixed).** The compiled callback dispatch binds
+the element straight into the unit's param slot; the interpreter's
+per-element `MatchFnSig` is not mirrored. Either the unit's entry keeps
+the match (and falls through to the value on a miss, as the interpreter
+does), or the lowering refuses a collection it cannot prove homogeneous
+in the param's type.
+
+**Fence.** `TestSpecCompiledDifferential` names the row; it stays in the
+main corpus.
+
+## NUR156 — a module-export fn value is not applied by the compiled lane {#nur156}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/module-composition.tsv:L102–L104`);
+flagged by the Codex review of that PR.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergences, interpreter first.**
+
+1. `import module [def inc fn n:Integer Integer [n add 1] export "M"
+   {inc: inc/v}] end 5 M.inc/v apply` — `6`; compiled leaves `5` and the
+   unapplied fn on the stack.
+2. `… def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end
+   each [f] [1 2 3]` — `[2 3 4]`; compiled returns three fn VALUES.
+3. `… def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i` — `3`;
+   compiled never advances `i` and ends in `tape_exhausted`.
+
+All three are one defect: the `apply` (and the each-body apply) of a
+MODULE-HOMED fn value does not fire on the compiled lane. NUR152's home
+stamp does not close it (measured on `ceb067c`, where every fn carries
+its home): the value is right, the lowering of its application is what
+does not happen. `TestCheckTypeSoundness` also reads row 1 as TYPE
+UNSOUND (`checked` and `actual` stacks differ), the same fact seen from
+the checker.
+
+**Fence.** `TestSpecCompiledDifferential` and `TestRegionCollectOracle`
+name the rows; they stay in the main corpus. The reverse-direction rows
+NUR152 added to the same file are the control: applying the fn INSIDE
+the module compiles with parity; applying the exported value FROM main
+does not.
