@@ -9,7 +9,7 @@
 # later, at capture operand resolution in the macro-expanded `parse` call
 # site (eng/go/emit.go RecordUserCall: "capture ParseLang of calc
 # unreachable at a call site") — the namespace holds fn values and a live
-# sub-registry, so there is no bakeable operand home. Sound refusal; the
+# sub-registry, so there is no bakeable operand home. It refuses; the
 # interpreter owns the shape. Full graduation = a capture-slot lowering
 # that materialises the namespace binding at the call site.
 def zzvfn fn [[] [] [import "boru:parselang"  import "boru:string-util"  def calc (fn [[source:Any opts:Map] [List] [StringUtil.split ' ' (ParseLang.source source)]])  end  (parse calc {trace:true} 'x + y') get 1]] zzvfn	'+'	fn-body wrap of module-parselang.tsv:24 — inner calc captures the imported ParseLang namespace

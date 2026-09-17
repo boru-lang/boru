@@ -124,7 +124,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// Double read re-resolves the live binding (OpLookupDynScope).
 	mustCompileWithParity(t,
 		`def x (do [10 "x"] error [dot code]) x x`, "[x 10 10]")
-	// The word-bearing designed rows: sound refusal + fallback parity.
+	// The word-bearing designed rows: refusal + fallback parity.
 	mustRefuseWithParity(t,
 		`def msg (do [(1 add 2) "no-raise"] error [dot code]) msg`, "unpromoted computed value")
 	mustRefuseWithParity(t,
@@ -145,7 +145,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// concrete and the def lowered to nothing; since the write-back is
 	// decided by provenance (rootBindWritesBack, the sixty-third
 	// increment) a computed compound writes back like its scalar siblings
-	// above, and the def refuses first — the same sound fallback.
+	// above, and the def refuses first — the same refusal the interpreter absorbs.
 	mustRefuseWithParity(t,
 		`def x (do [[1 add 2] "x"] error [dot code]) x`, "unpromoted computed value")
 	// The RAISING region rides the catch path: the compiled run defers and
@@ -189,7 +189,7 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 		}
 	}
 
-	// Fences (sound refusal / runtime defer, parity-faithful): a TWO-split
+	// Fences (refusal / runtime defer, parity-faithful): a TWO-split
 	// program (the second read is a dynamic value preceding residual args)
 	// and a THREE-value region (runtime defer).
 	{

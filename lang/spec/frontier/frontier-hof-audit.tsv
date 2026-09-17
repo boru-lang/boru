@@ -133,7 +133,7 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 # §9f code BODIES over def-bound computed fns (2026-08-21): three
 #     divergences found by a differential sweep, each a regression
 #     from this branch's own Stage 1 / Stage 2 admissions, each made
-#     a sound refusal. The `do [(f 2)]` row GRADUATED with the
+#     a refusal. The `do [(f 2)]` row GRADUATED with the
 #     thirty-eighth increment (2026-09-09; lang/spec/bytecode-migrated.tsv):
 #     the fn-carrier substitution fires inside a nested body too and the
 #     read models as the dispatch it is. The concrete-closure row keeps

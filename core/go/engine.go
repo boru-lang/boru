@@ -3225,7 +3225,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		//     arity risk (the runtime overload returns 0 where the model
 		//     claimed 1 — a Store/Class receiver) is owned by the VM:
 		//     callPoly enforces the recorded result-count claim and defers
-		//     to the interpreter on mismatch (slow, not wrong). This is what
+		//     to the interpreter on mismatch — containment, not a cure. This is what
 		//     compiles the mini-s3/mini-redis statement idiom
 		//     `X set (k) v` newline `drop` without source grouping.
 		// Any other statement-position call (next token is a word that could
@@ -3893,7 +3893,7 @@ func (e *Engine) stepLiteral() error {
 		// of inert tokens follows — model the interpreter's auto-dispatch
 		// mid-expression (`m.double 21 eq 42` applies BEFORE `eq`). Declines
 		// leave the carrier to today's paths (the statement-tail Finalize
-		// apply, refuseStrandedMemberFn's sound refusal).
+		// apply, refuseStrandedMemberFn's refusal).
 		if e.Registry.analysisActive() && CheckBraid.TryMemberFnArrivalDispatch(e, valIdx) {
 			return nil
 		}
@@ -7857,7 +7857,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 			e.Tape.Remove(argIdxs[j])
 			closeIdx--
 		}
-	} else { //covergate:allow RecordDynMethod resolves fnVal (a member-read EVENT, gated above) and each argVal (an isRecordableLiteral — a concrete const or an event-backed carrier resolveOperand handles), so it cannot decline here — the belt keeps the sound refusal if a future window shape breaks that invariant (§compiler)
+	} else { //covergate:allow RecordDynMethod resolves fnVal (a member-read EVENT, gated above) and each argVal (an isRecordableLiteral — a concrete const or an event-backed carrier resolveOperand handles), so it cannot decline here — the belt keeps the refusal if a future window shape breaks that invariant (§compiler)
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 	}
 	return closeIdx
@@ -7944,7 +7944,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 // splicing the argument out. This is what compiles compose natively: the
 // inner `(g x)` becomes an event, and the outer `f <event>` rides the
 // single-applicable RetReplay body tail. On a decline the window is left
-// intact for the downstream machinery (sound refusal-or-replay). Returns
+// intact for the downstream machinery (refusal-or-replay). Returns
 // the possibly-shrunk closeIdx.
 func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeIdx int) int {
 	lead := e.Tape.At(leadFn)

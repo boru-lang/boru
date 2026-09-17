@@ -87,7 +87,7 @@ func TestWordReadDispatchParity(t *testing.T) {
 
 // TestWordReadDispatchRefuses pins the reads the replay cannot seat: a
 // container member, a branch residual, a stack-collected argument, a read
-// mixed with a `/v` read of the same binding — each a sound fallback that
+// mixed with a `/v` read of the same binding — each a refusal the interpreter absorbs that
 // answers the interpreter's value.
 func TestWordReadDispatchRefuses(t *testing.T) {
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")

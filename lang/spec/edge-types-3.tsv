@@ -100,7 +100,7 @@ def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) is P
 def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) dot x	1	…and inherits the root default flat
 def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) set w 1	ERROR:sealed_field	sealing covers the whole three-level field set
 def P class {x:1} def P2 refine P {y:2} def g fn [[p:P] [Integer] [p.x]] g (make P2 {})	1	a subclass instance dispatches at a parent-class param
-# (dropped) subclass-predicate mismatch dispatch recovery refuses (sound fallback); out of corpus for gate purity
+# (dropped) subclass-predicate mismatch dispatch recovery refuses (an open defect the interpreter absorbs); out of corpus for gate purity
 # a child cannot redeclare a parent field with a CONFLICTING default/type
 def P class {x:1} def P2 refine P {x:5} 1	ERROR:cannot expand parent type	a different same-name default conflicts with the parent contract
 def P class {x:1} def P2 refine P {x:'hi'} 1	ERROR:cannot expand parent type	…and so does a foreign-family redeclaration

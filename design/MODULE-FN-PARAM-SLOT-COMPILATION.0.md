@@ -181,7 +181,7 @@ matched sig's ReturnsFn). The trivial/non-trivial split in execFnDefLiteral is g
 INTERPRET byte-identical (buildFnBodyHandler runs a FOREIGN-registry body in its home
 registry via CallBoru — same execution, one dispatch path). GATE: verify-bytecode GREEN +
 crossdiff GREEN (0 interpret divergences) + fmt/vet/lint. The module comp-capture leaf
-CLEARS. FOLLOW-UP (handled, soundly falling back): recursive `test-describe` hits the
+CLEARS. FOLLOW-UP (contained, still refusing — an open defect): recursive `test-describe` hits the
 recursive-closure limit the inline path masked — TestRunSpecHarnessCompiles re-scoped to
 compile==interpret, reducibleCeiling 2->3. NEXT: §10 recursive-code-body closures (restore
 native run-spec) + the sort chain (comp-capture is cleared; the `fn call operand of unknown
@@ -314,8 +314,9 @@ the second couldn't seat ("operands of set not adjacent on top"). FIX: promote a
 single-value (`branchSingleValue`: 2-arm, both arms residualN<=1) if-result value-def read
 >=2 times (or cross-fragment) to a frame local, like a multiply-read call result;
 lowerEvents stores the merge after the branch, references re-push from the slot. The
-lower-time store hook REFUSES (sound island fallback) if the merge turns out
-variadic/diverged — a wrong store is impossible. Gates GREEN (verify-bytecode 0
+lower-time store hook REFUSES if the merge turns out variadic/diverged — a
+wrong store is impossible, and the island it leaves behind is an open defect,
+not a sanctioned landing place. Gates GREEN (verify-bytecode 0
 miscompiles + crossdiff 0 divergences + make test sole-failure the pre-existing ratchet;
 24-algo sweep NATIVE=23 MISCOMPILE=0). Off-corpus regression
 `bytecode_branch_valuedef_test.go` (top-level + each-body; confirmed it refuses with the

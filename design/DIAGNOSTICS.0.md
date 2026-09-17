@@ -133,15 +133,23 @@ error:
 2. **The compile-time OpTrap** (`tryRecordUnmatchedDispatchTrap`,
    strict-read miss) serialises the interpreter's OWN error — the full
    `BoruError` including spans/notes/suggestions — into the `TrapSpec`
-   via `RecordTrapErr`; the VM rebuilds it at `OpTrap`. Sound only when
-   the trap's operands are CONCRETE at compile time (definiteness),
-   because then check-time values == runtime values. A trap whose window
-   contains a CARRIER declines (falls back to the interpreter): the
-   carrier is not concrete at compile time, so a baked error could not
-   match the interpreter's runtime (concrete-value) one. This supersedes
-   the Phase-6 M4 carrier-disjointness trap, which is removed — a trap
-   is terminal, so the fallback costs only the (error-path) compilation
-   of a tail that never runs.
+   via `RecordTrapErr`; the VM rebuilds it at `OpTrap`. Baking is valid
+   ONLY when the trap's operands are CONCRETE at compile time
+   (definiteness), because then check-time values == runtime values. A
+   trap whose window contains a CARRIER declines: the carrier is not
+   concrete at compile time, so a baked error could not match the
+   interpreter's runtime (concrete-value) one. That decline leaves the
+   caller's `MarkUncompilable` refusal standing — the program does NOT
+   compile, and at run time it is SILENTLY re-run on the interpreter.
+   That re-run is scaffolding absorbing the gap, never a fallback this
+   design leans on and never a reason a refusal may stand: the refusal
+   is an open DEFECT, owed a proof or a mechanism and tracked to
+   closure, and the silence makes it worse by hiding the failure
+   instead of reporting it. This supersedes the Phase-6 M4
+   carrier-disjointness trap, which is removed; what that removal gives
+   up is not just the (error-path) compilation of a terminal tail that
+   never runs — it is the compiled program itself, for every shape that
+   now declines, until the defect is closed.
 3. **Return errors** thread the declaration site (`FnSig.Decl` →
    `CompiledFn.Decl`) and share `buildReturnTypeError` /
    `buildReturnCountError`, so the VM's RET raises the same two spans

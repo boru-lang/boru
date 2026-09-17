@@ -296,8 +296,9 @@ output" table next to the spec-runner docs would remove the guesswork.
 Three check-mode ratchets gate every spec addition. They are genuinely
 valuable — they forced me to *document* why three `Log.set-level loud/q`
 -style rows are runtime-only errors the static checker can't predict, and
-why a `flex`-using row trips the compiler-coverage ceiling. That is the
-right behaviour. The friction is purely discovery: a first-time
+why a `flex`-using row trips the compiler-coverage ceiling. Demanding that
+documentation is the right behaviour — though the trip itself records a row
+that does not compile, which is a defect owed a fix, not a settled state. The friction is purely discovery: a first-time
 contributor adding spec rows will see `unflagged error rows rose to 183
 (pin 181)` and not immediately know that the correct action is *"raise the
 pin with a documented reason"* vs *"fix a regression."* The pin comments

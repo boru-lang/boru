@@ -25,9 +25,11 @@ Classification legend:
   fix candidate.
 - **sharp-edge** — correct-but-unobvious semantics; at minimum a docs gap.
 - **latent-bug** — a defect in already-shipped repo code, not just the new app.
-- **compiler-limit** — the interpreter is fine; the bytecode compiler refuses
-  to lower a shape (falls back to the interpreter). Only matters for
-  force-compiled code paths (see §3).
+- **compiler-limit** — the interpreter runs the shape correctly; the
+  bytecode compiler refuses to lower it. Every such refusal is a **defect**
+  owed a fix, not a sanctioned limit: the runtime silently re-runs a
+  refused program on the interpreter, so outside force-compiled paths the
+  defect never announces itself (see §3).
 
 ---
 
@@ -176,9 +178,11 @@ def m {run: some-fn/r}   m.run {x:1}     # works
 
 ## 2. Bytecode-compiler findings
 
-The interpreter runs all of these correctly; only the bytecode compiler
-(`--force-compile` / `RunCompiled*`) refuses to lower them. Both refusals are
-**"body result of unknown provenance."**
+The interpreter runs all of these correctly; the bytecode compiler
+(`--force-compile` / `RunCompiled*`) refuses to lower them. A refusal is a
+defect owed a fix, never a sanctioned limit — both were duly closed (see
+the per-entry status notes). Both refusals are **"body result of unknown
+provenance."**
 
 ### G13a — a *single-token* bare computed-map body refuses  ·  *compiler-limit*
 
@@ -242,7 +246,8 @@ provenance gap is the type-literal, not the deferred residual. The lowercase
 A question worth its own section, because the answer is unintuitive:
 *does `vault_tui.boru` compile fully to bytecode without refusals?*
 
-**No — and it does not matter, because none of the app ever runs as bytecode.**
+**No — and that is a defect, not a footnote: none of the app ever runs as
+bytecode, so the refusals go unseen rather than being made harmless.**
 The evidence:
 
 - **The launcher runs the program on the interpreter, unconditionally.**
@@ -280,14 +285,16 @@ carrying a compile-refusing shape — `vt-detail` (G13b, `revealed: None`) —
 **since fixed** to the `none` value, so the app now carries **zero** latent
 refusals. Seven functions carry the *structural* bare-map-tail shape but all
 compile fine under the post-2026-07-11 multi-token rule; every list builder
-already def-binds (zero G11-shape list tails). The runtime impact of the
-compiler items was **zero** either way (nothing here is ever force-compiled).
+already def-binds (zero G11-shape list tails). Nothing here is ever
+force-compiled, so the compiler items never surfaced at runtime — hidden,
+not harmless: an unsurfaced refusal is still an open defect, owed a fix.
 
-**Defensible one-liner:** *"The vault TUI does not fully bytecode-compile, and
-that is irrelevant — it runs entirely on the interpreter like every boru app in
-the repo; only the spec-forced init graph is known to compile (and does), and a
-single internal function (`vt-detail`) still carries a latent refusal that is
-never exercised."*
+**Accurate one-liner:** *"The vault TUI does not fully bytecode-compile — an
+open defect, owed a fix: it runs entirely on the interpreter like every boru
+app in the repo, which silently hides the refusals instead of removing them;
+only the spec-forced init graph is known to compile (and does), and the one
+internal function that carried a refusing shape (`vt-detail`) has since been
+fixed."*
 
 ---
 

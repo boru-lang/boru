@@ -436,9 +436,10 @@ refuses — a stripped def-bound list would bake `[ProperString …]`
 instead of the values), and every code-body word is **VM-resolvable**
 (a registered native/fn-def or known literal; a value-`def` reference
 refuses, because that binding is a check-time carrier at run time). The
-island's dynamic result flows to the residual or another fallback; a
+island's dynamic result flows to the residual or another island; a
 downstream TYPED dispatch consuming it still refuses via
-`anyDynamicCarrier`, so soundness holds.
+`anyDynamicCarrier`, so no wrong answer escapes — but the refusal is a
+defect on the books, not a resolution.
 
 **Threaded computed-receiver islands LANDED.** A data arg the check
 pass can't materialise — a prior compiled event's result or a loop
@@ -462,14 +463,19 @@ loop, tail-recursive fn, baked AND threaded islands), and the
 plan-mandated one (`compiled_concurrent_test.go`) drives the CONCURRENT
 SPEC ROWS (`await` parallel bodies, `timeout`/`interval`/`cancel`)
 through `RunCompiled` under load — both data-race-free, results matching
-the interpreter. `await`/timer branch bodies run as interpreter
-fallbacks (v1), forking an isolated registry per branch.
+the interpreter. `await`/timer branch bodies run on interpreter islands
+(v1), forking an isolated registry per branch — an island is an uncompiled
+region, so each is an open defect, not a v1 resting place.
 
-**Whole-corpus gate MET, 0 divergences in values AND error taxonomy**
+**Whole-corpus PARITY gate MET, 0 divergences in values AND error taxonomy**
 (`compiled_fullcorpus_test.go`): every row (2607) runs through
-`RunCompiled` — compiling what it can, silently falling back otherwise —
-and matches the interpreter on both the value and the error code (1494
-compiled). Three compiled-mode soundness gaps were closed to get there:
+`RunCompiled` — compiling what it can, **silently** re-running the rest on
+the interpreter — and matches the interpreter on both the value and the
+error code (1494 compiled). Note what this gate does and does not say. It
+says nothing is MISCOMPILED. It says nothing about the 1113 rows that did
+not compile: the silence is why they pass this gate at all, and each is an
+open defect against the contract that all valid code compiles. Parity green
+is the floor; the coverage census, not this gate, measures the goal. Three compiled-mode soundness gaps were closed to get there:
 
 - **Fallback registry-isolation.** `CompileCheck` executes the program
   in check mode, so its RunInCheckMode words (def/import/type/macro, the
@@ -647,8 +653,9 @@ then take each residual gate-clean-or-defer.
   mixed-mode island error rendering. All pinned.
 - **`args`/`__pa` refused** — they read the interpreter's per-call args
   stack, which the VM's `CALL_USER` frame doesn't maintain; a compiled fn
-  reading `args` failed at run time, so refuse and fall back (latent
-  soundness fix).
+  reading `args` failed at run time, so it refuses — a miscompile traded for
+  a compile failure, which is better but still owed a fix: the VM needs to
+  maintain the frame's args.
 - **Per-dispatch args scratch buffer** — reuse one buffer across
   `OpCallNative` instead of allocating per call (the result is copied onto
   the stack before reuse; monomorphic natives don't retain it). Compiled

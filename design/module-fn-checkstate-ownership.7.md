@@ -158,9 +158,11 @@ Mechanism confirmed on the live tree:
   and closure captures interact across the whole corpus), not a bounded edit.
   Attempting it inside this already-vast session risks the same coverage regression
   the reroute caused; it needs its own focused effort with the differential + the
-  ceiling gating every step. The two CORRECT-by-design refusals (`macro:45`,
-  `def-node-binding:54`) and the same-family Stage-D rows (`module-parselang:23`,
-  `module-rand:38`) sit alongside it.
+  ceiling gating every step. The two refusals once called "correct-by-design"
+  (`macro:45`, `def-node-binding:54`) and the same-family Stage-D rows
+  (`module-parselang:23`, `module-rand:38`) sit alongside it. That label was
+  withdrawn — see `design/boru-bytecode-final-two-refusals.0.md` §"Correction to
+  an earlier claim": all four are **open defects**, not by-design exemptions.
 
   **DEEPER root (traced 2026-06, second pass — the precise prerequisite):** the
   capture binds CONCRETE (`AnalyseFnBody` line ~110 `r.Defs.Push(cb.Name, cb.Value)`,
@@ -257,5 +259,6 @@ was reverted. The landed get-fold is the genuine PREREQUISITE for that inlining,
 not a standalone cure.
 
 Net for this session: the get-fold precision win is landed and gated green;
-module-test:38 stays refused (faithful fallback) pending Stage-3 user-fn-call
-inlining, which is out of bounded-safe scope.
+module-test:38 stays refused pending Stage-3 user-fn-call inlining, which is
+out of bounded-safe scope for this session — deferred, not disposed of: the row
+is an open defect until it compiles.

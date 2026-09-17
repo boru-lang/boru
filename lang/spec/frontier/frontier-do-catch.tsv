@@ -5,7 +5,7 @@
 # error-over-the-region rows and the StructUtil.parse raising twin moved to
 # lang/spec/bytecode-migrated.tsv — the residual islands verbatim from an
 # OpStackMark via OpCallDynMixedFromMark. The def-msg rows and the bare
-# module-export row below keep their sound refusals (a promoted def read /
+# module-export row below keep their refusals (a promoted def read /
 # a non-event region entry decline the window).
 # RE-PINNED 2026-07-30 (design/FN-VALUE-DISPATCH.0.md): the def-msg rows'
 # region call fails dispatch, which now raises AT THE CALL — inside this very

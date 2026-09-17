@@ -13,6 +13,19 @@ a measurement said BEFORE a fix is half of why the fix is what it is. Where
 an early section states a plan the later ones overtook, the later one wins;
 each says so explicitly.
 
+> **Doctrine, corrected 2026-09-16 — read this before the log.** The
+> interpreter is NOT a fallback for the compiler and is not allowed to
+> become one. Failure to compile is a FAILURE: every refusal recorded
+> below is a DEFECT — an unimplemented or unproven case, owed a fix and
+> tracked to closure — and done is a language that compiles as a
+> developer expects, ALL valid code, no exceptions. The runtime path
+> that SILENTLY re-runs a refused program on the interpreter is
+> scaffolding absorbing a known defect, and the silence indicts it: a
+> failure that hides itself is worse, not better. This supersedes any
+> slow-not-wrong, sound-refusal or interpreter-as-fallback framing
+> surviving below; quoted text stays verbatim and is corrected outside
+> the quote.
+
 ## Where the work is
 
 Stages 0, 1 and 2 are landed. Stage 4's recorder and apply kernel are
@@ -88,7 +101,8 @@ reverses an earlier plan:
    each/fold body defs, which have no stream home until the twin is
    arm-resident — plus ops discarded with an island). The FLIP's refusal
    logic is what will tighten subset to equality: a program with an
-   unplaced twin must refuse rather than replay incompletely.
+   unplaced twin refuses rather than replay incompletely — the lesser
+   defect, not a fix, and the lowering it declines stays owed.
 
    Two lessons from the positioned half, paid for in one corpus row each:
    - `emptyFlexHookOperand`'s "no event recorded since the construction"
@@ -163,10 +177,11 @@ reverses an earlier plan:
    nested non-keep body run (a nested each's per-element transitions
    — analyseHigherOrderBodyVals now suspends through
    BodyAnalysisGuard so the taint sees it), and only at the root
-   stream (a do nested in a callback's compiled unit keeps its sound
-   refusal). Each fenced-out shape refuses to the interpreter; the
-   fences cost zero corpus rows. That recovered the four
-   do-body rows (`do [def Big Integer …]`, the predicate variant,
+   stream (a do nested in a callback's compiled unit keeps its refusal
+   — contained, not settled). Each fenced-out shape refuses and the
+   interpreter silently absorbs it; the fences cost zero corpus rows,
+   and each is a twin still owed. That recovered the four do-body rows
+   (`do [def Big Integer …]`, the predicate variant,
    `do [def x 5 raise …]`, the quoted `[def zz 5 …] do`). The ONE
    remaining regime-only refusal is the suspended-recorder each-body
    leaking def (`bytecode-migrated.tsv:41`) — deliberately unflagged:
@@ -256,8 +271,9 @@ reverses an earlier plan:
    refusing at the fence, and the nested row COMPILES silently wrong —
    the divergence exactly as NUR115 described it, now pinned by rows
    that fail without the fix. `eachrank` alone still carries the
-   structural ReturnsFn; it is safe only because it refuses early, and
-   its comment now says an analysing ReturnsFn comes before its flag.
+   structural ReturnsFn; it escapes the miscompile only by refusing
+   early — which is a defect of its own, not a fix — and its comment
+   now says an analysing ReturnsFn comes before its flag.
    The general test stands: a new body word whose ReturnsFn does not
    analyse the body is invisible to the twins, and no gate will say so.
 
@@ -325,8 +341,10 @@ reverses an earlier plan:
      with the import outside the do compiles, and the import without the
      call compiles; it is the import-and-call pair inside one once-run
      body that leaves a twin the adoption declines.
-     Every one is the sound direction: a replay the rollback would lose is
-     exactly what the placement gate refuses. Pinned in
+     None of them answers wrong — a replay the rollback would lose is
+     exactly what the placement gate refuses — and none of them is
+     settled: fifteen variants that used to compile and must compile
+     again, every one an open defect owed a fix. Pinned in
      `varyRefusalLedger` with one representative row per shape in
      lang/spec/frontier/frontier-twin-placement.tsv (each ledgered with
      its failure mode, so a silent graduation or a drift fails). Each
@@ -720,12 +738,13 @@ rollback bails whole once an adoption has appended a unit.
    the twin machinery cannot see it. Of the two, only `foldaxis`
    diverges silently; `eachrank` refuses earlier as a Stage-2
    code-body word, which sends the whole program to the interpreter —
-   the sound direction. So the flip's remaining work here is one word,
-   with a known mechanism: give foldaxis an analysing ReturnsFn (which
-   also earns it the flag, measured through a new oracle row), or
-   refuse the shape. Registered as **NUR115** — the register's job is
-   that a divergence is never silently baselined, and this one is
-   invisible to every existing gate.
+   the lesser of two defects, not an outcome to settle for. So the
+   flip's remaining work here is one word, with a known mechanism: give
+   foldaxis an analysing ReturnsFn (which also earns it the flag,
+   measured through a new oracle row), or refuse the shape. Registered
+   as **NUR115** — the register's job is that a divergence is never
+   silently baselined, and this one is invisible to every existing
+   gate.
 
    **The payoff list's frozen-read deletion is NOT licensed by the
    flip alone — measured, not argued.** Disabling the stored-handler
@@ -1733,8 +1752,9 @@ Measured this session, with instrumentation since reverted:
   `OpLookupDynScope`. It is an INLINE top-level body: `def k 5  do [k add 2]
   def k 9  do [k add 2]` opens a fnRec, so the "no-op at top level" exemption
   misses it, yet the emitter records a SEPARATE closure per site (`f0` bakes
-  5, `f1` bakes 9) and the program is correct with the latch suppressed. Cost
-  today is performance, not correctness. And for every read that DOES reach
+  5, `f1` bakes 9) and the program is correct with the latch suppressed. What
+  it costs today is a program that does not compile — a defect in its own
+  right, not merely a slower run. And for every read that DOES reach
   the predicate the two conjuncts are locally faithful — 17 concrete
   module-scope reads, all baking; 11 non-concrete, all live; zero
   counterexamples either way. The proxy's fault is not in the expression. It
@@ -2316,11 +2336,11 @@ arity-aware mark (`producerReturnedClosureArity` at the consumer, the
 scan recording the gap) is the refinement, when a row pays for it. Pinned
 by `core/go/engine_collection_hazard_test.go` (the scan's scope),
 `compiler/go/collection_hazard_test.go` (each consumer), and
-`lang/go/collection_hazard_test.go` (ten witnesses as sound fallbacks,
-twelve admitted twins as parity).
+`lang/go/collection_hazard_test.go` (ten refusing witnesses as open
+defects, twelve admitted twins as parity).
 
 **NUR122 (pending) — the nameless compiled apply.** Measuring the
-fallbacks also measured the error lane of the fn-value apply that
+refusals also measured the error lane of the fn-value apply that
 ALREADY compiles: `def f fn [[g:Function x:Integer][Integer][g x]]  f
 (z:String => [z]) 5` raises `signature_error: cannot call `g``
 interpreted and `type_error: f: expected 1 return value(s), got 2 — [fn
@@ -2592,7 +2612,8 @@ residual (`j typeof` Integer / Function, `{a: j}`, `if true [j] [0]`, `[1]
 each [j]`, `do [j]`) or followed by an event (`j  def y 1`, `j  5 drop`):
 42 interpreted, `fn` compiled, exit 0. `j j add` reaches the VM's
 CALL_NATIVE_POLY no-match deferral and answers 84 through the interpreter
-(slow, not wrong — and not a native compile). `j/v` renders `fn` for the
+(the interpreter absorbing what the compiler did not lower — not a native
+compile, and not a resting place). `j/v` renders `fn` for the
 interpreter's `fn j` (NUR119). Refusing a gradual read consumed elsewhere
 would refuse every `def n (m get "k")  n add 1` in the corpus, so the fix
 is a per-read DEOPT: after the read's push, an op that tests the value at
@@ -2753,7 +2774,7 @@ call site) — NUR118, pre-existing, the same on their plain-data twins.
 `[1] each [(j typeof)]` and `[1 2] fold [j add] 0` refuse before the
 point is planned ("result above a literal (Stage 3)", pre-existing) and a
 lambda body over the local (`[1] each [x:Integer => [j]]`) refuses at the
-code-body word — sound fallbacks both. Compiler pins:
+code-body word — two unimplemented cases, each owed a fix. Compiler pins:
 TestPlanDeoptsCaptureSeedsParent (the capture point, the seeded parent,
 the dropped children, a rebind of the name in one of the parent's OPEN
 nested frames — the arm the closure sits in, whose bind is popped with
@@ -3121,7 +3142,8 @@ so `RET` truncates them exactly as it already does for params.
 read inside a list literal, the capture used with the lambda's own param
 (`x j add` → 49), two reads that both dispatch (`j j add` → 84), the plain-data
 twins that pay the test alone, and a fn whose effects must run exactly once.
-Two shapes keep the whole-program refusal, a sound interpreter fallback:
+Two shapes still refuse the whole program — the interpreter absorbs them at
+run time, which keeps the answer right and leaves the defect open:
 `{a: j}` as the lambda's body ("body result of unknown provenance") and two
 factory instances live at once ("fn value precedes residual args").
 
@@ -4745,8 +4767,9 @@ value.
   trims the round exactly as a `break` from a callee does. Body
   classification, the iterator slot, the event and its result marks are
   `for`'s. The lowering admits a condition netting exactly one value and
-  refuses every other count — sound, since the interpreter's fallback
-  raises (empty) or drops (extra) where the lowered shape cannot.
+  refuses every other count — no miscompile, since the interpreter raises
+  (empty) or drops (extra) where the lowered shape cannot, but the counts
+  it refuses are a lowering still owed.
 - The check-mode model (`whileReturnsFn`) analyses the BODY first and the
   condition second. A def the body rebinds is registered loop-carried by
   the body's analysis, and a condition analysed before it resolved its
@@ -5216,8 +5239,9 @@ first store, the program falls back to the interpreter, and the answer is
 still RIGHT, with `compiled=false` and an EMPTY refusal reason to explain it.
 The write-back moved after the reconciliation. It had been latent because no
 existing residual path allocated a local; the general lesson is that
-"compiled=false with no reason" is a bug report, not a refusal, and worth a
-test of its own (`TestResidualRebuildFrameCountsTheSpills`).
+"compiled=false with no reason" is a bug report of a second kind — not even
+a stated refusal — and worth a test of its own
+(`TestResidualRebuildFrameCountsTheSpills`).
 
 ## `for-each` never compiled its body, and that is why its Function form could not (2026-09-10, the forty-fourth increment)
 
@@ -6602,8 +6626,8 @@ still silently produced an answer for an unnamed kind. A comment cannot hold
 a line that the default case undercuts. So the fix is not a fifth `case`: the
 DEFAULT now returns `true`. An event kind the screen does not name is assumed
 to read the stack, which declines the plan. Adding a region producer now
-costs a refusal until someone lists its operands — loud, and in the sound
-direction.
+costs a refusal until someone lists its operands — loud rather than
+silent, which is the lesser defect, not a good outcome.
 
 **Generalise this when you meet the shape.** Two widenings in this line have
 now admitted producers to a consumer without widening the consumer's screen.
@@ -7812,8 +7836,9 @@ peek-in-place fast path (one instruction, no stack effect). One pin
 moved: `def x (do [[1 add 2] "x"] error [dot code]) x` refused at the
 REORDER stage ("residual shape beyond Stage 1") because the def lowered
 to nothing; it now refuses at the def ("unpromoted computed value"), as
-its scalar siblings on the same row already did — the same sound
-fallback, and the corpus's refusal count is unchanged at zero.
+its scalar siblings on the same row already did — the same standing
+defect, no miscompile either way, and the corpus's refusal count is
+unchanged at zero.
 
 This resolves **NUR140**, recorded in review of #458 with the verdict
 "resolve by fix, in the twin lowering"; the record is deleted from
@@ -8263,7 +8288,8 @@ byte for byte.
 
 ### Why a raise, and what reaches it
 
-A defer is slow and never wrong only while the interpreter can be re-run.
+A defer is absorbed by the interpreter only while the interpreter can be
+re-run — and even absorbed, it is a program that did not compile.
 An effect already performed FENCES that re-run (core/go/effects.go), and
 the user then sees the defer's own internal error. On the sixty-fifth
 increment's tree as first built this was a program:
@@ -8369,9 +8395,11 @@ not terminate where the interpreter errors.
 
 ### What lands
 
-A refusal, not a lowering — the sound answer the `each` body's
+A refusal, not a lowering — the same treatment the `each` body's
 transitions already had, at the site that already refuses an undef the
-compiled lane cannot place. `undefHandler`'s blocked branch now notifies
+compiled lane cannot place. It trades a wrong answer for a defect of the
+other kind, and the lowering stays owed: the sixty-eighth increment below
+starts paying it. `undefHandler`'s blocked branch now notifies
 the recorder through its own hook, and the two undef hooks
 (`RefuseCarriedUndef`, `RefuseSpeculativeUndef`) refuse through one
 `MarkUncompilable` (`refuseUndef` — the census counts sites, and the
@@ -8482,7 +8510,7 @@ recorded round was the one whose reads before the undef baked `5` (`for 2
 [ k  undef k ]` compiled its second iteration's read as a const).
 
 **The miss is the interpreter's undefined_word, raised.** `OpLookupDynScope`
-defers on a miss — "slow, not wrong" while the interpreter can be re-run
+defers on a miss — on the old reasoning that the interpreter can be re-run
 — and the sixty-sixth increment's reason applies here in full: an effect
 performed before the read (`for 2 [ (print "x") undef k ] k`) fences the
 re-run, and the user saw `internal_error` where the interpreter raises
@@ -9172,9 +9200,11 @@ no call site compiled) or nothing — never `g`'s local. This is the
 seventieth's family L inside a fn body, and no compiled twin reproduces a
 frame-local shadow the interpreter does not tear down. `InstallDef` refuses
 it now (core_helpers.go's family-L block gains a fourth arm: `FnBodyDepth >
-0 && capture-free && specFnJoin(name)`), so the whole program falls back —
-slow, not wrong. A DISJOINT signature (a fresh push, placed for the frame
-by the seventy-second increment) and a NON-family overlap (the compiled
+0 && capture-free && specFnJoin(name)`), so the whole program falls back to
+the interpreter — containment, not a fix: the refusal is a defect of its
+own, still owed a compiled twin for the frame-local shadow. A DISJOINT
+signature (a fresh push, placed for the frame by the seventy-second
+increment) and a NON-family overlap (the compiled
 `BindDefReplace` twin) never enter the arm and keep compiling.
 
 **The defer stranding (second half).** `def svc (service {})  add {}
@@ -9229,6 +9259,18 @@ bail and its nested and fn-body shapes fall back with parity; the genuine
 error stays trapped; the family-L-in-fn-body redefinition refuses with
 parity while the disjoint and non-family shapes compile. No new refusal
 site (the family-L `MarkUncompilable` is reused, the census stays at 92).
+
+**Ledger correction (2026-09-17).** This increment closed NUR149's ledger
+entry as "Resolved" and deleted it from `NUR.md`. That was wrong, and the
+entry is reinstated as **OPEN**. What the increment did was remove a
+miscompile by making the shape REFUSE — the lesser of two failures, and a
+real fix to a real wrong answer. The shape still does not compile, and
+`RunCompiled` silently re-runs it on the interpreter, so nothing in a run
+reports the failure. Under the contract that all valid code compiles, a
+refusal closes nothing: NUR149 stays open until a unit's in-place
+redefinition of a live-lead name is PLACED as the transition it is, with
+its units compiled. The same reading applies to every "resolved by
+refusing" entry anywhere in this log.
 
 ## What the ledger excludes, and why each exclusion was measured
 
@@ -9392,13 +9434,15 @@ position than the construct that produced the binding.
 - The interpreter stays the reference oracle. Islanding interpretation
   inside compiled code is not acceptable, and the interpreter is not an
   escape hatch. The word island (the sixth increment) and the per-read
-  deopt (the ninth and tenth) are the measured, bounded exception: they
-  enter the interpreter only through the interp-entry census's existing
-  site, only for a binding the check pass cannot type as a fn or as data
-  (a gradual read the interpreter dispatches as a WORD when the value is
-  a fn), and never to avoid a lowering the compiler could make — a
-  refusal there would refuse the corpus's own `def n (m get "k")  n add
-  1`, and a slot push there is a wrong answer.
+  deopt (the ninth and tenth) are measured, bounded SCAFFOLDING, not a
+  licence: they enter the interpreter only through the interp-entry
+  census's existing site, only for a binding the check pass cannot type
+  as a fn or as data (a gradual read the interpreter dispatches as a
+  WORD when the value is a fn), and never to avoid a lowering the
+  compiler could make — a refusal there would refuse the corpus's own
+  `def n (m get "k")  n add 1`, and a slot push there is a wrong answer.
+  Each is a defect the interp-entry census counts and each is owed a
+  native lowering; neither is a place this design rests.
 
 ## Where the tests live
 
@@ -9425,56 +9469,56 @@ position than the construct that produced the binding.
 | `lang/go/restep_deopt_test.go` | the timing family's parity and lowering (the op follows the swap), the siblings the note leaves alone, the closure family's parity (`TestClosureValueReStepParity`), and the open shapes pinned as measured |
 | `core/go/engine_closure_bridge_test.go` / `eng/go/closure_bridge_test.go` | the closure VALUE bridge from both sides: a bridged closure dispatches over the stack and collects forward, a declined bridge / a quoted closure / a parked 0-arg lambda / a no-match stay data — as the PAYLOAD, never the bridge; the seam's declines, the Anonymous flag, and the closure's identity riding on the bridge |
 | `core/go/fn_identity_test.go` / `lang/go/closure_identity_test.go` | the closure identity token: copies of one closure are one function (`dup eq` true on both lanes), constructions are distinct, a token-less payload is nothing, a bridged copy is eq to the closure either way round |
-| `lang/go/gradual_apply_test.go` | `apply` over a gradual lead inside a unit: the parity rows (the W combinator's body and returned lambda, the fetched-fn apply, the no-match twins byte for byte), the runtime states the op defers (a lens, a 0-arg fn, a 2-arg fn) and the sound refusals (the main-program apply over a produced closure, a two-return body) |
+| `lang/go/gradual_apply_test.go` | `apply` over a gradual lead inside a unit: the parity rows (the W combinator's body and returned lambda, the fetched-fn apply, the no-match twins byte for byte), the runtime states the op defers (a lens, a 0-arg fn, a 2-arg fn) and the refusals (the main-program apply over a produced closure, a two-return body) |
 | `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`) | `recordGradualApplyEvent`'s declines and its one positive arm (the event's flavour flags and position) |
 | `eng/go/vm_seam7_test.go` (`TestSeam7CallDynApplyOneArms`, `TestSeam7CallDynApplyTopArms`) | the apply-word op arm by arm: one result commits, a 0-arg fn fires above the receiver (the tail form) and defers (the event form), a lens defers, data raises the interpreter's own `apply` no-match, `closureUnit`'s declines, the re-step's island error |
 | `core/go/fn_identity_test.go` (`TestParenTrailingFnApply`) | the paren classification's trailing arm — a Dynamic last value is the lead exactly when the apply word holds it pending — and `MarkApplied`'s arms |
 | `core/go/engine_stage5b_test.go` (`TestS5BCloseParenPendingGradualLead`) | the paren collapse over a pending gradual lead records the trailing apply with a GRADUAL out and collapses the window; with nothing pending the same window is kept |
 | `compiler/go/plain_lambda_test.go` | `plainLambda`'s arms (a code body, a typed lambda, no contract, a pattern param) and that a code-body closure keeps its own count discipline |
 | `eng/go/frame_name_test.go` | `nameFrameFns`: a lambda bound for a named param takes the name; an unnamed slot, a value already so named, a module wrapper and a compiled closure are left alone; `bindUnitLocals` names through it |
-| `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the sound refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |
-| `lang/go/produced_closure_apply_test.go` | the produced-closure apply family's parity AND that every row runs VM-native (the interp-entry hook sees no `vm:island` seam — the closure-arity fix) (K, W, C, I = S K K, Church true and false, the fetched-fn apply, two applies of one source, a token after the word, a deeper value, a paren, fn and lambda units, an inline fn literal) and its sound refusals (nothing beneath, a no-match beneath, the carrier lead, a produced closure over another, a two-arg closure over literals, the B row's two-value residual) |
+| `lang/go/closure_capture_test.go` | the family's parity (the bare-name apply, the gradual param, the `/v` read, the rename, a module wrapper dispatching), the refusals (the downstream apply, the gradual fn arg, the pattern lambda), and the module-wrapper render pinned open |
+| `lang/go/produced_closure_apply_test.go` | the produced-closure apply family's parity AND that every row runs VM-native (the interp-entry hook sees no `vm:island` seam — the closure-arity fix) (K, W, C, I = S K K, Church true and false, the fetched-fn apply, two applies of one source, a token after the word, a deeper value, a paren, fn and lambda units, an inline fn literal) and its refusals (nothing beneath, a no-match beneath, the carrier lead, a produced closure over another, a two-arg closure over literals, the B row's two-value residual) |
 | `compiler/go/produced_closure_apply_test.go` | `PendingClosureApply` (match by the sig body's array, a carrier entry skipped, an equal body in another array, no unit, a nil recorder), `producedFnValue` (a unit's closure, a fn-value apply's result, a native result), Finalize's refusal of a leftover pending apply |
 | `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | apply's one-arg overload over a concrete closure is exempt from the argument-slot refusal; the two-arg overload and a fn-typed carrier keep it |
-| `lang/go/val_read_alias_test.go` | the thirty-first increment's parity (both Church pair rows, two pairs read twice each, the plain-fn and two-value twins, the def-read family on the apply word, a rebind, two closures of one source, both spellings, the data slot, the callee-side apply, the frame render) and its sound refusals (nothing beneath, a no-match beneath, a code body's read, a read in another unit, a conditional rebind, the nested replacing def with the interpreter's answer) |
+| `lang/go/val_read_alias_test.go` | the thirty-first increment's parity (both Church pair rows, two pairs read twice each, the plain-fn and two-value twins, the def-read family on the apply word, a rebind, two closures of one source, both spellings, the data slot, the callee-side apply, the frame render) and its refusals (nothing beneath, a no-match beneath, a code body's read, a read in another unit, a conditional rebind, the nested replacing def with the interpreter's answer) |
 | `compiler/go/val_read_alias_test.go` | `noteValBind` (no registry, a non-fn or unproduced value, the recorded producer/entry/generation/epoch, the conditional and rebind drops), `aliasValRead` (no name, registry or unit; no entry; a moved epoch; the unmoved binding; the same entry on top again; another entry; the name unbound), `NoteValRead` with no fn unit open, and `argIsProducedClosure`'s value-read skip |
 | `compiler/go/zz_triage_split_check_test.go` (`TestStartFnCompileFinishPendingApply`) | a fn value beneath the pending apply is the window's argument; a mid-body pending apply still refuses |
 | `check/go/pending_closure_apply_test.go` (`TestRecordUserCallOrApplyPendingFirst`) | the record site's order: the pending route before the name fallback, the fallback when nothing is pending |
 | `core/go/engine_word_read_test.go` (`TestStepWordValNotesTheName`) | a `/v` read hands the recorder the binding's name beside the read's id |
 | `core/go/check_fncarrier_test.go` (`TestInstallDefRefusesCapturingRedefinitionInFnBody`) | installDef's fn-body arm: a capturing redefinition inside a fn body refuses; a capture-free literal there and a capturing value at the top level do not |
-| `lang/go/apply_data_receiver_test.go` | the thirty-second increment's parity (the native Church and/or rows, the U-combinator factorial, the numeral's `n/v` spelling), the two islanding Church rows pinned as islanded with parity, and its sound refusals with the interpreter's answers (the csucc row, its minimal shape, a fn value beneath a paren window with no apply word) |
+| `lang/go/apply_data_receiver_test.go` | the thirty-second increment's parity (the native Church and/or rows, the U-combinator factorial, the numeral's `n/v` spelling), the two islanding Church rows pinned as islanded with parity, and its refusals with the interpreter's answers (the csucc row, its minimal shape, a fn value beneath a paren window with no apply word) |
 | `compiler/go/zz_triage_from_check_test.go` (`TestRecordDynApplyDeclines`), `compiler/go/word_read_test.go` (`TestRecordGradualApplyEventDeclines`, `TestFnResidualReplayReasonArms`) | a fn-valued window entry records under the apply word and declines without it; a fn-valued receiver records; the read accounting runs under a tail apply (an uncredited read refuses, a credited one passes) |
-| `lang/go/literal_read_test.go` | the thirty-third increment's parity (the read handed to a Function param, the arrow spelling, an unrelated bind between, the closure handed through, the value return and its render, the apply-word spelling, the top-level read) and its sound refusals with the interpreter's answers (a rebound capture, the literal redefined, the read in a branch arm, the CPS row) |
+| `lang/go/literal_read_test.go` | the thirty-third increment's parity (the read handed to a Function param, the arrow spelling, an unrelated bind between, the closure handed through, the value return and its render, the apply-word spelling, the top-level read) and its refusals with the interpreter's answers (a rebound capture, the literal redefined, the read in a branch arm, the CPS row) |
 | `compiler/go/val_read_alias_test.go` (`TestNoteValBindLiteralArms`, `TestAliasValReadLiteralArms`) | the bind arm (a capturing anonymous or nameless literal records with its captures' epochs; capture-free, named or quoted records nothing) and the read arm (a moved capture epoch declines, an unbuildable closure declines and caches nothing, `readOps` resolves first) |
-| `lang/go/arm_tail_apply_test.go` | the thirty-fourth increment's parity (both CPS rows, a then-arm apply, both arms applying, a two-value window inside the arm) and its sound refusal with the interpreter's answer (a pending fn with nothing beneath it in the arm) |
+| `lang/go/arm_tail_apply_test.go` | the thirty-fourth increment's parity (both CPS rows, a then-arm apply, both arms applying, a two-value window inside the arm) and its refusal with the interpreter's answer (a pending fn with nothing beneath it in the arm) |
 | `compiler/go/arm_tail_apply_test.go` | `ArmTailApply`: an inactive state, a residual of one, a top that is no pending apply and a window the recorder declines pass through; a pending fn over the arm's window records the apply event at the apply's position, consumes the entry and nets one gradual value |
 | `core/go/recorder_stage5_test.go` | the inactive `ArmTailApply` passes the residual through |
 | `eng/go/frame_name_test.go`, `eng/go/store_name_test.go` | a named closure is renamed by a frame binding and by a store; the same name is a no-op |
 | `check/go/pending_closure_apply_test.go` | the record site's arms: the out and arg gates, the pending lookup, the recorder's decline, the freshened carrier (parent, Dynamic, a nil parent as Any), a fn-value out under a fresh id, the window reversal |
 | `core/go/recorder_stage5_test.go` | the inactive `PendingClosureApply` default misses |
 | `eng/go/vm_apply_closure_arity_test.go` | the apply op's closure arm: a closure of another arity (param slots, not `NParams`) takes the re-step and parks; the event form defers the parked pair — no compiling program reaches the arm, so it is pinned at the seam |
-| `lang/go/tail_apply_collapse_test.go` | the tail-apply collapse's parity (both B rows, a def-bound closure whose tail applies its capture, two calls), its sound refusal (a gradual param beneath the tail apply), and the returned lambda's count contract: the unbound under-applying tail byte for byte, the def-bound form message-identical with the position pinned open (NUR122) |
+| `lang/go/tail_apply_collapse_test.go` | the tail-apply collapse's parity (both B rows, a def-bound closure whose tail applies its capture, two calls), its refusal (a gradual param beneath the tail apply), and the returned lambda's count contract: the unbound under-applying tail byte for byte, the def-bound form message-identical with the position pinned open (NUR122) |
 | `check/go/tail_apply_collapse_test.go` | `collapseTailApply`'s arms (no tail apply, a residual shorter or wider than the window, a data top, the window to one gradual result, a fn value on top) and `collapseElidedTailApply`'s (a tuple contract, an empty body, a one-value residual, another last word, a data top, the collapse) |
 | `compiler/go/unit_tail_apply_test.go` | `UnitTailApply`: a nil recorder, a unit out of range, no tail apply, the window width |
 | `compiler/go/store_name_test.go` | `seatStoreName`: no recorder, no table, a slot no def named, the name at the store's pc |
 | `eng/go/store_name_test.go` | `storeNameAt` (the main code's and a unit's table, an empty name, an unseated pc, a unit beyond the program) and `nameStoredClosure` (a plain value, a named closure, a known unit's RetName and render, a unit beyond the program, a unit the bridge cannot describe) |
-| `lang/go/function_slot_test.go` | the Function-slot family's parity (both `cnot` rows, the cif7 twin that ran cnot's body, a produced closure at a plain fn's Function param applied, paren-bounded, held as data, and the frame render) and its sound refusals (an Any slot, apply's Function slot over a carrier) |
+| `lang/go/function_slot_test.go` | the Function-slot family's parity (both `cnot` rows, the cif7 twin that ran cnot's body, a produced closure at a plain fn's Function param applied, paren-bounded, held as data, and the frame render) and its refusals (an Any slot, apply's Function slot over a carrier) |
 | `compiler/go/emit_codebody_guard_test.go` (`TestArgIsProducedClosureArms`) | a declared Function param and a positional Function slot are exempt; an Any slot, a nil signature and apply's own Function slot over a carrier keep the refusal |
 | `eng/go/frame_name_test.go` | a compiled closure bound for a named param is named (its render kept when the payload names no unit); a capture slot is left alone |
-| `lang/go/def_computed_fn_test.go` | the thirty-fifth increment's parity (the eight fn-util rows, the event spelling, the bare read, a read with a following statement, the apply feeding a dispatch, two reads, a 0-param wrapper, the wrapper's own error at the read's caret) and its sound refusals with the interpreter's answers (the stack form, a param read in a fn body, a paren in the window, the survivor inside a paren, an overloaded flip operand, and the two statement-window rows whose interpreter answer is the signature_error) |
+| `lang/go/def_computed_fn_test.go` | the thirty-fifth increment's parity (the eight fn-util rows, the event spelling, the bare read, a read with a following statement, the apply feeding a dispatch, two reads, a 0-param wrapper, the wrapper's own error at the read's caret) and its refusals with the interpreter's answers (the stack form, a param read in a fn body, a paren in the window, the survivor inside a paren, an overloaded flip operand, and the two statement-window rows whose interpreter answer is the signature_error) |
 | `check/go/fn_read_arrival_test.go` | `tryShapedFnReadArrival`: the consumed window (the def name, the read carrier, one dynamic result, the extra token left), the arity-0 read, every refusal with its reason (a window past the tape end, a statement end inside it, a word inside it, an operand with no compiled home), and the silent declines (quoted, no id, unread, unclaimed, not a fn carrier); `tryShapedFnReadWindow`, the plain-check half: the collapsed window and its declines (quoted, not def-bound, no claim, short, non-fixed, past the end) |
 | `core/go/fn_shape_test.go` | `IsSelfContainedGoFnDef`'s arms and `NoteFnShape` / `FnShapeArity` (inactive, no id, a negative count, the claim, a 0 claim, the clone, the reset) |
 | `eng/go/vm_self_contained_fn_test.go` | the own-signature apply under a registered word of the same label (leading, the method op, the declined arg count), `callDynMethod`'s modifier-chain retry (a flipped delegation and its error), and a handler error anchored on the value's token text |
 | `compiler/go/fn_shape_claim_test.go` | the claim as `producerReturnedClosureArity`'s third source (claimed, unclaimed, no registry) and `DefReadName` |
 | `core/go/check_fncarrier_test.go` (`TestStepWordPlainCheckSubstitutesCarrier`), `lang/go/def_computed_fn_test.go` (`TestDefComputedFnPlainCheckClean`) | the plain check reads a bound fn carrier with no undefined_word and no unused_def, and the silent-fallback mark stays a compile pass's |
-| `lang/go/closure_read_model_test.go` | the thirty-sixth increment's parity (the typeof operand, the repeated reads, the `mk2` chain, the fn-util curry chain, three curry levels, the plain read, a read whose window is its statement, a two-param closure's window, a capturing closure read twice) and its sound refusals with the interpreter's answers (the survivor inside a paren, the two flattened-window spellings whose interpreter answer is the signature_error), and the filter-body twin pinned as islanded with parity |
+| `lang/go/closure_read_model_test.go` | the thirty-sixth increment's parity (the typeof operand, the repeated reads, the `mk2` chain, the fn-util curry chain, three curry levels, the plain read, a read whose window is its statement, a two-param closure's window, a capturing closure read twice) and its refusals with the interpreter's answers (the survivor inside a paren, the two flattened-window spellings whose interpreter answer is the signature_error), and the filter-body twin pinned as islanded with parity |
 | `compiler/go/fn_shape_claim_test.go` (`TestClosureOpShapeArms`, `TestNoteClosureShapeBindArms`) | the closure shape (a factory of factories claims the chain, a two-value body has no result, a unit beyond the program, an event, the bounded recursion, a const lambda, a const beyond the table) and the claim at the def (no registry, a plain value, the unit's arity, a standing claim kept, an unproduced carrier) |
 | `check/go/fn_read_arrival_test.go` (`TestShapedFnReadResultShape`) | a claim with a result shape makes the read's result a Function carrier carrying the next level, on both halves |
 | `lang/go/modules/fn_test.go` (`TestFnShapeFromOperandArms`) | curry's chain claim (three unary levels over three params, no claim over a unary fn or no operand) |
 | `lang/go/modules/fn_test.go` (`TestFnShapeReturnsClaims`, `TestFnShapeFromOperandArms`) | the ReturnsFn mints the carrier and claims a constant, claims nothing for an unknown arity, mints alone with no registry; the operand arms (partial's slot, memoize's count, no operand, a non-fn, a carrier, an overload) |
-| `lang/go/while_compile_test.go` | the thirty-seventh increment's parity (the falsy condition, `break`, the truthiness read, the flex counter, a two-arm if over the enclosing computation, a carried rebind read by the condition and after the loop, zero iterations, a computed condition over the carried slot, `break` and `continue` discarding the round, a `continue` and a `break` inside a branch arm, a fn-body while over a param, a fn body rebinding a module def, a nested while, two carried rebinds) and its sound refusals (the empty condition with the interpreter's runtime_error, a two-value condition, a multi-value body with a rebind) |
+| `lang/go/while_compile_test.go` | the thirty-seventh increment's parity (the falsy condition, `break`, the truthiness read, the flex counter, a two-arm if over the enclosing computation, a carried rebind read by the condition and after the loop, zero iterations, a computed condition over the carried slot, `break` and `continue` discarding the round, a `continue` and a `break` inside a branch arm, a fn-body while over a param, a fn body rebinding a module def, a nested while, two carried rebinds) and its refusals (the empty condition with the interpreter's runtime_error, a two-value condition, a multi-value body with a rebind) |
 | `compiler/go/while_record_test.go` | `RecordWhile`'s arms (inactive, a missing fragment, a condition netting zero or two values, a condition of unknown provenance, the recorded loop: the consts 0/1/MaxInt64, the condition fragment and its out, the scratch iterator) and the loop traversals visiting the condition (`childFragments`, `fragmentOuts`, `forEachFragmentOperand`, `fragmentResultSeqs`) |
-| `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the sound refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
+| `lang/go/nested_body_fn_carrier_test.go` | the thirty-eighth increment's parity (a `do` body's read, consumed downstream, two reads, a multi-value body, both branch arms, an arm-local def, a loop body, a body-local def, a while body, an args-bearing `do` body in a fn, a data-list read inside a `do`), the plain check clean of undefined_word / unused_def on the nested reads (an unbound name still flagged), and the refusals (a lambda factory's concrete closure in a `do` body and a branch arm, the stack-form `each`, a two-value arm) |
 | `core/go/check_fncarrier_test.go` (`TestStepWordNestedBodySubstitutesCarrier`) | the substitution fires at NestedBodyDepth > 0 with no diagnostic and no compile-only mark |
 | `compiler/go/emit_codebody_guard_test.go` (`TestRecordDynBindNotesOnlyConcreteClosures`) | `RecordDynBind` notes a concrete produced closure for the code-body gate and not a carrier-bound one |
 | `lang/go/while_compile_test.go` (`TestWhileEmptyConditionTraps`, `TestWhileNonEmptyConditionDoesNotTrap`) | the forty-second increment: the empty condition compiles to a terminal trap with the interpreter's own error (with a prefix before it, and whatever the body is), a condition WITH tokens never traps, and the empty condition below the top level keeps the arity refusal |

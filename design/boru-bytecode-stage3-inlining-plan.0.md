@@ -56,8 +56,10 @@ Live refusals (5), from the corpus census:
 | `module-rand:38` | residual value of unknown provenance | Stage-3 |
 | `module-test:38` | `code-body word test-describe (Stage 2)` | Stage-3 |
 
-The two correct refusals are PROVEN unsound to compile by running the
-interpreter:
+Two refusals are PROVEN unsound to compile **as written today** — running the
+interpreter shows what a naive lowering would get wrong. That makes each a
+refusal in place of a miscompile, which is the better of two failures; it does
+not make either acceptable. Both are open defects, owed a faithful lowering:
 
 - `def c1 1 def mk fn [[c1:Integer] [List] [[c1]]] mk 9` → `[1]`. The
   returned `[[c1]]` resolves `c1` against the MODULE binding (1) at
@@ -66,11 +68,15 @@ interpreter:
   `body result of unknown provenance` guard is what keeps it sound.
 - `def loopy (macro [[a] [quote [loopy unquote a]]]) macroexpand (loopy 1)`
   → raises `expansion too deep`, exactly the `ERROR:` the spec requires.
-  Static divergence is undecidable; refuse-and-raise is the only sound
-  behaviour.
+  Static divergence is undecidable, so no STATIC lowering decides it —
+  which is an argument for lowering the expansion generically (residual code
+  that runs the interpreter's own decision at runtime and raises the same
+  error), not for refusing the program.
 
-So `refusalCeiling=0` is unreachable without unsoundness. The reachable
-target is the 3 module rows.
+So `refusalCeiling=0` is not reachable by any shortcut that keeps the answers
+right — but it remains the target, because every refusal above is a defect on
+the books. The nearest reachable step is the 3 module rows; the two here are
+owed a generic lowering, not a permanent exemption.
 
 ## The single root cause of the 3 module rows
 
@@ -468,13 +474,21 @@ Chain (each step verified):
 2. Because `list-of` didn't consume the body as NoEvalArgs, the body
    `[Rand.int 0 10]` is unconsumed → auto-evaluated (`autoEvalStack`); concrete
    `Rand.int` fully dispatches, producing ONE Integer.
-3. `RecordMakeList` (emit.go:2085-2095) then **soundly REFUSES** to bake that
+3. `RecordMakeList` (emit.go:2085-2095) then **REFUSES to const-bake** that
    list: its element came from a stateful module word (`!IsBuiltinWord("rand-int")`).
    Baking it would freeze ONE rng draw and replicate it instead of re-running per
-   iteration — a WRONG answer. **This refusal is correct-by-design.**
+   iteration — a WRONG answer. **Declining to const-fold here is correct**: it is
+   a choice about which lowering is faithful, and the faithful lowering is
+   per-iteration code, not a baked constant.
 
-So module-rand:38 has a SOUND-refusal component (like def-node-binding:54 and
-macro:45): every shortcut to compile it as written hits the freeze-gate.
+   What is NOT correct is where that leaves the row. Today the declined bake
+   escalates into a whole-program refusal, so `module-rand:38` does not compile
+   at all — and that is the defect: the answer to "cannot const-fold" is
+   residual code that re-runs the draw per iteration, not a refusal.
+
+So module-rand:38's blocker is the freeze-gate (like def-node-binding:54 and
+macro:45): every shortcut to compile it as written hits that gate, so the row
+needs the per-iteration lowering rather than a shortcut.
 Confirmed unsound shortcuts:
 - Baking the module-word body in RecordMakeList → wrong answer (differential gate
   catches it).

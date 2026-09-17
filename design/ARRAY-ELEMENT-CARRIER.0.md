@@ -14,7 +14,8 @@ off-corpus shapes, so every stage ships `make verify-bytecode` GREEN +
 `make crossdiff` GREEN + a hand-pinned off-corpus `RunCompiledStrict == Run`
 regression. A wrong element type is a SILENT MISCOMPILE (the body compiles a
 numeric op the runtime value can't take), so this feature is gated harder than
-a lowering refusal — a refusal falls back soundly; a wrong carrier does not.
+a lowering refusal — a refusal is an open defect, owed a fix; a wrong carrier
+is that same defect AND a wrong answer.
 
 ## 1. The motivating cascade (radix-msd, fully root-caused)
 
@@ -104,8 +105,9 @@ Mirror the typed-list carrier exactly, on the Array side:
   is a CHECK-MODE carrier shape only, like `NewCarrierTypedList`.
 
 `T = TAny` (the untyped case) must behave EXACTLY as today: `get` → gradual
-`Any` → the existing sound refusal path. The feature only ever NARROWS the
-untyped-Any baseline to a known T; it never widens past Any.
+`Any` → the existing refusal path — an open defect owed a fix, not an outcome
+this design is content with. The feature only ever NARROWS the untyped-Any
+baseline to a known T; it never widens past Any.
 
 **Precedent — and its trap.** The kernel ALREADY does check-mode write-type
 tracking for Stores: `CheckState.ContextTypes` (`registry.go:451`) records
@@ -183,12 +185,13 @@ Before typing any `get`, compute T as the join (least upper bound) of the
 resolves to this array, anywhere in the fn body — order-independent, so every
 `get` sees the FINAL bound. A `get`/`set` whose receiver can't be statically
 resolved to a single tracked array (escapes, returned, stored in a map, passed
-to another fn that may alias) collapses T to `Any` (today's behaviour) — sound
-by construction. radix-msd's arrays are fn-local with conforming Integer sets,
-so T stays `Integer`. **An upper bound by construction, no lattice fixed-point,
-no flow-sensitivity.** The cost is the receiver-resolution / escape analysis
-(which `def`-bound array each `get`/`set` targets), but that is a bounded static
-query.
+to another fn that may alias) collapses T to `Any` (today's behaviour) — a
+trivial upper bound, bought by giving up the element type and taking the
+refusal that follows. radix-msd's arrays are fn-local with conforming Integer
+sets, so T stays `Integer`. **An upper bound by construction, no lattice
+fixed-point, no flow-sensitivity.** The cost is the receiver-resolution /
+escape analysis (which `def`-bound array each `get`/`set` targets), but that is
+a bounded static query.
 
 **B is cheaper and safer than first written, because the join half is
 precedented.** The `ContextTypes` / `RecordContextSet` / `JoinCarriers` /
@@ -207,10 +210,11 @@ alias), and (3) every `set` on it writes a value conforming to the `make`
 source element. If all three hold → `get` returns the strict `make` element
 type; otherwise → `Any`. A pure admissibility gate: Option B with "join"
 replaced by "prove monomorphic-or-bail". Cheapest; types radix-msd; declines
-anything it can't prove (sound). **Best risk/reward for a FIRST landing** — it
-converts the feature from "track a widening lattice through mutation+aliasing"
-into "admit only the provably-invariant arrays", which is a refusal (sound) when
-the proof fails.
+anything it can't prove — and every such decline is an open defect, owed a fix
+and tracked to closure. **Best risk/reward for a FIRST landing** — it converts
+the feature from "track a widening lattice through mutation+aliasing" into
+"admit only the provably-invariant arrays", which refuses when the proof fails.
+That refusal is an unproven case to be closed, never a sanctioned outcome.
 
 **C is NOT a flat, fixed-point-free scan — the motivating program proves it.**
 Two structural complications, both verified against `msd-go` (`sort.boru:980`):
@@ -220,7 +224,8 @@ Two structural complications, both verified against `msd-go` (`sort.boru:980`):
   condition (3) cannot be checked by scanning set-values literally; it must
   **assume `counts:Array<Integer>`, type the body under that assumption, then
   verify every set's value-type ≤ Integer** — a single-shot optimistic fixpoint
-  (sound: an inconsistent assumption fails the verify and declines), not a scan.
+  (an inconsistent assumption fails the verify and declines, leaving a case
+  unproven and owed a fix), not a scan.
 - **Inter-array dependency.** `def cur (make Array (iota 11 each [var [[v]
   counts get v]]))` (`sort.boru:1000`) takes its element type FROM `counts get`,
   so `cur` can only be admitted AFTER `counts`. The pre-pass is a small
@@ -235,12 +240,13 @@ So spell C's algorithm as assume-then-verify with a dependency order, not as a
 for the one program this feature exists to fix.
 
 Recommendation: **ship Option C first** (it clears radix-msd and is an
-admissibility gate — a wrong proof declines, it never miscompiles), then
-generalise to B if more corpus shapes need a widening element type — the leading
-trigger being build-from-empty (§9), which C structurally cannot type. Do NOT
-start with A. If the §4b pre-pass is being built for C anyway, weigh going
-straight to B-keyed-by-identity: it reuses the shipped join machinery (§3) and
-subsumes C's cases plus build-from-empty, with C's escape gate kept purely as the
+admissibility gate — a wrong proof declines rather than miscompiling, and
+each decline is a defect still owed a fix), then generalise to B if more
+corpus shapes need a widening element type — the leading trigger being
+build-from-empty (§9), which C structurally cannot type. Do NOT start with A.
+If the §4b pre-pass is being built for C anyway, weigh going straight to
+B-keyed-by-identity: it reuses the shipped join machinery (§3) and subsumes
+C's cases plus build-from-empty, with C's escape gate kept purely as the
 admission filter on top.
 
 ## 6. Open decision: strict vs gradual element carrier from `get`
@@ -371,8 +377,10 @@ So this ONE feature flips radix-msd → 30/30, retiring the sort chain.
   (bubble … tim + default `sort`), 3 joke (bogo, stooge, slow). radix-msd — the
   last refusing leaf — went refuse→compile, retiring the sort chain. (Force-
   compiling the test FILES still refuses on their `each`/`test` harness wrapping;
-  those are expected coverage gaps that fall back soundly, not algorithm
-  failures.)
+  those refusals are open compiler defects, owed a fix and tracked to closure,
+  not algorithm failures. The runtime SILENTLY re-runs the refused program on
+  the interpreter — scaffolding that hides the defect rather than excusing it,
+  and the silence makes it worse.)
 
 The admissibility gate (Stage 3) is the soundness keystone — its NEGATIVE tests
 matter more than the positive: an array that escapes, that a non-conforming set

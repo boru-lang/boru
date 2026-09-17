@@ -1667,7 +1667,7 @@ func TestFactoryApplyCompiles(t *testing.T) {
 	// design/PAREN-RESTEP-RULE.0.md). The native compile was a MISCOMPILE
 	// that its own parity assertion could not see.
 	//
-	// Now a sound refusal. Unlike the `((mk2 5) 10)` family this one does not
+	// Now a refusal. Unlike the `((mk2 5) 10)` family this one does not
 	// graduate with Stage 3 — there is nothing to apply here; if it ever
 	// compiles again it must compile to the PLACED pair.
 	// GRADUATED 2026-08-27 (Stage 3): compiles natively to the PLACED pair,
@@ -3175,7 +3175,7 @@ func TestReturnedCapturingClosureApply(t *testing.T) {
 		// on "both lanes" while reading gotI from the compiled lane (NUR106).
 		// The interpreter places — `(mk 5)` has one survivor — and answers
 		// `fn (Integer) 10`; the native compile was a miscompile. It is pinned
-		// as a sound refusal below. The two per-iteration rows stay positive:
+		// as a refusal below. The two per-iteration rows stay positive:
 		// a `for` BODY closes through a frame rewind, so both lanes apply.
 		// per-iteration apply inside a for body — the landed row.
 		{`def mk2 fn [[x:Integer] [Function] [([y:Integer] => [x add y])]]  for 3 [(mk2 i) 10]`, "[10 11 12]"},
@@ -3579,7 +3579,7 @@ func TestOuterCompilesNoIsland(t *testing.T) {
 // compiled code must not leak one pooled identity across calls
 // (OpPushConstFresh). Reads of one per-call binding still share within a
 // call; an enclosing binding's value keeps its one shared instance; an
-// escaping multi-read literal refuses (sound fallback).
+// escaping multi-read literal refuses (refused, then interpreted).
 func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 	parity := []struct{ name, src string }{
 		{"list literal returned", `def mk fn [[] [List] [[1]]] ((mk) eq (mk))`},
@@ -4309,7 +4309,7 @@ func TestTypedDefBindCompiles(t *testing.T) {
 }
 
 // PR #225 P1 review findings — two auto-dispatch/identity escapes, both
-// probe-confirmed divergences before the fix, both now sound refusals.
+// probe-confirmed divergences before the fix, both now refusals.
 func TestPR225P1Refusals(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default

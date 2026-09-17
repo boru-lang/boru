@@ -3,24 +3,35 @@
 A 30-agent adversarial sweep (1 mapper + 6 feature-axis hunters + per-divergence
 verifiers) probing `--compile` vs the interpreter across the whole compiler. Every
 finding is a confirmed `--compile != interpret` divergence on the HEAD binary — a
-real violation of the bytecode compiler's one hard guarantee (the silent fallback
-should have masked it). All are OFF the langspec corpus, so `verify-bytecode` /
-the differential is BLIND to them — the same blind spot that hid the four
-violations already fixed this session (param-guard-skip ×2, tail-return-bypass,
-Options over-raise).
+real violation of the bytecode compiler's one hard guarantee (these compiled and
+ran wrong; the silent routing of refused programs onto the interpreter never even
+fired). All are OFF the langspec corpus, so `verify-bytecode` / the differential
+is BLIND to them — the same blind spot that hid the four violations already fixed
+this session (param-guard-skip ×2, tail-return-bypass, Options over-raise).
 
-They cluster into **5 root-cause mechanisms**. The sound fix for each is EITHER
-compile-it-correctly OR `MarkUncompilable` (refuse → fall back to the interpreter);
-refusal is always sound and keeps the guarantee. Coverage (voxgig) is a separate,
-advisory axis — never trade soundness for it.
+They cluster into **5 root-cause mechanisms**. The fix for each is the same one:
+compile it correctly. `MarkUncompilable` (refuse → the runtime silently re-runs
+the program on the interpreter) is NOT a fix — it is scaffolding that hides a
+defect instead of removing it, and a failure that hides itself is worse than a
+loud one. A refusal keeps a wrong answer off the screen; it does not make the
+case work, and every refusal left standing is an unimplemented case owed a
+compiled lowering and tracked to closure. Done is: all valid code compiles, no
+exceptions. Coverage (voxgig) is a separate, advisory axis — but a refusal is
+not a coverage trade-off, it is an outstanding bug.
 
 ## STATUS (updated)
 
-- **D, C, B — FIXED** (commits in this session): higher-order over gradual-Any
-  collection (refuse), multi-overload user fn + gradual-Any (refuse), typed-def
-  refinement validate/reparent (refuse dynamic + DepScalar, keep static newtype).
-- **E — CLOSED (2026-07-03)**: the fn-body fn-value apply was already fixed; the
-  two remainders now refuse soundly. (1) **Deferred-field auto-invoke**
+- **D, C — CONTAINED, STILL OPEN** (commits in this session): higher-order over
+  gradual-Any collection (refuse), multi-overload user fn + gradual-Any
+  (refuse). The wrong answers are off the screen, but neither shape compiles,
+  so both are open defects owed a compiled lowering — not closed work.
+- **B — FIXED** (contained this session, compiled July 2026): typed-def
+  refinement validate/reparent. The first commit only refused (dynamic +
+  DepScalar, keep static newtype) — that was containment, not a fix; the
+  compiled store-with-reparent recorded below is the fix.
+- **E — PARTLY FIXED, STILL OPEN (2026-07-03)**: the fn-body fn-value apply was
+  already fixed; the two remainders only REFUSE, which contains two open
+  defects rather than closing them. (1) **Deferred-field auto-invoke**
   (`{f:make42/r}.f`, bare `{b:f/r} dot b`, `.f 5`): a get/dot/getr/dotr read
   from a container holding a 0-arg-satisfiable fn member refuses
   ("fn value read from a container auto-dispatches (Stage 3)") at both the mono
@@ -42,20 +53,24 @@ advisory axis — never trade soundness for it.
   Census cost: 2 rows (3,875-row corpus), both previously divergence-exposed
   (genuinely 0-param members); applied member calls (`m.b 2`) and multi-param
   member reads keep compiling — the parked phantom 0-arg sig is discounted
-  (fnValueZeroArg).
-- **A — FIXED (2026-07-03)**: per-call identity for fn-body compound literals.
-  `intern` now pools compound consts by value ID (same materialised value = one
-  slot; distinct source literals keep distinct IDs, so gotcha #13 is untouched),
-  `resolveOperand` marks fn-unit compound-literal consts whose ID is NOT an
-  enclosing binding's (an `emitUnit.enclosingIDs` DefTable snapshot at unit
-  open), and `freshenFnUnitConsts` (finalize) rewrites a single-push-site marked
+  (fnValueZeroArg). Both refusals are scaffolding over open defects: the owed
+  fixes are an auto-invoke lowering for the container read and a real
+  curried-chain apply.
+- **A — FIXED except one refused case (2026-07-03)**: per-call identity for
+  fn-body compound literals. `intern` now pools compound consts by value ID
+  (same materialised value = one slot; distinct source literals keep distinct
+  IDs, so gotcha #13 is untouched), `resolveOperand` marks fn-unit
+  compound-literal consts whose ID is NOT an enclosing binding's (an
+  `emitUnit.enclosingIDs` DefTable snapshot at unit open), and
+  `freshenFnUnitConsts` (finalize) rewrites a single-push-site marked
   const IN PLACE to the new `OpPushConstFresh` (pushes `CloneValue(const)` —
   fresh identity per call, and per loop iteration). Multi-push-site marked
   consts are reads of ONE per-call binding: they stay shared when every
   declared return conforms to Scalar (nothing compound escapes — exact
   within-call parity), and REFUSE otherwise ("compound body literal read at
-  multiple sites may escape") — the sound fallback until a per-call local-seat
-  lowering exists. Landing test: `lang/go/bytecode_findings_test.go::
+  multiple sites may escape") — containment for a still-open case, not a fix:
+  the per-call local-seat lowering is owed. Landing test:
+  `lang/go/bytecode_findings_test.go::
   TestFnBodyContainerLiteralIdentity` (8 parity shapes + the refusal).
   Enclosing-binding reads (`def c [9] … [c]`) keep shared identity — probe-
   verified `(get) eq (get)` stays true in both engines.
@@ -63,8 +78,9 @@ advisory axis — never trade soundness for it.
 ## A. Const-pool aliasing of a fn-returned container literal (4 cases) — SILENT wrong value
 
 > **FIXED 2026-07-03** — see the STATUS block above (OpPushConstFresh +
-> ID-pooled compound interning + the multi-site escape refusal). The analysis
-> below is the historical record that scoped the fix.
+> ID-pooled compound interning; the multi-site escape refusal is an open
+> remainder, not part of the fix). The analysis below is the historical record
+> that scoped the fix.
 
 UPDATE after scoping: the practical impact is NARROWER than first thought, and the
 fix is the riskiest. A fn body `[1]` bakes as a WHOLE const (`PUSH_CONST k0; RET`),
@@ -86,8 +102,9 @@ literal as OpMakeList/OpMakeMap (recursive for nested containers) instead of
 PUSH_CONST. Both are VM/lowering changes to the intentional const-bake path —
 deferred to a focused effort rather than rushed at this session's tail, since a
 mistake here (mutation safety, the isInertConst whitelist) risks a NEW, broader
-miscompile. A blanket refusal of container-literal-returning fns would restore
-soundness but drop coverage on a deliberate optimization.
+miscompile. A blanket refusal of container-literal-returning fns would only hide
+the divergence: the fn still would not compile, and the defect would sit open
+behind the silent interpreter re-run.
 
 ```
 def mk fn [[] [List] [[1]]]   ((mk) eq (mk))     # compiled true  ; interp false
@@ -100,8 +117,9 @@ identity: if the program MUTATES the returned container, the mutation persists
 across calls in compiled but not interpreted. Mechanism: typed-carrier-return
 lowering const-bakes the literal body. Fix: a container literal that ESCAPES a fn
 (returned/stored) must be constructed fresh (OpMakeList/OpMakeMap), not
-const-loaded — or refuse to compile a fn whose residual is a bare container
-literal. Relates to the `isInertConst` invariant (COMPILABLE-SUBSET.md §4).
+const-loaded. Refusing to compile a fn whose residual is a bare container
+literal is not a second fix — it parks the defect behind the silent interpreter
+re-run. Relates to the `isInertConst` invariant (COMPILABLE-SUBSET.md §4).
 
 ## B. Typed-local refinement binding drops the tag (7 cases) — both directions
 
@@ -119,14 +137,16 @@ refine NEWTYPE (`Pos`) — so `typeof`, sig-dispatch (`need fn [[p:Pos]…]`), a
 `[Pos]` return-check all see the base `Integer`. The interpreter's `def` runs
 `ReparentValue` + the unify/predicate validation. Fix: at a typed-local store,
 mirror the interpreter — validate the predicate and reparent to the declared type
-(the value-level check, not just base-lattice membership). Or refuse typed-local
-refinement bindings.
+(the value-level check, not just base-lattice membership). Refusing typed-local
+refinement bindings is not an alternative fix — it leaves the binding
+uncompiled and the defect open.
 
-**UPDATE (July 2026) — the refusal is now COMPILED.** The interim sound fix
-(refuse dynamic + DepScalar, keep the static newtype on the const pool) was
-replaced by a compiled store-with-reparent: `defTypedHandler`'s refinement
-branches record an `OpBindTyped` event (`EmitState.RecordTypedBind`) whose VM
-half (`RunTypedBind`, eng/go/typed_bind.go) runs the SAME
+**UPDATE (July 2026) — the refusal is now COMPILED.** The interim containment
+(refuse dynamic + DepScalar, keep the static newtype on the const pool) — never
+a fix, just the defect parked — was replaced by a compiled store-with-reparent,
+which is the fix: `defTypedHandler`'s refinement branches record an
+`OpBindTyped` event (`EmitState.RecordTypedBind`) whose VM half
+(`RunTypedBind`, eng/go/typed_bind.go) runs the SAME
 RunPredicate / Unify-against-builtin-ancestor / DepScalar-Unify the interpreter
 runs over the runtime value, raising the byte-identical plain error on failure
 and reparenting via `ReparentValue` where the interpreter reparents. The bound
@@ -152,10 +172,12 @@ instead of dispatching to it (the interpreter runtime-re-matches). Natives are
 immune (OpCallNativePoly re-matches); user-fn overloads have no poly path.
 SHARPLY MASKED when the reachable overloads return DIFFERENT types (carrier.go
 widens to a Disjunct, ≥2 distinct returns → safe path); UNIFORM return types →
-single commit → bug. Fix: MarkUncompilable when a gradual arg reaches a user fn
-whose other overloads could also match (the COMPILABLE-SUBSET claim "multi-overload
-gradual calls never compile" is UNENFORCED for user fns) — or record a
-runtime-dispatching user-poly call.
+single commit → bug. Fix: record a runtime-dispatching user-poly call, so the
+shape actually compiles. MarkUncompilable when a gradual arg reaches a user fn
+whose other overloads could also match (the COMPILABLE-SUBSET claim
+"multi-overload gradual calls never compile" is UNENFORCED for user fns) stops
+the wrong answer, but parks the defect: the call still fails to compile and the
+silent interpreter re-run hides that it did.
 
 ## D. each/fold/scan over a gradual-Any collection (3 cases) — bakes Map overload
 
@@ -167,8 +189,9 @@ each/fold/scan's overload is statically resolved from the collection arg's Any
 return type to the `[TList,TMap]` MAP signature (eachMapHandler / foldMapInitHandler
 / scanMapHandler). At run time the value is a List → "expected concrete map". The
 interpreter dispatches over the List. Fix: route a gradual-Any collection through
-the native poly path (OpCallNativePoly re-match, as other dynamic natives do), or
-refuse each/fold/scan when the collection arg is gradual-Any.
+the native poly path (OpCallNativePoly re-match, as other dynamic natives do).
+Refusing each/fold/scan when the collection arg is gradual-Any only stops the
+wrong answer; the call still does not compile, so the defect stays open.
 
 ## E. Dynamic Function-value application / auto-invoke (5 cases) — Function leaks
 
@@ -188,8 +211,10 @@ closure extracted from a container — is not lowered to a dynamic apply
 upvalue. The Function leaks as data / the wrong capture is used. Fix: lower
 `(fnv args)` over a Function-typed value to a dynamic apply with a runtime param
 guard + auto-invoke for nullary fn values; fix each-block capture upvalue
-promotion — or refuse these dynamic-Function shapes. (Biggest cluster; OpCallDynamic
-is a real feature, so refusal is the near-term sound fix.)
+promotion. (Biggest cluster; OpCallDynamic is a real feature. Refusing these
+dynamic-Function shapes is near-term containment only — it keeps the wrong
+value off the screen, but each refused shape is an unimplemented case owed the
+lowering above.)
 
 ## Residual latent risks (mapper, unconfirmed — probe before trusting)
 
@@ -208,7 +233,9 @@ is a real feature, so refusal is the near-term sound fix.)
 ## Priority
 
 Silent wrong-value (A, B-`typeof`, E-closures) outranks loud compiled-errors (C, D,
-B-spurious-error) — a wrong value corrupts silently; a spurious error fails safe.
-All are real. Fix order by tractability of a SOUND fix: C and D (clean refusal /
-poly route) first, then A (fresh-construct), then B (reparent+validate at the
-typed-local store), then E (refuse now, OpCallDynamic later).
+B-spurious-error) — a wrong value corrupts silently; a spurious error at least
+announces itself. All are real, and all stay defects until they compile. Fix
+order by tractability: C and D (poly route) first, then A (fresh-construct),
+then B (reparent+validate at the typed-local store), then E (OpCallDynamic).
+Where a refusal lands ahead of the lowering it is scaffolding, not a stopping
+point — the program still has to compile.

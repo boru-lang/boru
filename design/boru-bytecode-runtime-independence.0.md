@@ -178,11 +178,12 @@ the plan's "~10, mechanical" framing:
 The residual 3 "multi-return fn" refusals are **count-mismatch error rows**
 (`def r2 fn [[n] [Integer] [n n]] r2 1` — declared 1, body 2): the body count
 differs from the DECLARED returns, which the interpreter raises as a
-return-count error, so they correctly refuse and fall back. A few rows that
+return-count error. Refusing beats miscompiling here, but the rows still do
+not compile, so all three stay open. A few rows that
 previously refused here now reach a LATER refusal (apply / fn-value, if-branch),
 which the remaining items below own.
 
-**Deferred (still refused, soundly):**
+**Deferred (still refused — open defects, not closed items):**
 
 - **dup-body islands** (`each [dup add]`): `dup` returns `[args[0], args[0]]` —
   the SAME `Value.ID` twice (`spliceMatchResults` does not re-mint), so the two

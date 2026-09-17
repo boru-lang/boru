@@ -73,7 +73,8 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// TERMINAL: the window's variadic result must land in the program
 	// residual — nothing may follow the forward literal except statement
 	// furniture. A downstream consumer would need a static count the island
-	// cannot promise; those shapes keep the sound refusal.
+	// cannot promise; those shapes keep the refusal — an open defect, not a
+	// settled boundary.
 	for i := fwdIdx + 1; i < e.Tape.Len(); i++ {
 		t := e.Tape.At(i)
 		if !core.IsEnd(t) && !core.IsDefCleanup(t) {
@@ -83,7 +84,8 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// BYSTANDER-FREE: a data value below the window (`1 2 3 do … add 1` —
 	// the 1 and 2 the dispatch never touched) breaks the in-order
 	// reconciliation once the window re-pushes its const operands above
-	// where the bystanders land; those shapes keep the sound refusal.
+	// where the bystanders land; those shapes keep the refusal — an open
+	// defect, not a settled boundary.
 	for i := 0; i < minPos; i++ {
 		t := e.Tape.At(i)
 		if !core.IsEnd(t) && !core.IsDefCleanup(t) {

@@ -999,10 +999,11 @@ func (a *Boru) RunCompiled(src string) ([]any, bool, error) {
 //     and a runtime soundness bailout (an internal_error re-run, a latent
 //     compiler bug the differential gate catches, not a compilable-subset gap).
 //   - the first offending construct otherwise: a GENUINE whole-program refusal
-//     (CompileCheck returned a nil Program with no check error) that silently
-//     fell back to the slower interpreter (design/COMPILABLE-SUBSET.md §1 — the
-//     refusal is "slow, not wrong"). A refusal is surprising performance debt,
-//     so the CLI surfaces this reason as a warning.
+//     (CompileCheck returned a nil Program with no check error) whose program
+//     was then silently re-run on the interpreter (design/COMPILABLE-SUBSET.md
+//     §1). The answer is right and nothing in the run says the compile failed,
+//     which is what makes the silence bad rather than harmless: a refusal is a
+//     DEFECT owed a fix, so the CLI surfaces this reason as a warning.
 func (a *Boru) RunCompiledReason(src string) ([]any, bool, string, error) {
 	vals, ran, reason, err := a.RunAutoValues(src)
 	if err != nil {

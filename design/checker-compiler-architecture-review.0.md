@@ -492,9 +492,13 @@ this without solving the scope-resolution divergence first.
   `recordClosureDispatch` run a throwaway `EmitState` first). Sound and reusable.
 - **The refusal ratchet** as a regression gate. Excellent — keep it, but see
   §6 for refining it.
-- **Soundness-first refusals.** Several refusals are *correct* (mutable-instance
-  aliasing, scope-resolution divergence). The discipline of "refuse rather than
-  diverge" is right; the differential gate (0 mismatches) is the backstop.
+- **Soundness-first refusals.** Several refusals stop a real divergence
+  (mutable-instance aliasing, scope-resolution divergence). The discipline of
+  "refuse rather than diverge" is right *as between those two failures* — a
+  refusal is the lesser one — but neither is an outcome the design accepts:
+  each of these rows still fails to compile, so each is an open defect owed a
+  faithful lowering. The differential gate (0 mismatches) is the backstop that
+  keeps the worse failure out; it is not a licence for the lesser one.
 
 ---
 
@@ -829,7 +833,8 @@ this session's.)
   […]`) seats as a frame local inside a fn unit. Cleared the 4
   `error [get code case [value-clauses]]` rows — completing the error cluster (all
   6 `error [handler]` rows now compile; the residual dynamic-output rows are
-  `await` + path-modifier, correct refusals). Sound because a non-repushable
+  `await` + path-modifier — refusals that are correct in preferring no answer
+  to a wrong one, and still open defects). Sound because a non-repushable
   computed event reaching `CanSeatAcrossFragment` is always produced in the
   current unit (an enclosing value is a capture → local → repushable).
 - **53 → 51** — catch frame (`do` / `error` closure bodies that raise): `raise` is

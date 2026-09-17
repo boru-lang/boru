@@ -474,7 +474,8 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	// hooks memoize, deterministic over src+opts), so its spliced tokens
 	// record exactly as the interpreter splices them. A compile pass that
 	// cannot mirror the hook faithfully (non-concrete src/opts) REFUSES
-	// instead of baking the transducer — slow, not wrong.
+	// instead of baking the transducer — no wrong answer, but no compile
+	// either, so the shape stays an open defect.
 	// `mini` has no expansion cache, so the hook re-runs whenever the call
 	// is stepped — hooks memoize their compile (as `re` does). A
 	// non-concrete runtime src falls back to the standard transducer call.

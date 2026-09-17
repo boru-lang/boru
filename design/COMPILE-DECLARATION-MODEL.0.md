@@ -142,8 +142,10 @@ const islandCeiling = 0  // 102 -> 36 -> 29 -> 26 -> 15 -> 9 -> 7 -> 0
 ```
 
 This is worth stating plainly: **the ratchet is now ledgering working programs
-as frontier failures.** That was a sound trade at 102 islands. It reads
-differently at 7.
+as frontier failures** — and that is what it should do. A program that runs but
+does not compile IS a failure against the contract, at 102 islands and at 7
+alike; the shrinking count changes how much work is left, not whether the
+remainder counts.
 
 ---
 

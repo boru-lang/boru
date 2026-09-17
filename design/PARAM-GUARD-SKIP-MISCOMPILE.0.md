@@ -3,9 +3,11 @@
 Found by the Stage-D-2/4 suspend-skip adversarial workflow (a 4-family,
 ~413-program sweep). This is a **real `compile == interpret` VIOLATION** — the
 compiled path returns a value where the interpreter raises — distinct from the
-advisory `--force-compile` refusals the voxgig leaves are about. It is
-**pre-existing** (reproduces on a clean tree, independent of this session's
-commits) and fires under **both** `--compile` and `--force-compile`.
+`--force-compile` refusals the voxgig leaves are about (those are open defects
+in their own right, each owed a fix; this one is worse still, because it
+answers, and answers wrongly). It is **pre-existing** (reproduces on a clean
+tree, independent of this session's commits) and fires under **both**
+`--compile` and `--force-compile`.
 
 ## Repro
 
@@ -42,18 +44,22 @@ interpreter raises.
 declared RETURN types via `v.Is(exp)` (`vm.go:825`, `CompiledFn.Returns`). The
 param boundary has no equivalent.
 
-## Why the obvious fix (refuse) is wrong
+## Why the obvious move (refuse) is not a fix
 
 A conservative refusal — "a gradual `Dynamic` arg to a concrete param refuses,
-fall back to the interpreter" (tried in `buildFnBodyReturnsFn`,
-`core_helpers.go`) — DOES fix the miscompile and passes `verify-bytecode` (the
-`minCompiledRows` differential gate) and the voxgig sweep (13/26, unchanged).
-But it **OVER-refuses a legitimate compilation**: `TestRunSpecHarnessCompiles`'s
-`Test.run-spec` harness applies a single-overload `double fn [[n:Integer]…]` to
-its spec's case inputs (gradual-`Any`, but genuinely `Integer` at runtime), which
-must compile. Statically the laundered-`List` and the matching-`Integer` are
-INDISTINGUISHABLE (both gradual-`Any` → concrete param), so refusal cannot be
-narrowed cleanly.
+and the runtime SILENTLY re-runs the program on the interpreter" (tried in
+`buildFnBodyReturnsFn`, `core_helpers.go`) — DOES remove the wrong answer, and
+passes `verify-bytecode` (the `minCompiledRows` differential gate) and the
+voxgig sweep (13/26, unchanged). But it fixes nothing: it trades a miscompile
+for a compile failure — code a developer expects to compile, silently demoted
+to the interpreter, the silence making it worse — and that is an open defect
+owed a fix, not a resting state. On top of that it **OVER-refuses a legitimate
+compilation**: `TestRunSpecHarnessCompiles`'s `Test.run-spec` harness applies a
+single-overload `double fn [[n:Integer]…]` to its spec's case inputs
+(gradual-`Any`, but genuinely `Integer` at runtime), which must compile.
+Statically the laundered-`List` and the matching-`Integer` are
+INDISTINGUISHABLE (both gradual-`Any` → concrete param), so the refusal cannot
+even be narrowed cleanly.
 
 ## The correct fix: a runtime param guard at OpCallUser
 
@@ -73,12 +79,15 @@ Mirror the `OpRet` return-check on the param boundary:
    signature for `<fn>`". A nil / `Any` param is a guaranteed pass (skip).
 4. **Multi-overload**: the compiled `OpCallUser` targets ONE chosen overload; a
    gradual arg could match a DIFFERENT overload at run time, where a single-unit
-   guard would raise but the interpreter re-dispatches. So EITHER restrict the
-   guard to single-overload fns and keep the conservative refusal for
-   multi-overload gradual calls, OR record a user-fn poly (re-match across
-   overloads at run time, the OpCallNativePoly analogue). First determine whether
-   multi-overload gradual calls even compile today (if they already refuse, the
-   guard is unconditionally safe).
+   guard would raise but the interpreter re-dispatches. The move that finishes
+   the job is to record a user-fn poly (re-match across overloads at run time,
+   the OpCallNativePoly analogue). Restricting the guard to single-overload fns
+   is a stopgap only: it leaves multi-overload gradual calls refusing, and such
+   a refusal is an open defect owed a fix and tracked to closure, never a
+   second branch of the design. First determine whether multi-overload gradual
+   calls even compile today (if they already refuse, that standing refusal is
+   itself an outstanding defect, and the guard can land ahead of it without
+   over-raising).
 
 ## Verification discipline (mandatory — the differential is blind here)
 

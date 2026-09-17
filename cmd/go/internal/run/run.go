@@ -300,7 +300,8 @@ const (
 // ledger to the documented residue and flipped the default to TRY):
 //
 //	(default)                             → TRY: bytecode when compilable,
-//	                                        silent sound fallback otherwise
+//	                                        silently interpreted otherwise
+//	                                        (a hidden compile failure)
 //	--compile        / BORU_COMPILE        → TRY, explicitly
 //	--force-compile  / BORU_FORCE_COMPILE  → FORCE: refusal is a loud error
 //	--no-compile     / BORU_NO_COMPILE     → OFF, wins over all of the above

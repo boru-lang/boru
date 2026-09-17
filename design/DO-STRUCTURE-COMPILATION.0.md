@@ -23,7 +23,7 @@ All disassembly below is reproducible with:
 ```bash
 cd cmd/go && go build -o bin/boru ./boru
 ./bin/boru check --emit -e 'do [1 add 2]'      # show the bytecode + site report
-./bin/boru run  -force-compile -e 'do [1 add 2]'  # require the VM path (no fallback)
+./bin/boru run  -force-compile -e 'do [1 add 2]'  # require the VM path (refusal aborts)
 ```
 
 ## 1. What `do` is
@@ -44,7 +44,8 @@ The `[List]` sig is the interesting one for compilation. It declares:
   is what makes the body **closure-compilable**.
 - `CompileEffect: CompileFallbackBody` — if the closure can't be built, the
   construct may still compile as a Stage-5 interpreter island rather than
-  forcing a whole-program interpreter fallback.
+  putting the whole program on the interpreter. The island contains an
+  unclosed case; it is not a tier the design rests on.
 
 The runtime handler (`doListHandler`) is a single seam:
 
@@ -152,8 +153,9 @@ one: a silent refusal is a defect that reports itself as success.
 **At the time of writing, `do [ … ]` did NOT always natively compile.** The
 original text continued "and it doesn't need to, because the fallback is the
 interpreter, which produces the identical result" — that reasoning is
-rejected: identical results make a refusal SOUND, not acceptable. The body
-refused whenever it contained a construct the VM had no representation for —
+rejected: an identical result only means no wrong answer was produced, and
+the refusal behind it is still an open defect owed a fix. The body refused
+whenever it contained a construct the VM had no representation for —
 principally **tape-coupled re-stepping tokens**:
 
 ```
@@ -173,16 +175,17 @@ difference is worth keeping:
   signature matches`), so it is a poor witness for anything now; a
   replacement whose interpreted run succeeds would be worth writing.
 
-The mechanism below is why they originally refused. The
-`word` splice (`__SP`) contributes tokens that are re-stepped against the live
-stack (`eng/go/CLAUDE.md` "Quotation System" → splice); a `var [[…] …]` block in
+The mechanism below is why they originally refused. The `word` splice
+(`__SP`) contributes tokens that are re-stepped against the live stack
+(`eng/go/CLAUDE.md` "Quotation System" → splice); a `var [[…] …]` block in
 the body (`CompileExecutesBody`) likewise splices `def`/`body`/`undef` tape
 tokens. Neither can be a compiled closure, so `do` refuses to lower and the
-program ran on the interpreter. The guarantee at that point was **"`do` always
-runs correctly," not "`do` always compiles"** — and §7 records the maintainer
-directive that rejected settling for it. The differential gate proves the two
-engines agree on the result either way, which is what makes a refusal sound;
-soundness is the floor here, not the goal.
+program was silently routed to the interpreter. The claim made at that point
+was **"`do` always runs correctly," not "`do` always compiles"** — and §7
+records the maintainer directive that rejected settling for it. The
+differential gate proves the two engines agree on the result either way;
+that rules out a wrong answer and nothing more — the refusal itself stays an
+open defect owed a fix.
 
 ### 2b. `do [ … ] error [ … ]` — the try/catch combinator
 
@@ -264,23 +267,25 @@ lexical capture flows through the closure boundary correctly.
 > (§8), and it describes a refusal as though the interpreter were a
 > legitimate tier beneath the compiler. It is not. **The aim is that every
 > code form compiles, so a refusal is an ERROR** — a defect with a date on
-> it, not a resting place. "Sound refusal" means only "not a miscompile".
-> The paragraph below is kept as the record of what was measured at the
-> time; where it says the interpreter is the backstop, read: this is what
-> had not been built yet.
+> it, not a resting place. A refusal that yields no wrong answer is still a
+> refusal: an open defect, owed a fix. The paragraph below is kept as the
+> record of what was measured at the time; where it says the interpreter is
+> the backstop, read: this is what had not been built yet.
 
 At the time of this investigation `do [ … ]` did **not** always natively
 compile — a body carrying tape-coupled re-stepping tokens (`word` splices,
-`var` blocks) refused, and the whole program then ran on the interpreter.
-What was guaranteed even then is that `do` always **runs correctly**: the
-recorder chooses among four native strategies (single-value closure,
-diverging closure with no RET, baked inert-const list, and Map poly) when it
-can. §8's `CompileDynBody` has since closed the gap those refusals left — it
-is a NATIVE strategy, not a fallback, and the `word xs` row in §4's table
-above compiles today. The `do [ … ] error [ … ]` try/catch idiom compiles as
-two paired closures. The single `InvokeBody`/`doListHandler` seam is what
-keeps the trap-and-return semantics byte-identical across the interpreter and
-the VM. No defects were found during this investigation.
+`var` blocks) refused, and the whole program was then silently routed to
+the interpreter. All that held even then was that `do` **ran correctly** —
+never that it compiled, and that gap was the defect. The recorder chooses
+among four native strategies (single-value closure, diverging closure with
+no RET, baked inert-const list, and Map poly) when it can. §8's
+`CompileDynBody` has since closed the gap those refusals left — it is a
+NATIVE strategy, not a fallback, and the `word xs` row in §4's table above
+compiles today. The `do [ … ] error [ … ]` try/catch idiom compiles as two
+paired closures. The single `InvokeBody`/`doListHandler` seam is what keeps
+the trap-and-return semantics byte-identical across the interpreter and the
+VM. No miscompiles were found during this investigation; the refusals
+themselves were the defects, and §7 and §8 track them to closure.
 
 **What remains, stated in the terms §7 set.** A program on the dyn-body
 strategy COMPILES, but its body is invoked through `InvokeBody` — the
@@ -290,10 +295,12 @@ and not a fallback; it is the remaining defect, it is what
 
 ## 7. The always-compile goal — tranche 1 (July 2026)
 
-Maintainer directive: `do` must ALWAYS compile — natively, for performance
-(network servers in boru need full compilation to be credible; correctness via
-interpreter fallback is not enough). Measured stakes (200k-iteration hot
-loop): a closure-compiled `do` body runs **10.3×** the interpreter; the old
+Maintainer directive: `do` must ALWAYS compile — natively. Failure to
+compile is a failure, not a slower route to the same answer: there is no
+interpreter tier beneath the compiler, and running a refused program on the
+interpreter is no substitute (network servers in boru also need full
+compilation to be credible). Measured stakes (200k-iteration hot loop): a
+closure-compiled `do` body runs **10.3×** the interpreter; the old
 baked-const path (a runtime `RunResolved` sub-engine per call) recovered only
 3.4×; a whole-program refusal recovers nothing.
 
@@ -301,7 +308,7 @@ baked-const path (a runtime `RunResolved` sub-engine per call) recovered only
 
 | Change | Effect |
 |---|---|
-| **`do [args]` miscompile fix** — the `specialWordResults` args projection read the CLOSURE analysis frame (the CallableSpec inputs, `[]` for do) and const-baked it; the island path reproduced the divergence. Fixed via `EmitState.inClosureUnit` (an `openUnitRecs` stack) + an args/`__pa` screen in `bodyFreeForFallback`. | interp `[7]` / compiled `[]` → refuses honestly, fallback parity |
+| **`do [args]` miscompile fix** — the `specialWordResults` args projection read the CLOSURE analysis frame (the CallableSpec inputs, `[]` for do) and const-baked it; the island path reproduced the divergence. Fixed via `EmitState.inClosureUnit` (an `openUnitRecs` stack) + an args/`__pa` screen in `bodyFreeForFallback`. | interp `[7]` / compiled `[]` → the miscompile is gone; the site now refuses instead — an open defect in place of a wrong answer, not a fix. Fallback-island parity |
 | **Multi-out closures** (`CallableSpec.BodyOutResidual`) — `do` returns its body's whole residual, so the unit RETs all N values (the VM always supported it; only recorder gates blocked it). `RecordClosureCall` seats N results; `closureResidualExact` screens variadic / mismatched counts. | `do [10 20 30]`: 1.12s → **0.31s** (12× interpreter); class-8 shapes (`def x 5 do [x 1 add 2]`) compile |
 | **Out-of-order residual promotion** — the fn-unit finish mirrors Finalize's `forceOrder`: an event result above an inert bottom promotes to a frame local and re-pushes in exact order (was: "result above a literal" refusal). | benefits every fn unit, not just do |
 | **`error` ignore-handler closures** (`CallableSpec.StripsUnconsumedInput`) — the runtime identity-probe strip nets one value from the `[error, result]` residual; `stripResidualShapeOK` admits exactly the two nets-one shapes. | `do […] error ["fallback"]` fully closure-lowered; corpus islands stay 0 |
@@ -352,24 +359,28 @@ Two more real miscompiles found and fixed on the way (four total across the
 session): the splice-of-computed-payload closure baked the splice as
 identity (`[7 8]` vs the interpreter's `7 8`) — the splice fire now poisons
 recording for list-possible computed payloads, so the dyn-body backstop
-owns the do-body form and the bare top-level form refuses honestly; and the
-tranche-1 empty-body/args/module-rebind fixes listed above.
+owns the do-body form and the bare top-level form refuses rather than
+miscompiling — an open defect, still owed a fix; and the tranche-1
+empty-body/args/module-rebind fixes listed above.
 
-Still refusing honestly, with parity, both non-do fn-contract limits: a
-variadic loop value mid-residual in a fn RET (Stage 3), and the bare
-top-level computed splice. Gates: differential 0 mismatches, corpus islands
-0, refusals ≤ 4, type-soundness 0, ADR-008 coverage 100%.
+Two open defects remain, both non-do fn-contract limits: a variadic loop
+value mid-residual in a fn RET (Stage 3), and the bare top-level computed
+splice. Each refuses rather than miscompiling — parity holds, but both are
+owed a fix. Gates: differential 0 mismatches, corpus islands 0, refusals
+≤ 4, type-soundness 0, ADR-008 coverage 100%.
 
-### Follow-ups — performance only, no coverage gaps
+### Follow-ups — the open InvokeBody defect, and DynEnv cost
 
 1. **JIT cache layer** — a dyn-body site executes through InvokeBody's
-   pooled sub-engine today. A Registry-held cache keyed by
-   `CanonValue(body)` + input types (entries carrying a `CompiledFnRef` +
-   (name, gen) deps, negative caching) would compile the body once via the
-   probe-then-real `compileClosureBody` shape `compileStoredBody` already
-   uses, and run it via a `runUnitCross` on a fresh vmContext sharing the
-   registry — upgrading hot dyn-body sites from sub-engine execution to
-   compiled units. Ship behind `Options.JIT`, default-OFF, soak first.
+   pooled sub-engine today: the interpreter running the body inside a
+   compiled program, which is the open defect §8's note names above. A
+   Registry-held cache keyed by `CanonValue(body)` + input types (entries
+   carrying a `CompiledFnRef` + (name, gen) deps, negative caching) would
+   compile the body once via the probe-then-real `compileClosureBody` shape
+   `compileStoredBody` already uses, and run it via a `runUnitCross` on a
+   fresh vmContext sharing the registry — upgrading hot dyn-body sites from
+   sub-engine execution to compiled units. Ship behind `Options.JIT`,
+   default-OFF, soak first.
 2. **DynEnv cost profiling** — DynEnv is program-wide once armed; measure
    the OpBindDynScope + args-bracket overhead on programs that mix one
    dyn-body site with hot static code, and consider scoping the mirror to

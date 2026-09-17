@@ -816,11 +816,16 @@ context has y/q                   # true — the write escaped the body
 Two caveats. `set` on a context layer is copy-on-write, so "writes are
 local" means the write does not reach the parent LAYER — a nested body
 still sees, and can shadow, everything above it. And the bytecode compiler
-cannot bracket the boundaries it INLINES into the caller's code — a `case`
-clause body, an auto-evaluated list, an interp-string or xml hole — so a
-`context` reference inside one refuses compilation and the whole program
-runs on the interpreter instead (slow, not wrong): the boundary above holds
-on both engines either way. See NUR054 and
+cannot yet bracket the boundaries it INLINES into the caller's code — a
+`case` clause body, an auto-evaluated list, an interp-string or xml hole —
+so a `context` reference inside one refuses compilation. That refusal is a
+DEFECT, not a design choice: all valid code is meant to compile, and this
+case is unimplemented and owed a fix. Today the runtime silently routes the
+whole program to the interpreter instead — scaffolding that contains the
+open defect and hides it, which makes the failure worse, not tolerable. The
+boundary above does hold on both engines, so the program's meaning is
+unchanged, but that does not make the refusal acceptable; it is tracked to
+closure. See NUR054 and
 `design/verse-report-defects-investigation.0.md` §B.
 
 

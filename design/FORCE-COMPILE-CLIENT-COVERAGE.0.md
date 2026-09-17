@@ -89,14 +89,15 @@ So a `{k:(expr)}` bound to a value-def local and returned, or read by a
 downstream word, compiles instead of refusing "body result of unknown
 provenance". Gated on in-frame **consumption** (`consumed` flag threaded from the
 arg-evaluation callers): a DEFERRED residual — a bare computed-map fn-body tail,
-auto-evaluated by `autoEvalStack` after its frame pops — must still refuse,
-because the interpreter evaluates it late (its param bindings gone) and
-compiling it in-frame would diverge. Verified: `make verify-bytecode` green
-(differential + property + race + borudebug), full `eng/go` / `lang/go` / `cmd/go`
-suites green, neutral on the langspec census. Pinned by
-`lang/go/bytecode_computedmap_test.go` (positive: byte-identical to the
-interpreter; negative: the deferred-residual tail still refuses, no divergence).
-`COMPILABLE-SUBSET.md §3` updated.
+auto-evaluated by `autoEvalStack` after its frame pops — still refuses, because
+the interpreter evaluates it late (its param bindings gone) and compiling it
+in-frame would diverge. That residual is a REMAINING DEFECT of this widening,
+owed a fix and tracked to closure — not a boundary the design settles on.
+Verified: `make verify-bytecode` green (differential + property + race +
+borudebug), full `eng/go` / `lang/go` / `cmd/go` suites green, neutral on the
+langspec census. Pinned by `lang/go/bytecode_computedmap_test.go` (positive:
+byte-identical to the interpreter; negative: the deferred-residual tail still
+refuses, no divergence). `COMPILABLE-SUBSET.md §3` updated.
 
 > Pre-existing note: `test/go/langspec/TestOnlyMetaFallsBack` (a tier-2 ratchet,
 > NOT part of `verify-bytecode`) fails on clean `main @ 407fedad` with identical
@@ -153,15 +154,16 @@ evaluates each value code-list in a **sub-engine** (`doEvalDataList`→`New(r)`)
 At interpreter runtime the sub-engine shares the registry, so a fn param (`bf`
 in `do {n:[bf.n]}`) is visible; in the compiled path that param is a **VM frame
 slot**, not a registry binding, so a const-bake-and-rerun would look `bf` up in
-`r.Defs`, miss it, and raise `undefined_word`. **That is why the current refusal
-is sound** — and why fixing (i) alone (a Map `ReturnsFn` returning the concrete
-Map type) is **not sufficient and would be unsound on its own**: each map-value
-quotation must be lowered as a **closure with capture** (the same machinery
-`each`/`fold` bodies already use), so frame locals resolve through the VM seam,
-*and then* the output typed as a concrete Map. Do not attempt the output-type
-tweak without the closure lowering. Unblocks `bloom_smoke`, `bloom_unit_spec`,
-`tst_unit_test`, `burst_unit_test` and the `do{}` leaves inside `test-test`
-bodies.
+`r.Defs`, miss it, and raise `undefined_word`. **That is the defect the current
+refusal is absorbing** — an unimplemented capability, owed a fix and tracked to
+closure, never a sanctioned outcome — and it is why fixing (i) alone (a Map
+`ReturnsFn` returning the concrete Map type) is **not sufficient and would
+diverge from the interpreter on its own**: each map-value quotation must be
+lowered as a **closure with capture** (the same machinery `each`/`fold` bodies
+already use), so frame locals resolve through the VM seam, *and then* the output
+typed as a concrete Map. Do not attempt the output-type tweak without the
+closure lowering. Unblocks `bloom_smoke`, `bloom_unit_spec`, `tst_unit_test`,
+`burst_unit_test` and the `do{}` leaves inside `test-test` bodies.
 
 **Step 3 — re-verify the code-body words.** With L1 closed, re-run the suites:
 `test-test` / `test-check-prop` / `each`-bodies that only refused because of an
@@ -418,10 +420,11 @@ suite-level reasons (`do [body]`, `mk-node`, `error [handler]`). Findings:
 - The non-trivial leaf they share is **`unmatched dispatch recovered`** (seen at
   `mk-node` and at `raise` inside an error handler): a dispatch over GRADUAL /
   dynamic operands that the checker can only best-guess (`no_signature; assuming
-  best-fit candidate`), which the compiler SOUNDLY refuses — it cannot statically
-  pick the overload. Clearing it means emitting a runtime polymorphic-dispatch
-  path (`CALL_NATIVE_POLY` / `OpCallDynamic`) for recovered dispatches — a real
-  feature on the soundness axis, NOT a leaf. Same class as the mutual-recursion
+  best-fit candidate`), which the compiler currently refuses — it cannot
+  statically pick the overload. That refusal is an OPEN DEFECT owed a fix:
+  clearing it means emitting a runtime polymorphic-dispatch path
+  (`CALL_NATIVE_POLY` / `OpCallDynamic`) for recovered dispatches — a real
+  feature on the correctness axis, NOT a leaf. Same class as the mutual-recursion
   provenance blocker: the remaining client refusals are deep, not small.
 
 **Net:** this pass delivered the TS-parity verification; it did not land a new

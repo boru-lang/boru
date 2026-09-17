@@ -12,7 +12,8 @@
 > remaining refusal — `test/template_prop_test.boru`: "code-body word `each`
 > (Stage 2)" — is a SEPARATE frontier (a higher-order `each` in code-body
 > position in the property-test harness), unrelated to the module-scope read,
-> and falls back to the interpreter cleanly.
+> and is an open defect: the refused program is silently re-run on the
+> interpreter, which hides the failure rather than fixing it.
 
 Diagnosis of every bytecode-compilation refusal the **voxgig `Template`**
 library (`voxgig-boru/template`) and its test suites trigger against `boru`
@@ -96,8 +97,9 @@ the Template suites compiled).
 
 The sound fix needs a module-scope signal that survives the higher-order-body
 sub-run. **This was found and works** (see next section) — but it unmasks a
-deeper, separate cross-registry defect, so the `flex` read still **refuses and
-falls back** (sound, slower) pending that Stage-C work.
+deeper, separate cross-registry defect, so the `flex` read still **refuses**
+and the program is silently re-run on the interpreter pending that Stage-C
+work — an open defect, owed a fix, not a resting place.
 
 ## Update — the read-site classification is the sound module-scope signal
 
@@ -175,8 +177,9 @@ That is exactly Stage C in `boru-bytecode-next-stages.0.md` — "sound module-bo
 compilation (cross-registry EmitState) … the one stage that is a *project*, not a
 commit," gated on a corpus re-baseline. The read-site module-scope mechanism is
 the correct Stage-E/F piece and should land **together with** the Stage-C
-cross-registry `dynEnv` fix, so it never exposes the latent miss. Until then the
-flex read refuses and falls back (sound).
+cross-registry `dynEnv` fix, so it never exposes the latent miss. Until then
+the flex read refuses and the program is silently re-run on the interpreter —
+scaffolding absorbing an open defect, not an outcome the design accepts.
 
 ### Attempt log — the record-time variadic heuristic is insufficient
 
@@ -206,8 +209,9 @@ variadic (revert the `e82ca4d` flag change), and relax `layoutOperands`
 do-map operand — `lw.es.eventInfo[op.idx].dynBodyResult && nout==1` — seating it
 as one value. That touches the sim-stack count model on a corpus-wide hot path, so
 it must be gated on the voxgig `--compile==interpret` sweep (a do-map producing
-!=1 value, and a genuinely variadic loop result, must still refuse). This is the
-concrete Stage-C task; it is a residual/consumption-model change, not a heuristic.
+!=1 value, and a genuinely variadic loop result, are outside this relaxation
+and stay open defects until their own fix lands). This is the concrete Stage-C
+task; it is a residual/consumption-model change, not a heuristic.
 
 ## Langspec Stage D/E/F status (for reference)
 
@@ -218,4 +222,5 @@ work): `reach.tsv:38` (Stage D, `getpath ∘ setpath` over a dynamic receiver) �
 → `42` — all compile natively under `-force-compile`. The 9 residual langspec
 refusals are all documented **Stage-H** "unmatched dispatch recovered" ERROR
 rows (`knownRefusals`), where the program raises and a static guess would
-diverge — correct-by-design soundness refusals, not D/E/F gaps.
+diverge. They are open defects, owed a fix and tracked to closure — not
+sanctioned outcomes, and not D/E/F gaps.

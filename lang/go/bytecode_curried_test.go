@@ -44,7 +44,7 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 
 	// Decline fences, each parity-faithful:
 	// THREE-level currying (a capture threading through two constructions)
-	// keeps the sound refusal.
+	// keeps the refusal.
 	{
 		src := `def mk3 fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [a add b add c]])]])]] (((mk3 1) 2) 3)`
 		a, _ := New()

@@ -171,9 +171,13 @@ zero-parse memcpy-speed disk cache; the platform supplies the allocator;
 build time is a stated product property ("almost always under 1 second …
 through caching").
 
-**boru.** Interpreter plus bytecode VM with a *sound* refusal-and-fallback
-architecture — stronger than Roc's posture, and validated by
-`design/MISCOMPILE-HUNT-FINDINGS.0.md`. Compiled mode is on by default
+**boru.** Interpreter plus bytecode VM. The emitter refuses what it cannot
+prove it can lower faithfully, and the runtime **silently** re-runs a refused
+program on the interpreter. That machinery keeps miscompiles out — validated by
+`design/MISCOMPILE-HUNT-FINDINGS.0.md` — but it is not an architecture to boast
+of: every refusal is a program that did not compile, which is a failure, and the
+silence means nothing in the run reports it. The target is that all valid code
+compiles, with no exceptions. Compiled mode is on by default
 since the P7 endgame — `CLI.md` still said the interpreter was the default,
 and described the flip as *future*, until this report's PR corrected it.
 

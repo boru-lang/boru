@@ -84,9 +84,10 @@ explicit, which is a surface change every §1 program had to absorb.
 ## 1. What works — the evidence
 
 Every program below was written and run against this tree, under both
-`-no-compile` (interpreter) and the default (bytecode with interpreter
-fallback), and is quoted here in full — definitions **and** the calls that
-produced the quoted output — so it can be re-run from the note itself.
+`-no-compile` (interpreter) and the default (bytecode, with any program
+the compiler refuses silently routed to the interpreter — §5.8), and is
+quoted here in full — definitions **and** the calls that produced the
+quoted output — so it can be re-run from the note itself.
 
 > **Superseded in spelling 2026-08-24 — NUR073's BROAD fix landed.** Every
 > §1 program below is written in the paren-application idiom
@@ -594,8 +595,8 @@ than only on the day this note was written: the six spellings computing
 `42` are spec rows at `lang/spec/fn-triple.tsv` §2b, and the five
 `canon` equalities are `TestFnSignatureSpellingsAreOneValue` in
 `lang/go/test/fn_triple_compiled_test.go`. They are split because
-`canon` of a function value refuses to compile (Stage 3, soundness) and
-the spec corpus holds `refusalCeiling = 0`.
+`canon` of a function value still refuses to compile (a Stage 3 gap, and
+so an open defect) and the spec corpus holds `refusalCeiling = 0`.
 
 **A bracketed input is not a longer spelling; it is a different form.**
 
@@ -914,16 +915,18 @@ meant the value.
 > uniformity across containers ✗" row in §2 is now: uniform where a form
 > is per-container, deliberately different for `filter`.
 >
-> **Two costs, both narrow and both stated rather than hidden.** The list
-> Function form reaches its callback through `InvokeBody`, which the
-> lowering ISLANDS rather than models, so those rows are ledgered in
-> `frontier-hof-audit.tsv` §12 — the fix buys the spelling, not the
-> speed, and graduation is a modelled fn-value callback frame. And a
-> LAMBDA over a *gradual-Any* collection now refuses to compile where it
-> used to: with two `TFunction` overloads reachable, the compiler cannot
-> commit, because the callback gets the ELEMENT over a list and a
-> `KeyVal` over a map — so a closure compiled against either shape is
-> wrong for the other. That refusal is correct; the default lane runs the
+> **Two open defects, both narrow and both stated rather than hidden.**
+> The list Function form reaches its callback through `InvokeBody`, which
+> the lowering ISLANDS rather than models, so those rows are ledgered in
+> `frontier-hof-audit.tsv` §12 — the fix buys the spelling and leaves the
+> rows uncompiled, with graduation to a modelled fn-value callback frame
+> still owed. And a LAMBDA over a *gradual-Any* collection now refuses to
+> compile where it used to: with two `TFunction` overloads reachable, the
+> compiler cannot commit, because the callback gets the ELEMENT over a
+> list and a `KeyVal` over a map — so a closure compiled against either
+> shape is wrong for the other. Not compiling it is the only containment
+> available today, and it is a defect either way — the modelling that
+> would tell the two shapes apart is missing. The default lane runs the
 > program on the interpreter with the loud warning
 > (`lang/go/bytecode_gradual_each_test.go`, the refusesAndFallsBack
 > group).
@@ -986,12 +989,12 @@ the audit was written; same class, same payload.)
 > and answers 3 today — so "the argument window merely collects both"
 > recorded a silent engine divergence (NUR073's class, where §0 counted
 > one such divergence), not a lane-independent context rule. Since the
-> §9g guard (`12c8150`) the print shape REFUSES compilation and the
-> lanes agree on 3 — `boru run` behind its loud fallback warning,
-> `boru do` (the command these transcripts use) falling back silently
-> by design, `-force-compile` refusing with a `force-compile` error —
-> so the quoted `fn (Integer)` / `2` reproduces only on a pre-guard
-> tree.
+> §9g guard (`12c8150`) the print shape FAILS to compile and the
+> lanes agree on 3 — `boru run` behind its loud warning, `boru do`
+> (the command these transcripts use) routed to the interpreter
+> SILENTLY, which hides the failure rather than excusing it,
+> `-force-compile` refusing with a `force-compile` error — so the
+> quoted `fn (Integer)` / `2` reproduces only on a pre-guard tree.
 > The fn-body arity error above is likewise the compiled lane's, and
 > that row is LIVE and check-clean today: interpreted `(g 0)` answers
 > 3, exit 0, where the checked default raises the quoted error, exit 1
@@ -1196,17 +1199,20 @@ warning: bytecode compilation refused, ran on the interpreter (slower):
 Other observed reasons: `fn-value application bounded by a paren (dynamic
 value precedes args)`, and NUR037's fn-local-fn-as-body-word refusal.
 
-This is the **right** behaviour — `design/COMPILABLE-SUBSET.md`'s "slow,
-not wrong" — and unlike §5.7 it is *announced* on stderr. But it means
-higher-order style opts out of the bytecode VM as a rule, not an
-exception. Worth stating plainly in the docs so the performance
-trade-off is a choice rather than a surprise.
+Each of these is a **defect** — an unimplemented or unproven case in the
+compiler, owed a fix and tracked to closure — and not a sanctioned
+outcome: done is a language that compiles, all valid code, no
+exceptions. Unlike §5.7 the failure is at least *announced* on stderr
+rather than hidden. But at this density it means higher-order style does
+not compile as a rule, not as an exception. Worth stating plainly in the
+docs — not as a performance trade-off a user chooses, but as the size of
+the hole still owed a fix.
 
 > **Re-measured 2026-08-25 — the headline above is no longer true.**
 > Thirteen higher-order shapes were run against the post-#402 tree. NINE
-> compile. "Opts out as a rule" was accurate when written; it is not the
-> shape of the boundary now, and the two lines that matter most —
-> the closure factory and the curried arrow, the very spellings this
+> compile. "Does not compile as a rule" was accurate when written; it is
+> not the shape of the boundary now, and the two lines that matter most
+> — the closure factory and the curried arrow, the very spellings this
 > section quotes as always refusing — are on the compiling side.
 >
 > | compiles today | |
@@ -1231,15 +1237,16 @@ trade-off is a choice rather than a surprise.
 > recommendation 4 shipped for exactly this style (`compose`, `pipe`,
 > `curry`, `partial`, …), and none of it compiles — so the vocabulary the
 > audit added to make higher-order code pleasant is also the vocabulary
-> that guarantees the interpreter. That is the highest-value target left
-> on this page.
+> guaranteed NOT to compile. That is the highest-value defect left on
+> this page.
 >
-> Corpus-wide the picture is already good: the main spec set compiles
+> Corpus-wide the picture is already better: the main spec set compiles
 > **7182 of 7182** compilable rows with 0 islanded, and what does not
-> compile is isolated in ledgered frontier files. The performance
-> trade-off this section asked to be stated plainly is therefore much
-> smaller than it was — it applies to three identifiable shapes, not to
-> higher-order style as such.
+> compile is isolated in ledgered frontier files. The hole this section
+> asked to be stated plainly is therefore much smaller than it was —
+> three identifiable shapes rather than higher-order style as such — but
+> smaller is not closed, and each of the three is still a defect owed a
+> fix.
 
 **Stage 1 landed (2026-08-21) — the def-bound computed-fn read.** The
 compile lane's false `undefined_word` on a name def-bound to a computed
@@ -1281,20 +1288,22 @@ a5 3` — the §5.4 make-adder, called once through its binding —
 compiles natively with parity (repeated reads still refuse at the
 fn-value residual nets).
 
-**User-visible behaviour is preserved for every non-graduating row.**
-Refusals are loud by policy (`compile_refused`), but every program in
-this family refused behind the SILENT check-diagnostics sentinel before
-Stage 1 — so a pass that substituted a carrier read marks itself
-(`CheckState.FnCarrierReadSubstituted`), and a refusal from such a pass
-keeps the silent interpreter fallback (with the precise reason surfaced
-as the CLI's performance warning). The census suites classify this
-transitional class with the sentinel; the frontier compile ledger
-tracks its precise per-row reasons.
+**Every non-graduating row still fails to compile, and the failure stays
+hidden.** Refusals are loud by policy (`compile_refused`), but every
+program in this family refused behind the SILENT check-diagnostics
+sentinel before Stage 1 — so a pass that substituted a carrier read marks
+itself (`CheckState.FnCarrierReadSubstituted`), and a refusal from such a
+pass keeps routing the program to the interpreter SILENTLY, the precise
+reason surfaced only as the CLI's performance warning. That silence is
+the worst of it: a failure that hides itself is worse than one that
+shouts. The census suites classify this transitional class with the
+sentinel; the frontier compile ledger tracks its precise per-row reasons,
+and every row it tracks is an open defect.
 
 The remaining rows in the family moved one or two stages later, each to
-a sound emit-land refusal (`frontierCompileLedger` records the exact
-strings): the Stage 3 function-valued-operand gate (the fn-util
-combinator rows), the Stage 2 single-result-branch rule (the
+an emit-land refusal that is still a refusal (`frontierCompileLedger`
+records the exact strings): the Stage 3 function-valued-operand gate (the
+fn-util combinator rows), the Stage 2 single-result-branch rule (the
 U-combinator), capture-bearing `body result of unknown provenance`
 (compose, palt), and the guards above.
 
@@ -1316,10 +1325,10 @@ compiles with parity — without the admission the inner `[g, v]`
 residual count-refused the fnval probe and the whole factory refused
 `body result of unknown provenance`. The probe battery around it:
 repeated reads (`(h2 5) (h2 10)`) and multi-instance factories stay
-sound refusals (`fn value precedes residual args`, ledgered); the
+refusals, ledgered as defects (`fn value precedes residual args`); the
 0-arg-apply-of-a-1-arg-capture spelling refuses where the interpreter
-raises (the fallback raises the identical error); a `g:Any` data
-capture never reaches the admission (not a Function carrier).
+raises (the interpreter re-run raises the identical error); a `g:Any`
+data capture never reaches the admission (not a Function carrier).
 
 **Capture reachability at call sites — landed (2026-08-21, the second
 Stage-2 increment).** A CONCRETELY-installed factory closure
@@ -1420,10 +1429,11 @@ forward state — context no island reconstruction carries. Value island:
 inert. Word island: wrong blame. Both are recorded here so the next
 attempt does not re-derive them.
 
-So the refusal stands, and it now stands **pinned** rather than
-incidental: `TestS5BParenLeadFnApplyIdxGradualArgDeclines` (core) fails
-if either clause is dropped, the gate's comment carries the reasoning,
-and `frontier-hof-audit.tsv` §9d ledgers the family so it graduates
+So the refusal stays — an unclosed defect rather than a resolution — and
+it now stays **pinned** rather than incidental:
+`TestS5BParenLeadFnApplyIdxGradualArgDeclines` (core) fails if either
+clause is dropped, the gate's comment carries the reasoning, and
+`frontier-hof-audit.tsv` §9d ledgers the family so it graduates
 automatically when the shape is genuinely solved.
 
 **A Stage 1 regression, found and closed (2026-08-21, §9e).** Probing
@@ -1450,9 +1460,11 @@ The def site now detects exactly that shape — a bind whose value is
 already table-bound under another NAME is a dropped apply, and nothing
 else, since a legitimate alias cannot reach it (`def g f1` is a
 strict-barrier syntax error; `def g f1/v` resolves through `Defs`
-without consulting the table) — and refuses. That restores `main`'s
-correctness (main refused this program too, behind the silent
-check-diagnostics sentinel) with no capability lost: the two-level
+without consulting the table) — and refuses. That removes the
+miscompile and leaves a defect in its place: the shape does not compile
+at all, and its routing to the interpreter is silent, exactly as it was
+on main (main refused this program too, behind the silent
+check-diagnostics sentinel). Nothing else was lost: the two-level
 chain, the chained spelling, multi-instance factories and the `/v`
 alias all still compile, and a six-shape differential sweep plus the
 frontier corpus agree across lanes. `frontier-hof-audit.tsv` §9e
@@ -1491,8 +1503,9 @@ Three guards, each at the narrowest point that catches its shape
 without costing a graduation:
 
 - the substitution declines inside a nested body
-  (`CheckState.NestedBodyDepth > 0`) — restoring this class's
-  pre-Stage-1 silent refusal;
+  (`CheckState.NestedBodyDepth > 0`) — returning this class to its
+  pre-Stage-1 refusal, still SILENT: a miscompile traded for a compile
+  failure that hides itself, not for a fix;
 - `RecordMakeListInner` refuses a list whose member is a table
   carrier — the corruption's list-assembly twin, which no nesting
   counter sees because `each`'s body analyses at depth 0;

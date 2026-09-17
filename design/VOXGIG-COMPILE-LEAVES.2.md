@@ -4,9 +4,12 @@ Continuation of `VOXGIG-COMPILE-LEAVES.1.md`, scoped to the **trie** repo after
 the three Stage-D fixes landed (branch `claude/voxgig-boru-baseline-pctxto`,
 commit `3e94429`: the `AnalyseFnBody` quota skip, the `RecordDynBind` capID
 override, and the `doListReturnsFn` fallible-multi-value refusal). Those fixes
-made the four `*_prop_spec` + `trie_unit_spec` suites compile natively and the
-rest fall back **soundly** (every suite stdout-byte-identical interpreter-vs-
-`--compile`, all green). This note records, with fresh traces, the **exact
+made the four `*_prop_spec` + `trie_unit_spec` suites compile natively; the
+rest still REFUSE and are **silently** re-run on the interpreter by the runtime
+scaffolding (every suite stdout-byte-identical interpreter-vs-`--compile`, all
+green — which is precisely why the failures hide: nothing in a green run says
+the compile was refused). Each of those refusals is an **open defect owed a
+fix**, not a resting place; DONE is every suite COMPILED. This note records, with fresh traces, the **exact
 unmasked root cause** of each of the three refusals that remain, so a focused
 follow-up can implement them one at a time behind the usual gates
 (`verify-bytecode` byte-identical + off-corpus `RunCompiledStrict`-vs-`Run`
@@ -63,14 +66,17 @@ leverage — closes 4 suites.
 
 Surfaces in `trie_prop_test`'s `each`. Refused by
 `engine.go::refuseForwardStackDrift` ("forward operand accounting across a
-dynamic/island residual (Stage 3)"). This is a **soundness guard**, not a
-missing feature in the naive sense: it refuses when the checker's all-stack
+dynamic/island residual (Stage 3)"). This is a **soundness guard** — it stops a
+miscompile, which is the one thing worse than a refusal — but it is still an
+open defect: it refuses when the checker's all-stack
 operand match (forced because the top-of-stack operand is `Dynamic`, blocking
 the narrower forward overload) would DIVERGE from the interpreter's runtime
-forward collection once that operand is concrete. Refusing is correct today
-(sound fallback). Compiling it requires modelling the dynamic-operand forward
+forward collection once that operand is concrete. Refusing beats miscompiling,
+but it is not a resolution — the row does not compile, so the defect is open.
+Compiling it requires modelling the dynamic-operand forward
 collection in the compiled path so check-mode and the VM agree on which trailing
-literal the word grabs — a real accounting feature. One suite.
+literal the word grabs — a real accounting feature, and one this leaf is owed.
+One suite.
 
 ---
 
@@ -165,7 +171,7 @@ restructure of `longest-t` (push the `end`-node choice into the arms, so no
 branch-join is fed to the recursion) — makes `tst.boru`'s `longest-t` compile
 natively (verified in isolation). But in the FULL `trie_smoke_test.boru` (four
 imports, ~30 top-level statements, a mix of now-compiling and still-falling-back
-sections) it converts a SOUND full fallback into a broken compile: `--compile`
+sections) it converts a hidden, contained refusal into a broken compile: `--compile`
 emits the **entire program output twice** (61 lines vs the interpreter's 31),
 while `--no-compile` is correct. Reverted immediately.
 
@@ -196,8 +202,9 @@ deeper miscompile the fallback was masking. Every step must re-run the trie
 `--compile`==`--no-compile` byte-identical sweep over the WHOLE suite (not just
 the changed construct) plus `verify-bytecode`, because the differential corpus
 is blind to these multi-section program shapes. The current
-4-native/5-sound-fallback state is byte-identical everywhere; it must stay so at
-every step.
+4-native/5-refused state is byte-identical everywhere; it must stay so at
+every step. Byte-identical is the floor, not the goal: the five refusals are
+five open defects, and the state is only done at 9-native.
 
 
 **Two distinct fixes are entangled here.** (i) L-NP — make the fold/var-body

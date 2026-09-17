@@ -25,9 +25,9 @@ go test ./test/go/langspec -run TestCompiledCoverage -v
 ```
 
 The single **coverage** bucket is the Stage A row. It is the only remaining
-refusal that is neither a flagged soundness hazard nor a faithful-fallback
-scheduling row — it is a genuine *expressiveness* gap in the compiler's branch
-model, and the docs flag it as **the top structural lever**.
+refusal that is neither a flagged soundness hazard nor a scheduling row
+routed to the interpreter — it is a genuine *expressiveness* gap in the
+compiler's branch model, and the docs flag it as **the top structural lever**.
 
 ### The row (reproduced authoritatively)
 
@@ -246,11 +246,13 @@ session budget, and let the differential be the backstop (gate-clean-or-revert).
 |---|---|---|
 | **Stage A (this)** | coverage | **chosen** — the only pure-expressiveness gap; best-understood; reuses the variadic vocabulary; VM already done (Correction 1); unblocks future variadic shapes |
 | `module-rand.tsv:38` | operand provenance | method-fn-value-apply *recording* gap (the checker resolves but never reaches `RecordCall`) — medium risk (RNG-draw faithfulness), bespoke |
-| `module-parselang:23` / `module-test:38` | residual lowering | large multi-import programs; faithful fallback exists; residual-promotion *may* extend but is not a one-liner |
+| `module-parselang:23` / `module-test:38` | residual lowering | large multi-import programs; they still refuse and are silently interpreted, so both stay open; residual-promotion *may* extend but is not a one-liner |
 | `bytecode-combinations:74` / `def-node-binding:54` / `recursion:72` | operand provenance | bespoke binding-semantics corners (capturing-closure-returned, list-of-param def-snapshot, dynamic-scope name) — each easy to diverge on |
 | `flex:138` / `module-io:29,30` | dynamic input | **highest risk** — reference-cell VM value-model + a 0-output context-mutation poly that already produced a divergence |
 
 Stage A is the right next deep-dive: it is the one remaining refusal that is a
-missing *capability* rather than a soundness frontier or a faithful fallback, and
+missing *capability* rather than a soundness frontier or a row routed to the
+interpreter — all three are open defects; this is the one whose fix is a new
+capability — and
 clearing it teaches the compiler to model a runtime-variable result count — the
 foundation the residual-lowering and method-apply rows also lean on.

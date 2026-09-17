@@ -259,10 +259,16 @@ contract. A `{:T}` flex is now first-class:
   the hole existed in the committed immutable `set`/`setpath` too, now fixed.
 - **node↔flex round-trip.** `FlexDeepCopy` AND `NodeDeepCopy` preserve `elem`, so
   `flex`/`node` only toggle mutability and never drop the contract.
-- **Three-surface agreement.** Interpret validates the concrete flex body + enforces
-  writes; there is no compiled typed-container bind, so `markTypedContainerDefUncompilable`
-  refuses a `{:T}` def over a non-concrete (flex) body → it falls back to the
-  interpreter (`--force-compile` honestly refuses; census stays byte-identical).
+- **Three-surface agreement — over an open compiler defect.** Interpret
+  validates the concrete flex body + enforces writes; there is no compiled
+  typed-container bind, so `markTypedContainerDefUncompilable` refuses a
+  `{:T}` def over a non-concrete (flex) body and the runtime SILENTLY routes
+  the refused def to the interpreter instead (`--force-compile` surfaces the
+  refusal; census stays byte-identical). That routing is scaffolding
+  absorbing the refusal, not a fallback the design leans on and not a reason
+  the refusal is tolerable: a missing compiled bind is an unimplemented case
+  — an open defect, owed a fix and tracked to closure (see "Owed fix" below)
+  — and routing it away silently hides the failure instead of fixing it.
 
 Known, acceptable limits (precision, not soundness):
 - **Flex writes are RUNTIME-enforced; check is conservative.** A flex node is
@@ -278,9 +284,11 @@ Known, acceptable limits (precision, not soundness):
   returning `Map` (the param type carries no flex-ness), so a declared `[FlexMap]`
   return is a static mismatch — correct compiler strictness; declare `[Map]`/`[Any]`.
 
-Follow-on: a compiled typed-container bind (an `OpBindTyped`-style container kind)
-would let typed-flex defs compile instead of falling back — a perf optimization,
-not a correctness gap.
+Owed fix: a compiled typed-container bind (an `OpBindTyped`-style container
+kind), so a typed-flex def compiles instead of being refused and routed away.
+This is not an optimization to schedule when convenient — every def the
+compiler refuses today is a defect, tracked to closure. Done is a language
+that compiles as a developer expects: ALL valid code compiles, no exceptions.
 
 ## Codex-review hardening (rounds 1–3)
 
@@ -356,7 +364,8 @@ DOWNSTREAM write escaped enforcement. All fixes keep the census byte-identical
      exact-read-narrowing divergence R4 hit (an each-produced list) does not
      recur for the set-residual path (verified by the differential + a 100-seed
      variation run, whose only failures are pre-existing unledgered refusal
-     buckets present on the clean baseline too).
+     buckets, present on the baseline too — themselves open defects owed
+     fixes, not a clean result).
 - **Round 5 — the values projection + two check-mirror gaps.**
   1. **`vals`** projects a `{:T}` map's values to a list — every value is
      element-typed, so the result is `[:T]`; `valsHandler` retains the tag

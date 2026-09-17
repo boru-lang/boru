@@ -42,8 +42,8 @@ import core "github.com/boru-lang/boru/core/go"
 //     operand is the dot-read EVENT (the runtime value) and whose spec
 //     claims the matched arity + declared result count. The VM enforces
 //     the claim and defers to the interpreter via internal_error when the
-//     runtime value ever fails it (RunCompiled's runtimeShouldFallback —
-//     slow, not wrong).
+//     runtime value ever fails it (RunCompiled's runtimeShouldFallback),
+//     which contains the failure silently rather than closing it.
 //
 // The miscompile-E auto-dispatch guard is NOT weakened — it is RE-HOMED
 // onto the landing. A shaped member with a genuine 0-arg overload
@@ -450,7 +450,7 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 // fn fires the moment its single signature's args arrive, so the token after
 // the window (a word, `eq`) never enters the collection. Everything this
 // hook declines keeps today's paths — the statement-tail Finalize apply for
-// shapes it never sees, refuseStrandedMemberFn's sound refusal for the rest:
+// shapes it never sees, refuseStrandedMemberFn's refusal for the rest:
 //   - COMPILE pass only (live recording; plain checks and suspended passes
 //     stay byte-identical);
 //   - a uniquely-resolved, NAMED, non-anonymous, non-macro, capture-free

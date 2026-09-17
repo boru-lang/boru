@@ -8,6 +8,19 @@ entries enumerated and ratcheted. Supersedes the row inventories in the
 P7-ENDGAME tier table and the `compiled_coverage_test.go` tier-ledger comment,
 both of which describe a previous corpus generation (see §Status).
 
+**Doctrine (maintainer, correcting an earlier framing carried through this
+plan): the interpreter is NOT a fallback for the compiler, and is not allowed
+to be one.** Failure to compile is a FAILURE — not "slow, not wrong", not a
+tolerable worst case, not a co-equal branch of a two-outcome contract. Done is
+a language that compiles as a developer expects: ALL valid code compiles, no
+exceptions. Every refusal is therefore a **defect** — an unimplemented or
+unproven case, owed a fix and tracked to closure — never a sanctioned design
+outcome. The runtime path that still routes a refused program to the
+interpreter is **scaffolding** that absorbs a known defect so the user still
+gets an answer; where this plan must describe that machinery it describes it
+AS machinery, never as a fallback the design leans on and never as a reason a
+refusal is acceptable.
+
 Scope decisions locked with the maintainer:
 
 1. **All three gap rings are in scope** — the corpus refusals, the off-corpus
@@ -67,18 +80,22 @@ census (Phase 10), not the compile-time one.
 
 ### C1 — L-DUP: effect fence + designed-bail elimination
 
-A silent interpreter re-run is permitted only when **zero observable effects**
+The interpreter re-run is containment scaffolding for a defect, never an
+outcome the design may lean on — and it is SILENT, which makes the defect
+it absorbs worse rather than tolerable: the failure hides itself. For as
+long as it exists it is permitted only when **zero observable effects**
 have been emitted since *before the check pass began* (a registry effect
 ledger); otherwise the `internal_error` propagates with a "re-run with
-`--no-compile` and report" diagnostic. The fence covers **both** fallback arms
-of `RunCompiledReason` — the nil-Program path re-runs the source too, and the
-check pass executes module imports — plus `InvokeCallback`'s internal-error
-retry and (later) `Vm.run`. In parallel, every *designed* bail site converts
-to compile-time refusal or sound in-VM handling, so by Stage J the fence on
-the runtime-bail arm is provably never crossed. (Propagate-always rejected:
-unacceptable interim UX while designed bails exist. Refuse-at-compile-time
-alone rejected: cannot cover the defensive assertion belt. Buffering rejected:
-non-stdout effects cannot be unwound.)
+`--no-compile` and report" diagnostic. The fence covers **both** fallback
+arms of `RunCompiledReason` — the nil-Program path re-runs the source too,
+and the check pass executes module imports — plus `InvokeCallback`'s
+internal-error retry and (later) `Vm.run`. In parallel, every *designed*
+bail site converts to sound in-VM handling — or, as interim containment
+only, to a compile-time refusal that stays on the defect ledger — so by
+Stage J the fence on the runtime-bail arm is provably never crossed.
+(Propagate-always rejected: unacceptable interim UX while designed bails
+exist. Refuse-at-compile-time alone rejected: cannot cover the defensive
+assertion belt. Buffering rejected: non-stdout effects cannot be unwound.)
 
 ### C2 — Static-error oracle (permanent, named carve-out)
 
@@ -122,15 +139,21 @@ runtime bails.
 
 ### C4 — End-state interpreter-entry contract
 
-The fail-safe seams ("decline → interpreter, never the reverse") are permanent
-by design, so "carve-outs shrink to check-mode + user opt-out only" is
-unattainable and withdrawn. Final invariant: **no interpreter execution of any
+The fail-safe seams ("decline → interpreter, never the reverse") fix a
+one-way safety DIRECTION; they are not a licence. A decline is code the
+compiler cannot yet handle — a defect — and the seam is the containment that
+keeps the user's answer correct until it is fixed. (An earlier revision of
+this contract called those seams "permanent by design" and withdrew the
+target of shrinking the carve-outs; that framing was wrong and is corrected
+here.) Final invariant: **no interpreter execution of any
 program the compiler accepts, on any default path; every residual interpreter
 entry belongs to an enumerated, named, per-seam-counted carve-out, and the
-counts ratchet down only.** The permanent enumeration: (1) check mode;
-(2) explicit user opt-out (`--no-compile`, debug-serve interactive stepping);
-(3) C2 error-oracle runs; (4) fail-safe decline seams — stale `depSnap` →
-`CallBoru`, JIT-declined bodies → pooled sub-engine,
+counts ratchet down only.** The enumeration splits in two. Sanctioned, because
+no user program fails to compile there: (1) check mode; (2) explicit user
+opt-out (`--no-compile`, debug-serve interactive stepping); (3) C2
+error-oracle runs (statically invalid programs). Defect containment, counted
+so it can be driven down and closed: (4) fail-safe decline seams — stale
+`depSnap` → `CallBoru`, JIT-declined bodies → pooled sub-engine,
 capture-of-dispatching-binding stamp declines, busy-registry non-nested
 callbacks; (5) R4 unrecorded-rematch-arm JIT-decline residue.
 
@@ -184,8 +207,8 @@ ADR.md.
    writes, process spawn).
 2. Snapshot **before `CompileCheck`** (the check pass executes module
    imports), fence **both** fallback arms in `RunCompiledReason` and the
-   `InvokeCallback` internal-error retry: fall back silently only if the
-   ledger is unchanged; otherwise wrap and propagate.
+   `InvokeCallback` internal-error retry: allow the silent contained re-run
+   only if the ledger is unchanged; otherwise wrap and propagate.
 3. Check-pass effect gate (obligation O1).
 
 Tests: `TestRuntimeBailAfterEffectPropagates` (print-then-forced-bail via a
@@ -274,11 +297,12 @@ resolved in Phase 10.
 new bail classes. Fix: make the `OpBindDynScope` write side bind the
 fold/var-body local into the unit's dyn-scope frame before the read
 (bind/read unit-ownership disagreement); if not reachable in one session,
-land the sound half — a compile-time predicate refusing the shape. Either
-way the runtime bail dies. **L-JOIN**: converge-then-record — run the
-recursive fixpoint to type convergence with recording off, then one final
-recording pass with the converged environment (stable-ID keying as the
-fallback design). Gate: a whole-program multi-section
+land the containment half — a compile-time predicate refusing the shape,
+which contains the bail and leaves a defect owed closure. Either way the
+runtime bail dies. **L-JOIN**: converge-then-record — run the recursive
+fixpoint to type convergence with recording off, then one final recording
+pass with the converged environment (stable-ID keying as the fallback
+design). Gate: a whole-program multi-section
 `--compile`==`--no-compile` byte-identical sweep (the trie_smoke shape that
 caught L-DUP), not a row diff. Ported repros land as `lang/go` Go
 regressions + new `lang/spec` rows.
@@ -311,8 +335,9 @@ generation) serving dyn do-bodies, check-prop bodies, and R4 unrecorded arms
 bodies lower to closure units with VM re-entry under `-race`; **`Vm.run`
 compiles at runtime** via fork-isolated compile (fresh `CheckState`, per the
 `StampDetachedFn` precedent — never a mid-run `CompileCheck` on the executing
-registry) + `SnapshotForCompile` rollback; a refused runtime string
-interprets from the start (pre-effect — no L-DUP hazard).
+registry) + `SnapshotForCompile` rollback; a runtime string that refuses is
+contained by interpreting from the start (pre-effect — no L-DUP hazard), the
+refusal itself remaining a defect owed closure.
 `interpreterOnlyCeiling = 3` is retained with a rewritten rationale.
 
 **Do-unit registry replay (added 2026-07-13, found by the variation
@@ -325,7 +350,8 @@ via RunResolved over the same registry → `InstallType` parts conflict for
 typed defs; the import half re-binds a PLAIN MAP instead of a ModuleExport
 (`ensureExportsBound`) so mini/parse kind lookups fail. Near-term fix
 (landed with the frontier suite follow-up): refuse to bake replay-hazard
-bodies (import / capitalised def) — "slow, not wrong" — plus the
+bodies (import / capitalised def) — containment for a miscompile, and a
+defect owed closure, NOT an acceptable resting place — plus the
 ensureExportsBound value-kind fix. Full graduation belongs HERE: the JIT
 detached-unit cache compiles dyn do-bodies as units (no token replay), and
 the unit's RunInCheckMode-word semantics become idempotent by construction
@@ -366,8 +392,9 @@ hook counting every internal_error-class defer; ratchet pinned at the
 measured count, must be 0 before Stage J. Burn down the remaining designed
 defers (poly NOut drift, user-poly unresolved/drift, shaped-method,
 dyn-scope dispatching/active-token, dyn-frame replay, and any 3c sites that
-failed their raise-proof) — each becomes compile-time refusal, sound in-VM
-handling, or an argued defensive arm. `TestNoInterpreterExecution`: assertion
+failed their raise-proof) — each becomes sound in-VM handling, an argued
+defensive arm, or, as interim containment only, a compile-time refusal that
+stays on the defect ledger. `TestNoInterpreterExecution`: assertion
 hooks at `Engine.Run` / `RunResolved` / `CallBoru` / `runPooledSub` recording
 any armed-mode entry with seam attribution; zero unattributed entries;
 per-seam counters ratchet down only.
@@ -535,9 +562,11 @@ dispatch (skipped in check mode by design) and the VM never consulted it —
 so `boru run` (default CompileTry) with a "deny add" policy RAN `1 add 2`
 compiled to 3 where the interpreter raises permission-denied; exec
 inherited the hole the moment it moved to the compiled entry (caught by
-its policy test). Closed conservatively in CompileCheck: a registry with
+its policy test). Contained conservatively in CompileCheck: a registry with
 an installed word checker refuses compilation ("policy-gated registry"),
-so the interpreter — where the gate lives — owns every dispatch. Pinned by
+so dispatch runs where the gate currently lives — the interpreter. That
+refusal is a defect (the VM needs its own gate), tracked to closure as the
+Phase 10 item below, not a sanctioned arrangement. Pinned by
 lang/go/policy_compiled_gate_test.go (deny parity + strict-mode surfacing
 + the no-policy negative). LIFTING the refusal is a Phase 10 item: a
 VM-side policy gate at CALL_NATIVE / CALL_USER / poly / dynamic dispatch
@@ -707,7 +736,7 @@ redirect the recorded dispatch to the INTERPRETER's forward/stack split
 Dynamic-blocked all-stack match diverges — deep matcher work, needs
 FORWARD-COLLECTION-PHASES.10.md study first); net-driver residues
 (inert-const tails need const re-push in the reconciliation; Function
-regions stay refused by design).
+regions stay refused today — an open defect, not a design outcome).
 
 ## L-JOIN converge-then-record — concrete flow (2026-07-14)
 
@@ -867,7 +896,8 @@ runs it via `RunUnit` on the branch's ForkConcurrent fork (exactly
 (re-run the raw tokens on the interpreter only when the unit emitted no
 observable effect — `eng.IsInternalError` is the exported face of the
 seam's taxonomy check). An element that refuses to compile keeps its raw
-list and THAT branch interprets — per-element and sound (pinned:
+list and THAT branch interprets — per-element containment of that refusal,
+which stays a defect owed closure (pinned:
 a Module construction in one branch interprets while the sibling runs
 compiled, with parity). Modes all/full/first/any share one outcome
 mapping (`branchOutcome`) so compiled and interpreted branches agree
@@ -995,7 +1025,8 @@ whole trap immediately; instead classify the full window first:
   runtimeNoMatch(r, word, written) with the recorded pos stamped —
   byte-identical to the interpreter; MATCH (static model was wrong — a
   refined tag / predicate satisfied at run time) → vmDefer-class internal
-  error → RunCompiled's fenced interpreter fallback (slow, not wrong; the
+  error → RunCompiled's fenced interpreter re-run — containment for a static
+  model that was wrong, a defect to close, not an acceptable outcome (the
   tail was truncated at the terminal op so it cannot continue).
 - the diagnostic parity: the recovery's no_signature diagnostic is
   emitted only on !Compiling passes (engine.go:8028-8035), so the compile
@@ -1748,11 +1779,11 @@ are engine-enforced), so a count differing from the shape claim indicts
 a HOST registration whose handler returned a count its own signature
 denies — the recovered-panic class (host-contract violation), not
 compiler model debt. The guard now raises the plain internal_error
-(runtimeShouldFallback resolves it identically — silent tolerant
-fallback, fenced as ever; the zz-inst effect-fence pins pass unchanged)
-without feeding the runtime-bail census, which counts DESIGNED
-model-miss defers only. The not-appliable defer (the shape claim itself
-failing — a genuine static-model miss) remains a designed bail.
+(runtimeShouldFallback resolves it identically — the same silent
+contained re-run, fenced as ever; the zz-inst effect-fence pins pass
+unchanged) without feeding the runtime-bail census, which counts
+DESIGNED model-miss defers only. The not-appliable defer (the shape claim
+itself failing — a genuine static-model miss) remains a designed bail.
 p10/runtime-bail-census-canary is GREEN (frontier expected-red 7→6);
 the hook-forwarder pin moved to the vm:rematch-matched defer (a real
 designed bail that stays). Remaining expected-red: capturing-handler
@@ -1762,8 +1793,8 @@ stamps, check-prop/vm-run module-load seams, the C4 attribution ratchet
 ### C4 attribution LANDED — p10/no-unattributed-interp graduated (2026-07-15)
 
 Registry.interpAttribution is the C4 attribution context: noteInterp
-reports it on every entry, and the SANCTIONED interpreter re-runs bracket
-themselves with SetInterpAttribution — RunAutoValues' refusal arm tags
+reports it on every entry, and every interpreter re-run that still exists
+brackets itself with SetInterpAttribution — RunAutoValues' refusal arm tags
 "fallback:refusal", its runtime-bail arm "fallback:runtime-bail", and
 concreteEvalOnce (the const fold's concrete sub-run, which toggles check
 mode off for a real value — the source of the last unattributed entries)
@@ -1804,13 +1835,15 @@ complete). The flip's exact mechanics, from the code as it stands:
    Statically-invalid programs KEEP the bounded static-error oracle
    re-run (they fail identically in both engines; the re-run only
    renders the canonical error). The RUNTIME-BAIL arm is RETAINED
-   deliberately: designed defers (vm:rematch-matched — the terminal
-   rematch's match case, inherent to the sound-re-dispatch doctrine
-   since the compiled tail is truncated) resolve by the attributed,
-   fenced re-run; deleting it would surface internal_error for valid
-   programs. The plan's "delete the runtimeShouldFallback re-run"
-   applies to the REFUSAL class; the designed-defer channel is the
-   doctrine's landing pad and stays (bounded, attributed, fenced).
+   deliberately, as containment and nothing more: designed defers
+   (vm:rematch-matched — the terminal rematch's match case, which the
+   sound-re-dispatch route leaves behind because the compiled tail is
+   truncated) resolve by the attributed, fenced re-run; deleting it
+   today would surface internal_error for valid programs. The plan's
+   "delete the runtimeShouldFallback re-run" applies to the REFUSAL
+   class; the designed-defer channel stays bounded, attributed and
+   fenced while it lasts — each defer in it is a compiler defect owed
+   closure by the bail census, not a landing pad the design may keep.
 4. **The Run flip** (p11/public-run-is-compiled): Run's body becomes
    the RunAutoValues path (compiled by default, host-value projection),
    after 2+3 so the oracle and refusal contracts are already stable.
@@ -1934,7 +1967,8 @@ request running `Model.stop mdl` — the compile pass REFUSES cleanly
 ("operand of unknown provenance or not statically materialisable at
 model-stop": an Extension-payload handle has no static
 materialisation) and the fallback returns the interpreter's correct
-result. The model_bad_handle failure therefore requires the CONCURRENT
+result — containment, not resolution: the refusal itself stays on the
+defect ledger. The model_bad_handle failure therefore requires the CONCURRENT
 composite — a live watch goroutine rebuilding while the flipped
 foreground churns per-request state — not the handle-as-operand shape
 itself. The remaining flip blockers are exactly two: that concurrent
@@ -1975,9 +2009,11 @@ attributed):
   the reason (under the hatch the library already ran the source; a
   reason-keyed re-run would double its effects).
 - `exec` (the HTTP server): silent explicit fallback; the policy-gated
-  registry is the canonical arm — a policy-bound server always refuses
-  (compiled dispatch consults no word rules) and every request runs on
-  the interpreter, where the gate lives.
+  registry was the dominant arm at this date — a policy-bound server
+  refused every program (compiled dispatch consulted no word rules) and
+  every request fell to the interpreter, where the gate then lived. That
+  was a defect being contained, not the intended arrangement; it is
+  closed below by the VM-side word-policy gate.
 - `repl`: silent explicit fallback per refused line, matching the
   historical UX (a genuinely-refusing line pin was added — the old
   fixture, `for 3 [1 2]`, compiles natively since the census hit 0).

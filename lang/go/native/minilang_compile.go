@@ -46,9 +46,9 @@ func miniHookToksMaterialisable(toks []Value) bool {
 		}
 		// Everything else is either concrete data, a bare type node, or a
 		// code token (word/marker) — recordable shapes (a shape the
-		// recorder still cannot seat refuses downstream, which is the
-		// sound fallback; this screen only diverts the KNOWN-unpoolable
-		// runtime carriers).
+		// recorder still cannot seat refuses downstream, which keeps a wrong
+		// answer out and leaves an open defect; this screen only diverts the
+		// KNOWN-unpoolable runtime carriers).
 	}
 	return true
 }

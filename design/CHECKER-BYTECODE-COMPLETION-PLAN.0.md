@@ -2,6 +2,19 @@
 
 Status: **executed** — see [`P7-ENDGAME.10.md`](P7-ENDGAME.10.md) for
 the closing record and the execution log below for every landing.
+
+**Doctrine correction (supersedes the original framing everywhere in
+this doc).** The interpreter is **not** a fallback for the compiler, and
+is not allowed to be one. Failure to compile is a *failure*. Done is a
+language that compiles as a developer expects — all valid code compiles,
+no exceptions — so every refusal counted below is a **defect**: an
+unimplemented or unproven case, owed a fix and tracked to closure, never
+a sanctioned design outcome. The runtime path that re-runs a refused
+program on the interpreter is **scaffolding** that absorbs a known defect
+so the user still gets an answer; where this doc describes it, it is
+described as machinery, never as a safety net the design leans on and
+never as a reason a refusal is acceptable.
+
 Originally: Snapshot date **2026-07-03**, tree = `main` @ `060157b`
 (post-PR #224 cross-module element typing). All gate numbers below were
 measured by running the ratchet/differential suites on this tree, not
@@ -124,10 +137,16 @@ fn-value application 1. Root cause: **125 soundness, 26 coverage,
 informational (`compiled_coverage_test.go:174-180`) because the corpus
 grows; the only hard coverage assertion is correct-error = 0.
 
-Fallback semantics: refusal and compiled-mode internal errors roll back
-the registry snapshot and silently re-run the interpreter ("slow, not
-wrong"); `--force-compile` turns refusal into a loud error. Compiled
-mode is **opt-in** (`--compile` / `BORU_COMPILE`), off by default.
+Refusal containment, as machinery: refusal and compiled-mode internal
+errors roll back the registry snapshot and **silently** re-run the
+interpreter. The silence is the worst of it — a compile defect fires,
+the user's valid program answers anyway, and nothing on the default
+path says the compiler failed. That is scaffolding holding an open
+defect off the user's output, not a fallback the design leans on, and
+it makes no refusal acceptable. `--force-compile` is the only mode that
+surfaces the failure at all: there refusal is the loud error it should
+always have been. Compiled mode is **opt-in** (`--compile` /
+`BORU_COMPILE`), off by default.
 
 **Correctness debt (the part that is *wrong*, not just missing):**
 
@@ -145,8 +164,9 @@ mode is **opt-in** (`--compile` / `BORU_COMPILE`), off by default.
   return checks using static `ConformsTo` instead of the runtime
   membership rule.
 - (Closed: PARAM-GUARD-SKIP miscompile fixed with runtime param guards
-  at `OpCallUser`; miscompile mechanisms B, C, D fixed as sound
-  refusals.)
+  at `OpCallUser`; miscompile mechanisms B, C, D contained by refusing
+  to compile — the divergence is gone, but each refusal is an open
+  compile defect still owed a fix.)
 
 **The hard wall, named honestly:** sound module-body / cross-registry
 compilation (`module-test.tsv:38` and everything shaped like it) is
@@ -178,13 +198,19 @@ goal.
 5. **Check-by-default**: `boru run` preflights with `--no-check` opt-out
    (gated on 1).
 
-**Compiler done = re-scoped P7:**
+**Compiler done = re-scoped P7.** The standard is a language that
+compiles as a developer expects: **all valid code compiles, no
+exceptions.** The corpus is the evidence for that, not its boundary — a
+valid program that refuses off-corpus is the same defect as one that
+refuses on it.
 1. `compile == interpret` (values + error taxonomy) with **zero known
    divergences** — i.e. M1/M2 fixed; this is currently violated only
    by M1/M2.
 2. Tier-2 reducible → 0 (one row: `flex`); compute frontier 68 → 0;
-   refusals 151 → 0 **on the live corpus**; islands tier-1-only
-   (currently 1 non-tier-1 island).
+   refusals 151 → 0 **on the live corpus**, and every refusal raised
+   afterwards — on the corpus or off it — tracked to closure as a
+   defect, never accepted; islands tier-1-only (currently 1 non-tier-1
+   island).
 3. Delete the unbounded whole-program fallback: `RunCompiled` becomes
    `Compile` + `RunProgram`; refusal surfaces as a compile error; a new
    gate asserts every `OpFallback` span classifies tier-1.
@@ -227,8 +253,8 @@ per-row landing tests, one commit per item with before/after deltas.
 
 | # | Item | Files | Acceptance |
 |---|---|---|---|
-| 1.1 | **M1** const-pool identity aliasing: stop const-baking fn-returned container literals whose identity can be observed (bake-refuse under `eq`-reachability, or allocate per call). Prefer the sound-refusal shape used for B/C/D. | `eng/go/emit.go`, `bytecode_constbake_test.go` | the `(mk) eq (mk)` family differentially pinned; 0 known divergences |
-| 1.2 | **M2** `/r`-deferred map-field auto-invoke + nested-factory apply residual | `eng/go/emit.go`, `carrier.go` | MISCOMPILE-HUNT rows all sound (compile correctly or refuse) |
+| 1.1 | **M1** const-pool identity aliasing: stop const-baking fn-returned container literals whose identity can be observed (bake-refuse under `eq`-reachability, or allocate per call). Prefer the refusal-containment shape used for B/C/D — where it refuses, the divergence is contained and the compile defect stays open. | `eng/go/emit.go`, `bytecode_constbake_test.go` | the `(mk) eq (mk)` family differentially pinned; 0 known divergences |
+| 1.2 | **M2** `/r`-deferred map-field auto-invoke + nested-factory apply residual | `eng/go/emit.go`, `carrier.go` | MISCOMPILE-HUNT rows compile correctly; where the change can only contain the divergence by refusing, the divergence is gone but the compile defect stays open and tracked |
 | 1.3 | **M3** parity audits: `checkParamContract` ≡ `MatchSignature`; tail-call return check uses the runtime membership rule, not static `ConformsTo` | `eng/go/vm.go` | targeted differential tests for both seams |
 | 1.4 | Soundness-pin burn-down: `forward-barrier.tsv:83` (concrete-condition folding), `recursion.tsv:53` (for-spread modeling); write irreducibility rationales for `patrun.tsv:40` / `module-rand.tsv:37` if they are the dynamic-dispatch core; triage `class.tsv:85`, `corpus-core.tsv:61` | `eng/go/carrier.go` | pin 7 → ≤ 4, each residual documented |
 
@@ -328,8 +354,10 @@ from everything; 7 is gated on 6's exit criteria.
 - **Stage 3 is the schedule.** Phases 0–5 are well-understood,
   gate-protected work. Phase 6 has already eaten two reverts; the
   design-round-first structure and the 4.5 decoupling are the
-  mitigation. If 6 stalls, everything else still lands and the system
-  remains "slow, not wrong" — the fallback doctrine is the safety net.
+  mitigation. If 6 stalls, everything else still lands — but a stall is
+  not a resting place: the rows Stage 3 owns stay uncompiled defects,
+  and the interpreter re-run that keeps them answering is scaffolding
+  over that hole, not a safety net this plan may settle on.
 - **Checker/compiler coupling cuts both ways.** Precision fronts
   (Phase 4) move refusal buckets for free, but any carrier change can
   move compiled behaviour; every Phase 2/4 item must run
@@ -386,10 +414,12 @@ from everything; 7 is gated on 6's exit criteria.
     consts. The VM applies via the delegation fast path or the island and
     enforces BOTH claim halves: a non-callable/quoted runtime value or a
     result-count mismatch raises internal_error → RunCompiled re-runs the
-    interpreter (runtimeShouldFallback — slow, not wrong; loud under
-    --force-compile). Pinned both ways by TestShapedMethodClaimViolationDefers
-    (a registered lying shape: Returns [] declared, 1 value returned →
-    fallback with the correct [7 42], internal_error under force) and
+    interpreter (runtimeShouldFallback — the containment path: the defect
+    is absorbed SILENTLY and the run still answers, loud only under
+    --force-compile). Pinned both ways by
+    TestShapedMethodClaimViolationDefers (a registered lying shape:
+    Returns [] declared, 1 value returned → fallback with the correct
+    [7 42], internal_error under force) and
     TestShapedMethodRegisteredShapeCompiles (the honest twin runs compiled).
   - **Row 55's second half needed one shape addition:** logger-child now
     declares ReturnsFn loggerShapeReturns (state-independent, like the
@@ -429,8 +459,8 @@ from everything; 7 is gated on 6's exit criteria.
     child row, effect-order pin, 4 guard-row refusal pins, capturing-member
     and computed-arg negatives with fallback parity, claim-violation
     defer + honest-shape positive). Phase 7's entry now reads: 11 refusals =
-    4 auto-dispatch guard (permanent unless a runtime model is built) +
-    2 flex G5 + 2 recursion M6 tier + 3 sound non-definite error rows, plus
+    4 auto-dispatch guard (open until a runtime model is built) +
+    2 flex G5 + 2 recursion M6 tier + 3 non-definite error rows, plus
     the 1 compute-frontier island.
 
 - **2026-07-04 — Phase 6 Stages M3 + M4 landed (DSL registration + definite
@@ -519,23 +549,24 @@ from everything; 7 is gated on 6's exit criteria.
     (forward-barrier:80's shape), and the splice/flex-Reach pins.
   - Census: refusals 40 → 19 (operand provenance 13 → 2 = recursion:71,72;
     dispatch recovery 14 → 5 = convert-ideal:30 (its Foo carrier CONFORMS to
-    the [Node Ideal] overload's Ideal slot — feasible, sound decline),
-    word-splice:115 (splice screen), forward-barrier:80 (List alternative),
-    flex:88,95 (Reach pin); dynamic input 1 → 0; fn-value-call boundary 7,
-    paren-bounded 1, container auto-dispatch 4 unchanged = the M2c stall +
-    the sound miscompile-E guard); islands still 1 (none added); tier-1/2 0;
-    error rows 12 → 3 (the only permitted direction — the 9 M4 rows now
-    COMPILE to byte-identical taxonomy); computeRefusalCeiling 29 → 17 with
+    the [Node Ideal] overload's Ideal slot — feasible, so the trap proof
+    declines and the row stays an open defect), word-splice:115 (splice
+    screen), forward-barrier:80 (List alternative), flex:88,95 (Reach pin);
+    dynamic input 1 → 0; fn-value-call boundary 7, paren-bounded 1,
+    container auto-dispatch 4 unchanged = the M2c stall + the miscompile-E
+    guard); islands still 1 (none added); tier-1/2 0; error rows 12 → 3
+    (the only permitted direction — the 9 M4 rows now COMPILE to
+    byte-identical taxonomy); computeRefusalCeiling 29 → 17 with
     rationale. Full battery green before and after (differential +
     or-fallback + combinations + property fuzz + -race + borudebug: VERIFY
     PASSED; make test exit 0). Remaining 19 + 1 island against the design's
     §7 forecast: 8 fn-value shapes need the M2c shaped-instance-method
-    feature, 4 sit on the sound auto-dispatch guard (permanent unless the
-    runtime model is built), 2 are the M6 dynamic-scope tier (recursion:71,
-    72), 2 are G5 flex path-shape typing (flex:88,95), 3 are sound
-    non-definite error rows (convert-ideal:30, forward-barrier:80,
-    word-splice:115), plus the 1 compute-frontier island — Phase 7's entry
-    now reads "0 outside documented tiers" over exactly these families.
+    feature, 4 sit on the auto-dispatch guard (open until the runtime
+    model is built), 2 are the M6 dynamic-scope tier (recursion:71, 72),
+    2 are G5 flex path-shape typing (flex:88,95), 3 are non-definite
+    error rows (convert-ideal:30, forward-barrier:80, word-splice:115),
+    plus the 1 compute-frontier island — Phase 7's entry now reads
+    "0 outside documented tiers" over exactly these families.
 
 - **2026-07-04 — Phase 6 Stage M2 landed (fn-value frontier, partial-M2c):
   refusals 68 → 40, native 3556 → 3584; census deltas ONLY in
@@ -591,9 +622,9 @@ from everything; 7 is gated on 6's exit criteria.
     fails at run time. That is a coherent one-session feature but engine
     surgery beyond this session's gate budget; nothing landed toward it, so
     the 8 rows are byte-identical refusals. module-log 72,73 +
-    module-rand 14,15 stay on the SOUND miscompile-E auto-dispatch guard
-    (containerFnAutoDispatchRisk / zeroArgFnOut), exactly as the design
-    allows — the guard was not weakened.
+    module-rand 14,15 stay on the miscompile-E auto-dispatch guard
+    (containerFnAutoDispatchRisk / zeroArgFnOut) — the guard was not
+    weakened, and the four rows stay open defects behind it.
   - **M2d (11/11: module-minilang.tsv:306-315 + corpus-core.tsv:134).** The
     design's "bake the fn as a const where the consumer treats it as DATA"
     landed, with a correction: `is` CANNOT take whole-sig CompileReadsFn — a
@@ -659,15 +690,17 @@ from everything; 7 is gated on 6's exit criteria.
   matrix 5 divergent shapes → parity, sharing/deq preserved; census
   unchanged (zero coverage cost); VERIFY PASSED + full suite green.
 - **2026-07-03 — Phase 1.2 (M2) landed**: both Mechanism-E remainders
-  now refuse soundly. Deferred-field auto-invoke: get-family reads
-  from containers holding a GENUINELY 0-param fn member refuse at both
-  record sites (receiver-keyed; concrete keys inspect only the read
-  member; the parked phantom 0-arg sig is discounted, so applied
-  member calls `m.b 2` and multi-param member reads keep compiling —
-  pinned by TestEmitFnValueFieldCallCompiles). Nested-factory curried
-  chain: statically-recovered closure arity vs tail-arg count refuses
-  the chain, single-apply factories keep compiling. Census cost:
-  2 rows (3474/153 vs 3476/151), both previously divergence-exposed.
+  now refuse instead of miscompiling — the divergence is contained,
+  two open compile defects left behind. Deferred-field auto-invoke:
+  get-family reads from containers holding a GENUINELY 0-param fn
+  member refuse at both record sites (receiver-keyed; concrete keys
+  inspect only the read member; the parked phantom 0-arg sig is
+  discounted, so applied member calls `m.b 2` and multi-param member
+  reads keep compiling — pinned by TestEmitFnValueFieldCallCompiles).
+  Nested-factory curried chain: statically-recovered closure arity vs
+  tail-arg count refuses the chain, single-apply factories keep
+  compiling. Census cost: 2 rows (3474/153 vs 3476/151), both
+  previously divergence-exposed.
   Landing test TestFnValueAutoApplyRefusals (4 refusals with
   fallback-parity + 4 preserved).
 - **2026-07-03 — Phase 1.4a landed: comparison concrete folding
@@ -769,7 +802,7 @@ from everything; 7 is gated on 6's exit criteria.
   mutation + 5 refusal negatives). Full battery green on the final
   tree (VERIFY PASSED, make test exit 0, differential 0 divergences);
   orchestrator spot-checked the corpus row parity via CLI. Residuals:
-  the two-lambda 4-arg walk stays a sound Stage-3 refusal; the last
+  the two-lambda 4-arg walk stays an open Stage-3 refusal; the last
   "dynamic input" row is module-parse.tsv:15, not a Stage-D shape;
   the stale next-stages/finish-line doc sections are noted, unedited.
 - **2026-07-04 — Phase 3.4 landed: unmatched-dispatch trap programs —
@@ -790,7 +823,7 @@ from everything; 7 is gated on 6's exit criteria.
   Census: native 3473 → 3543. Partition now 0 tier-1 / 0 tier-2 /
   13 error-row / 69 compute. Residual 13: 7 need carrier-disjointness
   proofs, 1 branch-arm trap modeling, 3 unblock via typed-def
-  compilation (cluster 3), 2 legitimately non-definite. Full battery
+  compilation (cluster 3), 2 not statically definite yet. Full battery
   green (VERIFY PASSED, make test exit 0, differential + fallback 0
   divergences); orchestrator spot-checked taxonomy + effect-order
   parity via CLI.
@@ -1017,7 +1050,8 @@ from everything; 7 is gated on 6's exit criteria.
   BORU_NO_COMPILE the kill switch, per the rollout contract's reserved
   Stage-7 language); the coverage frontier re-armed as a GATE at the
   documented-tier floor (refusalGate 11 / islandGate 1 in
-  TestCompiledCoverage, tier decomposition in-comment); perf/alloc
+  TestCompiledCoverage, tier decomposition in-comment — a ratchet over
+  11 open defects, not a licence for them); perf/alloc
   baseline confirmed standing (verify-bytecode alloc ceilings green
   at every landing). The unbounded fallback deletion stays gated on
   the tiers reaching 0, recorded in P7-ENDGAME.10.md with the full

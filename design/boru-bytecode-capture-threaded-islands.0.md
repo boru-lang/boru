@@ -135,8 +135,9 @@ Four coordinated changes:
    resolves to a value with **compiled provenance** (a frame local or a prior
    compiled event result — the same `resolveOperand` test the data-thread path
    uses). If every otherwise-free name does, collect them as *captures* instead
-   of refusing. A name with no compiled home still refuses (whole-program
-   fallback stands — soundness preserved).
+   of refusing. A name with no compiled home still refuses, and the whole
+   program is **silently** re-run on the interpreter — no wrong answer, but no
+   compile either, so that residue stays on the books as an open defect.
 
 2. **`FallbackSpan` (`bytecode.go:387`).** Add `Captures []FallbackCapture`
    where `FallbackCapture{Name string}`; the captured values ride the operand

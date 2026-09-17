@@ -416,7 +416,8 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// a curried factory is the shape; compiled, both names take one
 		// slot and the unconsumed argument leaks into the residual
 		// (`2 fn (Integer) 3` where the interpreter answers `6`). Refuse
-		// so the interpreter fallback owns it — slow, not wrong.
+		// rather than leak: the program is then silently interpreted, which
+		// hides this failure instead of fixing it.
 		if prev, dup := CheckFnCarrierBoundName(r, value.ID); dup && prev != name {
 			r.Check.Recorder().MarkUncompilable(
 				"def of a computed fn whose apply the analysis dropped (curried chain — Stage 1)")
@@ -788,7 +789,7 @@ func reservedWordError(r *Registry, op, name string) error {
 // shapes (predicate type / bare-refine newtype / DepScalar subset over a
 // param or computed carrier) now compile: RecordTypedBind emits an OpBindTyped
 // that runs the interpreter's own validate/reparent at run time (RunTypedBind,
-// eng/go/typed_bind.go — the closure of miscompile B's sound refusal). This
+// eng/go/typed_bind.go — the closure of miscompile B's refusal). This
 // mark remains only for the residual shape RecordTypedBind declines: a dynamic
 // body whose operand has no resolvable provenance, where compiling would have
 // to guess the stack layout. Object / alias / schema typed-defs do not route
@@ -830,7 +831,7 @@ func markRefineDefUncompilable(r *Registry, name string, body Value) {
 // runs the transform). In a COMPILE pass the check-mode run is ANALYSIS ONLY
 // (recording suspended so the predicate body's dispatches are not emitted
 // inline ahead of the bind); a declined record refuses regardless of
-// concreteness — slow, not wrong.
+// concreteness — no wrong bake, and no compile either.
 func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Value, describeType func() string, pos SrcPos) ([]Value, error) {
 	resumePred := func() {}
 	if es := r.Check.Recorder(); es.Active() && IsConcrete(body) {
@@ -886,7 +887,8 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 
 // MarkFnPredicateBindUncompilable refuses compilation when a fn-predicate
 // typed-def's bind record declined: the predicate is a runtime evaluation
-// for every body shape, so there is no sound bake — slow, not wrong.
+// for every body shape, so there is no faithful bake to emit. The refusal
+// keeps a wrong bake out; compiling it is still owed.
 func MarkFnPredicateBindUncompilable(r *Registry, name string) {
 	if es := r.Check.Recorder(); es.Active() {
 		es.MarkUncompilable("typed-def `" + name + "`: fn-predicate bind is runtime-evaluated (no compiled bind at this site)")

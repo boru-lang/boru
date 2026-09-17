@@ -11,6 +11,19 @@ Read those first for context; this doc is the *forward* plan, organised by the
 **foundation** each remaining row needs rather than row-by-row, because the rows
 cluster onto a small number of foundational changes.
 
+> **Doctrine (overrides any older framing in this doc).** Done is a language
+> that compiles, as a developer expects — ALL valid code compiles, no
+> exceptions. The interpreter is **not** a fallback for the compiler and is
+> not allowed to become one. Every refusal counted below is a **defect** — an
+> unimplemented or unproven case, owed a fix and tracked to closure — never a
+> sanctioned design outcome, and never a tier a row can be retired into to
+> make a ceiling fall. The containment machinery is real and is described
+> here as machinery: `RunCompiled` **silently** re-runs a refused program on
+> the interpreter (the refusal itself recorded through `MarkUncompilable`,
+> sub-program regions through the fallback-island opcode) so the user still
+> gets an answer while the defect is open. The silence makes it worse, not
+> better — the failure hides itself. Stage J deletes that path.
+
 ---
 
 ## Update (2026-07-21) — Stage-3 fn-value dispatch: body-tail dynamic apply landed
@@ -75,7 +88,8 @@ to concrete was tried and reverted). The `apply`-over-DYNAMIC-fn rows
 (3, `comp/r apply` where `comp` is a fn param) were probed: eliding
 `apply`'s recording is **unsound** — it leaves the fn+arg uncollapsed (a
 return-count mismatch that "compiles" a malformed unit instead of
-falling back). The real fix is to EMIT an `OpCallDynamic` inside the fn
+refusing; and refusing is not a resting place either — it leaves the
+rows open). The real fix is to EMIT an `OpCallDynamic` inside the fn
 unit with the apply operand order (`[args, fn]`) reversed to
 `CALL_DYNAMIC`'s `[fn, args]` — Stage G proper, gated by the same
 operand-order discipline as the `(3 and "x") add 1` revert. **Concrete
@@ -99,7 +113,7 @@ single safe commit; each needs the deliberate per-stage work below.
 | `refusalCeiling` (compiled_coverage_test.go) | **16** | 0 |
 | `islandCeiling` (compiled_coverage_test.go) | **0** ✓ | 0 (done) |
 | `reducibleCeiling` (compiled_metafallback_test.go) | **2** | 0 |
-| `interpreterOnlyCeiling` | 0 / cap 3 | capped (permanent) |
+| `interpreterOnlyCeiling` | 0 / cap 3 | 0 — a capped row is an open defect, not a tier |
 | `computeRefusalCeiling` | 18 / 86 | 0 |
 
 Corpus: 2830 value rows; 2502 compile (0 islanded), 16 refuse.
@@ -137,7 +151,7 @@ Corpus: 2830 value rows; 2502 compile (0 islanded), 16 refuse.
 | F | dynamic-scope frames | `recursion.tsv:72` | high (soundness) |
 | G | closure-return / fn-value-call boundary | `bytecode-combinations.tsv:74`, `def-node-binding.tsv:54`, `fn-value.tsv:19`, `patrun.tsv:40` | high (soundness) |
 | H | dispatch-recovery operand order | `bytecode-combinations.tsv:113` | medium |
-| I | divergent macro (permanent fallback / spec decision) | `macro.tsv:45` | n/a |
+| I | divergent macro (open defect / spec decision: is the row valid boru?) | `macro.tsv:45` | n/a |
 
 Stages C–G also clear the 2 reducible rows (Test/Assert, quote-macro) and chip at
 `computeRefusalCeiling`.
@@ -203,7 +217,9 @@ the variadic marker is count-agnostic. Verify the memo does not loop.
 **Soundness hazard.** A variadic fn result must only ever flow to the **program
 residual** or another variadic-absorbing position — never to a fixed-arity call
 operand (the count is unknown at the call site). Gate: refuse a variadic
-`CALL_USER` result consumed as a sig-position operand.
+`CALL_USER` result consumed as a sig-position operand — the gate stops a
+miscompile, and the refusal it leaves is the next defect on the list (model the
+count at the call site), not the finish line.
 
 **Files.** `eng/go/lower.go` (`lowerFragment`, `lowerArms`, `reconcileResults`,
 `lowerUserCall`, the `variadic` model), `eng/go/emit.go` (`RecordUserCall` nout
@@ -212,8 +228,9 @@ sentinel, `AnalyseFnBody` residual marking), `eng/go/vm.go` (`OpRet` /
 
 **Verification.** `recursion.tsv` rows; a fn returning a *fixed* multi-count must
 still count-check (no regression). New `bytecode_findings_test.go` row:
-`m 3 → [6 4 2]`, plus a negative (a variadic result fed to `add` must refuse).
-Full `verify-bytecode`; lower `refusalCeiling` 16 → 15.
+`m 3 → [6 4 2]`, plus a negative (a variadic result fed to `add` must refuse
+until that shape is modelled — the test pins the containment, it does not bless
+the refusal). Full `verify-bytecode`; lower `refusalCeiling` 16 → 15.
 
 ---
 
@@ -406,7 +423,8 @@ pools), `eng/go/vm.go` (`callPoly` registry-aware re-match), `eng/go/carrier.go`
 (`tryRecordPoly` sub-registry admission).
 
 **Verification.** `reach.tsv:38`, `module-io.tsv:29/30` compile with parity; a
-negative (a genuinely runtime-shape-dependent module word) still refuses.
+negative (a genuinely runtime-shape-dependent module word) still refuses —
+containment while that word's dispatch is unproven, and a row still owed.
 
 ---
 
@@ -418,7 +436,9 @@ negative (a genuinely runtime-shape-dependent module word) still refuses.
 **Root cause.** `flex` is a reference-semantics container; mutations (`push`,
 `drop`) must be visible through aliases. The VM value model is **by-value**, so a
 mutation through one binding is not seen through another — the compiled program
-would diverge. The carrier refuses rather than bake an unsound by-value copy.
+would diverge. The carrier refuses rather than bake an unsound by-value copy;
+that refusal contains the divergence but does not close the row — the missing
+reference-cell model is the defect, and the design below is the fix it is owed.
 
 **Design.** Add a **reference cell** to the VM value model — a heap-boxed
 `*RefCell{ Value }` payload (eng/go/payload.go marker) that `flex` instances carry,
@@ -455,16 +475,20 @@ Compiling it requires modeling the **dynamic def-stack** at run time, which the
 static unit model deliberately does not (a unit is reused across call sites with
 different dynamic environments).
 
-**Design (per-case soundness — this is the riskiest semantically).** Two options:
+**Design (per-case soundness — this is the riskiest semantically).** One live
+option, and one that is closed:
 1. **Compile a dynamic read** — `g`'s body emits a runtime def-stack lookup for
    `n` (a new `OpDynLookup name` reading the VM's def-stack), faithful to the
    interpreter. Bounded but adds a dynamic-scope opcode and a VM def-stack mirror.
-2. **Classify as permanent fallback** — dynamic-scope reads are rare and arguably
-   should not be in the compilable subset; document `g`-style dynamic reads as a
-   permanent tier (like tier-1 Vm.run) and exclude from `refusalCeiling`.
+2. **Classify as permanent fallback** — REJECTED. Dynamic-scope reads are rare,
+   but `recursion.tsv:72` is valid boru, so it must compile; documenting
+   `g`-style reads as a permanent tier (like tier-1 Vm.run) and excluding them
+   from `refusalCeiling` would drop the ceiling while the defect stayed open.
 
-Recommend (2) unless dynamic scope is a required compiled feature — it is a
-semantic corner (the plan calls it "correctly refused").
+Do (1). An earlier pass recommended (2) on the old doctrine, and the plan it
+cited calls this row "correctly refused" — that phrase is quoted as written and
+is wrong: a refusal of valid code is never correct. Dynamic scope is a semantic
+corner, which makes the `OpDynLookup` work delicate, not optional.
 
 **Files (option 1).** `eng/go/bytecode.go` (`OpDynLookup`), `eng/go/vm.go`
 (def-stack mirror), `eng/go/carrier.go` (emit a dynamic read for an unresolved
@@ -514,8 +538,9 @@ coordinated pieces:
   CARRIER (always callable) produced by an event, and every trailing arg must be a
   non-fn, non-dynamic RE-PUSHABLE operand (const/local/type) — a computed arg is
   already on the sim, so it fails the sole-fn residual check and refuses rather
-  than double-pushing. Verified 0 divergences (corpus + combinations + property
-  fuzz + `-race` + `borudebug`). Landing test:
+  than double-pushing — containment for a shape not yet modelled, and a row still
+  owed. Verified 0 divergences (corpus + combinations + property fuzz + `-race` +
+  `borudebug`). Landing test:
   `lang/go/bytecode_findings_test.go::TestReturnedCapturingClosureApply` (positive
   + the computed-apply-arg negative).
 
@@ -588,35 +613,45 @@ prior `[1x]` divergence is the regression guard.
 ## Stage I — divergent macro (`macro.tsv:45`)
 
 **Row.** `def loopy (macro [[a] [quote [loopy unquote a]]]) macroexpand (loopy 1)`
-→ `ERROR:expansion too deep`. **Not statically compilable.** At check time `loopy`
+→ `ERROR:expansion too deep`. **Not statically expandable.** At check time `loopy`
 resolves to a carrier, so `expandAllMacros` (macro_expand.go:410, bound 256) never
 re-expands to the depth limit it raises at *run* time; the compiler cannot know
 the expansion diverges without running it (and running it to the limit at compile
 time is itself the divergence).
 
-**Decision (spec/scope — yours).** Either:
-- **Permanent fallback tier** — classify a recursive/divergent `macroexpand` as
-  interpreter-only (like tier-1 `Vm.run`), excluded from `refusalCeiling`. This is
-  the honest classification: it is genuinely runtime-only.
-- **Spec reclassification** — mark the row as a documented non-compilable error
-  row.
+**Decision (spec/scope — yours).** The open question is what the row *is*, not
+where to file its refusal. Either:
+- **Spec reclassification** — decide a divergent `macroexpand` is not valid
+  boru: an error row by definition, whose compiled twin raises the same
+  `expansion too deep`. That closes the row rather than shelving it.
+- **Compile the divergence** — if the row IS valid boru, it must compile: emit
+  the expansion as runtime work so the VM raises the depth limit exactly where
+  the interpreter raises it, and the row stops being an exception.
 
-No bytecode change makes this compile soundly; it needs a tiering decision so it
-stops counting against the ceiling.
+What is not available is a permanent interpreter-only tier that excludes the row
+from `refusalCeiling` — that drops the ceiling while the defect stays open.
+Static expansion alone cannot decide it (the compiler cannot know the expansion
+diverges without running it), so until the spec decision lands `macro.tsv:45` is
+an open defect like any other, and the scaffolding that re-runs it on the
+interpreter is containment, not a resting place.
 
 ---
 
 ## Stage J — re-scoped P7 deletion (the endpoint)
 
-Gated on `refusalCeiling == 0` (or every residual refusal placed in a documented
-permanent-fallback tier per Stages F/I) and `reducibleCeiling == 0`.
+Gated on `refusalCeiling == 0` and `reducibleCeiling == 0` — every row compiled,
+none retired into a tier. Stages F/I close their rows; they do not file them away.
 
 1. `lang/go/boru.go::RunCompiled` — replace the `a.Run(src)` whole-program fallback
    with `Compile` + `RunProgram`; a refusal becomes a surfaced compile error.
+   This is the deletion of the scaffolding: today that path re-runs a refused
+   program on the interpreter **silently**, so the defect never reaches the
+   developer at all — a failure that hides itself.
 2. Keep the `OpFallback` island (`vm.go::runFallback`, `bytecode.go::OpFallback`,
    `emit.go::RecordFallback`) but add a gate asserting **every** `OpFallback` span
    classifies tier-1 (`interpreterOnlyWords`). With `islandCeiling == 0` today,
-   the only tier-1 fallback is a `Vm.run` of genuinely runtime-constructed source.
+   the only such span is a `Vm.run` of genuinely runtime-constructed source — an
+   open defect held where the gate can see it, not a licensed tier.
 3. Re-baseline perf/alloc (`bytecode_*_bench_test.go`,
    `bytecode_allocguard_test.go`).
 
@@ -631,11 +666,12 @@ permanent-fallback tier per Stages F/I) and `reducibleCeiling == 0`.
 4. **D** (sub-registry poly) — 3 rows; medium.
 5. **G** (closure/fn-value) — 3–4 rows; soundness-careful.
 6. **E** (reference cells) — 1 row + reducible; VM value-model.
-7. **F** / **I** — tiering decisions (dynamic scope, divergent macro).
+7. **F** / **I** — the two semantic corners: compile the dynamic read (F option
+   1); settle what `macro.tsv:45` IS (I). Neither is retired into a tier.
 8. **C** (module-body compilation) — the project; do as ONE reviewed change with
    the corpus re-baseline. Highest payoff (3 rows + 2 reducible + computeGap), but
    schedule deliberately.
-9. **J** — P7 once the ceilings are 0 (or tiered).
+9. **J** — P7 once the ceilings are 0.
 
 Each non-C stage lands as its own gate-clean commit with a per-row landing test
 and a one-line ratchet-rationale, exactly like the four wins this session. C is a
@@ -647,4 +683,6 @@ reviewed project with an explicit corpus re-baseline.
 (differential + whole-corpus parity + combination + property fuzz + `-race` +
 `borudebug`, **0** divergences) and `make status`. Ratchets move down only, with a
 rationale. Gate-clean-or-revert: every unsound attempt this session and prior was
-caught by the differential and reverted — keep that the backstop.
+caught by the differential and reverted — keep that the backstop. A revert
+restores parity; it does not close the row, which goes straight back on the list
+as an open defect.

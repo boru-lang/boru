@@ -377,8 +377,8 @@ improved over the same corpus.
 ### Client-side options until that lands
 
 1. **Keep the current pins** (`c44d994` for the bytecode-capable reference)
-   for `trie` and the `decision` smoke suite — interpreting is the supported
-   path and is fully green.
+   for `trie` and the `decision` smoke suite — interpreting is fully green
+   there while the check residue is worked off.
 2. **Adopt the branch for the now-clean suites.** bloom-filter (all suites)
    and decision's unit/spec/prop suites check clean and can drop their
    `--soft` / `continue-on-error` gates.
@@ -394,8 +394,14 @@ improved over the same corpus.
 `OpInterp` (`1b7b9ae`) removed the interpolated-string refusal, so suites that
 previously stopped there now advance. The remaining `--force-compile` refusals
 are the test framework's **code-body words** (`each`, `test-test`, `do` at
-“Stage 2”) — the tracked emitter-coverage work (decision report §6). `--compile`
-(silent interpreter fallback) produces correct output for every suite.
+“Stage 2”) — the tracked emitter-coverage work (decision report §6). Every one
+of those refusals is a **defect**: valid code the emitter cannot yet lower,
+owed a fix and tracked to closure, never a sanctioned outcome. Under
+`--compile` the runtime **silently** re-runs a refused program on the
+interpreter, so every suite still produces correct output — and the silence is
+the worst of it: a failure to compile that hides itself. The interpreter is not
+a fallback for the compiler and is not allowed to become one; that re-run is
+scaffolding absorbing these open defects, not a sanction for any of them.
 
 ### Residual emitter fix — raise-arm divergence (landed)
 
@@ -410,15 +416,17 @@ fixed-arity operand (`Assert.equal`, `print`, `add`) then refused with
 surviving arm's value is unconditional — `raise` now joins `break`/`continue`/
 tail-call in the divergence checks, matching the shallow `fragDiverges`. The
 change only **relaxes** an over-marking (a genuine `if c [n] []` 0-or-1 still
-refuses fixed-arity consumption), so it is coverage-only and sound by the
-differential + property gates.
+refuses fixed-arity consumption — itself an open defect, just not one this fix
+reaches), so it is coverage-only and sound by the differential + property gates.
 
 Effect on the clients: the three `apply-op-*` cases in `decision_unit_test`
 now force-compile. The remaining suite refusals are unchanged in kind — `each`
-over a `var`-block body (`var` splices onto the tape, a genuine code-body
-refusal), `do {…}` map bodies and namespace-exposed words (the deferred checker
-family — `check diagnostics`), and `test-check-prop` (the PBT framework). All
-still run correctly under `--compile`.
+over a `var`-block body (`var` splices onto the tape, an unlowered code-body
+case), `do {…}` map bodies and namespace-exposed words (the deferred checker
+family — `check diagnostics`), and `test-check-prop` (the PBT framework). Each
+is an open defect owed a fix. They still produce correct output under
+`--compile` only because the runtime silently re-runs them on the interpreter —
+containment for those defects, not a reason they may stay refused.
 
 Regression guards: `lang/spec/corpus-structures.tsv` (`classify`, an
 op-dispatch chain whose default branch raises, result consumed by `add`) and
@@ -438,5 +446,9 @@ curl -fsSL "https://codeload.github.com/boru-lang/boru/tar.gz/$REF" | tar -xz -C
 # From each client repo ROOT (so ./*.boru imports resolve):
 /tmp/boru-bin test/<suite>.boru            # interpret
 /tmp/boru-bin check test/<suite>.boru      # check
-/tmp/boru-bin --compile test/<suite>.boru  # compile (interpreter-fallback ok)
+
+# compile: a refusal here is SILENTLY re-run on the interpreter, so a green
+# line is not proof it compiled. Use --force-compile to see the refusals;
+# each one is an open defect, not a pass.
+/tmp/boru-bin --compile test/<suite>.boru
 ```

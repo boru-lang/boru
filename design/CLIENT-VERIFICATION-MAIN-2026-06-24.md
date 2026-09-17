@@ -30,7 +30,7 @@ Across **all 21 test suites of all three libraries**, on `main @ 0b010ae`:
 | **Checking** (`boru check suite.boru`) | ✅ all 21 suites **0 errors** |
 | **`boru check module.boru`** (direct, all 6 modules) | ✅ **0 errors** each |
 | **`--compile` == interpreter** | ✅ byte-identical on all 21 suites |
-| **`--force-compile`** (strict bytecode, no fallback) | ⚠️ partial — code-body words still refuse (enumerated below), all fall back correctly under `--compile` |
+| **`--force-compile`** (strict bytecode — what the language owes) | ❌ partial — code-body words still refuse (enumerated below); each refusal is an open compile defect, currently absorbed by the interpreter under `--compile` |
 
 The checker false-positive classes the reports documented (`no_signature` on
 `Any`-typed dynamic dispatch, `undefined_word` on `do{}` params, `unused_def`
@@ -41,14 +41,19 @@ from the 150–300 in the original `BORU-CHECK-REPORT.md`). The bloom-filter
 interpreter `None`-interpolation regression is fixed. Nothing in any of the
 three libraries needs a source change to pass interpret + check.
 
-**The one remaining limitation** is `--force-compile` (the strict bytecode path
-that refuses rather than falling back): it still cannot lower a handful of
-**code-body words** (`each` over a `var`/lambda body, `do {…}` map bodies, the
-test-framework words `test-test` / `test-check-prop`). Those are tracked
-upstream emitter work, **deferred by design** (see "Remaining `--force-compile`
-gaps" below). `--compile` (silent interpreter fallback) produces correct output
-for every suite, and the **compile==interpreter invariant holds everywhere** —
-so this is a coverage gap, not a correctness bug.
+**The one remaining defect** is `--force-compile` (the strict bytecode path,
+which reports the refusal instead of hiding it): it still cannot lower a handful
+of **code-body words** (`each` over a `var`/lambda body, `do {…}` map bodies,
+the test-framework words `test-test` / `test-check-prop`). Every one of those
+refusals is a failure to compile valid code — an unimplemented emitter case,
+owed a fix and tracked to closure upstream (see "Remaining `--force-compile`
+defects" below). Under `--compile` the runtime currently re-runs a refused
+program on the interpreter **silently**, which is why every suite still
+produces correct output and the **compile==interpreter invariant holds
+everywhere**. That silent routing is scaffolding absorbing a known defect, not
+a sanctioned outcome: the silence hides the failure instead of fixing it, and
+it does not make the refusals acceptable. The bar is that all valid code
+compiles, no exceptions — these suites do not clear it yet.
 
 ---
 
@@ -97,7 +102,7 @@ so this is a coverage gap, not a correctness bug.
 † `check diagnostics` here is **not** a check-mode error you can see with `boru
 check` — those three suites check **0 errors**. It is the compile path's
 internal check pass tripping the *dynamic-help example generator* (synthetic
-`{a:1,b:2}` args run through fn bodies at registration). See the gaps section.
+`{a:1,b:2}` args run through fn bodies at registration). See the defects section.
 
 ---
 
@@ -176,10 +181,15 @@ landed checker work. Locations below are from the current `main` of each repo.
    module only *requires* `≥ 958c379b` (`surface`/`exposes`, generics,
    `refine Record`, `fnsig`), so bumping is safe but not required. `diverge.sh`
    already tracks `main` HEAD independently, so leave it.
-3. **`--force-compile`: keep advisory.** `decision_prop_test` compiles;
-   `unit`/`spec` refuse on `test-test`/`each`; `smoke` refuses on the
-   dynamic-help `check diagnostics` artifact. All run correctly under
-   `--compile`.
+3. **`--force-compile`: keep the step non-gating until the upstream defects are
+   fixed.** `decision_prop_test` compiles; `unit`/`spec` refuse on
+   `test-test`/`each`; `smoke` refuses on the dynamic-help `check diagnostics`
+   artifact. Those four refusals are open upstream defects, not a property of
+   your source; under `--compile` the interpreter silently re-runs them, which
+   is why the suites still produce correct output — a silence that hides the
+   defect rather than excusing it. Leave the step non-gating so your CI is not
+   red for a bug you cannot fix, and read it as a live ledger of four defects
+   owed fixes, not as sign-off. The target is that all five compile.
 
 ### trie
 
@@ -197,8 +207,10 @@ landed checker work. Locations below are from the current `main` of each repo.
    **`boru check`** step (and the module-direct
    `boru check trie.boru radix.boru tst.boru burst.boru` step — also 0 now). This
    restores the three-way intent the report wanted to keep but couldn't.
-3. **Keep `--force-compile` advisory.** It still refuses (see gaps), so leave
-   that one step `continue-on-error`.
+3. **Keep the `--force-compile` step non-gating for now.** It still refuses (see
+   the defects section), so leave that one step `continue-on-error` — those
+   refusals are open upstream defects this repo cannot fix, and the step goes
+   back to gating once they are closed.
 4. **Optional cleanup — the client-side workarounds can be revisited.** §7 of
    the report restructured `trie.boru`'s `mk-node` to chained `set` and added a
    typed `kids-of` accessor to dodge the checker. The checker no longer needs
@@ -208,18 +220,26 @@ landed checker work. Locations below are from the current `main` of each repo.
    chained-`set` `mk-node` is what makes `trie_unit_test`/`_spec` refuse with
    `unmatched dispatch recovered at mk-node`; the `do{}` form will refuse
    differently (`do`, like the other modules). Either way it interprets and
-   checks clean, so this is purely a style/coverage choice. Recommendation:
+   checks clean, and either way the refusal is an upstream defect rather than a
+   verdict on the form you pick, so this is a style choice. Recommendation:
    **leave it as-is** unless you are actively chasing `--force-compile`
-   coverage, since neither form fully compiles yet.
+   coverage, since neither form compiles yet — both are waiting on the same
+   upstream fixes.
 
 ---
 
-## Remaining `--force-compile` gaps (upstream, deferred — context for clients)
+## Remaining `--force-compile` defects (upstream, open — context for clients)
 
-These refusals are why no suite except the two `*_prop_test` files fully
-compiles. They are **sound** (`design/COMPILABLE-SUBSET.md`: "refusal is always
-sound; the worst failure mode is slow, not wrong") and every one falls back to a
-correct interpreter run under `--compile`.
+These refusals are why no suite except the two `*_prop_test` files compiles.
+Each one is a **defect** — valid code the emitter cannot yet lower — owed a fix
+and tracked to closure; a refusal is never a sanctioned design outcome. (Earlier
+framing here quoted `design/COMPILABLE-SUBSET.md` to the effect that a refusal is
+merely "slow, not wrong". That framing was wrong and has been corrected: failure
+to compile is a failure.) What happens today is that `--compile` silently
+re-runs a refused program on the interpreter so the user still gets a correct
+answer — containment for a known defect, not a fallback the design is allowed
+to lean on. That it happens silently is the worst of it: the failure hides
+the defect instead of reporting it.
 
 | Refusal | Where | What it is |
 |---|---|---|
@@ -230,7 +250,7 @@ correct interpreter run under `--compile`.
 | `unmatched dispatch recovered at mk-node` | `trie_unit_test`/`_spec` | the chained-`set` `mk-node` builder dispatched over a gradual node — the emitter recovers but refuses to lower |
 | `check diagnostics` | `decision_smoke`, `radix_unit`, `trie_smoke` | **not** a real check error (these suites `boru check` clean). The compile path's internal check runs the **dynamic-help example generator** — each registered fn body is evaluated in check mode against a synthetic `{a:1,b:2}`, and those synthetic dispatch failures become error diagnostics that gate the emit. Diagnosed in `design/module-fn-checkstate-ownership.{5,6}.md` |
 
-**Why these are deferred, not quick fixes.** The test-framework / `each` / `do`
+**Why these defects are not quick fixes.** The test-framework / `each` / `do`
 code-body lowering is the named Stage-2 emitter cluster
 (`design/boru-bytecode-completion.0.md`, `COMPILABLE-SUBSET.md`). The
 `check diagnostics` artifact is worse than a filter: the dynamic-help eval is
@@ -241,9 +261,12 @@ ownership.6.md` measured three partial fixes; each either regressed the
 coverage corpus or changed observable runtime behavior. The sound fix
 (hermetic help eval + a first-class construction-check pass + a corpus
 re-baseline) is a scoped project, not a localized change. **Recommendation:
-keep `--force-compile` advisory in all three clients until that lands**; the
-interpreter (and `--compile`, which matches it) remain the supported,
-fully-green paths.
+keep the `--force-compile` step non-gating in all three clients until that
+lands**, so client CI is not red for an upstream defect — and read that
+non-gating step as a live bug ledger, not as sign-off. The interpreter (and
+`--compile`, which silently re-runs on it) is what keeps those suites green
+in the meantime: silent containment, not the destination. Done is all 21
+suites compiling.
 
 ---
 
@@ -256,10 +279,11 @@ merge / fold-seed matching, param narrowing) merged ahead of `0b010ae` and is
 captured in [`CLIENT-FIXES-2026-06-24.md`](CLIENT-FIXES-2026-06-24.md). This
 document is the independent re-verification that those fixes hold against the
 current HEAD across all three real client libraries, plus the precise,
-reproducible ledger of what `--force-compile` still defers. No further boru
-source change is proposed here: the remaining items are the deferred emitter /
-dynamic-help-eval projects above, where a partial change is known to regress the
-calibrated corpus.
+reproducible ledger of the compile defects `--force-compile` still exposes. No
+further boru source change is proposed *here*: the remaining items are the open
+emitter / dynamic-help-eval projects above, where a partial change is known to
+regress the calibrated corpus. They are owed fixes — this document tracks them,
+it does not close them.
 
 ---
 
@@ -277,6 +301,6 @@ for f in test/*.boru; do
   /tmp/boru-bin "$f" >/dev/null            && echo "interp ok   $f"
   /tmp/boru-bin check "$f"                 # 0 errors
   /tmp/boru-bin --compile "$f" >/dev/null  # output matches interpreter
-  /tmp/boru-bin --force-compile "$f"       # strict: see the gaps table
+  /tmp/boru-bin --force-compile "$f"       # strict: see the defects table
 done
 ```

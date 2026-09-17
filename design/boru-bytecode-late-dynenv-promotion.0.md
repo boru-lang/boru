@@ -48,7 +48,8 @@ the real compile. A top-level `def` fn has no such probe.
 - A source that is not a single-output call (`singleOutputCall` — a fragment
   RESULT that must stay on its sim, a makeMap/branch/loop value, a
   multi-output producer) is **left untouched** for `lowerDynBind` to refuse:
-  a sound interpreter fallback, never a wrong store.
+  a refusal rather than a wrong store — the better of the two failures, and
+  still a defect owed a lowering.
 
 ## Soundness
 
@@ -62,7 +63,8 @@ arming *order*, so the fix ships a hand-pinned off-corpus regression:
   — `RunCompiledStrict == Run` for the make-field, chained-def, and
   in-if-arm shapes, each asserted to compile with **no FALLBACK island**;
   plus a negative case pinning that a branch-valued dyn-bind source refuses
-  (sound fallback) rather than miscompiling.
+  rather than miscompiling — the pin fences the miscompile, and the refusal
+  it fences is itself an open defect.
 - `eng/go/lower_latedyn_test.go::TestSingleOutputCall` — the recursion-blind
   arms.
 

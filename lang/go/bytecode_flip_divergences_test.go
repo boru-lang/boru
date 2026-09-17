@@ -99,7 +99,7 @@ shout -3`
 	// When the poly bake DECLINES — a zero-DECLARED-return arm whose body
 	// leaves a residual (the interpreter's "residual IS the result" shape,
 	// which a 0-output call site cannot carry) — the hazard refuses the
-	// program: slow, not wrong, and the interpreter keeps parity.
+	// program: silently interpreted, so parity holds and the compile failure is hidden.
 	declining := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
 def zpick fn [
   [x:Pos] [] [x]

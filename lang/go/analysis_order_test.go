@@ -18,7 +18,7 @@ package lang
 // the fix regressing to the old hammer) and agree with the interpreter. The
 // second test pins the shapes the fix deliberately leaves to the interpreter,
 // each with the reason it refuses under, so a silent graduation or a drift of
-// the sound fallback is visible.
+// the refusal the interpreter absorbs is visible.
 
 import (
 	"fmt"

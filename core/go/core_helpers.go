@@ -176,8 +176,9 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// when the branch is not taken (or the loop runs zero times), so
 				// the two diverge. Refuse — MarkUncompilable is a no-op off the
 				// compile pass, so plain check and the interpreter are unaffected
-				// and the program runs correctly (slow, not wrong). An
-				// UNCONDITIONAL redefinition (top level or inside `do`) is sound
+				// and the program runs correctly — silently, which is why this
+				// refusal has to stay on the books as a defect. An UNCONDITIONAL
+				// redefinition (top level or inside `do`) has no such divergence
 				// and keeps compiling: CondBodyDepth is 0 there.
 				//
 				// A redefinition inside a FN BODY by a CAPTURING fn value — a
@@ -221,11 +222,12 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					// nothing. The live lead then resolves the arm's binding
 					// (whose unit no call site compiled) or an unbound name,
 					// diverging from the interpreter. No compiled twin reproduces
-					// a shadow the interpreter does not tear down, so refuse —
-					// slow, not wrong. An IN-FUNCTION family (created inside this
-					// fn, above the baseline) is popped by RET and compiles
-					// soundly, so it is NOT refused (the baseline gate; Codex P2
-					// on #469).
+					// a shadow the interpreter does not tear down, so refuse. That
+					// keeps a wrong answer out and leaves the shape uncompiled —
+					// an open defect, owed the model that reproduces the shadow.
+					// An IN-FUNCTION family (created inside this fn, above the
+					// baseline) is popped by RET and has no such divergence, so it
+					// is NOT refused (the baseline gate; Codex P2 on #469).
 					refusal = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
 				}
 				if refusal != "" {

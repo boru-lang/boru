@@ -6,7 +6,7 @@ fully `boru run` (interpret), `boru check`, AND `boru run --force-compile` clean
 Baseline on the merged binary (HEAD `53719f21`, my 22 commits + main `cc3fcf63`):
 - **interpret**: 44/48 OK (4 `*_prop_spec` are slow property GENERATORS that time out >60s — not errors; raise the timeout or treat as pass).
 - **check**: 47/48 OK — only `template.boru` (24 false-positive errors; see L8).
-- **compile** (`-force-compile`): 14 COMPILED, 34 REFUSE, **0 ERROR**. `--compile` == interpret for all 14 COMPILED (verified) and all 34 REFUSE fall back soundly. **Soundness is solid; the goal is COVERAGE.**
+- **compile** (`-force-compile`): 14 COMPILED, 34 REFUSE, **0 ERROR**. `--compile` == interpret for all 14 COMPILED (verified); the 34 REFUSE are silently routed to the interpreter by the runtime scaffolding, which hides 34 failures rather than fixing them. **Each refusal is an open defect owed a fix; DONE is 48/48 COMPILED.**
 
 KEY: each refusing file is a CHAIN of distinct leaves; the refusal text names only
 the FIRST surfacing one (and "code-body word X (Stage 2)" is a MASK — the body is
@@ -154,9 +154,9 @@ provenance. **Fix: compiler** — make push/set poly-safe over a Dynamic receive
 (OpCallNativePoly), or repo. Files: burst_unit_test (push), radix_unit_test (set).
 
 ### L6 — gradual-Any → multi-overload user fn `apply-op` (1 file)
-My cluster-C refusal (sound). **Fix: compiler** — record a user-fn poly that
-re-matches the overload at runtime; OR repo narrows the overloads. File:
-decision_smoke_test.
+My cluster-C refusal — an open defect, owed a fix. **Fix: compiler** — record a
+user-fn poly that re-matches the overload at runtime; OR repo narrows the
+overloads. File: decision_smoke_test.
 
 ### L7 (CHECK track) — `parse <kind>` over a runtime-registered grammar (template)
 `Parse.register` is a runtime side effect invisible to the static check pass →
@@ -174,8 +174,9 @@ track) → L1 (14 files, biggest) → L3 (4) → L2 (8) → L5 (2) → L6 (1). R
 corpus retest after each; a file flips only when its whole chain is clear.
 
 This is the compiler/checker-completion endgame — a sequenced multi-pass effort.
-Soundness (`compile==interpret`) is already verified solid; this is purely about
-turning sound REFUSALS into sound COMPILATIONS, plus the template checker accuracy.
+`compile==interpret` is verified solid for what DOES compile, but that is not the
+bar: every remaining REFUSAL is an open defect, and the work is closing all of them
+out to COMPILATIONS, plus the template checker accuracy.
 
 ### L0 — fix attempts RULED OUT (do not repeat)
 1. **Suspend-skip the Stage-2 refusal** (gate MarkUncompilable on `es.suspended==0`):
@@ -225,11 +226,12 @@ DECLARE a CallableSpec (BodyPos 1, BodyOut 0) — so they SHOULD compile via the
 closure path — yet refuse "Stage 2". The recursive describe/spec body (run-spec calls
 test-describe with a body that recursively calls run-spec) fails the closure compile.
 This blocks ~all test files. NOTE: the repos' OWN gate (test/divergence/run.sh) is
-INTERPRET + `boru --compile` (fallback-allowed) must SUCCEED AND AGREE — i.e.
-compile==interpret, which HOLDS for all 48 (0 miscompiles). force-compile coverage of
-the test framework is a STRETCH beyond the repos' gate. Next pass: unmask test-
-describe's closure-body refusal (instrument recordClosureDispatch for word=="test-
-describe") and compile the recursive spec body, OR accept fallback per the repos' gate.
+INTERPRET + `boru --compile` (which silently routes a refused program to the
+interpreter) must SUCCEED AND AGREE — i.e. compile==interpret, which HOLDS for all 48
+(0 miscompiles). That gate is BLIND to these refusals; it does not make them
+acceptable, and force-compile coverage of the test framework is owed work, not a
+stretch. Next pass: unmask test-describe's closure-body refusal (instrument
+recordClosureDispatch for word=="test-describe") and compile the recursive spec body.
 
 ### ROOT-CAUSED: the test-framework leaf IS the single-overload user-fn recovery leaf
 test-describe's closure body fails with Reason `unmatched dispatch recovered at
@@ -254,8 +256,9 @@ sig (dispatch == interpreter) or fail the guard (raise == interpreter's no_signa
 A MULTI-overload user fn must STILL refuse (Cluster C) — the guard would raise where
 the interpreter dispatches a sibling. Mandatory off-corpus regressions: a single-
 overload user fn over Any args (must compile + RunCompiledStrict==interp), and a
-multi-overload one (must still refuse). The repos' OWN gate is compile==interpret
-(holds via fallback today); this fix converts fallback → native coverage.
+multi-overload one (must still refuse — its own open defect). The repos' OWN gate is
+compile==interpret, which today holds only because the runtime silently routes the
+refused program to the interpreter; this fix closes that defect with native coverage.
 
 ### L4 LANDED — commit 913fe6a9 (Any + disjunct recovery, sound, gated)
 tryRecordRecoveredUserFn records a guarded CALL_USER for a single-overload arg-bearing
@@ -275,16 +278,19 @@ a mismatch is a silent miscompile the differential is blind to. Deferred to a fo
 pass with the mandatory off-corpus regression (a single-overload fn over concrete-
 mismatched args that the interpreter coerces vs one it rejects). NOTE: even clearing
 6700, test-describe likely chains further (test-test, recursive run-spec). The repos'
-OWN gate is compile==interpret (holds via fallback); force-compiling the recursive
-test framework is the stretch goal.
+OWN gate is compile==interpret, which holds only because the runtime silently routes
+the refused program to the interpreter; force-compiling the recursive test framework
+is owed work, not a stretch goal.
 
 ### CURRENT STATE (this session: L0 + L4 landed, sound/gated/committed)
 interpret 44/48 (4 slow generators), check 47/48 (only template fn_body_error),
 force-compile 14/48. Compile leaves remaining: each/test-test (test framework, deep
 chain), do/provenance (2+1), dynamic set/push (1+1), fold (1), gradual-Any multi-
-overload (1, correctly refused), template check (1). compile==interpret holds for all
-48 (0 miscompiles) — the repos' own gate passes; the gap is native force-compile
-COVERAGE, dominated by the recursive boru:test framework.
+overload (1, refused — an open defect), template check (1). compile==interpret holds
+for all 48 (0 miscompiles) and the repos' own gate passes, but only because refused
+programs are silently absorbed by the interpreter; the gap is native force-compile
+COVERAGE, dominated by the recursive boru:test framework, and every unit of it is a
+defect tracked to closure.
 
 ### CHECK leaf (template.boru — the only check failure) ROOT-CAUSED
 All 24 errors are one cause: `fn_body_error` → `parse_unknown_lang: no parser
@@ -358,8 +364,10 @@ run-cases args their real types → they match statically → NO recovery; or (b
 VM-level GUARDED native call (a CALL_NATIVE carrying the matched sig as a param
 contract, like CALL_USER) so a native concrete-recovery raises == interpreter. Both
 are multi-session features, NOT a recovery trick. The single-overload user-fn helper
-(L4) remains the sound boundary; concrete-mismatch natives/code-body stay refused
-(sound fallback). compile==interpret holds for all 48 (0 miscompiles).
+(L4) remains the boundary of what can be compiled without miscompiling; concrete-
+mismatch natives/code-body stay refused — unimplemented cases, each an open defect
+owed a fix, silently absorbed by the interpreter meanwhile. compile==interpret holds
+for all 48 (0 miscompiles).
 
 ### dx-report reframing + paren fix + no_signature finding (this pass)
 **The template/dx-report.md is the key artifact** (§11–§13): it documents that
@@ -368,7 +376,8 @@ check as advisory"), that soundness holds (compile==interpret byte-identical), a
 that `parse_unknown_lang` was "the single biggest blocker" — which **L7 fixed**.
 Confirmed: ALL 8 library deliverables across the repos check + force-compile CLEAN
 except template.boru; the test files' authors DOCUMENT the framework refusals as
-expected fallback. So the repos are correct; boru is the limitation.
+expected fallback. So the repos are correct; boru is the limitation — and every one
+of those documented refusals is a boru defect owed a fix, not a sanctioned outcome.
 
 - **dx-report updated** (template repo, branch dx-report-boru-update) to reflect L7
   (24 → 18 check errors, parse_unknown_lang: 0).
@@ -522,16 +531,18 @@ forward fix accepts (gradualAny=true, instrumented) yet still recovers; NOT repr
 with the full tpl-compile shape extracted — emergent from the whole 790-line module.
 
 ### COMPILE TRACK — complete analysis (session end). CHECK is 48/48 clean; COMPILE: 15/15 libs, 33 test files refuse.
-Every refusal is a SOUND MarkUncompilable (preserves compile==interpret; 0 miscompiles across 48).
+Every refusal is a MarkUncompilable that yields no wrong answer (compile==interpret preserved; 0 miscompiles across 48) —
+and every one of the 33 is an OPEN DEFECT owed a fix: the runtime silently routes those programs to the interpreter,
+hiding the failure rather than closing it.
 Distinct features required (first-refusal histogram over the 33): each×14, test-test×9, do×2, fold×1, not-materialisable×3.
 1. SHAPE-AGNOSTIC CLOSURE BODIES for gradual-Any fold/each (callable_words.go:98, dominant).
    Root: a closure body is compiled for ONE input shape (List element vs Map {k,v} entry); a gradual-Any
-   collection is shape-ambiguous, so a poly re-match would feed the wrong shape and diverge. CONFIRMED
-   sound: sort's 16 algorithms each/fold over Any-typed INTERMEDIATE lists (built by swaps/partitions) — not
-   source-annotatable (genuinely dynamic). Fix = compile the body for BOTH shapes (or a shape-generic body)
-   and let OpCallNativePoly pick List-vs-Map at runtime. test-test×9 CASCADES from these (test-test HAS a
-   Callable+compiled-closure path, test.go:294; it refuses only because its body contains the un-lowerable
-   each/fold).
+   collection is shape-ambiguous, so a poly re-match would feed the wrong shape and diverge. CONFIRMED GENUINE
+   (not a spurious refusal — and still a defect owed a fix): sort's 16 algorithms each/fold over Any-typed
+   INTERMEDIATE lists (built by swaps/partitions) — not source-annotatable (genuinely dynamic). Fix = compile the
+   body for BOTH shapes (or a shape-generic body) and let OpCallNativePoly pick List-vs-Map at runtime. test-test×9
+   CASCADES from these (test-test HAS a Callable+compiled-closure path, test.go:294; it refuses only because its
+   body contains the un-lowerable each/fold).
 2. do/error EXCEPTION-HANDLING lowering (emit.go:2041, bloom decode bloom.boru:306-310). `do [body] error
    [handler]` over a name-referencing body = try/catch in bytecode (body+handler closures + a catch op).
 3. NOT-STATICALLY-MATERIALISABLE collections (template×3) — a const-sized collection the const pool can't size.
@@ -562,10 +573,11 @@ Map away from a TList sig), so it is live ONLY on the compiled committed-overloa
 **Gate:** `make verify-bytecode` GREEN (compile==interpret, 0 miscompiles, incl. -race + borudebug). New off-corpus
 regression `lang/go/bytecode_gradual_each_test.go`: each/fold/scan over a Dynamic-Any collection compile NATIVE
 (no FALLBACK island) and RunCompiledStrict==Run for BOTH List and Map runtime shapes — incl. ONE compiled fn body
-driven by a List AND a Map (the strongest cross-delegation proof) — plus soundness (fallback-allowed) cases for a
-lambda-over-Dynamic and empty collections. `make fmt/vet/lint` clean. (Pre-existing branch debt unrelated to this
-change: `TestCheckAccuracyRatchet` fails identically on baseline — stale pins, falsePos 18 vs 23 + unflagged 205 vs
-189; the check path is untouched by this compile-side fix.)
+driven by a List AND a Map (the strongest cross-delegation proof) — plus parity-only cases for a lambda-over-Dynamic
+and empty collections, which still REFUSE and are silently routed to the interpreter by the harness: open defects, not
+coverage. `make fmt/vet/lint` clean. (Pre-existing branch debt unrelated to this change: `TestCheckAccuracyRatchet`
+fails identically on baseline — stale pins, falsePos 18 vs 23 + unflagged 205 vs 189; the check path is untouched by
+this compile-side fix.)
 
 **Impact:** the gradual-Any "ambiguous overload (List vs Map)" refusal is ELIMINATED. First-refusal `each` dropped
 14 → 6 (the 6 residual are the Stage-2 MASKED code-body leaf — an un-lowerable inner word like `do`/`Test.run-spec`,
@@ -646,10 +658,11 @@ Attacked the sort comparator leaf (`def c (prev key comp)` — apply a captured 
 - **MISCOMPILE FOUND + FIXED (commit d3dda735).** A closure body whose residual is an unapplied fn-value apply
   (`[1 2] each [(x x comp)]`) COMPILED to `[fn, fn]` while interpreting to `[0 0]` — the each took the unapplied
   comp off the residual top. Off-corpus (no captured-comparator-in-closure shape in the curated corpus), so
-  verify-bytecode passed clean while the bug was live. Fix: such a closure body now REFUSES (sound fallback),
-  mirroring the fn-body unapplied-fn-value refusal + resolveDynamicApply's main-residual refusals. Gated +
+  verify-bytecode passed clean while the bug was live. STOP-GAP: such a closure body now REFUSES — containment
+  only, mirroring the fn-body unapplied-fn-value refusal + resolveDynamicApply's main-residual refusals. Gated +
   off-corpus regression (bytecode_dynapply_body_test.go). So the comparator-each now REFUSES rather than
-  miscompiles — compile==interpret restored for this whole class.
+  miscompiles — compile==interpret restored for this whole class, with the refusal left as an open defect that
+  the lowering below is owed to close.
 - **THE LOWERING (compile the apply, the file-flipping step) is a real VM feature, scoped:** the existing
   dynamic-apply machinery (resolveDynamicApply/trailingApply, OpCallDynamic/Trailing) does NOT cover the
   comparator shape: OpCallDynamicTrailing is BOUNDED TO 1 ARG (bytecode.go:163 — >1 arg's non-callable island
@@ -662,7 +675,8 @@ Attacked the sort comparator leaf (`def c (prev key comp)` — apply a captured 
   arg-ordering to match the interpreter's top-down bind (soundness-critical — the off-corpus regression's real
   comparator results [0 0]/[1 -1]/[3 -1 1] are the gate). Even then the sort algorithms chain further (make Array,
   swap-at, nested each/var) — so this unblocks the comparator leaf but the sort files need their remaining leaves
-  too. A bounded multi-step VM feature; the miscompile fix is the sound foundation it sits on.
+  too. A bounded multi-step VM feature; the miscompile fix stops the wrong answer but leaves the defect open — the
+  lowering is what closes it.
 
 ### COMPARATOR LOWERING — complete sound design (the implementation site + arg-ordering de-risked).
 The trailing-fn-value apply is fully designed; the remaining work is a delicate engine-flow change:
@@ -682,8 +696,9 @@ The trailing-fn-value apply is fully designed; the remaining work is a delicate 
   `(acc x comp)`→[3,-1,1] (bytecode_dynapply_body_test.go expectations).
 - **WIRING:** at engine.go:5603, when the paren's LAST recordable value is a Function-typed value and >=1 args
   precede it, record an apply event (a new EmitState.RecordDynApplyTrailing) carrying the args+fn operands and
-  arity = count-1; lower it to OpCallDynTrailTop. The Step-1 closure-residual refusal (d3dda735) then becomes the
-  FALLBACK for shapes this path doesn't capture (a non-paren-bounded trailing apply), staying sound.
+  arity = count-1; lower it to OpCallDynTrailTop. The Step-1 closure-residual refusal (d3dda735) then catches the
+  shapes this path doesn't capture (a non-paren-bounded trailing apply) — containment for a residual open defect,
+  not the end state: those shapes are owed their own lowering.
 - **REMAINING RISK / SCOPE:** the paren-collapse flow re-encounters the in-paren values after the boundary
   (engine.go:5623 SkipRecorder); inserting the apply recording there without double-recording or breaking the
   residual is the delicate part — a focused engine change, gated by the off-corpus regression + verify-bytecode +

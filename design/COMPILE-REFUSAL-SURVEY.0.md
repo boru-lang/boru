@@ -95,8 +95,8 @@ lowering that models the word's output as an event with provenance.
 > in `lang/spec/corpus-core.tsv`; the remaining sub-frontier (a roll
 > permuting two EVENT results — beyond the Stage-1 residual ordering)
 > is ledgered in `frontier-full-stack.tsv`. Inexact contexts (variadic
-> regions, dynamic n, nested frames, out-of-range n) keep the sound
-> refusal.
+> regions, dynamic n, nested frames, out-of-range n) still refuse — they
+> are the open remainder of this leaf, not its settled edge.
 
 ### 3b. Multi-overload user fn whose arms declare different returns
 

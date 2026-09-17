@@ -2,6 +2,22 @@
 Full classification of all 71 MarkUncompilable / refusal raise-sites.
 5 subsumed | 23 designed-keep | 16 defensive-only | 27 open.
 
+Framing corrected 2026-09-16. Every site below that can fire on a valid
+program is a DEFECT: an unimplemented or unproven case in the compiler,
+owed a fix and tracked here to closure. Done is a language that
+compiles, as a developer expects — ALL valid code compiles, no
+exceptions. The interpreter is NOT a fallback for the compiler and is
+not allowed to become one. What keeps the user's answer correct
+meanwhile is machinery, not design: `MarkUncompilable` latches the
+refusal, `RunCompiled` re-runs the whole program on the interpreter,
+and the fallback-island opcode absorbs a refused region — and it does
+this SILENTLY, which hides the failure rather than excusing it.
+Scaffolding over a known defect, described here so it is not mistaken
+for absent. The bucket labels below — *designed-keep* above all —
+record WHY a site is still unbuilt and what mechanism it waits on.
+Nothing is permanently exempt from compiling, and no label discharges a
+site.
+
 ## Completeness-review landings update (2026-08-03, PR #327)
 
 The checker-compiler-completeness-review implementation
@@ -38,7 +54,8 @@ rows native, 0 refusals, 0 islands, differential green).
   leads** (DynApplyLeadEligible: a Function-typed param/capture slot of
   an open named-param fn unit). The site remains for event-provenance
   and non-member dynamic leads, where the probe evidence (§9.6b) shows
-  the convergence argument does NOT hold — those keep their machinery.
+  the convergence argument does NOT hold — those still refuse, open
+  cases needing a different argument.
 - **The full-stack refusal family — FoldFullStack LANDED** (review
   §9.6a): depth/pick/roll over provably-exact stacks elide statically;
   the family's remaining reachable shapes are ledgered
@@ -48,15 +65,19 @@ rows native, 0 refusals, 0 islands, differential green).
   native_control.go) — the §8.2(6) proven-raise increment LANDED**
   (review §9.13): a strict-Error do-result fixes the arity at zero and
   the dispatch records a 0-output call (stripResidualShapeOK want-0).
-  The maybe-raising variable-arity twin keeps the refusal
+  The maybe-raising variable-arity twin still refuses — open
   (frontier-do-error-arity.tsv).
 
 Adjudication note (review §9.14): the open set's residual entries all
-retain a NAMED future mechanism and a pinned reachable fixture — under
-the review's §8.3 finish line (zero divergences; every construct native
-or adjudicated; every refusal loud and self-explanatory) the audit is
-CURRENT and no site is un-adjudicated. The three finish-line clauses
-hold on the 2026-08-03 tree.
+retain a NAMED future mechanism and a pinned reachable fixture, so the
+audit is CURRENT as a record — every site is tracked, none is untracked.
+Tracked is not closed. The review's §8.3 finish line is a language that
+compiles as a developer expects: zero divergences; every
+runtime-reachable construct COMPILES NATIVELY; and until a defect is
+closed, its refusal loud and self-explanatory, never silent and never
+reported as success. The audit is complete against that line on the
+2026-08-03 tree; the tree is not. Sites below still refuse, and the
+runtime's re-run of a refused program on the interpreter is silent.
 
 ## Probe-sweep + landings update (2026-07-17, feat/refusal-closure-tail)
 
@@ -89,7 +110,8 @@ engine.go:8286-family (Any-operand poly — compiles via OpCallUserPoly; the
 site only fires on discarded isolated-analysis passes), emit.go:2848-family
 (computed rebind sources all resolve), emit.go:4114 (the documented fixture
 compiles; the site is narrower), the quoted-returned-fn review fence
-(working as designed).
+(declining as its author intended — the shape it holds back is still open
+and still owed a compile).
 
 Quick-win landings (all committed on the tail branch):
 engine.go:8219-family union-RETURN poly LANDED (tryCompileUserPolyArms +
@@ -130,7 +152,7 @@ are confirmed deep.
 - `eng/go/emit.go:2848` — loop-carried def `<name>` rebind of unknown provenance
   An in-loop rebind whose value is a computed residual resolveOperand cannot place into the carried slot — the §9.4 unknown-provenance tail applied to the loop-carried store; a provenance-seating mechanism for the store source would compile it (concrete/local rebinds already store via evStore).
 - `eng/go/emit.go:3068` — fn <name>: body result of unknown provenance
-  After tryReturnedClosure (which S9.2d widened to nameless verbose fns) declines, a curried-factory returning a NAMED / multi-sig / nested-capturing closure still refuses — §9.2 names the mechanism (extend tryReturnedClosure to capturing/nested closures via §7a unpooled-const capture); it also backstops the sound deferred-residual computed-map divergence.
+  After tryReturnedClosure (which S9.2d widened to nameless verbose fns) declines, a curried-factory returning a NAMED / multi-sig / nested-capturing closure still refuses — §9.2 names the mechanism (extend tryReturnedClosure to capturing/nested closures via §7a unpooled-const capture); it also backstops the deferred-residual computed-map divergence — containment for that gap, not a resolution of it.
 - `eng/go/emit.go:3124` — fn <name>: apply of a dynamic fn value not at the body tail (Stage 3)
   Pinned reachable (bytecode_fnvalue_m2_test.go: mid-body apply, double apply); §9.4 lists this as a candidate for subsumption under a generalised §1 body-window re-step island — the mechanism is designed but not yet landed, so it is a genuinely-compilable shape awaiting that landing.
 - `eng/go/emit.go:3157` — fn <name>: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)
@@ -154,7 +176,7 @@ are confirmed deep.
 - `eng/go/engine.go:6959` — fn-value application bounded by a paren (dynamic value precedes args)
   §9.2e landed the leading paren-bounded apply for a memberFnRead carrier (guarded OpCallDynMethod), but this raise fires precisely for a leading dynamic that is NOT a member read — a def-bound anon fn read `(mk 7)` or an opaque computed value — which needs RecordDynApply extended to the leading case (or a §1-style mark-bounded paren-window island).
 - `eng/go/engine.go:7956` — surface-shape typed dispatch at <w>
-  The S2 generic surface call (`g (make Circle {})` over `gen [(T extends Shape)]`) has no landed mechanism; §9.2 lists it as needing runtime re-match over the exposer's registered op (the §2/§6b precedent) or a designed opt-out.
+  The S2 generic surface call (`g (make Circle {})` over `gen [(T extends Shape)]`) has no landed mechanism; §9.2 lists it as needing runtime re-match over the exposer's registered op (the §2/§6b precedent) — that re-match is what the shape is owed; an opt-out is not on offer, nothing is exempt from compiling.
 - `eng/go/engine.go:8219` — unmatched dispatch recovered at <w>
   The strict-disjunct-partition branch: reached when tryRecordPoly (not native-poly-safe) and tryRecordRecoveredUserFn (multi-overload) both decline for a multi-overload user fn over a disjunct operand — the §2 scope-note names this as awaiting §6b's stored-sig-table re-match at the no-match recovery site (no OpDispatchRematch trap is attempted in this partition branch).
 - `eng/go/engine.go:8286` — unmatched dispatch recovered at <w>
@@ -166,65 +188,78 @@ are confirmed deep.
 
 ## subsumed (5)
 - `eng/go/emit.go:3026` — closure captures a runtime-minted value (no compile identity)
-  §7a (StampDetachedFn capture-clone mint) now compiles the computed-capture handler shape — pinned gone in TestComputedCaptureStampsAndRunsWithCaptures; the site survives only as the whole-program-compile freshen/share belt §7 keeps by design (positional capture-slot numbering can't skip an ID-less slot there).
+  §7a (StampDetachedFn capture-clone mint) now compiles the computed-capture handler shape — pinned gone in TestComputedCaptureStampsAndRunsWithCaptures; the site survives only as the whole-program-compile freshen/share belt §7 still carries (positional capture-slot numbering can't skip an ID-less slot there) — an unbuilt case, not an exemption.
 - `eng/go/emit.go:4193` — dynamic input at <word>
   §2 dynamic-operand rematch (OpDispatchRematch) and §1 drift-window now compile the dynamic-operand shapes at their own seams (tryRecordDriftWindow, the rematch screen) before RecordCall; this arm survives only for a dynamic carrier with no proven inputs, no shuffle exemption, and no compiled home — the narrowed unresolvable residual.
 - `eng/go/engine.go:3869` — splice over a computed payload (runtime spread unknown at compile time)
   §9.2b landed RecordSpliceDyn/OpSpliceDyn (commit b0689cb8, pinned TestSpliceDynComputedPayloadCompiles); this raise is now only the mechanism's own decline backstop, reached solely when the payload operand has no compiled home (unresolvable dynamic carrier).
 - `eng/go/engine.go:4158` — interpolated string with a runtime-computed part
-  RecordInterp/OpInterp compiles the dynamic-hole interpolation; this raise is reachable only for the narrower holesOK-false residue (a hole yielding 0 or >1 values, so no single operand-stack slot per hole), which the mechanism's precondition deliberately declines.
+  RecordInterp/OpInterp compiles the dynamic-hole interpolation; this raise is reachable only for the narrower holesOK-false residue (a hole yielding 0 or >1 values, so no single operand-stack slot per hole), which the mechanism's precondition does not yet cover.
 - `eng/go/engine.go:4258` — interpolated XML with a runtime-computed part
   §9.2c landed RecordInterpXml/OpInterpXml (pinned mustCompileWithParity in bytecode_xmlinterp_test.go); this raise is reachable only for the same narrow residue the string sibling has — a 0-or-many-valued hole (holesOK false), pinned refusing at bytecode_xmlinterp_test.go:43-50.
 
 ## designed-keep (23)
+The label is this audit's name for a site where the obvious compiled
+form would diverge from the interpreter and no runtime op fixes it yet.
+Each entry records why the site is still unbuilt and what it waits on.
+They are open defects with no known mechanism — never sanctioned
+outcomes, and never permission to leave a shape refused. (The single
+entry that is not a defect is emit.go:4117: a compile-time word runs
+during the check pass and has no runtime shape to compile at all.)
+
 - `carrier.go:4174` — fn body analysis error in <name>: <err>
-  runFnBodyOnce refuses when an ARMED recording's body analysis errors (a mere check-mode imprecision like `get` on an element carrier); the unit would close EMPTY and the VM's empty closure raises `body produced no result` where the interpreter succeeds, and no runtime op can reconstruct a body the compile front-end could not analyze — a permanent soundness fallback.
+  runFnBodyOnce refuses when an ARMED recording's body analysis errors (a mere check-mode imprecision like `get` on an element carrier); the unit would close EMPTY and the VM's empty closure raises `body produced no result` where the interpreter succeeds, and no runtime op reconstructs a body the compile front-end could not analyze — so the shape stays refused and the runtime absorbs it on the interpreter; the defect is the front end's inability to analyze the body.
 - `core_helpers.go:154` — fn '<name>' redefined inside a conditional body (branch/loop) shadows an outer overload
   The CondBodyDepth conditional-fn-shadow refusal (PR #275 divergence 2): a drop-then-push inside an if/case/loop arm leaves def depth UNCHANGED so the depth-growth rollback structurally cannot revert it, baking a shadow the interpreter drops when the branch isn't taken — pinned with mustRefuseWithParity in bytecode_edge_findings_test.go / bytecode_stage2_loopcarried_test.go.
 - `eng/go/emit.go:1524` — fn body literal embeds an enclosing binding's container (per-call spine identity over a shared member)
-  Reachable and pinned (TestPR225P1Refusals, `def c [9] def mk fn [[] [List] [[c]]]`): the interpreter builds a per-call-fresh outer spine wrapping a SHARED member instance, which neither OpPushConstFresh (deep clone) nor a pooled shared const can model; §9.2 lists a selective spine-only freshen only as a hypothetical, and no runtime op reconstructs this mixed identity, so it stays a sound refusal.
+  Reachable and pinned (TestPR225P1Refusals, `def c [9] def mk fn [[] [List] [[c]]]`): the interpreter builds a per-call-fresh outer spine wrapping a SHARED member instance, which neither OpPushConstFresh (deep clone) nor a pooled shared const can model; §9.2 lists a selective spine-only freshen only as a hypothetical, and no runtime op reconstructs this mixed identity yet, so it stays refused — an open defect whose mechanism is unbuilt, not a resting place.
 - `eng/go/emit.go:2094` — module binding <name> rebound after a fn unit baked its value
-  Reachable and pinned (frozen_module_read_test.go): a fn/closure UNIT froze a concrete module binding as a const or spliced tokens while the interpreter re-resolves the live name per call; a later module-scope rebind makes the frozen unit diverge, and re-resolving per call to fix it would just be the interpreter — the §8-class designed opt-out.
+  Reachable and pinned (frozen_module_read_test.go): a fn/closure UNIT froze a concrete module binding as a const or spliced tokens while the interpreter re-resolves the live name per call; a later module-scope rebind makes the frozen unit diverge, and re-resolving per call would just be the interpreter — the §8-class shape, which REFUSAL-CLOSURE §8 now records as the hardest open case in the envelope rather than an opt-out from it.
 - `eng/go/emit.go:2865` — undef of the loop-carried def `<name>` (Stage 3)
-  An `undef` of a name an active armed loop carries: the interpreter's undef exposes the PREVIOUS binding while the compiled carried slot still holds the rebound value, so compiled reads would diverge; no runtime op reconciles the popped-binding-vs-live-slot split without re-running the interpreter's scope semantics — a sound permanent refusal.
+  An `undef` of a name an active armed loop carries: the interpreter's undef exposes the PREVIOUS binding while the compiled carried slot still holds the rebound value, so compiled reads would diverge; no runtime op yet reconciles the popped-binding-vs-live-slot split without re-running the interpreter's scope semantics — so the shape stays refused: an open defect, not a permanent exemption.
 - `eng/go/emit.go:3142` — closure <name>: body value count differs from declared returns
-  A closure (each/scan/…) body count-mismatch must raise the higher-order word's OWN taxonomy (each_error "body produced no result"), not RET's type_error — a compiled RET would diverge on error taxonomy, so the interpreter must own it to stay byte-identical (the §1/§4 closure-refusal doctrine).
+  A closure (each/scan/…) body count-mismatch must raise the higher-order word's OWN taxonomy (each_error "body produced no result"), not RET's type_error — a compiled RET as lowered today would diverge on error taxonomy, so the shape stays refused and the interpreter absorbs it (the §1/§4 closure-refusal doctrine); what it is owed is a compiled RET that raises the higher-order word's own taxonomy.
 - `eng/go/emit.go:3344` — fn call operand of unknown provenance
-  An arg to a compiled user-fn call with no producing event / frame local / const home (pinned reachable across tier_probe/ljoin/modinstance tests) — the value has no compiled home by construction, a permanent property no runtime op can supply, so the interpreter keeps owning it.
+  An arg to a compiled user-fn call with no producing event / frame local / const home (pinned reachable across tier_probe/ljoin/modinstance tests) — the value has no compiled home under today's provenance model and no runtime op supplies one, so the shape stays refused and the interpreter absorbs it; it waits on the same residual-provenance mechanism as the unknown-provenance tail.
 - `eng/go/emit.go:3352` — capture <name> of <fn> unreachable at a call site
-  A closure capture unreachable from the call site is a permanent no-compile-home property (interpreter keeps owning that shape, per the RecordUserCall doc comment); currently exercised only white-box, but its nature is a designed keep identical in kind to the 3344 operand-provenance guard.
+  A closure capture unreachable from the call site has no compiled home under today's model (the interpreter absorbs that shape at run time, per the RecordUserCall doc comment); currently exercised only white-box, but it sits in this bucket identically in kind to the 3344 operand-provenance guard — the same open provenance defect.
 - `eng/go/emit.go:3393` — fn call operand of unknown provenance
-  The RecordUserPolyCall twin of 3344 — an operand with no compiled home in the committed multi-overload poly dispatch; the poly path pre-gates operands so it is only hit via the emit_seam7 white-box synthetic carrier, but the property it guards (no static provenance) is a permanent interpreter-owned keep.
+  The RecordUserPolyCall twin of 3344 — an operand with no compiled home in the committed multi-overload poly dispatch; the poly path pre-gates operands so it is only hit via the emit_seam7 white-box synthetic carrier, but the property it guards (no static provenance) is the same unbuilt provenance case as 3344 — absorbed by the interpreter, not settled.
 - `eng/go/emit.go:3566` — for: body nets multiple values per iteration
-  Narrowed by the net-drivers landing to ONLY Function-bearing multi-value loop regions (pinned in vary_differential_test.go): a parked Function auto-applies across iterations when a later value lands above it, so verbatim accumulation would diverge — a soundness refusal no runtime op fixes.
+  Narrowed by the net-drivers landing to ONLY Function-bearing multi-value loop regions (pinned in vary_differential_test.go): a parked Function auto-applies across iterations when a later value lands above it, so verbatim accumulation would diverge — the shape stays refused while no runtime op models that auto-apply; an open defect, not a settled one.
 - `eng/go/emit.go:3572` — for: body result of unknown provenance
-  The multi-value-branch operand-provenance guard, pinned reachable in bytecode_loop_provenance_test.go (a module-scope-def'd Module instance in a loop body has no producing event / frame local / const home) — a permanent no-compile-home property, sound interpreter fallback.
+  The multi-value-branch operand-provenance guard, pinned reachable in bytecode_loop_provenance_test.go (a module-scope-def'd Module instance in a loop body has no producing event / frame local / const home) — no compiled home under today's provenance model; the interpreter absorbs it at run time, which contains the defect without closing it.
 - `eng/go/emit.go:3596` — for: body result of unknown provenance
-  The single-value-branch twin of 3572, pinned reachable in the same bytecode_loop_provenance_test.go single-value case — the loop body's sole result value has no static provenance, a permanent interpreter-owned keep.
+  The single-value-branch twin of 3572, pinned reachable in the same bytecode_loop_provenance_test.go single-value case — the loop body's sole result value has no static provenance today; the same open provenance defect, absorbed by the interpreter.
 - `eng/go/emit.go:4117` — compile-time word <word>
-  sig.runInCheckMode() words execute during the check pass itself (the compile front-end); baking them would re-run compile-time-only handlers at VM time, so they are a permanent front-end refusal, not a compilable runtime shape.
+  sig.runInCheckMode() words execute during the check pass itself (the compile front-end); baking them would re-run compile-time-only handlers at VM time, so there is no runtime shape here to compile — a front-end fact, and per the review's §8.3 not a refusal that bears on the compile-everything line.
 - `eng/go/emit.go:4123` — full-stack word <word>
-  a GoImpl.FullStack handler receives the entire resolved stack (depth/pick/roll); its behaviour is a function of the whole live stack the VM does not present as operands, so no CALL_NATIVE operand layout can reproduce it — a permanent by-design refusal.
+  a GoImpl.FullStack handler receives the entire resolved stack (depth/pick/roll); its behaviour is a function of the whole live stack the VM does not present as operands, so no CALL_NATIVE operand layout reproduces it today — and FoldFullStack (review §9.6a) already compiles the provably-exact-stack cases, so what is left here is an open tail, not a by-design refusal.
 - `eng/go/emit.go:4137` — fn value read from a container auto-dispatches (Stage 3)
-  a get-family read surfacing a 0-arg-satisfiable fn member auto-dispatches in the interpreter while the VM would push it as inert data (miscompile mechanism E); the annotated shaped-method read is exempted to tryShapedMethodDispatch, so what remains is the receiver-signal safety belt that must keep refusing.
+  a get-family read surfacing a 0-arg-satisfiable fn member auto-dispatches in the interpreter while the VM would push it as inert data (miscompile mechanism E); the annotated shaped-method read is exempted to tryShapedMethodDispatch, so what remains is the receiver-signal belt that still refuses — containment for miscompile mechanism E until the auto-dispatch is modelled, not a shape exempt from compiling.
 - `eng/go/emit.go:4145` — context-dependent word <word>
-  args/__pa read the interpreter's per-call args stack, which the VM's CALL_USER frame deliberately does not maintain (it binds params to frame locals); a compiled body reading args would fault, and no runtime op restores the abandoned args stack — permanent by design.
+  args/__pa read the interpreter's per-call args stack, which the VM's CALL_USER frame deliberately does not maintain (it binds params to frame locals); a compiled body reading args would fault, and no runtime op restores the abandoned args stack today, so the shape stays refused — closing it means a frame model that serves `args`, not an exemption.
 - `eng/go/emit.go:4171` — code-body word <word> (Stage 2)
-  a code-body word that splices onto the tape (CompileExecutesBody), or re-runs a name-referencing body in a sub-engine (execBodyRefsNames) diverges because the sub-engine resolves against the registry while the compiled context holds the name as a VM frame local; the isolated-frame / pure-inert-data cases are already exempted, so the remainder is a sound permanent refusal.
+  a code-body word that splices onto the tape (CompileExecutesBody), or re-runs a name-referencing body in a sub-engine (execBodyRefsNames) diverges because the sub-engine resolves against the registry while the compiled context holds the name as a VM frame local; the isolated-frame / pure-inert-data cases are already exempted, so the remainder still refuses — an open defect awaiting a sub-engine whose name resolution reaches the compiled frame, not a permanent exemption.
 - `eng/go/emit.go:4190` — quoted-operand word <word>
-  an uncovered implicit-quote operand (usurp / force-arity / ref-family) has its quoted result re-stepped by the engine as dispatch-manipulating meta; get/getr/set and inert-atom module natives are already exempted, so the residual is a meta-word refusal no CALL_NATIVE can honour.
+  an uncovered implicit-quote operand (usurp / force-arity / ref-family) has its quoted result re-stepped by the engine as dispatch-manipulating meta; get/getr/set and inert-atom module natives are already exempted, so the residual is a meta-word case no CALL_NATIVE honours today — still open, still owed a mechanism for dispatch-manipulating meta.
 - `eng/go/emit.go:4202` — unannotated or opaque word <word>
-  a dynamic (untypeable) OUTPUT means the checker could not type the word and the recorded signature is a guess, not a proof — baking it would commit a best-guess overload; forceDynOut already admits the sound declared-Any case, so refusing the un-proven remainder is by design.
+  a dynamic (untypeable) OUTPUT means the checker could not type the word and the recorded signature is a guess, not a proof — baking it would commit a best-guess overload; forceDynOut already admits the proven declared-Any case, so the un-proven remainder still refuses — a case the checker cannot type YET, owed a proof rather than a guess.
 - `eng/go/emit.go:4363` — capturing handler stored at <word> (validated as a function value)
-  a CAPTURING handler at a STRICT store slot (CompileFnHandlerStrict — service/add validates+dispatches the value as an FnDefInfo) cannot stamp and would fall to a bare OpPushClosure the native rejects (the §9.2e paren-apply factory-body miscompile); the interpreter must own it, so this is a sound per-callback keep.
+  a CAPTURING handler at a STRICT store slot (CompileFnHandlerStrict — service/add validates+dispatches the value as an FnDefInfo) cannot stamp and would fall to a bare OpPushClosure the native rejects (the §9.2e paren-apply factory-body miscompile); the shape stays refused and the interpreter absorbs it per callback — a stamping gap for capturing handlers at strict slots, still open.
 - `eng/go/emit.go:4472` — operand of unknown provenance or not statically materialisable at <word>
-  resolveOperand (plus the inert-fn/closure fallbacks) exhausted every way to give the operand a compiled home; a value with no static provenance genuinely cannot be lowered, so this whole-program fallback is the sound terminal refusal for un-materialisable operands.
+  resolveOperand (plus the inert-fn/closure fallbacks) exhausted every way available TODAY to give the operand a compiled home; with no static provenance the value cannot be lowered, so the whole program refuses here and the runtime silently re-runs it on the interpreter — the terminal catch for the unknown-provenance defect, never its resolution.
 - `eng/go/emit.go:4498` — fn value read from a container auto-dispatches (Stage 3)
-  the RecordPolyCall (poly-path) mirror of :4137 — same container-read fn-value auto-dispatch divergence (interpreter invokes on landing, VM pushes as data), annotated shaped reads exempted; a permanent receiver-signal keep guarding miscompile mechanism E on the poly seam.
+  the RecordPolyCall (poly-path) mirror of :4137 — same container-read fn-value auto-dispatch divergence (interpreter invokes on landing, VM pushes as data), annotated shaped reads exempted; the receiver-signal belt still refuses on the poly seam, guarding miscompile mechanism E until that auto-dispatch is modelled.
 - `lower.go:1126` — for: side-effect loop result is consumed (Stage 3)
-  A zeroOut side-effect loop whose empty result is consumed by `def x (for …)` or fed as an operand: the interpreter's forward-collection over the empty producer GRABS THE NEXT TOKEN, which a compiled 0-value loop cannot replicate — §9.4 explicitly cites this consumed-side-effect-loop as an already-designed keep per §5 (distinct from §5's top-level variadic-collect def, which landed).
+  A zeroOut side-effect loop whose empty result is consumed by `def x (for …)` or fed as an operand: the interpreter's forward-collection over the empty producer GRABS THE NEXT TOKEN, which a compiled 0-value loop cannot replicate today — §9.4 files this consumed-side-effect-loop in the designed-keep bucket per §5, i.e. unbuilt with no named mechanism yet (distinct from §5's top-level variadic-collect def, which landed).
 
 ## defensive-only (16)
+These sixteen cannot fire on a valid program — they are internal
+consistency belts, reached only white-box or argued unreachable — so
+they are not defects against the compile-everything contract. One that
+ever did fire on real source would be.
+
 - `callable_words.go:250` — higher-order `<w>` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match
   §9.3 names this exact site defensive-only: a CompileDynBody sig declines one line above at :248 (routes to the dyn-body poly re-match) and a CrossCollectionTokenShape word falls through at :242, so every shipping Callable word bypasses this raise — pinned white-box in dynbody_unit_test.go.
 - `eng/go/emit.go:1169` — (the MarkUncompilable function definition; the internal trapAt early-return, not a shape refusal)
@@ -252,8 +287,8 @@ are confirmed deep.
 - `eng/go/emit.go:4109` — dispatch without a signature at <word>
   recordDispatchOutcome/carrierResults only runs on a MATCHED dispatch, so sig is non-nil on every real program path; the nil arm is reachable only via the white-box seam pin emit_seam7_test.go:41 and cannot fire without an unmatched dispatch being recorded, which the pipeline never does.
 - `eng/go/emit.go:4120` — user fn call <word> (Stage 3)
-  a resolvable user-fn call is recorded as CALL_USER by tryRecordClosure/core_helpers BEFORE RecordCall, so an fnFrame sig reaching recordCallRefusal is the residual no-home fallback; the ordinary user-fn dispatch never lands here (it is the Stage-3 belt behind the closure path).
+  a resolvable user-fn call is recorded as CALL_USER by tryRecordClosure/core_helpers BEFORE RecordCall, so an fnFrame sig reaching recordCallRefusal is the residual no-home arm; the ordinary user-fn dispatch never lands here (it is the Stage-3 belt behind the closure path).
 - `eng/go/engine.go:6980` — fn-value application bounded by a paren (dynamic value precedes args)
-  Carries //covergate:allow: reached only if RecordDynMethod declines after fnVal was gated to a member-read EVENT and every argVal is an isRecordableLiteral resolveOperand can seat — an invariant that cannot break without a future window-shape fault, so the belt is unreachable and keeps the sound refusal defensively.
+  Carries //covergate:allow: reached only if RecordDynMethod declines after fnVal was gated to a member-read EVENT and every argVal is an isRecordableLiteral resolveOperand can seat — an invariant that cannot break without a future window-shape fault, so the belt is unreachable and its refusal never fires on real source.
 - `method_shape.go:482` — shaped method apply: operand of unknown provenance at <w>
   RecordDynMethod's resolveOperand-fail arm: a real shaped-method Origin is always an event-backed member-read carrier and its args are isRecordableLiterals (the engine.go:6979 covergate states this seam `cannot decline`), so this only fires under a white-box fabricated PendingMethodApply on a bare non-event carrier — covered by fault-injection in method_shape_seam9_test.go (TestW9TryRecordMethodApplyRecordFails), not by any boru source shape.

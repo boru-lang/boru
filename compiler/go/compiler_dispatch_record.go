@@ -147,7 +147,9 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// (`context eq s`), a render, a handle baked into a container or interp
 	// hole. Refusing the READ itself closes them all at once: no alias can be
 	// constructed from a handle that never compiles. The program falls back
-	// to the interpreter, whose scoping is canonical — slow, not wrong. A
+	// to the interpreter, whose scoping is canonical. That keeps a wrong
+	// answer out and leaves the shape uncompiled — an open defect, not a
+	// sanctioned outcome. A
 	// handle minted OUTSIDE the region (`def s (context)` — an in-place layer
 	// write that persists identically on both engines) and a `context` inside
 	// a closure unit within the region (the VM brackets those bodies at

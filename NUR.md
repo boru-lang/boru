@@ -67,16 +67,16 @@ keep the two in sync in the same commit.
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
-| [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, a sound fallback); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
+| [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
 | [NUR139](#nur139) | RESOLVED (2026-09-11, the fifty-seventh increment). One rule — "an unreachable unit's lowering says nothing about the PROGRAM" — had TWO per-unit refusal sites in Finalize and covered only one. `lowerEvents` refusing took the stamp-only trap-stub recovery; `reconcileResults` refusing returned straight out and killed the program. Invisible while the only unreachable units were fn-value stamps, whose refusals happen to land in the first site; the moment a declined closure dispatch left one, `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went from compiling to "fn do$body: body leaves extra values". Same shape as NUR136 — one invariant, two sites, one of them wrong — and the recovery is now one helper (`unreachableUnitStub`) called from both | the variation lane, on a row this increment added, 2026-09-11 |
 | [NUR138](#nur138) | RESOLVED (2026-09-11, the fifty-seventh increment). Third instance of NUR133's and NUR137's shape — a screen written for the producers that happened to exist, meeting one that did not — and the FIRST in the opposite direction: it cost refusals, not a wrong answer. `regionReadsTheStack` answered "reads the stack" for any `opClosure` operand, but a closure operand is a PUSH (`OpPushClosure` puts captures then closure ABOVE the mark and the call pops what it pushed) and its captures are always promoted to frame locals. Since a body word's own body operand IS an `opClosure`, the blanket answer declined the region plan for every CLOSURE-COMPILED body word — so `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the body took the dyn-body strategy and refused the moment the body compiled. The screen now walks the captures instead of assuming, so an unpromoted capture still declines | widening the whole-residual dispatch's exactness screen, 2026-09-11 |
-| [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal, never a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
+| [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal — a defect owed a fix — rather than a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
 | [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
 | [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
-| [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, by design — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
-| [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three refuse and fall back now; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
+| [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, a refusal owed its own fix — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
+| [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three now refuse — three wrong answers traded for three unimplemented cases, each owed a fix, absorbed meanwhile by the interpreter; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
 | [NUR132](#nur132) | RESOLVED (2026-09-10, the fiftieth increment). A `break` / `continue` whose loop was in the SAME unit lowered to a bare `OpJmp`, which reached the right pc and did neither of the two things the interpreter does: TRIM THE ROUND (its tape splices back to the round's mark) and, for a break, CLOSE THE LOOP. `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` for the interpreter's `9 5 9 5`, its `break` twin `9 5 0 9 5 1 9` for `9 5 0 9 5 1`, and `while [true] [ (7 add 2) if true [break] [5] end ]` `9` for `[]` — silent, exit 0, on the DEFAULT lane. The leak was worse than the trim: an inner loop's break landed PAST the `FOR_NEXT` that pops it, so `for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]` had the OUTER loop stepping the INNER loop's stale counter and never terminated (tape_exhausted) where the interpreter answers `0 0 1 0`. Both terminators emit the FLOW signal ops now — the same pair the cross-frame case already used, whose `vmLoop` carries the very destinations the jumps named | shrinking the last `while` frontier row to its minimal shape, 2026-09-10 |
 | [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
 | [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
@@ -251,10 +251,10 @@ fixed; the rule itself is unconditional.
 
 2. **`compiler/go/compiler_dispatch_record.go` `smallerArityOverload`** — a
    poly window over dynamic operands is refused compilation when the word
-   registers an overload consuming FEWER operands. Lower stakes (a
-   compile-coverage conservatism, not an answer change — the lane falls back
-   and the results agree), but the same shape, and introduced recently in
-   PR #401.
+   registers an overload consuming FEWER operands. Lower stakes only in that
+   no answer changes — the refusal is a compile-coverage defect, absorbed
+   meanwhile by the interpreter re-running the program — but the same shape,
+   and introduced recently in PR #401.
 
 **A THIRD SITE existed and was not on this list; it is now gone (2026-08-28).**
 The compiler's `lambdaCallbackInputs` admitted a list `each` callback and
@@ -377,8 +377,8 @@ oracle sees `sameContainer` false with equal contents.
 - Across requests the memo REFUSES rather than reads stale: request 1
   `import "boru:sift"  Sift.kinds`, request 2 `Sift.define zz …`, request
   3 `Sift.kinds` compiles to "operand of unknown provenance or not
-  statically materialisable at keys" — a sound fallback, where the
-  interpreter answers seven kinds.
+  statically materialisable at keys" — a refusal, and a defect of its own,
+  absorbed today by the interpreter, which answers seven kinds.
 
 A mutation the check pass cannot perform (a `set` whose key is a value the
 analysis widens) followed by a read in the same request is the shape that
@@ -663,8 +663,8 @@ unscreened."* The comment was right and did not prevent the recurrence,
 because the default still silently produced an answer. So the fix changes
 the DEFAULT rather than adding a fifth case: an event kind the screen does
 not name is now assumed to read the stack. Adding a region producer costs a
-refusal until someone lists its operands — the sound direction, and the one
-that fails loudly.
+refusal until someone lists its operands — a defect that announces itself,
+rather than a silent wrong answer.
 
 Pinned in `lang/go/region_stack_read_test.go` (both arms of the branch, the
 body-unit face, and the inert-condition twins that must keep compiling) and
@@ -805,11 +805,12 @@ memo-isolation defect in), and that identification is the part still owed.
 
 **Fixing it does NOT graduate the two ledger rows, and that is worth knowing
 before someone tries.** The compile pipeline refuses on a CAUGHT
-model-undermining finding too — deliberately, `lang/go/boru.go`: the `do`
-body's contents were recorded from the same guess, so the runtime catching
-the error does not make the compiled region's value right. A correct caught
-attribution changes the rows' reason, not their verdict. What they need is
-the dispatch to resolve, which is family A's problem.
+model-undermining finding too — the guard is deliberate (`lang/go/boru.go`:
+the `do` body's contents were recorded from the same guess, so the runtime
+catching the error does not make the compiled region's value right), the
+refusal it produces is not. A correct caught attribution changes the rows'
+reason, not their verdict. What they need is the dispatch to resolve, which
+is family A's problem — the fix those refusals are owed.
 
 ---
 
@@ -854,7 +855,7 @@ def xs [1] def g fn x:Integer Integer [x add 1] 5
 **One of the three is OLDER than the PR, and that matters for the record.**
 Measured on the merge base `6bc55db`: the two `error`-region shapes REFUSED
 there ("the single-output island model would leave the stack one short"), so
-the forty-eighth increment turned two sound refusals into wrong answers. The
+the forty-eighth increment turned two refusals into wrong answers. The
 `evCallUser` witness diverged there identically (`0 1 9 2` — a different
 wrong answer from the same program's mark-plan variant), which makes the
 review's diagnosis of it wrong about the cause and right about the
@@ -870,7 +871,9 @@ producer's operands (a kind that is not listed is UNSCREENED, not
 operand-less — the comment says so, because that is the mistake to prevent);
 `RecordFallback` marks its region possibly-callable unconditionally; and
 `lowerUserCall` refuses to promote a variadic callee's result. All three
-shapes fall back to the interpreter and agree. The const-argument twin `9 f 3`
+shapes now refuse instead of answering wrongly; the interpreter absorbs each
+refusal, so the answers agree — three wrong answers traded for three
+unimplemented cases, each owed a fix. The const-argument twin `9 f 3`
 still compiles natively and is still seated by `OpSeatBelowMark`, which is
 the pin that keeps the fix from being a blanket retreat.
 
@@ -1322,8 +1325,9 @@ bogus constant): the same shape with a FN-valued capture read bare as the
 lambda's whole body answers `fn` where the interpreter dispatches the
 binding as a word and answers `42`. That is NUR123's open lambda-body
 case, whose record claimed such a body "refuses soundly" — it compiles
-and diverges. Its fix is the deopt inside a lambda unit (the handoff's
-twelfth-increment note).
+and diverges, and the quoted verdict is wrong in its second word too: a
+refusal there would be a defect owed a fix, not a sound outcome. Its fix
+is the deopt inside a lambda unit (the handoff's twelfth-increment note).
 
 ## NUR124 — a shuffled fn re-steps AT the shuffle on the interpreter, and a produced closure not at all on the compiled lane {#nur124}
 
@@ -1539,9 +1543,9 @@ shape, so the arity-1 apply fires on a value the paren placed with one
 survivor.
 
 Adding `callResultPlaced` there does remove the miscompile — the row refuses
-("residual shape beyond Stage 1 (call result above a literal)"), a sound
-fallback rather than a wrong answer — but it costs a corpus row against a
-refusal ceiling of 0, so it was withdrawn:
+("residual shape beyond Stage 1 (call result above a literal)"), trading a
+wrong answer for a refusal, which is a defect of its own — and it costs a
+corpus row against a refusal ceiling of 0, so it was withdrawn:
 
 ```
 recursion.tsv:L48  def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]] 10 (mk2 5) apply
@@ -1760,8 +1764,9 @@ consumed by a fn-value apply lowering (`creditWordRead`: the paren window,
 the trailing apply) — else the unit refuses (`wordReadAccounting`): a
 container member, an if-arm residual, a stack-collected argument, and a
 binding read both bare and by `/v` (one value ID, two dispatch semantics)
-all refuse soundly. Every row above bar the last three now agrees on both
-lanes (`lang/go/word_read_dispatch_test.go`), the container and arm rows
+all refuse rather than diverge — four unimplemented cases, each owed a
+fix. Every row above bar the last three now agrees on both lanes
+(`lang/go/word_read_dispatch_test.go`), the container and arm rows
 refuse, and `[x g]`, `g 3`, the quoted arg, the returned closure and the
 named 0-arg lambda agree too. A word-read lead over plain data that
 matches NO prefix of the tokens after it raises the no-match natively
@@ -1833,8 +1838,8 @@ binds the name registry-visibly (seedParentDeopt) — `[1] each [j]` [42],
 Integer, `if true [do [j]] [0]` 42, `5  do [j]  add` 47 (eleven more
 rows; `for 2 [j]` and `[1 2] fold [j] 0` agree on value and message and
 differ in the count error's position, NUR118; a lambda value's body,
-`[1] each [x:Integer => [j]]`, refuses soundly). STILL OPEN: a lambda
-value's own body (`([] => [j])` renders `fn` on both lanes and escapes
+`[1] each [x:Integer => [j]]`, refuses — itself a defect). STILL OPEN: a
+lambda value's own body (`([] => [j])` renders `fn` on both lanes and escapes
 the frame its binding lives in); a point whose statement the compiled stack
 cannot match declines and keeps the slot push (`5  j typeof`, `def y 5  y
 j typeof`: a literal or a read pushed before the statement and still
@@ -1921,7 +1926,8 @@ def app3 fn [[g:Function][Integer][(g 5)]]  app3 (z:String => [z])
 Two boundaries, both measured: the divergence is on the ERROR path only — the
 succeeding twin `app3 (z:Integer => [z mul 2])` is 10 on both lanes — and the
 no-paren spelling `[g x]` inside a lambda REFUSES instead ("fn app2: body result
-of unknown provenance"), a sound fallback.
+of unknown provenance") — a refusal the interpreter absorbs, and a defect in
+its own right.
 
 That narrows the fix below a deopt. The values already agree; only the dispatch's
 NAME and POSITION are wrong. The model is `callDynFrameWords`
@@ -2302,17 +2308,19 @@ Measured boundaries, so the fix knows its own edges:
 | shape | compiled | interpreted | |
 | --- | --- | --- | --- |
 | fresh def, untaken `if` branch | binds | unbound | **miscompile** |
-| shadowing a VALUE binding | refused (residual provenance) | correct | sound |
-| shadowing a FN overload | refused (family L, by name) | correct | sound |
+| shadowing a VALUE binding | refused (residual provenance) | correct | not wrong — the refusal is a defect of its own |
+| shadowing a FN overload | refused (family L, by name) | correct | not wrong — the refusal is a defect of its own |
 | zero-iteration `for` body | unbound | unbound | correct |
 | taken branch | binds | binds | correct |
 
 The zero-iteration loop row is the useful one: the same question is already
 answered correctly there, so the machinery to get this right exists.
 
-**Verdict: resolve by fix, compiler-side — and refusing is a fix.** Its two
-siblings above refuse, and a refusal is sound (the interpreter runs the program
-correctly); a silent wrong binding is not. Full graduation is the same one
+**Verdict: resolve by fix, compiler-side — and refusing is containment, not
+the fix.** Its two siblings above refuse, and those refusals are defects owed
+their own fix; what makes them less urgent than this row is only that a
+refusal is contained (the interpreter still runs the program correctly) where
+a silent wrong binding is not. Full graduation is the same one
 family L already names — "a runtime dispatch respecting the conditional
 binding" — which is Stage 4/5's def-twin work, not Stage 3's. Pinned as
 measured meanwhile by `lang/go`'s `TestCondBodyFreshDefBindsCompiledOnly`.
@@ -2344,8 +2352,9 @@ Three things the record did not have.
    `op` is CONSTANT-FOLDED to the value the untaken branch installed. So this is
    not "a gate that fires on `changed` and should also fire on fresh" — the
    rollback the checker performs is already right, and the recorder's view of
-   the same pass survives it. Fixing the recorder's rollback is a repair;
-   refusing is the fallback if it is not reachable.
+   the same pass survives it. Fixing the recorder's rollback is the repair;
+   refusing would only contain the miscompile — a defect in its own right,
+   owed a fix — if the repair proves unreachable.
 
 2. **THE BOUNDARY TABLE ABOVE IS INCOMPLETE.** Re-measured at `-no-check`,
    `if` is not the only shape:
@@ -5047,8 +5056,9 @@ directions depending on source order:
 So a declared binding loses the brand it was given, and a bare literal
 acquires a brand it never had. `boru check` reports `0 error(s), 0
 warning(s), 0 info`, and `--force-compile` does not refuse — it compiles
-and answers wrongly, which puts this outside the
-`MarkUncompilable`-is-always-sound architecture. Compiled mode is the
+and answers wrongly, which puts this beyond the reach of `MarkUncompilable`
+altogether: that machinery can contain a refusal (itself a defect owed a
+fix); it cannot contain a wrong answer. Compiled mode is the
 execution default since the P7 endgame, so this is the default answer.
 A String newtype (`def Name (refine String)`) did not reproduce it.
 
@@ -5680,9 +5690,10 @@ predicate-effect row, and `design/COMPILABLE-SUBSET.md` mentions
 predicates only for typed binds and tape-bound handlers.
 
 **Why it matters beyond purity.** A predicate is ordinary boru: it may
-log, may touch a store, may be expensive. "Slow, not wrong" does not
-cover it — the two lanes disagree observably, and which one is *correct*
-is itself unsettled, since neither count is obviously the specified one.
+log, may touch a store, may be expensive. "Slow, not wrong" defends
+nothing anywhere, and least of all here — the two lanes disagree
+observably, and which one is *correct* is itself unsettled, since neither
+count is obviously the specified one.
 
 **Discharge.** Either (a) rule that predicate bodies must be pure, and
 enforce it, at which point the count is unobservable and this becomes
@@ -6281,9 +6292,10 @@ at the second `call`. Reproduced on `main` with no dependency at all:
 call {} svc` answers `1 1` on the default lane by whole-program fallback
 and raises an internal error under `-force-compile`.
 
-**Rule:** a program that compiles runs compiled; a runtime bail is a
-defer the census counts (`vm:poly-no-match`, one of its two), slow and
-not wrong, and every one is owed a retirement.
+**Rule:** all valid code compiles, and a program that compiles runs
+compiled; a runtime bail is a defer the census counts
+(`vm:poly-no-match`, one of its two) — a defect the runtime contains, not
+an outcome the design allows, and every one is owed a retirement.
 
 **Divergence.** `call` has two overloads, `[Map Service]` and `[Map
 Service Map]`. The first `call` leaves its handler's residual on the
@@ -6318,8 +6330,9 @@ PR).
 **Found:** review of #467's first cut (4f5fee1), three reproduced on that
 tree, the fourth on the restore predicate.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6360,6 +6373,75 @@ body-local row, `TestStoredHandlerLiveNamesDoNotRestoreBase`),
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
 
+## NUR149 — a fn body's redefinition of a speculative family's name does not compile {#nur149}
+
+**Status:** OPEN (recorded 2026-09-16 by the seventy-second increment;
+the miscompile half closed by the seventy-third, #469; the compile half
+still open). Reopened 2026-09-17: the seventy-third increment recorded
+this entry as "Resolved" and deleted it. That was wrong. It made the
+shape REFUSE instead of answering wrongly — the lesser of two failures —
+and the shape still does not compile, so the defect is open. Failure to
+compile is a failure; a refusal closes nothing.
+
+**Found:** by the fn-local placement's collision measurement
+(`lang/go/fn_local_placed_test.go`'s disjoint-signature row is the
+compiled twin). Reproduced on `main` at e252e81 with the identical
+listing, so it is the seventieth increment's family, not the
+seventy-second's:
+
+```
+def m {e: true} end
+if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end
+def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end
+g f 1
+  interpreter: 6 2
+  compiled, before #469: [boru/type_error] g: return value 1: expected
+    Integer, got Error   ← the miscompile, now closed
+  compiled, today:       REFUSED, then silently interpreted   ← the open half
+```
+
+**Rule:** a compiled program answers as the interpreter does — and every
+valid program compiles. A refusal is a breach of the second half even
+when the first holds.
+
+**Divergence, in two halves.** The module-scope `f` is a speculative
+family (the seventieth increment: the arm's install is placed at its
+site, the family's dispatches route with a live lead). Inside `g`'s
+unit the body's `def f` OVERLAPS it, so the check pass's install is
+`InstallDef`'s in-place replacement (the standing entry dropped, the new
+one pushed at the same depth): the binding's depth never exceeds the
+frame's baseline, `BodyRefsFnLocalFn` does not fire, the seventy-second
+increment's placement is never asked, and the def lowers to NOTHING.
+The body's `f 5` then resolved its lead LIVE in the VM's registry, which
+holds the arm's `f` (whose unit the pass never compiled) or nothing at
+all, where the interpreter resolves the body's own def. A DISJOINT
+signature takes the other path — a fresh push above the family's, the
+placement asked and taken, the routed lead resolving the frame's local —
+and compiles correctly (`a 101`).
+
+**What #469 did, and did not do.** It added the fourth arm of the
+family-L block in `core/go/core_helpers.go` (gated on
+`specFamilyAtFnBaseline`, so in-function families are not over-refused),
+which turns the wrong answer into a refusal, and it routed the `do`
+defer so the whole-program path is reached rather than the bail landing
+as an Error value in `g`'s return contract. Both are real fixes to real
+miscompiles. Neither compiles the shape: today it refuses, and
+`RunCompiled` silently re-runs it on the interpreter, so the failure
+reports nothing.
+
+**Fence.** `core/go/check_fncarrier_test.go`
+(`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`) pins the refusal;
+`lang/go/fn_local_placed_test.go`'s disjoint row pins the twin that
+compiles. Nothing yet pins the shape COMPILING, because it does not.
+
+**Verdict:** open, and owed the fix the seventy-second increment named:
+a unit's in-place redefinition of a live-lead name must be PLACED as the
+transition it is — a twin the frame does NOT unwind, with its units
+compiled — so that the routed lead resolves the frame's own def. The
+refusal is scaffolding holding the line until that lands, not the
+answer. Retire the refusal when the placement lands, and pin the
+compiled row then.
+
 ## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
 
 **Status:** Pending (recorded 2026-09-16, the seventy-second increment;
@@ -6367,8 +6449,9 @@ fixed in the same PR).
 **Found:** review of #468's first cut (286a6c9), all three reproduced on
 that tree.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6388,7 +6471,8 @@ refusal is a slow path, never a wrong answer.
    (`sameFnDecls`: the same signature count and declaration sites), or
    the site refuses. Two first-cut rows that answered by index — the
    redefining body reading its own redefinition (`55`, `111`) — refuse
-   under the rule and fall back with parity.
+   under the rule; the interpreter absorbs them, so the answers match, and
+   two refusals are now owed a fix.
 3. *A value read admitted.* `do [f/v]` returned the fn as data from the
    compiled closure where the interpreter dispatches the returned value
    and raises `uncalled_function`; the guard had refused it. Fix: a
@@ -6410,8 +6494,9 @@ fixed in the same PR).
 **Found:** review of #469's first cut (ea3ac11), both reproduced on that
 tree.
 
-**Rule:** a compiled program answers as the interpreter does, and a
-refusal is a slow path, never a wrong answer.
+**Rule:** a compiled program answers as the interpreter does, and all
+valid code compiles — a refusal is a defect owed a fix, never a
+sanctioned outcome.
 
 **Divergences and fixes.**
 
@@ -6434,7 +6519,8 @@ refusal is a slow path, never a wrong answer.
    NUR149 leak. Fix: `specFamilyAtFnBaseline` gates the refusal on the
    dropped binding existing at the enclosing fn's baseline (a MODULE-scope
    family), so an in-function family is not refused (it compiles; its routed
-   dispatch may still defer at run time and fall back — slow, not wrong).
+   dispatch may still defer at run time and fall back — a deferred defect the
+   runtime contains, not an outcome the design allows).
 
 **Fence.** `lang/go/do_defer_fallback_test.go` (the user-internal-error
 trapped rows, the in-function-family not-refused row),

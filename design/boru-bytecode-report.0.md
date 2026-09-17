@@ -15,8 +15,14 @@ every dispatch decision statically in typed regions, so the same
 pass can record those decisions as bytecode and drop the
 text-stream interpreter's per-token overhead in the compiled
 regions. Dynamic corners (`do` on computed code, unresolvable
-`context get`) fall back to the interpreter over the same stack
-representation — no marshalling boundary.
+`context get`) are the cases this design does not yet know how to
+lower. Where one survives into a run, the program is handed to the
+interpreter over the same stack representation — no marshalling
+boundary, and no signal at run time that it happened. Read that
+handoff as containment machinery around an unfinished compiler,
+not as a fallback the design rests on: every construct it catches
+is an open defect owed a lowering, because done means a language
+that compiles all valid boru, with no exceptions.
 
 ## Contents
 
@@ -151,8 +157,8 @@ signatures survive, emit a dispatch table (see §2.4 below).
 
 ### 1.5 What the compiler cannot resolve
 
-Two classes of site force the compiler to either widen to `Any` or
-fall back to an interpreted region:
+Two classes of site defeat the compiler as sketched here — at
+each it must either widen to `Any` or refuse the region outright:
 
 1. **Carrier disjuncts at the dispatch point.** If the checker
    arrives at `add` with inputs `Carrier<Integer|Decimal>`,
@@ -165,14 +171,21 @@ fall back to an interpreted region:
 2. **Fundamentally dynamic sites.** `do` on a computed list,
    `context get x` with an unknown key, `def` rebinding inside a
    conditional branch — the checker already widens these to
-   `Carrier<Any>` and flags them; the compiler emits a
-   `FALLBACK_INTERP span_id` opcode that hands the relevant
-   token subsequence back to the text-stream engine. This is the
-   same boundary the checker already defines.
+   `Carrier<Any>` and flags them; the compiler has no lowering
+   for them and emits a `FALLBACK_INTERP span_id` opcode that
+   hands the relevant token subsequence back to the text-stream
+   engine. That is a refusal to compile, sitting on the same
+   boundary the checker already defines — an unimplemented case,
+   not a resolution of one.
 
-Both cases are *local*: typed regions around them still compile.
-The bytecode VM and the interpreter share the `[]Value` stack
-representation, so the handoff is free.
+The first case is *local*: typed regions around it still compile.
+The second is local only in extent, not in consequence. The
+bytecode VM and the interpreter share the `[]Value` stack
+representation, so the handoff costs nothing and announces
+nothing — at run time the program drops into interpretation with
+no sign that it did. Cheap containment for an open defect is
+still an open defect: every site in class 2 is owed a lowering,
+and until it has one the compiler is unfinished there.
 
 ### 1.6 Summary of §1
 
@@ -481,12 +494,15 @@ specific ops.
   DefStack at runtime.
 - `REG_DEF_POP name_id` — remove the top binding.
 
-**Fallback**:
+**Fallback island** (containment for a refusal, §1.5 — this
+opcode exists because the compiler has a case it cannot lower,
+not because dropping to interpretation is a sanctioned outcome):
 
 - `FALLBACK_INTERP span_id` — resume interpretation over a
   recorded token span (§1.5). The VM hands the current stack to
   an engine instance, lets it run, and resumes with the resulting
-  stack.
+  stack. The switch is silent: nothing in the run tells the user
+  that this span stopped being compiled.
 
 **Halt / errors**:
 
@@ -1063,17 +1079,22 @@ across scopes fall back to strategy 2.
 
 `do body` evaluates `body` as code. If `body` is a literal list,
 the compiler lowers it inline (it is just another code fragment).
-If `body` is computed — `ops at 0 do` — the compiler cannot
-know what code it names. The checker already widens these to
-`Carrier<Any>` and logs a diagnostic; the compiler emits
-`FALLBACK_INTERP span_id` and a recorded token span, and the
-runtime hands off to an engine instance. The engine runs in
-pure interpreter mode over the computed list, then returns
-control. Expensive, but only at the genuinely dynamic sites.
+If `body` is computed — `ops at 0 do` — the compiler as sketched
+here cannot know what code it names, so it refuses the site. The
+checker already widens these to `Carrier<Any>` and logs a
+diagnostic; the compiler emits `FALLBACK_INTERP span_id` and a
+recorded token span, and the runtime hands off to an engine
+instance. The engine runs in pure interpreter mode over the
+computed list, then returns control. Expensive — and silent: the
+run itself gives no sign that this span was never compiled.
 
-A useful property: because both modes share the same `[]Value`
-stack representation, the handoff is just passing the current
-stack slice. No marshalling.
+The silence is the worse half, not a mercy. Because both modes
+share the same `[]Value` stack representation, the handoff is
+just passing the current stack slice — no marshalling, and no
+friction to make the gap visible. Read the mechanism as
+scaffolding around a defect the compiler owes a fix for: a
+computed `do` with no lowering is a case still to be implemented
+or proven, not a corner of the language that may stay uncompiled.
 
 ### 6.6 Registry freezing at runtime
 
@@ -1095,8 +1116,10 @@ effects in compile-time tables, and emits nothing (or almost
 nothing) in the runtime bytecode. Runtime `def`/`undef`
 promote to locals where possible, falling back to registry
 mutation ops otherwise. `do` on computed code is the only
-construct that forces a true interpreter fallback — the same
-boundary the carrier checker already draws.
+construct this design still cannot lower at all, and so the one
+open refusal left in §6 — a defect tracked on the same boundary
+the carrier checker already draws, not a licence for the
+interpreter to go on absorbing it.
 
 The next instalment will cover performance analysis — expected
 speed-ups per construct, benchmarking methodology, memory
@@ -1174,13 +1197,16 @@ on straight-line code. Concrete per-construct estimates:
 | Record field access (known key)   | 3–5×              | Key hash avoided if compile-time key index             |
 | Record field access (unknown key) | 1.2–1.5×          | Handler dominates                                      |
 | `context get` typed site          | 2–4×              | Prototype walk replaced by slot index where possible   |
-| `do` on computed code             | ~1×               | Falls back to interpreter                              |
+| `do` on computed code             | ~1×               | Refused: silently interpreted, not compiled            |
 | I/O-heavy code                    | ~1×               | Dispatch is a rounding error on I/O wait              |
 
 The message: compute-heavy code (numerical loops, comparison
 chains, typed-list folds) gets the big wins. Orchestration-heavy
 code (I/O, dynamic dispatch, context manipulation) gets
-modest-to-negligible wins.
+modest-to-negligible wins. One row is not a performance result at
+all: the `do`-on-computed-code line reads ~1× because the compiler
+refuses that site and the interpreter silently takes it — an open
+defect surfacing in a benchmark table rather than a tuning outcome.
 
 Factorial — a canonical boru benchmark in `lang/go/test/factorial_type_scaling_test.go`
 — is the ideal candidate: recursion plus a tight arithmetic body.
@@ -1271,7 +1297,11 @@ allocations. The interpreter is the baseline; the compiled VM is
 the candidate. Acceptance criterion: compiled ≥5× on the
 arithmetic/loop benchmarks, ≥2× on the orchestration benchmarks,
 and ≤10% regression on the dynamic-dispatch benchmarks (where
-`do` or context dominates).
+`do` or context dominates). That last bound measures the VM's
+overhead, not the refusals behind it: those benchmarks sit at ~1×
+only because the compiler has no lowering for computed `do` yet,
+so passing the bound closes nothing — the defect stays open until
+the construct compiles.
 
 **Cross-validation.** Run the same programs in check mode (the
 carrier checker) and ensure compile-time resolution matches the
@@ -1422,7 +1452,8 @@ reviewed and reordered before any of them are written up.
    but escape and nesting rules must match the parser exactly.
 9. **Paren groups and inline evaluation.** `(expr)` groups inside
    maps become `ParenExpr` values for `autoEvalMap`. These need
-   their own compiled sub-programs or a fallback-to-interp.
+   their own compiled sub-programs; one left to `FALLBACK_INTERP`
+   is an unlowered case to fix, not a second option.
 10. **Error positions shifting.** Errors reported by PC → span
     lookup must match the interpreter's token-position errors
     byte-for-byte, or user tooling that scrapes error output
@@ -2047,12 +2078,18 @@ boundary**. Chez compiles nearly everything and falls back only
 at continuation captures.
 
 boru's `do` on computed code and `context get` play the role
-of Scheme's `eval` and parameterise. The fallback-to-interpreter
-approach is the right strategy; Chez proves it scales.
+of Scheme's `eval` and parameterise. What transfers is Chez's
+discipline, not its residue: Chez earns its coverage by
+compiling nearly everything, and boru has to do the same.
+Silently routing a refused span to the interpreter is not a
+strategy — it is the shape of an unfinished compiler, and each
+span it catches is a defect owed a lowering.
 
-Lesson: the dynamic escape hatches aren't a bug, they're an
-expected feature of any dynamic-language compiler. Budget for
-them but don't let them block the common case.
+Lesson: dynamic constructs are hard to compile, not exempt from
+compilation. Budget the work to lower them — literal-list `do`,
+a static `do`, a typed `context get` — and keep every construct
+still unlowered on the defect list rather than filing it as an
+expected feature.
 
 ### 11.9 Comparison table
 
@@ -2095,8 +2132,8 @@ show the ceiling if full HM were viable. Lua 5 and LuaJIT map
 out the v1-to-v3 roadmap. CPython's pre-3.11 history warns
 that dispatch elimination alone is insufficient without handler
 specialisation. V8/SpiderMonkey inform the polymorphic-site
-design. Chez Scheme validates the fallback-to-interpreter
-approach for dynamic features.
+design. Chez Scheme shows how much of a dynamic language a
+compiler can cover, and how narrow the uncompiled residue must be.
 
 boru's plan sits well within this landscape; the approach is
 neither novel nor risky, it's just applied differently to match
@@ -2163,10 +2200,13 @@ imports, polymorphic dispatch (`CALL_NATIVE_POLY`,
 `CALL_USER_POLY`), runtime `def`. Ships complete feature
 parity with the interpreter for typed regions. **~4 weeks**.
 
-**Phase 3 — dynamic fallback.** `FALLBACK_INTERP` glue, `do`
-on computed code, `context get` with unknown keys. Completes
-the compile-or-fall-back coverage; the VM now handles
-everything the interpreter does. **~2 weeks**.
+**Phase 3 — lowering the dynamic constructs.** `do` on
+computed code, `context get` with unknown keys, plus the
+`FALLBACK_INTERP` glue that silently contains whichever of them
+is not lowered yet. The glue is scaffolding, not the
+deliverable: the phase is done when these constructs compile,
+and any that still route to the interpreter stay on the defect
+list until they do. **~2 weeks**.
 
 **Phase 4 — specialisation (optional).** Sig-id splitting for
 `ReturnsFn` (§9.4), inline caches for polymorphic sites
@@ -2199,11 +2239,14 @@ Ranked by likelihood × severity:
    are heap-allocation-heavy, dispatch elimination saves less
    than §7 predicts. Mitigation: profile first, compile second;
    attack allocations with Phase 4 typed opcodes if needed.
-4. **`do`-on-computed-code more common than expected** —
-   frequent fallbacks defeat the speed-up. Mitigation: audit
-   real programs; if this pattern is widespread, consider
-   language-level features (e.g. static `do` on literal lists
-   only) before investing in compilation.
+4. **`do`-on-computed-code more common than expected** — every
+   such site is a refusal to compile, so a widespread pattern
+   is a widespread open defect, silently absorbed by the
+   interpreter instead of reported. Mitigation: audit real
+   programs; if this pattern is widespread, settle the
+   language-level question first (e.g. a static `do` over
+   literal lists) so the construct has a lowering before the
+   compiler ships.
 5. **Maintenance drag** — two execution modes to keep in sync
    as the language evolves. Mitigation: the compiler IS the
    checker plus emission; language changes must go through the
@@ -2215,10 +2258,11 @@ Ranked by likelihood × severity:
 **Proceed, but gate Phase 1 on Phase 0 completion.** Do not
 start emitting bytecode until every native signature has a
 `Returns` annotation or `ReturnsFn`. Starting early produces a
-VM that handles 60% of the language well and 40% as fallbacks
-— which is worse than the pure interpreter in practice,
-because users see variable performance and the fallback path
-is the same speed as pure interpretation anyway.
+VM that compiles 60% of the language and refuses the other 40%
+— 40% of the language carrying an open defect apiece, each one
+silently handed to the interpreter so that neither the user nor
+the build ever sees the gap. Variable performance is the least
+of it; the refusals are the work still owed.
 
 Once Phase 0 is done, ship Phase 1 as an **opt-in mode**:
 `boru run --compile` or `BORU_COMPILE=1`. Keep the interpreter

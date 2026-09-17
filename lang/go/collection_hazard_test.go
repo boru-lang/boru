@@ -9,7 +9,7 @@ package lang
 // replay and the unnamed-param replay alike. The engine now notes the
 // collection hazard where the scope is known (Engine.noteCollectionHazards)
 // and the lowerings decline a marked lead. These rows pin the four witnesses
-// as sound fallbacks and their admitted twins as parity.
+// as refusals the interpreter absorbs and their admitted twins as parity.
 
 import (
 	"strings"

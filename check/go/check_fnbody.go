@@ -1026,7 +1026,8 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 //
 // RecordDynApply's own guards (operand provenance, the event-lead
 // quote-state refusal, fnConcreteSingleValuedOrCarrier) still apply; a
-// decline or refusal there leaves the program on the sound fallback.
+// decline or refusal there leaves the program silently interpreted — the
+// answer is right, the compile failed, and nothing in the run says so.
 // Pinned end-to-end by frontier-hof-audit.tsv §9's mkap row.
 func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
 	if len(args) != 1 || len(outs) != 1 {

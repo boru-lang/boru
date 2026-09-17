@@ -110,7 +110,7 @@ func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
 		{`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `do [(p 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `if true [(p 1)] [0]`, "code body reads a def-bound compiled closure", "[8]"},
-		// A carrier-bound read the OTHER gates still refuse, soundly.
+		// A carrier-bound read the OTHER gates still refuse.
 		{nbfMk + `[1 2] each [(f 1)]`, "code-body word each (Stage 2)", "[[2 2]]"},
 		{nbfMk + `if true [(f 2) (f 3)] [0]`, "then-branch result of unknown provenance", "[3 4]"},
 	}
@@ -124,7 +124,7 @@ func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", c.src)
+			t.Errorf("%q: compiled — expected a refusal", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {

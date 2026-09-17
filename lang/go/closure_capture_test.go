@@ -98,7 +98,7 @@ func TestClosureCaptureSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a sound refusal", src)
+			t.Errorf("%q: compiled — expected a refusal", src)
 			continue
 		}
 		if reason == "" {

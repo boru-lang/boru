@@ -177,7 +177,7 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 	}
 
 	// Nothing claims it: the arm declines rather than applies. A refusal is
-	// the sound fallback — the default lane then answers on the interpreter.
+	// the refusal the interpreter absorbs — the default lane then answers on the interpreter.
 	// The forty-third increment's residual rebuild does NOT take this shape:
 	// its callable screen stands aside for a residual that may hold a
 	// Function, because a re-push is a data push where the interpreter

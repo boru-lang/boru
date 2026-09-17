@@ -322,9 +322,19 @@ differs. Outcomes:
   `deq`-reflexive.)*
 - **NUR-037** (fn-local fn undefined when compiled) — re-opened as an
   open defect. Mechanism: closure-capture gap (distinct from G12's
-  type identity, same first-class-values family). "Slow, not wrong"
-  is genuinely violated. Fix: capture enclosing local fn bindings
-  (preferred) or refuse at check time.
+  type identity, same first-class-values family). The compiled run
+  disagrees with the interpreted one, so this is a correctness defect
+  sitting on top of a compile gap that is already a defect in its own
+  right: valid code must compile, and every refusal is an
+  unimplemented or unproven case owed a fix. Fix: capture enclosing
+  local fn bindings. A check-time refusal is at best interim
+  containment — it trades a wrong answer for a known gap, and closes
+  nothing.
+
+  *(Framing corrected: this item previously appealed to a "slow, not
+  wrong" standard. That doctrine is withdrawn — failing to compile is
+  a failure, not a tolerated outcome, so a refusal here would not
+  discharge the record.)*
 - **NUR-038** (module-export statement misfire) — **RESOLVED
   2026-08-01** (record deleted; number retired). Two halves landed:
   (1) the facet refactor proposed here (2026-07-31): `Ideal/

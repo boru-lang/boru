@@ -10,8 +10,10 @@ Status snapshot (boru `71238d9`, libs pinned `7b1a4fb`):
   are cleared. The refusal text usually names the surfacing code-body word
   (`test-test`/`each`/`fold`/`check-prop` "Stage 2"), which masks the real leaf.
 
-`--compile` falls back to the sound interpreter, so these are advisory; the
-compile==interpret guarantee is never at risk. Every fix below must be gated by
+`--compile` **silently** re-runs a refused file on the interpreter, so the
+compile==interpret guarantee is never at risk and nothing in the run says the
+compile failed — which makes each of these a hidden failure, not an advisory
+note. Every refusal below is an open defect owed a fix. Every fix below must be gated by
 the bytecode differential (`test/go … TestSpecCompiledDifferential`, 0
 divergences), crossdiff, TS-parity, and a compiled-coverage census re-baseline.
 

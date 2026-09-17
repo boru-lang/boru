@@ -1,10 +1,14 @@
 // Compilation refusals are test FAILURES. Full native compilation of every boru
 // program is the goal (design/COMPILABLE-SUBSET.md, design/P7-ENDGAME.10.md): a
-// whole-program refusal silently runs on the interpreter, which is slower and
-// keeps the compiler tied to the tree-walker. So this gate treats every spec-row
-// refusal as a failure UNLESS the row is on knownRefusals — the small, documented
-// set of correct-by-design soundness refusals where compiling a guess would ship
-// a WRONG answer, so the interpreter fallback must own them.
+// whole-program refusal silently runs on the interpreter — nothing in the run
+// says the compile failed — which is slower and keeps the compiler tied to the
+// tree-walker. So this gate treats every spec-row refusal as a failure UNLESS
+// the row is on knownRefusals — the small, documented set where compiling the
+// guess available TODAY would ship a WRONG answer, so the shape refuses and the
+// interpreter absorbs it meanwhile. Being on the allowlist does not make a row
+// acceptable: each entry is an OPEN DEFECT owed a faithful lowering, and the
+// list ratchets to zero (design/boru-bytecode-final-two-refusals.0.md withdrew
+// the earlier "correct-by-design" reading of these rows).
 //
 // This is the per-ROW companion to TestCompiledCoverage's count/root-cause gate:
 // the count gate catches a refusal-count regression, this gate pins the EXACT
@@ -16,8 +20,8 @@ package langspec
 import "testing"
 
 // knownRefusals is the allowlist of spec rows the bytecode compiler currently
-// refuses to lower, keyed by EXACT source. Every entry is a proven correct-by-
-// design SOUNDNESS refusal: dispatch does not statically resolve — an "unmatched
+// refuses to lower, keyed by EXACT source. Every entry is a proven SOUNDNESS
+// refusal — and an open defect: dispatch does not statically resolve — an "unmatched
 // dispatch recovered" best-guess (the checker recovers an unmatched call the
 // interpreter resolves or raises at runtime), or a fn value reaching a consuming
 // word whose identity/capture state cannot bake — so a compiled guess could
@@ -66,7 +70,7 @@ var knownRefusals = map[string]string{
 }
 
 // TestRefusalsAreFailures fails on any spec-row compilation refusal that is not
-// a documented correct-by-design refusal, and on any allowlist entry that no
+// a documented allowlisted refusal, and on any allowlist entry that no
 // longer refuses (stale — remove it). See knownRefusals.
 func TestRefusalsAreFailures(t *testing.T) {
 	c := gatherCensus(t)

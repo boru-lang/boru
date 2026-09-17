@@ -27,7 +27,7 @@ import (
 // container and derives its element carrier. Multi-overload divergent
 // returns still ride the dynamic union (the runtime could take a sibling
 // overload's return); a genuinely input-dependent return (`get` → Any)
-// stays dynamic and its downstream `each` still soundly refuses.
+// stays dynamic and its downstream `each` still refuses.
 
 func crossmodSound(t *testing.T, src string) {
 	t.Helper()
@@ -57,7 +57,7 @@ func crossmodRefuses(t *testing.T, src string) {
 	crossmodSound(t, src) // must stay a SOUND interpreter fallback
 	a, _ := New()
 	if _, reason, _, err := a.CompileCheck(src); err == nil && reason == "" {
-		t.Fatalf("expected a sound refusal, but the shape compiled:\n  src: %s", src)
+		t.Fatalf("expected a refusal, but the shape compiled:\n  src: %s", src)
 	}
 }
 
@@ -111,7 +111,7 @@ def edge-cols fn [[nd:Map] [List] [ ((nd "kids" get) StructUtil.items) each $.1 
 // NEGATIVE: an `each` over a GENUINELY input-dependent Any (a `get` result,
 // whose declared return IS Any) must still refuse — the fix keeps only
 // concrete non-Any declared returns strict, so a dynamic Any element carrier
-// stays dynamic and `each` soundly falls back to the interpreter.
+// stays dynamic and `each` refuses, so the program is interpreted.
 func TestEachOverDynamicAnyStillRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default

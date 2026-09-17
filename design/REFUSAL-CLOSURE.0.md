@@ -10,24 +10,37 @@ The runtime-independence program's ratchets sit at their finish lines
 expected-red, public `Run` compiled; the *langspec* frontier compile
 ledger separately carries 3 expected-red rows — §9.1, a different
 ledger, not a contradiction). What remains is the OFF-CORPUS refusal
-envelope — shapes that return `compile_refused` and run on the
-interpreter by design ("slow, not wrong"). This note designs the
-compile strategy for **each of the eight families below** (§9 inventories
-what the eight do NOT cover), so any of them can be landed when its cost
-is justified. Every mechanism reuses machinery that already exists and
-is proven; none requires a new architectural idea.
+envelope — shapes that still return `compile_refused`. Every one of
+them is a DEFECT: an unimplemented or unproven case in the compiler,
+owed a fix and tracked here to closure. Done is a language that
+compiles, as a developer expects — ALL valid code compiles, no
+exceptions. The interpreter is NOT a fallback for the compiler and is
+not allowed to become one; the runtime path that SILENTLY re-runs a
+refused program on it is scaffolding that absorbs a known defect so
+the user still gets an answer — and the silence hides the failure
+instead of excusing it, so it is never a reason a refusal is
+acceptable. This note designs the compile strategy for **each of the
+eight families below** (§9 inventories what the eight do NOT cover),
+so that each one can be landed. Every mechanism reuses machinery that
+already exists and is proven; none requires a new architectural idea.
+
+(Framing corrected 2026-09-16: earlier revisions of this note described
+refused shapes as running on the interpreter "by design" and their cost
+as "slow, not wrong". That was wrong. They run there because the
+compiler has a gap, and the gap is owed a fix.)
 
 The shared soundness rule, unchanged: a shape compiles only when its
 compiled execution is BYTE-IDENTICAL to the interpreter (values, error
-taxonomy, output, binding state) — otherwise it keeps the refusal. Each
-landing must flip the shape's pinned-refusal test to a compile-parity
-pin: for §1/§3/§4 those are the `mustRefuseWithParity` calls in
-bytecode_edge_findings_test.go (whose §1 header documents the
-graduation pattern); §2/§5/§6a are pinned elsewhere — `zzRefusingRow`
-(bytecode_effectfence_test.go), the variadic pin in
-`TestGlobalBindEnvelope` (bytecode_globalbind_test.go), and the
-declining-poly pin (bytecode_flip_divergences_test.go, re-pointed to
-the `zpick` fixture at the §6a landing) — which assert
+taxonomy, output, binding state) — until that is proven the case stays
+unproven, and its refusal stands as an OPEN DEFECT rather than a
+resting place. Each landing must flip the shape's pinned-refusal test
+to a compile-parity pin: for §1/§3/§4 those are the
+`mustRefuseWithParity` calls in bytecode_edge_findings_test.go (whose
+§1 header documents the graduation pattern); §2/§5/§6a are pinned
+elsewhere — `zzRefusingRow` (bytecode_effectfence_test.go), the
+variadic pin in `TestGlobalBindEnvelope` (bytecode_globalbind_test.go),
+and the declining-poly pin (bytecode_flip_divergences_test.go,
+re-pointed to the `zpick` fixture at the §6a landing) — which assert
 `compile_refused` (and should also pin the reason substring; see §5)
 directly. And every landing passes the full battery.
 
@@ -60,7 +73,7 @@ String handler binds all-stack). The event is variadic-flagged; the
 in-order layout machinery promotes the catch result to a frame local and
 re-pushes the window in source order.
 
-Gates (each declining shape keeps the refusal, pinned):
+Gates (each declining shape still refuses — an open defect, pinned):
 - TERMINAL only — nothing after the forward literal but End/DefCleanup
   (a downstream consumer would need a static count the island can't
   promise): `… add 1 drop` still refuses.
@@ -78,9 +91,9 @@ the window fires only where refuseForwardStackDrift fired.
 **Scope (per the adversarial review's qualification):** this is the
 review's sanctioned narrow-window variant — the island result is
 variadic, so mid-statement drift shapes (`… add 1 mul 2`) and
-fragment-context drift sites keep the sound refusal (pinned:
-`… add 1 drop`). The statement-end window the review sketched remains
-the future widening if those shapes ever matter.
+fragment-context drift sites still refuse — unproven cases, still owed
+a compile (pinned: `… add 1 drop`). The statement-end window the review
+sketched is the widening those shapes are owed.
 
 ## 2. Deferred-token dispatch windows — `def f fn [[x:List][List][x]] def m (flex {a:1}) f m.a`
 
@@ -109,8 +122,8 @@ notes and help all match); a match defers to the interpreter. The
 existing rematch gates still hold the line: a dynamic with no compiled
 home fails operand resolution, and a window under a leading stack
 residual fails the written-tuple contiguity bound (that shape — the
-cell mutated through an opaque fn param behind a residual — keeps the
-sound whole-program refusal, pinned in
+cell mutated through an opaque fn param behind a residual — still
+refuses whole-program, an open defect owed a mechanism, pinned in
 TestUnmatchedDispatchTrapNegatives). The zzRefusingRow fence fixture,
 the RunCompiledReason pin and the trap-negatives pin were re-pointed to
 the §5 variadic-loop-def shape (blocked indefinitely, so stable).
@@ -123,7 +136,7 @@ is the ready mechanism.
 
 **Scope note (from the adversarial review):** "unmatched dispatch
 recovered at `w`" has several decline causes; the landing above owns
-the deferred-token one. The others keep the refusal until designed:
+the deferred-token one. The others are still-open defects until designed:
 multi-overload user fns over an Any/disjunct operand at the no-match
 recovery sites (plausibly §6b's stored-sig-table re-match);
 predicate/refinement-typed user-fn params, where the guarded CALL_USER
@@ -158,8 +171,8 @@ the lowering cannot seat), and no body unit is compiled (callDynMethod
 islands any plain callable; the declared return contract is
 engine-enforced at run time, so the modelled out carrier is sound). The
 paren-bounded variant (`(m.double 21) eq 42`, previously "fn-value
-application bounded by a paren") graduated with it. Decline fences keep
-today's refusals: computed-key reads (no pinpointed member),
+application bounded by a paren") graduated with it. Decline fences mark
+today's still-open cases: computed-key reads (no pinpointed member),
 multi-overload members (runtime first-match not modelled), captures,
 anonymous members, quote/no-eval params, non-inert windows.
 
@@ -182,8 +195,8 @@ FlowCtrl escape — the divergence-1 OpFallback translation makes this
 hold in compiled loops). Recording pass only, so plain checks keep the
 value-arm surface; dead arms, scalar/paren-scalar arms, def-bound
 concrete list arms and quoted arms all keep their prior behavior
-(pinned). The 2-arg `if`'s computed arm keeps a SOUND refusal ("if:
-then-branch not captured" — a follow-on widening if it ever matters);
+(pinned). The 2-arg `if`'s computed arm still refuses ("if:
+then-branch not captured") — an open defect owed the follow-on widening;
 `case` arms are value-semantics in both engines and stay native.
 
 (The review's filed quoted-break divergence in the adjacent do-body
@@ -231,14 +244,15 @@ before any read executes. So the landing is three small seams:
 - **Read path** (dynScopeRescue): a top-level arm admits reads of
   split-bound names (they have no event/local home by construction),
   lowering OpLookupDynScope; a dispatching binding (a region of fn
-  values) defers to the interpreter at run time — the existing
-  dyn-scope-read screens, sound by construction.
+  values) is not compiled — the existing dyn-scope-read screens route it
+  to the interpreter at run time, an absorbed gap and a case still owed
+  a compile.
 
-Gates (each declining shape keeps the refusal, pinned): a DYNAMIC count
-(the split needs the static region size — the zzRefusingRow fixture
-family re-pointed here), fn-body defs (the root gate), and zero-trip
-loops (pruned; the def forward-collects the next token, which already
-compiled).
+Gates (each declining shape still refuses — an open defect, pinned):
+a DYNAMIC count (the split needs the static region size — the
+zzRefusingRow fixture family re-pointed here), fn-body defs (the root
+gate), and zero-trip loops (pruned; the def forward-collects the next
+token, which already compiled).
 
 Landing tests: `TestEdgeFindingLoopCollectDefCompiles` — the canonical
 [1 1 1], no-read [1 1], distinct-values [2 3 1], multi-value-body
@@ -262,9 +276,9 @@ and variadic-returning arm units — plus defensive gates (<2 same-arity
 arms, nil aggregate) that are non-shapes. This section designs the first
 two; the others need mechanisms (the differing-returns case could type
 the call's residual as the dynamic join of the arms' declared returns —
-the §1 machinery) or an explicit designed-keep entry in §9 before the
-envelope closes. The gradual-Any probe above should be pinned in
-bytecode_edge_findings_test.go.
+the §1 machinery) before the envelope closes. An entry in §9 records
+such a gap; it does not discharge it. The gradual-Any probe above
+should be pinned in bytecode_edge_findings_test.go.
 
 - **§6a: zero committed returns** (`len(committedReturns) == 0` — the
   zero-return overload set). **LANDED 2026-07-16.** The poly gate's
@@ -298,8 +312,9 @@ bytecode_edge_findings_test.go.
   the replacement SURVIVES the callee's teardown (interpreter
   semantics, pinned at [141] in TestBodyLocalMultiOverloadPolyStored's
   mutator negative) — so the freeze gates on Check.FnBinders: when any
-  OTHER fn binds the word as a body-local, the refusal stays and the
-  interpreter owns the shape. Pins: both arms dispatch by runtime value
+  OTHER fn binds the word as a body-local, the freeze is unsafe, so
+  that shape still refuses — an open defect the interpreter absorbs at
+  run time, not a home for it. Pins: both arms dispatch by runtime value
   through one compiled program, a no-match defers to the interpreter's
   canonical signature_error, and the module-scope live-Lookup mode is
   untouched.
@@ -333,8 +348,9 @@ bytecode_edge_findings_test.go.
   the runtime path gains `StampDetachedSig(r, fd, sigIdx, pos)` with
   per-sig deps and a per-sig §7c restamp box, and
   StampFnValue/StampFnValueInPlace loop all stampable sigs (partial
-  success is per-sig fail-safe: a declining sibling stays plain and
-  interprets at its own matches). Pins:
+  success is per-sig: a declining sibling stays plain and is left to
+  the interpreter at its own matches — that sibling is an open defect
+  the stamp pass has not closed). Pins:
   TestStoredFnMultiOverloadStampsPerSig (compile-time, incl. the
   sentinel-declined sibling), TestMultiOverloadHandlerStampsPerSig +
   ...PartialStamp (end-to-end service dispatch: the two-arity handler
@@ -349,32 +365,41 @@ bytecode_edge_findings_test.go.
   under a mutex serialising concurrent invokers of one shared sig; each
   re-stamp snapshots the new generations, a stable rebind pays ONE
   compile then runs the VM again, and restampMaxTries (3) bounds a hot
-  rebinding loop — after the budget the seam stays on CallBoru (slow,
-  not wrong). Pinned in TestInvokeCallbackJITRestamp (freshen-to-live-
-  value parity, twin reuse without recompile, budget exhaustion,
-  disarmed decline). This is also the mechanism for the plan's Phase-6
-  "JIT detached-unit cache" item.
+  rebinding loop — after the budget the seam stays on CallBoru, the
+  interpreter path: a tracked degradation the runtime absorbs, not an
+  acceptable resting state. Pinned in TestInvokeCallbackJITRestamp
+  (freshen-to-live-value parity, twin reuse without recompile, budget
+  exhaustion, disarmed decline). This is also the mechanism for the
+  plan's Phase-6 "JIT detached-unit cache" item.
 
-## 8. boru-written mini compile hooks — keep the opt-out
+## 8. boru-written mini compile hooks — the hardest open case
 
 A boru compile hook is a macro whose check-time expansion is
 CONTRACTUALLY not the runtime expansion (MINILANG.5.md §13): the hook
-may read state that exists only at runtime. Both compile strategies are
-unsound or self-defeating: baking the check-time expansion violates the
-contract, and a runtime JIT of the hook + re-step of its expansion is
-exactly the interpreter with extra steps. This is a DESIGNED opt-out,
-like wasm's pinned RunInterp — recorded, not scheduled. (Go hooks
-compile since fa9e844; non-concrete src/opts refusals stay: the record
-cannot see the values the runtime expansion would consume.)
+may read state that exists only at runtime. Both compile strategies
+known today are unsound or self-defeating: baking the check-time
+expansion violates the contract, and a runtime JIT of the hook + re-step
+of its expansion is exactly the interpreter with extra steps. That makes
+this the HARDEST OPEN CASE in the envelope — not an exemption from it.
+The refusal is still a defect against the contract that all valid code
+compiles, and what it is owed is a mechanism (a hook contract the
+recorder can see, or a runtime expansion the VM can execute), not a
+permanent exemption. (Framing corrected: this section previously
+recorded the shape as a DESIGNED opt-out, "recorded, not scheduled".)
+(Go hooks compile since fa9e844; the non-concrete src/opts cases still
+refuse: the record cannot see the values the runtime expansion would
+consume.)
 
 ## 9. Inventory — what §1–§8 do NOT cover
 
 The eight families above were derived from the raise-site inventory
 (grep MarkUncompilable / refusal-reason strings across eng/go/emit.go,
 lower.go, engine.go, carrier.go, core_helpers.go and the lang natives).
-The following LIVE shapes are outside them; each needs a mechanism, a
-designed-keep entry, or an unreachability argument before the envelope
-can be called closed.
+The following LIVE shapes are outside them; each needs a mechanism or
+an unreachability argument before the envelope can be called closed.
+Where an audit files a site as a "keep", read it as NO KNOWN MECHANISM
+YET: the entry records a gap nobody has solved, and never licenses
+one.
 
 ### 9.1 The langspec frontier's three expected-red rows (L-DO part 2)
 
@@ -418,11 +443,12 @@ frontierCompileLedger rows. Until then the closure claim excludes them.
   [5 0 5 0]). Needs a fragment-relative splice + the spilled rest
   flowing as the enclosing loop's variadic body — its own landing.
   Pinned refusing with parity (TestS9LoopCarriedVariadicStore).
-- **9.2g fn/afn construction over a computed operand** — **DESIGNED
-  KEEP**: the param PATTERN is the runtime value, so a compiled unit
-  bakes the check-time carrier; a per-evaluation FnDefInfo
-  re-construction op is unjustified for so exotic a shape (§8-class).
-  Pinned refusing (TestS9FnComputedOperand).
+- **9.2g fn/afn construction over a computed operand** — **OPEN,
+  DEFERRED**: the param PATTERN is the runtime value, so a compiled
+  unit bakes the check-time carrier; the known mechanism is a
+  per-evaluation FnDefInfo re-construction op, unbuilt because the
+  shape is so exotic (§8-class). The refusal is a defect until it
+  lands. Pinned refusing (TestS9FnComputedOperand).
 
 ### 9.3 Residual guard-owned declines
 
@@ -430,26 +456,34 @@ The typed-def RecordTypedBind decline arms (native_definition.go:646
 dynamic-refinement reparent, :717 fn-predicate bind, :998 DepScalar
 validation — the first two pinned) and the shaped-method guards
 (method_shape.go:213 zero-arg landing, :482 operand of unknown
-provenance — both pinned) stay interpreter-owned. AUDITED 2026-07-17:
-the RecordTypedBind arms and method_shape.go:482 are DESIGNED-KEEP
-(no-compile-home operand provenance / a validate-reparent the runtime
-OpBindTyped already mirrors where compilable); method_shape.go:213 is
-OPEN (a 0-arg member auto-apply before a non-inert window — a §3
-extension). callable_words.go:250's gradual-Any collection ambiguity is
-DEFENSIVE-ONLY (every shipping Callable word carries CompileDynBody or
-CrossCollectionTokenShape; pinned white-box in dynbody_unit_test.go).
-See design/REFUSAL-CLOSURE-S94-AUDIT.10.md for the full per-site table.
+provenance — both pinned) are still absorbed, silently, by the
+interpreter at run time. AUDITED 2026-07-17: the audit filed the
+RecordTypedBind arms and method_shape.go:482 as DESIGNED-KEEP —
+permanent refusals. The classification is retired here; nothing is
+designed to stay refused. What those entries actually record is the
+difficulty, and the difficulty is real (no compile home for the
+operand's provenance / a validate-reparent the runtime OpBindTyped
+already mirrors where compilable), so read them as NO KNOWN MECHANISM
+YET — open defects owed one, exactly like method_shape.go:213, which
+the audit already files as OPEN (a 0-arg member auto-apply before a
+non-inert window — a §3 extension). callable_words.go:250's
+gradual-Any collection ambiguity is DEFENSIVE-ONLY (every shipping
+Callable word carries CompileDynBody or CrossCollectionTokenShape;
+pinned white-box in dynbody_unit_test.go). See
+design/REFUSAL-CLOSURE-S94-AUDIT.10.md for the full per-site table.
 
 ### 9.4 The Stage-2/3 raise-site tail — AUDITED 2026-07-17
 
 A parallel audit classified all **71** MarkUncompilable / refusal
 raise-sites across emit.go / engine.go / lower.go / carrier.go /
 callable_words.go / core_helpers.go / method_shape.go / user_poly.go.
-Verdict split: **5 subsumed, 23 designed-keep, 16 defensive-only, 27
-open** (a genuinely-compilable shape with no landed mechanism yet). No
-hidden miscompiles surfaced — every open site is a known Stage-3
-higher-order gap or an unknown-provenance residual tail, each refusing
-soundly with interpreter parity today. The groups:
+Verdict split: **5 subsumed, 23 no-known-mechanism (the bucket the
+audit labelled designed-keep), 16 defensive-only, 27 open** (a
+genuinely-compilable shape with no landed mechanism yet). No hidden
+miscompiles surfaced — every open site is a known Stage-3 higher-order
+gap or an unknown-provenance residual tail, each refusing today, the
+refusal SILENTLY absorbed by a re-run on the interpreter: parity, but
+no compiled answer, and a defect still owed one. The groups:
 
 - **subsumed** (5) — a landed mechanism now compiles the shape; the site
   survives only as the mechanism's own decline backstop: emit.go:3026
@@ -458,13 +492,16 @@ soundly with interpreter parity today. The groups:
   OpInterpXml). The section-level graduations engine.go:3110 (§1), :3161
   (§3), :6959 (§9.2e) narrow to their non-terminal / non-member residue.
 
-- **designed-keep** (23) — permanent refusals by design (the compiled
-  form would diverge, no runtime op fixes it): context-dependent words
-  (`args`/`__pa`), full-stack words (depth/pick/roll), compile-time
-  (check-pass) words, container-fn auto-dispatch (miscompile-E belt),
-  frozen-module-rebind (§8-class), undef of a loop-carried def, the
-  per-call-spine-over-shared-member identity, closure body-count taxonomy
-  mismatch, and the operand/capture no-compile-home guards.
+- **no-known-mechanism** (23; filed by the audit as *designed-keep*,
+  i.e. permanent — a verdict the corrected doctrine does not allow) —
+  the obvious compiled form would diverge and no runtime op yet fixes
+  it, which makes each one an open defect waiting on a mechanism
+  nobody has designed: context-dependent words (`args`/`__pa`),
+  full-stack words (depth/pick/roll), compile-time (check-pass) words,
+  container-fn auto-dispatch (miscompile-E belt), frozen-module-rebind
+  (§8-class), undef of a loop-carried def, the
+  per-call-spine-over-shared-member identity, closure body-count
+  taxonomy mismatch, and the operand/capture no-compile-home guards.
 
 - **defensive-only** (16) — unreachable belts (cannot fire without a
   bytecode-level fault); most already carry `//covergate:allow`.
@@ -528,19 +565,19 @@ Cheapest-first, each with the standard battery + fullcorpus
    window, no marks needed; see §1). §7b multi-sig stamps — **LANDED
    2026-07-16** (per-sig refs; the matched sig's Impl IS the sig
    table; see §7). Every item of §1–§7 is now landed — §5 included
-   (2026-07-17) — leaving only the §8 designed opt-out and the §9
-   inventory open.
+   (2026-07-17) — leaving the §8 hooks and the §9 inventory open.
 
 After all of §1–§7, **the enumerated refusal families are closed** —
 the remaining interpreter execution on any default path would be:
 check-mode (the compile front-end itself), module loads (attributed),
-const-folds (attributed), explicit RunInterp, the §8 designed opt-outs,
-and the **§9 inventory** (the L-DO part-2 residues, the seven
-probe-verified shapes, the guard-owned declines, and whatever the §9.4
-tail audit does not retire). The envelope is empty for every expressible
-shape only once §9 is also worked off; at that point the
-`BORU_COMPILE_FALLBACK` hatch plus the hatched legacy pins (49 at this
-writing — the authoritative count is
+const-folds (attributed), explicit RunInterp (a user's own request, not
+a compiler outcome), the still-open §8 hooks, and the **§9 inventory**
+(the L-DO part-2 residues, the seven probe-verified shapes, the
+guard-owned declines, and whatever the §9.4 tail audit does not
+retire) — each of the last two a defect the runtime is still absorbing.
+The envelope is empty for every expressible shape only once §9 is also
+worked off; at that point the `BORU_COMPILE_FALLBACK` hatch plus the
+hatched legacy pins (49 at this writing — the authoritative count is
 `git grep -c 'Setenv("BORU_COMPILE_FALLBACK"' -- '*_test.go'`; each
 landing shifts it) can be retired on schedule, after re-pointing the
 stamp-suite pins per §9.2.

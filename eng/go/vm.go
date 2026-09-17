@@ -740,7 +740,9 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// (`set` over a dynamic receiver — Store writes in place and returns
 	// nothing, Map/Flex return the container). A mismatched count would
 	// silently shift every downstream operand, so defer to the interpreter
-	// instead (runtimeShouldFallback — slow, not wrong).
+	// instead (runtimeShouldFallback). The defer keeps a wrong answer out;
+	// it does not make the miss acceptable — the program did not compile,
+	// which is a defect owed a fix.
 	if len(results) != pr.NOut {
 		return nil, vmDefer(r, curDebug, pc, "vm:poly-nout-drift", fmt.Sprintf(
 			"poly dispatch %s: result count %d differs from the recorded claim %d; deferring to the interpreter",
@@ -2854,7 +2856,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// The interpreter's stepWord simple-value substitution, at run
 			// time: read the name's live binding. A miss, or a binding the
 			// substitution would DISPATCH instead of push (a Function / class /
-			// splice / reach), defers to the interpreter (slow, not wrong).
+			// splice / reach), defers to the interpreter — containment for a
+			// shape the VM cannot yet read, not a sanctioned outcome.
 			name, nerr := p.Consts[in.Arg].AsConcreteString()
 			if nerr != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 				return nil, vmErrAt(curDebug, pc, "LOOKUP_DYN_SCOPE bad name const")

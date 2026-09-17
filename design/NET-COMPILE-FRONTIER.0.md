@@ -92,9 +92,10 @@
 > ways in `lang/go/test/stamp_dynenv_drift_test.go` (stamp + runtime
 > accumulation parity); validated to fail pre-fix with exactly the
 > s3-serve refusal. Note: the whole-PROGRAM compile pass (no probe) can
-> still drift the same way — there the refusal is a sound interpreter
-> fallback of the top-level program, not a lost stamp; a future
-> pre-pass could close it. mini-s3 now stamps **21 units**; the ONLY
+> still drift the same way — there the top-level program is refused and
+> **silently** re-run on the interpreter, which hides the failure rather
+> than fixing it; it is not a lost stamp, but it IS an open defect, and
+> the pre-pass that closes it is owed. mini-s3 now stamps **21 units**; the ONLY
 > remaining refusals are the two `s3-handle-*` units on the addendum-2
 > interpreter residual-timing fork (blocked upstream).
 >

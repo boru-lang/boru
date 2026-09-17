@@ -124,7 +124,10 @@ The armed compile arm (`core_helpers.go` ~518-575) then runs ONCE:
     over-claims; `TestCheckTypeSoundness` caught it. Gradual T still narrows the
     Any baseline enough to collapse the radix cascade, and mirrors the list
     integer-get path. See main doc §6.)
-  - else → return gradual `NewDynamicCarrier(TAny)` — today's sound refusal path.
+  - else → return gradual `NewDynamicCarrier(TAny)` — today's decline-to-Any
+    path. It yields no wrong answer, but "not wrong" is not the bar: every
+    decline is an unproven case — an open defect, owed a fix and tracked to
+    closure, never a sanctioned design outcome.
 - `set`'s ReturnsFn is inert in the armed pass (the join is already frozen); it
   only needs to keep the array's element carrier consistent for the recorder.
 
@@ -270,8 +273,10 @@ throwaway probe (à la Stage 0) before committing representation:
     later in source. **Cross-pass poison accumulation reaches the armed pass —
     Q1 resolved.**
   - (−) **single-pass top-level forward case**: interpret `[1,"x1"]`,
-    force-compile REFUSES (`code-body word each`) — a SOUND refusal, not a
-    miscompile. Across EVERY test: zero miscompiles.
+    force-compile REFUSES (`code-body word each`) — no miscompile, but the
+    refusal is a DEFECT, not a result to bank: valid code that a developer
+    expects to compile, and it does not. Owed a fix and tracked to closure.
+    Across EVERY test: zero miscompiles.
   - **Conformance rule corrected**: the predicate must TRUST THE BOUND
     (`valT.ConformsTo(elem)`), NOT reject all dynamic values. An initial
     `!args[1].Dynamic` guard wrongly poisoned `counts` (its increment value is a
@@ -341,11 +346,12 @@ risk introduced to close a hole the gradual result already closes. Not worth it.
    programs. Ordering (Q1) is proven; scoping is the remaining correctness work.
 2. **Guarantee the accumulation precedes the armed read.** Forward-pass soundness
    held in all tests, but it relied on poison being set before the armed `get`
-   reads — provided incidentally by the existing multi-pass re-analysis, and by a
-   sound refusal in the single-pass case. The production design should GUARANTEE
-   this with an explicit unarmed accumulation pass before the armed compile arm
-   (not rely on incidental re-analysis), so no single-pass armed-only fn can ever
-   read a stale strict type. No miscompile was observed, but make it structural.
+   reads — provided incidentally by the existing multi-pass re-analysis, and in
+   the single-pass case only by a refusal, which is itself an open defect owed a
+   fix and no guarantee to lean on. The production design should GUARANTEE this
+   with an explicit unarmed accumulation pass before the armed compile arm (not
+   rely on incidental re-analysis), so no single-pass armed-only fn can ever read
+   a stale strict type. No miscompile was observed, but make it structural.
 3. **Identity field.** Use an explicit `ChildTypeInfo.ArrayID` rather than
    overloading `Child.Pos`; keep the one-line `carrierResults` pos-stash (or
    thread pos into `ReturnsFunc`).

@@ -277,7 +277,8 @@ type CheckState struct {
 	// growing depth, so the branch rollback can't restore it): compiled
 	// resolution would statically bake the conditional shadow while the
 	// interpreter keeps the outer fn when the branch is not taken. Refusing
-	// keeps compiled == interpreter (slow, not wrong).
+	// keeps compiled == interpreter, at the price of not compiling at all —
+	// a defect owed a fix, not a resting place.
 	CondBodyDepth int
 
 	// RolledBackBodyDepth, when > 0, marks analysis running inside a body

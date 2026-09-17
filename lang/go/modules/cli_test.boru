@@ -23,8 +23,9 @@ import "boru:test"
 
 # Handlers for the Cli.main cases below. Module scope is style, not a
 # requirement: a fn-local `def … fn` named as a higher-order body word now
-# REFUSES compilation and runs correctly on the interpreter (NUR037 resolved
-# — "slow, not wrong"); module scope keeps the program on the compiled path.
+# REFUSES compilation and runs silently on the interpreter (NUR037: the
+# miscompile is closed, the refusal is an open defect); module scope keeps
+# the program on the compiled path.
 def t-ok fn [[ctx:Map] [Integer] [ 0 ]]
 def t-code fn [[ctx:Map] [Integer] [ 7 ]]
 def t-nonint fn [[ctx:Map] [Any] [ "not an integer" ]]

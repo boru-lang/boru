@@ -10,12 +10,12 @@ earlier analysis assumed._
 ## UPDATE — def-node-binding:54 LANDED (refusals 1 → 0)
 
 The earlier recommendation here (Option B, keep refusing — "compiling needs a VM
-deferred-auto-eval pass") was **too conservative**. The sound compilation needs
-NO VM change at all. The key the earlier analysis missed: the check pass's
-EXISTING top-level deferred-list fold already resolves a raw `[[c1]]` in module
-scope, including a later rebind (`def c1 1 [[c1]] def c1 2` already compiled to
-`PUSH_CONST [[2]]`). So the fix is to make the deferred-list-body fn TRANSPARENT
-rather than compile it as a unit:
+deferred-auto-eval pass") was **wrong**: a refusal is an open defect, never a
+resting place. The compilation needs NO VM change at all. The key the earlier
+analysis missed: the check pass's EXISTING top-level deferred-list fold already
+resolves a raw `[[c1]]` in module scope, including a later rebind
+(`def c1 1 [[c1]] def c1 2` already compiled to `PUSH_CONST [[2]]`). So the
+fix: make the deferred-list-body fn TRANSPARENT rather than a unit:
 - `buildFnBodyReturnsFn` (core_helpers.go) detects the shape via
   `deferredParamListResidual` and hands the RAW deferred list back as the call's
   residual instead of compiling a fn unit (a unit's result is fixed at CALL time
@@ -67,13 +67,21 @@ expansion) turned out NOT to affect the trap — the fix is deterministic.
 ## Why this matters
 
 `refusalCeiling` (test/go/langspec/compiled_coverage_test.go) is the gate for
-plan **P7**: the interpreter fallback (and the OpFallback island) can only be
-DELETED once refusals reach **0**. So these two rows are the entire remaining
-distance between "compiler is interpreter-independent for all soundly-compilable
-rows" (true today) and "the interpreter dependency can be removed" (needs 0).
+plan **P7**: the scaffolding — the silent interpreter re-run and the
+OpFallback island — can only be DELETED once refusals reach **0**. So these
+two rows are the entire remaining distance between "compiler is
+interpreter-independent for every row it can yet compile" (true today) and
+"the interpreter dependency can be removed" (needs 0).
 
-Both rows **pass today** — they refuse to compile and fall back to the
-interpreter, which produces the correct result. Neither ships a wrong answer.
+Both rows **FAIL to compile today**, and failure to compile is a **defect** —
+not a co-equal outcome, not an acceptable worst case. Done is a language that
+compiles as a developer expects: ALL valid code compiles, NO exceptions. What
+happens instead is that the runtime SILENTLY re-runs the refused program on
+the interpreter, which produces the correct value. The silence is the worst of
+it: the failure hides itself, so the gate reads green over two unimplemented
+cases. The interpreter is NOT a fallback and is not allowed to be one — that
+re-run is scaffolding absorbing a known defect, and each of these rows is owed
+a fix, tracked to closure.
 
 ## Correction to an earlier claim
 
@@ -82,10 +90,11 @@ Earlier status notes (and an earlier version of
 "correct-by-design refusals that must NOT compile — compiling them ships wrong
 answers, proven by the interpreter." **That is inaccurate.** The interpreter
 proves the CORRECT results (`[1]` and the depth-limit error); it does not prove
-that compilation must be wrong. The accurate statement: both are **conservative
-refusals** — the static analysis cannot yet prove the result, so it declines and
-falls back. A SOUND compilation exists for each; the open question is whether the
-additional compiler work is worth it for these two edge cases.
+that compilation must be wrong. The accurate statement: both are **open
+defects** — the static analysis cannot yet prove the result, so the compiler
+refuses, and the runtime silently re-runs the program on the interpreter, which
+hides the hole rather than closing it. A correct compilation exists for each;
+the compiler work is owed, and both rows stay tracked to closure.
 
 ## Row 1 — `macro.tsv:45` (an ERROR row)
 
@@ -97,7 +106,9 @@ def loopy (macro [[a] [quote [loopy unquote a]]])  macroexpand (loopy 1)
   deep (recursive macro?)` — the recursive macro is caught by the depth guard,
   not looped forever.
 - **Live compile result:** REFUSES, reason `residual value not statically
-  materialisable`. Falls back; the interpreter raises the error. Row passes.
+  materialisable` — an open defect. The runtime then SILENTLY re-runs the
+  program on the interpreter, which raises the error, so the row's gate reads
+  green over a compiler that failed.
 - **Why it refuses:** the lenient check pass does not run the recursive
   expansion to the depth limit, so it produces a residual it cannot lower.
 
@@ -126,9 +137,11 @@ That is deep engine work on recursive-macro paren capture, it risks the
 interpreter's macro dispatch path, and — see the determinism note below — it
 interacts with global mutable state. Not the "low-risk" change first assumed.
 
-### Option B (keep refusing) — zero cost, faithful
-Leave it. The fallback already raises the exact error. The only thing lost is
-P7 (cannot delete the interpreter while any refusal remains).
+### Option B (keep refusing) — NOT a resolution, the defect stays open
+Refusing fixes nothing. The silent interpreter re-run still raises the exact
+error, so the hole stays invisible; what is lost is not only P7 (the
+scaffolding cannot be deleted while any refusal remains) but the property the
+compiler exists for — that all valid code compiles.
 
 ## Row 2 — `def-node-binding.tsv:54` (a VALUE row)
 
@@ -142,10 +155,13 @@ def c1 1  def mk fn [[c1:Integer] [List] [[c1]]]  mk 9
   binding `1` — the param `c1 = 9` is already out of scope. So the returned
   list resolves `c1` to the module binding, not the param.
 - **Live compile result:** REFUSES, reason `fn mk: body result of unknown
-  provenance`. Falls back; the interpreter returns `[1]`. Row passes.
+  provenance` — an open defect. The runtime SILENTLY re-runs the program on the
+  interpreter, which returns `[1]`, so the row's gate reads green over a
+  compiler that failed.
 - **Why it refuses:** the compiler cannot statically prove which `c1` the
-  deferred-evaluated returned list binds, so it conservatively declines rather
-  than risk baking the WRONG one (`[9]`).
+  deferred-evaluated returned list binds, so it declines rather than risk
+  baking the WRONG one (`[9]`). Declining avoids a wrong answer, but "not
+  wrong" is not the bar: the case is unimplemented and owed a fix.
 
 ### Option A (compile correctly) — ATTEMPTED, blocked on a missing VM feature
 A build attempt (worktree, reverted clean) confirmed a sound compilation does NOT
@@ -154,14 +170,15 @@ fit without a substantial new VM feature. Precise root cause:
   `buildFnBodyHandler`) and runs a SINGLE end-of-run `autoEvalStack`
   (`eng/go/engine.go:991`). The returned `[[c1]]` is auto-evaluated AFTER the
   param frame is torn down, so `c1` resolves in MODULE scope → `[1]`.
-- **Compiler refusal is SOUND:** `AnalyseFnBody` (`eng/go/carrier.go:2308`) runs
-  the body in an ISOLATED `sub.Run` (`carrier.go:2434`) whose end-of-run
-  `autoEvalStack` fires WHILE the param `c1` is still bound, so the inner `[c1]`
-  resolves to the PARAM carrier (`Integer`) → residual `[[Integer]]` →
-  `materialise` fails on the carrier → refuse at `eng/go/emit.go:1426`. The param
-  carrier POISONS the residual, so the compiler can never bake `[9]`. (Confirmed:
-  the shadowing matrix — deeper `[[[c1]]]`, later-rebind `… mk 9 def c1 2` → `[2]`,
-  the no-module-c1 `undefined_word` case — all fall back faithfully today.)
+- **Why the compiler refuses (an open defect, not a verdict):**
+  `AnalyseFnBody` (`eng/go/carrier.go:2308`) runs the body in an ISOLATED
+  `sub.Run` (`carrier.go:2434`) whose end-of-run `autoEvalStack` fires WHILE the
+  param `c1` is still bound, so the inner `[c1]` resolves to the PARAM carrier
+  (`Integer`) → residual `[[Integer]]` → `materialise` fails on the carrier →
+  refuse at `eng/go/emit.go:1426`. The param carrier POISONS the residual, so
+  the compiler can never bake `[9]`. (Confirmed: the shadowing matrix — deeper
+  `[[[c1]]]`, later-rebind `… mk 9 def c1 2` → `[2]`, the no-module-c1
+  `undefined_word` case — all hit the same silent interpreter re-run today.)
 - **The blocker:** to compile, mk's residual must stay the RAW deferred list
   `[[word(c1)]]` and be folded by the existing top-level deferred-list machinery
   (`autoEvalList` → const-fold, `engine.go:3051`) — which ALREADY handles
@@ -182,8 +199,10 @@ end-of-run AND consumed-arg `autoEvalList`, with the interpreter's module-scope
 resolution) — a substantial new VM feature, not an emit-side tweak. Matches this
 note's original "subtle, higher risk" assessment.
 
-### Option B (keep refusing) — RECOMMENDED, in place
-Leave it. The fallback returns `[1]`. Same P7 caveat.
+### Option B (keep refusing) — what this note recommended, and it was WRONG
+Refusing fixes nothing: the silent interpreter re-run returns `[1]`, so the
+defect stays open and invisible. (The "Row 2 UPDATE" at the top records the
+compilation that actually landed.)
 
 ## Determinism observation (flagged for investigation, NOT an active bug)
 
@@ -211,6 +230,7 @@ proves real. Do not chase it speculatively.
   transparent so its raw residual reaches that fold.
 
 Net (final): refusals = **0** — the P7 floor. Every spec row produces the correct
-result in both engines, and every compilable row produces a Program (100%, 0
-whole-program fallbacks, 0 islands). Deleting the interpreter fallback (the rest
-of P7) is now unblocked; it remains a separate, deliberate follow-up.
+result in both engines, and EVERY row produces a Program (100%, 0 whole-program
+interpreter re-runs, 0 islands) — no exceptions left. Deleting the scaffolding
+(the silent interpreter re-run and the OpFallback island — the rest of P7) is
+now unblocked; it remains a separate, deliberate follow-up.

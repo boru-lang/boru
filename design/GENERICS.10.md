@@ -784,10 +784,16 @@ earlier, higher-priority one. Two points of contact:
 The proposed boru bytecode compiler (`design/boru-bytecode-report.0.md`)
 is "the carrier checker with a recording side effect" — every dispatch
 decision the checker makes statically becomes a `CALL_NATIVE sig_id`
-in the bytecode, and dynamic corners fall back to the interpreter over
-the same stack representation. Generics fit this thesis cleanly,
-adding one new compile-time concept (monomorphization) that the
-existing fn-summary memo gives us almost for free.
+in the bytecode. Where a corner is still uncompiled, the machinery
+routes it to the interpreter over the same stack representation —
+**silently**, so nothing in the run says the compile was refused. That
+routing is scaffolding around an open defect, not a fallback the design
+leans on: the interpreter is **not** a fallback for the compiler and is
+not allowed to become one. Done is a language that compiles as a
+developer expects — ALL valid code compiles, no exceptions. Generics
+fit this thesis cleanly, adding one new compile-time concept
+(monomorphization) that the existing fn-summary memo gives us almost
+for free.
 
 ### 10.1 Bottom line
 
@@ -837,10 +843,13 @@ monomorphizations, dispatch via `CALL_NATIVE_POLY`) or keep one boxed
 copy. The first compiles to faster code; the second compiles to less
 code.
 
-**Generic fn at a fundamentally-dynamic site.** A program where the
-checker can't resolve a parameter falls into the §1.5
-`FALLBACK_INTERP` boundary — same as any other dynamic site today.
-Rare in well-typed code.
+**Generic fn at a site the checker cannot yet resolve.** A program
+where the checker can't resolve a parameter lands in the §1.5
+`FALLBACK_INTERP` boundary — the span is re-run on the interpreter,
+**silently**, so nothing in the run says the compile was refused.
+Rare in well-typed code, and rare is not done: each such site is an
+open defect owed a fix and tracked to closure, never a sanctioned
+outcome of this design.
 
 ### 10.4 The fn-summary memo IS the monomorphization cache
 
@@ -911,15 +920,19 @@ The compiler depends on the checker resolving every parameter for
 every reachable call site. When inference fails:
 
 - **`unbound_param` diagnostic at compile time.** The call site is
-  genuinely polymorphic at runtime → the compiler must emit a boxed
-  dispatch (or `FALLBACK_INTERP`) at that site, not a `CALL_USER`.
+  genuinely polymorphic at runtime → the compiler emits a boxed
+  dispatch at that site rather than a `CALL_USER` — that still
+  compiles. Reaching for `FALLBACK_INTERP` instead does not: it hands
+  the span **silently** back to the interpreter, and every such site is
+  an open defect owed a compiled boxed-dispatch path, never the
+  intended answer.
 - **`constraint_violation` at compile time.** Hard error — the
   program does not compile. Same severity as the checker today.
 - **`arity_mismatch` at compile time.** Hard error.
 
 These are the same diagnostics §9.2 introduces for check mode; the
-compiler reuses them and treats `unbound_param` as a "fall back to
-boxed dispatch" trigger rather than a hard stop.
+compiler reuses them and treats `unbound_param` as a boxed-dispatch
+trigger rather than a hard stop — the program still compiles.
 
 ### 10.8 Summary
 

@@ -8,9 +8,26 @@ live tree at `f4c56a1` (branch `claude/boru-local-reasoning-design-rb7elj`,
 committed tests, and a fresh 3,875-row `--force-compile` sweep — not against
 the June design docs, several of which are now materially stale (§1).
 
+**Doctrine correction — supersedes the original framing everywhere in this
+doc.** The interpreter is **not** a fallback for the compiler, and is not
+allowed to be one. Failure to compile is a *failure*; done is a language
+that compiles as a developer expects — all valid code compiles, no
+exceptions. Every one of the 78 refusals counted below is therefore a
+**defect**: an unimplemented or unproven case, owed a fix and tracked to
+closure, never a sanctioned design outcome. Under `--compile` the runtime
+**silently** re-runs a refused program on the interpreter (`RunCompiled`),
+so the row still answers — and the silence is the worst of it: a failure
+to compile that hides itself. That re-run is **scaffolding** absorbing
+known defects; where this doc describes it, or a guard that refuses, it
+describes machinery around an open hole, never a fallback the design leans
+on and never a reason a refusal is acceptable. Wherever the text below
+reads otherwise — "sound" refusals, rows that "legitimately" refuse,
+permanent refusal tiers — it is corrected in place: a tier is a docket for
+defects not yet scheduled, not an approved terminus.
+
 > **Point-in-time snapshot — the refusal accounting below is superseded.**
 > The "fn value read from a container auto-dispatches" bucket (4 rows) and
-> the "container auto-dispatch — sound miscompile-E guard" line in the
+> the "container auto-dispatch — miscompile-E guard" line in the
 > stage table have since CLOSED: the arity-0 landing model shipped
 > (shapedMethodApplyWindow's all-0-arg path for shaped members;
 > tryMemberFnArrivalDispatch's empty-window claim for pinpointed plain
@@ -439,9 +456,11 @@ Sub-stages, each independently gated, ordered by mechanism reuse:
   NoEvalArgs/closure shape for code-body methods (`r.list-of` analysis in the
   stage3 plan — the freeze-gate analysis there stands: **never const-fold a
   stateful draw**). module-rand:14/15 sit behind the miscompile-E guard
-  (deliberate refusal, `emit.go:2661-2671`); they clear only when the
-  auto-dispatch has a real runtime model, else they stay as documented sound
-  refusals — do not weaken the guard to move 2 rows.
+  (a refusal that stops a known miscompile, `emit.go:2661-2671`); they clear
+  only when the auto-dispatch has a real runtime model, and until that model
+  is built they stay refused — an open defect owed that model, not an
+  approved outcome. Do not weaken the guard to move 2 rows: the fix is the
+  runtime model, never a looser guard.
 - **M2d fn-value-as-operand** (module-minilang:306-315 `is` + corpus-core:134
   `walk` two-lambda form): bake an immutable module-export fn value as a const
   operand (`e3f925ce` precedent: module-fn-value-as-arg) where the consumer
@@ -449,8 +468,8 @@ Sub-stages, each independently gated, ordered by mechanism reuse:
   two-lambda row rides the existing walk closure model
   (LambdaSharesTokenShape) extended to the second hook.
 - **Forecast:** M2a 3; M2b 12; M2c 12–14 of which module-rand:14/15 and
-  module-log:72/73 may legitimately remain refused (auto-dispatch guard);
-  M2d 11.
+  module-log:72/73 may still refuse until the auto-dispatch model lands —
+  the guard holds, the defect stays open and tracked; M2d 11.
 - **Revert criteria:** operand-ORDER divergence anywhere (the
   `(3 and "x") add 1` and `[1x]`-vs-`[x1]` history — every M2 sub-stage
   re-runs the reverted shapes as pinned negatives); any weakening of the
@@ -506,14 +525,17 @@ precedent) with the census run both ways in CI until it has a non-zero win,
 else it is deleted, not kept dormant (the capture-threaded lesson: dead
 machinery in the miscompile-sensitive tree is a cost).
 
-### Stage M6 — tiering decisions (with the maintainer, not code)
+### Stage M6 — deferral decisions (with the maintainer, not code)
 
-recursion:72 (true dynamic scope — Stage F: recommend option 2, permanent
-documented tier, per next-stages §F); recursion:71 (branch-scope forward ref
-— same family); corpus-core:134 if M2d declines; module-rand:14/15 +
-module-log:72/73 if the auto-dispatch model is not built. Phase 7's "re-arm
-ceilings at 0" then reads "0 outside the documented permanent tiers", which is
-the honest P7 the plan already models with tier-1.
+recursion:72 (true dynamic scope — Stage F: recommend option 2, deferral on
+the maintainer's docket, per next-stages §F); recursion:71 (branch-scope
+forward ref — same family); corpus-core:134 if M2d declines;
+module-rand:14/15 + module-log:72/73 if the auto-dispatch model is not built.
+Deferral is a schedule, not a sanction: each row stays an open defect with a
+named unlock (a VM def-stack mirror, the two-hook walk extension, the
+auto-dispatch runtime model) and an owner. Phase 7's "re-arm ceilings at 0"
+means 0 — any row still refusing then is compile debt carried into Phase 7,
+which the tier accounting tracks rather than excuses.
 
 ### Corpus re-baseline protocol (every M stage)
 
@@ -529,15 +551,15 @@ the honest P7 the plan already models with tier-1.
 
 ## 7. Bucket impact forecast (honest counts against §0)
 
-| bucket | n | M1 | M2 | M3 | M4 | M5 | stays refused (tier) |
+| bucket | n | M1 | M2 | M3 | M4 | M5 | still refused = open defect |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | user fn call (Stage 3) | 10 | 10 | | | | | 0 |
 | dispatch recovery | 14 | (5→M4) | | | 5 + 5–6 | | 0–4 (flex:88,95 are G5-stage-3/4 shapes; forward-barrier:80 needs branch-typed each) |
 | fn value reaches word | 11 | | 11 | | | | 0–1 (corpus-core:134) |
-| operand provenance | 22 | | 9 | 11 | | | 2 (recursion:71,72 → M6 tier) |
+| operand provenance | 22 | | 9 | 11 | | | 2 (recursion:71,72 → M6 docket) |
 | fn-value-call boundary | 7 | | 7 | | | | 0 |
 | function-valued operand | 5 | | 5 | | | | 0 |
-| container auto-dispatch | 4 | | 0–4 | | | | 0–4 (sound miscompile-E guard) |
+| container auto-dispatch | 4 | | 0–4 | | | | 0–4 (miscompile-E guard holds; defect open) |
 | unconsumed carrier | 3 | | 3 | | | | 0 |
 | dynamic input | 1 | | 0–1 | 0–1 | | | 0–1 |
 | paren-bounded apply | 1 | | 1 | | | | 0 |
@@ -545,9 +567,10 @@ the honest P7 the plan already models with tier-1.
 
 What Phase 6 does **not** touch (for Phase 7's entry assessment): the 13
 allowlisted error rows (their own Phase 3.4 residual), the 1 island, the 250
-check-error rows, tier-1 (`Vm.run`) permanence, M1/M2 miscompile classes
-(closed in Phase 1), and bytecode serialisation. M5 moves zero corpus rows by
-design — its wins are voxgig-file and fuzz-robustness wins.
+check-error rows, the tier-1 (`Vm.run`) rows (deferred here, not resolved),
+M1/M2 miscompile classes (closed in Phase 1), and bytecode serialisation. M5
+moves zero corpus rows by design — its wins are voxgig-file and
+fuzz-robustness wins.
 
 ## 8. Risk register
 
@@ -578,15 +601,18 @@ design — its wins are voxgig-file and fuzz-robustness wins.
 6. **Dynamic-scope frames (Stage F overlap).** recursion:72's `g` reads the
    *caller's* `n`. No unit model can compile it without a VM def-stack mirror
    (`OpDynLookup`) — expensive, semantically corner-case. This design assumes
-   the permanent-tier decision (M6); if that assumption fails (maintainer
-   wants it compiled), it is a NEW opcode + VM feature outside this round.
-7. **What stays permanently refused if assumptions fail:** if the
-   auto-dispatch model is never built — module-rand:14/15, module-log:72/73;
-   if flex path-shape typing (G5 stages 3/4) stalls — flex:88/95; if the
-   two-hook walk extension declines — corpus-core:134; plus the M6 tier rows.
-   Worst case Phase 6 lands ~64–68 of 78 and the remainder is documented
-   tiering — still sufficient for Phase 7's re-scoped entry (ceilings re-armed
-   at "0 outside documented tiers").
+   M6 defers it, which leaves the defect open on the docket rather than
+   settled; if the maintainer schedules it instead, it is a NEW opcode + VM
+   feature outside this round.
+7. **What stays refused if assumptions fail — defects carried, not closed:**
+   if the auto-dispatch model is never built — module-rand:14/15,
+   module-log:72/73; if flex path-shape typing (G5 stages 3/4) stalls —
+   flex:88/95; if the two-hook walk extension declines — corpus-core:134;
+   plus the M6 rows. Then Phase 6 lands ~64–68 of 78 and the remainder is
+   **unfinished**: each survivor keeps its defect record, its named unlock
+   and its owner, and Phase 7 enters with that debt visible rather than
+   retired. A refusal left standing is a hole in "all valid code compiles",
+   never a documented allowance.
 8. **Concurrent-work skew.** This round was designed against `f4c56a1` while
    Phase 4.4/4.5 edits were in flight. Stage 0 exists precisely to re-pin the
    inventory; if the recorder decoupling (4.5) changes any `es`-nil-vs-armed
@@ -596,11 +622,14 @@ design — its wins are voxgig-file and fuzz-robustness wins.
 
 ## 9. Exit criteria (Phase 6, restated against live state)
 
-Refusals 78 → ≤ 10 with every survivor either (a) in a maintainer-approved
-permanent tier with a written irreducibility rationale, or (b) owned by a
-named non-Phase-6 track (G5 store shapes, checker Array-element precision);
-islands still ≤ 1 and never increased by any stage; `correct-error == 0`
-held; `computeRefusalCeiling` ratcheted monotonically with per-stage
-rationales; the voxgig sweep re-run (Phase 5.3 debt) after M5. Then Phase 7's
-fallback deletion proceeds against tiers, exactly as the completion plan's
-tier-1 model already anticipates.
+Refusals 78 → ≤ 10 — a staging target, not done. Done is 0. Every survivor
+is an open defect and carries either (a) a written account of what is
+unimplemented or unproven plus the maintainer-agreed schedule for fixing it,
+or (b) a named non-Phase-6 owner (G5 store shapes, checker Array-element
+precision) — and it stays on the books until it compiles; islands still ≤ 1
+and never increased by any stage; `correct-error == 0` held;
+`computeRefusalCeiling` ratcheted monotonically with per-stage rationales;
+the voxgig sweep re-run (Phase 5.3 debt) after M5. Phase 7 then deletes the
+whole-program interpreter re-run (`RunCompiled` → `Compile` + `RunProgram`,
+completion plan P7 item 3): scaffolding removed, not a fallback taken away,
+so every row still refusing surfaces as the compile failure it always was.

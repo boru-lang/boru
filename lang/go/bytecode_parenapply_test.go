@@ -25,7 +25,7 @@ func TestParenLeadingApplyCompiles(t *testing.T) {
 		`def m {g: (fn [[x:Integer][Integer][x mul 2]])} (m.g 3) add 1`, "[7]")
 
 	// Decline fence: a NON-member leading dynamic (a branch-merged fn value,
-	// no member-read provenance) keeps the sound refusal — parity via
+	// no member-read provenance) keeps the refusal — parity via
 	// fallback. The service-capturing-handler in a body is refused too (the
 	// factory-body miscompile), pinned in the frontier ledger.
 	{

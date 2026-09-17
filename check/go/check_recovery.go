@@ -68,7 +68,7 @@ func drainUndefinedAtoms(e *core.Engine) {
 //     registry Defs for the whole run, so OpLookupDynScope resolves it byte-
 //     identically to the interpreter. A BODY-LOCAL flex is a frame local, not a
 //     registry binding, so dyn-scoping it would miss — it keeps its local-slot
-//     lowering (or a sound refusal), left untagged.
+//     lowering (or a refusal, itself a defect), left untagged.
 //   - a MODULE-FAMILY value bound at module scope — an `import`-bound namespace
 //     (`IO`, `StringUtil`) or a Module descriptor (`def m StringUtil.$module`):
 //     the same shape as the mutable reference, read as a VALUE (`IO deq IO`, a

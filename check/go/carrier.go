@@ -1000,7 +1000,8 @@ func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
 // and the closure probe (whose body compile binds the check-time overload)
 // — leaves the VM raising undefined_word on a program the interpreter
 // runs. recordDispatchOutcome therefore refuses the whole program up front
-// ("slow, not wrong" — design/COMPILABLE-SUBSET.md §5).
+// — a refusal rather than an undefined_word, and an open defect until the
+// callback compiles (design/COMPILABLE-SUBSET.md §5).
 //
 // Scope-matching is deliberately NARROW, mirroring ComputeCaptures:
 //   - module-scope callbacks (TopFnBaseline nil, or Depth ≤ baseline) keep

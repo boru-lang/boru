@@ -212,7 +212,9 @@ once. Rows: `lang/spec/module-fnvalue-boundary.tsv`; Go pins:
 updated): the unit model binds unnamed params to slots without pushing
 them, so an unnamed arg *flowing to the residual* still diverges from
 the interpreter — the guard's reason changed from "auto-dispatch" to
-"frame flow", the refusal is equally sound (gate at 17, tier documented
-in compiled_coverage_test.go / design/P7-ENDGAME.10.md). Closing it
-means modelling unnamed-param frame flow in unit lowering — a Stage-3+
-work item, not part of this change.
+"frame flow", and it still refuses rather than miscompiles (gate at 17, tier
+documented in compiled_coverage_test.go / design/P7-ENDGAME.10.md). That is
+the better of two failures, not a resolution: the guard is an OPEN DEFECT,
+because the rows behind it do not compile. Closing it means modelling
+unnamed-param frame flow in unit lowering — a Stage-3+ work item, out of
+scope for this change but owed.

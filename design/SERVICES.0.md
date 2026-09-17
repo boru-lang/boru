@@ -547,7 +547,7 @@ jobs). boru should take a stance up front:
 | Single `gen_server` bottleneck | pooling, sharding, scalable registries | a server is a collection of services; shard by key into many services; a router/proxy pin (Open Q #2) fronts them |
 | NIF safety / scheduler blocking | dirty schedulers, Rustler | natives run on Go's preemptively-scheduled goroutines; a slow native can't stall a cooperative scheduler the way a BEAM NIF can |
 | Mnesia limits | khepri, external DBs | no built-in DB ambition — persistence is an external service |
-| Hot code loading complexity | rolling/blue-green deploys | **stance revised 2026-08** — adopted as a requirement for the plugin system (§7.4.1); mechanism report + design in `HOT-CODE-LOADING.0.md`. boru dodges most of BEAM's complexity: the interpreter is late-bound and compiled units self-invalidate on rebinding, so reload is a *protocol* (a control message per owning loop), not a global module-table swap |
+| Hot code loading complexity | rolling/blue-green deploys | **stance revised 2026-08** — adopted as a requirement for the plugin system (§7.4.1); mechanism report + design in `HOT-CODE-LOADING.0.md`. boru dodges most of BEAM's complexity: the interpreter is late-bound and compiled units self-invalidate on rebinding, so reload is a *protocol* (a control message per owning loop), not a global module-table swap — a self-invalidated unit is then re-run on the interpreter, which is an open defect owed a fix (§7.4.1), not a property this stance rests on |
 | Testing concurrency | QuickCheck, PropEr, Concuerror | property-based testing is already idiomatic here (`lang/spec`); systematic concurrency testing to follow |
 
 ### 7.4 The strengths worth adopting — three requirements (added 2026-08)
@@ -574,16 +574,20 @@ references resolve through the def table at call time (module-level names
 are deliberately not closure-captured); re-`def` shadows; file modules are
 **never cached**, so re-`import` already re-reads, re-runs, and rebinds a
 module's namespace; compiled units whose dependencies are rebound
-self-invalidate (`NotifyNameRebound`) and fall back to the interpreter, so
-a swap de-optimizes rather than mis-executes; old fn values pin their old
-module sub-registry until GC — BEAM's current/old code generations without
-the purge. On this document's own model the split is exactly right: a
-service's **state** (a flex map) is untouched by handler registration,
-and `add` on an existing pattern *stacks* — so "swap the handlers, keep
-the state" is nearly native. The service is the plugin unit: **a plugin is
-a module exporting a service constructor** (§2 verbatim — no separate
-plugin format), reloaded by re-importing the module and re-registering
-handlers on the living service.
+self-invalidate (`NotifyNameRebound`) and are re-run on the interpreter
+instead — silently at `do`/REPL/built binaries. That routing is
+scaffolding containing an open defect, not a fallback this design may lean
+on: a unit the compiler cannot carry across a rebind is a compilation
+failure owed a fix, and the silence indicts it — a failure that hides
+itself is worse, not better. Old fn values pin their old module
+sub-registry until GC — BEAM's current/old code generations without the
+purge. On this document's own model the split is exactly right: a
+service's **state** (a flex map) is untouched by handler registration, and
+`add` on an existing pattern *stacks* — so "swap the handlers, keep the
+state" is nearly native. The service is the plugin unit: **a plugin is a
+module exporting a service constructor** (§2 verbatim — no separate plugin
+format), reloaded by re-importing the module and re-registering handlers
+on the living service.
 
 **What it adds to this design.** A `reload` word (re-import with
 keep-old-generation-on-failure); reload **propagation as a control

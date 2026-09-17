@@ -180,7 +180,8 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	a.SetOutput(&outBuf)
 
 	// Compiled-by-default (the same CompileTry semantics as `boru run`),
-	// with the interpreter as the sound fallback for refused programs
+	// and refused programs re-run on the interpreter — containment for a
+	// compile failure, never a fallback the design leans on
 	// (plan Phase 2 — entry-point routing). Post-Stage-J a refusal
 	// returns compile_refused instead of the library silently re-running,
 	// so this surface performs the fallback itself. The policy-gated

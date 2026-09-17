@@ -77,9 +77,13 @@ striking.
   differential over the ~11K-row `lang/spec/*.tsv`, combination
   matrix, alloc ceilings, `-race` gates, dual-build args-aliasing
   gate) and `make fuzz-bytecode` (seeded property fuzz of the
-  compilable subset). The refusal architecture — `MarkUncompilable` →
-  interpreter fallback is *always sound* — is a stronger stance than
-  Roc's.
+  compilable subset). Those differential gates are a stronger stance
+  than Roc's. What sits beside them is not: `MarkUncompilable`
+  silently re-runs a refused program on the interpreter, and that
+  path is scaffolding absorbing a known defect, not architecture.
+  Every refusal is an unimplemented or unproven case, owed a fix and
+  tracked to closure; done is a language where all valid code
+  compiles, with no exceptions.
 - **Data-oriented design, independently arrived at.** Roc restructured
   around SoA and indices; boru did the same species of work in Go: the
   gap-buffer tape (`design/TAPE-DATA-STRUCTURE.10.md`; 166× at
@@ -162,8 +166,13 @@ striking.
   cost.
 - **The rewrite lesson, inverted.** Roc rewrote because the
   architecture was wrong — after prototyping the fix in OCaml. boru's
-  equivalents (design-doc-first culture; a compiler that *refuses*
-  rather than guesses) are how you avoid needing the 487-day rewrite.
+  equivalent is the design-doc-first culture: settle the semantics on
+  paper before an emitter ossifies them, and you avoid needing the
+  487-day rewrite. A compiler that *refuses* a case rather than
+  guessing at it is no part of that equivalent — a refusal has not
+  handled the case, it has logged an unimplemented or unproven one,
+  owed a fix and tracked to closure. Done is a language that compiles
+  every valid program, with no exceptions.
 
 
 ## 2. Rust vs boru
@@ -309,9 +318,11 @@ design.
   chained `=>` lambdas curry right-associatively (REFERENCE.md,
   the `make-adder` example), so this is a default-shape kinship,
   not a shared prohibition. (The curried-chain entry in
-  MISCOMPILE-HUNT-FINDINGS §E is a bytecode *coverage* boundary —
-  such chains refuse compilation and fall back to the interpreter —
-  not a language-level rejection.)
+  MISCOMPILE-HUNT-FINDINGS §E is not a language-level rejection — the
+  language takes such chains and the interpreter runs them. It is a
+  *hole in the compiler*: those chains are refused and silently
+  re-run on the interpreter, an open defect owed a fix, not a
+  coverage boundary the design is entitled to draw.)
 - Shared Elm-lineage "failures must be loud, diagnostics must
   explain" culture ↔ ERRORS.8, hint lines, `boru policy explain`
   blame chains.

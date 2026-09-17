@@ -1773,9 +1773,11 @@ Morrisett & Harper, POPL 1996, is the formal warrant that one uniform
 
   The lookup now uses `fd.Registry` for a foreign body. A foreign cell has
   no producing event in the CALLER's emit tables, so `resolveOperand`
-  declines and this row falls back — sound, parity restored, and ONE island
-  remains where the shape needs a registry-tagged operand for a foreign
-  module-scope instance. That is the follow-up the frontier ledger named;
+  declines and this row is re-run on the interpreter — parity restored, the
+  miscompile gone, and ONE island still standing where the shape needs a
+  registry-tagged operand for a foreign module-scope instance. That island
+  is an open defect against §0's "residual code, never refusal", not a
+  resting place. That is the follow-up the frontier ledger named;
   the parity fence is `lang/go`'s
   `TestForeignClosureCaptureResolvesInItsOwnRegistry`.
 

@@ -86,7 +86,7 @@ Global flags accepted by `boru` (and equivalently by `boru run`):
 | `-r PATH` | Path to a local registry (used by import and install). |
 | `-s INT` | Random seed for ID generation. Default: current time. |
 | `-check` | Run static type-check before execution; abort on error. |
-| `-compile` | **Experimental.** Execute via the bytecode compiler when the program is compilable; silently fall back to the interpreter otherwise (see [Bytecode compilation](#bytecode-compilation)). |
+| `-compile` | **Experimental.** Execute via the bytecode compiler when the program is compilable; when the emitter refuses, the run is **silently** re-run on the interpreter — containment for an open defect, not a fallback (see [Bytecode compilation](#bytecode-compilation)). |
 | `-force-compile` | **Experimental.** Require the bytecode compiler; abort with the refusal reason if the program is not compilable (see [Bytecode compilation](#bytecode-compilation)). |
 | `-options OPTS` | Engine options as a jsonic blob (see below). |
 | `-version` | Print the version and exit. |
@@ -135,31 +135,35 @@ runaway sooner. See `design/TAPE-DATA-STRUCTURE.10.md`.
 
 > **Experimental.** boru ships a bytecode compiler that lowers the
 > statically-typed subset of a program to a compact instruction stream and runs
-> it on a small VM. **Execution defaults to best-effort compilation** — a
-> program that is fully compilable runs on the VM, and anything the emitter
-> refuses falls back to the interpreter silently and soundly, producing
-> identical results. The choice is therefore purely about performance (and
-> about exercising the compiler); use `--no-compile` to pin the interpreter.
+> it on a small VM. **Execution defaults to the compiler** — the standard is
+> that every valid program compiles, with no exceptions. Anything the emitter
+> refuses is a **defect** owed a fix, not a supported outcome; today such a
+> program is **silently** re-run on the interpreter, which is scaffolding
+> absorbing that defect — the answer comes back and nothing in the run says
+> the compile failed, which is what makes the silence bad rather than
+> harmless. The interpreter is not a fallback the design leans on, so the
+> mode is not merely a performance knob: use `--force-compile` to make a
+> refusal visible, and `--no-compile` to pin the interpreter.
 
 There are three modes, selected per run by a flag or an environment variable:
 
 | Flag | Env | Behaviour |
 |------|-----|-----------|
-| `--compile` | `BORU_COMPILE` | **Best-effort.** Compile and run on the VM when the whole program is compilable; **silently fall back** to the interpreter when any part is not. Never changes the result. |
-| `--force-compile` | `BORU_FORCE_COMPILE` | **Strict.** *Require* the bytecode path. If the program is not compilable, abort with the emitter's refusal reason instead of falling back. Use this to *guarantee* a run went through the compiler (verifying the compilable subset, benchmarking the VM, or catching a compiler regression the silent fallback would hide). |
+| `--compile` | `BORU_COMPILE` | **Default.** Compile and run on the VM when the whole program is compilable; when any part is not, the program is **silently** re-run on the interpreter. The result is the same either way, which is precisely why the failure hides: the refusal is an open defect and nothing in the run reports it. |
+| `--force-compile` | `BORU_FORCE_COMPILE` | **Strict.** *Require* the bytecode path. If the program is not compilable, abort with the emitter's refusal reason instead of re-running it on the interpreter. Use this to *guarantee* a run went through the compiler, and in CI to keep refusals visible (verifying the compilable subset, benchmarking the VM, or catching a compiler defect the silent re-run would hide). |
 | `--no-compile` | `BORU_NO_COMPILE` | **Interpreter.** The kill switch: it **overrides** both of the above *and* the default, so a deployment (or a differential run) can pin the interpreter. |
 
-Note that `--compile` / `BORU_COMPILE` select the same best-effort mode the
-default already uses; they remain accepted, and are worth writing when a script
+Note that `--compile` / `BORU_COMPILE` select the same mode the default
+already uses; they remain accepted, and are worth writing when a script
 wants the intent on the record.
 
 Precedence: `--no-compile` / `BORU_NO_COMPILE` wins over everything; otherwise
 `--force-compile` / `BORU_FORCE_COMPILE` wins over `--compile` /
-`BORU_COMPILE`; with none of them set, the mode is best-effort compilation
-(`cmd/go/internal/run/run.go`, `ResolveCompileMode`).
+`BORU_COMPILE`; with none of them set, the mode is the default compile-first
+one, refusals included (`cmd/go/internal/run/run.go`, `ResolveCompileMode`).
 
 ```bash
-boru --compile script.boru              # try the compiler, fall back silently
+boru --compile script.boru              # compile; a refusal is silently interpreted
 boru --force-compile script.boru        # demand the compiler; fail loudly if it can't
 BORU_COMPILE=1 boru script.boru          # same as --compile, via the environment
 boru --no-compile script.boru           # pin the interpreter
@@ -167,7 +171,8 @@ BORU_NO_COMPILE=1 boru --compile s.boru  # kill switch: runs the interpreter any
 boru do --force-compile 1 add 2        # the flags work on `boru do` too
 ```
 
-A `--force-compile` refusal names the construct the emitter could not lower:
+A `--force-compile` refusal names the construct the emitter could not lower —
+which is to say it names the defect, and that defect is owed a fix:
 
 ```
 $ boru --force-compile -e '(size (for 5 [i]))'
@@ -176,8 +181,8 @@ error: force-compile: consumes loop results (Stage 2 loops only feed the program
 
 Both flags are accepted by `boru` / `boru run` and by `boru do`. Genuine runtime
 errors (e.g. division by zero, a type error) surface identically in every mode;
-only the *uncompilable* outcome differs — silently absorbed by `--compile`,
-reported by `--force-compile`.
+only the *uncompilable* outcome differs — silently absorbed by `--compile`, so
+the defect goes unreported, and named by `--force-compile`.
 
 ## Language execution
 
@@ -526,12 +531,13 @@ boru test src/ lib/                  # walk several directories
 boru test --coverage sift_test.boru   # add coverage + an HTML report
 ```
 
-Suites run on the **bytecode compiler by default** — the normal, fast
-execution mode — falling back to the interpreter only for a file the
-compiler refuses. Discovery: no arguments walks the current directory
-recursively for `*_test.boru`; a directory argument is walked the same
-way; an explicit file argument is run verbatim (even without the
-`_test.boru` suffix).
+Suites run on the **bytecode compiler by default** — the normal execution
+mode. A file the compiler refuses is **silently** re-run on the interpreter,
+so the suite still reports green while the compile failed; that refusal is an
+open defect, and `--force-compile` is how you surface it. Discovery: no
+arguments walks the current directory recursively for `*_test.boru`; a
+directory argument is walked the same way; an explicit file argument is run
+verbatim (even without the `_test.boru` suffix).
 
 Flags:
 

@@ -20,7 +20,7 @@ Three constraints, jointly:
    "don't compile your server" rules. The user never knows or cares which
    tier runs their code. (This is already the shipped posture:
    `CompileTry` has been the default since the P7 flip of 2026-07-08, and
-   Stage J plans to delete the unbounded fallback entirely.)
+   Stage J plans to delete the unbounded interpreter route entirely.)
 3. **Compiled code gets no slower** — the freshness machinery must cost
    ~nothing on the steady-state hot path. Reload support may cost
    something *at the reload event*; it may not tax every call.
@@ -57,8 +57,8 @@ From the invoke-seam audit (`eng/go/compiled_runtime_vm.go:18-24`,
   pays ~2–10 map lookups per call before the VM runs a single opcode.
 - A ref that went permanently stale (restamp budget exhausted) is worse:
   every invoke pays the failed walk **plus** the `RestampBox` mutex and
-  twin check before falling back — the de-optimized path is the most
-  expensive path.
+  twin check before the interpreter runs the call — the de-optimized path
+  is the most expensive path.
 - No Go benchmark measures the seam (`InvokeCallback`/`DepsFresh` appear
   in no `*bench*` file); the only recorded VM-vs-interpreter callback
   number is prose ("~19x", `net_socket.go:596-598`). The work in §6 adds
@@ -72,16 +72,22 @@ the cost to the **rebind event** instead.
 ### 2.3 What transparency already means here
 
 `boru run`/`do`/`test`/REPL/exec are compiled-by-default (`CompileTry`)
-with check-by-default preflight; whole-program refusal warn-and-falls-back
-at the `run` surface and silently at `do`/REPL/built binaries; runtime
-stamping is armed on every compiled-mode request and kept armed across
-the interpreter fallback, so callbacks earn the VM even under a refused
-top level (`NET-COMPILE-FRONTIER.0.md` Addendum 6: mini-s3's driver
-refuses whole-program, all 23 callback units run stamped). Stage J's end
-state makes refusal a compile error with enumerated interpreter carve-outs
-— per-invoke fail-safe declines among them. **This design must live
-inside that trajectory**: reload rides the carve-outs and the seam, not a
-new mode.
+with check-by-default preflight. A whole-program refusal is a failure —
+an unimplemented or unproven case in the compiler, owed a fix — and the
+runtime today absorbs it instead of reporting it: the program is re-run
+on the interpreter, with a warning at the `run` surface and **silently**
+at `do`/REPL/built binaries. The silence makes it worse, not better — a
+failure that hides itself is one nobody is tracking. Runtime stamping is
+armed on every compiled-mode request and kept armed across that
+interpreter re-run, so callbacks still earn the VM under a refused top
+level (`NET-COMPILE-FRONTIER.0.md` Addendum 6: mini-s3's driver refuses
+whole-program — an open defect — while all 23 callback units run
+stamped); that bounds how much of the program the defect costs, it does
+not settle the defect. Stage J's end state makes refusal a compile error
+with enumerated interpreter carve-outs — per-invoke declines among them,
+each of them a case still owed a compiler rather than a sanctioned
+outcome. **This design must live inside that trajectory**: reload rides
+the seam, not a new mode.
 
 ## 3. Findings (what breaks which constraint)
 
@@ -104,12 +110,12 @@ print (call {op:"go"} svc)     # interpreter: 12     compiled: 12
 semantics); default `boru run` and `--force-compile` both print
 `12 12 12` — **every call sees the pass-final binding**. Mechanism: the
 rebinds correctly poison the stored ref (`NotifyNameRebound`), so every
-`call` falls back to `CallBoru` — but module-scope `def` sites execute
+`call` is routed to `CallBoru` — but module-scope `def` sites execute
 **only during the compile pass** (`def` is RunInCheck; "that single
 execution is the RUN's"), so by VM time the def table already holds the
 final value and the "live" lookup reads hoisted state. The PR #243
 per-ref carve-out (`NoteFrozenRead` skips stored-ref-attributed reads,
-`emit.go:5240-5247`) assumed CallBoru fallback restores interpreter
+`emit.go:5240-5247`) assumed the CallBoru route restores interpreter
 semantics; it restores *late binding* but not *point-in-program* binding.
 The whole-program hammer would have refused this program had the read
 been in an ordinary unit. A regression spec must pin `6 105 12` across
@@ -174,8 +180,9 @@ a dep shadowed once and unshadowed reads stale-forever at the same depth
 — burning restamp budget on a non-event.
 
 **F6 — `Tui.run` update/view never stamp** (no trigger site in
-`tui*.go`): on a fallen-back program they interpret every frame. Not a
-reload issue; noted because §5's index makes the fix free to carry.
+`tui*.go`): on a program the runtime routed to the interpreter they
+interpret every frame. Not a reload issue; noted because §5's index makes
+the fix free to carry.
 
 ## 4. Prior art — how everyone else did it
 
@@ -207,11 +214,13 @@ The speculation family needs three capabilities, and **boru already has
 all three**: (1) a safe transition boundary — the `InvokeCallback` seam
 (unit granularity; next-invocation semantics, same as .NET Hot Reload and
 Erlang's "new code at the next qualified call" — no OSR needed); (2) a
-baseline tier that is always correct — `CallBoru` (exists, sound,
-effect-fenced); (3) dependency edges — `depNames`/`DepSnap` are already
-computed per ref at stamp time. What is missing is only the **reverse
-index and the push event**. boru's current scheme is neither equilibrium:
-it pays per call (pull) *and* still needs restamp machinery.
+transition tier for code an invalidation has just unstamped — `CallBoru`
+(exists, effect-fenced): somewhere to stand until the restamp lands,
+never a destination for code the compiler failed on; (3) dependency edges
+— `depNames`/`DepSnap` are already computed per ref at stamp time. What
+is missing is only the **reverse index and the push event**. boru's
+current scheme is neither equilibrium: it pays per call (pull) *and*
+still needs restamp machinery.
 
 Also load-bearing from the survey:
 
@@ -324,9 +333,11 @@ Replace the lifetime `RestampMaxTries = 3` with:
   restamp, however many reloads have happened (survey rule R5's missing
   decay, added).
 - **A small consecutive-failure cap** (2–3) against genuine flapping —
-  a dep rebinding *between* invokes repeatedly. Terminal state unchanged:
-  `CallBoru`, slow-not-wrong, and now cheap-slow (one atomic load
-  fails, no walk, no mutex — the poisoned ref just declines).
+  a dep rebinding *between* invokes repeatedly. Terminal mechanism
+  unchanged: `CallBoru`, now reached cheaply (one atomic load fails, no
+  walk, no mutex — the poisoned ref just declines). A ref parked there is
+  a unit that stopped compiling: an open defect against the flapping
+  case, owed a fix and tracked to closure, not a resting state.
 - F5's false-staleness (shadow/unshadow gen bump) stops mattering: the
   restamp that follows re-snapshots at current gens once, and per-world
   counting doesn't tax it.
@@ -340,7 +351,7 @@ Replace the lifetime `RestampMaxTries = 3` with:
   `assumeValid` flag, and registers in the `CodeIndex`. There is then
   exactly **one** ref kind at runtime, and F2 closes: a runtime `reload`
   that rebinds a dep flips the flag like any other rebind, the seam
-  degrades that handler to the interpreter, and the restamp brings it
+  routes that handler to the interpreter, and the restamp brings it
   back. (The §7a capture-identity concern is moot at Finalize — the pass
   is over; restamps go through `StampDetachedSig`'s clone discipline.)
 - **Whole-program `CALL_USER` units** — **world-pinned, Julia-style**: a
@@ -349,14 +360,14 @@ Replace the lifetime `RestampMaxTries = 3` with:
   entry-patching machinery is built. Reload reaches a running program at
   its **seam crossings**: service dispatch, `receive`, `call`/`send`,
   `InvokeCallback` — which is where server code actually lives (mini-s3:
-  the driver refuses/pins, all 23 callbacks ride the seam). The
-  replay-hazard screens (`import` in re-run bodies) stay. This is the
-  documented contract line (survey rule R3), and it is Erlang's own line
-  translated: *new code takes effect at the next dispatch through a
-  seam; a compiled straight-line loop that never crosses one keeps its
-  generation until it returns.* `boru check` can warn when a loop body
-  both reads reloadable module state and never crosses a seam — lint,
-  not a mode.
+  the driver either pins or — as it does today — refuses, an open defect;
+  all 23 callbacks ride the seam). The replay-hazard screens (`import` in
+  re-run bodies) stay. This is the documented contract line (survey rule
+  R3), and it is Erlang's own line translated: *new code takes effect at
+  the next dispatch through a seam; a compiled straight-line loop that
+  never crosses one keeps its generation until it returns.* `boru check`
+  can warn when a loop body both reads reloadable module state and never
+  crosses a seam — lint, not a mode.
 
 ### 5.6 Fixing F1 (point-in-program bindings under the VM)
 
@@ -366,14 +377,16 @@ stored ref's dep** must not be hoisted-and-forgotten — the lowering
 installs the registry-visible runtime bind twin at that site (the
 `RecordDynBind`/`OpBindDynScope` machinery already exists for
 dyn-scope reads; extend its criterion to "name ∈ CodeIndex ∪ any
-stored-ref depNames"), so VM-time def order is real, `CallBoru` fallbacks
-read point-in-program state, and — once §5.2 lands — the same runtime
+stored-ref depNames"), so VM-time def order is real, the `CallBoru` route
+reads point-in-program state, and — once §5.2 lands — the same runtime
 bind is the push event that flips dependent flags. Until the lowering
-lands, the conservative interim is to widen the `NoteFrozenRead` hammer
-to stored-ref reads of names the program text rebinds (refuse → whole
-program interprets → correct values), which un-ships the miscompile at
-the cost of compiling fewer programs; the spec row pinning `6 105 12`
-across all three surfaces lands first, either way.
+lands, the interim stopgap is to widen the `NoteFrozenRead` hammer to
+stored-ref reads of names the program text rebinds (refuse → whole
+program interprets → no wrong answer). That stops the miscompile, but it
+is not a fix: it trades a wrong answer for a compiler that fails on
+programs it is supposed to compile, and every refusal it manufactures is
+a defect owed closure by the bind twins above. The spec row pinning
+`6 105 12` across all three surfaces lands first, either way.
 
 ### 5.7 Transparency (what the user sees)
 
@@ -390,9 +403,11 @@ the same line Erlang users already learn.
 1. **Pin the contracts**: spec rows for F1 (`6 105 12`, three surfaces)
    and a seam micro-benchmark (`InvokeCallback` with 0/2/5-dep refs,
    fresh and stale) — the baseline every later phase must not regress.
-2. **F1 interim**: widen the frozen-read hammer to stored-ref deps
-   rebound in program text (correctness now, compile-coverage cost
-   acknowledged), pending §5.6's bind twins.
+2. **F1 interim stopgap**: widen the frozen-read hammer to stored-ref
+   deps rebound in program text — it stops the wrong answer now and makes
+   the compiler fail on programs it is supposed to compile, so every
+   refusal it opens is tracked as a defect until §5.6's bind twins retire
+   it (step 6).
 3. **Valid flag + reverse index + Bloom gate** (§5.1–5.2): DepsFresh
    drops off the hot path. Ship with the benchmark from (1) proving the
    steady-state win and the def-path cost bound.
@@ -426,7 +441,9 @@ the same line Erlang users already learn.
 4. **World-pin lint shape** (§5.5) — checker diagnostic
    (`loop_never_crosses_seam`) or a documented-only contract? (Leaning:
    documented first, lint when a real program hits it.)
-5. **Does Stage J change anything here?** When refusal becomes a compile
-   error, the F1-interim hammer widening (step 2) would turn shipped
-   programs into errors — steps 5–6 must land before Stage J's flip, or
-   the hammer widening must be scoped to the reload-bearing paths only.
+5. **Does Stage J change anything here?** When refusal stops being
+   absorbed and surfaces as a compile error, the F1-interim hammer
+   widening (step 2) turns the defects it opened into visible errors on
+   shipped programs — the honest reading of what was always there, and
+   the reason steps 5–6 must land before Stage J's flip, or the hammer
+   widening must be scoped to the reload-bearing paths only.

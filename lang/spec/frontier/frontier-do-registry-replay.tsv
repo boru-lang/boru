@@ -1,5 +1,5 @@
 # The do-unit registry-replay class (found by the variation sweep,
-# 2026-07-13; fixed to a SOUND REFUSAL the same day). Was: a compiled
+# 2026-07-13; fixed to a REFUSAL the same day). Was: a compiled
 # `do [...]` body containing a registry-mutating statement replayed it
 # against the check pass's surviving state (typed defs raised a
 # type-conflict Error; check-time registrations were invisible). Now: the

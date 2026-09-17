@@ -1,28 +1,33 @@
 # Edge-spec expansion — compiler divergences found
 
-Status: **resolved** (2026-07-04) — all four §1–§4 divergences below are
-closed as **sound refusals** (the recommended "refuse-then-model"
-first step): the compiler now REFUSES each shape and falls back to the
-interpreter ("slow, not wrong"), so `compile == interpret` holds and
-`--force-compile` surfaces a loud, precise reason. Each reproducer and
-its non-over-refusal siblings are pinned by
+Status: **miscompiles closed, refusals owed** (2026-07-04) — all four
+§1–§4 divergences below no longer produce a WRONG value: the compiler
+now REFUSES each shape, and `RunCompiled` (`lang/go/boru.go`) **silently**
+re-runs the refused program on the interpreter so the user still gets an
+answer — nothing in the run says the compile was refused. That re-run is
+machinery absorbing a known defect; it is not a resolution, and it is not
+a second acceptable outcome, and its silence indicts it rather than
+excusing it: a compile failure that hides itself is the harder one to
+find. The contract is that all valid code compiles, so each of these four
+refusals is an open DEFECT against it, owed the correct lowering and
+tracked to closure in §Disposition. `--force-compile` surfaces a loud, precise reason. Each
+reproducer and its non-over-refusal siblings are pinned by
 `lang/go/bytecode_edge_findings_test.go`
 (`TestEdgeFinding*`); the whole-corpus differential, or-fallback,
 metafallback partition, and status census all stay green (0 new
 refusals on the live corpus — none of these shapes is a corpus row).
-The correct-lowering follow-ups (model the shape natively instead of
-refusing) remain open, per §Disposition. Landing notes are inline under
-each section.
+Landing notes are inline under each section.
 
 Original status: **findings**. While adding ~2,000 edge-case spec
 rows (the `lang/spec/edge-*.tsv` families), genuine
 compile≠interpret divergences surfaced — the exact class of latent
 miscompile the expansion was meant to flush out. Each is a shape the
-compiler lowers to a WRONG result where it should either compile
-correctly or REFUSE and fall back (the "slow, not wrong" contract).
+compiler lowers to a WRONG result where it must compile correctly. A
+refusal stops the wrong answer, but a refusal is itself a defect against
+that requirement — never a sanctioned second branch.
 The rows are dropped from the corpus (they cannot be pinned under the
-0-divergence gate) and recorded here as reproducers for a sound-refusal
-or correct-lowering fix.
+0-divergence gate) and recorded here as reproducers for the
+correct-lowering fix (with a refusal as interim containment only).
 
 ## 1. Forward collection reaches across an error-handler residual
 
@@ -40,10 +45,11 @@ Root-cause family: the residual-window operand accounting across a
 reified-error boundary — adjacent to the statement-boundary absorption
 class the M2c landing already closed for method dispatch
 (`design/CHECKER-BYTECODE-COMPLETION-PLAN.0.md`, Phase 3.5 log). The
-sound fix is either to model the handler residual as a barrier the
-`add` window cannot cross, or to refuse the shape.
+fix is to model the handler residual as a barrier the `add` window
+cannot cross; refusing the shape only contains the defect until that
+lands.
 
-**Landing (refusal).** Root cause pinned precisely: the `error` island
+**Landing (interim refusal).** Root cause pinned precisely: the `error` island
 output is `dynamic(Any)`, which BLOCKS `add`'s `[Number Number]` forward
 overload, so check-mode matchSignature falls to the `[Scalar Scalar]`
 catch-all in ALL-STACK form — reaching PAST the dynamic top-of-stack to
@@ -73,9 +79,9 @@ Root-cause family: the fn-value-call boundary (plan P4 / M2). The M2c
 method-shape work models statement-position *0-return* method calls;
 this is a *value-returning* member fn (`m.double 21` feeding `eq`) —
 the shape-annotated dispatch must extend to a mid-expression member
-apply, or refuse.
+apply; refusing is containment, not a fix.
 
-**Landing (refusal).** The read `m.double` surfaces a parked user-fn
+**Landing (interim refusal).** The read `m.double` surfaces a parked user-fn
 that AUTO-APPLIES the moment `21` lands on it; the compiler instead lets
 the downstream `eq` steal `21` and applies the stranded fn at the
 residual tail to the wrong value. Because the read's static type is
@@ -102,11 +108,11 @@ def n 5 if (n eq 0) [99] (range 2 4)
 
 Root-cause family: the computed-else branch modeling for a paren group
 whose value is itself a runnable body — the boundary between "else
-value" and "else body" under forward arrival. Sound fix: refuse the
-ambiguous computed-else-body shape (fall back), or model the
-body-execution semantics.
+value" and "else body" under forward arrival. Fix: model the
+body-execution semantics; refusing the ambiguous computed-else-body
+shape only contains the defect in the interim.
 
-**Landing (refusal).** `if3ReturnsFn`'s body-vs-value split gates on
+**Landing (interim refusal).** `if3ReturnsFn`'s body-vs-value split gates on
 `IsConcrete`, but the paren-arrived range is a non-concrete list CARRIER,
 so it took the value path and pushed the list while the interpreter's
 `spliceArg` executes ANY plain list arm. The carrier's static typed-ness
@@ -121,12 +127,15 @@ Scalar / paren-scalar arms and literal `[…]` bodies are unaffected.
 ## Disposition
 
 All four (§1–§4) are **soundness** items: the compiler produced a wrong
-value where it must refuse. They are lower-frequency than the corpus rows
-(none appears in the 3,875-row base corpus), and each had a clear
-sound-refusal fix that costs at most the row itself.
+value where it must produce the right one. They are lower-frequency than
+the corpus rows (none appears in the 3,875-row base corpus), and each had
+a clear interim containment — refuse the shape — that stops the wrong
+value at the cost of the row itself, pending the correct lowering.
 
-**Done (refuse-then-model, step 1).** Each is now a compile-mode refusal
-with faithful interpreter fallback — see the per-section landing notes and
+**Contained (step 1 — the wrong value stopped).** Each is now a
+compile-mode refusal, and `RunCompiled` re-runs the refused program on
+the interpreter so the user still gets an answer while the defect stands
+— see the per-section landing notes and
 `lang/go/bytecode_edge_findings_test.go`. Every guard is compile-mode-only
 (the interpreter and plain `--check` are byte-identical to before) and is
 gated tightly against over-refusal (each landing note records the
@@ -135,12 +144,14 @@ corpus row changed status — the full `verify-bytecode` battery
 (differential + or-fallback + combinations + property fuzz), the
 metafallback partition, and the status census stay green.
 
-**Open (refuse-then-model, step 2).** Modelling the correct lowering
+**Owed (step 2 — the actual fix).** Modelling the correct lowering
 natively — the barrier-crossing operand accounting (§1), the mid-expression
 member-fn apply / value-returning method dispatch (§2, extends the M2c
 statement-position shape work), the executed-else-body semantics (§3), and
-the compiled per-call args projection for unnamed params (§4) — remains a
-follow-up, mirroring the Phase-6 "refuse-then-model" discipline.
+the compiled per-call args projection for unnamed params (§4) — is what
+closes these four. Each refusal above is a defect against "all valid code
+compiles, no exceptions" and stays open until its lowering lands; step 1
+only bought time.
 
 ## Checker-precision rows removed to hold the sacred pins
 
@@ -174,14 +185,16 @@ def f fn [[Integer String] [String] [args.1]] f 1 "hi"
 - Compiled: divergent — the VM's CALL_USER frame binds params to
   frame locals and does not maintain the interpreter's per-call args
   stack, so `args.N` inside a compiled body reads wrong. The emitter
-  refuses a bare `args` word (documented boundary); the dotted
-  `args.N` form slipped past that guard and compiled to a divergent
-  result rather than refusing.
+  refuses a bare `args` word (a long-standing, still-open refusal); the
+  dotted `args.N` form slipped past that guard and compiled to a
+  divergent result — a worse defect than a refusal, but both are defects.
 
-Sound fix: extend the `args`/`__pa` compile refusal to the `args.N`
-reach form so the body falls back. Reproducer dropped from the corpus.
+Interim containment: extend the `args`/`__pa` compile refusal to the
+`args.N` reach form so the body stops miscompiling. The fix that closes
+this is the compiled per-call args projection for unnamed params
+(§Disposition). Reproducer dropped from the corpus.
 
-**Landing (refusal).** Root cause pinned to UNNAMED params: `args.N`
+**Landing (interim refusal).** Root cause pinned to UNNAMED params: `args.N`
 folds soundly to `PUSH_LOCAL N` when every param is NAMED
 (`recursion.tsv:35,36`, still compiling), but an unnamed param flows
 through the body STACK, so folding `args.N` over the projection strands

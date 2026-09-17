@@ -19,10 +19,10 @@ Status: implemented (foundation + Stages 1–4 routing), gate-green. The echo
 networking benchmark that motivated the work now runs its handler compiled on
 the VM at **~58,000 req/s (~97× over the interpreter, ~1.9× off Go)** — see "The
 networking benchmark" below. This note is the "endgame accounting" record for the
-callback-compilation work: what was retired from the interpreter, what
-deliberately stays, and what the remaining frontier is. It is a design note,
-**not** an ADR (see `lang/go/CLAUDE.md` — ADR entries only on explicit maintainer
-instruction).
+callback-compilation work: what was retired from the interpreter, what still
+runs there as an open defect, and what the remaining frontier is. It is a
+design note, **not** an ADR (see `lang/go/CLAUDE.md` — ADR entries only on
+explicit maintainer instruction).
 
 ## Problem
 
@@ -43,21 +43,26 @@ with a recording side-effect" architecture (no rewrite):
 
 - **`CompiledFnRef` (`eng/go/bytecode.go`)** — a durable `{Prog, Unit, Captures}`
   reference. `BoruImpl.Compiled` carries it *alongside* `Body`, so a fn value
-  holds both the VM edge and the interpreter fallback. `Signature.CompiledRef()`
-  reads it.
+  holds both the VM edge and the raw tokens the interpreter re-run still needs.
+  `Signature.CompiledRef()` reads it.
 - **Store-fn bake (`eng/go/emit.go`, `compileStoredFnUnit` + `stampCompiledRef`)**
   — at a `CompileStoresFn` slot (serve-raw, service `add`, codec builders), a
   capture-free handler body is compiled to its own unit (via the existing
   `compileClosureBody`) and a `CompiledFnRef` is stamped on the interned const.
   `Finalize` back-stamps `.Prog` over a `Program.storedFnRefs` side-list once the
-  `*Program` exists. A body that refuses to compile is left un-stamped and falls
-  back to the interpreter, per-body and sound.
+  `*Program` exists. A body that refuses to compile is left un-stamped and is
+  silently routed to the interpreter instead. That routing is per-body
+  scaffolding around an open defect, not a fallback the design leans on: each
+  un-stamped body is an unimplemented or unproven case owed a fix, and the
+  silence makes it worse — the program keeps running while nothing reports the
+  compile failure.
 - **Store-body bake (`eng/go/emit.go`, `compileStoredBody`; `CompileStoresBody`)**
   — the code-list twin, for `spawn`: a `NoEvalArgs` process body is compiled to a
   0-param unit and the word receives a synthetic fn-value carrier (raw tokens +
   `CompiledFnRef`) in place of the raw list, so `spawnHandler` runs the unit via
-  `RunUnit` on the process fork. A body that refuses rides as the plain list const
-  and runs on the interpreter, unchanged.
+  `RunUnit` on the process fork. A body that refuses rides as the plain list
+  const and is silently interpreted instead — the same open defect, absorbed
+  the same undeclared way, and owed the same fix.
 - **`RunUnit` (`eng/go/vm.go`)** — starts a *fresh* VM run entered at a unit, on
   an idle (forked) registry. The durable-callback path: a serve-raw connection
   handler on its per-connection `connFork` runs compiled even though it fires
@@ -70,9 +75,12 @@ with a recording side-effect" architecture (no rewrite):
   calls it), so the corpus differential is untouched.
 - **`InvokeCallback` (`eng/go/invoke.go`)** — the single routing seam every
   native callback word dispatches through: idle registry → `RunUnit`; mid-run →
-  `nestedRunner`; else → `CallBoru`. Fail-safe: values and error taxonomy are
-  identical to `CallBoru` when the VM path isn't taken, and the differential gates
-  prove unit execution ≡ interpreter when it is.
+  `nestedRunner`; else → `CallBoru`. The `CallBoru` arm produces no wrong
+  answer — values and error taxonomy are identical to `CallBoru` when the VM
+  path isn't taken, and the differential gates prove unit execution ≡
+  interpreter when it is — but "no wrong answer" is not the bar: reaching that
+  arm because a body would not compile is a failure the seam absorbs silently
+  rather than fixes.
 
 Wired callers: `serveRawHandler` (`net_socket.go`), service `call`
 (`native_service.go`), codec `callCodecFn` (`net_codec.go`), `RunPredicate`
@@ -92,17 +100,19 @@ and `Model` action `makeAction` (`modules/model.go`).
   (predicate refine / is / typed-def are not `CompileStoresFn` slots, and the
   model builder word does not stamp its action fns), so both still interpret. The
   routing is in place so each benefits automatically once its stamping lands.
-- **Deliberately NOT retired (stays interpreted, by design):** runtime-*constructed*
-  code (`Vm.run` of source built at runtime, `makePriorFn` Go continuations,
-  macro/parselang bodies) has no ahead-of-time form; the confined `OpFallback`
-  island and `Engine.Run` remain. `Test.check-prop` likewise stays interpreted:
-  its generator/property run through fresh per-iteration `FnSig`s synthesized from
-  the map-literal `gen`/`prop` bodies (`native.Boru(genBody)`) — there is no fn
-  value to stamp, and compiling the two bodies would make `check-prop` a
-  dual-body storing word (a separate effort). The whole-program fallback and the
-  three sound non-definite-error corpus refusals are unchanged — this work did not
-  touch the corpus refusal count, so the `refusalCeiling` / `islandCeiling`
-  ratchets and `COMPILABLE-SUBSET.md §5` are unchanged.
+- **NOT retired by this work (still interpreted, still owed):**
+  runtime-*constructed* code (`Vm.run` of source built at runtime, `makePriorFn`
+  Go continuations, macro/parselang bodies) has no ahead-of-time form *yet*, so
+  the confined `OpFallback` island and `Engine.Run` remain — machinery holding
+  an unimplemented case, not a settled exemption. `Test.check-prop` likewise
+  still interprets: its generator/property run through fresh per-iteration
+  `FnSig`s synthesized from the map-literal `gen`/`prop` bodies
+  (`native.Boru(genBody)`) — there is no fn value to stamp, and compiling the
+  two bodies would make `check-prop` a dual-body storing word (a separate
+  effort, still owed). The whole-program interpreter re-run and the three open
+  non-definite-error corpus refusals are unchanged — this work did not touch
+  the corpus refusal count, so the `refusalCeiling` / `islandCeiling` ratchets
+  and `COMPILABLE-SUBSET.md §5` are unchanged.
 
 ## The networking benchmark: the handler compiles — ~97× measured
 
@@ -148,6 +158,9 @@ genuine, separate frontier (the sort chain), but it never gated this benchmark �
 the blocker was an under-specified `Any` param annotation in the example.
 
 ## Remaining frontier (not landed)
+
+Each item here is an open defect — an unimplemented or unproven case owed a fix
+and tracked to closure. None of them is a limit the design accepts.
 
 - **Higher-order fn-value callbacks** (`filter`/`each` with a `(fn …)` argument)
   currently *island* rather than compiling to a closure. Retiring them needs

@@ -14,15 +14,27 @@ in every case the langspec differential is *blind* to the divergence.
 
 | Surface | Live state | Is it the frontier? |
 |---|---|---|
-| **Internal langspec census** | `refusalCeiling=0`/`islandCeiling=0` reached historically; **31 rows** refuse now (`COMPILED_STATUS.md`: 3520 rows / 3286 compilable / 3255 native / 0 islanded / 31 refused). These ratchets are **informational, not gates** (`compiled_coverage_test.go:170-185`). The count tracks corpus *growth*, not regression. | No — effectively done as a correctness contract; Stage J (P7) is the formal endpoint. |
+| **Internal langspec census** | `refusalCeiling=0`/`islandCeiling=0` reached historically; **31 rows** refuse now (`COMPILED_STATUS.md`: 3520 rows / 3286 compilable / 3255 native / 0 islanded / 31 refused). These ratchets are **informational, not gates** (`compiled_coverage_test.go:170-185`). The count tracks corpus *growth*, not regression. | No — byte-identity holds here, but the 31 refusals are open defects, not a settled state; Stage J (P7) is the formal endpoint. |
 | **External voxgig `--force-compile`** | **11 PASS / 28 REFUSE** (8 passes are pure-def libs; only 3 test files compile: bloom/decision/stats `_prop_test`). | **Yes — this is the live completion target.** |
 
-**The one hard contract: compiled output is byte-identical to interpreted
-output.** Enforced by `make verify-bytecode` (`TestSpecCompiledDifferential` /
-`OrFallback` / `TestPropertyDifferential` / combination matrix / `-race` /
-`-tags borudebug`) plus `crossdiff` (Go-vs-TS) and `test-ts`, all currently
-green. Refusals fall back to the sound interpreter, so they are advisory — a
-*miscompile* is the only real danger.
+**The hard contract: every valid program compiles, and compiled output is
+byte-identical to interpreted output.** Byte-identity is enforced by `make
+verify-bytecode` (`TestSpecCompiledDifferential` / `OrFallback` /
+`TestPropertyDifferential` / combination matrix / `-race` / `-tags borudebug`)
+plus `crossdiff` (Go-vs-TS) and `test-ts`, all currently green. A refusal
+breaches the first half of that contract: it is a **defect** — an unimplemented
+or unproven case, owed a fix and tracked to closure — never an advisory outcome
+and never a second, sanctioned branch. `RunCompiled`/`RunCompiledReason`
+currently re-run a refused program on the interpreter so the user still gets an
+answer; that is **scaffolding absorbing a known defect**, not something the
+design leans on. A *miscompile* is the more dangerous defect, because it is
+silent and returns a wrong answer — but a refusal is a failure too. Done is a
+language that compiles, as a developer expects: all valid code, no exceptions.
+
+Where a sound compile is not yet implemented, refusing is the required
+containment (a tracked defect beats a silent wrong answer), which is why
+several regressions below pin "must still refuse" shapes. Those pins guard
+against miscompiling; they do not make the refusal a target state.
 
 ### The discipline that dominates this whole effort
 
@@ -35,8 +47,10 @@ by a hand-written `RunCompiledStrict`-vs-`Run` test. Therefore:
 > **Every leaf fix MUST ship a hand-pinned `RunCompiledStrict == Run`
 > regression for its exact off-corpus shape, AND (for coverage fixes) a
 > `prog.Disassemble()` assertion that no FALLBACK island appears** — because
-> `--compile` silently falls back, so a parity test alone passes on the
-> interpreter and hides the gap (leaf-3 finding).
+> `--compile` **silently** absorbs a refusal by re-running it on the
+> interpreter, so a parity test alone passes on the interpreter and hides the
+> defect — and the silence is what makes it dangerous rather than harmless:
+> nothing in the run says the compile failed (leaf-3 finding).
 
 Gate every commit: `make fmt && make vet && make lint && make test`, then
 `make verify-bytecode` + `crossdiff` + `test-ts` at 0 divergences, then re-run
@@ -170,11 +184,12 @@ each with an unguarded miscompile. The deepest leaf.
   diagnostic, and the gate refuses with the generic **"check diagnostics",
   masking the real reason** ("unmatched dispatch recovered at get/raise").
 - **Part 1 (unmask) — cheap, sound, flips 0, real DX win**: don't add the
-  error-severity diagnostic when `es.active()` (the `MarkUncompilable` already
-  refuses → sound fallback; the diagnostic is redundant and spurious). Then the
-  true reason surfaces. **Adversarial caveat**: the fell-through refuse
-  (`engine.go:6663`) fires for *both* recoverable union-receiver dispatch and
-  genuine concrete type errors — scope the suppression carefully so `boru check`
+  error-severity diagnostic when `es.active()` (`MarkUncompilable` has already
+  refused — the defect is recorded and the interpreter path absorbs it; the
+  diagnostic is redundant and spurious). Then the true reason surfaces.
+  **Adversarial caveat**: the fell-through refuse (`engine.go:6663`) fires for
+  *both* recoverable union-receiver dispatch and genuine concrete type errors
+  — scope the suppression carefully so `boru check`
   still reports real top-level unmatched dispatch.
 - **Part 2** is **Stage D** (the file-flipper) — see §1. The three files bottom
   out at three *different* sub-surfaces (tst_unit = Disjunct-receiver `get`;
@@ -216,9 +231,11 @@ branch/return), **C** (sound module-body compilation — the largest, needs a
 corpus re-baseline), **D**(remainder: `module-io:29/30` + the voxgig
 dynamic-receiver work), **E** (flex reference cells), **F** (dynamic-scope —
 a tiering decision), **G**(remainder: `fn-value:19`, dynamic-precedes-args =
-leaf-1 Part 2), **J** (delete the unbounded whole-program fallback; keep the
-tier-1 `Vm.run` island). Tier-1 "irreducible" is currently **empty** — 29 of 31
-live refusals are reducible by a named limitation.
+leaf-1 Part 2), **J** (delete the unbounded whole-program interpreter re-run;
+the tier-1 `Vm.run` island stays as tracked containment, not as a sanctioned
+exception). Tier-1 "irreducible" is currently **empty** — 29 of 31 live
+refusals are reducible by a named limitation, and the remaining 2 are unmapped
+defects, not exceptions.
 
 **Scope recommendation**: drive the **voxgig real-world corpus** to full
 compile as the completion target (it exercises everything the langspec residual
@@ -270,9 +287,9 @@ sub-hazards are exactly the silent-miscompile class the differential can't see.
 
 - **Leaf 1**: a `fold`/`scan` body capturing an enclosing computed def
   (`bx`); a nested-closure inner `def` reusing an outer-captured name (must
-  compile-correct OR documented-refuse, never drop the outer capture); the
-  `((m.g 3) add 1)`==7 reorder pin after any `engine.go:5616` relaxation; a full
-  comparator-driven sort ordering == interpreter; the 2-level
+  compile correctly, or refuse as a *tracked defect* — never drop the outer
+  capture); the `((m.g 3) add 1)`==7 reorder pin after any `engine.go:5616`
+  relaxation; a full comparator-driven sort ordering == interpreter; the 2-level
   `[0,6,12,18,24]` carrier-ID non-regression pin.
 - **Leaf 2**: `if (x is List) [x size] [x]` over a union param — both branches;
   narrowed→user-call; a stateful `Rand` do-map element baked **once**; a
@@ -287,7 +304,8 @@ sub-hazards are exactly the silent-miscompile class the differential can't see.
   `CompileDiverges`; `get` over a `None` receiver; a concrete non-container
   receiver must still refuse (guard the discriminator widening).
 - **Leaf 6**: check-prop nested in a compiled fn interpolating a frame-local
-  must refuse-then-fallback (`ok=true`), not bake (`ok=false`); module-scope
+  must refuse, with the interpreter path absorbing that defect (`ok=true`),
+  rather than bake and miscompile (`ok=false`); module-scope
   check-prop referencing module defs / prop-local vars must still compile green.
 
 ---
@@ -303,9 +321,12 @@ sub-hazards are exactly the silent-miscompile class the differential can't see.
    check-mode body-local def cleanup (`defSnapshot`/`DefCleanupInfo`) — the
    latter must keep compiler/interpreter def-leak parity (`leak_q`=302==302) or
    it under-captures a real binding.
-4. **Stage F / I tiering**: classify dynamic-scope (`recursion:72`) and
-   divergent-macro (`macro:45`) as permanent tier-1 interpreter-only, or keep
-   chasing — needed before Stage J can assert tiers 2+3 at 0.
+4. **Stage F / I sequencing**: dynamic-scope (`recursion:72`) and
+   divergent-macro (`macro:45`) are the two hardest open defects — the question
+   is when they get fixed, not whether ("permanent tier-1 interpreter-only" is
+   not an available answer). Decide whether Stage J is declared with them named
+   as outstanding defects or held until they compile — a decision needed before
+   Stage J can assert tiers 2+3 at 0.
 
 ---
 
@@ -359,7 +380,7 @@ Steps 0–3 (the sound, low-risk wins) landed, gate-clean
   value laundered into a concrete user-fn param ran the body unchecked
   (`compile==interpret` VIOLATION); now guarded via `CompiledFn.Params` +
   `sigTypeMatches`, mirroring OpRet's return-check. Higher value than the
-  advisory leaves — a live soundness violation. One documented residual
+  refusal leaves — a live soundness violation. One documented residual
   (inline-`Pattern` params). Verified by a second adversarial sweep that caught
   (and drove the fix of) an `Options`-param over-raise regression.
 

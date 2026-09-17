@@ -40,10 +40,12 @@ print (B.apply1 A.pub 5) end
 | `boru t3.aql` (default) | `6` | whichever path the program happens to take |
 | `boru check t3.aql` | **0 errors, 0 warnings** | statically invisible |
 
-The default mode compiles when it can and *silently falls back* to the
-interpreter when it cannot, so **the same source can produce either
-answer depending on whether an unrelated part of the program happens to
-be compilable.** No diagnostic fires in either direction.
+The default mode compiles when it can and, when it cannot, *silently
+routes the program to the interpreter* — scaffolding that absorbs a
+compile refusal without ever reporting it — so **the same source can
+produce either answer depending on whether an unrelated part of the
+program happens to be compilable.** No diagnostic fires in either
+direction.
 
 This is the outcome the repository's own tests call the cardinal
 forbidden one (`lang/go/bytecode_stored_handler_freeze_test.go`: "a
@@ -354,7 +356,7 @@ sufficient:
    defining registry.** `core/go/invoke.go:79` validates
    `CompiledFnRef.depsFresh` against the *invoking* registry, which is
    why adding an unrelated `def` in another module can flip the answer.
-   Threading `fnDef` fixes the interpreter fallback but leaves this
+   Threading `fnDef` fixes the interpreter path but leaves this
    check meaningless unless it moves too.
 6. **The two competing stamp registries must agree.**
    `serviceAddHandler` (`native_service.go:249`) and `resolveCodec`
@@ -405,7 +407,7 @@ real precedent for flipping a scoping default in a live ecosystem:
   originally assumed — group 2 already diverges (§2), so the seam fix
   must land **together with** the `depsFresh` re-anchoring and the
   stamp-registry reconciliation, or it will repair the interpreter
-  fallback while leaving the VM path arriving at the right answer for
+  path while leaving the VM path arriving at the right answer for
   the wrong reason.
 - **Phase 2** — fix **name dispatch** (items 2–3). This is the one that
   changes interpreter semantics; land it with the spec rows and a
@@ -669,7 +671,7 @@ for every caller:
 | Native callbacks (§7.3 item 1) | `filter.go`, `native_map_iter.go`, `walk.go`, `walk_core.go`, `io_mount.go`, `parse.go`, `native_service.go` ×2, `net_codec.go`, `model.go`, `tui_run.go` ×2, `registry.go` (`RunPredicate`) | route through the seam |
 | `serve-raw` (§7.3 item 1, deferred as a concurrency hazard) | `net_socket.go` | the acceptor forks the **defining** registry; per-connection `ForkConcurrent` keeps the goroutines isolated, so the module is never shared. Writers stay the caller's. |
 | Name dispatch (§7.3 items 2–3) | `core/go/core_helpers.go` — `compileFnSigs`, `InstallFnDef` | the body handler and the construction-time analysis pass are both built against the defining registry, so `def g A.pub` answers exactly as `A.pub` |
-| Stamp reconciliation (§7.3 item 6) | `compiler/go/stamp_runtime.go` — `StampFnValue`, `StampFnValueInPlace` | a stored handler is stamped where it is **stored** but runs where it was **written**; the detached compile now uses the defining registry, so the VM unit and the interpreter fallback cannot disagree |
+| Stamp reconciliation (§7.3 item 6) | `compiler/go/stamp_runtime.go` — `StampFnValue`, `StampFnValueInPlace` | a stored handler is stamped where it is **stored** but runs where it was **written**; the detached compile now uses the defining registry, so the VM unit and the interpreter path cannot disagree |
 | Closure lowering (**not** in the original plan) | `compiler/go/callable_words.go` — `foreignFnHome` | see §12.3 |
 
 ### 12.3 One change the plan missed, found by testing
@@ -683,15 +685,22 @@ module's answer interpreted and the calling module's answer compiled —
 trading a wrong value for a *mode-dependent* one, which is worse.
 
 `foreignFnHome` declines the lowering when the fn value carries a foreign
-`Registry`. The refusal falls through to the runtime callback path, which
-now runs the body on its own registry, so the engines agree. Refusing
+`Registry`. The decline falls through to the runtime callback path, which
+now runs the body on its own registry, so the engines agree. Declining
 costs the closure fast path on a cross-module callback and nothing at all
 on the same-module one.
 
-Under `--force-compile` (the strict mode) this surfaces as an honest
-refusal rather than a silent miscompile: `walk` with a cross-module hook
-now says *"function value reaches walk (Stage 3)"* instead of returning
-the wrong answer. Default mode falls back and produces the right value.
+**That decline is a defect, not a resting place.** A cross-module callback
+is valid boru, so it is owed a compile; the decline is an unimplemented
+case, tracked to closure immediately below, and it is not a sanctioned
+outcome of this design. Under `--force-compile` (the strict mode) the gap
+is at least visible instead of a silent miscompile: `walk` with a
+cross-module hook now says *"function value reaches walk (Stage 3)"*
+instead of returning the wrong answer. In default mode the runtime
+*silently* routes the refused body to the interpreter: machinery that
+absorbs the defect and hands back the right value while nothing in the run
+says a compile was refused. That measures the debt, it does not discharge
+it, and the silence is why the debt goes unnoticed.
 
 **The decline has a measured cost, and it is on the record.** `filter` with
 a cross-module predicate now compiles with one interpreter ISLAND
@@ -726,10 +735,11 @@ makes the work smaller than it sounded:
   `recordClosureDispatch` resolves them in the CALLER's emit tables
   (`callable_words.go:474`), and `dynScopeRescue`'s fallback re-resolves
   them at run time against the caller's `curReg` (`vm.go:1902`), so a
-  foreign module-scope capture has no operand home. Closing it needs either
-  a refusal for foreign closures carrying non-lexical captures, or a
+  foreign module-scope capture has no operand home. Closing it needs a
   registry-tagged dyn-scope operand so `OpLookupDynScope` can name
-  `fd.Registry`. A second, smaller asymmetry rides along: `enterBodyUnit`
+  `fd.Registry`; declining foreign closures that carry non-lexical
+  captures only moves the defect into the ledger, so it is a stopgap and
+  not a close. A second, smaller asymmetry rides along: `enterBodyUnit`
   brackets contexts on the CALLING registry (`vm.go:294`) while `curReg`
   would be `fd.Registry`.
 

@@ -93,8 +93,9 @@ that no enclosing paren re-stepped and no read delivered is laid out as
 data by `resolveDynamicApply`, and inside a fn unit is not a "possible
 unapplied call" for the frame replay, so the count mismatch raises the
 interpreter's type_error. Pinned both ways in
-`lang/go/returned_closure_park_test.go`; the `[Any Any]` row stays a sound
-refusal (the rewind-after-count-check shape is not modelled).
+`lang/go/returned_closure_park_test.go`; the `[Any Any]` row still refuses
+because the rewind-after-count-check shape is not modelled, and that
+refusal is an open defect owed a fix.
 
 ## 3. What the compiler was doing
 
@@ -120,8 +121,10 @@ list or an arm produced the opposite answer.
 ## 4. How five miscompiles survived a 100%-covered parity suite
 
 Stage J flipped `lang.Run` from the tree-walking interpreter to the
-COMPILED path with an interpreter fallback on refusal. `RunInterp` is the
-oracle; `Run` is not one any more.
+COMPILED path, and a refused program is silently re-run on the interpreter.
+That re-run is scaffolding absorbing a known defect, not a fallback the
+design may lean on: the silence is what makes it dangerous. `RunInterp` is
+the oracle; `Run` is not one any more.
 
 **96 parity assertions across 5 files still read `…Run(src)`** and compare it
 against `RunCompiled`. Every one of them compares the compiled lane against
@@ -179,7 +182,9 @@ The individual changes:
 3. **`resolveDynamicApply`'s carrier arm** applies a placed lead only when the
    re-step record says an enclosing paren claimed it. `((mk 1) 2)` and
    `((mk2 5) 10)` keep compiling natively; `(mk 1) 2` and `(mk2 5) 10` — which
-   compiled to the WRONG answer — now refuse.
+   compiled to the WRONG answer — now refuse instead. That stops the wrong
+   answer, but it is not the fix: both shapes are valid code that must
+   compile, and each refusal is an open defect owed one.
 4. **Its dynamic arm** was over-refusing a def-bound read (`def h (find …)  h
    {…}`): a bare name always calls, whatever mark its value carries from
    wherever it was built. It now shares `leadPlacedNotRead`'s conjunction
@@ -195,11 +200,15 @@ The individual changes:
 
 Result on the 16-shape probe: **0 value divergences**, down from 5, with
 `((mk 1) 2)`, `((mk2 5) 10)`, `[(mk 1) 2]`, `for`/`do` bodies and
-`((inc/v) 7)` all still compiling natively.
+`((inc/v) 7)` all still compiling natively. Divergences are not the only
+count that matters, though: the shapes that now refuse are outstanding
+work rather than a finished state.
 
 The standing measurement is `lang/go/nur101_paren_restep_test.go`
-(`TestParenReStepRule`): for every shape the rule classifies, the compiled lane
-either agrees with `RunInterp` or refuses — it never answers differently.
+(`TestParenReStepRule`): for every shape the rule classifies, the compiled
+lane never answers differently from `RunInterp`. Where it refuses instead,
+that is the test recording an unimplemented case — an open defect to be
+tracked to closure, not a second outcome the contract allows.
 
 ## 6. Graduation
 
@@ -241,8 +250,9 @@ turned out to be a record the collapse already takes:
      loop do not take that path.
 
   Both are excluded explicitly rather than assumed away. What remains
-  genuinely blocked is §6.3's universal fn value — and the residue is now
-  visible instead of hidden behind one refusal covering three things.
+  blocked is §6.3's universal fn value, an open defect owed a fix, and
+  the residue is now visible instead of hidden behind one refusal
+  covering three things at once.
 
 The two remaining arm/list shapes (`if true [(mk 1) 2]`, `[((mk 1) 2)]`) need
 the apply RECORDED rather than skipped, which needs `RecordDynApply` to admit
@@ -252,8 +262,8 @@ an EVENT lead — `DynApplyLeadEligible` declines it today. When that lands,
 
 The ratchet for what already graduated is
 `TestParenReStepPlacedLayoutCompiles`, pinned POSITIVE on purpose: the rule
-test tolerates refusals by design, which is what makes it safe to extend and
-useless for catching a regression back to one.
+test lets a refusal pass without failing, which is what makes it easy to
+extend and useless for catching a regression back to one.
 
 ## 7. Four records this opened
 

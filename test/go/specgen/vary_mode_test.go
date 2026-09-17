@@ -97,7 +97,7 @@ func TestVarySweepEndToEnd(t *testing.T) {
 		// `do [(zf 5) 2] error [dot code]` graduated when the mark-window
 		// island landed — neither can serve as the refusing seed anymore.)
 		"def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg\tbad_input/q\n" +
-		// A passing base whose FOR-BODY variant refuses soundly (a typed def
+		// A passing base whose FOR-BODY variant refuses (a typed def
 		// re-embedded in a loop body — the conditional-body rollback keeps
 		// this a wrapped-context refusal; the DO-body wrap compiles natively
 		// since do-def leak fidelity landed 2026-07-14).
@@ -120,7 +120,7 @@ func TestVarySweepEndToEnd(t *testing.T) {
 	}
 	ref, err := os.ReadFile(filepath.Join(outDir, "vary-refused.tsv"))
 	if err != nil {
-		t.Fatalf("vary-refused.tsv (the registry-replay variant must refuse soundly): %v", err)
+		t.Fatalf("vary-refused.tsv (the registry-replay variant must refuse): %v", err)
 	}
 	if !strings.Contains(string(ref), "for 2 [def Big Integer 15 is Big]") {
 		t.Errorf("vary-refused.tsv missing the wrapped typed-def refusal:\n%s", ref)

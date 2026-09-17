@@ -12,7 +12,7 @@ import (
 // with fn-shape carriers recognised as maybe-callable (core.
 // IsFnTypedCarrier — the NUR095 retirement), the trailing residual is a
 // carrier the trailing-apply lowering does not claim, and refusal is the
-// sound fallback where the pre-fix recorder silently compiled the fn as
+// refusal the interpreter absorbs where the pre-fix recorder silently compiled the fn as
 // inert data. The leading spellings compile and are pinned as class.tsv
 // fn-members rows.
 func TestFnShapeMemberTrailingApplyInterp(t *testing.T) {

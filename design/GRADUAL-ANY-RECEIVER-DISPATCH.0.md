@@ -10,9 +10,12 @@ Companion reading: `FORWARD-COLLECTION-PHASES.10.md`, `FORWARD-COLLECTION-TRAPS.
 ## Context
 
 The boru compiler lowers bytecode from a check-mode analysis pass. Under `--compile`
-(the default, silent-fallback mode) the compiled program is contractually
-**byte-identical** to the interpreter — it either matches or falls back, never
-diverges. A dispatch over a strict `Any`-carrier **receiver** violates that contract:
+(the default mode, in which a program the compiler refuses is **silently** re-run on
+the interpreter) the compiled program is contractually **byte-identical** to the
+interpreter. That contract has one outcome, not two: all valid code compiles. A
+refusal is not its other branch — it is an open defect, and the silent re-run only
+hides that defect from the user. A dispatch over a strict `Any`-carrier **receiver**
+breaks the contract outright:
 
 ```
 def f fn [[xs:Any] [List] [(xs Sort.quick Sort.by-number end)]]
@@ -113,39 +116,50 @@ non-refinement type.
   raises → unsound.
 
 The reported bug's slot is `List` (concrete) → soundly fixable. The fully-general
-"any `Any`-into-`Any` param" case is the loose-slot case where commit is **unsound**
-and MUST fall back. **This precondition is an invariant, not an optimization.**
+"any `Any`-into-`Any` param" case is the loose-slot case where commit is **unsound**,
+so this design must refuse it rather than miscompile it — and that refusal leaves the
+shape uncompiled: an open defect owed a fix by some later mechanism, not a resting
+place. **This precondition is an invariant, not an optimization.**
 
 ## Goal & non-goals
 
 **Goal:** full compilation (no interpreter island) of a forward-collecting dispatch
 over a gradual/`Any` receiver, committing to the interpreter's positional target,
 **for the soundly-committable subset**: a concrete non-predicate receiver slot with
-exactly one statically-reachable overload. Sound fallback for everything else.
+exactly one statically-reachable overload. Everything else still refuses — each such
+refusal an open defect this design does not close.
 
-**Non-goals:** universal full compilation of every `Any`-receiver dispatch (proven
-unsound); any change to `genArgs`/interior body carriers; any change to overload
-ranking; a generalized non-terminal interpreter re-dispatch (which would reintroduce
-the interpreter dependency `P7-ENDGAME.10.md` is deleting).
+**Non-goals — the limits of *this* mechanism, not the project's bar (which is that
+all valid code compiles, no exceptions):** universal full compilation of every
+`Any`-receiver dispatch, because committing on a loose or predicate slot is provably
+unsound and so needs a different mechanism than the one designed here; any change to
+`genArgs`/interior body carriers; any change to overload ranking; a generalized
+non-terminal interpreter re-dispatch (which would reintroduce the interpreter
+dependency `P7-ENDGAME.10.md` is deleting).
 
 **Honest framing.** "The redesign" = full compilation for the concrete-slot,
-single-overload subset (the reported bug and most real code) + **sound refusal** for
-the genuinely-ambiguous loose/predicate/multi-overload subset. It lowers the census
+single-overload subset (the reported bug and most real code) + **refusal** for the
+genuinely-ambiguous loose/predicate/multi-overload subset. It lowers the census
 frontier by the count of gradual-receiver-inversion rows; it does not reach zero for
-the unsound subset — and that is correct, those must fall back.
+the unsound subset, and that remainder is not something to sign off — those rows stay
+open defects, each owed a fix by a later mechanism.
 
 ## Design — a cascade
 
-**Phase 0 — safety net (refuse; ship first, independently valuable).**
+**Phase 0 — stop the wrong answer (refuse; ship first, independently valuable).**
 Add `refuseGradualReceiverInversion` beside the existing `refuseForwardStackDrift`
 (`engine.go` ~3069), fired from the `sig == nil` branch (~2828, before
 `checkModeAssumeSig`). Detect: a function word matched no signature where the sole
 blocking slot was a **stack** position holding a strict param-origin `Any` carrier
 (`v.Parent.Equal(TAny) && v.Carrier && !v.Dynamic && !IsDisjunct(v)`) AND a trailing
-function word follows that would dispatch. `MarkUncompilable(...)`. Converts the
-current miscompile into a sound fallback with **zero census risk** (a refusal never
-miscompiles). Does not lower the ceiling; closes the correctness hole while Phase 1
-is built. Landable on its own as a correctness fix.
+function word follows that would dispatch. `MarkUncompilable(...)`, after which the
+runtime **silently** re-runs the program on the interpreter. That trades one defect
+for another: the miscompile stops, and in its place the shape fails to compile and
+says nothing about it. The refusal produces no wrong answer, but "not wrong" is not
+the bar, and its **zero census risk** is only the census being unable to see a row
+that never compiled. Does not lower the ceiling; it is scaffolding holding the
+correctness hole shut while Phase 1 is built, not a fix for it. Landable on its own
+as an urgent stop-gap.
 
 **Phase 1 — the real fix (scoped split-widening).**
 Introduce `sigTypeMatchesSplit(v, t)` — identical to `sigTypeMatches` except it
@@ -174,18 +188,18 @@ already present, no VM change.
 When the widened receiver makes ≥2 same-arity overloads of the same word reachable,
 route through `tryCompileUserPolyArms` (`user_poly.go`) → `OpCallUserPoly` re-selects
 the interpreter's first-match at runtime. Cross-word inversion with a multi-overload
-target stays refused (Phase 0). **Do not** build a generalized non-terminal
-re-dispatch.
+target stays refused (Phase 0) — still an open defect after this cascade, not a case
+closed by it. **Do not** build a generalized non-terminal re-dispatch.
 
 ## Edge cases (must be handled/tested)
 
 - **Multi-overload comparator-first fn** (the primary trap): widened receiver makes
   ≥2 overloads reachable → static rank ≠ interpreter's runtime first-match → route to
   Phase 2 or refuse. Gate on `dynamicReachableOverloadCount`.
-- **Disjunct receiver** (already handled — do not disturb): `sigTypeMatches`'
+- **Disjunct receiver** (already refused — do not disturb here): `sigTypeMatches`'
   strict-disjunct branch (`signature.go:307‑325`) + `AmbiguousGradualSplit`
-  (`engine.go` ~7362) already refuse the mixed case. Scope the widening with
-  `!IsDisjunct(v)`.
+  (`engine.go` ~7362) already refuse the mixed case, leaving that shape uncompiled
+  and owed a fix of its own. Scope the widening with `!IsDisjunct(v)`.
 - **Nested `(a (b Fn1 Fn2) Fn3)`**: inner commit's return carrier feeds the outer
   split; compounding optimism. Bound the widening to **param-origin** `Any`
   (traceable via `SetDynFrom` provenance, `engine.go` ~2670), not arbitrary computed
@@ -214,10 +228,11 @@ re-dispatch.
   regression and the general shape now compiling.
 - **New pins** (`lang/go/bytecode_gradual_receiver_test.go`): the general shape
   `def f fn [[xs:Any] [List] [(xs S.quick S.by-number)]]` over an `Any`-typed arg
-  fully compiles (no `FALLBACK` in disassembly) + parity; a negative pin asserting a
-  loose-`Any`-slot / multi-overload / predicate-slot shape **refuses** (falls back)
-  rather than miscompiling; the concrete-vs-`Any` receiver select the identical
-  target.
+  fully compiles (no `FALLBACK` in disassembly) + parity; a negative pin recording
+  that a loose-`Any`-slot / multi-overload / predicate-slot shape **refuses** — the
+  program then being **silently** re-run on the interpreter — rather than
+  miscompiling, the pin tracking that refusal as an open defect rather than blessing
+  it; the concrete-vs-`Any` receiver select the identical target.
 
 ## Risks
 

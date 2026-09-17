@@ -116,7 +116,7 @@ func TestInvokeCallbackJITRestamp(t *testing.T) {
 	// The try budget: each further rebind pays one re-stamp until the budget
 	// (RestampMaxTries, one already spent) exhausts; after that the seam
 	// stays on CallBoru — which STILL resolves the live binding, so values
-	// keep matching the interpreter (slow, not wrong).
+	// keep matching the interpreter — containment, not a fix.
 	for i := 3; i <= 6; i++ {
 		r.Defs.Pop("dep")
 		r.Defs.Push("dep", core.NewInteger(int64(i)))

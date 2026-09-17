@@ -32,7 +32,7 @@ func rsrRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr e
 	return ran, fmt.Sprint(vC), fmt.Sprint(vI), cerr, ierr
 }
 
-// rsrRefuses asserts a sound refusal: the compiled lane declines, and the
+// rsrRefuses asserts a refusal: the compiled lane declines, and the
 // fallback answer is the interpreter's.
 func rsrRefuses(t *testing.T, src, wantReason, wantInterp string) {
 	t.Helper()

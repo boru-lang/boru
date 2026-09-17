@@ -24,10 +24,24 @@
 > Allowed verdicts); NUR041, NUR042, NUR044, NUR045, NUR047
 > (resolved by fix, records deleted); NUR013 (signed zeros conformed,
 > then Allowed); NUR031 (module half resolved, record narrowed);
-> NUR037 (resolved by the sanctioned refusal path). Two incidental
+> NUR037 (divergence contained by a compile refusal — the refusal is
+> itself a defect, still owed its fix; see row 7). Two incidental
 > findings were acted on: the `client` profile's twin of NUR041 was
 > fixed in the same commit, and the Store enumeration asymmetry was
 > recorded as **NUR052**. Per-item outcomes are marked ✅ below.
+>
+> **Doctrine correction (2026-09-16).** This triage originally framed a
+> compile refusal as "slow, not wrong" — an acceptable outcome, because
+> the runtime re-runs the refused unit on the interpreter. That framing
+> was wrong and is corrected here and in row 7. The interpreter is
+> **not** a fallback for the compiler and is not allowed to be one:
+> done is a language that compiles as a developer expects — all valid
+> code compiles, no exceptions. Every refusal is therefore a **defect**
+> (an unimplemented or unproven case), owed a fix and tracked to
+> closure, never a sanctioned design outcome; the `MarkUncompilable`
+> re-run path is scaffolding that contains such a defect so the user
+> still gets an answer. The historical record of what was decided and
+> what landed is unchanged.
 
 **Row titles are as-of-triage.** Several records have since been
 retitled by their verdicts — NUR019 is now "`slice` is a core sequence
@@ -58,7 +72,7 @@ already recorded.
 | 4 | ✅ **NUR041** — the `read-only` profile denies file reads | low | Pure config+pins: an allow block for `fileops` read-ops in `read-only.jsonic` (merge semantics verified safe), the sandbox.jsonic comment correction, additive policy-test pins, e2e comment updates. Fix semantics live-verified via the equivalent `-allow fileops.read`. | Verdict is recorded (fix listed first). Two small choices: `read` alone vs the coherent `read`+`stat`+`list` set, and whether the **same latent gap found in the `client` profile** (see findings below) rides along. |
 | 5 | ✅ **NUR013** — NaN total-order slot vs IEEE relationals | low-medium | The maintainer-directed totalOrder comparison is done in substance: boru already conforms for its single observable quiet NaN; the one fixable gap is **signed zeros** (`-0.0 tcmp 0.0` → 0; totalOrder wants −0 first). Fix = a Signbit tiebreak in `numberCompareBehavior.Compare` (float + big-rat paths), a relational carve-out so `-0.0 lt 0.0` stays false, flipped/new spec rows, and the writeup across IEEE-754-COMPLIANCE / TYPE-ORDERING / REFERENCE. NaN sign/payload ordering is unobservable in boru → argued acceptance. | Final Allowed verdict over the residual divergences once the comparison is recorded. If the maintainer accepts the zeros tie instead, the whole item collapses to *low* (writeup + record). |
 | 6 | ✅ **NUR031 (narrow half)** — Module descriptor reflexive equality | low-medium | `M.$module eq M.$module → false` at triage time (now true — the fix landed 2026-08-02). Exact in-repo precedent (Timeout/Interval opaque handles): two arms in `opaqueIdealExactEqual`/`DeepEqual`, a `handleKind` case in `compare_deqkey.go`, one payload tweak in `NewModuleInstance` (box a `*ModuleDesc` — `ModuleDesc` itself is not Go-comparable), tests + ~8 spec rows + the REFERENCE.md module-equality amendment (landed, now :1231-1235). Satisfies the standing "at minimum reflexive" requirement for modules. | One maintainer choice: identity token (boxed pointer = per-import identity, the safe mirror; vs `ModuleDesc.ID` = per-load identity, cross-import `eq`, needs an ID audit). **Rewrites the record, does not close it** — Function/Word identity and Behavior routing stay design-gated. |
-| 7 | ✅ **NUR037** — fn-local fn undefined in compiled mode only | low-medium | The per-unit refuse-and-fall-back mechanism already exists (`MarkUncompilable` → interpreter re-run, the NUR051 precedent), and the scope test needed already exists as the ComputeCaptures rule. Fix = one predicate + one guard site in `recordDispatchOutcome`, refusing units whose code body names a fn-local fn — default run, `-no-compile`, and `check` then agree ("slow, not wrong" restored). Day is spent on coverage tests, differential-gate spec rows, and retiring the house-rule docs. | None — the recorded verdict explicitly sanctions refusal ("a refusal is merely slow"). The preferred closure-capture fix remains available later as a *medium* widening and does not gate deleting the record. |
+| 7 | ✅ **NUR037** — fn-local fn undefined in compiled mode only | low-medium | The per-unit refusal machinery already exists (`MarkUncompilable`, after which the runtime re-runs the unit on the interpreter — the NUR051 precedent); it is scaffolding that absorbs a known compiler gap so the user still gets an answer, not an outcome the design may lean on. The scope test needed already exists as the ComputeCaptures rule. Stopgap = one predicate + one guard site in `recordDispatchOutcome`, refusing units whose code body names a fn-local fn, so that default run, `-no-compile`, and `check` stop disagreeing about the same program. Day is spent on coverage tests, differential-gate spec rows, and retiring the house-rule docs. | Nothing gates the stopgap — but it does not discharge the item. Every unit it refuses is valid code the compiler fails to compile, i.e. a defect owed a fix and tracked to closure. The closure-capture fix (a *medium* widening) is that owed repair, and the stopgap only buys time for it. |
 | 8 | ✅ **NUR044** — `boru build` skips `run`'s preflight | low-medium | The shared preflight exists (`check.PreflightColor`); wiring it into build with `-no-check`/`BORU_NO_CHECK` is ~15 lines. The real content is the discovered **import-anchoring trap**: check resolves relative imports against the cwd, build against the entry dir (verified live) — the preflight needs a baseDir-aware variant anchored to `cfg.EntryDir` or the fix breaks the existing multi-file e2e. All inside cmd/go; no spec impact. | None — the recorded verdict directs exactly this. |
 | 9 | ✅ **NUR047** — regex match offsets are bytes in a rune-indexed language | low-medium | One construction site (`reMatchResult`, shared by `lang_re` and `run-re`): a single-pass byte→rune conversion covers everything; check-mode shape is unit-agnostic. Every existing offset pin is ASCII, so no expectation churn. Remove grep.boru's Bytes workaround; its three multi-byte pinning tests keep their expected strings verbatim and simply invert their meaning (they now guard the fix). New non-ASCII spec rows + doc-string updates. | Effectively none — the recorded verdict states the preference ("fix by returning rune offsets"); a scheduling nod flips the record from Allowed to fixed. |
 
