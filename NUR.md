@@ -47,6 +47,26 @@ reference to a deleted `NURnnn` stays unambiguous forever.
   this file as Pending or Allowed; `git log -S NURnnn` recovers a
   retired number's history.
 
+> **Scope ruling (maintainer, 2026-09-17) — what this register records.**
+> This register records **answer divergences only**: cases where two lanes
+> disagree about a program's result. It does **not** record compile
+> refusals. The two are different defects with different ledgers, and the
+> distinction decides when a record is Resolved.
+>
+> So when a miscompile is fixed by making the shape REFUSE, the divergence
+> is gone — the lanes agree — and the record is **Resolved** and deleted,
+> even though the shape does not compile. That is not "resolving by
+> refusing", and it does not soften the compilation contract: failure to
+> compile is still a failure, and the refusal is still a defect owed a
+> fix. It is tracked where compile defects belong — the refusal gates, the
+> census, and the open-defect taxonomy in
+> [`design/COMPILABLE-SUBSET.md`](design/COMPILABLE-SUBSET.md) §5 — not
+> here. Reading a Resolved record as still-open because its shape refuses
+> conflates the two ledgers and double-counts the same work.
+>
+> (Recorded after exactly that mistake: NUR149 was briefly reopened on the
+> grounds that its shape still refuses. The reopening was withdrawn.)
+
 > **Spelling note (2026-08-19).** The modifier `/r` was renamed **`/v`**
 > and the word `ref` became **`valof`** (see [ADR.md](ADR.md), ADR-011).
 > Records dated before that day quote the old spellings verbatim, because
@@ -66,7 +86,6 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR149](#nur149) | A fn body's in-place redefinition of a MODULE-scope speculative-family name does not compile. `def m {e: true}  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] []  def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  g f 1` answers `6 2` interpreted. The seventy-third increment (#469) closed the miscompile — it no longer answers wrongly — but the shape now REFUSES and is silently re-run on the interpreter, so it still does not compile: the drop-then-push of an overlapping redefinition leaves def depth unchanged, so depth-based rollback cannot revert it and the shadow leaks past the frame. Owed the placement that makes the redefinition a compiled transition the frame does not unwind | the fn-local placement's collision measurement, 2026-09-16; reopened 2026-09-17 when the "resolved by refusing" reading was withdrawn |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
@@ -6373,77 +6392,6 @@ body-local row, `TestStoredHandlerLiveNamesDoNotRestoreBase`),
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
-
-## NUR149 — a fn body's redefinition of a speculative family's name does not compile {#nur149}
-
-**Status:** Pending (recorded 2026-09-16 by the seventy-second
-increment; the miscompile half closed by the seventy-third, #469; the
-compile half still open). Reopened 2026-09-17: the seventy-third
-increment recorded this entry as Resolved and deleted it. That was
-wrong. It made the shape REFUSE instead of answering wrongly — the
-lesser of two failures — and the shape still does not compile, so the
-record is directed at a fix that has not landed, which is precisely what
-Pending means here. Failure to compile is a failure; a refusal closes
-nothing.
-
-**Found:** by the fn-local placement's collision measurement
-(`lang/go/fn_local_placed_test.go`'s disjoint-signature row is the
-compiled twin). Reproduced on `main` at e252e81 with the identical
-listing, so it is the seventieth increment's family, not the
-seventy-second's:
-
-```
-def m {e: true} end
-if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end
-def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end
-g f 1
-  interpreter: 6 2
-  compiled, before #469: [boru/type_error] g: return value 1: expected
-    Integer, got Error   ← the miscompile, now closed
-  compiled, today:       REFUSED, then silently interpreted   ← the open half
-```
-
-**Rule:** a compiled program answers as the interpreter does — and every
-valid program compiles. A refusal is a breach of the second half even
-when the first holds.
-
-**Divergence, in two halves.** The module-scope `f` is a speculative
-family (the seventieth increment: the arm's install is placed at its
-site, the family's dispatches route with a live lead). Inside `g`'s
-unit the body's `def f` OVERLAPS it, so the check pass's install is
-`InstallDef`'s in-place replacement (the standing entry dropped, the new
-one pushed at the same depth): the binding's depth never exceeds the
-frame's baseline, `BodyRefsFnLocalFn` does not fire, the seventy-second
-increment's placement is never asked, and the def lowers to NOTHING.
-The body's `f 5` then resolved its lead LIVE in the VM's registry, which
-holds the arm's `f` (whose unit the pass never compiled) or nothing at
-all, where the interpreter resolves the body's own def. A DISJOINT
-signature takes the other path — a fresh push above the family's, the
-placement asked and taken, the routed lead resolving the frame's local —
-and compiles correctly (`a 101`).
-
-**What #469 did, and did not do.** It added the fourth arm of the
-family-L block in `core/go/core_helpers.go` (gated on
-`specFamilyAtFnBaseline`, so in-function families are not over-refused),
-which turns the wrong answer into a refusal, and it routed the `do`
-defer so the whole-program path is reached rather than the bail landing
-as an Error value in `g`'s return contract. Both are real fixes to real
-miscompiles. Neither compiles the shape: today it refuses, and
-`RunCompiled` silently re-runs it on the interpreter, so the failure
-reports nothing.
-
-**Fence.** `core/go/check_fncarrier_test.go`
-(`TestInstallDefRefusesSpecFamilyRedefinitionInFnBody`) pins the refusal;
-`lang/go/fn_local_placed_test.go`'s disjoint row pins the twin that
-compiles. Nothing yet pins the shape COMPILING, because it does not.
-
-**Verdict:** open, and owed the fix the seventy-second increment named:
-a unit's in-place redefinition of a live-lead name must be PLACED as the
-transition it is — a twin the frame does NOT unwind, with its units
-compiled — so that the routed lead resolves the frame's own def. The
-refusal is scaffolding holding the line until that lands, not the
-answer. Retire the refusal when the placement lands, and pin the
-compiled row then.
 
 ## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
 

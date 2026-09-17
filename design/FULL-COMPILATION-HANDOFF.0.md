@@ -9260,17 +9260,32 @@ error stays trapped; the family-L-in-fn-body redefinition refuses with
 parity while the disjoint and non-family shapes compile. No new refusal
 site (the family-L `MarkUncompilable` is reused, the census stays at 92).
 
-**Ledger correction (2026-09-17).** This increment closed NUR149's ledger
-entry as "Resolved" and deleted it from `NUR.md`. That was wrong, and the
-entry is reinstated as **OPEN**. What the increment did was remove a
-miscompile by making the shape REFUSE — the lesser of two failures, and a
-real fix to a real wrong answer. The shape still does not compile, and
-`RunCompiled` silently re-runs it on the interpreter, so nothing in a run
-reports the failure. Under the contract that all valid code compiles, a
-refusal closes nothing: NUR149 stays open until a unit's in-place
-redefinition of a live-lead name is PLACED as the transition it is, with
-its units compiled. The same reading applies to every "resolved by
-refusing" entry anywhere in this log.
+**Ledger note (2026-09-17, maintainer ruling — where a refusal is
+tracked).** Closing NUR149 as Resolved and deleting it from `NUR.md` was
+correct, and a first attempt to reopen it was withdrawn. The ruling: the
+NUR register records **answer divergences only** — cases where the two
+lanes disagree about a program's result. It does not record compile
+refusals.
+
+So the two questions come apart, and both answers hold at once:
+
+- **Was the divergence removed?** Yes. `NUR149` was a genuine
+  non-uniformity when recorded — `6 2` interpreted against a `type_error`
+  compiled. This increment removed it. The lanes now agree, so the record
+  is Resolved and, per `NUR.md` §Statuses, deleted with its number
+  retired. Nothing about that is a "resolution by refusing": the wrong
+  answer is gone.
+- **Is the refusal still a defect?** Yes, and unchanged by the above.
+  Failure to compile is a failure; the shape is owed the placement that
+  makes a unit's in-place redefinition of a live-lead name a compiled
+  transition. It is tracked where compile defects belong — the refusal
+  gates, the census, and the open-defect taxonomy in
+  `design/COMPILABLE-SUBSET.md` §5, which carries this shape in full — not
+  in the non-uniformity register.
+
+The distinction is the point: a refusal is a **compile-coverage** defect,
+not a non-uniformity. Reading a resolved NUR as still-open because the
+shape refuses conflates the two ledgers and double-counts the same work.
 
 ## What the ledger excludes, and why each exclusion was measured
 
