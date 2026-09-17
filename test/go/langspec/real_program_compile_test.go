@@ -122,9 +122,14 @@ func TestRealProgramsCompile(t *testing.T) {
 			prog, reason, _, cerr := a.CompileCheck(string(src))
 			switch {
 			case cerr != nil:
-				// Not a standalone program (a module fragment resolving its
-				// importer's words, or a genuinely invalid file). Neither
-				// compiles nor refuses — out of this gate's scope.
+				// A real program either compiles or refuses; an ERROR from
+				// CompileCheck (a parse failure, an analysis error) is a
+				// regression, never a third bucket that silently drops the file
+				// from both counts (a Codex review of #471). No discovered file
+				// errors today; a module fragment that resolves its importer's
+				// words would need an explicit, named exclusion here, not a
+				// blanket one.
+				t.Errorf("%s: CompileCheck error — a real program must compile or refuse, never error: %v", rel, cerr)
 				return nil
 			case prog != nil:
 				compiled = append(compiled, result{rel, ""})

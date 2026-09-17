@@ -513,7 +513,7 @@ func TestBodyRefsFnLocalFnSkipsEvaluatedPositions(t *testing.T) {
 func TestIsCallbackBodyName(t *testing.T) {
 	// Doc: compileClosureBody builds "storedfn$body" / "spawnbody$body"
 	// for the words "storedfn" / "spawnbody"; only those are callback
-	// bodies whose residual assembly records safely.
+	// bodies admitted to residual assembly recording by name.
 	for name, want := range map[string]bool{
 		"storedfn$body":  true,
 		"spawnbody$body": true,

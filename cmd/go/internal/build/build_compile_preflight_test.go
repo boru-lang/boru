@@ -1,6 +1,7 @@
 package build
 
 import (
+	"github.com/boru-lang/boru/lang/go"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ func TestCompilePreflightRefusesUncompilableProgram(t *testing.T) {
 def g (idf (z:Integer => [add 1 z]))
 (g 5)`
 
-	reason, err := compilePreflight(refuses, "", 0, "")
+	reason, err := compilePreflight(refuses, lang.Options{}, "")
 	if err != nil {
 		t.Fatalf("compilePreflight errored: %v — want a refusal reason, not an error", err)
 	}
@@ -38,7 +39,7 @@ def g (idf (z:Integer => [add 1 z]))
 func TestCompilePreflightAcceptsCompilableProgram(t *testing.T) {
 	const compiles = `def n (1 add 2)
 n`
-	reason, err := compilePreflight(compiles, "", 0, "")
+	reason, err := compilePreflight(compiles, lang.Options{}, "")
 	if err != nil {
 		t.Fatalf("compilePreflight errored: %v", err)
 	}
@@ -63,7 +64,7 @@ def idf t:Any => [t/v]
 def g (idf (z:Integer => [add 1 z]))
 (g 5)`
 
-	reason, err := compilePreflight(withEffect, "", 0, "")
+	reason, err := compilePreflight(withEffect, lang.Options{}, "")
 	if err != nil {
 		t.Fatalf("compilePreflight errored: %v", err)
 	}
@@ -83,7 +84,7 @@ def g (idf (z:Integer => [add 1 z]))
 // blocker for real programs (13 of the 27 in TestRealProgramsCompile).
 func TestCompilePreflightRefusesOnCheckDiagnostics(t *testing.T) {
 	const bad = `no-such-word-anywhere 1 2 3`
-	reason, err := compilePreflight(bad, "", 0, "")
+	reason, err := compilePreflight(bad, lang.Options{}, "")
 	if err != nil {
 		t.Fatalf("compilePreflight errored: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestCompilePreflightRefusesOnCheckDiagnostics(t *testing.T) {
 // at all, so it comes back as an error and Main reports it as one.
 func TestCompilePreflightErrorsOnUnparseableSource(t *testing.T) {
 	const unparseable = `}{`
-	_, err := compilePreflight(unparseable, "", 0, "")
+	_, err := compilePreflight(unparseable, lang.Options{}, "")
 	if err == nil {
 		t.Fatal("expected an error for unparseable source — a parse failure is not a compile refusal")
 	}
@@ -117,10 +118,10 @@ lib-val`
 	// found at all. Either may still refuse for an unrelated compile reason —
 	// what must NOT happen is compilePreflight erroring, which would abort the
 	// build with "init error" on a perfectly ordinary program.
-	if _, err := compilePreflight(src, "", 0, dir); err != nil {
+	if _, err := compilePreflight(src, lang.Options{}, dir); err != nil {
 		t.Fatalf("compilePreflight errored with a baseDir: %v", err)
 	}
-	if _, err := compilePreflight(src, "", 0, ""); err != nil {
+	if _, err := compilePreflight(src, lang.Options{}, ""); err != nil {
 		t.Fatalf("compilePreflight errored without a baseDir: %v", err)
 	}
 }
@@ -209,5 +210,31 @@ def g (idf (z:Integer => [add 1 z]))
 	}
 	if _, err := os.Stat(out); err == nil {
 		t.Error("a binary was written despite a construct refusal under -no-check")
+	}
+}
+
+// The preflight answers under the artifact's OWN engine options: a program
+// whose uncalled fn body outruns a baked `steps:` ceiling is uncompilable in
+// the binary that bakes it, so the preflight must say so — on default options
+// it compiles and the gate would have passed a binary that falls back.
+func TestCompilePreflightHonoursBakedOptions(t *testing.T) {
+	const src = `def f fn [[] [Integer] [1 add 1 add 1 add 1 add 1 add 1 add 1 add 1 add 1 add 1 add 1 add 1]] 42`
+	if reason, err := compilePreflight(src, lang.Options{}, ""); err != nil || reason != "" {
+		t.Fatalf("default options: want a compile, got reason=%q err=%v", reason, err)
+	}
+	m, err := lang.ParseOptions("steps:7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var o lang.Options
+	if err := lang.ApplyOptions(&o, m); err != nil {
+		t.Fatal(err)
+	}
+	reason, err := compilePreflight(src, o, "")
+	if err != nil {
+		t.Fatalf("baked options: %v", err)
+	}
+	if reason == "" {
+		t.Fatal("baked steps:7: the preflight must report the compile failure the artifact would hit")
 	}
 }

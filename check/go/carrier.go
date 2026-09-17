@@ -2709,6 +2709,15 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// mini-redis catch-all shape). Mirrors the branch arm's treatment
 	// (core.RunCarrierBodyWithDefs, peekCaptureArm).
 	//
+	// The by-NAME admission is the interpreter's CallBoru regime: a native
+	// seam invoking a stored value (service `call`, a spawn) evaluates the
+	// residual in the live frame whatever the value's anonymity, so a stored
+	// `=>` handler's computed map reads its params there. The SAME value
+	// applied on the tape (`find` then `h {z:1}`) takes the lambda rule and
+	// defers — one value, two regimes, recorded as NUR153. The stamp is one
+	// unit and takes the CallBoru regime; the tape apply of a stamped stored
+	// `=>` value diverges until the interpreter has one rule.
+	//
 	// Admitted for CALLBACK bodies and MULTI-TOKEN fn bodies. A callback is
 	// only ever invoked via InvokeCallback / CallBoru, which evaluate the
 	// body residual IN the live frame on both engines. A multi-token body's
@@ -2763,14 +2772,11 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 
 // isCallbackBodyName reports whether name is a stored-fn / spawn callback
 // body — compileClosureBody builds "storedfn$body" / "spawnbody$body" for the
-// words "storedfn" / "spawnbody" (callable_words.go). Such a body is invoked
-// only via InvokeCallback / CallBoru, which evaluate a residual COMPUTED
-// container (`{message: (join …)}` / `[a b]`) IN the live frame on both
-// engines, so recording its OpMakeMap / OpMakeList assembly is safe (it
-// re-assembles per run, matching the interpreter). A normal user fn applied
-// directly at top level leaves a DEFERRED residual the interpreter evaluates
-// after the frame pops — recording there would diverge, so RunFnBodyOnce gates
-// elemEvalRecordable on this predicate.
+// words "storedfn" / "spawnbody". Only those bodies are admitted to residual
+// assembly recording by NAME: a native seam invokes them through
+// InvokeCallback / CallBoru, where the interpreter evaluates the residual in
+// the live frame whatever the value's anonymity (NUR153 records the tape
+// regime of the same value, which defers).
 func isCallbackBodyName(name string) bool {
 	return name == "storedfn$body" || name == "spawnbody$body"
 }

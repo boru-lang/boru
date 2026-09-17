@@ -79,16 +79,21 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 	srcPath := pathutil.Expand(positionals[0])
 
-	// Validate --options eagerly so a typo fails at build time, not when the
-	// produced binary runs.
+	// Parse --options eagerly so a typo fails at build time, not when the
+	// produced binary runs — and keep the parsed value: the compile preflight
+	// below must answer the compile question under the SAME engine options
+	// the artifact bakes (buildrt.Main applies this blob at launch). A
+	// preflight on default options would pass a program that the baked
+	// `steps:` ceiling makes uncompilable, and ship exactly the silent
+	// fallback the gate exists to close (a Codex review of #471).
+	preflightOpts := lang.Options{Registry: *registry, Seed: seed}
 	if *optionsStr != "" {
-		var probe lang.Options
 		m, err := lang.ParseOptions(*optionsStr)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
-		if err := lang.ApplyOptions(&probe, m); err != nil {
+		if err := lang.ApplyOptions(&preflightOpts, m); err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
@@ -146,7 +151,7 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	// required the bytecode path at run time; this makes the failure surface
 	// at build time instead, where the author can act on it.
 	if cfg.Compile != buildrt.CompileOff {
-		reason, cerr := compilePreflight(cfg.Source, *registry, seed, cfg.EntryDir)
+		reason, cerr := compilePreflight(cfg.Source, preflightOpts, cfg.EntryDir)
 		// -no-check / BORU_NO_CHECK opts out of being gated on the CHECKER, and
 		// "check diagnostics" is the checker's verdict reaching the emitter as a
 		// sentinel rather than a named construct. Refusing on it here would make
@@ -202,8 +207,8 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 // a build cannot trigger the program's side effects. A non-nil error is an
 // init/parse failure, which is distinct from a refusal: the first means we could
 // not answer the question, the second is the answer.
-func compilePreflight(source, registry string, seed int64, baseDir string) (string, error) {
-	a, err := lang.New(lang.Options{Registry: registry, Seed: seed})
+func compilePreflight(source string, o lang.Options, baseDir string) (string, error) {
+	a, err := lang.New(o)
 	if err != nil { //covergate:allow lang.New returns a non-nil error only for an unreadable engine image, not for a bad -r path: a nonexistent or non-registry Registry resolves lazily and New succeeds (verified against /nonexistent and /etc/passwd), so no build invocation can reach this arm; kept because New's signature returns an error and swallowing it would hide a future failure (§misc)
 		return "", fmt.Errorf("init error: %s", err)
 	}

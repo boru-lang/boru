@@ -86,6 +86,7 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR153](#nur153) | One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
@@ -6558,3 +6559,64 @@ dispatch recovered at apply") — a refusal, not a divergence, and a defect
 owed its own fix. `Registry.ModuleScope` (the open-words rule) and
 `ModuleRef` (the per-export policy identity) are deliberate module-only
 designs and stay as they are; the main program still has neither.
+
+## NUR153 — one stored `=>` value, two evaluation regimes {#nur153}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** a Codex review of #471, which attributed the divergence to that
+PR's island fix; measured on `origin/main` (the merge base) and present
+there, and measured to be two-sided on the interpreter alone.
+
+**Rule:** a function value means the same thing wherever it goes
+(design/FUNCTION-VALUE-SCOPE.0.md §11). Its residual — here the single
+container literal an anonymous fn returns — must evaluate under ONE rule
+whichever seam applies the value.
+
+**The two regimes, interpreter only.**
+
+1. *Applied on the tape.* `def a 99 def api (patrun Function) add
+   {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}`
+   answers `[[99]]`: the lambda rule — the container is deferred past the
+   frame and its bare `a` resolves in module scope
+   (`EvalResidual: !anonymous || BodyEvalsResidual(body)`).
+2. *Invoked through a native seam* (`InvokeCallback` / `CallBoru`). A
+   `service` catch-all `add {} ([req:Map state:Any] => [ {message: (join
+   "" ["unknown '" req.cmd "'"])} ]) svc` answers `unknown 'BOGUS'` to
+   `call {cmd:"BOGUS"} svc` — the computed map read its param, in the
+   live frame. (`lang/go/native/native_service_stamp_test.go`,
+   `TestServiceAddStampsComputedMapHandler`, pins the plain-interpreter
+   answer.)
+
+Same value, same body, two answers to the same question.
+
+**The compiled divergence.** The stamp is one unit. The fn-body
+recordability gate (`check/go/carrier.go`, `RunFnBodyOnce`) admits a
+`storedfn$body` / `spawnbody$body` BY NAME — regime 2 — which is what lets
+mini-redis's catch-all handler stamp at all. A stamped stored `=>` value
+then applied on the tape takes regime 2 where the interpreter takes
+regime 1: row 1 compiles to `[[{z:1}]]`, silent, exit 0. The `fn`-word
+twin (`(fn [[a:Map][List][[a]]])`) is `[[{z:1}]]` on both engines and
+under both regimes, since a named fn evaluates in-frame everywhere.
+
+**Why the compiler cannot close it alone.** Dropping the by-name
+admission makes the stamp follow regime 1 — and then the service
+catch-all stops stamping (measured: `TestServiceAddStampsComputedMapHandler`
+fails "must stamp") while the interpreter still answers regime 2 on
+`call`; the divergence moves, it does not close. The unit would have to
+know how it is being invoked, which is the non-uniformity restated.
+
+**What closes it.** The interpreter takes one rule. Either the CallBoru
+seam defers an anonymous fn's single container residual exactly as the
+tape does (regime 1 everywhere — mini-redis's catch-all then reads `req`
+as unbound, and must be written as a computing body), or the tape
+evaluates it in-frame (regime 2 everywhere — which is the no-closures
+transparency of def-node-binding.tsv §3 removed for anonymous fns, a
+language decision). Either way the by-name admission goes and the stamp
+follows the one rule. A maintainer decision.
+
+**Fence.** `lang/go/stored_callback_residual_test.go` pins all three
+answers as measured — regime 1 on the tape, regime 2 through `call`, and
+the compiled tape-apply divergence — so the day any of them moves, this
+record is the first thing to update. `lang/spec/callbacks.tsv` carries the
+`fn`-word twin (parity); the diverging `=>` row stays out of the main
+corpus, as a divergence must.
