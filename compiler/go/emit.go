@@ -7886,7 +7886,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// handler rather than removed one. That decline is gone
 		// (eng/go/vm_foreign_unit.go), so the node rides as an ordinary
 		// const and its body runs on the VM. A declined stamp still falls
-		// back to CallBoru — correct, slower, and visible to the
+		// back to CallBoru — correct, uncompiled, and visible to the
 		// interp-entry census, which is the gate that keeps this honest.
 		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal {
 			continue

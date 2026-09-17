@@ -1,8 +1,7 @@
 // Compilation refusals are test FAILURES. Full native compilation of every boru
 // program is the goal (design/COMPILABLE-SUBSET.md, design/legacy/P7-ENDGAME.10.ignore): a
 // whole-program refusal silently runs on the interpreter — nothing in the run
-// says the compile failed — which is slower and keeps the compiler tied to the
-// tree-walker. So this gate treats every spec-row refusal as a failure UNLESS
+// says the compile failed — and it keeps the compiler tied to the tree-walker. So this gate treats every spec-row refusal as a failure UNLESS
 // the row is on knownRefusals — the small, documented set where compiling the
 // guess available TODAY would ship a WRONG answer, so the shape refuses and the
 // interpreter absorbs it meanwhile. Being on the allowlist does not make a row
