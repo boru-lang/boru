@@ -102,7 +102,7 @@ func (r *Registry) ForkConcurrent() *Registry {
 // forked from (transitively). Two registries with the same Home are the same
 // module: a fn minted in one is at home in the other.
 func (r *Registry) Home() *Registry {
-	if r != nil && r.home != nil {
+	if r != nil && r.home != nil { //sentinel:home the one reading of a nil home: r is its own canonical registry
 		return r.home
 	}
 	return r
@@ -111,6 +111,18 @@ func (r *Registry) Home() *Registry {
 // SameHome reports whether r and other are instances of the same module.
 func (r *Registry) SameHome(other *Registry) bool {
 	return r.Home() == other.Home()
+}
+
+// IsModule reports whether r is an instance of a MODULE — a registry a
+// resolved import gave a stable, policy-addressable id (ModuleRef:
+// "boru:time-util", "./lib.boru"), or a concurrent fork of one (the fork
+// copies the id, and the per-export policy that keys on it applies on the
+// fork exactly as on the module). The main program's registry, a fork of it,
+// an inline `module […]` body (no stable id) and a sandbox all answer false.
+// Nil-safe, because the VM reads it through a compiled unit's OWNING
+// registry, which is nil for a unit that runs on the program's own.
+func (r *Registry) IsModule() bool {
+	return r != nil && r.ModuleRef != "" //sentinel:home the one reading of an empty ModuleRef: not a module
 }
 
 // SyncWriter serializes concurrent Write calls so that several forked

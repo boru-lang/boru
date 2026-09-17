@@ -475,10 +475,10 @@ func isModuleInnerSig(r *core.Registry, word string, sig *core.Signature) bool {
 			for _, k := range em.Keys() {
 				v, _ := em.Get(k)
 				fd, ok := v.Data.(core.FnDefInfo)
-				if !ok || fd.Registry == nil || fd.Name != word {
+				if !ok || fd.Name != word {
 					continue
 				}
-				inner := fd.Registry.Lookup(fd.Name)
+				inner := core.FnHomeLookup(&fd)
 				if inner == nil {
 					continue
 				}

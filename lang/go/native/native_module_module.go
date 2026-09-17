@@ -627,7 +627,7 @@ func linkModuleDebugParent(r *Registry, desc ModuleDesc) {
 		if exportMap != nil {
 			for _, key := range exportMap.Keys() {
 				if v, ok := exportMap.Get(key); ok {
-					if fn, isFn := FnDefFromValue(v); isFn && fn.Registry != nil {
+					if fn, isFn := FnDefFromValue(v); isFn && fn.HasHome() {
 						fn.Registry.SetDebugParent(r)
 					}
 				}
@@ -838,20 +838,11 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 		// reference form auto-evaluates to the bound fn HERE (as data), so the
 		// name was never stepped through the normal dispatch/ResolveRef use path.
 		modReg.Check.RecordUse(fnDef.Name)
-		// THIS module's own fn is minted afresh: an export is a NEW value with
-		// no source position of its own, not the `name/v` token it was read
-		// through (a region claim keyed by that token's position would
-		// otherwise land inside the module body). A boru fn carries modReg
-		// from construction; a Go-built one gets it here. A fn homed
-		// ELSEWHERE — imported and re-exported — passes through untouched,
-		// identity and all.
-		if fnDef.Registry == nil {
-			fnDef.Registry = modReg
-		}
-		if fnDef.Registry == modReg {
-			return NewFunction(fnDef)
-		}
-		return v
+		// THIS module's own fn is minted afresh, a Go-built one is adopted,
+		// and one homed ELSEWHERE (imported and re-exported) passes through —
+		// HomeExportedFn holds the rule.
+		homed, _ := HomeExportedFn(v, modReg)
+		return homed
 	}
 	// A bare name (word/string/atom) resolves by lookup in the module
 	// registry. After auto-eval this path is reached mainly in check
@@ -876,30 +867,16 @@ func resolveModuleExport(modReg *Registry, v Value) Value {
 	// types (`export "color" {Color:Color}`) would leave the value
 	// side as an unresolved Word.
 	if tv, ok := modReg.TopTypeBody(name); ok {
-		if fnDef, ok := tv.Data.(FnDefInfo); ok {
-			if fnDef.Registry == nil {
-				fnDef.Registry = modReg
-			}
-			if fnDef.Registry == modReg {
-				return NewFunction(fnDef)
-			}
-		}
-		return tv
+		homed, _ := HomeExportedFn(tv, modReg)
+		return homed
 	}
 	if val, ok := modReg.Defs.Top(name); ok {
 		// A fn value carries the module's registry so it executes in the
 		// correct context (closure semantics) — stamped at construction for a
-		// boru-bodied fn, here for a Go-built one. Own fns mint afresh; one
-		// homed elsewhere passes through (see the fn-value branch above).
-		if fnDef, ok := val.Data.(FnDefInfo); ok {
-			if fnDef.Registry == nil {
-				fnDef.Registry = modReg
-			}
-			if fnDef.Registry == modReg {
-				return NewFunction(fnDef)
-			}
-		}
-		return val
+		// boru-bodied fn, adopted here for a Go-built one; a non-fn value is
+		// returned as-is.
+		homed, _ := HomeExportedFn(val, modReg)
+		return homed
 	}
 	return v
 }

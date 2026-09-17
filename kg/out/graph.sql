@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '4111721858967865045');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '1920603823671393763');
 INSERT INTO input_files VALUES ('../AGENTS.md', '3986719937509632624', 12545);
 INSERT INTO input_files VALUES ('../CLI.md', '8040111791276364678', 84377);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -39,7 +39,7 @@ INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '7277300135
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-ASSESSMENT.0.md', '570293024811926396', 38328);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '9029074848373364482', 605032);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '2032658602635373235', 252119);
-INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '4971383329543566644', 69091);
+INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '8338633968707983023', 71945);
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '7708654490684213804', 23548);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
@@ -70,7 +70,7 @@ INSERT INTO input_files VALUES ('../test/solardemo/go.mod', '8784937342672483810
 INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425', 1242);
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
-INSERT INTO input_files VALUES ('<go tree: modules + packages>', '1926872259734760970', 595);
+INSERT INTO input_files VALUES ('<go tree: modules + packages>', '1390927971842456975', 616);
 INSERT INTO input_files VALUES ('project/boru-project.jsonic', '3531312950173116736', 82511);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
@@ -368,6 +368,11 @@ INSERT INTO entities VALUES ('ent:Product:8635404738244704660', 'Product', 'util
 INSERT INTO entity_attributes VALUES ('ent:Product:8635404738244704660', 'path', 'utils');
 INSERT INTO entities VALUES ('ent:Product:9122085017676103232', 'Product', 'boru binary', 'boru binary', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Product:9122085017676103232', 'role', 'CLI, REPL, type checker, formatter, LSP, registry client, vault, supervisor');
+INSERT INTO entities VALUES ('ent:SoftwareModule:1512478893295979458', 'SoftwareModule', 'test/go/sentinelgate package', 'test/go/sentinelgate package', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1512478893295979458', 'go_module', 'github.com/boru-lang/boru/test/go');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1512478893295979458', 'parent_module', 'test/go');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1512478893295979458', 'path', 'test/go/sentinelgate');
+INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1512478893295979458', 'unit', 'go-package');
 INSERT INTO entities VALUES ('ent:SoftwareModule:1529704399546216258', 'SoftwareModule', 'wpg/serve package', 'wpg/serve package', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1529704399546216258', 'go_module', 'github.com/boru-lang/boru/wpg');
 INSERT INTO entity_attributes VALUES ('ent:SoftwareModule:1529704399546216258', 'parent_module', 'wpg');
@@ -756,6 +761,8 @@ INSERT INTO assertions VALUES ('ast:4950098273738144333', 'ent:SoftwareModule:45
 INSERT INTO assertion_evidence VALUES ('ast:4950098273738144333', 'src:gomod:test-solardemo', 'module directive', 'module github.com/boru-lang/boru/test/solardemo', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5214003688923155039', 'ent:SoftwareModule:6706536563979604982', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:5214003688923155039', 'src:go-work', 'use block', './parser/go', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:5232848138471645414', 'ent:SoftwareModule:1512478893295979458', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:5232848138471645414', 'src:go-tree', 'test/go/sentinelgate', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5245330609796646290', 'ent:SoftwareModule:425341189454841366', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:5245330609796646290', 'src:go-work', 'use block', './eng/go', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5256016689838784468', 'ent:Document:1913611373576952100', 'supports', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);

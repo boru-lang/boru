@@ -717,9 +717,13 @@ type CallableSpec struct {
 }
 
 // FnDefInfo holds the function specification for a def-defined function.
-// Name is the function's registered name (set by InstallDef). If Registry is
-// non-nil, the function was defined in a module and should execute in that
-// registry's context (closure semantics).
+// Name is the function's registered name (set by InstallDef). Registry is the
+// fn value's HOME — the registry that minted it (FnConstruct, `=>`, `macro`,
+// a module's own exports), main program and module alike; its free words
+// resolve there when it is applied from a foreign module (FnHome). Nil means
+// a Go-built value with no boru body to resolve, never "defined in the
+// running scope" — read it through HasHome / FnHomeLookup / FnHomeForeign,
+// not by comparing the field (NUR152).
 //
 // Signatures is the SINGLE per-function signature slice — one full-fidelity
 // overload per entry. Each Signature carries the authored shape (Params with
@@ -3239,6 +3243,14 @@ func IsDefCleanup(v Value) bool {
 }
 
 // AsDefCleanup returns the DefCleanupInfo, panics if not a def-cleanup.
+// FrameOn reports whether the frame's per-call state lives on r — by
+// IDENTITY, not by module: teardown pops r's Args/baseline and undefs against
+// r's def table, so a fork of the same module is the wrong registry here.
+// This is the one place a DefCleanup marker's registry is compared.
+func (dc DefCleanupInfo) FrameOn(r *Registry) bool {
+	return dc.Registry == r //sentinel:home a frame's registry is compared by identity: the teardown pops that registry's stacks
+}
+
 func AsDefCleanup(v Value) (DefCleanupInfo, error) {
 	info, ok := v.Data.(DefCleanupInfo)
 	if !ok {

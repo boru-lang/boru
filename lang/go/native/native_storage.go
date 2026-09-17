@@ -1288,10 +1288,10 @@ func getrXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // wrapper (rand-int) has no CallableSpec and stays dynamic.
 func isClosureBearingWrapper(v Value) bool {
 	fd, ok := v.Data.(FnDefInfo)
-	if !ok || fd.Registry == nil || fd.Name == "" {
+	if !ok {
 		return false
 	}
-	inner := fd.Registry.Lookup(fd.Name)
+	inner := FnHomeLookup(&fd)
 	if inner == nil {
 		return false
 	}

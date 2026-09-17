@@ -198,7 +198,45 @@ func FnHome(r *Registry, fnDef *FnDefInfo) (*Registry, []CapturedBinding) {
 // value (no home) is never foreign, and neither is a fn invoked on a fork of
 // the module that minted it.
 func FnHomeForeign(r *Registry, fnDef *FnDefInfo) bool {
-	return fnDef != nil && fnDef.Registry != nil && !fnDef.Registry.SameHome(r)
+	return fnDef != nil && fnDef.HasHome() && !fnDef.Registry.SameHome(r)
+}
+
+// HasHome reports whether the fn value carries the registry that minted it.
+// Every boru-bodied fn does (FnConstruct, `=>`, `macro`, and a module's own
+// exports); a Go-built value — a registered native read as `add/v`, a wrapper
+// a fn-util word produces — has none, and nothing to resolve in one. This is
+// the ONLY reading of a nil Registry: it never means "defined in the running
+// scope" (NUR152 is what that reading cost), and a seam that needs the
+// registry a body runs in asks FnHome, never the field.
+func (fd *FnDefInfo) HasHome() bool {
+	return fd != nil && fd.Registry != nil //sentinel:home the one reading of a nil fn-value Registry: a Go-built value with no home
+}
+
+// NamedDef reports whether the fn value is a def-bound, registry-dispatched
+// definition: it carries a registered name AND was built by a verbose `fn`
+// construction (or is a native), not by the `=>` lambda sugar. The two flags
+// are read together because each alone misleads — a def-bound lambda
+// (`def f => …`) has a Name but is still Anonymous and still models as a
+// closure literal; a nameless verbose `fn` (a curried factory's inner fn)
+// is not Anonymous but has no name to dispatch or recurse by. Only the
+// conjunction carries the by-name dispatch and recursion semantics the
+// closure models decline and the no-match diagnostics report against.
+func (fd *FnDefInfo) NamedDef() bool {
+	return fd != nil && !fd.Anonymous && fd.Name != "" //sentinel:home the one compound reading of Name and Anonymous together
+}
+
+// FnHomeLookup resolves the fn value's NAME in its home registry — the
+// definition a module wrapper delegates to, or a module-preamble fn's own
+// stored binding — and is nil for a value with no home, no name, or a home
+// that does not bind the name. It is the one way to reach a value's inner
+// definition: the dispatch seams that used to spell it as
+// `fd.Registry == nil || fd.Name == ""` followed by `fd.Registry.Lookup` all
+// ask this instead, so the nil home is read in exactly one place.
+func FnHomeLookup(fd *FnDefInfo) *FnDefInfo {
+	if !fd.HasHome() || fd.Name == "" {
+		return nil
+	}
+	return fd.Registry.Lookup(fd.Name)
 }
 
 // isInternalErr reports whether err is an internal_error-class BoruError — the

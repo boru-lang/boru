@@ -1507,7 +1507,7 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 		return
 	}
 	fd, ok := member.Data.(FnDefInfo)
-	if !ok || fd.Registry == nil || fd.Name == "" || fd.Macro {
+	if !ok || !fd.HasHome() || fd.Name == "" || fd.Macro {
 		return
 	}
 	if !IsDelegationFnDef(fd) {

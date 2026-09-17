@@ -1882,6 +1882,25 @@ func (es *EmitState) BindRegistry(r *core.Registry) {
 	es.reg = r
 }
 
+// isProgramRegistry reports whether reg IS the program registry — progReg,
+// the first-bound top-level registry, never re-bound (es.reg is last-bind-
+// wins, so it is the wrong field to compare: a body that merely calls a
+// module fn leaves it on that module's sub-registry). A nil reg is not the
+// program's: the bridge and the speculative-def placement both decline it.
+func (es *EmitState) isProgramRegistry(reg *core.Registry) bool {
+	return reg != nil && reg == es.progReg
+}
+
+// isForeignRegistry reports whether reg is a sub-registry OTHER than the
+// program's — a `module [...]` preamble's, whose fns' bodies resolve
+// module-private words there. A nil reg records no registry at all and is
+// never foreign: the unit runs on whatever registry the VM is handed (a
+// ForkConcurrent fork included), which is exactly what an unstamped
+// top-level fn must do.
+func (es *EmitState) isForeignRegistry(reg *core.Registry) bool {
+	return reg != nil && reg != es.progReg
+}
+
 // TopFrameOnly reports whether recording sits at the top event frame (no
 // open branch/loop/fn capture) — the const-fold gate for computed container
 // elements. A missing recorder counts as top-frame (nothing is being
@@ -3084,7 +3103,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// (REFUSAL-CLOSURE §9.2d — the curried factory's inner fn) both model as
 	// returned closures; a NAMED fn value carries registry dispatch and
 	// recursion semantics this model does not own, so it declines.
-	if !ok || (!fd.Anonymous && fd.Name != "") {
+	if !ok || fd.NamedDef() {
 		return EmitOperand{}, false
 	}
 	// CAPTURELESS values decline too — the const bake (the caller's
@@ -4831,8 +4850,8 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 	// program then refused for want of the placement. progReg is captured once
 	// and never re-bound, which is what "the program registry" above means —
 	// the Finalize stamp site uses it for this same reason.
-	if body.ID == "" || ml.bodyID != body.ID || ml.reg == nil || ml.reg != es.progReg ||
-		rec.reg != es.progReg || rec.frag == nil {
+	if body.ID == "" || ml.bodyID != body.ID || !es.isProgramRegistry(ml.reg) ||
+		!es.isProgramRegistry(rec.reg) || rec.frag == nil {
 		return
 	}
 	// The bracket's twins: every one must be an eligible value def, an
@@ -5271,7 +5290,7 @@ type pendingSpecFnDef struct {
 // bracket, a live armed loop (its body re-rounds and its defs are carried
 // by slot), a closure body compile.
 func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, outer, fn core.Value, pos core.SrcPos) bool {
-	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && reg != es.progReg) {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && !es.isProgramRegistry(reg)) {
 		// A closure body compile's transitions are the enclosing run's; a
 		// MODULE's registry keeps its own machinery — a module body runs
 		// interpreted at load, and its fns' bodies are the module's, not
@@ -11765,7 +11784,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
 		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit}
-		if rec.reg != nil && rec.reg != es.progReg {
+		if es.isForeignRegistry(rec.reg) {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):
 			// its body resolves module-private words there, exactly where the
@@ -12232,7 +12251,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
 	if pr, ok := es.producedBy[v.ID]; ok {
 		b.pr = pr
-	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && (fd.Anonymous || fd.Name == "") && !v.Quoted {
+	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !v.Quoted {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
 		// increment): no event, no const — its `/v` read builds the closure
 		// at the read site, so remember the literal and its captures'

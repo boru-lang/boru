@@ -672,11 +672,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// A MODULE poly word (`StructUtil.getpath`) re-matches over its OWN
 	// sub-registry's signatures; a core word over the dispatch registry
 	// (the active unit's — module scope for a module fn's body).
-	lookupReg := r
-	if pr.Reg != nil {
-		lookupReg = pr.Reg
-	}
-	fn := lookupReg.Lookup(pr.Word)
+	fn := dispatchRegistry(pr.Reg, r).Lookup(pr.Word)
 	var sigs []core.Signature
 	if fn != nil {
 		sigs = fn.Signatures
@@ -797,11 +793,7 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 			units = append(units, u)
 		}
 	} else {
-		lookupReg := vc.r
-		if pr.Reg != nil {
-			lookupReg = pr.Reg
-		}
-		fd = lookupReg.Lookup(pr.Word)
+		fd = dispatchRegistry(pr.Reg, vc.r).Lookup(pr.Word)
 		if fd == nil {
 			return 0, nil, vmDefer(vc.r, curDebug, pc, "vm:user-poly-unresolved", "CALL_USER_POLY unresolved fn "+pr.Word+"; deferring to interpreter")
 		}
@@ -2201,9 +2193,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			curCode, curDebug = p.Code, p.Debug
 		} else {
 			curCode, curDebug = p.Fns[u].Code, p.Fns[u].Debug
-			if p.Fns[u].Reg != nil {
-				curReg = p.Fns[u].Reg
-			}
+			curReg = dispatchRegistry(p.Fns[u].Reg, r)
 		}
 	}
 	enterUnit(startUnit)
@@ -2710,7 +2700,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// (CompiledFn.Reg), whose ModuleRef was stamped at module
 			// resolution — the CALL_USER twin of the interpreter's
 			// execMatch gate over the stamped stored sig.
-			if fn.Reg != nil && fn.Reg.ModuleRef != "" {
+			if fn.Reg.IsModule() {
 				// Read the STAMPED identity: the unit's own name is the
 				// module-private fn name, not the export key the policy
 				// addresses, so reconstructing one here would miss the rule.
@@ -3342,7 +3332,7 @@ func checkReturnContract(r *core.Registry, fn *compiler.CompiledFn, stack []core
 	// DEFERS to the interpreter (internal_error → the sound whole-program
 	// fallback). A same-registry fn falls through to the frame-path contract
 	// below, which the interpreter enforces identically.
-	if fn.RetReplay && fn.Reg != nil && fn.Reg != r {
+	if fn.RetReplay && dispatchRegistry(fn.Reg, r) != r {
 		base := 0
 		if hasFrame {
 			base = stackBase
@@ -3573,4 +3563,20 @@ func vmStackCeiling(r *core.Registry) int {
 	}
 	initial, maxGrows, factor := cfg.Resolve(0)
 	return core.GrowthCeiling(initial, maxGrows, factor)
+}
+
+// dispatchRegistry is the registry a compiled record resolves its word in:
+// the OWNING registry the record was stamped with (a module's sub-registry —
+// a native reached through its wrapper, a `module [...]` preamble fn's body),
+// or the RUNNING one when none was. A record with no stamp resolves where it
+// runs, and that is what lets one compiled program run on any fork of its
+// registry (ForkConcurrent hands each concurrent execution its own). This is
+// the ONLY reading of a nil PolyRef.Reg / RegionDesc.Reg / CompiledFn.Reg;
+// the sites that ask "does this unit run somewhere other than here" compare
+// the result against the running registry rather than the field.
+func dispatchRegistry(owning, running *core.Registry) *core.Registry {
+	if owning != nil {
+		return owning
+	}
+	return running
 }

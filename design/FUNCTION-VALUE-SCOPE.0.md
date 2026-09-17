@@ -1276,3 +1276,45 @@ neither. The word "module scope" still names three different predicates
 in the code (`Registry.ModuleScope`, `core.ModuleScopeBinding`, the
 emitter's `len(es.units) == 1`); that is a naming debt, not a semantic
 one, and it is left for its own change.
+
+### 12.8 The sentinel audit — 2026-09-17
+
+§12.7's nil arm was one instance of a pattern: a nil or empty field read
+at the site as if the field's type said what nil meant. An inventory of
+the ~260 nil / `""` comparisons in production Go sorted them into
+readings that carry a MEANING beyond the field (a fn value's `Registry`,
+a compiled unit's `Reg`, a registry's `ModuleRef` and `home`, a fn's
+`Name` read against `Anonymous`) and readings that do not (`err != nil`,
+the Engine's seam default `e.Registry`, a local `reg == nil` guard). Only
+the first kind was touched, and each meaning now has ONE predicate:
+
+| reading | was spelled | now asks |
+|---|---|---|
+| a Go-built value with no home | `fd.Registry == nil` | `fd.HasHome()` |
+| the definition a wrapper delegates to | `fd.Registry == nil \|\| fd.Name == ""` then `fd.Registry.Lookup(fd.Name)` | `FnHomeLookup(&fd)` |
+| an export's home, minted or adopted | three-branch `Registry == nil` / `== modReg` twins | `HomeExportedFn(v, modReg)` |
+| a fn value applied across a module boundary | `reg != nil && reg != r` | `FnHomeForeign(r, &fd)` |
+| a registry that is a module (or a fork of one) | `reg.ModuleRef == ""` | `reg.IsModule()` |
+| a compiled record's dispatch registry | `lookup := r; if pr.Reg != nil {…}` (three copies) | `dispatchRegistry(pr.Reg, r)` |
+| a unit that runs elsewhere | `fn.Reg != nil && fn.Reg != r` | `dispatchRegistry(fn.Reg, r) != r` |
+| the program registry / a foreign sub-registry | `reg == nil \|\| reg != es.progReg` | `es.isProgramRegistry(reg)` / `es.isForeignRegistry(reg)` |
+| a def-bound verbose fn, not a closure literal | `!fd.Anonymous && fd.Name != ""` (five spellings) | `fd.NamedDef()` |
+| a frame's registry, by identity | `dcInfo.Registry != e.Registry` | `dcInfo.FrameOn(e.Registry)` |
+
+Two readings turned out to be the same one under different names and
+one was a leftover: `IsInertConst`'s `d.Registry == nil → true` arm was
+the §12.1 sentence again (a Go-built value is the degenerate homed case
+and takes the same `!d.Macro` answer), and `boru:test`'s export resolver
+carried a `//covergate:allow` for a re-export arm it now shares with the
+kernel's through `HomeExportedFn`.
+
+The gate: `test/go/sentinelgate` parses every production Go file and
+fails on a `==`/`!=` of any of those fields against nil, `""` or another
+registry, and on `Name == ""` and `Anonymous` read in one condition,
+anywhere but a line carrying `//sentinel:home <reason>` — the predicate's
+own defining line. The marker count is pinned in both directions, so a
+new reading is argued in the gate, never added at a site. What the gate
+deliberately leaves alone: `e.Registry` (the seam default), `.ID == ""`
+(a uniform designed meaning across value kinds), and the plain `Name ==
+""` reads that mean exactly "has no name" (a display label, a name to
+record a use against).

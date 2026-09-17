@@ -5733,8 +5733,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// analysis position is unconditionally reached and untrapped, because a
 	// fn body analysed against generalised carrier args can fail to match
 	// for want of precision rather than because the program is wrong.
-	if e.Registry != nil &&
-		fnDef.Name != "" && !fnDef.Anonymous &&
+	if e.Registry != nil && fnDef.NamedDef() &&
 		valIdx < e.Tape.Len() && !e.Tape.At(valIdx).Quoted {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
@@ -6360,8 +6359,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 		return
 	}
 	v := e.Tape.At(idx)
-	if fd, isFn := v.Data.(FnDefInfo); isFn &&
-		fd.Name != "" && !fd.Anonymous && !v.Quoted {
+	if fd, isFn := v.Data.(FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
 		v.ReachGroup = true
 		e.Tape.Set(idx, v)
 	}

@@ -216,10 +216,7 @@ func IsInertConst(v Value) bool {
 		if len(d.Captured) > 0 {
 			return false
 		}
-		if d.Registry == nil {
-			return true
-		}
-		// A module-export fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
+		// A HOMED fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
 		// a branch-arm operand, a container member, OR a comparator passed to another
 		// fn (`xs M.sort M.by-num`). The sub-registry pointer it carries is the SAME
 		// object the compiled run shares (RunProgram runs on the check-pass
@@ -231,8 +228,10 @@ func IsInertConst(v Value) bool {
 		//   - a REAL boru body via the island sub-engine (callDynTrailTop/…'s
 		//     `vc.island().Run([fn, args…])`), which INTERPRETS the fn in
 		//     fnDef.Registry — CallBoru, module-private scope and all. So a real body
-		//     applies soundly too (compile == interpret, verified). A macro stays
-		//     refused (applied only by name / compile-time expansion, never as data).
+		//     applies soundly too (compile == interpret, verified). A Go-built value
+		//     (no home) is the degenerate case: nothing to resolve. A macro stays
+		//     refused (applied only by name / compile-time expansion, never as data),
+		//     homed or not.
 		return !d.Macro
 	case *SurfaceInfo:
 		// A surface type (`def Shape surface {area: (fnsig …)}`): an immutable
