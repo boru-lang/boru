@@ -6566,7 +6566,19 @@ designs and stay as they are; the main program still has neither.
 
 ## NUR153 — one stored `=>` value, two evaluation regimes {#nur153}
 
-**Status:** Pending (recorded 2026-09-17).
+**Status:** Ruled (maintainer, 2026-09-18) — the tape rule everywhere;
+implementation pending (S1's opening increment).
+
+**Ruling (maintainer, 2026-09-18): follow the recommendation.** Regime 1
+is the specification: a lambda's single container residual DEFERS,
+whichever seam applies the value — the `CallBoru` / `InvokeCallback`
+seam evaluates through the same rule the tape does. The by-name
+admission (`storedfn$body` / `spawnbody$body` in `check/go/carrier.go`)
+goes and the stamp follows the one rule; a handler that reads its
+parameter inside a returned container (mini-redis's catch-all) is
+written as a computing body; `TestServiceAddStampsComputedMapHandler`'s
+pinned answer changes; the fence's three pins move to one rule and the
+compiled tape-apply divergence closes with it.
 **Found:** a Codex review of #471, which attributed the divergence to that
 PR's island fix; measured on `origin/main` (the merge base) and present
 there, and measured to be two-sided on the interpreter alone.

@@ -112,12 +112,14 @@ the end of each step of §5, not each increment.
 The review's §5, in order: **S0** the generated word-inventory sweep
 (the corpus is a sample and under-measures by construction); **S1** fn
 values as one convention (the 12 islands, 59 refusals and 23 census rows
-are one family; NUR153 must be ruled first); **S2** in parallel, the
+are one family; NUR153 was ruled on 2026-09-18 — the tape rule
+everywhere — and its implementation opens S1); **S2** in parallel, the
 handler-migration line —
 [HANDLER-MIGRATION-LINE.0.md](HANDLER-MIGRATION-LINE.0.md) is a second
 session's brief and `make handler-worklist` its list; then S3–S7. The
-rulings each step waits on (NUR153, O2, O4, O5, the attributed set,
-NUR110, NUR078) carry a recommendation each in the review's §6. What was
+rulings each step waits on (O2, O4, O5, the attributed set, NUR110,
+NUR078) carry a recommendation each in the review's §6; NUR153 is ruled
+(2026-09-18, the recommendation). What was
 in flight before the review (increments 69–73's detail, the parked
 increment 58, the earlier candidate list) is in the log under "Moved from
 SESSION-HANDOVER.0.md (2026-09-17)".

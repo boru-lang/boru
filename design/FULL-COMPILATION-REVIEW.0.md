@@ -537,7 +537,7 @@ effort with two sessions in parallel for the middle stretch.
 
 | ruling | why it blocks | recommendation |
 |---|---|---|
-| **NUR153** — which of a stored `=>` value's two interpreter regimes (deferred residual on the tape; evaluated in the live frame through a native seam) is the specification | S1's stamp can match one; the by-name admission today encodes neither | the tape rule (a lambda's single container residual defers) everywhere; the `service` seam evaluates through the same rule; `TestServiceAddStampsComputedMapHandler`'s pinned answer changes |
+| **NUR153** — which of a stored `=>` value's two interpreter regimes (deferred residual on the tape; evaluated in the live frame through a native seam) is the specification | S1's stamp can match one; the by-name admission today encodes neither | the tape rule (a lambda's single container residual defers) everywhere; the `service` seam evaluates through the same rule; `TestServiceAddStampsComputedMapHandler`'s pinned answer changes — **ruled so by the maintainer on 2026-09-18** |
 | **O2** — the step budget | the last documented one-directional divergence; totality makes per-instruction metering the only metering | re-meter the VM to the interpreter's count on the corpus and gate the divergence at 0; a ceiling is a semantics |
 | **O4** — module bodies at import | the ruling answers it ("computed code is code") but the design still says "leans compile" | record it as decided: compile, S3 |
 | **O5** — check-time budget exhaustion | no emit-anyway story; S3's induction needs one | widen to a dynamic carrier at the exhausted region's frontier, so the region lowers G-lane; never a refusal |
