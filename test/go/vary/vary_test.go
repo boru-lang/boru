@@ -231,9 +231,12 @@ func TestClassifySeamArms(t *testing.T) {
 		Deadline = 10 * time.Millisecond
 		t.Cleanup(func() { Deadline = prev })
 		block := make(chan struct{})
-		t.Cleanup(func() { close(block) })
 		disasm = func(*lang.Program) string { <-block; return "" }
 		r := Classify("1 add 2")
+		// The abandoned classification still reads the seams: let it run to
+		// its end before the swap's cleanup restores them.
+		close(block)
+		inflight.Wait()
 		if r.Outcome != Hung || !strings.Contains(r.Detail, "HUNG: no answer within 10ms") || r.Outcome.String() != "HUNG" {
 			t.Errorf("%v %q, want hung", r.Outcome, r.Detail)
 		}

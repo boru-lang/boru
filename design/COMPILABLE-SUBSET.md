@@ -167,8 +167,9 @@ is identity, so two source literals must stay two consts with two IDs.
 [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md) S0):
 `test/go/langspec/SWEEP_STATUS.md` lists, for every declaration-relevant
 word × operand kind, the cell that fails to compile, islands or diverges,
-and every call-form variant that does — 44, 5, 3 and 202 on its first
-run — with `TestGeneratedSweep` ratcheting the counts. The inventory
+and every call-form variant that does — 44, 5, 3 and 200 on its first
+run, plus 2 call forms the compiler panics on — with `TestGeneratedSweep`
+ratcheting the counts. The inventory
 below names the mechanisms; the matrix names the programs.
 
 Every entry below is an unimplemented or unproven case — a defect against §1,

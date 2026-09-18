@@ -17,6 +17,7 @@ package langspec
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	native "github.com/boru-lang/boru/lang/go/native"
@@ -40,20 +41,37 @@ const (
 	sweepFailureCeiling        = 44  // valid seeds that FAIL to compile (41) or hard-error in CompileCheck (3) — every one a BUG
 	sweepIslandCeiling         = 5   // valid seeds that compile with an interpreter island: inner ×2, scan ×3
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 202 // call-form variants of passing seeds that fail to compile (200) or PANIC (2: word/lambda under paren-group and module-body, NUR162)
+	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (refused, islanded or check-reject)
+	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 
+// sweepPin is one known miscompile: the NUR that records it, and the
+// divergence it shows — the prefix of vary's detail, both lanes' answers —
+// so a program whose WRONG ANSWER CHANGES is a new finding, not a known one.
+type sweepPin struct{ nur, detail string }
+
 // sweepKnownMiscompiles keys a diverging program — a cell's seed or one of
-// its call-form variants, by source — to the NUR that records it. Pinned
-// both ways: an unlisted divergence is a NEW miscompile and fails every
-// lane; a listed one that stops diverging is retired with its fix.
-var sweepKnownMiscompiles = map[string]string{
+// its call-form variants, by source — to its pin. Pinned both ways: an
+// unlisted divergence is a NEW miscompile and fails every lane; a listed
+// one that stops diverging is retired with its fix; a listed one that
+// diverges differently fails until the change is explained and re-pinned.
+var sweepKnownMiscompiles = map[string]sweepPin{
 	// The first run of the sweep, 2026-09-18 — every one recorded in NUR.md.
-	`import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply`:   "NUR156 — the apply of a module-export fn value does not fire on the compiled lane: 6 interpreted, `5 fn inc(Integer)` compiled",
-	`import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl`: "NUR154 — `case` lowers its clause list as a static literal, so a clause list a module fn returns is never read: 'two' interpreted, case_error compiled",
-	`def one fn [[][Integer][1]] end if true one/v [2]`:                                                    "NUR159 — a named fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: 1 vs `fn one`",
-	`7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply`:                              "NUR160 — the apply of a factory-built fn value does not fire on the compiled lane when a value sits below it on the stack: [7 6] vs [7 5 fn]; the clean-stack form agrees",
-	`7 def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5`:                      "NUR161 — an afn whose body is a fn value read from a container: the interpreter returns the value, the compiled lane applies it, and only with a value below on the stack: [7 fn (Integer)] vs [8]",
+	`import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply`: {
+		"NUR156 — the apply of a module-export fn value does not fire on the compiled lane",
+		"value divergence: compiled [5 fn inc(Integer)] vs interp [6]"},
+	`import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl`: {
+		"NUR154 — `case` lowers its clause list as a static literal, so a clause list a module fn returns is never read",
+		"error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional trailing default)"},
+	`def one fn [[][Integer][1]] end if true one/v [2]`: {
+		"NUR159 — a named fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane",
+		"value divergence: compiled [fn one] vs interp [1]"},
+	`7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply`: {
+		"NUR160 — the apply of a factory-built fn value does not fire on the compiled lane when a value sits below it on the stack; the clean-stack form agrees",
+		"value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]"},
+	`7 def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5`: {
+		"NUR161 — an afn whose body is a fn value read from a container: the interpreter returns the value, the compiled lane applies it, only with a value below on the stack",
+		"value divergence: compiled [8] vs interp [7 fn (Integer)]"},
 }
 
 // sweepInventory is the matrix's rows: every declaration-relevant word of
@@ -113,14 +131,15 @@ func TestGeneratedSweep(t *testing.T) {
 			}
 		}
 	}
-	for src, why := range sweepKnownMiscompiles {
+	for src, pin := range sweepKnownMiscompiles {
 		if !seen[src] {
-			t.Errorf("stale sweepKnownMiscompiles pin — this program no longer diverges; retire the entry with the fix that closed it (was: %s):\n  %.160s", why, src)
+			t.Errorf("stale sweepKnownMiscompiles pin — this program no longer diverges; retire the entry with the fix that closed it (was: %s):\n  %.160s", pin.nur, src)
 		}
 	}
 
 	counts := sweep.Count(cells)
-	variantFailures := counts.Variants[vary.Refused] + counts.Variants[vary.Islanded] + counts.Variants[vary.CheckReject] + counts.Variants[vary.Panicked] + counts.Variants[vary.Hung]
+	variantFailures := counts.Variants[vary.Refused] + counts.Variants[vary.Islanded] + counts.Variants[vary.CheckReject]
+	variantCrashes := counts.Variants[vary.Panicked] + counts.Variants[vary.Hung]
 	gateAssert(t, "sweep empty cells", counts.Cells[sweep.Empty], 0, sweepEmptyCeiling, true,
 		"word × operand-kind cells of the generated sweep with no seed program — holes in the instrument (test/go/sweep/seeds.tsv)", true)
 	gateAssert(t, "sweep invalid seeds", counts.Cells[sweep.Invalid], 0, sweepInvalidCeiling, true,
@@ -132,7 +151,9 @@ func TestGeneratedSweep(t *testing.T) {
 	gateAssert(t, "sweep crashes", counts.Cells[sweep.Panicked]+counts.Cells[sweep.Hung], 0, sweepCrashCeiling, true,
 		"valid seed programs an engine PANICS on or never answers — recovered or abandoned by the classifier so the sweep goes on", true)
 	gateAssert(t, "sweep call-form failures", variantFailures, 0, sweepVariantFailureCeiling, true,
-		"call-form variants of passing seeds that fail to compile, island, panic or hang", true)
+		"call-form variants of passing seeds that fail to compile or island", true)
+	gateAssert(t, "sweep call-form crashes", variantCrashes, 0, sweepVariantCrashCeiling, true,
+		"call-form variants of passing seeds an engine PANICS on or never answers", true)
 	t.Logf("generated sweep: %d cells — pass %d, failed %d, islanded %d, diverged %d, panicked %d, hung %d, check-reject %d, invalid %d, n/a %d, empty %d; %d call-form variants — pass %d, refused %d, islanded %d, diverged %d, panicked %d, hung %d, interp-reject %d, check-reject %d",
 		len(cells), counts.Cells[sweep.Pass], counts.Cells[sweep.Failed], counts.Cells[sweep.Islanded], counts.Cells[sweep.Diverged], counts.Cells[sweep.Panicked], counts.Cells[sweep.Hung], counts.Cells[sweep.CheckReject], counts.Cells[sweep.Invalid], counts.Cells[sweep.NotApplicable], counts.Cells[sweep.Empty],
 		sumVariants(counts), counts.Variants[vary.Pass], counts.Variants[vary.Refused], counts.Variants[vary.Islanded], counts.Variants[vary.Diverged], counts.Variants[vary.Panicked], counts.Variants[vary.Hung], counts.Variants[vary.InterpReject], counts.Variants[vary.CheckReject])
@@ -157,15 +178,48 @@ func TestGeneratedSweep(t *testing.T) {
 	}
 }
 
-// sweepMiscompile reports one diverging program: an error unless pinned.
+// sweepMiscompile reports one diverging program: an error unless pinned
+// with the divergence it shows.
 func sweepMiscompile(t testing.TB, where, src, detail string, seen map[string]bool) {
 	t.Helper()
 	seen[src] = true
-	if why, known := sweepKnownMiscompiles[src]; known {
-		directionFailure(t, "%s: known miscompile (%s)", where, why)
-		return
+	pin, known := sweepKnownMiscompiles[src]
+	switch {
+	case !known:
+		t.Errorf("MISCOMPILE — %s diverges from the interpreter:\n  program: %s\n  %s\ntriage: shrink and fix, or record the non-uniformity in NUR.md and pin the program with its divergence in sweepKnownMiscompiles (never leave a divergence unpinned)", where, src, detail)
+	case !strings.HasPrefix(detail, pin.detail):
+		t.Errorf("MISCOMPILE CHANGED — %s is pinned to %s as\n  %s\nand now diverges as\n  %s\nA different wrong answer is a new finding: re-read the NUR, and re-pin only with the change explained there", where, pin.nur, pin.detail, detail)
+	default:
+		directionFailure(t, "%s: known miscompile (%s)", where, pin.nur)
 	}
-	t.Errorf("MISCOMPILE — %s diverges from the interpreter:\n  program: %s\n  %s\ntriage: shrink and fix, or record the non-uniformity in NUR.md and pin the program in sweepKnownMiscompiles (never leave a divergence unpinned)", where, src, detail)
+}
+
+// TestSweepMiscompilePinsTheDivergence pins sweepMiscompile's three arms:
+// an unpinned divergence is an error, a pinned one whose divergence matches
+// is not, and a pinned one that diverges DIFFERENTLY is an error again.
+func TestSweepMiscompilePinsTheDivergence(t *testing.T) {
+	t.Parallel()
+	src := `def one fn [[][Integer][1]] end if true one/v [2]`
+	pinned := sweepKnownMiscompiles[src].detail
+
+	rec := &recTB{}
+	seen := map[string]bool{}
+	sweepMiscompile(rec, "x (the seed)", "1 add 2", "value divergence: compiled [4] vs interp [3]", seen)
+	if len(rec.errs) != 1 || !strings.HasPrefix(rec.errs[0], "MISCOMPILE — x (the seed)") || !seen["1 add 2"] {
+		t.Errorf("unpinned: errs = %q", rec.errs)
+	}
+
+	rec = &recTB{}
+	sweepMiscompile(rec, "if/named-fn (the seed)", src, pinned+" (and then some)", seen)
+	if rec.failed || len(rec.logs) != 1 || !strings.Contains(rec.logs[0], "known miscompile (NUR159") || !seen[src] {
+		t.Errorf("pinned, matching: errs = %q logs = %q", rec.errs, rec.logs)
+	}
+
+	rec = &recTB{}
+	sweepMiscompile(rec, "if/named-fn (the seed)", src, "value divergence: compiled [2] vs interp [1]", seen)
+	if len(rec.errs) != 1 || !strings.HasPrefix(rec.errs[0], "MISCOMPILE CHANGED — if/named-fn (the seed) is pinned to NUR159") {
+		t.Errorf("pinned, changed: errs = %q", rec.errs)
+	}
 }
 
 func sumVariants(c sweep.Counts) int {

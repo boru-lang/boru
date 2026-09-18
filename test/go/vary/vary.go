@@ -204,7 +204,14 @@ const (
 
 // Deadline bounds one classification. Every corpus program answers in
 // milliseconds; a program that has not answered by the deadline is Hung.
+// Its classification is abandoned, not stopped — the goroutine runs on
+// until the engine returns, if it ever does — and inflight counts it, so a
+// caller that swaps the seams (the unit tests) can wait for it to end
+// before restoring them.
 var Deadline = 30 * time.Second
+
+// inflight counts classifications still running, abandoned ones included.
+var inflight sync.WaitGroup
 
 // String names the outcome for reports.
 func (o Outcome) String() string {
@@ -242,7 +249,11 @@ type Result struct {
 // fired in, and a program that has not answered within Deadline is Hung.
 func Classify(src string) Result {
 	done := make(chan Result, 1)
-	go func() { done <- classify(src) }()
+	inflight.Add(1)
+	go func() {
+		defer inflight.Done()
+		done <- classify(src)
+	}()
 	select {
 	case r := <-done:
 		return r

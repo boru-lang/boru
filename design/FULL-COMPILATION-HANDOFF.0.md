@@ -10163,11 +10163,13 @@ passing seed through all fourteen of `vary`'s call-form transforms. A
 cell the language cannot express is claimed with an n/a PROBE, a program
 the interpreter must reject: 115 of them, each checked on every run so a
 claim the language outgrows fails as stale (22 of my first claims were
-wrong that way; the probes said so). `TestGeneratedSweep` gates six
+wrong that way; the probes said so). `TestGeneratedSweep` gates seven
 counts, every one an end state of 0 and a regression ceiling at the live
 value, both ways, asserted under `BORU_SPEC_FILES` too (the new
-`gateAssert`); a divergence is a miscompile and fails every lane unless
-pinned to its NUR. `SWEEP_STATUS.md` is the matrix and the defect list;
+`gateAssert`) — crashes and hangs on their own ceilings, never inside a
+failure count; a divergence is a miscompile and fails every lane unless
+pinned, with the divergence it shows, to its NUR (a changed wrong answer
+is a new finding). `SWEEP_STATUS.md` is the matrix and the defect list;
 `make sweep-status` refreshes it. About 15 s for 2,237 classifications
 on four cores.
 
