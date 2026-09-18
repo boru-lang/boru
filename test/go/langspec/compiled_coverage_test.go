@@ -136,7 +136,16 @@ func rootCause(bucket string) string {
 // expansion less the three increment 3 of PR #471 compiled, every one a fn
 // VALUE callback (COMPILABLE-SUBSET.md §5). Falls with every island removed;
 // never rises.
-const islandCeilingLive = 12
+//
+// History: 12 (2026-09-17, the corpus expansion) -> 10 (2026-09-18, NUR153
+// closed — one residual rule at every seam). A stored `=>` value applied
+// through a native seam used to have its residual evaluated in the live
+// frame; the tape rule everywhere (core.ResidualEvalsInFrame, with
+// CallBoruNamed sweeping the deferred residual after teardown) removes the
+// seam that islanded two callback rows. Attributed by measurement, not
+// inference: the same gate run at e04fa21 — the commit before NUR153 closed
+// — reports 12, and this head reports 10. -> 0 (the maintainer's direction).
+const islandCeilingLive = 10
 
 // correctErrorCeiling is the REGRESSION ceiling of the correct-error bucket
 // (end state 0): code-bodies.tsv:L173 (2026-09-17), an `unpack` inside a fn
