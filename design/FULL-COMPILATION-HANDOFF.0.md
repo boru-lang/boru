@@ -10129,6 +10129,15 @@ moves down in the change that compiles its rows, never by deleting a row;
 it moves up only with the regressed rows named in the note column, and
 that is the record of a regression, not a fix.
 
+**Review found the hole beside it.** Codex, on PR #472: a misspelt name
+or an unmatched glob in `BORU_SPEC_FILES` selected no file, so the walk
+walked nothing, the ledger asserted nothing, and the run passed — the
+same silent green one seam over. `specEntries` now errors when any
+pattern selects no file or is not a pattern, and every walk in the
+package reads through it; `TestSpecFilterMustSelectEveryPattern` pins
+both directions. (`specfix.RunDir`, the oracle's seam, errors on zero
+files but not on one typo among several; outside this PR.)
+
 **Not done.** Islands and the other corpus-wide counts still report under
 a filter — the same `callbacks.tsv` run reports 5 islands and asserts
 none. The mechanism is per file and generic; extending it is a small

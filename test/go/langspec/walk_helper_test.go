@@ -2,6 +2,7 @@ package langspec
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +78,46 @@ func TestRowTBAbortsTheRowNotTheTest(t *testing.T) {
 	}
 	if len(rec.logs) != 1 || rec.logs[0] != "skipped" {
 		t.Errorf("logs = %q, want the skip's message", rec.logs)
+	}
+}
+
+// TestSpecFilterMustSelectEveryPattern pins the filter seam: every name or
+// glob in BORU_SPEC_FILES must select at least one spec file, and must be a
+// pattern. It sets the environment, so it runs before the parallel batch.
+func TestSpecFilterMustSelectEveryPattern(t *testing.T) {
+	specDir := filepath.Join("..", "..", "..", "lang", "spec")
+
+	t.Setenv("BORU_SPEC_FILES", "callbacks.tsv, fold-*.tsv")
+	entries, err := specEntries(specDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, ",") != "callbacks.tsv,fold-map-filter.tsv" {
+		t.Errorf("selected %v, want callbacks.tsv and fold-map-filter.tsv", names)
+	}
+	files, err := readSpecCorpusErr()
+	if err != nil || len(files) != 2 {
+		t.Errorf("corpus = %d files, err %v; want the two selected files", len(files), err)
+	}
+
+	bad := []struct{ name, filter, want string }{
+		{"a misspelt name", "calbacks.tsv", `"calbacks.tsv" selects no file`},
+		{"a typo among several", "callbacks.tsv,nope-*.tsv", `"nope-*.tsv" selects no file`},
+		{"a glob that matches nothing", "zz-*.tsv", `"zz-*.tsv" selects no file`},
+		{"not a pattern", "[", `"[" is not a file name or glob`},
+	}
+	for _, c := range bad {
+		t.Setenv("BORU_SPEC_FILES", c.filter)
+		if _, err := specEntries(specDir); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: specEntries err = %v, want one containing %q", c.name, err, c.want)
+		}
+		if _, err := readSpecCorpusErr(); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: readSpecCorpusErr err = %v, want one containing %q", c.name, err, c.want)
+		}
 	}
 }
 

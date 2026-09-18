@@ -44,6 +44,7 @@
 6	TestCompileFailureLedgerIsWellFormed
 6	TestCompileFailureLedgerParses
 6	TestCompileFailureLedgerAssertsEveryWalkedFile
+6	TestSpecFilterMustSelectEveryPattern
 6	TestRowTBAbortsTheRowNotTheTest
 6	TestParseSpecRowsCountsEveryLine
 6	TestVariadicSpreadOracle
