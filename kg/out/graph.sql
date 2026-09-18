@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '2905574775879645755');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '1698415116488686135');
 INSERT INTO input_files VALUES ('../AGENTS.md', '8879695948712726535', 13789);
 INSERT INTO input_files VALUES ('../CLI.md', '4023829496696922290', 84748);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -38,8 +38,9 @@ INSERT INTO input_files VALUES ('../design/ENG-COVERAGE-PARITY.0.md', '916617636
 INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '727730013582454290', 32779);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-ASSESSMENT.0.md', '7332750673059097753', 38325);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '5242262052260020395', 636466);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REPLAN.0.md', '3041458259371274233', 11320);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REVIEW.0.md', '3183436181395733359', 47064);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '1241579212256307317', 257677);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '6309326583045746625', 258284);
 INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '5965631548714272956', 73926);
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '7708654490684213804', 23548);
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '331612378470357195', 13590);
@@ -47,7 +48,7 @@ INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '418100228937
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '7264810753193244686', 16133);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '2114858706959426946', 13516);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '4053352058123162868', 14485);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '3988227259832537239', 89115);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
 INSERT INTO input_files VALUES ('../design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', '5471579664599608073', 28469);
@@ -73,7 +74,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '1390927971842456975', 616);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6563734489031363611', 88389);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '1887050269164847928', 91361);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -138,6 +139,9 @@ INSERT INTO sources VALUES ('src:full-compilation-assessment', 'text', 'design/F
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:full-compilation-handoff', 'text', 'design/FULL-COMPILATION-HANDOFF.0.md', 'full compilation: handoff for the bind-twin line', NULL, 'full-compilation-handoff-2026-08-30', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
+INSERT INTO sources VALUES ('src:full-compilation-replan', 'text', 'design/FULL-COMPILATION-REPLAN.0.md', 'full compilation — re-planned and re-estimated after the velocity work', NULL, 'full-compilation-replan-2026-09-18', 'primary', '{
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:full-compilation-review', 'text', 'design/FULL-COMPILATION-REVIEW.0.md', 'full compilation — the plan re-examined: realism, strategy, algorithm', NULL, 'full-compilation-review-2026-09-17', 'primary', '{
@@ -296,6 +300,8 @@ INSERT INTO entities VALUES ('ent:Document:2168448879393025844', 'Document', 'de
 INSERT INTO entity_attributes VALUES ('ent:Document:2168448879393025844', 'role', 'the boru:viz proposal: pure diagram-source generation (Mermaid + DOT, D2 later) from arbitrary data structures — code generation only, written in boru, with the shared graph/tree/trace/schema contract its §3 pins for boru:scry and every other producer');
 INSERT INTO entities VALUES ('ent:Document:2308799538575712501', 'Document', 'design/CORE-TS-DIVERGENCES.1.md', 'design/core-ts-divergences.1.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:2308799538575712501', 'role', 'the ten classes of measured core/go-vs-core/ts divergence behind core/spec/divergent.tsv, why the 1808-row crossdiff was blind to all of them, and the hit rate that makes the uncovered surface the place to look');
+INSERT INTO entities VALUES ('ent:Document:2599686088131995550', 'Document', 'design/FULL-COMPILATION-REPLAN.0.md', 'design/full-compilation-replan.0.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:2599686088131995550', 'role', 'the dated (2026-09-18) re-plan and re-estimate of the full-compilation project, measured on PR #471 head fb094de, superseding the session-day numbers in FULL-COMPILATION-REVIEW.0.md section 2.3 and the session-days column of FULL-COMPILATION.0.md section 10.1 while leaving the review''s architecture findings and S0-S7 content standing. Its premise is a timestamp: the review''s 105-175 session-days were taken at 19:31 on 2026-09-17, two hours before 7178699 (two lanes, the corpus filter, sharded CI) and five before a9cb212 (the three-minute contract, parallel walks), so it prices a verification loop that no longer exists. It measures what actually got faster - the pre-commit ritual about 60 min to a 66 s commit gate (about 50x, and partly a scope change because cover-gate left the per-commit loop), CI 12 min 30 s to 1 min 58 s (about 6x), ten gates over one spec family to 6 s (about 20x) - against the loop that binds, the full unfiltered langspec corpus, which went from about 25 min to about 12 and so only halved. It re-measures the debt (8513 rows, 8054 compiled, 113 failing to compile; root causes 80 coverage, 32 soundness, 1 correct-error, 0 scheduling, 0 opcode) and finds three clusters of exactly nineteen, of which the third - each/fold/filter/scan over a gradual-Any collection, ambiguous List vs Map - is a type-commitment question one operand to the left of the callback rather than a fn-value lowering, and is carved out as S1a ahead of S1. Four plan changes: P0 per-file compile-failure ratchets first (BORU_SPEC_FILES reports counts instead of asserting them, which is how two regressions reached a working tree on 2026-09-18 while six-second filtered runs stayed green); S1a carved out; S2 split into 35 declaration-only signatures and 59 code-body signatures that need a mechanism depending on S1b; and S2 judged by undeclaredHandlerCeiling rather than by the compile-failure count, since on 2026-09-18 the census moved 114 to 94 while compile failures moved by zero. The re-estimate is 75-130 session-days (65-115 conditional on P0 delivering), which is about 1.4x faster overall and not fifty; year end is about 75 session-days away so only the low end with zero overrun reaches it, and T1 + T2 by year end moves 15% to about 20%. It calibrates against one measured session''s throughput and records that zero of the 113 compile failures were fixed that day, naming S1a, S1b, S2b and S4 as the only steps that move the headline number');
 INSERT INTO entities VALUES ('ent:Document:3080274854606714513', 'Document', 'ADR.md', 'adr.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:3534903004749141856', 'Document', 'design/CONTENT-ADDRESSING.0.md', 'design/content-addressing.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:3534903004749141856', 'role', 'the design note for deriving a definition''s identity from its content rather than its name: the three costs that share that root cause (the per-invoke DepsFresh walk, the AOT codec''s symbolic-reference refusals, the pre-1.0 rename tax), the split between an ARTIFACT digest over file bytes — unblocked, already specified by boru-vendor §5 — and a DEFINITION digest over meaning, which needs canonicity, alpha normalisation, macro expansion, referent substitution and cycle components; three options for referent substitution under call-time binding, recommending a (text digest, world digest) compound key; a five-phase sequence; and the rejections — codebase-as-database, hash-based type identity, immutable definitions as a language rule. Measured by design/legacy/unison-hash-identity-probe.0.ignore and scripts/hash-identity-probe.sh');

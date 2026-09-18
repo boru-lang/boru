@@ -123,6 +123,21 @@ the end of each step of §5, not each increment.
 
 ## What is next
 
+> **Read [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md)
+> first (2026-09-18).** It re-estimates the remainder at **75–130
+> session-days** (the review said 105–175, measured two hours before the
+> velocity work landed), and changes the order in four ways: **P0** per-file
+> compile-failure ratchets go FIRST — `BORU_SPEC_FILES` reports counts
+> instead of asserting them, which is how two regressions reached a working
+> tree on 2026-09-18 while six-second filtered runs stayed green; **S1a**,
+> the gradual-Any collection overload commitment, is carved out ahead of S1
+> as 19 rows on one mechanism; **S2 splits**, because only 35 of its 94
+> signatures are a sweep and the other 59 need a mechanism that depends on
+> S1b; and S2 is judged by `undeclaredHandlerCeiling`, never by the compile-
+> failure count. The binding gate is the full unfiltered corpus at about
+> twelve minutes, and it only halved — the project got about 1.4× faster,
+> not fifty.
+
 The review's §5, in order: **S0** the generated word-inventory sweep
 (the corpus is a sample and under-measures by construction); **S1** fn
 values as one convention (the 12 islands, 59 refusals and 23 census rows

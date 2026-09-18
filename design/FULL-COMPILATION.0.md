@@ -3549,6 +3549,16 @@ never per site.
 | **S7** | Stage 9: every valve deleted, `CompileCheck` total | engine-entry census 0; `deferCeiling` and the mechanism deleted | 8–15 |
 | | **total remaining** | | **~105–175** |
 
+> **The session-day column is SUPERSEDED**
+> ([FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md),
+> 2026-09-18). It was measured two hours before `7178699` and five before
+> `a9cb212` — it prices a verification loop that no longer exists. The
+> re-estimate is **75–130**, and the re-plan also adds P0 (per-file
+> ratchets, first), carves S1a (the gradual-Any collection overload
+> commitment, 19 rows) out ahead of S1, and splits S2 into a 35-signature
+> sweep and a 59-signature mechanism that depends on S1b. The step CONTENT
+> above stands; only the order of those two and the numbers change.
+
 Dependencies: S0 first; S1 before S4's non-word leads and S2's `Test.*`
 half; S3's unit cache inside S1, the rest before S2 finishes and before
 S4's foreign-unit arm; S4 before S7; S2 beside everything else. Two rules
