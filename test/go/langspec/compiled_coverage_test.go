@@ -22,12 +22,11 @@ import (
 	"testing"
 )
 
-// refusalCeiling is the maximum number of spec value rows allowed to refuse
-// compilation (CompileCheck returns a nil Program with no check error AND the
-// row is not a statically-invalid check-diagnostics row). The runtime-
-// independence phases lower it monotonically; it must reach 0 before the
-// interpreter fallback can be deleted (plan P7). Never raise it.
-const refusalCeiling = 113 // RAISED 0 -> 113 (2026-09-17) by the corpus expansion, and the direction is the honest one: the 0 was an artifact of thin coverage, not an achievement. The corpus tested one-liners whose callback is always written literally at the call site; 707 new rows covering each-variants, callbacks, fold/map/filter, code bodies, fn-locals and multi-construct composition exposed 113 compile ERRORS the old denominator could not see. Every one is an OPEN DEFECT against "all valid code compiles" — see design/COMPILABLE-SUBSET.md §5. Do NOT lower this by deleting rows; lower it by compiling them. The dominant family: the callback is not written at the call site (stored in a map field, picked by a dynamic key, arriving as a f:Function param, built by a factory, composed) — which is exactly the shape real programs use, and why 95.9% on the old corpus did not survive contact with a 10k-character file.
+// The compile-failure ceiling is no longer a constant here: it is the SUM of
+// compile_failures.tsv, the per-file ledger (compile_failure_ledger_test.go)
+// that TestCompiledCoverage asserts file by file — under a corpus filter as
+// much as over the whole corpus. The ledger's header carries the history the
+// constant used to (0 until the corpus expansion of 2026-09-17; 113 since).
 
 // islandCeiling is the maximum number of compiled programs allowed to embed an
 // interpreter island (OpFallback). Islands re-enter the interpreter sub-engine
@@ -198,7 +197,7 @@ func TestCompiledCoverage(t *testing.T) {
 		"a known-to-error row must compile an OpTrap / RET error path; failing to compile it is a bug")
 
 	// P7 ENDGAME (design/legacy/P7-ENDGAME.10.ignore): the frontier is GATED at the
-	// documented-tier floor. Every one of the refusalGate rows below is owned
+	// documented-tier floor. Every one of the rows the ledger counts is owned
 	// by a named tier with a written rationale; a NEW refusal (a regression,
 	// or an unclassified corpus row) must trip CI and force a conscious
 	// classification, never drift in silently. The gate moves DOWN as tiers
@@ -227,18 +226,25 @@ func TestCompiledCoverage(t *testing.T) {
 	// ZERO refusals; rows the compiler cannot yet model live in the frontier
 	// ledger (frontier_spec_test.go), outside this ratchet, each with a
 	// stated graduation criterion.
-	const refusalGate = 113 // RAISED 0 -> 113 (2026-09-17). This is the ASSERTION gate; refusalCeiling above is the historical floor. The 0 was true only of the pre-expansion corpus, whose rows are one-liners that always write a callback literally at the call site. 707 rows covering the shapes real code uses exposed 113 compile ERRORS — the compiler did not regress, the measurement got honest. Every one is an open defect (design/COMPILABLE-SUBSET.md §5); lower this by compiling them, never by deleting rows.
-	const islandGate = 0    // STAYS 0 — maintainer direction 2026-09-17: "there should be no islanding at all". An island is a region of a COMPILED program that still runs on the interpreter, so it is an uncompiled region inside something we call compiled — the fallback in miniature. It is never ledgered and never raised. The expanded corpus exposes 15 today; they are defects to remove, and this gate stays red until they are.
+	const islandGate = 0 // STAYS 0 — maintainer direction 2026-09-17: "there should be no islanding at all". An island is a region of a COMPILED program that still runs on the interpreter, so it is an uncompiled region inside something we call compiled — the fallback in miniature. It is never ledgered and never raised. The expanded corpus exposes 15 today; they are defects to remove, and this gate stays red until they are.
 	// Two lanes (lanes_test.go). The END STATE of both is 0 — nothing fails to
 	// compile, nothing islands — and the direction lane asserts exactly that; the
 	// regression ceilings are the live counts, which only fall, so a change that
 	// adds a compile failure or an island fails every lane while the open debt
 	// stays named. The ceiling is a RATCHET ON A BUG COUNT, never a budget: a row
 	// that does not compile is a defect in the compiler, not a decision it made.
-	gate(t, "compile failures", refused, 0, refusalGate, false,
-		"corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5)")
+	// The per-file ledger first — it asserts on every file this run walked,
+	// filtered or not (compile_failure_ledger_test.go) — then the corpus-wide
+	// gate against the ledger's sum, which a filter reports.
+	ledger, err := readCompileFailureLedger(compileFailureLedgerFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCompileFailureLedger(t, ledger, c.byFile, c.refusedRows, filteredCorpus())
+	gate(t, "compile failures", refused, 0, ledgerTotal(ledger), false,
+		"corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv")
 	gate(t, "interpreter islands", islanded, islandGate, islandCeilingLive, false,
 		"compiled programs with an OpFallback span — an uncompiled region inside something called compiled")
-	t.Logf("compile failures=%d (gate %d), islanded=%d (gate %d); historical floor refs %d/%d",
-		refused, refusalGate, islanded, islandGate, refusalCeiling, islandCeiling)
+	t.Logf("compile failures=%d (ledger total %d), islanded=%d (gate %d); historical island floor %d",
+		refused, ledgerTotal(ledger), islanded, islandGate, islandCeiling)
 }

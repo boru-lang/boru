@@ -43,6 +43,7 @@ type census struct {
 
 	refusalBuckets map[string]int // normaliseReason -> count, over refused rows only
 	refusedRows    []refusedRow   // one entry per refused row, in corpus order
+	byFile         map[string]int // spec basename -> refused rows in it, for EVERY walked file (zero included): the per-file ledger's live side (compile_failure_ledger_test.go)
 
 	// Re-scoped P7 partition (design/legacy/boru-bytecode-completion.0.ignore §3) over the
 	// not-fully-native rows (refused OR islanded): tier 1 interpreter-only
@@ -88,6 +89,7 @@ func gatherCensus(t *testing.T) *census {
 func newCensus() *census {
 	return &census{
 		refusalBuckets: map[string]int{},
+		byFile:         map[string]int{},
 		tier1By:        map[string]int{},
 		tier2By:        map[string]int{},
 		computeBy:      map[string]int{},
@@ -107,7 +109,7 @@ func computeCensus() (*census, error) {
 		first error // the first instance failure, which voids the census as it always did
 	)
 	err := specWalkFilesErr(func(file string, rows []specRow) {
-		part, err := tallyFile(rows)
+		part, err := tallyFile(file, rows)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
@@ -144,7 +146,7 @@ func computeCensus() (*census, error) {
 // native row — refused or islanded — first by the permanent/reducible word
 // allowlists (classify), then as an allowlisted error row, else as a
 // compute-frontier gap.
-func tallyFile(rows []specRow) (*census, error) {
+func tallyFile(file string, rows []specRow) (*census, error) {
 	c := newCensus()
 	for _, r := range rows {
 		if len(r.Cells) < 2 {
@@ -247,6 +249,7 @@ func tallyFile(rows []specRow) (*census, error) {
 			c.computeRows = append(c.computeRows, firstN(input, 88)+" — "+r)
 		}
 	}
+	c.byFile[file] = c.refused // the file's own line of the per-file ledger, zero included
 	return c, nil
 }
 
@@ -259,6 +262,7 @@ func (c *census) add(p *census) {
 	c.checkErr += p.checkErr
 	c.refused += p.refused
 	addCounts(c.refusalBuckets, p.refusalBuckets)
+	addCounts(c.byFile, p.byFile)
 	c.refusedRows = append(c.refusedRows, p.refusedRows...)
 	c.interp += p.interp
 	c.reducible += p.reducible

@@ -72,7 +72,10 @@ definition both share); CI runs the same steps as parallel jobs, each
 under the same three-minute ceiling. Two switches make iteration fast:
 `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv` restricts every corpus walk in
 `test/go/langspec` to the named spec files (the ten gates over one family
-run in seconds), and `BORU_DIRECTION_GATES=1` arms the direction lane —
+run in seconds; the per-file compile-failure ledger
+`test/go/langspec/compile_failures.tsv` still asserts on every selected
+file, so a compile regression in that family fails the filtered run), and
+`BORU_DIRECTION_GATES=1` arms the direction lane —
 the gates against their END STATE, red by design until full compilation
 is done (`make test-direction`; the default lane asserts only the
 regression ceilings and is what blocks). `make gate-status` prints every

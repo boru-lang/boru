@@ -37,7 +37,7 @@
 // corpus independently — both the "permanent meta" framing (repudiated here and
 // in design §3) and the second walk (the shared census in compiled_census_test.go
 // is the one walk) were stale, so it was retired. Its disposition is subsumed:
-// total refusals are ratcheted by refusalCeiling, and the per-tier breakdown by
+// total compile failures are ratcheted by the per-file ledger (compile_failures.tsv), and the per-tier breakdown by
 // the three ceilings below.
 package langspec
 

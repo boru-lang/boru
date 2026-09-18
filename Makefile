@@ -136,8 +136,10 @@ test:
 #
 # Iterating on ONE family: BORU_SPEC_FILES=callbacks.tsv restricts every
 # corpus walk to the named spec files (comma-separated names or globs) —
-# the ten gates over one file run in seconds — and reports the absolute
-# counts instead of asserting them.
+# the ten gates over one file run in seconds. The corpus-wide counts are
+# reported, not asserted, under the filter; the per-file compile-failure
+# ledger (test/go/langspec/compile_failures.tsv) asserts on every selected
+# file, so a compile regression in the family fails the filtered run.
 LANGSPEC_DIR := test/go/langspec
 DIRECTION_TESTS := TestCompiledCoverage|TestRefusalsAreFailures|TestOnlyMetaFallsBack|TestSpecCompiledOrFallback|TestSpecCompiledDifferential|TestRegionCollectOracle|TestInterpEntryCensus|TestCheckTypeSoundness|TestDiagnosticParityAcrossPasses|TestDiagnosticSurfaceParity
 

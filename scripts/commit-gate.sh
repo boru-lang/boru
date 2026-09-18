@@ -19,7 +19,10 @@
 #   test/specfix or a   every spec file the change touched, under
 #   spec file touched   BORU_SPEC_FILES — every per-row verdict (a
 #                       divergence, an island, an interpreter entry, a
-#                       refusal) asserts; the corpus-wide counts report
+#                       compile failure) asserts, and so does the per-file
+#                       compile-failure ledger for every file in the run
+#                       (test/go/langspec/compile_failures.tsv); the
+#                       corpus-wide counts report
 #   docs, Makefile,     the knowledge graph against the tree
 #   scripts, kg, CI     (make -C kg verify, which needs the CLI built)
 #   touched

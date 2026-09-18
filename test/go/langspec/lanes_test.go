@@ -10,7 +10,14 @@
 //     corpus. Under the filter every ABSOLUTE count — a ceiling, a floor, a
 //     both-ways ledger — is reported and not asserted, because a subset has
 //     no meaningful count; the per-row verdicts (a divergence, an island, an
-//     interpreter entry, a refusal) are what the filter is for.
+//     interpreter entry, a compile failure) are what the filter is for. The
+//     one count that IS asserted under the filter is the per-file
+//     compile-failure ledger (compile_failures.tsv,
+//     compile_failure_ledger_test.go): a file's count is the file's own, so
+//     every selected file's line asserts and a compile regression in one
+//     family fails the six-second run — P0 of FULL-COMPILATION-REPLAN.0.md.
+//     For that guarantee to mean anything, a name or glob that selects no
+//     file is an error (specEntries), never an empty, passing walk.
 //
 //   - BORU_DIRECTION_GATES=1 arms the DIRECTION lane. Every ratchet in this
 //     package has two numbers: the END STATE the programme is heading for
@@ -51,6 +58,10 @@ import (
 // os.ReadDir entry, or — under BORU_SPEC_FILES — only the entries whose
 // basename matches one of the comma-separated names or globs. Every walk in
 // this package reads the directory through it, so the filter has one seam.
+// A pattern that selects no file is an error, as is one that is not a
+// pattern: a misspelt name or glob would otherwise walk nothing, assert
+// nothing and pass, which is exactly the silent green the per-file ledger
+// exists to end (found in review of PR #472).
 func specEntries(specDir string) ([]os.DirEntry, error) {
 	entries, err := os.ReadDir(specDir) // the one direct read; every walk goes through this function
 	if err != nil {
@@ -61,15 +72,29 @@ func specEntries(specDir string) ([]os.DirEntry, error) {
 		return entries, nil
 	}
 	kept := entries[:0:0]
+	selected := make([]bool, len(pats))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		for _, p := range pats {
-			if ok, _ := filepath.Match(p, e.Name()); ok || p == e.Name() {
-				kept = append(kept, e)
-				break
+		keep := false
+		for i, p := range pats {
+			ok, err := filepath.Match(p, e.Name())
+			if err != nil {
+				return nil, fmt.Errorf("BORU_SPEC_FILES: %q is not a file name or glob: %w", p, err)
 			}
+			if ok || p == e.Name() {
+				selected[i] = true
+				keep = true
+			}
+		}
+		if keep {
+			kept = append(kept, e)
+		}
+	}
+	for i, p := range pats {
+		if !selected[i] {
+			return nil, fmt.Errorf("BORU_SPEC_FILES: %q selects no file in %s — a misspelt name or glob walks nothing, and a walk of nothing must not pass", p, specDir)
 		}
 	}
 	return kept, nil
