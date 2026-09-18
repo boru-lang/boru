@@ -621,8 +621,11 @@ The first run under the new layout (`a9cb212`) was 4 min 33 s with
 every cache key new — every job cold — and eighteen green jobs; the
 long pole was the checks job compiling golangci-lint from source and
 linting on a cold cache (268 s), with one shard and the borudebug job
-at the ceiling. The log (FULL-COMPILATION-HANDOFF.0.md) carries the
-per-job table and the warm run that followed the cold-path fixes.
+at the ceiling. With the lint release binary downloaded instead, the
+race gates as their own job and nine shards balanced on an idle
+measurement, the second run (`a4f0734`, caches warm) was **2 min 24 s**
+with twenty green jobs, the longest a shard at 130 s. The log
+(FULL-COMPILATION-HANDOFF.0.md) carries both per-job tables.
 
 One checker defect the kg investigation exposed and this note only
 records: a relative import that resolves to nothing is silent in check

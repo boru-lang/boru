@@ -10040,4 +10040,24 @@ cold-cache reason (a tool compiled from source, a lint cache, a shard
 whose estimate was under load); what changed for the second run: the
 lint release binary is downloaded (three seconds either way), the race
 gates are a job of their own, and the shards are rebalanced on an idle
-measurement. The warm run's numbers follow.
+measurement.
+
+The second run (`a4f0734`, run 35294135994, every cache warm from the
+first) was **2 min 24 s** wall clock, twenty jobs green, the long pole a
+langspec shard at 130 s followed by the ten-second gate table:
+
+| job | wall |
+|---|---:|
+| test-langspec 1–9 | 109, 101, 125, 130, 103, 98, 105, 111, 121 s (setup 11–16 s, the test step 76–110 s) |
+| race | 77 s |
+| test-lang rest / root | 75 / 61 s |
+| test-cmd | 60 s |
+| checks | 49 s (setup 24 s: the lint binary 3 s, the CLI build; lint 7 s on its cache) |
+| gates / parity | 49 / 49 s |
+| test-core | 37 s |
+| borudebug | 31 s |
+| no-binaries / gate-table | 12 / 8 s |
+
+Under the ceiling with a third to spare; the shards are the margin to
+watch as the corpus grows (`make langspec-shard-count` and the matrix
+move together).
