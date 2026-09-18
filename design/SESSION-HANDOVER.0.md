@@ -38,6 +38,19 @@ carve-out list**:
   the interpreter's own error at the same moment, or deletion.
   "Carve-out" is not one of them, and neither is "leave it to the
   interpreter".
+
+**Vocabulary — say what it is.** A program that does not compile has hit a
+BUG. Do not call it a "refusal", in a gate name, a message, a commit, a
+report or a conversation: "refuse" reads as a decision the compiler made
+and was entitled to make, and it is not one. Say **compile failure**, or
+bug, or defect. The counters are RATCHETS ON A BUG COUNT, never budgets
+— a ceiling exists so the number cannot grow while it is being driven to
+zero, and lowering one by deleting a corpus row rather than by compiling
+it is the one move that is never allowed. The maintainer has had to
+correct this twice; the 2026-09-18 sweep (PR #471 §11) fixed the gate
+names, the user-facing message and the `compile_failed` error code, and
+**248 distinct "refus" identifier forms remain in the Go tree** as a
+separate mechanical sweep. Do not add more.
 - "Valid" is decided by the interpreter. The checker may never be the
   reason a program fails to compile, so the whole-program "check
   diagnostics" sentinel goes (Stage 8's T1 half is inside done).
