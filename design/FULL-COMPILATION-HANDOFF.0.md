@@ -10061,3 +10061,16 @@ langspec shard at 130 s followed by the ten-second gate table:
 Under the ceiling with a third to spare; the shards are the margin to
 watch as the corpus grows (`make langspec-shard-count` and the matrix
 move together).
+
+**Two things the merged coverage gate then taught.** On `a9cb212` it
+found the one guard whose allowlist proof the unify threading had
+invalidated — OpCallGeneric's parameter-contract return in `eng/go/vm.go`,
+reachable now that a predicate body's dispatch is unarmed — and the
+pragma retired (`5c3d096`). Locally it then reported core/go at 94.3%
+where CI had 100%: the profile cache's key (`scripts/cover-key.sh`)
+parsed only the one-line form of a `replace` directive, so compiler/go's
+key ignored core/go and check/go, its day-old profile was reused, and
+its blocks at old line addresses read as a thousand phantom uncovered
+statements in the merged view. The key now reads the block form too;
+with it the gate re-profiles the stale module alone and passes at 100%
+in 78 s on a warm cache.
