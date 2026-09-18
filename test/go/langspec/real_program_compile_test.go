@@ -130,7 +130,7 @@ func TestRealProgramsCompile(t *testing.T) {
 				// errors today; a module fragment that resolves its importer's
 				// words would need an explicit, named exclusion here, not a
 				// blanket one.
-				t.Errorf("%s: CompileCheck error — a real program must compile or refuse, never error: %v", rel, cerr)
+				t.Errorf("%s: CompileCheck error — a real program must compile or report a clean compile failure, never error: %v", rel, cerr)
 				return nil
 			case prog != nil:
 				compiled = append(compiled, result{rel, ""})
@@ -150,7 +150,7 @@ func TestRealProgramsCompile(t *testing.T) {
 	if total == 0 {
 		t.Fatal("no real programs discovered — the roots are wrong, and a gate that measures nothing passes vacuously")
 	}
-	t.Logf("real programs: %d compiled, %d refused (%d total, %.1f%% compiled)",
+	t.Logf("real programs: %d compiled, %d FAILED to compile (%d total, %.1f%% compiled)",
 		len(compiled), len(refused), total, 100*float64(len(compiled))/float64(total))
 
 	byReason := map[string]int{}
@@ -168,7 +168,7 @@ func TestRealProgramsCompile(t *testing.T) {
 		return reasons[i] < reasons[j]
 	})
 	for _, r := range reasons {
-		t.Logf("  refusal cause x%-3d %s", byReason[r], r)
+		t.Logf("  failure cause x%-3d %s", byReason[r], r)
 	}
 
 	// A program that refuses and is NOT ledgered is a regression.
@@ -185,7 +185,7 @@ func TestRealProgramsCompile(t *testing.T) {
 			continue
 		}
 		if want != r.reason {
-			t.Errorf("%s refuses for a DIFFERENT reason than ledgered:\n  ledgered: %s\n  actual:   %s\n"+
+			t.Errorf("%s fails to compile for a DIFFERENT reason than ledgered:\n  ledgered: %s\n  actual:   %s\n"+
 				"    The old blocker moved or a new one surfaced first. Update the entry.",
 				r.path, want, r.reason)
 		}
@@ -194,7 +194,7 @@ func TestRealProgramsCompile(t *testing.T) {
 	// A ledgered program that now compiles is progress — ratchet it down.
 	for path := range realProgramLedger {
 		if !seen[path] {
-			t.Errorf("%s is ledgered as refusing but now COMPILES (or is no longer discovered).\n"+
+			t.Errorf("%s is ledgered as failing to compile but now COMPILES (or is no longer discovered).\n"+
 				"    This is the good direction — delete its realProgramLedger entry so the gate\n"+
 				"    holds the gain. A ledger that keeps stale entries stops measuring anything.",
 				path)

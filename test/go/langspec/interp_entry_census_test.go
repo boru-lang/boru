@@ -519,7 +519,7 @@ import (
 //
 //	do [for 3 [1]]
 //	  before  compiled, seams Engine.Run+RunResolved, answer 1 1 1
-//	  after   compile_refused: "residual shape beyond Stage 1 (call results reordered)"
+//	  after   compile_failed: "residual shape beyond Stage 1 (call results reordered)"
 //
 // A row that stops compiling LEAVES THE DENOMINATOR, so the census would have
 // fallen for the worst possible reason — the same trap the native-callee

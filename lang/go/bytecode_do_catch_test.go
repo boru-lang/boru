@@ -19,7 +19,7 @@ import "testing"
 func TestDoCatchMultiValueArity(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// A module with a value-dependently-raising fn (map-decode-like) and an
 	// always-raising one, reached as `M.dec` / `M.boom` (a Reach dispatch).

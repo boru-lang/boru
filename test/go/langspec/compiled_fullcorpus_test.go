@@ -158,7 +158,7 @@ func itoa(n int) string {
 
 // fallbackVerdict compares one row's compiled-or-fallback run with the
 // interpreter's: error taxonomy first, then error content, then values.
-// refused is a compile_refused the compile gate owns (not a divergence);
+// refused is a compile_failed the compile gate owns (not a divergence);
 // unledgered is a divergence knownDivergences does not carry. It runs on a
 // walk worker, so it takes testing.TB and touches no shared state —
 // divergence is goroutine-safe.
@@ -166,7 +166,7 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 	t.Helper()
 	// Error taxonomy parity: same presence AND same code.
 	if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
-		if !wasCompiled && cdC == "compile_refused" {
+		if !wasCompiled && cdC == "compile_failed" {
 			// A REFUSAL, not a divergence: the compile gate in
 			// TestCompiledCoverage owns it (every one an open defect).
 			return true, false

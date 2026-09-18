@@ -75,7 +75,7 @@ func TestStartRefusedLineFallsBackWithResult(t *testing.T) {
 	}
 }
 
-// Post-Stage-J the library returns compile_refused for a refusing line
+// Post-Stage-J the library returns compile_failed for a refusing line
 // (no silent re-run); the REPL performs the interpreter fallback ITSELF,
 // silently — the user sees the line's result, never the refusal error.
 // The fixture is a genuinely-refusing shape (the mid-expression fn-value
@@ -88,7 +88,7 @@ func TestStartRefusedLineFallbackIsSilent(t *testing.T) {
 	if !strings.Contains(out.String(), "7") {
 		t.Fatalf("refused line must print the interpreter's result; got %q", out.String())
 	}
-	if strings.Contains(out.String(), "error:") || strings.Contains(out.String(), "compile_refused") {
+	if strings.Contains(out.String(), "error:") || strings.Contains(out.String(), "compile_failed") {
 		t.Fatalf("refused line must fall back silently; got %q", out.String())
 	}
 }

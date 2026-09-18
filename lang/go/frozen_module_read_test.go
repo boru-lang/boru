@@ -151,7 +151,7 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const armRead = "twin regime: read of `k` after a multi-run body binds it"
 	// defer names the op's defer site for a row that compiles and hands the
@@ -376,7 +376,7 @@ func TestStaticSpliceBodiesCompile(t *testing.T) {
 func TestComputedEachBodyStaysRefused(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `def op (quote [mul 2])  def f fn [[b:List] [List] [[1 2 3] each b]]  f op`
 	a, err := New()

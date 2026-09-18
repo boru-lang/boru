@@ -156,9 +156,9 @@ func TestOnlyMetaFallsBack(t *testing.T) {
 	gate(t, "interpreter-only rows", interp, 0, interpreterOnlyCeiling, false,
 		"rows a word claims are irreducible — justify or compile")
 	gate(t, "reducible (tier-2) rows", reducible, 0, reducibleCeiling, false,
-		"rows refused by a word-class gap the compiler does not model")
+		"rows that fail to compile because of a word-class gap the compiler does not model")
 	gate(t, "compute gaps", computeGap, 0, computeRefusalCeiling, false,
-		"real-compute rows that refuse")
+		"real-compute rows that fail to compile")
 }
 
 // sortedKeys returns a map's keys sorted by descending value then name, for a

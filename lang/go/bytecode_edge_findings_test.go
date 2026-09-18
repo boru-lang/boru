@@ -34,19 +34,19 @@ func mustRefuseWithParity(t *testing.T, src, want string) {
 	if !strings.Contains(reason, want) {
 		t.Errorf("%q: refusal reason = %q, want it to contain %q", src, reason, want)
 	}
-	// Stage J: RunCompiled returns the refusal as compile_refused (no
+	// Stage J: RunCompiled returns the refusal as compile_failed (no
 	// silent re-run); the program stays fully serviceable via RunInterp.
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
 	if compiled {
 		t.Errorf("%q: RunCompiled reported a compiled run; a refused program must not compile", src)
 	}
-	if codeOf(errC) != "compile_refused" {
-		t.Errorf("%q: RunCompiled err=[%s] %v, want compile_refused (Stage J)", src, codeOf(errC), errC)
+	if codeOf(errC) != "compile_failed" {
+		t.Errorf("%q: RunCompiled err=[%s] %v, want compile_failed (Stage J)", src, codeOf(errC), errC)
 	}
 	c, _ := New()
-	if _, errI := c.RunInterp(src); errI != nil && codeOf(errI) == "compile_refused" {
-		t.Errorf("%q: RunInterp must never report compile_refused", src)
+	if _, errI := c.RunInterp(src); errI != nil && codeOf(errI) == "compile_failed" {
+		t.Errorf("%q: RunInterp must never report compile_failed", src)
 	}
 }
 
@@ -597,7 +597,7 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, cCompiled, cErr := b.RunCompiled(src)
-		if cCompiled || codeOf(iErr) != "undefined_word" || codeOf(cErr) != "compile_refused" {
+		if cCompiled || codeOf(iErr) != "undefined_word" || codeOf(cErr) != "compile_failed" {
 			t.Errorf("%q: want compiled-refusal + interp undefined_word, got compiled=%v cErr=[%s] iErr=[%s]",
 				src, cCompiled, codeOf(cErr), codeOf(iErr))
 		}

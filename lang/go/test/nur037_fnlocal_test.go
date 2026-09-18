@@ -62,7 +62,7 @@ collect [1 2]
 
 // runBothEngines runs src through the default compiled entry point and
 // the interpreter, returning (defaultOut, wasCompiled, interpOut). A
-// compile_refused from the library is handled the way the CLI handles
+// compile_failed from the library is handled the way the CLI handles
 // it (warn-and-fall-back): the refusal guarantees no observable effect
 // escaped, so the default-mode result is an explicit interpreter re-run
 // on a fresh instance, with wasCompiled=false.
@@ -74,7 +74,7 @@ func runBothEngines(t *testing.T, src string) (string, bool, string) {
 	}
 	comp, wasCompiled, cerr := ac.RunCompiled(src)
 	if cerr != nil {
-		if !strings.Contains(cerr.Error(), "compile_refused") {
+		if !strings.Contains(cerr.Error(), "compile_failed") {
 			t.Fatalf("default (compiled-mode) run errored: %v", cerr)
 		}
 		af, ferr := lang.New()
@@ -133,9 +133,9 @@ func TestNur037RefusalReasonNamesTheShape(t *testing.T) {
 	if wasCompiled {
 		t.Fatal("the capturing repro must refuse compilation")
 	}
-	// Stage J: a genuine performance refusal surfaces as compile_refused
+	// Stage J: a genuine performance refusal surfaces as compile_failed
 	// (the CLI warns and falls back); the reason names the shape.
-	if rerr != nil && !strings.Contains(rerr.Error(), "compile_refused") {
+	if rerr != nil && !strings.Contains(rerr.Error(), "compile_failed") {
 		t.Fatalf("run: %v", rerr)
 	}
 	if !strings.Contains(reason, "fn-local fn `step`") {

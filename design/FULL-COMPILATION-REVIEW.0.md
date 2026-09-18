@@ -517,7 +517,7 @@ the order, the coupling, and the gates. S2 runs beside the rest.
 | **S4** | the generic lane completed (§4.3): the evaluating host with its own falsifier; the lane's runtime total (every `vm:generic-*` arm retired to a raise or a compiled path, with Stage 5's count-generic downstream built as part of it); the non-word leads on Apply; the routed-dispatch perf row in the register; then the terminal-arm flip per family, by the disposition census's stages | oracle under-claim and declined classes → 0; the dispatch-agreement ledger empty; `vm:generic-*` arms 10 → 0; `MarkUncompilable` sites 92 → the trap and delete rows only | 25–40 |
 | **S5** | Stage 5's remaining generality (inert values on both sides of a run, arbitrary and non-adjacent consumers, the split-rule window) | the provenance refusals 15 → 0; NUR129's callable region closed | 10–15 |
 | **S6** | Stage 8's T1 half: the "check diagnostics" sentinel deleted, definite errors trapped, the armed-only rows | `armedOnlyCeiling` 16 → 0; the correct-error row → 0; `SuppressedRuntimeError` latch gone | 5–10 |
-| **S7** | Stage 9: the valves — every `vmDefer` site, `OpFallback` and its lowerer, `islandRun`, the drift window, the fence's re-run half, `compile_refused`, the hatch | engine-entry census 0; `deferCeiling` and the mechanism deleted; `CompileCheck` total | 8–15 |
+| **S7** | Stage 9: the valves — every `vmDefer` site, `OpFallback` and its lowerer, `islandRun`, the drift window, the fence's re-run half, `compile_failed`, the hatch | engine-entry census 0; `deferCeiling` and the mechanism deleted; `CompileCheck` total | 8–15 |
 | | **total** | | **~105–175** |
 
 Dependencies: S0 first, because every later gate is defined over it. S1

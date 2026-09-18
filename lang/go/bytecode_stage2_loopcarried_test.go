@@ -113,7 +113,7 @@ func TestLoopCarriedZeroIterationsKeepInit(t *testing.T) {
 func TestLoopCarriedRebindValueLoopSound(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	stage1aSound(t, `def vals fn [[n:Integer] [List] [def acc 0 [(for n [def acc (acc add 1) acc])]]]
 (vals 3)`)

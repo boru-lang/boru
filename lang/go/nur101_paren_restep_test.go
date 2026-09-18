@@ -35,8 +35,8 @@ func nur101Refusal(t *testing.T, src, wantInterp string) {
 	if errC == nil && fmt.Sprint(gotC) != fmt.Sprint(got) {
 		t.Errorf("%q: fallback=%v interp=%v", src, gotC, got)
 	}
-	if errC != nil && !strings.Contains(fmt.Sprint(errC), "compile_refused") {
-		t.Errorf("%q: err=%v, want compile_refused", src, errC)
+	if errC != nil && !strings.Contains(fmt.Sprint(errC), "compile_failed") {
+		t.Errorf("%q: err=%v, want compile_failed", src, errC)
 	}
 }
 

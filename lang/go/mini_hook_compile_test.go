@@ -50,7 +50,7 @@ func TestMiniGoHookCompilesIdentically(t *testing.T) {
 func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `import "boru:minilang" end def f fn [[s:String][String][mini bf s]] f 'hi'`
 	a := zzBfHookInstance(t)
@@ -74,7 +74,7 @@ func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
 func TestMiniGoHookNonConcreteOptsRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `import "boru:minilang" end def f fn [[m:Map][String][mini bf 'hi' m]] f {x:1}`
 	a := zzBfHookInstance(t)

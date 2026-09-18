@@ -154,7 +154,7 @@ func runAndPrint(w, warn io.Writer, a *lang.Boru, source string, mode CompileMod
 		// fallback ITSELF — explicitly and visibly: warn once, naming the
 		// first offending construct, then interpret. The fallback moved
 		// from the library (hidden) to this caller (attributed). It is
-		// keyed on the compile_refused CODE, not the reason: under the
+		// keyed on the compile_failed CODE, not the reason: under the
 		// one-release BORU_COMPILE_FALLBACK=1 hatch the library already ran
 		// the source (the reason is still reported for the warning), and a
 		// second run would double its effects. Detached fn-unit stamping
@@ -165,7 +165,7 @@ func runAndPrint(w, warn io.Writer, a *lang.Boru, source string, mode CompileMod
 			fmt.Fprintf(warn, "warning: bytecode compilation FAILED — the program did not compile and was re-run on the interpreter. This is an error in need of fixing, not a performance note: %s\n", reason)
 		}
 		var refused *lang.BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_refused" {
+		if errors.As(err, &refused) && refused.Code == "compile_failed" {
 			disarm := a.ArmRuntimeStamping()
 			result, err = a.RunInterp(source)
 			disarm()
@@ -377,11 +377,11 @@ func Main(cfg Config, args []string, _ io.Reader, stdout, stderr io.Writer) int 
 	}
 
 	// warn is nil DELIBERATELY: a built binary must not editorialise about its
-	// own execution engine. `boru run` warns when the whole program refused to
+	// own execution engine. `boru run` warns when the whole program FAILED to
 	// compile and was re-run on the interpreter — that names a defect to whoever
 	// can fix it, and its test pins it — but a shipped tool writing
-	// "warning: bytecode compilation refused…" to stderr on every invocation is
-	// noise in someone else's pipeline, and the refusals are easy to hit (two
+	// "warning: bytecode compilation failed…" to stderr on every invocation is
+	// noise in someone else's pipeline, and the failures are easy to hit (two
 	// statement-form `if (cond) [body]` statements are enough). The user of a
 	// tool cannot act on it; the author, running `boru run`, can.
 	if err := runAndPrint(stdout, nil, a, cfg.Source, cfg.Compile, lang.ResolveColor(a.NativeRegistry(), stderr, "auto")); err != nil {

@@ -176,7 +176,7 @@ func TestFnUnitDynFrameBreakWithoutLoopDefers(t *testing.T) {
 func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	runOut := func(src string, compiled bool) (out []any, printed string, took bool, err error) {
 		a, e := New()
@@ -300,8 +300,8 @@ f2 (flex {k:41})`
 	if compiled {
 		t.Error("the mutator shape must not run compiled")
 	}
-	if codeOf(errC) != "compile_refused" {
-		t.Errorf("mutator: RunCompiled err=[%s]%v, want compile_refused (Stage J)", codeOf(errC), errC)
+	if codeOf(errC) != "compile_failed" {
+		t.Errorf("mutator: RunCompiled err=[%s]%v, want compile_failed (Stage J)", codeOf(errC), errC)
 	}
 	if errI != nil || fmt.Sprint(gotI) != "[141]" {
 		t.Errorf("mutator interp = %v (err=%v), want [141] — h's g wins the dispatch, which the frozen table (42) could not model", gotI, errI)

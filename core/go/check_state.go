@@ -345,7 +345,7 @@ type CheckState struct {
 	// class refused with the SILENT check-diagnostics sentinel; when the
 	// pass ends in a refusal anyway, the compile entry points consult this
 	// flag to keep that silent interpreter fallback — a working program
-	// must not trade its quiet slow path for a loud compile_refused just
+	// must not trade its quiet slow path for a loud compile_failed just
 	// because the diagnostic became honest. Reset by Begin.
 	FnCarrierReadSubstituted bool
 

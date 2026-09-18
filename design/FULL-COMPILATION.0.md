@@ -60,7 +60,7 @@ dynamic is **residual code, never refusal**.
 The four sentences of the directive, made checkable:
 
 - **T1 — Totality.** For every source program the interpreter accepts,
-  `CompileCheck` returns a `*Program`. `compile_refused` (Stage J,
+  `CompileCheck` returns a `*Program`. `compile_failed` (Stage J,
   `lang/go/boru.go:1079-1099`) becomes an internal invariant violation, not
   a result. The `BORU_COMPILE_FALLBACK` hatch retires at the end state.
 - **T2 — No islands.** At runtime, a compiled program never re-enters the
@@ -1449,7 +1449,7 @@ checker cannot fold it, the compiled lane REFUSES, by name:
 
 ```
 def r1 (go) end  def k fn [[][Integer][9]] end  def r2 (go) end
-  -> bytecode compilation refused: module binding k rebound after a fn unit
+  -> bytecode compilation FAILED: module binding k rebound after a fn unit
      baked its value      (compiler/go/emit.go:3159, the fn-unit arm)
 ```
 
@@ -3456,7 +3456,7 @@ universe closes alongside).
 | **6** | Handler migration per the triple (§6.8): units-not-tokens, `while` lowering, per-region DynEnv, `args`/`__pa`/`context` frames | H (6), context/tape-bound gate families | medium — wide but enumerable |
 | **7** | Runtime compilation everywhere (§6.7): computed bodies, splices, module bodies; the structural unit cache built here if not before (a hard dependency); unbounded memoised restamp; induction preconditions documented and fuzzed | eval-class gates | medium |
 | **8** | Checker totality (§6.9): sentinel deletion, traps for definite errors, `!Compiling`-fork collapse, soundiness classification | E (8) | medium |
-| **9** | Retire the valves (§6.10): defer sites → native answers; delete `OpFallback`/P7 machinery, the fence's re-run half, the fallback hatch; flip `CompileCheck` to total; `compile_refused` becomes a structured `internal_error` return (panics stay forbidden outside init-time registration) | T1, T2 complete | low by then |
+| **9** | Retire the valves (§6.10): defer sites → native answers; delete `OpFallback`/P7 machinery, the fence's re-run half, the fallback hatch; flip `CompileCheck` to total; `compile_failed` becomes a structured `internal_error` return (panics stay forbidden outside init-time registration) | T1, T2 complete | low by then |
 
 The dependency spine is 2 → {3,4} → 5 → 9; stages 6–8 are parallel tracks
 off it — **with one inversion the probe found**. `cover-gate-core` holds

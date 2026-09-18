@@ -29,7 +29,7 @@ Read as a checkable contract, this is T1 exactly as
 carve-out list**:
 
 - Every program the interpreter accepts produces a `Program`. That is
-  the whole contract, not one branch of two: `compile_refused` is not a
+  the whole contract, not one branch of two: `compile_failed` is not a
   result, it is a DEFECT against the contract — an unimplemented or
   unproven case, owed a fix and tracked to closure — and the
   `BORU_COMPILE_FALLBACK` hatch retires.
@@ -94,14 +94,15 @@ and appends the instant censuses. The values on 2026-09-17, head of PR
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile refusals | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one an open defect in COMPILABLE-SUBSET.md §5 |
-| interpreter islands | 12 | 0 | the expansion; all fn-VALUE callbacks |
-| interp-entry census rows | 54 | 0 | the expansion: fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3 |
-| engine entries / runtime defers | 379 / 8 | 0 / 0 | the expansion |
+| compile failures | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy |
+| compute gaps | 104 | 0 | 107 at the expansion; three fell when NUR153 closed |
+| interpreter islands | 10 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed |
+| interp-entry census rows | 52 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed |
+| engine entries / runtime defers | 366 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed |
 | known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
 | type-soundness violations | 5 | 0 | checker debt the expansion exposed |
 | diagnostic parity / armed-only | 358 / 16 | 0 / 0 | checker debt the expansion exposed |
-| `MarkUncompilable` sites / undeclared handlers | 92 / 114 | 0 / 0 | unchanged since 2026-08-25 |
+| `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25; handlers 114 → 94 on the migration line |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |
 
 The forecast and the probabilities are the review's §2.3; refresh them at

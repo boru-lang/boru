@@ -90,7 +90,7 @@ func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
 func TestApplyOverParamFnCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"recursion.tsv:91 — apply over a Function param",
@@ -129,7 +129,7 @@ func TestApplyOverParamFnCompiles(t *testing.T) {
 func TestPathModifierMapFnCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"path-modifier.tsv:17 — /u leading apply",
@@ -174,7 +174,7 @@ func TestPathModifierMapFnCompiles(t *testing.T) {
 func TestLogRegisterSinkCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// module-log.tsv:62 — a pure fn literal bakes as a const operand
 	// (CompileStoresFn); the sink registry mutates at RUN time only.
@@ -215,7 +215,7 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 func TestIsFnValueOperandCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"module-minilang.tsv:306 — matcher fn is its minted kind",

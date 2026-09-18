@@ -171,7 +171,7 @@ func TestShapedMethodCapturingMemberStaysRefused(t *testing.T) {
 func TestShapedMethodComputedArgStaysRefused(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	fnValueM2Refusal(t, "computed arg in the statement window",
 		`import "boru:log" ; Log.add-sink memory/q ; Log.remove-sink console/q ; def c (Log.counter "n") ; c.add (1 add 2) ; Log.measurements size`,

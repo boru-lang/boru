@@ -271,7 +271,7 @@ func vmCompileReportReturns(_ []native.Value, _ *native.Registry) []native.Value
 // CompiledSubRun is installed by the lang package (which owns the
 // compiled-by-default entry points; modules cannot import lang without a
 // cycle), so Vm.run executes its sub-engine source on the VM with lang's
-// explicit interpreter fallback on compile_refused. Nil keeps the
+// explicit interpreter fallback on compile_failed. Nil keeps the
 // tree-walker.
 var CompiledSubRun func(subReg *native.Registry, src string) ([]native.Value, error)
 

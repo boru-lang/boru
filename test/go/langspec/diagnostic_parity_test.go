@@ -250,7 +250,7 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 		t.Logf("  armed-only: %s", r)
 	}
 	gate(t, "armed-only diagnostics", armedOnly, 0, armedOnlyCeiling, false,
-		"programs `boru check` calls clean and the compiler refuses — a user cannot diagnose them (NUR103)")
+		"programs `boru check` calls clean and compiling FAILS — a user cannot diagnose them (NUR103)")
 	gate(t, "diagnostic parity divergences", diverged, 0, diagnosticParityCeiling, false,
 		"rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes: "+strings.ReplaceAll(topShapes(byShape, 3), "\n", "; "))
 }
