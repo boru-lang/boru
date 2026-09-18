@@ -164,7 +164,7 @@ wrap ([req:Map state:Any prior:Any] => [ add 1 (prior req) ]) svc
 func TestServiceAddStampsComputedMapHandler(t *testing.T) {
 	const src = `
 def svc (service {})
-add {} ([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ]) svc
+add {} ([req:Map state:Any] => [ ({message: (join "" ["unknown '" req.cmd "'"])}) ]) svc
 `
 	probe := `((call {cmd:"BOGUS"} svc) get "message")`
 

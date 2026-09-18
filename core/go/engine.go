@@ -133,6 +133,13 @@ type Engine struct {
 	// container eval runs in-frame at its own recordable site.
 	ElemEvalRecordable bool
 	ReuseTape          bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	// DeferResidual leaves the finished stack's pending containers
+	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
+	// Set by CallBoru for a body whose residual defers past the frame
+	// (ResidualEvalsInFrame false): the sub-run must not evaluate the
+	// container while the params are still bound — the caller sweeps it
+	// after the teardown, in the scope the consumer would have.
+	DeferResidual bool
 	// flowUnwind marks a VM ISLAND engine: a break/continue that escapes the
 	// island's tape (no enclosing loop there) must TEAR DOWN the island's live
 	// spliced frames before returning — in the interpreter the frame and the
@@ -1520,8 +1527,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// Lists are evaluated as sub-programs: [1 add 2] → [3].
 	// Maps have their values evaluated recursively.
 	// Values marked Quoted (by the quote word) are left as-is.
-	if err := e.autoEvalStack(); err != nil {
-		return nil, e.faultReturn(err)
+	// A DeferResidual run (CallBoru's deferring lambda body) hands them
+	// back pending; the caller sweeps them after its frame teardown.
+	if !e.DeferResidual {
+		if err := e.autoEvalStack(); err != nil {
+			return nil, e.faultReturn(err)
+		}
 	}
 
 	// Orphan GenSpec residue (generics plan D1/D2): a `gen [...]`
@@ -4117,32 +4128,39 @@ func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 
 func (e *Engine) autoEvalStack() error {
 	for i := 0; i < e.Tape.Len(); i++ {
-		val := e.Tape.At(i)
-		if !val.Quoted {
-			// Typed containers carry no Eval flag — resolve by shape.
-			if rv, ok := e.resolveInertTypeShape(val); ok {
-				e.Tape.Set(i, rv)
-				continue
-			}
+		result, err := e.autoEvalResidual(e.Tape.At(i))
+		if err != nil {
+			return err
 		}
-		if !val.Eval || val.Quoted {
-			continue
-		}
-		if val.Parent.Equal(TList) && val.Data != nil && !IsTypedList(val) && !IsTableType(val) {
-			result, err := e.autoEvalList(val, false)
-			if err != nil {
-				return err
-			}
-			e.Tape.Set(i, result)
-		} else if val.Parent.Equal(TMap) && val.Data != nil && !IsTypedMap(val) && !IsRecordType(val) && !IsOptionsType(val) {
-			result, err := e.AutoEvalMap(val, false, false)
-			if err != nil {
-				return err
-			}
-			e.Tape.Set(i, result)
-		}
+		e.Tape.Set(i, result)
 	}
 	return nil
+}
+
+// autoEvalResidual evaluates ONE end-of-run residual value exactly as the
+// final-stack sweep does — a pending plain list or map evaluates as a
+// sub-program, an inert typed container resolves by shape, everything
+// else passes through. Shared by autoEvalStack and by CallBoru's
+// post-teardown sweep of a DEFERRED lambda residual (ResidualEvalsInFrame
+// false), so the deferred container is evaluated by the same routine a
+// consumer would have applied to it.
+func (e *Engine) autoEvalResidual(val Value) (Value, error) {
+	if !val.Quoted {
+		// Typed containers carry no Eval flag — resolve by shape.
+		if rv, ok := e.resolveInertTypeShape(val); ok {
+			return rv, nil
+		}
+	}
+	if !val.Eval || val.Quoted {
+		return val, nil
+	}
+	if val.Parent.Equal(TList) && val.Data != nil && !IsTypedList(val) && !IsTableType(val) {
+		return e.autoEvalList(val, false)
+	}
+	if val.Parent.Equal(TMap) && val.Data != nil && !IsTypedMap(val) && !IsRecordType(val) && !IsOptionsType(val) {
+		return e.AutoEvalMap(val, false, false)
+	}
+	return val, nil
 }
 
 // autoEvalList evaluates the contents of a plain list in a sub-engine,
@@ -6173,7 +6191,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		UnnamedCount:   unnamedCount,
 		FuncName:       "<fn>",
 		Pos:            callPos,
-		EvalResidual:   !anonymous || BodyEvalsResidual(sig.Body()),
+		EvalResidual:   ResidualEvalsInFrame(anonymous, sig.Body()),
 	})
 	tokens = append(tokens, NewCloseParen())
 

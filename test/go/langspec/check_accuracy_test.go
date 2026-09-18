@@ -68,6 +68,14 @@ var unflaggedPins = map[string]int{
 	// false positives. They are pinned here because the checker genuinely
 	// cannot decide them today, not because the rows are wrong.
 	"fold-map-filter.tsv": 2,
+	// each-variants.tsv: 1 ERROR row, added 2026-09-18 with NUR153's ruling —
+	// the pin that an anonymous `=>` whose body is a single BARE container
+	// defers, so its param is unbound and the row raises `undefined_word` at
+	// RUN time. The checker cannot flag it statically: the body is well-typed
+	// and the name is a bound param where the checker reads it; only the
+	// residual rule, applied when the container leaves the frame, makes it
+	// unbound. Pinned because the checker genuinely cannot decide it.
+	"each-variants.tsv": 1,
 	// accessor.tsv: both unflagged rows are STORE misses (get + the NUR021
 	// getr twin) — deliberately unproven: the context store is open-world
 	// (a prototype layer / another scope may bind the key), so

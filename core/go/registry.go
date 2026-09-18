@@ -1704,9 +1704,20 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	defSnapshot := r.Defs.Snapshot()
 
 	// Evaluate in a sub-engine with higher step limit for complex bodies.
+	//
+	// THE residual rule (ResidualEvalsInFrame, NUR153): an anonymous `=>`
+	// fn's single bare container literal DEFERS past the frame. The
+	// sub-run's end-of-run sweep would evaluate it here, with the params
+	// and captures still bound on r — that was regime 2, the seam reading
+	// a param the tape apply of the same value resolves in module scope.
+	// So a deferring body runs with the sweep held (DeferResidual), and
+	// the pending container is swept below, AFTER the teardown, in the
+	// scope the consumer would have evaluated it in — the tape's answer.
+	deferResidual := !ResidualEvalsInFrame(sig.Anonymous, sig.Body())
 	sub := NewTop(r)
 	sub.StartAt = unnamedCount
 	sub.debugLabel = label
+	sub.DeferResidual = deferResidual
 	result, err := sub.Run(tokens)
 
 	// Cleanup: pop args stack, undef named params + captures, then
@@ -1749,6 +1760,17 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		// a fn-call / import boundary and broke *BoruError type
 		// assertions downstream (decision DX report finding 4).
 		return nil, err
+	}
+	if deferResidual {
+		// The deferred residual's sweep — the frame is torn down, so a
+		// bare param name in the container is exactly as unbound as it
+		// is when the tape apply's consumer evaluates the same literal.
+		sweep := NewTop(r)
+		for i := range result {
+			if result[i], err = sweep.autoEvalResidual(result[i]); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Mirror the frame collapse's unnamed-arg DISCARD (stepCloseParen's

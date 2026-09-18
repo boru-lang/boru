@@ -1318,3 +1318,46 @@ deliberately leaves alone: `e.Registry` (the seam default), `.ID == ""`
 (a uniform designed meaning across value kinds), and the plain `Name ==
 ""` reads that mean exactly "has no name" (a display label, a name to
 record a use against).
+
+### 12.9 One rule for the residual — NUR153 closed, 2026-09-18
+
+§11 says a function value means the same thing wherever it goes. Its
+RESIDUAL — the pending container a body leaves — did not: the tape apply
+of an anonymous `=>` whose body is a single bare container DEFERRED it
+past the frame (the bare name resolving in module scope, the pinned
+no-closures transparency of `def-node-binding.tsv` §3), while a native
+seam invoking the same value through `InvokeCallback` / `CallBoru`
+evaluated it in the live frame, against the bound params. Same value,
+same body, two answers. The compiled stamp is one unit and took the seam's
+regime, so a stamped stored `=>` applied on the tape answered `[[{z:1}]]`
+where the interpreter answered `[[99]]` — silent, exit 0.
+
+The maintainer ruled the TAPE rule, everywhere (NUR153's entry carries the
+ruling and its implementation). The rule is now one predicate that every
+seam asks and none spells for itself:
+
+```go
+// core/go/fn_frame.go
+func ResidualEvalsInFrame(anonymous bool, body []Value) bool {
+    return !anonymous || BodyEvalsResidual(body)
+}
+```
+
+- `Registry.CallBoruNamed` holds the sub-run's end-of-run sweep for a
+  deferring body (`Engine.DeferResidual`) and sweeps the pending container
+  after the frame teardown, so a bare param is as unbound as the tape
+  leaves it;
+- the recorder's admission (`check/go/carrier.go`) loses its by-NAME arm —
+  `isCallbackBodyName` is deleted and the condition IS the predicate.
+
+**What a developer must know.** A callback that reads its params into a
+returned container writes a COMPUTING body — multi-token, or the container
+in parens:
+
+```boru
+([req:Map state:Any] => [ {message: req.cmd} ])     # defers: `req` is unbound, and it RAISES
+([req:Map state:Any] => [ ({message: req.cmd}) ])   # computes in-frame: the reading a handler wants
+```
+
+The failure is loud (`undefined_word`), never a wrong answer. The example
+apps and the codec handlers in this tree are written the second way.

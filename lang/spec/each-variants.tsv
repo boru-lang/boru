@@ -125,8 +125,9 @@ each ([x:Integer] => [[] push x push x]) [1 2]	[[1 1] [2 2]]	a two-element list 
 each ([x:Integer] => [push x [0]]) [1 2]	[[0 1] [0 2]]	…built the other way round
 def pair fn [[x:Integer][List][[x x]]] end each pair/v [1 2]	[[1 1] [2 2]]	a fn value returning a list literal
 def mk fn [[x:Integer][Map][{v: x}]] end each mk/v [1 2]	[{v:1} {v:2}]	a MAP per element
-each ([kv:KeyVal] => [{k: (kv.k) v: (kv.v)}]) {a:1}	{a:{k:'a' v:1}}	a map per entry, over a map
-def tolist fn [[m:Map][List][each ([kv:KeyVal] => [[(kv.k) (kv.v)]]) m end vals]] end tolist {a:1}	[['a' 1]]	entries rebuilt as [key value] pairs
+each ([kv:KeyVal] => [({k: (kv.k) v: (kv.v)})]) {a:1}	{a:{k:'a' v:1}}	a map per entry, over a map
+each ([kv:KeyVal] => [{k: (kv.k) v: (kv.v)}]) {a:1}	ERROR:undefined_word	NUR153, the residual rule: an anonymous `=>` whose body is a single BARE container defers past the frame, so `kv` is unbound — wrap the container to compute in-frame (the row above)
+def tolist fn [[m:Map][List][each ([kv:KeyVal] => [([(kv.k) (kv.v)])]) m end vals]] end tolist {a:1}	[['a' 1]]	entries rebuilt as [key value] pairs
 #
 # §13  each over a COMPUTED / dynamic collection
 each [mul 2] (reverse [1 2 3])	[6 4 2]	the collection is a word's result
@@ -156,7 +157,7 @@ for-each ([x:Integer] => [x]) []		for-each over an empty list leaves nothing at 
 def xs ['a' 'b' 'c'] end each ([i:Integer] => [xs get i]) (iota (size xs))	['a' 'b' 'c']	the list idiom: walk the indices, read the element
 def xs [10 20 30] end each ([i:Integer] => [i mul (xs get i)]) (iota 3)	[0 20 60]	…and use both index and element
 iota 4 each ([i:Integer] => [i mul i])	[0 1 4 9]	iota as the index source, stack form
-def m {a:1 b:2} end each ([kv:KeyVal] => [{key: (kv.k) idx: (kv.i) tot: (kv.n)}]) m	{a:{key:'a' idx:0 tot:2} b:{key:'b' idx:1 tot:2}}	the map form carries the index for free
+def m {a:1 b:2} end each ([kv:KeyVal] => [({key: (kv.k) idx: (kv.i) tot: (kv.n)})]) m	{a:{key:'a' idx:0 tot:2} b:{key:'b' idx:1 tot:2}}	the map form carries the index for free
 import "boru:string-util" end def cs (StringUtil.split '' 'hey') end each ([i:Integer] => [cs get i]) (iota (size cs))	['h' 'e' 'y']	indexing a string's characters
 #
 # §16  CHAINING — each into each, each into fold, fold over each

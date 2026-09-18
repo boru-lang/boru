@@ -311,6 +311,16 @@ type FnSig struct {
 	// receives its operands as code. See design/legacy/MACROS-PHASE1.10.ignore §3.
 	FormArgs map[int]bool
 
+	// Anonymous marks a signature minted by the `=>` sugar (`afn`) — the
+	// per-signature reading of FnDefInfo.Anonymous, stamped by NewFunction
+	// on every signature of an anonymous definition so the two never
+	// disagree for a minted value. It answers the ONE question a dispatch
+	// that holds only the signature (CallBoru) has to ask about the value
+	// it came from: how the body's residual evaluates
+	// (ResidualEvalsInFrame — an anonymous fn's single bare container
+	// literal DEFERS past the frame; NUR153).
+	Anonymous bool
+
 	// --- Run implementation + dispatch metadata. ---
 
 	// Impl is the signature's run implementation as a sealed sum
@@ -2855,6 +2865,25 @@ func NewMoveIf(to, reason string, ifCont *IfCont) Value {
 func NewFunction(info FnDefInfo) Value {
 	if info.ident == nil {
 		info.ident = &fnIdent{}
+	}
+	// An anonymous definition stamps its anonymity onto every signature
+	// (FnSig.Anonymous) here, at the one seam every fn value passes
+	// through, so a dispatch holding only the matched signature — CallBoru
+	// — reads the same fact the frame builders read from the definition.
+	// The slice is cloned before the first stamp so a caller's authored
+	// signatures are never written through.
+	if info.Anonymous {
+		stamped := false
+		for i := range info.Signatures {
+			if info.Signatures[i].Anonymous {
+				continue
+			}
+			if !stamped {
+				info.Signatures = append([]Signature(nil), info.Signatures...)
+				stamped = true
+			}
+			info.Signatures[i].Anonymous = true
+		}
 	}
 	return NewValueRaw(TFunction, info)
 }

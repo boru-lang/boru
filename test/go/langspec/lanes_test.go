@@ -164,8 +164,11 @@ func appendGateSummary(name string, got, end, ceiling int, status, why string) {
 // entry with the fix that closed it). A listed row's divergence is open debt
 // on the direction lane and a known, tracked defect on the regression lane.
 var knownDivergences = map[string]string{
-	"code-bodies.tsv:L142":        "NUR154 — `case` lowers its clause list as a static literal operand, so a quoted list a fn returns is a run-time value the lowering never reads: 'one' interpreted, case_error compiled",
-	"each-variants.tsv:L215":      "NUR155 — the compiled callback dispatch binds each element into the unit's param slot and never mirrors the interpreter's per-element MatchFnSig, so a typed lambda runs on every element",
+	"code-bodies.tsv:L142": "NUR154 — `case` lowers its clause list as a static literal operand, so a quoted list a fn returns is a run-time value the lowering never reads: 'one' interpreted, case_error compiled",
+	// L215 -> L216 on 2026-09-18: NUR153's pin row was inserted above it in
+	// each-variants.tsv, shifting every row below by one. The divergence is
+	// unchanged — the KEY moved, not the defect.
+	"each-variants.tsv:L216":      "NUR155 — the compiled callback dispatch binds each element into the unit's param slot and never mirrors the interpreter's per-element MatchFnSig, so a typed lambda runs on every element",
 	"module-composition.tsv:L102": "NUR156 — the apply of a module-homed fn value does not fire on the compiled lane (`5 M.inc/v apply` leaves 5 and the fn)",
 	"module-composition.tsv:L103": "NUR156 — the each-body apply of a module-export fn value returns the fn values",
 	"module-composition.tsv:L104": "NUR156 — the while-body apply never advances the counter and ends in tape_exhausted",

@@ -2741,7 +2741,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// like any in-frame computation. Only an anonymous lambda keeps the
 	// single-bare-literal transparency (BodyEvalsResidual), where in-frame
 	// assembly would bake the param and diverge — that shape keeps refusing.
-	if r.Check.Recorder().Active() && (isCallbackBodyName(name) || !anonymous || core.BodyEvalsResidual(body)) {
+	if r.Check.Recorder().Active() && core.ResidualEvalsInFrame(anonymous, body) {
 		sub.ElemEvalRecordable = true
 	}
 	result, err := sub.Run(input)
@@ -2768,17 +2768,6 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	}
 	r.Defs.Restore(snapshot)
 	return result
-}
-
-// isCallbackBodyName reports whether name is a stored-fn / spawn callback
-// body — compileClosureBody builds "storedfn$body" / "spawnbody$body" for the
-// words "storedfn" / "spawnbody". Only those bodies are admitted to residual
-// assembly recording by NAME: a native seam invokes them through
-// InvokeCallback / CallBoru, where the interpreter evaluates the residual in
-// the live frame whatever the value's anonymity (NUR153 records the tape
-// regime of the same value, which defers).
-func isCallbackBodyName(name string) bool {
-	return name == "storedfn$body" || name == "spawnbody$body"
 }
 
 // AnalyseFnBody runs a user-defined fn body through a sub-engine in

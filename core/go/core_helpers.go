@@ -399,7 +399,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   u,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		skeleton = append(skeleton, NewCloseParen())
 		// When the body provably never reads `args` (sound under the
@@ -573,7 +573,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   unnamedCount,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		result = append(result, NewCloseParen())
 		return result, nil

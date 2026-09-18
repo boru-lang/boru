@@ -91,7 +91,7 @@ keep the two in sync in the same commit.
 | [NUR156](#nur156) | A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
 | [NUR158](#nur158) | A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
-| [NUR153](#nur153) | One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
+| [NUR153](#nur153) | RESOLVED 2026-09-18 (the tape rule everywhere). One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
@@ -6567,8 +6567,8 @@ designs and stay as they are; the main program still has neither.
 
 ## NUR153 — one stored `=>` value, two evaluation regimes {#nur153}
 
-**Status:** Ruled (maintainer, 2026-09-18) — the tape rule everywhere;
-implementation pending (S1's opening increment).
+**Status:** RESOLVED 2026-09-18 — the tape rule implemented everywhere;
+the divergence is closed and the fence pins the rule.
 
 **Ruling (maintainer, 2026-09-18): follow the recommendation.** Regime 1
 is the specification: a lambda's single container residual DEFERS,
@@ -6637,6 +6637,58 @@ the compiled tape-apply divergence — so the day any of them moves, this
 record is the first thing to update. `lang/spec/callbacks.tsv` carries the
 `fn`-word twin (parity); the diverging `=>` row stays out of the main
 corpus, as a divergence must.
+
+**How it closed (2026-09-18).** The rule is ONE predicate,
+`core.ResidualEvalsInFrame(anonymous, body)` (`core/go/fn_frame.go`): a
+residual container evaluates in the live frame unless the fn is an anonymous
+`=>` whose body is a single bare container, which defers. Every seam asks it
+and none spells it for itself:
+
+- the CallBoru sub-run a native seam invokes (`Registry.CallBoruNamed`) holds
+  its end-of-run sweep for a deferring body (`Engine.DeferResidual`) and
+  sweeps the pending container AFTER the frame teardown, in the scope the
+  consumer would have evaluated it in — so a bare param name is exactly as
+  unbound as the tape leaves it;
+- the compiler's residual-recording admission (`check/go/carrier.go`) loses
+  its by-NAME arm (`isCallbackBodyName`, `storedfn$body` / `spawnbody$body`,
+  deleted): the condition was
+  `isCallbackBodyName(name) || !anonymous || BodyEvalsResidual(body)`, which
+  collapses exactly into the shared predicate.
+
+**Measured.** The diverging row `def a 99 … ([a:Map] => [[a]]) … h {z:1}`
+answers `[[99]]` on all three lanes (interpreted, compiled, compiled-strict);
+it answered `[[{z:1}]]` compiled before. The seam and its tape twin now answer
+identically, value AND error taxonomy: both `[]` with
+`[boru/undefined_word]: undefined word: req` for a deferred container that
+reads its param.
+
+**The cost, and the migration.** Every `=>` callback whose body is a SINGLE
+CONTAINER LITERAL READING ITS PARAMS now defers and raises — loudly, never a
+wrong answer. The migration is one character pair: wrap the container so the
+body COMPUTES (`=> [ ({message: req.cmd}) ]`), which evaluates in-frame as
+before. Rewritten here: mini-redis's catch-all and todo-api's hits handler
+(`design/examples/apps/`), the net codec handlers and the model action
+(`lang/go/modules/net_test.go`, `net_stamp_test.go`,
+`lang/go/test/model_test.go`), and the service stamp pin
+(`native_service_stamp_test.go`). Eight tests moved in all — the ruling's
+record named only mini-redis's catch-all, so the true scale is recorded here.
+
+**What the gates measured.** The interp-entry census falls 54 -> 52: a
+deferring anonymous callback no longer enters the interpreter through the
+CallBoru seam to evaluate its residual in the live frame, so two
+`each-variants` rows stop entering (`interpEntryRowCeiling`, lowered in the
+same change). One corpus row is added pinning that the bare spelling now
+raises, with a `unflaggedPins` entry — the checker cannot flag it statically,
+since the name is a bound param where the checker reads it and only the
+residual rule, applied as the container leaves the frame, makes it unbound.
+Inserting that row shifted `each-variants.tsv` below it by one line, so
+NUR155's ledger key moved `L215` -> `L216`; NUR155 itself is UNCHANGED and
+still open — the key moved, not the defect.
+
+**Fence.** `lang/go/stored_callback_residual_test.go` pins THE RULE in four
+parts: the named-fn twin (in-frame everywhere), the tape rule, the seam
+answering exactly what the tape answers (value and taxonomy), and the
+computing-body migration working on both engines.
 
 ## NUR154 — a `case` over a factory-produced clause list miscompiles {#nur154}
 

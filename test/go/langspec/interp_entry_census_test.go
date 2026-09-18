@@ -748,7 +748,12 @@ import (
 // the row's reads and writes run on the VM where they went through
 // CallBoru before. The stamp's decline keeps its pin on a nested lambda's
 // read (TestStampConstDynScopeDeclineKeepsEnclosingCompile).
-const interpEntryRowCeiling = 54 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away
+// 54 -> 52 on 2026-09-18 (NUR153's ruling, the tape rule everywhere): a
+// deferring anonymous `=>` callback no longer enters the interpreter through
+// the CallBoru seam to evaluate its residual in the live frame — the sweep
+// happens after the frame teardown instead, so two each-variants rows stop
+// entering.
+const interpEntryRowCeiling = 52 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away
 
 func TestInterpEntryCensus(t *testing.T) {
 	t.Parallel()
