@@ -10015,5 +10015,29 @@ refuses to unify with its own text under a registry).
 **Measured after.** Locally, one test at a time on four cores: the
 heaviest walks fell from 70–125 s to 20–70 s each; the vault suite from
 293 s to 14 s; golangci-lint over thirteen modules from 127 s to under
-10 s warm. The first CI run under the new layout is recorded in the
-next entry.
+10 s warm; `make commit-gate` 58 s warm, 110 s on its first run.
+
+The first CI run under the new layout (`a9cb212`, run 35292105746) was
+**4 min 33 s** wall clock, every one of its eighteen jobs green — and
+every cache key was new, so every job paid a cold module cache, a cold
+build cache and, where it applied, a cold tool install and a cold
+golangci-lint cache. Job walls, queue to completion:
+
+| job | wall | what the time was |
+|---|---:|---|
+| checks | 268 s | setup 97 s (golangci-lint built from source, 85 s), lint 125 s on a cold cache — the run's long pole |
+| test-langspec 1–8 | 165, 169, 113, 131, 147, 185, 174, 174 s | setup 10 s each; the test step 95–165 s |
+| borudebug | 180 s | the -tags build of lang/go and the corpus package from cold, then three walks |
+| gates | 175 s | govulncheck install 20 s, three -race builds 79 s, cover-gate-core 20 s, wasm 21 s |
+| test-cmd | 124 s | cmd/go from a cold build cache 93 s, test/go 11 s |
+| test-lang root / rest | 102 / 92 s | |
+| test-core | 91 s | |
+| parity | 72 s | |
+| no-binaries / gate-table | 10 / 9 s | |
+
+Three jobs stood on or over the ceiling on that cold run, each for a
+cold-cache reason (a tool compiled from source, a lint cache, a shard
+whose estimate was under load); what changed for the second run: the
+lint release binary is downloaded (three seconds either way), the race
+gates are a job of their own, and the shards are rebalanced on an idle
+measurement. The warm run's numbers follow.

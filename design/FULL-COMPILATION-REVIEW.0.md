@@ -617,8 +617,12 @@ had the numbers for. What landed:
 | the kernel | the unify registry threaded, a package-global stack gone | the parallel walks were the first to race on `core.unifyRegistryStack`, the slice every `UnifyExplainR` pushed and every goroutine's registry-less `Unify` read (class construction, conditionals, the `unify` word — hot paths, so any concurrent program raced too). The registry is now a parameter through the whole unify recursion and the `Unifier` interface; pinned under the detector by `TestUnifyRegistryArmedConcurrentNoRace` (403 reports before, none after) and in CI's race gates. One deliberate change fell out and is pinned: a predicate body's dispatch is unarmed like top level (it used to be armed by whatever unify was in flight on ANY goroutine); one pre-existing oddity the threading kept verbatim is NUR157 |
 | the commit gate | `make commit-gate` | `scripts/commit-gate.sh`: gofmt, vet and lint on the touched modules in parallel; the touched modules' unit tests (the changed packages of `lang/go` and `cmd/go`); the langspec gates over a smoke corpus (eleven files, one per family that has bitten) plus every spec file the change touched, under `BORU_SPEC_FILES`; the knowledge graph when docs or tooling changed. Each lane prints its time; a breach of the ceiling is a warning whose fix is in the script or the tests, never in a skipped lane |
 
-The measured result of the first run under the new layout is recorded
-with it in the log (FULL-COMPILATION-HANDOFF.0.md).
+The first run under the new layout (`a9cb212`) was 4 min 33 s with
+every cache key new — every job cold — and eighteen green jobs; the
+long pole was the checks job compiling golangci-lint from source and
+linting on a cold cache (268 s), with one shard and the borudebug job
+at the ceiling. The log (FULL-COMPILATION-HANDOFF.0.md) carries the
+per-job table and the warm run that followed the cold-path fixes.
 
 One checker defect the kg investigation exposed and this note only
 records: a relative import that resolves to nothing is silent in check

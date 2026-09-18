@@ -13,7 +13,7 @@ name: CI
 #     long as everything else), the langspec corpus in shards whose tests
 #     walk the corpus on every core (test/go/langspec/walk_test.go) and run
 #     in parallel with each other, the post-test gates split by what they
-#     need installed, the borudebug build alone;
+#     need installed, the race gates and the borudebug build alone;
 #   - the setup is per job: the composite action installs Node, the lint
 #     or vuln tool, or builds the CLI only for the job that asks;
 #   - the REGRESSION lane is what blocks: every gate in test/go/langspec
@@ -102,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     env:
       BORU_GATE_SUMMARY: ${{ github.workspace }}/gate-status-${{ matrix.shard }}.md
     steps:
@@ -113,7 +113,7 @@ jobs:
       - name: Shard count matches this matrix
         run: |
           n=$(make -s langspec-shard-count)
-          [ "$n" = "8" ] || { echo "shards.tsv defines $n shards; update the matrix in ci.yml"; exit 1; }
+          [ "$n" = "9" ] || { echo "shards.tsv defines $n shards; update the matrix in ci.yml"; exit 1; }
       - run: scripts/ci-steps.sh test-langspec ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
@@ -164,11 +164,20 @@ jobs:
       # workflow_dispatch) because re-profiling 13 modules would dominate
       # every PR.
       - run: scripts/ci-steps.sh cover-gate-core
-      - run: scripts/ci-steps.sh race-gates
       - run: scripts/ci-steps.sh wasm
       # Advisory: govulncheck flags standard-library vulns fixed in newer
       # 1.24.x patch releases — see STATIC_ANALYSIS_REPORT.md.
       - run: scripts/ci-steps.sh vuln
+
+  # The race gates build three packages under -race — a second compile of
+  # the kernel, the language layer and the corpus package — so they are a
+  # job of their own rather than the gates job's long pole.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: scripts/ci-steps.sh race-gates
 
   # The borudebug build is a second compile of lang/go and the corpus
   # differentials, so it is a job of its own.
