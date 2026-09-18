@@ -136,7 +136,32 @@ is identity, so two source literals must stay two consts with two IDs.
 
 ---
 
-## 5. What refuses today (the open-defect taxonomy)
+## 5. What fails to compile today (the open-error inventory)
+
+> **Islanding: zero, and not negotiable (maintainer, 2026-09-17).** An island
+> is a region of a COMPILED program that still runs on the interpreter — the
+> fallback in miniature, inside something the compiler has called a success.
+> There is no island budget and no island ledger; `islandGate` stays 0 and the
+> gate stays red until the count is 0.
+>
+> The corpus expansion of 2026-09-17 exposed **15 islanding rows**, all one
+> family: **the callback is a fn VALUE rather than a literal body, and usually
+> returns a compound value.** In full, so they are findable:
+>
+> | row | shape |
+> |---|---|
+> | `each-variants.tsv` L126, L127 | `each pair/v [1 2]` — a named fn value returning a List / a Map |
+> | `each-variants.tsv` L128, L129, L159 | a `KeyVal` lambda over a Map returning a Map or List |
+> | `callbacks.tsv` L104, L105, L106 | a POLY fn value as the callback; a branch-selected fn value; a fn value returning a List |
+> | `callbacks.tsv` L54, L75, L85 | a callback read from a container; a factory-built closure passed to `each` |
+> | `fold-map-filter.tsv` L87, L88, L200 | `fold` with a Map accumulator; a `Function`-typed accumulator; a list of fn values folded |
+> | `fold-map-filter.tsv` L168 | `each` over a grouped result with an `Any` lambda parameter |
+>
+> This is the same root family as the 113 compile ERRORS the same expansion
+> exposed:
+> a fn value crossing a boundary the emitter cannot follow. Closing it closes
+> both counts at once, which is why it is the highest-leverage target in §5.
+
 
 Every entry below is an unimplemented or unproven case — a defect against §1,
 owed a fix and tracked to closure, never a sanctioned design outcome.
@@ -178,6 +203,41 @@ user still gets an answer while the case is open:
   captures.
 - **Quoted-operand word** — usurp / force-arity / ref-family (results re-stepped)
   — except `get`/`getr`/`set` and module-inner natives over inert atom keys.
+- **Dispatch-modifier VALUE form over a computed fn** (the fn-operand pilot
+  of [HANDLER-MIGRATION-LINE.0.md](HANDLER-MIGRATION-LINE.0.md), 2026-09-18)
+  — `usurp` / `stack-args` / `forward-args` / `force-arity` over a TYPED
+  `Function` carrier: a user fn's declared `Function` result (`def r (usurp
+  (mk 100))  r 10 3`). The value-form sigs now declare `CompileStoresFn |
+  CompileFnHandlerStrict` — the native reads the fn's shape, stores the
+  original in the wrapper (`FnDefInfo.Wraps`) for the later re-dispatch, and
+  VALIDATES it as an `FnDefInfo` — and the only recorder seat these
+  check-mode words reach is the gradual poly record (`recordGradualWrap`),
+  which reads no declaration on the compiler side: it lowered the wrap to
+  `OpCallNativePoly`, the VM handed the native a `ClosurePayload`, and the
+  validation raised `illegal_ref` where the interpreter wraps the closure
+  (NUR158). The word's check-mode half honours the declaration by declining
+  the poly record, so the residual refuses (`… of unknown provenance`); a
+  capture-free returned fn refuses with it, since the carrier cannot tell
+  the two apart. The DYNAMIC Function carrier a sibling modifier's gradual
+  wrap produced (`usurp (forward-args (m.s))`, path-modifier.tsv:52-55) and
+  the dynamic-Any `m.a` read (path-modifier.tsv:17) keep their poly record
+  and compile; the `m.a` form over a closure is NUR158's open half.
+- **Fn-operand words still undeclared** (the pilot's open half, 7 of the
+  census's 11 fn-operand signatures): `apply [Function]` — the recorder owns
+  it by NAME (`recordCallElided`'s fn-value elision, the pending-apply
+  window, `OpCallDynTrailTop`) and no flag says "applies its operand through
+  the Apply kernel"; `CompileReadsFn` would be a permissive lie (a top-level
+  fn-typed carrier would bake a `CALL_NATIVE` whose handler leaves the marked
+  fn as DATA — the S1 fn-value line owns the word). `mini` / `parse` /
+  `emit` value forms (`(Function String Map)`, `(Function String)`,
+  `(Function Map Any)`, `(Function Any)`, `(Function Any Any)`) — the
+  handler returns a SPLICE, `<fn> <src> <opts> end`, that applies the fn on
+  the tape: a token-returning macro, the brief's REWRITE class, not a
+  declaration (`CompileReadsFn`/`CompileStoresFn` promise the fn is never
+  invoked on the tape). The check pass models the expansion (`RunInCheck`)
+  and the recorder refuses the residual (`mini`/`emit` over a computed fn:
+  "residual value of unknown provenance") or records the parser dispatch
+  (`parse`, `recordParseLangFnDispatch` + `FnDataArgs`).
 - **Code-body word** — a `NoEvalArgs` body that is not inert (a computed paren,
   or a body carrying a flow-control sentinel that targets an enclosing frame).
 - **Code-body naming a FN-LOCAL fn** (NUR037) — a body word whose current

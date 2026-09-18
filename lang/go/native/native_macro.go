@@ -350,6 +350,8 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		Signatures: []FnSig{sig},
 		Macro:      true,
 		Captured:   core.ComputeCaptures(r, &sig),
+		// Home registry, as FnConstruct stamps it for `fn` and `=>`.
+		Registry: r,
 	}
 	// (Re)constructing a macro invalidates any memoized expansions: a
 	// redefined macro must re-expand at its call sites.

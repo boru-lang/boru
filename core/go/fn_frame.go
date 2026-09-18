@@ -177,6 +177,22 @@ func BodyEvalsResidual(body []Value) bool {
 	return len(body) > 1 || (len(body) == 1 && IsParenExpr(body[0]))
 }
 
+// ResidualEvalsInFrame is THE residual rule (NUR153, ruled 2026-09-18):
+// a fn body's residual pending containers evaluate in the live frame —
+// against the bound params and captures — unless the fn is an anonymous
+// `=>` lambda whose body is a single bare container literal, which
+// DEFERS: the container leaves the frame unevaluated and resolves where
+// its consumer evaluates it (module scope; the pinned no-closures
+// transparency of def-node-binding.tsv §3). One value means one thing
+// wherever it goes (design/FUNCTION-VALUE-SCOPE.0.md §11), so every
+// seam that applies a fn value asks this — the spliced frame tail
+// (AppendFrameTail's EvalResidual), the CallBoru sub-run, and the
+// compiler's residual-recording admission — and none of them may spell
+// the rule for itself.
+func ResidualEvalsInFrame(anonymous bool, body []Value) bool {
+	return !anonymous || BodyEvalsResidual(body)
+}
+
 // AppendFrameTail appends the canonical frame cleanup tail to tokens:
 // the DefCleanup marker, the __pa word, the undef pairs for
 // captures+params (reverse install order, force-forward so undef takes

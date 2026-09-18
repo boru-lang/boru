@@ -249,6 +249,7 @@ const (
 	CompileScalarFold       = core.CompileScalarFold
 	CompileFallbackBody     = core.CompileFallbackBody
 	CompileQuoteInert       = core.CompileQuoteInert
+	CompileQuoteKey         = core.CompileQuoteKey
 	CompileDiverges         = core.CompileDiverges
 	CompileValueDiverges    = core.CompileValueDiverges
 	CompileStoresBody       = core.CompileStoresBody

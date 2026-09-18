@@ -23,11 +23,10 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -131,55 +130,35 @@ func liveOracleRow(src, where string) []string {
 // TestBindLedgerLiveDepths runs the strong oracle over the whole corpus plus
 // the synthetic branch-arm rows the corpus lacks.
 func TestBindLedgerLiveDepths(t *testing.T) {
+	t.Parallel()
 	for _, src := range syntheticBranchArmSources {
 		for _, bad := range liveOracleRow(src, "synthetic") {
 			t.Errorf("%s", bad)
 		}
 	}
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var mu sync.Mutex
 	checked, mismatched := 0, 0
 	var worst []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		bad := liveOracleRow(r.Input, fmt.Sprintf("%s:%d", r.File, r.Line))
+		if bad == nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			bad := liveOracleRow(src, fmt.Sprintf("%s:%d", e.Name(), lineNo))
-			if bad == nil {
-				continue
-			}
-			checked++
-			mismatched += len(bad)
-			for _, b := range bad {
-				if len(worst) < 20 {
-					worst = append(worst, b)
-				}
+		mu.Lock()
+		defer mu.Unlock()
+		checked++
+		mismatched += len(bad)
+		for _, b := range bad {
+			if len(worst) < 20 {
+				worst = append(worst, b)
 			}
 		}
-		_ = f.Close()
-	}
+	})
+	sort.Strings(worst) // the worklist reads the same whichever worker saw a row first
 
 	t.Logf("bind-ledger live-depth oracle: %d rows mismatched, %d name mismatches", checked, mismatched)
 	for _, w := range worst {

@@ -54,7 +54,7 @@ func TestModelActionSeesModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	okProg := modelImp + `def m (Model.new {src:'a: 1', actions:{check:([mod:Any] => [{ok: ((mod get 'a') eq 1)}])}}) (Model.run m) get 'ok'`
+	okProg := modelImp + `def m (Model.new {src:'a: 1', actions:{check:([mod:Any] => [({ok: ((mod get 'a') eq 1)})])}}) (Model.run m) get 'ok'`
 	if got := fmt.Sprintf("%v", runLast(t, a, okProg)); got != "true" {
 		t.Errorf("action ok: got %v, want true", got)
 	}

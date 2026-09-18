@@ -116,7 +116,7 @@ func TestSweepBoundedTypeSatisfiedViaBodyUnify(t *testing.T) {
 	if !ok {
 		t.Fatal("boundedChild failed on a bounded Type")
 	}
-	if !boundedTypeSatisfied(NewTypeLiteral(TInteger), child) {
+	if !boundedTypeSatisfied(NewTypeLiteral(TInteger), child, nil) {
 		t.Error("Integer literal should satisfy the disjunct body bound via Unify")
 	}
 }
@@ -663,7 +663,7 @@ func TestSweepUnifyFnUndefNoSatisfy(t *testing.T) {
 		Params: []FnParam{{Type: TInteger}, {Type: TInteger}},
 	}}})
 	fn := NewFunction(sweepFnDef()) // one param — cannot cover the 2-arg shape
-	if _, uerr := unifyFnUndefShape(undef, ShapeFnUndef, fn, ShapeFunction); uerr == nil {
+	if _, uerr := unifyFnUndefShape(undef, ShapeFnUndef, fn, ShapeFunction, nil); uerr == nil {
 		t.Error("a non-covering function must fail the FnUndef constraint")
 	}
 }
@@ -683,7 +683,7 @@ func TestSweepUnifyMapFamilyOptionsDispatch(t *testing.T) {
 	fields.Set("a", NewTypeLiteral(TInteger))
 	opts := NewOptionsType(fields)
 	conc := mapOf("a", NewInteger(1))
-	if _, uerr := unifyMapFamily(opts, Shape(opts), conc, Shape(conc)); uerr != nil {
+	if _, uerr := unifyMapFamily(opts, Shape(opts), conc, Shape(conc), nil); uerr != nil {
 		t.Errorf("options-vs-concrete dispatch failed: %v", uerr)
 	}
 }
@@ -693,7 +693,7 @@ func TestSweepUnifyConcreteMapsAbsentOmission(t *testing.T) {
 	am.Set("x", NewTypeLiteral(TAbsent))
 	bm := NewOrderedMap()
 	bm.Set("y", NewTypeLiteral(TAbsent))
-	out, uerr := unifyConcreteMaps(am, bm)
+	out, uerr := unifyConcreteMaps(am, bm, nil)
 	if uerr != nil {
 		t.Fatalf("unifyConcreteMaps: %v", uerr)
 	}
@@ -733,7 +733,7 @@ func TestSweepMemberBehaviorArms(t *testing.T) {
 	if !b.Match(NewInteger(2), mt) {
 		t.Error("a member value should Match")
 	}
-	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2)); uerr != nil || !IsConcrete(out) {
+	if out, uerr := b.Unify(NewTypeLiteral(TInteger), NewInteger(2), nil); uerr != nil || !IsConcrete(out) {
 		t.Errorf("member Unify = %v, %v", out, uerr)
 	}
 	if _, err := b.Compare(NewInteger(1), NewInteger(2)); err == nil {

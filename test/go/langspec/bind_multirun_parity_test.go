@@ -277,7 +277,7 @@ var parityShapes = []parityShape{
 // lane rather than looping).
 const probeCap = 16
 
-func probeInstalls(t *testing.T, run func(string) ([]any, error), name string) []string {
+func probeInstalls(t testing.TB, run func(string) ([]any, error), name string) []string {
 	t.Helper()
 	var seq []string
 	for i := 0; i < probeCap; i++ {
@@ -298,6 +298,7 @@ func probeInstalls(t *testing.T, run func(string) ([]any, error), name string) [
 }
 
 func TestMultiRunBindParityOracle(t *testing.T) {
+	t.Parallel()
 
 	for _, sh := range parityShapes {
 		sh := sh

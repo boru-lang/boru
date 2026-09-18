@@ -1232,3 +1232,132 @@ in `7e98aeb` hooks the same `TFunction` intercept and reworks with it.
 **Break 2** (the compiler's *"fn value read from a container
 auto-dispatches (Stage 3)"* refusal) is untouched and independent of all
 of the above.
+
+### 12.7 The reverse direction, and what "home" means — 2026-09-17
+
+§12.1's seam had a nil arm — *"fnDef.Registry == nil is a fn defined in
+the running scope, whose defining registry IS r"* — and that sentence was
+only true while a main-program fn was never applied anywhere but main.
+`Registry` was set in exactly one place, `resolveModuleExport`, so rule 1
+held module→main and not main→module: a main-program fn handed INTO a
+module (`M.run pub/v`, `run` applying its `f:Function` param) resolved its
+free words in the module. Measured: `cannot call add` interpreted where the
+compiled lane answered `6`, and with a same-named `secret` in the module
+`105` on BOTH engines for the rule's `6` — invisible to any differential.
+Recorded as NUR152 and fixed there.
+
+What landed, in three parts, each of which the first cut got wrong once:
+
+1. **The home is stamped at construction**, not at export: `fn`, `=>` and
+   `macro` write the minting registry onto the value. A nil `Registry` now
+   means only a Go-built value (a registered native, a wrapper minted by
+   Go) with no free words to resolve. `IsInertConstMember` stops keying on
+   it — a fn value is immutable code whichever module owns it; only a
+   capture is live state.
+2. **"Foreign" is a question about modules, not registry pointers.** A
+   registry has a `Home()` — itself, or for a concurrent fork the registry
+   it was forked from — and `FnHome` / `FnHomeForeign` compare homes. A fn
+   invoked on a fork of its own module runs ON THE FORK, which is what the
+   fork exists for (a service's per-connection state, an acceptor's
+   isolation); comparing pointers sent it back to the shared original and
+   raced the acceptor. Every dispatch arm that used to write
+   `fd.Registry != nil && fd.Registry != r` now asks `FnHomeForeign`.
+3. **A stored-fn or fn-value unit compiles at the VALUE's home**, never at
+   the registry the emitter happens to be bound to. `run`'s body compiles
+   foreign with `es.reg` the module's; `pub`'s unit, compiled from inside
+   it, was stamped with the module as owner and read `secret` there at run
+   time (`105`). The caller's check state is shared onto a foreign home,
+   exactly as `tryRecordLambdaClosure` already did.
+
+What this does NOT change: `Registry.ModuleScope` (the open-words rule)
+and `ModuleRef` (the per-export policy identity) are deliberate
+module-only designs and stay as they are — the main program still has
+neither. The word "module scope" still names three different predicates
+in the code (`Registry.ModuleScope`, `core.ModuleScopeBinding`, the
+emitter's `len(es.units) == 1`); that is a naming debt, not a semantic
+one, and it is left for its own change.
+
+### 12.8 The sentinel audit — 2026-09-17
+
+§12.7's nil arm was one instance of a pattern: a nil or empty field read
+at the site as if the field's type said what nil meant. An inventory of
+the ~260 nil / `""` comparisons in production Go sorted them into
+readings that carry a MEANING beyond the field (a fn value's `Registry`,
+a compiled unit's `Reg`, a registry's `ModuleRef` and `home`, a fn's
+`Name` read against `Anonymous`) and readings that do not (`err != nil`,
+the Engine's seam default `e.Registry`, a local `reg == nil` guard). Only
+the first kind was touched, and each meaning now has ONE predicate:
+
+| reading | was spelled | now asks |
+|---|---|---|
+| a Go-built value with no home | `fd.Registry == nil` | `fd.HasHome()` |
+| the definition a wrapper delegates to | `fd.Registry == nil \|\| fd.Name == ""` then `fd.Registry.Lookup(fd.Name)` | `FnHomeLookup(&fd)` |
+| an export's home, minted or adopted | three-branch `Registry == nil` / `== modReg` twins | `HomeExportedFn(v, modReg)` |
+| a fn value applied across a module boundary | `reg != nil && reg != r` | `FnHomeForeign(r, &fd)` |
+| a registry that is a module (or a fork of one) | `reg.ModuleRef == ""` | `reg.IsModule()` |
+| a compiled record's dispatch registry | `lookup := r; if pr.Reg != nil {…}` (three copies) | `dispatchRegistry(pr.Reg, r)` |
+| a unit that runs elsewhere | `fn.Reg != nil && fn.Reg != r` | `dispatchRegistry(fn.Reg, r) != r` |
+| the program registry / a foreign sub-registry | `reg == nil \|\| reg != es.progReg` | `es.isProgramRegistry(reg)` / `es.isForeignRegistry(reg)` |
+| a def-bound verbose fn, not a closure literal | `!fd.Anonymous && fd.Name != ""` (five spellings) | `fd.NamedDef()` |
+| a frame's registry, by identity | `dcInfo.Registry != e.Registry` | `dcInfo.FrameOn(e.Registry)` |
+
+Two readings turned out to be the same one under different names and
+one was a leftover: `IsInertConst`'s `d.Registry == nil → true` arm was
+the §12.1 sentence again (a Go-built value is the degenerate homed case
+and takes the same `!d.Macro` answer), and `boru:test`'s export resolver
+carried a `//covergate:allow` for a re-export arm it now shares with the
+kernel's through `HomeExportedFn`.
+
+The gate: `test/go/sentinelgate` parses every production Go file and
+fails on a `==`/`!=` of any of those fields against nil, `""` or another
+registry, and on `Name == ""` and `Anonymous` read in one condition,
+anywhere but a line carrying `//sentinel:home <reason>` — the predicate's
+own defining line. The marker count is pinned in both directions, so a
+new reading is argued in the gate, never added at a site. What the gate
+deliberately leaves alone: `e.Registry` (the seam default), `.ID == ""`
+(a uniform designed meaning across value kinds), and the plain `Name ==
+""` reads that mean exactly "has no name" (a display label, a name to
+record a use against).
+
+### 12.9 One rule for the residual — NUR153 closed, 2026-09-18
+
+§11 says a function value means the same thing wherever it goes. Its
+RESIDUAL — the pending container a body leaves — did not: the tape apply
+of an anonymous `=>` whose body is a single bare container DEFERRED it
+past the frame (the bare name resolving in module scope, the pinned
+no-closures transparency of `def-node-binding.tsv` §3), while a native
+seam invoking the same value through `InvokeCallback` / `CallBoru`
+evaluated it in the live frame, against the bound params. Same value,
+same body, two answers. The compiled stamp is one unit and took the seam's
+regime, so a stamped stored `=>` applied on the tape answered `[[{z:1}]]`
+where the interpreter answered `[[99]]` — silent, exit 0.
+
+The maintainer ruled the TAPE rule, everywhere (NUR153's entry carries the
+ruling and its implementation). The rule is now one predicate that every
+seam asks and none spells for itself:
+
+```go
+// core/go/fn_frame.go
+func ResidualEvalsInFrame(anonymous bool, body []Value) bool {
+    return !anonymous || BodyEvalsResidual(body)
+}
+```
+
+- `Registry.CallBoruNamed` holds the sub-run's end-of-run sweep for a
+  deferring body (`Engine.DeferResidual`) and sweeps the pending container
+  after the frame teardown, so a bare param is as unbound as the tape
+  leaves it;
+- the recorder's admission (`check/go/carrier.go`) loses its by-NAME arm —
+  `isCallbackBodyName` is deleted and the condition IS the predicate.
+
+**What a developer must know.** A callback that reads its params into a
+returned container writes a COMPUTING body — multi-token, or the container
+in parens:
+
+```boru
+([req:Map state:Any] => [ {message: req.cmd} ])     # defers: `req` is unbound, and it RAISES
+([req:Map state:Any] => [ ({message: req.cmd}) ])   # computes in-frame: the reading a handler wants
+```
+
+The failure is loud (`undefined_word`), never a wrong answer. The example
+apps and the codec handlers in this tree are written the second way.

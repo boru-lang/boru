@@ -261,7 +261,7 @@ func TestExecHonoursPolicy(t *testing.T) {
 }
 
 // A genuinely-REFUSING program (the mid-expression fn-value apply) rides
-// the server's explicit interpreter fallback on compile_refused and still
+// the server's explicit interpreter fallback on compile_failed and still
 // answers — the exec surface's graceful-degradation contract post-lift
 // (policy-gated servers now compile, so the fallback arm is exercised by
 // refusal shapes, not by policies).

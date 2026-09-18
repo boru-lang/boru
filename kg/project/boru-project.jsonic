@@ -292,6 +292,36 @@
       metadata: { repository: "boru-lang/boru" }
     }
     {
+      id: "src:handler-migration-line"
+      kind: "text"
+      locator: "design/HANDLER-MIGRATION-LINE.0.md"
+      title: "the handler-migration line — a second session's brief"
+      retrieved_at: null
+      content_hash: "handler-migration-line-2026-09-17"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
+      id: "src:full-compilation-replan"
+      kind: "text"
+      locator: "design/FULL-COMPILATION-REPLAN.0.md"
+      title: "full compilation \u2014 re-planned and re-estimated after the velocity work"
+      retrieved_at: null
+      content_hash: "full-compilation-replan-2026-09-18"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
+      id: "src:full-compilation-review"
+      kind: "text"
+      locator: "design/FULL-COMPILATION-REVIEW.0.md"
+      title: "full compilation — the plan re-examined: realism, strategy, algorithm"
+      retrieved_at: null
+      content_hash: "full-compilation-review-2026-09-17"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:paren-restep-rule"
       kind: "text"
       locator: "design/PAREN-RESTEP-RULE.0.md"
@@ -535,6 +565,12 @@
       attributes: { role: "the CURRENT-STATE page for the full-compilation project, and the one file a fresh session reads first: it says where the gates stand today rather than how they got there, which is the division of labour with FULL-COMPILATION-HANDOFF.0.md — that log is append-only, so an earlier section's dated figures survive beside the later ones that overtook them and it is the wrong place to look for what is true now. Carries the gate table (frontier ledger 29, interp-entry census 29 and failing in BOTH directions, refusal/island/type-soundness pins at 0, minCompiledRows 6410, diagnostic-parity 320, armed-only 4, two remaining twin-placement shapes), what is in flight on the branch, the next increment's three MEASURED constraints with the design they rule out, the ranked alternatives, the instruments that can see a defect the ordinary gates cannot (TestInterpEntryCensus is the only thing that sees a compiled program whose BODY is interpreted, since -force-compile reports SUCCESS for those; TestVariationDifferential runs only under make test and the merged coverage gate), and the process rules this line paid for in red CI — among them that re-running the gate that owns an edit applies to cosmetic edits too (four reds traced to skipping it, one on a commit containing nothing but a design note), that CI green is not the same as gated because the repo-wide ADR-008 floor is a separate dispatchable workflow, that a what-remains-is narrowing inherits the last reader's vantage point, and that a COUNT test may be asked of the probe where a SHAPE test may not" } }
     { key: "full-compilation-assessment", type: "Document", label: "design/FULL-COMPILATION-ASSESSMENT.0.md"
       attributes: { role: "the dated (2026-09-14) progress assessment and forecast for the full-compilation project, measured on main at c34a2fb (increment 59) rather than transcribed from the design's status lines: it separates the two progress curves the project has — the corpus SAMPLE (frontier ledger 127 -> 29, interp-entry census 184 -> 28 in seventeen days) and the gate INVENTORY the mission is actually defined against (92 MarkUncompilable sites of 96, 114 undeclared handlers of 114, 5 defers of 5 across 17 vmDefer sites, 281 unattributed engine entries under a 505 ceiling never lowered, OpFallback and the drift window and BORU_COMPILE_FALLBACK all live, OpCollect and OpDispatchGeneric declared nowhere) — and reads the stage table against the tree (0-2 landed, 3 mostly, 4 half: twins flipped and the dispatch half unbuilt, 5 in narrow form, 6 started by rows, 7-9 not started). It classifies the remaining 29 ledger rows and 28 census rows by mechanism and reach (about 20 row-level, about 25 needing a Stage 5 or 7 slice, about 12 structural), gives calibrated probabilities per end state (corpus-native with rulings roughly 70% within a month and 90% by year end; T1 + T2 as written under 5% within a month, about 25% by year end, about 55% eventually; with an amended carve-out list 45% by year end), and sizes the remaining effort in session-days (18-33 to corpus-native with rulings, a further 65-115 to T1 + T2 with carve-outs, against about 20 spent). Its recommendations: rule O2, O4 and the attributed set in writing; build the generic lane's first executing slice on the k pair next; stop taking rows whose fix is a Stage 5 or 7 slice as row-level increments; assign every refusal site a disposition in one census pass; fence the registry at the spawn seam; keep the one-in-seven negative-result rate; refresh this note at the end of each tier" } }
+    { key: "handler-migration-line", type: "Document", label: "design/HANDLER-MIGRATION-LINE.0.md"
+      attributes: { role: "the brief for a second session that runs the handler-migration line (FULL-COMPILATION.0.md §6.8, Stage 6; the review's §5 step S2) beside the compiler line: why it is the one track that does not contend for compiler/go and had no owner since its worklist was measured on 2026-08-25 (114 declaration-relevant signatures with no compile declaration, of 172 among 522 — code-body 59, quoted 44, fn-operand 11), what it accounts for (23 of the 113 corpus refusals, 14 raw-token code-body census rows, the eight boru:test quotation-body rows), where the worklist comes from (`make handler-worklist`, the declaration census's listing), the per-word procedure (declaration versus rewrite by the reason, the corpus filter over the word's rows, the gates in order, the ceiling lowered in the same change), what done looks like (the ceiling at 0, the code-body refusal buckets at 0, the RunResolved seam gone) and the rules the line inherits (generic lane first, never a token-returning handler, RunInterp as the oracle)" } }
+    { key: "full-compilation-replan", type: "Document", label: "design/FULL-COMPILATION-REPLAN.0.md"
+      attributes: { role: "the dated (2026-09-18) re-plan and re-estimate of the full-compilation project, measured on PR #471 head fb094de, superseding the session-day numbers in FULL-COMPILATION-REVIEW.0.md section 2.3 and the session-days column of FULL-COMPILATION.0.md section 10.1 while leaving the review's architecture findings and S0-S7 content standing. Its premise is a timestamp: the review's 105-175 session-days were taken at 19:31 on 2026-09-17, two hours before 7178699 (two lanes, the corpus filter, sharded CI) and five before a9cb212 (the three-minute contract, parallel walks), so it prices a verification loop that no longer exists. It measures what actually got faster - the pre-commit ritual about 60 min to a 66 s commit gate (about 50x, and partly a scope change because cover-gate left the per-commit loop), CI 12 min 30 s to 1 min 58 s (about 6x), ten gates over one spec family to 6 s (about 20x) - against the loop that binds, the full unfiltered langspec corpus, which went from about 25 min to about 12 and so only halved. It re-measures the debt (8513 rows, 8054 compiled, 113 failing to compile; root causes 80 coverage, 32 soundness, 1 correct-error, 0 scheduling, 0 opcode) and finds three clusters of exactly nineteen, of which the third - each/fold/filter/scan over a gradual-Any collection, ambiguous List vs Map - is a type-commitment question one operand to the left of the callback rather than a fn-value lowering, and is carved out as S1a ahead of S1. Four plan changes: P0 per-file compile-failure ratchets first (BORU_SPEC_FILES reports counts instead of asserting them, which is how two regressions reached a working tree on 2026-09-18 while six-second filtered runs stayed green); S1a carved out; S2 split into 35 declaration-only signatures and 59 code-body signatures that need a mechanism depending on S1b; and S2 judged by undeclaredHandlerCeiling rather than by the compile-failure count, since on 2026-09-18 the census moved 114 to 94 while compile failures moved by zero. The re-estimate is 75-130 session-days (65-115 conditional on P0 delivering), which is about 1.4x faster overall and not fifty; year end is about 75 session-days away so only the low end with zero overrun reaches it, and T1 + T2 by year end moves 15% to about 20%. It calibrates against one measured session's throughput and records that zero of the 113 compile failures were fixed that day, naming S1a, S1b, S2b and S4 as the only steps that move the headline number" } }
+    { key: "full-compilation-review", type: "Document", label: "design/FULL-COMPILATION-REVIEW.0.md"
+      attributes: { role: "the dated (2026-09-17) review of the full-compilation plan against the ruled definition of done, measured on PR #471's head 658fc85 three days after the assessment: the architecture is right and the plan as staged is not yet realistic. Three measurements say so — the corpus expansion (about 710 rows of ordinary idioms) took the daily instruments from 0 refusals / 0 islands / 28 interpreter-entering rows to 113 / 12 / 54 and exposed five silent miscompiles, so the ratchets over the hand-written corpus measure the corpus and not the language; the generic lane's first slices (increments 60-66, 676 routed dispatches, an oracle reproducing 94.5% of 473,151 descriptor executions) moved none of the static inventory (92 refusal sites, 114 undeclared handlers, the terminal arm still MarkUncompilable) because the lane grew from the typed end and its VM host declines every evaluation, while its own runtime added ten named vmDefer arms; and the debt is fn values and code bodies (59 of 113 refusals, all 12 islands, 23 of 54 census rows and all five miscompiles are fn-value lowerings; 23 refusals and 22 census rows are code bodies) for which the plan has per-shape increments and an unstarted handler worklist. It re-estimates the remainder at about 105-175 session-days (the assessment said 83-148) and T1 + T2 by year end at 15% (was 25%), reviews the algorithm (the descriptor + live-kernel model reproduces the interpreter's claim; the three unbuilt cores are the evaluating host for group and active slots at 29% of tokens, the lane's runtime totality which needs Stage 5's count-generic downstream inside Stage 4, and the non-word leads on Apply; the split-identity invariant is a typed-lane property and not the reason the terminal arm cannot flip), and re-stages the work as S0-S7 (the generated word-inventory sweep first, fn values as one convention with handler migration in parallel, runtime compilation on the spine, the lane completed as a baseline, then regions, the checker sentinel and the valves) with a gate per step and a recommendation for each ruling the steps wait on (NUR153, O2, O4, O5, the attributed set, NUR110, NUR078). FULL-COMPILATION.0.md section 10.1 carries the re-staging as the design's own dated amendment" } }
     { key: "paren-restep-rule", type: "Document", label: "design/PAREN-RESTEP-RULE.0.md"
       attributes: { role: "the measured statement of when a paren-collapsed function is PLACED and when it is re-stepped into a CALL, superseding NUR101's 2026-08-26 place-uniformly ruling whose premise it falsifies. The rule: a Function a paren placed is re-stepped exactly when it leads TWO OR MORE survivors of an enclosing group that closes with a paren rewind — a user paren, an fn frame, or an if/for/do body — while the program top level, list literals and map literals do not rewind; placement is the one-survivor case and the enclosing group is a SECOND decision taken one paren out, not a context that modifies the first. The ruling had been implemented by deleting fnReturnPark's survivor-count clause on the reasoning that the count was never the right question; it is, and deleting it turned (x:Integer => [x mul 2] 5) from 10 into fn (Integer) 5 and broke seven suites. The defect was the COMPILER'S, in both directions, and there were five silent miscompiles: (mk 1) 2 and (mk2 5) 10 applied what the interpreter places, while [((mk 1) 2)] and two if-arm shapes placed what it applies — ((mk 1) 2) compiling correctly at the top level only by ACCIDENT, because the outer paren collapses and the pair reaches the program residual where the carrier arm applies it. The fix is a matched PAIR of records taken at the collapse, the last moment the two spellings are distinguishable — ParenPlacedFnIDs and the new ParenReSteppedFnIDs — read by the residual lowering, the branch-arm merge and the list-literal assembly, which is what lets [(mk 1) 2] keep compiling while [((mk 1) 2)], byte-identical in its elements, refuses. Value divergences on the 16-shape probe: five to zero. Also the finding of how they survived a 100%-covered parity suite (NUR106): Stage J flipped lang.Run to the compiled path and 75 parity assertions across five files still read it as their interpreter oracle, comparing the compiled lane against itself; the sweep to RunInterp surfaced NUR107 on the very test that had pinned that claim as non-reproducing" } }
     { key: "o1-relitigation", type: "Document", label: "design/legacy/O1-RELITIGATION.0.ignore"
@@ -931,6 +967,31 @@
       evidence: [{ source: "src:full-compilation-assessment", locator: "Status",
         quote: "the current-state page is SESSION-HANDOVER.0.md" }]
       confidence: 0.9 }
+    { subject: "handler-migration-line", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:handler-migration-line", locator: "title",
+        quote: "The handler-migration line — a second session's brief" }]
+      confidence: 0.95 }
+    { subject: "handler-migration-line", predicate: "related_to"
+      object: { kind: "entity", entity: "full-compilation-review" }
+      evidence: [{ source: "src:handler-migration-line", locator: "Status",
+        quote: "from the velocity review (FULL-COMPILATION-REVIEW.0.md §3.4 and §5, step S2)" }]
+      confidence: 0.95 }
+    { subject: "full-compilation-review", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:full-compilation-review", locator: "title",
+        quote: "Full compilation — the plan re-examined: realism, strategy, algorithm" }]
+      confidence: 0.95 }
+    { subject: "full-compilation-review", predicate: "related_to"
+      object: { kind: "entity", entity: "full-compilation" }
+      evidence: [{ source: "src:full-compilation-review", locator: "Status",
+        quote: "The staging correction is also written into the design itself as §10's dated amendment, so the design stays the authority on what is planned." }]
+      confidence: 0.95 }
+    { subject: "full-compilation-review", predicate: "related_to"
+      object: { kind: "entity", entity: "full-compilation-assessment" }
+      evidence: [{ source: "src:full-compilation-review", locator: "Status",
+        quote: "is the baseline this note re-measures three days later" }]
+      confidence: 0.95 }
     { subject: "paren-restep-rule", predicate: "part_of"
       object: { kind: "entity", entity: "design-notes" }
       evidence: [{ source: "src:paren-restep-rule", locator: "title",

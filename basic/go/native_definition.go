@@ -1650,6 +1650,13 @@ func FnConstruct(r *Registry, elems []Value, genSpec *GenSpecInfo) ([]Value, err
 	if err != nil {
 		return failGen(err)
 	}
+	// The fn's HOME is the registry that minted it: its free words resolve
+	// there wherever the value later travels (design/FUNCTION-VALUE-SCOPE.0.md
+	// rule 1). Stamped at construction, not at module-export resolution, so
+	// a main-file fn handed INTO a module keeps main's bindings exactly as a
+	// module fn handed out keeps the module's. A nil Registry is left only to
+	// bodiless Go-native values, which have no free words to resolve.
+	fnDef.Registry = r
 	if genSpec != nil {
 		PopGenBindings(r, genSpec)
 		fnDef.Gen = genSpec
@@ -1838,6 +1845,9 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		Signatures: []FnSig{sig},
 		Anonymous:  true,
 		Captured:   core.ComputeCaptures(r, &sig),
+		// Home registry, as FnConstruct stamps it: a lambda's free words
+		// resolve where it was written, whichever module applies it.
+		Registry: r,
 	}
 	// Queue the body for the end-of-pass check, exactly as FnConstruct does
 	// and for the same reason: a lambda passed straight to a word (`each

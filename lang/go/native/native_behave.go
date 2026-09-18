@@ -588,10 +588,10 @@ func (u *userBehavior) Nodify(v Value) (Value, error) {
 // dispatchUnifier walk continues up the parent chain. Re-entrancy is
 // guarded the same way Format/Nodify are — a unifier body that
 // recursively unifies values of the same type would otherwise loop.
-func (u *userBehavior) Unify(a, b Value) (Value, *core.UnifyError) {
+func (u *userBehavior) Unify(a, b Value, r *core.Registry) (Value, *core.UnifyError) {
 	if len(u.unifyBody) == 0 {
 		if next, ok := u.prev.(core.Unifier); ok {
-			return next.Unify(a, b)
+			return next.Unify(a, b, r)
 		}
 		return Value{}, core.ErrNoUnifier
 	}
@@ -600,7 +600,7 @@ func (u *userBehavior) Unify(a, b Value) (Value, *core.UnifyError) {
 		// recursion terminates. Return the structural narrowing
 		// candidate via the prev chain.
 		if next, ok := u.prev.(core.Unifier); ok {
-			return next.Unify(a, b)
+			return next.Unify(a, b, r)
 		}
 		return Value{}, core.ErrNoUnifier
 	}

@@ -234,7 +234,7 @@ def redis-serve fn opts:Map Any [
     svc # Unknown command → an -ERR reply, not a dead connection.
   add {}
     ([req:Map state:Any] =>
-        [{message:(join "" ["unknown command '" req.cmd "'"])}]
+        [({message:(join "" ["unknown command '" req.cmd "'"])})]
     )
     svc Net.listen {tcp:opts.port codec:redis-codec} svc
 ]

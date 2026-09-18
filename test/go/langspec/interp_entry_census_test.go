@@ -21,10 +21,8 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -521,7 +519,7 @@ import (
 //
 //	do [for 3 [1]]
 //	  before  compiled, seams Engine.Run+RunResolved, answer 1 1 1
-//	  after   compile_refused: "residual shape beyond Stage 1 (call results reordered)"
+//	  after   compile_failed: "residual shape beyond Stage 1 (call results reordered)"
 //
 // A row that stops compiling LEAVES THE DENOMINATOR, so the census would have
 // fallen for the worst possible reason — the same trap the native-callee
@@ -750,14 +748,16 @@ import (
 // the row's reads and writes run on the VM where they went through
 // CallBoru before. The stamp's decline keeps its pin on a nested lambda's
 // read (TestStampConstDynScopeDeclineKeepsEnclosingCompile).
-const interpEntryRowCeiling = 27
+// 54 -> 52 on 2026-09-18 (NUR153's ruling, the tape rule everywhere): a
+// deferring anonymous `=>` callback no longer enters the interpreter through
+// the CallBoru seam to evaluate its residual in the live frame — the sweep
+// happens after the frame teardown instead, so two each-variants rows stop
+// entering.
+const interpEntryRowCeiling = 52 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away. History: 54 (2026-09-17, the corpus expansion) -> 52 (2026-09-18, NUR153 closed: one residual rule at every seam. A stored `=>` value applied through a native seam used to have its residual evaluated in the live frame, which is a CallBoru entry the census counts; ResidualEvalsInFrame gives the tape rule everywhere and CallBoruNamed sweeps the deferred residual after teardown, so two callback rows stop re-entering. The rows are each-variants.tsv callback shapes; BORU_LOG_CENSUS_ROWS=1 names them) -> 0 (Stage 9)
 
 func TestInterpEntryCensus(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	var mu sync.Mutex
 	seams := map[string]int{}
 	perFile := map[string]int{}
 	// fileSeamRows counts ROWS, not entries: file → seam → how many of that
@@ -767,61 +767,71 @@ func TestInterpEntryCensus(t *testing.T) {
 	// to be in the same unit the ceiling is.
 	fileSeamRows := map[string]map[string]int{}
 	rows, dirty, ran := 0, 0, 0
+	// censusRows holds the BORU_LOG_CENSUS_ROWS lines until the walk is done:
+	// workers see rows in no promised order, and a listing a reader diffs
+	// between two runs has to read the same every time, so it is sorted into
+	// file-then-line order before it is printed.
+	type censusRow struct {
+		file string
+		line int
+		text string
+	}
+	var censusRows []censusRow
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		mu.Lock()
+		rows++
+		mu.Unlock()
+		n, seen, ok := runWithEntryHook(t, r.Input)
+		if !ok {
+			return // refused or check-error: the interpreter owns it by design
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			rows++
-			n, seen, ok := runWithEntryHook(t, strings.TrimSpace(parts[0]))
-			if !ok {
-				continue // refused or check-error: the interpreter owns it by design
-			}
-			ran++
-			if n == 0 {
-				continue
-			}
-			dirty++
-			// BORU_LOG_CENSUS_ROWS=1 names every dirty row and the seams it
-			// entered through. The file × seam table above ranks CLUSTERS,
-			// which is what you want when choosing a mechanism — but once a
-			// cluster is chosen you need the rows themselves, and without this
-			// the only way to get them was to re-derive them by hand (and get
-			// it wrong: `--compile-report` prints a line containing the word
-			// "interpreter" for every program, islanded or not, so grepping
-			// for it names rows that compile perfectly well).
-			// Mirrors BORU_LOG_UNFLAGGED in check_accuracy_test.go.
-			if os.Getenv("BORU_LOG_CENSUS_ROWS") != "" {
-				t.Logf("CENSUS ROW %s:L%d via %s: %s",
-					e.Name(), lineNo, seamBreakdown(rowSeams(seen)), strings.TrimSpace(parts[0]))
-			}
-			perFile[e.Name()]++
-			if fileSeamRows[e.Name()] == nil {
-				fileSeamRows[e.Name()] = map[string]int{}
-			}
-			for s, c := range seen {
-				seams[s] += c
-				fileSeamRows[e.Name()][s]++ // once per ROW, whatever c is
-			}
+		// BORU_LOG_CENSUS_ROWS=1 names every dirty row and the seams it
+		// entered through. The file × seam table above ranks CLUSTERS,
+		// which is what you want when choosing a mechanism — but once a
+		// cluster is chosen you need the rows themselves, and without this
+		// the only way to get them was to re-derive them by hand (and get
+		// it wrong: `--compile-report` prints a line containing the word
+		// "interpreter" for every program, islanded or not, so grepping
+		// for it names rows that compile perfectly well).
+		// Mirrors BORU_LOG_UNFLAGGED in check_accuracy_test.go.
+		var logLine string
+		if n != 0 && os.Getenv("BORU_LOG_CENSUS_ROWS") != "" {
+			logLine = fmt.Sprintf("CENSUS ROW %s via %s: %s",
+				r.Key(), seamBreakdown(rowSeams(seen)), r.Input)
 		}
-		f.Close()
+
+		mu.Lock()
+		defer mu.Unlock()
+		ran++
+		if n == 0 {
+			return
+		}
+		dirty++
+		if logLine != "" {
+			censusRows = append(censusRows, censusRow{file: r.File, line: r.Line, text: logLine})
+		}
+		perFile[r.File]++
+		if fileSeamRows[r.File] == nil {
+			fileSeamRows[r.File] = map[string]int{}
+		}
+		for s, c := range seen {
+			seams[s] += c
+			fileSeamRows[r.File][s]++ // once per ROW, whatever c is
+		}
+	})
+
+	sort.Slice(censusRows, func(i, j int) bool {
+		if censusRows[i].file != censusRows[j].file {
+			return censusRows[i].file < censusRows[j].file
+		}
+		return censusRows[i].line < censusRows[j].line
+	})
+	for _, c := range censusRows {
+		t.Log(c.text)
 	}
 
 	t.Logf("interp-entry census: %d rows, %d ran compiled, %d with UNATTRIBUTED interpreter entries (ceiling %d)",
@@ -835,23 +845,15 @@ func TestInterpEntryCensus(t *testing.T) {
 		}
 	}
 
-	if dirty > interpEntryRowCeiling {
-		t.Errorf("interp-entry census %d exceeds ceiling %d — a change put interpretation BACK "+
-			"into compiled programs. The OpFallback island ceiling cannot see this (it counts "+
-			"disassembly spans, not a CallBoru inside a handler), so raising the number here is "+
-			"not a bookkeeping fix: it is the invariant T2 forbids", dirty, interpEntryRowCeiling)
-	}
-	if dirty < interpEntryRowCeiling {
-		t.Errorf("interp-entry census %d is BELOW the ceiling %d — the ratchet tightened, "+
-			"lower interpEntryRowCeiling to %d", dirty, interpEntryRowCeiling, dirty)
-	}
+	gate(t, "interp-entry census rows", dirty, 0, interpEntryRowCeiling, true,
+		"corpus rows that run compiled and still enter the interpreter through an unattributed seam — the OpFallback island ceiling cannot see this (it counts disassembly spans, not a CallBoru inside a handler)")
 }
 
 // runWithEntryHook runs one row compiled with the interpreter-entry hook armed
 // and returns the unattributed entry count. ok is false when the row did not
 // run compiled at all — a refusal or a static check error, where the
 // interpreter owning the program is the designed behaviour and not an island.
-func runWithEntryHook(t *testing.T, src string) (int, map[string]int, bool) {
+func runWithEntryHook(t testing.TB, src string) (int, map[string]int, bool) {
 	t.Helper()
 	a, err := lang.New()
 	if err != nil {

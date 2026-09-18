@@ -33,7 +33,7 @@ import (
 // `([p] => …)`) binds the body's `p` to that input carrier in AnalyseFnBody;
 // an empty name (the token-quotation form, `[body]`) leaves the input on the
 // stack for the body to consume positionally. nil means all-unnamed.
-func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, pos core.SrcPos) (int, bool) {
+func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) (int, bool) {
 	// Closure compilation is emit-cluster machinery: it writes recording
 	// internals (fnRecs), so it needs the CONCRETE EmitState. A pass without
 	// one (the inactive recorder) declines exactly as the nil field did —
@@ -98,10 +98,35 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// Drop any summary a suspended (non-recording) analysis cached so the
 	// body re-runs under the armed unit and records.
 	delete(r.Check.FnSummaries, key)
-	// true preserves this callback-body path's original recording gate
-	// (!anonymous is neutralised): the fn-context change flows through the
-	// def/dispatch paths, not this closure-body compile.
-	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, true)
+	// anonymous=true preserves this callback-body path's original recording
+	// gate (!anonymous is neutralised): the fn-context change flows through
+	// the def/dispatch paths, not this closure-body compile.
+	//
+	// EXCEPT for a body the interpreter evaluates IN-FRAME (bodyInFrame). The
+	// interpreter's frame-tail rule is one line, at every fn-frame builder
+	// (core_helpers.go InstallFnDef / compileFnSigs, engine.go execFnDefLiteral):
+	//
+	//     EvalResidual: !anonymous || BodyEvalsResidual(body)
+	//
+	// where `anonymous` is FnDefInfo.Anonymous — produced by `afn`, the `=>`
+	// sugar. So an afn lambda's single bare container literal is DEFERRED and
+	// resolves later, in module scope, whether or not a `def` has since given
+	// it a name; a `fn`-word fn evaluates the same literal against the live
+	// frame. Measured, interpreter first:
+	//
+	//     def a 99  def g fn [[a:Integer] [List] [[a]]]  each g/v [1 2]  => [[1] [2]]
+	//     def a 99  def f ([a:Integer] => [[a]])         each f/v [1 2]  => [[99] [99]]
+	//     def a 99  each ([a:Integer] => [[a]]) [1 2]                    => [[99] [99]]
+	//
+	// Passing anonymous=true for a `fn`-word fn threw away the very property
+	// that makes its residual container recordable, so AnalyseFnBody left
+	// ElemEvalRecordable off, the container recorded no OpMakeList/OpMakeMap,
+	// its result had no provenance, and the whole dispatch islanded ("fn
+	// each$body: body result of unknown provenance"). The callers pass
+	// bodyInFrame = !fd.Anonymous — the interpreter's predicate, verbatim.
+	// `fd.Name != ""` is NOT it: the second row above has a name and still
+	// defers, and keying on the name compiled it to [[1] [2]] (measured).
+	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, !bodyInFrame)
 	if len(bodyToks) == 0 && len(stk) == 0 {
 		// An EMPTY body's residual is its pushed inputs, verbatim: the runtime
 		// InvokeBody pushes the per-call inputs and runs no tokens, so the frame
@@ -336,7 +361,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// STARTED from (unit_memo.go): claimed here, applied around every
 	// compile inside recordClosureDispatch.
 	env := es.takeBodyEnv(body, spec)
-	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, pos, env) {
+	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, false, pos, env) {
 		return false
 	}
 	// A once-run defs-keeping body (`do`) compiled to a closure unit makes
@@ -427,11 +452,11 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if foreignFnHome(r, fd) {
 		restore := check.ShareCheckStateFrom(fd.Registry, r)
 		defer restore()
-		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), pos, nil)
+		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
 	}
 	// A lambda body is a fn body: its defs are frame-locals and nothing
 	// leaks, so it needs no re-run environment.
-	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), pos, nil)
+	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
 }
 
 // lamParamContract is a lambda's declared PARAM contract — the types and
@@ -509,7 +534,7 @@ func paramSpecPatterns(ps *ClosureParamSpec) []*core.Value {
 // Both callers take fd from `args[i].Data.(core.FnDefInfo)` and pass its
 // address, so fd is never nil here.
 func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
-	return fd.Registry != nil && fd.Registry != r
+	return core.FnHomeForeign(r, fd)
 }
 
 // lambdaHookCompatible reports whether a LAMBDA hook value can compile to a
@@ -648,7 +673,7 @@ func fnValueRetSpec(fd *core.FnDefInfo, lam *core.Signature, fnPos core.SrcPos) 
 // M2d): each compiles to its OWN closure unit under the SAME shared token
 // shape (extraNoEvalHookSlots only nominates them on a LambdaSharesTokenShape
 // word) and rides as a second opClosure operand.
-func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args, bodyToks, inputs []core.Value, paramNames []string, captures []core.CapturedBinding, shape core.ClosureInShape, extraLamSlots []int, outs []core.Value, retSpec *ClosureRetSpec, paramSpec *ClosureParamSpec, pos core.SrcPos, env *bodyRunEnv) bool {
+func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args, bodyToks, inputs []core.Value, paramNames []string, captures []core.CapturedBinding, shape core.ClosureInShape, extraLamSlots []int, outs []core.Value, retSpec *ClosureRetSpec, paramSpec *ClosureParamSpec, bodyInFrame bool, pos core.SrcPos, env *bodyRunEnv) bool {
 	// The probe fork below needs the CONCRETE EmitState; both callers only
 	// reach here through an active recording state, so a non-EmitState
 	// recorder (the inactive no-op) declining is the unreachable belt.
@@ -744,7 +769,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 			return -1, false
 		}
 		defer env.exit(r, prev)
-		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, pos)
+		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, pos)
 	}
 	probe := real.forkForProbe()
 	r.Check.Emit = probe

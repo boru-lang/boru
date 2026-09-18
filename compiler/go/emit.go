@@ -1882,6 +1882,25 @@ func (es *EmitState) BindRegistry(r *core.Registry) {
 	es.reg = r
 }
 
+// isProgramRegistry reports whether reg IS the program registry — progReg,
+// the first-bound top-level registry, never re-bound (es.reg is last-bind-
+// wins, so it is the wrong field to compare: a body that merely calls a
+// module fn leaves it on that module's sub-registry). A nil reg is not the
+// program's: the bridge and the speculative-def placement both decline it.
+func (es *EmitState) isProgramRegistry(reg *core.Registry) bool {
+	return reg != nil && reg == es.progReg
+}
+
+// isForeignRegistry reports whether reg is a sub-registry OTHER than the
+// program's — a `module [...]` preamble's, whose fns' bodies resolve
+// module-private words there. A nil reg records no registry at all and is
+// never foreign: the unit runs on whatever registry the VM is handed (a
+// ForkConcurrent fork included), which is exactly what an unstamped
+// top-level fn must do.
+func (es *EmitState) isForeignRegistry(reg *core.Registry) bool {
+	return reg != nil && reg != es.progReg
+}
+
 // TopFrameOnly reports whether recording sits at the top event frame (no
 // open branch/loop/fn capture) — the const-fold gate for computed container
 // elements. A missing recorder counts as top-frame (nothing is being
@@ -3084,7 +3103,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// (REFUSAL-CLOSURE §9.2d — the curried factory's inner fn) both model as
 	// returned closures; a NAMED fn value carries registry dispatch and
 	// recursion semantics this model does not own, so it declines.
-	if !ok || (!fd.Anonymous && fd.Name != "") {
+	if !ok || fd.NamedDef() {
 		return EmitOperand{}, false
 	}
 	// CAPTURELESS values decline too — the const bake (the caller's
@@ -3125,7 +3144,10 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	}
 	inputs, paramNames := fnValueInputs(lam.Params)
 	ps := lamParamContract(lam)
-	r := es.reg
+	// In the fn's HOME, with the caller's check state shared onto a foreign
+	// one — see compileStoredFnUnit for the measured divergence.
+	r, restore := es.fnValueHome(&fd)
+	defer restore()
 	// PROBE in a throwaway emit state (mirrors recordClosureDispatch), so a body
 	// that refuses leaves THIS program untouched and the value stays unresolved.
 	probe := NewEmitState()
@@ -3142,7 +3164,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -3161,7 +3183,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -3179,6 +3201,24 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// where an uncontracted closure answered [7 8] (the twenty-ninth
 	// increment; latent before it, every such call site refused).
 	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: fnValueRetSpec(&fd, lam, pos)}, true
+}
+
+// fnValueHome is the registry a fn VALUE's body compiles in — its home, never
+// whatever registry the emitter is bound to at this moment — and the undo of
+// sharing the caller's check state onto a foreign home (so the recorder still
+// writes into THIS program, tryRecordLambdaClosure's split). Shared by
+// compileStoredFnUnit and tryReturnedClosure: a main-program handler stored
+// from inside a module's fn (`M.run pub/v` — run's body compiles foreign, with
+// es.reg the module's) would otherwise get a unit stamped with the MODULE as
+// its owner and read main's free words (`secret`) against the module at run
+// time — measured as 105 for the interpreter's 6 (NUR152). The restore is a
+// no-op for a fn at home in es.reg.
+func (es *EmitState) fnValueHome(fd *core.FnDefInfo) (*core.Registry, func()) {
+	r, _ := core.FnHome(es.reg, fd)
+	if core.FnHomeForeign(es.reg, fd) {
+		return r, check.ShareCheckStateFrom(r, es.reg)
+	}
+	return r, func() {}
 }
 
 // compileStoredFnUnit compiles a CAPTURE-FREE store-fn handler body (the fn a
@@ -3200,7 +3240,46 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	}
 	lam := &fd.Signatures[sigIdx]
 	inputs, paramNames := fnValueInputs(lam.Params)
-	r := es.reg
+	// The body compiles in the fn's HOME, never in whatever registry the
+	// emitter is bound to at this moment: a main-program handler stored from
+	// inside a module's fn (`M.run pub/v` — run's body is compiled foreign,
+	// with es.reg the module's) would otherwise get a unit stamped with the
+	// MODULE as its owner, and read main's free words (`secret`) against the
+	// module at run time — measured as 105 for the interpreter's 6. The
+	// caller's check state is shared onto a foreign home so the recorder
+	// still writes into THIS program (tryRecordLambdaClosure's split).
+	// The body compiles in the fn's HOME, never in whatever registry the
+	// emitter is bound to at this moment: a main-program handler stored from
+	// inside a module's fn (`M.run pub/v` — run's body is compiled foreign,
+	// with es.reg the module's) would otherwise get a unit stamped with the
+	// MODULE as its owner, and read main's free words (`secret`) against the
+	// module at run time — measured as 105 for the interpreter's 6. The
+	// caller's check state is shared onto a foreign home so the recorder
+	// still writes into THIS program (tryRecordLambdaClosure's split).
+	//
+	// A FOREIGN trivial-delegation wrapper (`MathUtil.sqrt/v`, every own sig
+	// a `[Word(inner)]` pass-through) is declined outright. The VM never
+	// enters a unit for one — it dispatches the inner native directly
+	// (vmNativeApplicable / tryNativeFnApply) — so the unit would go unused;
+	// and where the old registry mismatch made its compile refuse (the inner
+	// word is unbound in the caller's registry), compiling it at home
+	// SUCCEEDS, and a stamped value left as a residual then meets the closure
+	// render refusal a plain const never did (TestClosureCaptureOpenShapes).
+	if core.FnHomeForeign(es.reg, &fd) && core.IsDelegationFnDef(fd) {
+		return 0, false
+	}
+	r, restore := es.fnValueHome(&fd)
+	defer restore()
+	// bodyInFrame is the value's OWN anonymity, as every fn-value site
+	// passes it. For a stored body it changes nothing observable today: the
+	// recordability gate admits a "storedfn$body" by NAME regardless, because
+	// a native seam invokes the stored value through CallBoru, where the
+	// interpreter evaluates the residual in the live frame. The same value
+	// applied on the tape defers — one value, two interpreter regimes, and
+	// the stamp can match only one (NUR153, Pending). A token body
+	// (compileStoredBody, the spawn body) keeps the anonymous treatment it
+	// always had.
+	//
 	// PROBE in a throwaway state so a refusing body leaves THIS program
 	// untouched (mirrors tryReturnedClosure / recordClosureDispatch).
 	probe := NewEmitState()
@@ -3211,7 +3290,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, pos)
+	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		// Surface the probe's refusal for the -compile-report attribution
@@ -3226,7 +3305,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, pos)
+	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	if !realOK || unit < 0 {
 		// Reachable: a body the probe pass accepted can still refuse in the
 		// real pass (the variation sweep produces such shapes — a splice-
@@ -3296,7 +3375,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
@@ -3305,7 +3384,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
 	}
@@ -3392,14 +3471,14 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
 	}
 	// Probe-terminal environment mode → real pass (see tryReturnedClosure).
 	es.dynEnv = es.dynEnv || probe.dynEnv
-	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
 	if !realOK || unit < 0 {
 		// Unlike compileStoredBody's spawn shape, the real pass CAN decline
 		// after a clean probe here: it records into the LIVE mid-recording
@@ -4771,8 +4850,8 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 	// program then refused for want of the placement. progReg is captured once
 	// and never re-bound, which is what "the program registry" above means —
 	// the Finalize stamp site uses it for this same reason.
-	if body.ID == "" || ml.bodyID != body.ID || ml.reg == nil || ml.reg != es.progReg ||
-		rec.reg != es.progReg || rec.frag == nil {
+	if body.ID == "" || ml.bodyID != body.ID || !es.isProgramRegistry(ml.reg) ||
+		!es.isProgramRegistry(rec.reg) || rec.frag == nil {
 		return
 	}
 	// The bracket's twins: every one must be an eligible value def, an
@@ -5211,7 +5290,7 @@ type pendingSpecFnDef struct {
 // bracket, a live armed loop (its body re-rounds and its defs are carried
 // by slot), a closure body compile.
 func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, outer, fn core.Value, pos core.SrcPos) bool {
-	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && reg != es.progReg) {
+	if es == nil || !es.Compilable || name == "" || es.inClosureBodyCompile() || (es.progReg != nil && !es.isProgramRegistry(reg)) {
 		// A closure body compile's transitions are the enclosing run's; a
 		// MODULE's registry keeps its own machinery — a module body runs
 		// interpreted at load, and its fns' bodies are the module's, not
@@ -7670,7 +7749,7 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		//     clause always bakes a plain CALL_NATIVE.)
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("code-body word " + word + " (Stage 2)")
-	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !setDelKernelSig(es.reg, word, sig) && !quoteInertOK:
+	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK:
 		// Implicit-quote operands (usurp, force-arity, ref-family):
 		// dispatch-manipulating meta words whose results the engine
 		// re-steps. get/getr/set/del are exempt — plain accessors/mutators whose
@@ -7680,12 +7759,19 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		// an object/class/store/flex field write (`p set x 7`); the receiver is
 		// a non-const instance (mutation-safety holds — instance types are
 		// absent from isInertConst, exactly as the integer-keyed array `set 1 v
-		// a` already relies on), and the set/del exemption is keyed on BINDING
-		// IDENTITY (setDelKernelSig, NUR057) — the matched sig must be the
-		// kernel registration's own Locked signature, so an open-words
-		// extension of set/del never rides an argument made for the mutator.
-		// `del` is `set`'s inverse (atom-keyed map-entry removal, copy-return
-		// on Map / in-place on FlexMap) and inherits the same argument verbatim.
+		// a` already relies on). set/del reach the exemption by DECLARATION, not
+		// by name: their sixteen quoted-receiver sigs carry CompileQuoteKey,
+		// read by quotedKeySig. That retired setDelKernelSig (NUR057), whose
+		// Locked half read as a counterfeit-proof registration identity and is
+		// not one — a re-dispatch wrapper copies the whole sig, inheriting
+		// Locked and CompileEffect, and NormalizeSig rebuilds the QuoteArgs the
+		// constructor cleared. What keeps a wrapper off this arm is
+		// `case sig.RunInCheckMode()` above, pinned across every wrapper
+		// constructor in quoted_operand_exemption_test.go; the same file records
+		// why the key's boru-bodied half was unreachable (`case sig.FnFrame() !=
+		// nil`, also above). `del` is `set`'s inverse (atom-keyed map-entry
+		// removal, copy-return on Map / in-place on FlexMap) and declares the
+		// same.
 		// quoteInertOK is the principled extension of that exemption to a MODULE
 		// INNER NATIVE whose quoted operands are inert Atom consts — the query
 		// DSL's table names (`Query.from people`, `Query.join visits`): the inner
@@ -7790,37 +7876,23 @@ func (es *EmitState) recordShuffleElided(word string, sig *core.Signature, args,
 // a shadowed name (a user `def swap …`, whose sig has an fnFrame anyway) never
 // rides the exemption. depth/pick/roll are full-stack words and refused earlier.
 
-// setDelKernelSig is the binding-identity key that replaced the bare name
-// test in the two set/del quote-arg exemptions (NUR057). Those exemptions
-// were argued for the kernel mutator ("`set` cannot be shadowed (it is a
-// builtin)"), but `set`/`del` are NOT in sealedWords — they are extendable —
-// so the name alone could admit a shape the argument does not cover. The
-// admitted set is exactly what the corpus differential proves sound:
+// quotedKeySig reports whether a signature DECLARES that its implicit-quote
+// operand is a KEY the handler reads at dispatch (CompileQuoteKey — `set`/`del`'s
+// atom field name), rather than a literal it bakes. Unlike quoteInertOK this
+// asks nothing of the operand's VALUE: a key delivered through a carrier (`set
+// (k) v m`, where k is an `Atom/q` param) lowers as an ordinary operand and the
+// VM reads what the interpreter reads. Requiring inertness here is exactly the
+// mistake that put lang/spec/as.tsv:52-54 back on the refusal ceiling.
 //
-//   - a LOCKED sig — a Go registration (the kernel mutator, or a module
-//     inner native reached by delegation). Locked is stamped only by the
-//     Go registration path, so it is a registration identity no runtime
-//     construction can counterfeit; pointer identity into Lookup's table
-//     was tried and is fragile (the aggregate rebuilds when an extension
-//     entry lands, invalidating element addresses).
-//   - a BORU-BODIED sig under the name — an open-words extension
-//     (`def set fn [[k:Atom/q …] …]`): its /q param is an ordinary
-//     forward-capture bound into a CALL_USER frame, nothing re-steps, and
-//     the as.tsv/open-words.tsv extension rows compile with verified parity.
-//
-// What can no longer ride is a RUNTIME-MINTED handler sig under the name —
-// the usurp-wrapper class the old comment feared (`def set (usurp …)`
-// copies QuoteArgs onto a handler that RE-STEPS its result): never Locked,
-// no boru body, and precisely the shape the quoted-operand refusal exists
-// for.
-func setDelKernelSig(_ *core.Registry, word string, sig *core.Signature) bool {
-	if word != "set" && word != "del" {
-		return false
-	}
-	if sig == nil {
-		return false
-	}
-	return sig.Locked || len(sig.Body()) > 0
+// This replaced setDelKernelSig (NUR057), which asked the word's NAME. Neither
+// of that key's two admitted classes held up: its Locked half was not the
+// counterfeit-proof registration identity its comment claimed (a re-dispatch
+// wrapper inherits Locked and CompileEffect, and NormalizeSig rebuilds the
+// QuoteArgs the constructor cleared — the real screen is RunInCheckMode), and
+// its boru-bodied half was unreachable behind `case sig.FnFrame() != nil`.
+// Both are pinned in quoted_operand_exemption_test.go.
+func quotedKeySig(sig *core.Signature) bool {
+	return sig != nil && sig.CompileEffect.Has(core.CompileQuoteKey)
 }
 
 func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) bool {
@@ -11705,7 +11777,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
 		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit}
-		if rec.reg != nil && rec.reg != es.progReg {
+		if es.isForeignRegistry(rec.reg) {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):
 			// its body resolves module-private words there, exactly where the
@@ -12172,7 +12244,7 @@ func (es *EmitState) noteValBind(cur *emitUnit, name string, v core.Value) {
 	b := valBind{gen: es.reg.Defs.Gen(name), epoch: es.valBindEpoch[name]}
 	if pr, ok := es.producedBy[v.ID]; ok {
 		b.pr = pr
-	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && (fd.Anonymous || fd.Name == "") && !v.Quoted {
+	} else if fd, isFn := v.Data.(core.FnDefInfo); isFn && len(fd.Captured) > 0 && !fd.NamedDef() && !v.Quoted {
 		// A capturing fn LITERAL bound by `def` (the thirty-third
 		// increment): no event, no const — its `/v` read builds the closure
 		// at the read site, so remember the literal and its captures'

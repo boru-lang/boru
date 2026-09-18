@@ -216,5 +216,5 @@ func TestFunctionValueScopeChecksClean(t *testing.T) {
 // no compiled path to compare", not "the answer is wrong".
 func isCompileRefusal(err error) bool {
 	var be *BoruError
-	return errors.As(err, &be) && be.Code == "compile_refused"
+	return errors.As(err, &be) && be.Code == "compile_failed"
 }

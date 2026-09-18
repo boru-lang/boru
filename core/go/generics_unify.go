@@ -270,13 +270,14 @@ func typeParamLitNode(v Value) *Type {
 // structural patterns — a generic fn's `xs:[:T]` param unifies each
 // list element against the placeholder — and the standard narrowing
 // rule (ConformsTo) has no admission path from a concrete value into
-// a Type/TypeParam node.
-func unifyTypeParam(lit Value, node *Type, other Value) (Value, *UnifyError) {
+// a Type/TypeParam node. r is the enclosing chain's registry, threaded
+// into the bound walk (isR).
+func unifyTypeParam(lit Value, node *Type, other Value, r *Registry) (Value, *UnifyError) {
 	// The same placeholder on both sides (memo keys, `[T] vs [T]`).
 	if IsBareTypeNode(other) && other.ID == node.ID {
 		return lit, nil
 	}
-	if other.Is(node) {
+	if isR(other, node, r) {
 		return other, nil
 	}
 	return Value{}, unifyFail("value does not satisfy the type parameter's bound", lit, other)

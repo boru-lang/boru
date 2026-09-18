@@ -1691,7 +1691,7 @@ func TestEmitF4DynamicDispatch(t *testing.T) {
 func TestEmitIslandSentinelRefusal(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// `each [break]` inside a compiled `for`: the break targets the for,
 	// not each — it must NOT be islanded.

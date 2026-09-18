@@ -135,7 +135,7 @@ func (e *Engine) tcoEligible(scan frameTailScan, sig *Signature, defMutsBefore i
 	// see compileFnDef's foreign-value path) keeps its state there;
 	// decline rather than pop the wrong stacks. The DefCleanup marker
 	// carries the frame's registry, so the check is one comparison.
-	if dcInfo.Registry != e.Registry {
+	if !dcInfo.FrameOn(e.Registry) {
 		return false
 	}
 	// An EvalResidual frame with a pending Eval container parked below

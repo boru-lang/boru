@@ -228,12 +228,8 @@ func resolveExport(modReg *native.Registry, exports map[string]*native.OrderedMa
 func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 	// A function value (from `name/v`) must carry the module registry
 	// so it executes in module scope when called after import.
-	if fnDef, ok := v.Data.(native.FnDefInfo); ok {
-		if fnDef.Registry == nil {
-			fnDef.Registry = modReg
-			return native.NewFunction(fnDef)
-		}
-		return v
+	if homed, isFn := native.HomeExportedFn(v, modReg); isFn {
+		return homed
 	}
 	var name string
 	switch {
@@ -248,18 +244,12 @@ func resolveTestExport(modReg *native.Registry, v native.Value) native.Value {
 		return v
 	}
 	if tv, ok := modReg.TopTypeBody(name); ok {
-		if fnDef, ok := tv.Data.(native.FnDefInfo); ok && fnDef.Registry == nil {
-			fnDef.Registry = modReg
-			return native.NewFunction(fnDef)
-		}
-		return tv
+		homed, _ := native.HomeExportedFn(tv, modReg)
+		return homed
 	}
 	if val, ok := modReg.Defs.Top(name); ok {
-		if fnDef, ok := val.Data.(native.FnDefInfo); ok && fnDef.Registry == nil {
-			fnDef.Registry = modReg
-			return native.NewFunction(fnDef)
-		}
-		return val
+		homed, _ := native.HomeExportedFn(val, modReg)
+		return homed
 	}
 	return v
 }

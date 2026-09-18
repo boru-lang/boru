@@ -130,7 +130,7 @@ func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit i
 			fr.Invoker = nil
 		}
 	}()
-	return sub.enterBodyUnit(reg, unit, bindUnitLocals(&p.Fns[unit], inputs, captures))
+	return sub.enterBodyUnit(reg, unit, bindUnitLocals(reg, &p.Fns[unit], inputs, captures))
 }
 
 // closureProgram answers whether cl was minted by a program OTHER than the one

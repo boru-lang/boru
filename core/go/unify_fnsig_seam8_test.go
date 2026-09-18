@@ -12,7 +12,7 @@ func TestW8UnifyFnUndefShapeLeftUndef(t *testing.T) {
 	if Shape(undef) != ShapeFnUndef {
 		t.Fatalf("precondition: FnUndef value must have ShapeFnUndef, got %v", Shape(undef))
 	}
-	got, err := unifyFnUndefShape(undef, Shape(undef), fn, Shape(fn))
+	got, err := unifyFnUndefShape(undef, Shape(undef), fn, Shape(fn), nil)
 	if err != nil {
 		t.Fatalf("empty FnUndef must unify with a function: %v", err)
 	}

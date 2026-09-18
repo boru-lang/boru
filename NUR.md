@@ -86,6 +86,13 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
+| [NUR154](#nur154) | A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR155](#nur155) | A TYPED callback over a HETEROGENEOUS collection is applied to every element compiled where the interpreter applies it only to the matching ones: `each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]` is `[Integer fn… fn… fn… fn… fn…]` interpreted (a non-matching element leaves the fn VALUE as data, no_signature swallowed) and `[Integer ProperString List Map Boolean None]` compiled. The compiled callback dispatch drops the per-element signature match the interpreter performs; it must keep it, or refuse a collection it cannot prove homogeneous. Row `lang/spec/each-variants.tsv:L215` | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR156](#nur156) | A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
+| [NUR158](#nur158) | A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
+| [NUR153](#nur153) | RESOLVED 2026-09-18 (the tape rule everywhere). One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
+| [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
 | [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
@@ -6482,3 +6489,400 @@ and `specFamilyAtFnBaseline`'s arms), `core/go/rununit_test.go`
 
 **Verdict:** closed with the fixes; recorded because the rule says every
 divergence surfaced in review is recorded, fixed or not.
+
+## NUR152 — a fn value had a home only if a module exported it {#nur152}
+
+**Status:** Resolved (recorded 2026-09-17; fixed in the same PR).
+**Found:** investigating the main-vs-module representation split, at the
+maintainer's request — "code loaded from the main file is in a module as
+well; there should be no difference in code based on module" — reproduced
+on `82816e9`.
+
+**Rule:** a function value carries the scope it was written in; its free
+names are looked up in its DEFINING module, at call time
+(design/FUNCTION-VALUE-SCOPE.0.md §11, rule 1) — in both directions.
+
+**The split.** `FnDefInfo.Registry` was set in exactly one place,
+`resolveModuleExport`, so a fn defined in the main program carried nil,
+and `FnHome`'s nil arm — documented as "a fn defined in the running
+scope, whose defining registry IS r" — handed it whatever registry
+happened to be running. That is true only while a main-program fn is
+never applied anywhere but main.
+
+**Divergences, interpreter first.**
+
+1. *Main fn into a module, module has no `secret`.*
+   `import module [def run fn [[f:Function][Integer][(f 5)]] export "M"
+   {run: run/v}] end def secret 1 end def pub fn [[x:Integer][Integer][x
+   add secret]] end M.run pub/v` — interpreted `cannot call add` (`secret`
+   looked up in M, unbound), compiled `6`. A compile ≠ interpret
+   divergence in which the interpreter is the wrong lane.
+2. *Same, module has `def secret 100`.* `105` on BOTH engines — main's
+   `pub` silently reading the module's `secret` — for the rule's `6`. No
+   differential can see it; only the rule can. The lambda form
+   (`M.run ([x:Integer] => [x add secret])`) is the same.
+3. *After stamping the home at construction* (the first cut of the fix):
+   interpreted `6`, compiled `105`. `compileStoredFnUnit` and the fn-value
+   unit compile took `r := es.reg` — the emitter's CURRENT registry, the
+   module's while `run`'s body compiles foreign — so `pub`'s body became a
+   `storedfn$body` unit stamped with the module as its owner, and the VM
+   read `secret` against the module at run time.
+4. *Forks.* Comparing home to caller by POINTER sent a same-module callback
+   back to the shared original from its per-connection `ForkConcurrent`
+   clone: `boru:repl`'s service handler lost the fork's live state
+   (`repl-eval-line: expected 1 return value(s), got 2`), `serve-raw`'s
+   handler raced the acceptor — `fatal error: concurrent map iteration and
+   map write` took the corpus differential down.
+
+**Fix.** Every boru-bodied fn is stamped with the registry that minted it
+(`FnConstruct`, `=>`, `macro`); a nil home is left to Go-built values,
+which have no free words. A registry has a `Home()` — itself, or for a
+concurrent fork the registry it was forked from — and every "is this fn
+foreign?" test (`FnHome`, `FnHomeForeign`, the engine's dispatch arms, the
+compiler's `foreignFnHome`, the VM's `tryNativeFnApply` and frame naming,
+`deq`'s fn arm) compares homes, so a fn runs where it is invoked whenever
+that is an instance of its own module. Export resolution mints a fresh
+value whether or not the fn already carries its home (a region claim was
+otherwise keyed by the `name/v` token's position inside the module body).
+Stored-fn and fn-value units compile at the value's home, the caller's
+check state shared onto a foreign one exactly as `tryRecordLambdaClosure`
+already did. `IsInertConstMember` no longer keys on a nil home: a fn value
+is immutable code whichever module it belongs to; only a capture is live
+state.
+
+**Fence.** `lang/go/fn_home_main_module_test.go` (rows 1–2, the lambda,
+a main factory's closure returned through the module, and the control),
+`core/go/fn_home_module_test.go` (`Home`, `SameHome`, `FnHomeForeign`
+over main / module / fork), `eng/go/frame_name_test.go` (at-home vs
+foreign naming), `lang/spec/module-composition.tsv` (the reverse-direction
+rows), and the module suites (`boru:repl`, `serve-raw`) that the fork
+rule keeps green.
+
+**Not in this record.** Applying a returned closure INSIDE the foreign
+body (`1 (f 5) apply` in `run2`) is a compile error today ("unmatched
+dispatch recovered at apply") — a refusal, not a divergence, and a defect
+owed its own fix. `Registry.ModuleScope` (the open-words rule) and
+`ModuleRef` (the per-export policy identity) are deliberate module-only
+designs and stay as they are; the main program still has neither.
+
+## NUR153 — one stored `=>` value, two evaluation regimes {#nur153}
+
+**Status:** RESOLVED 2026-09-18 — the tape rule implemented everywhere;
+the divergence is closed and the fence pins the rule.
+
+**Ruling (maintainer, 2026-09-18): follow the recommendation.** Regime 1
+is the specification: a lambda's single container residual DEFERS,
+whichever seam applies the value — the `CallBoru` / `InvokeCallback`
+seam evaluates through the same rule the tape does. The by-name
+admission (`storedfn$body` / `spawnbody$body` in `check/go/carrier.go`)
+goes and the stamp follows the one rule; a handler that reads its
+parameter inside a returned container (mini-redis's catch-all) is
+written as a computing body; `TestServiceAddStampsComputedMapHandler`'s
+pinned answer changes; the fence's three pins move to one rule and the
+compiled tape-apply divergence closes with it.
+**Found:** a Codex review of #471, which attributed the divergence to that
+PR's island fix; measured on `origin/main` (the merge base) and present
+there, and measured to be two-sided on the interpreter alone.
+
+**Rule:** a function value means the same thing wherever it goes
+(design/FUNCTION-VALUE-SCOPE.0.md §11). Its residual — here the single
+container literal an anonymous fn returns — must evaluate under ONE rule
+whichever seam applies the value.
+
+**The two regimes, interpreter only.**
+
+1. *Applied on the tape.* `def a 99 def api (patrun Function) add
+   {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}`
+   answers `[[99]]`: the lambda rule — the container is deferred past the
+   frame and its bare `a` resolves in module scope
+   (`EvalResidual: !anonymous || BodyEvalsResidual(body)`).
+2. *Invoked through a native seam* (`InvokeCallback` / `CallBoru`). A
+   `service` catch-all `add {} ([req:Map state:Any] => [ {message: (join
+   "" ["unknown '" req.cmd "'"])} ]) svc` answers `unknown 'BOGUS'` to
+   `call {cmd:"BOGUS"} svc` — the computed map read its param, in the
+   live frame. (`lang/go/native/native_service_stamp_test.go`,
+   `TestServiceAddStampsComputedMapHandler`, pins the plain-interpreter
+   answer.)
+
+Same value, same body, two answers to the same question.
+
+**The compiled divergence.** The stamp is one unit. The fn-body
+recordability gate (`check/go/carrier.go`, `RunFnBodyOnce`) admits a
+`storedfn$body` / `spawnbody$body` BY NAME — regime 2 — which is what lets
+mini-redis's catch-all handler stamp at all. A stamped stored `=>` value
+then applied on the tape takes regime 2 where the interpreter takes
+regime 1: row 1 compiles to `[[{z:1}]]`, silent, exit 0. The `fn`-word
+twin (`(fn [[a:Map][List][[a]]])`) is `[[{z:1}]]` on both engines and
+under both regimes, since a named fn evaluates in-frame everywhere.
+
+**Why the compiler cannot close it alone.** Dropping the by-name
+admission makes the stamp follow regime 1 — and then the service
+catch-all stops stamping (measured: `TestServiceAddStampsComputedMapHandler`
+fails "must stamp") while the interpreter still answers regime 2 on
+`call`; the divergence moves, it does not close. The unit would have to
+know how it is being invoked, which is the non-uniformity restated.
+
+**What closes it.** The interpreter takes one rule. Either the CallBoru
+seam defers an anonymous fn's single container residual exactly as the
+tape does (regime 1 everywhere — mini-redis's catch-all then reads `req`
+as unbound, and must be written as a computing body), or the tape
+evaluates it in-frame (regime 2 everywhere — which is the no-closures
+transparency of def-node-binding.tsv §3 removed for anonymous fns, a
+language decision). Either way the by-name admission goes and the stamp
+follows the one rule. A maintainer decision.
+
+**Fence.** `lang/go/stored_callback_residual_test.go` pins all three
+answers as measured — regime 1 on the tape, regime 2 through `call`, and
+the compiled tape-apply divergence — so the day any of them moves, this
+record is the first thing to update. `lang/spec/callbacks.tsv` carries the
+`fn`-word twin (parity); the diverging `=>` row stays out of the main
+corpus, as a divergence must.
+
+**How it closed (2026-09-18).** The rule is ONE predicate,
+`core.ResidualEvalsInFrame(anonymous, body)` (`core/go/fn_frame.go`): a
+residual container evaluates in the live frame unless the fn is an anonymous
+`=>` whose body is a single bare container, which defers. Every seam asks it
+and none spells it for itself:
+
+- the CallBoru sub-run a native seam invokes (`Registry.CallBoruNamed`) holds
+  its end-of-run sweep for a deferring body (`Engine.DeferResidual`) and
+  sweeps the pending container AFTER the frame teardown, in the scope the
+  consumer would have evaluated it in — so a bare param name is exactly as
+  unbound as the tape leaves it;
+- the compiler's residual-recording admission (`check/go/carrier.go`) loses
+  its by-NAME arm (`isCallbackBodyName`, `storedfn$body` / `spawnbody$body`,
+  deleted): the condition was
+  `isCallbackBodyName(name) || !anonymous || BodyEvalsResidual(body)`, which
+  collapses exactly into the shared predicate.
+
+**Measured.** The diverging row `def a 99 … ([a:Map] => [[a]]) … h {z:1}`
+answers `[[99]]` on all three lanes (interpreted, compiled, compiled-strict);
+it answered `[[{z:1}]]` compiled before. The seam and its tape twin now answer
+identically, value AND error taxonomy: both `[]` with
+`[boru/undefined_word]: undefined word: req` for a deferred container that
+reads its param.
+
+**The cost, and the migration.** Every `=>` callback whose body is a SINGLE
+CONTAINER LITERAL READING ITS PARAMS now defers and raises — loudly, never a
+wrong answer. The migration is one character pair: wrap the container so the
+body COMPUTES (`=> [ ({message: req.cmd}) ]`), which evaluates in-frame as
+before. Rewritten here: mini-redis's catch-all and todo-api's hits handler
+(`design/examples/apps/`), the net codec handlers and the model action
+(`lang/go/modules/net_test.go`, `net_stamp_test.go`,
+`lang/go/test/model_test.go`), and the service stamp pin
+(`native_service_stamp_test.go`). Eight tests moved in all — the ruling's
+record named only mini-redis's catch-all, so the true scale is recorded here.
+
+**What the gates measured.** The interp-entry census falls 54 -> 52: a
+deferring anonymous callback no longer enters the interpreter through the
+CallBoru seam to evaluate its residual in the live frame, so two
+`each-variants` rows stop entering (`interpEntryRowCeiling`, lowered in the
+same change). One corpus row is added pinning that the bare spelling now
+raises, with a `unflaggedPins` entry — the checker cannot flag it statically,
+since the name is a bound param where the checker reads it and only the
+residual rule, applied as the container leaves the frame, makes it unbound.
+Inserting that row shifted `each-variants.tsv` below it by one line, so
+NUR155's ledger key moved `L215` -> `L216`; NUR155 itself is UNCHANGED and
+still open — the key moved, not the defect.
+
+**Fence.** `lang/go/stored_callback_residual_test.go` pins THE RULE in four
+parts: the named-fn twin (in-frame everywhere), the tape rule, the seam
+answering exactly what the tape answers (value and taxonomy), and the
+computing-body migration working on both engines.
+
+## NUR154 — a `case` over a factory-produced clause list miscompiles {#nur154}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/code-bodies.tsv:L142`);
+flagged by the Codex review of that PR as a row that must not join the
+main corpus while it diverges.
+
+**Rule:** a compiled program answers as the interpreter does; a compile
+that cannot honour a shape refuses it rather than answering differently.
+
+**Divergence, interpreter first.** `def mk fn [[n:Integer][List][quote [1
+'one' 'many']]] end case 1 (mk 0)` — interpreted `'one'`; compiled
+`[boru/case_error]: case: clause list must be a concrete list of
+match/block pairs (optional trailing default)`, raised at run time on the
+DEFAULT lane. `TestRegionCollectOracle` sees the same row error under the
+oracle where the interpreter does not.
+
+**Mechanism (located, not fixed).** `case` lowers its clause list as a
+static literal operand; a quoted list a fn RETURNS is a run-time value
+the lowering never reads. Either the clause operand is read live at the
+`case` dispatch, or a non-literal clause operand refuses — and a refusal
+is itself a defect owed a fix.
+
+**Fence.** The differential (`TestSpecCompiledDifferential`) and the
+region oracle both name the row; it stays in the main corpus so neither
+can go quiet on it.
+
+## NUR155 — a typed callback over a heterogeneous collection is applied to every element {#nur155}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/each-variants.tsv:L215`);
+flagged by the Codex review of that PR.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence, interpreter first.** `each ([x:Integer] => [typeof x]) [1
+'a' [2] {b:1} true none]` — interpreted `[Integer fn [[x:Integer][Any]
+[word(typeof) word(x)]] fn … fn … fn … fn …]`: the lambda is applied to
+the one Integer, and for every element its signature rejects, the
+dispatch falls through and the fn VALUE itself is the element's result.
+Compiled `[Integer ProperString List Map Boolean None]`: the closure unit
+is entered for every element with no signature check.
+
+**Mechanism (located, not fixed).** The compiled callback dispatch binds
+the element straight into the unit's param slot; the interpreter's
+per-element `MatchFnSig` is not mirrored. Either the unit's entry keeps
+the match (and falls through to the value on a miss, as the interpreter
+does), or the lowering refuses a collection it cannot prove homogeneous
+in the param's type.
+
+**Fence.** `TestSpecCompiledDifferential` names the row; it stays in the
+main corpus.
+
+## NUR156 — a module-export fn value is not applied by the compiled lane {#nur156}
+
+**Status:** Pending (recorded 2026-09-17).
+**Found:** the corpus expansion in #471 (`lang/spec/module-composition.tsv:L102–L104`);
+flagged by the Codex review of that PR.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergences, interpreter first.**
+
+1. `import module [def inc fn n:Integer Integer [n add 1] export "M"
+   {inc: inc/v}] end 5 M.inc/v apply` — `6`; compiled leaves `5` and the
+   unapplied fn on the stack.
+2. `… def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end
+   each [f] [1 2 3]` — `[2 3 4]`; compiled returns three fn VALUES.
+3. `… def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i` — `3`;
+   compiled never advances `i` and ends in `tape_exhausted`.
+
+All three are one defect: the `apply` (and the each-body apply) of a
+MODULE-HOMED fn value does not fire on the compiled lane. NUR152's home
+stamp does not close it (measured on `ceb067c`, where every fn carries
+its home): the value is right, the lowering of its application is what
+does not happen. `TestCheckTypeSoundness` also reads row 1 as TYPE
+UNSOUND (`checked` and `actual` stacks differ), the same fact seen from
+the checker.
+
+**Fence.** `TestSpecCompiledDifferential` and `TestRegionCollectOracle`
+name the rows; they stay in the main corpus. The reverse-direction rows
+NUR152 added to the same file are the control: applying the fn INSIDE
+the module compiles with parity; applying the exported value FROM main
+does not.
+
+## NUR157 — a predicate-typed container child refuses to unify with its own text under a registry {#nur157}
+
+**Status:** Pending (recorded 2026-09-18).
+**Found:** threading the registry through the kernel's unify calls in
+#471 (`core/go/unify.go` — the registry a `UnifyExplainR` is armed with
+once sat on a package-global stack that every goroutine's unify read;
+the parallel corpus walks were the first to race on it); the review's
+differential between the old and the new binary.
+
+**Rule:** a value unifies with its own denotation; two references to
+one type are the same type.
+
+**Divergence.** Armed with a registry, as the `unify` word and a typed
+def are:
+
+```
+def Pos fnpred n:Integer [n gt 0]
+def T fnsig [[xs:[:Pos]] [Boolean]]
+((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)     ~unify-fail
+```
+
+Unarmed (`core.Unify` with no registry, the exported
+`FnSigSatisfiesSpec`) the same pair admits: two `[:Pos]` patterns settle
+structurally. The armed pre-pass (`unifyInner`'s predicate-constraint
+arm, `resolvePredicateRef`'s Atom case) resolves the atom `Pos` inside
+one pattern to its predicate and runs that predicate against the OTHER
+pattern's atom `Pos`, which is not a positive integer — a membership
+test where a type comparison was meant. HEAD's verdict, kept verbatim by
+the threading (the review's lens was "identical semantics"), pinned as
+such by `TestUnifyThreadedFnShapePatternKeepsRegistry`; the fix is one
+arm in the pre-pass (an atom against an atom naming the same predicate
+is the type, not a candidate) and belongs with the checker-precision
+programme.
+
+**What the same change closed, deliberately.** Before it, a predicate
+BODY that dispatched a fn whose parameter is a predicate-typed container
+(`def chk fn [[xs:[:Pos]] [Boolean] [true]]  def Wrap fnpred xs:List
+[(chk xs)]  [1 2] is Wrap`) matched — but only because the dispatcher's
+registry-less `Unify` read whatever registry-armed unify happened to be
+in flight, on ANY goroutine: the same call at top level, `(chk [1 2])`,
+raised `signature_error` on both engines, and under concurrency the
+in-body answer depended on another goroutine's timing. Engine re-entry
+now starts unarmed, exactly like top level (`[1 2] is Wrap` is `false`,
+`([1 2] unify Wrap)` is `~unify-fail false`, `{a:5} is Wrap` `false`),
+on both engines with parity, pinned by
+`TestPredicateBodyDispatchIsUnarmedLikeTopLevel` (lang/go). One rule
+where there were two.
+
+## NUR158 — a capturing closure at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it {#nur158}
+
+**Status:** Pending (recorded 2026-09-18).
+**Found:** the handler-migration line's fn-operand pilot
+([design/HANDLER-MIGRATION-LINE.0.md](design/HANDLER-MIGRATION-LINE.0.md)
+§Progress), probing the four dispatch-modifier words' VALUE forms with
+`RunInterp` against `RunCompiled` before declaring them.
+
+**Rule:** one fn value, one dispatch: a `Function` the interpreter wraps
+(`usurp` / `stack-args` / `forward-args` / `force-arity`) the compiled
+lane wraps too. The value-form sigs declare
+`CompileStoresFn | CompileFnHandlerStrict`: the native validates its
+operand as an `FnDefInfo` (`core.UsurpFunction` / `rebarrierFunction` /
+`ForceArityFunction`'s payload assertion) and stores the original in the
+wrapper for the later re-dispatch — the shape `CompileFnHandlerStrict`
+exists for, and which the recorder's `RecordCallOperands` refuses ("a
+CAPTURING handler at a STRICT store slot … the native rejects").
+
+**Divergence.** These words run in check mode, so their only recorder
+seat is the GRADUAL poly record (`recordGradualWrap` →
+`RecordPolyCall`), and that seat reads no declaration: the wrap lowers to
+`OpCallNativePoly`, the VM's `callPoly` hands the native the live value,
+and a compiled closure is a `ClosurePayload`, not an `FnDefInfo`:
+
+```
+def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]
+def mk2 fn [[][Map][{a:(mk 100)}]]
+def m (mk2)
+m.a/u 10 3            interpreted 93; compiled illegal_ref: usurp requires a function value, got Function
+usurp (m.a) 10 3      the word form, the same
+```
+
+A capture-free returned lambda and a returned named fn are delivered as
+`FnDefInfo` values and wrap correctly on both lanes; only the CAPTURING
+closure diverges.
+
+**What the pilot closed.** The TYPED-carrier form — a user fn's declared
+`Function` result wrapped directly (`def r (usurp (mk 100))  r 10 3`,
+`usurp (mk 100) 10 3`, and the `stack-args` / `forward-args` /
+`force-arity` twins) — answered `illegal_ref` against the interpreter's
+`93` / `107` before 2026-09-18. `recordGradualWrap` now honours the
+declaration: at a `CompileFnHandlerStrict` word a typed (non-dynamic)
+`Function` carrier declines the poly record, so the residual REFUSES
+("… of unknown provenance") and the fallback agrees with the
+interpreter, value and taxonomy (`TestModifierOverReturnedClosureRefusesWithParity`,
+lang/go). The decline is deliberately narrow: the DYNAMIC `Function`
+carrier a sibling modifier's gradual wrap produced (a composed chain,
+path-modifier.tsv:52-55 — the inner poly's runtime result is always the
+constructor's wrapper `FnDefInfo`) and the dynamic-Any `m.a` read
+(path-modifier.tsv:17-18, 93-94) keep their poly record, because
+declining them regresses eight corpus rows that are correct today.
+
+**What stays open — the `m.a` form above.** A dynamic-Any carrier is a
+closure at run time whenever the map was built from a computed closure,
+and the check pass cannot see that through the read. The fix belongs at
+the poly seat, not in the word: either the recorder's `RecordPolyCall`
+reads `CompileFnHandlerStrict` off the word's sigs and refuses a gradual
+Function-bearing operand there (the recorder honouring the declaration
+it already honours on the mono path), or the VM's `callPoly` bridges /
+defers a `ClosurePayload` arriving at a strict native (the runtime
+honouring it, counted by the defer census). Both are compiler/VM work —
+the S1 fn-value line's "one convention" (FULL-COMPILATION.0.md §10.1),
+not the handler line's.

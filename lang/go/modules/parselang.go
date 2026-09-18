@@ -2,6 +2,7 @@ package modules
 
 import (
 	"fmt"
+	core "github.com/boru-lang/boru/core/go"
 	"strings"
 
 	"github.com/boru-lang/boru/lang/go/native"
@@ -514,10 +515,7 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 // native handler, so host state — the clock, policy, output — resolves the same
 // on every lane.
 func parseFnNativeApply(r *native.Registry, fnDef native.FnDefInfo, args []native.Value) ([]native.Value, bool, error) {
-	reg := fnDef.Registry
-	if reg == nil {
-		reg = r
-	}
+	reg, _ := core.FnHome(r, &fnDef)
 	sigs := fnDef.Signatures
 	if inner := reg.Lookup(fnDef.Name); inner != nil && len(inner.Signatures) > 0 {
 		sigs = inner.Signatures

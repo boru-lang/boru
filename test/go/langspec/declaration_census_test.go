@@ -24,6 +24,7 @@
 package langspec
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -42,7 +43,16 @@ import (
 // program that imports modules registers more, so this is a floor on the
 // worklist, not its total; it is the part that is always present and can
 // therefore be ratcheted deterministically.
-const undeclaredHandlerCeiling = 114 // 114 (2026-08-25, Stage-1 baseline) -> 0 (Stage 6)
+// History: 114 (2026-08-25, Stage-1 baseline) -> 110 (2026-09-18, the
+// fn-operand pilot of design/HANDLER-MIGRATION-LINE.0.md: the dispatch-
+// modifier VALUE forms — usurp [Function], stack-args [Function],
+// forward-args [Function], force-arity [Integer Function] — declared
+// CompileStoresFn|CompileFnHandlerStrict) -> 94 (2026-09-18, the quoted
+// class's set/del cluster: the sixteen quoted-receiver overloads of `set`
+// and `del` — Store, Map, Class, FlexMap, FlexXml, WeakFlexMap,
+// WeakFlexXml, Micron — declared CompileQuoteKey, which let the
+// recorder's by-name set/del exemption go) -> 0 (Stage 6).
+const undeclaredHandlerCeiling = 94
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.
@@ -77,6 +87,7 @@ func declared(sig *core.Signature) bool {
 }
 
 func TestDeclarationCensus(t *testing.T) {
+	t.Parallel()
 	reg, err := native.DefaultRegistry()
 	if err != nil {
 		t.Fatalf("DefaultRegistry: %v", err)
@@ -102,6 +113,12 @@ func TestDeclarationCensus(t *testing.T) {
 			if !declared(sig) {
 				undeclared++
 				undeclaredBy[why]++
+				// BORU_LOG_UNDECLARED=1 names every undeclared signature —
+				// the Stage-6 handler-migration worklist (`make
+				// handler-worklist`; design/HANDLER-MIGRATION-LINE.0.md).
+				if os.Getenv("BORU_LOG_UNDECLARED") != "" {
+					t.Logf("UNDECLARED\t%s\t%s\t%s", name, why, sigShape(sig))
+				}
 			}
 		}
 	}
@@ -134,4 +151,18 @@ func TestDeclarationCensus(t *testing.T) {
 		t.Errorf("undeclared declaration-relevant signatures %d exceed ceiling %d — the recorder is assuming a handler contract nobody wrote down: %s",
 			undeclared, undeclaredHandlerCeiling, render(undeclaredBy))
 	}
+}
+
+// sigShape renders a signature's parameter types for the worklist line,
+// `(Integer List)` — the shape a declaration will be written against.
+func sigShape(sig *core.Signature) string {
+	parts := make([]string, len(sig.Args))
+	for i, a := range sig.Args {
+		if a == nil {
+			parts[i] = "?"
+			continue
+		}
+		parts[i] = a.Name()
+	}
+	return "(" + strings.Join(parts, " ") + ")"
 }

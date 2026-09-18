@@ -19,12 +19,9 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -48,54 +45,44 @@ func bindKindName(k core.BindKind) string {
 }
 
 func TestBindLedgerCensus(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	var mu sync.Mutex
 	byKind := map[string]int{}
 	rows, withLedger, maxLen := 0, 0, 0
 	maxSrc := ""
+	// The deepest row is the FIRST row in directory order among equals (the
+	// sequential walk's strict `>`); under parallel workers the tie is broken
+	// on the row's file and line so the log names the same row every run.
+	maxFile, maxLine := "", 0
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		src := r.Input
+		mu.Lock()
+		rows++
+		mu.Unlock()
+		a, aerr := lang.New()
+		if aerr != nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		for sc.Scan() {
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			rows++
-			a, aerr := lang.New()
-			if aerr != nil {
-				continue
-			}
-			_, _, res, _ := a.CompileCheck(src)
-			if len(res.BindLedger) == 0 {
-				continue
-			}
-			withLedger++
-			if len(res.BindLedger) > maxLen {
-				maxLen, maxSrc = len(res.BindLedger), src
-			}
-			for _, tr := range res.BindLedger {
-				byKind[bindKindName(tr.Kind)]++
-			}
+		_, _, res, _ := a.CompileCheck(src)
+		if len(res.BindLedger) == 0 {
+			return
 		}
-		_ = f.Close()
-	}
+
+		mu.Lock()
+		defer mu.Unlock()
+		withLedger++
+		n := len(res.BindLedger)
+		if n > maxLen || (n == maxLen && (r.File < maxFile || (r.File == maxFile && r.Line < maxLine))) {
+			maxLen, maxSrc, maxFile, maxLine = n, src, r.File, r.Line
+		}
+		for _, tr := range res.BindLedger {
+			byKind[bindKindName(tr.Kind)]++
+		}
+	})
 
 	kinds := make([]string, 0, len(byKind))
 	total := 0
@@ -134,6 +121,7 @@ func TestBindLedgerCensus(t *testing.T) {
 // cut, where `def x 1` was attributed to the value token and every `undef` to
 // nothing at all; CurWordPos (added for NUR108) supplies the dispatching word.
 func TestBindLedgerEntriesArePositioned(t *testing.T) {
+	t.Parallel()
 	srcs := []string{
 		`def x 1  x`,
 		`def f fn [[a:Integer] [Integer] [a add 1]]  f 1`,

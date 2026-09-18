@@ -1,0 +1,216 @@
+# boru Language Specification: every variant of `each` (and its side-effecting
+# twin `for-each`) as REAL programs spell them.
+# Format: input<TAB>expected<TAB>description
+#
+# Family: each-variants. Written to widen the corpus past the one-liner
+# shapes it had — over lists, maps and strings; with a literal body, a
+# def-bound body, a fn value, a lambda and a closure; nested; inside a fn;
+# defining locals; calling user fns; producing compound values; over
+# computed and empty collections; with an index; and chained into another
+# each or a fold.
+#
+# EVERY row's expected column is the engine's own answer, captured from
+# `boru do <input> end canon` — the same canon rendering the spec runner
+# compares against.
+#
+# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, as OPEN DEFECTS.
+# They are collected in §18 and each note carries the exact reason
+# `BORU_FORCE_COMPILE=1` printed. They are not mistakes and must not be
+# deleted to make a ceiling green: they are the gap between the corpus and
+# real code that this family exists to make visible.
+#
+# `each` has NO String signature — `each [f] 'abc'` is a signature_error —
+# so the string rows here walk the characters the way real code does, by
+# splitting first (§13, §15).
+#
+# §1  each over a LIST with a literal code body
+each [mul 2] [1 2 3]	[2 4 6]	forward form: body first, collection second
+[1 2 3] each [dup mul]	[1 4 9]	stack form: the collection is already on the stack
+each [dup add] [1 2 3]	[2 4 6]	the body may use stack words
+each [dup mul dup add] [1 2 3]	[2 8 18]	a longer stack body: square, then double
+each [size] ['aa' 'bbb']	[2 3]	a list of STRINGS — each element is a String, the body measures it
+each [not] [true false]	[false true]	a list of Booleans
+each [mul 2] [1.5 2.5]	[3.0 5.0]	a list of Floats
+each [add 1] [1 2.5]	[2 3.5]	a MIXED numeric list — the body dispatches per element
+each [typeof] [1 'a']	[Integer ProperString]	a heterogeneous list under a code body
+each [iota] [2 3]	[[0 1] [0 1 2]]	a body that grows each element into a list
+each [flatten] [[[1] [2]] [[3]]]	[[1 2] [3]]	a body that shrinks each element
+each [mul 2] [1 2 3 4 5 6 7 8 9 10]	[2 4 6 8 10 12 14 16 18 20]	ten elements — the body is compiled once and driven per element
+#
+# §2  each over a MAP with a literal code body — values transform, keys stay
+{a:1 b:2} each [add 1]	{a:2 b:3}	stack form over a map
+each [add 1] {a:1 b:2 c:3}	{a:2 b:3 c:4}	forward form over a map
+{a:[1 2] b:[3]} each [size]	{a:2 b:1}	map values that are lists
+each [add 1] (flex {a:1 b:2})	{a:2 b:3}	a FLEX map iterates exactly like the immutable one
+def m (flex {a:1 b:2}) end each [mul 2] m	{a:2 b:4}	…and through a binding
+#
+# §3  each over a LIST with a LAMBDA callback
+each ([x:Integer] => [x add 1]) [1 2 3]	[2 3 4]	the bare element reaches the lambda — no quotation wrapper
+each ([x:Any] => [size x]) ['ab' [1 2 3] {a:1}]	[2 3 1]	an Any parameter accepts every alternative in the lattice join
+each ([x:Any] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer ProperString List Map Boolean None]	six alternatives, six dispatches
+each ([s:String] => [s size]) ['a' 'bb' 'ccc']	[1 2 3]	a String-typed parameter
+each ([b:Boolean] => [not b]) [true false]	[false true]	a Boolean-typed parameter
+each ([x:Float] => [x mul 2.0]) [1.5 2.5]	[3.0 5.0]	a Float-typed parameter
+each ([x:Integer] => [if (x mod 2 eq 0) ['even'] ['odd']]) [1 2 3 4]	['odd' 'even' 'odd' 'even']	a branch INSIDE the callback body
+each ([x:Integer] => [if (x gt 1) ['big'] ['small']]) [1 2 3]	['small' 'big' 'big']	…the lambda spelling of the §18 code-body row that crashes the compiler
+#
+# §4  each over a MAP with a LAMBDA callback — the KeyVal {k v i n}
+{a:1 b:2} each ([kv:KeyVal] => [kv.v mul kv.n])	{a:2 b:4}	n is the entry count, constant across the walk
+each ([kv:KeyVal] => [kv.i]) {a:9 b:8 c:7}	{a:0 b:1 c:2}	i is the ITERATION INDEX — each's only built-in index
+each ([kv:KeyVal] => [kv.k size]) {aa:1 b:2}	{aa:2 b:1}	the callback can read the key
+each ([kv:KeyVal] => [kv]) {a:1}	{a:{k:'a' v:1 i:0 n:1}}	the whole KeyVal, unpicked
+def m {a:1 b:2 c:3} end each ([kv:KeyVal] => [if (kv.i eq 0) ['first'] ['rest']]) m	{a:'first' b:'rest' c:'rest'}	branching on the index
+{a:[1 2] b:[3]} each ([kv:KeyVal] => [each [mul 2] (kv.v)])	{a:[2 4] b:[6]}	a nested each over the map's list values
+#
+# §5  each driven by a Function VALUE (/v) — a named fn, not a body
+def sq fn [[x:Integer][Integer][x mul x]] end each sq/v [1 2 3 4]	[1 4 9 16]	a fn VALUE maps over a list
+def sq fn [[x:Integer][Integer][x mul x]] end each [sq] [1 2 3 4]	[1 4 9 16]	…and the quotation wrapper it replaces agrees
+def sq fn [[x:Integer][Integer][x mul x]] end each sq/v (iota 4)	[0 1 4 9]	over a computed collection
+def idg fn [[x:Any][Any][x]] end each idg/v [1 'a' true]	[1 'a' true]	an Any-typed fn value over a heterogeneous list
+def f ([x:Integer] => [x mul 2]) end each f/v [1 2]	[2 4]	a def-bound LAMBDA reached through /v
+def f ([x:Integer] => [x mul 2]) end def g f/v end each g/v [1 2]	[2 4]	…rebound once more before the call
+def kf kv:KeyVal => [mul 2 (kv.v)] end each kf/v {a:1 b:2}	{a:2 b:4}	the map form hands the fn value a KeyVal
+#
+# §6  a DEF-BOUND body — the quotation is data, bound, then spliced
+def b (codequote [mul 3]) end each b [1 2]	[3 6]	codequote captures the body unevaluated
+def b (quote [mul 3]) end each b [1 2]	[3 6]	quote reaches the same shape for a plain list body
+def b (codequote [dup mul]) end each b [1 2 3] end each b	[1 16 81]	…and the same binding drives two walks
+#
+# §7  CLOSURES — the callback captures an enclosing binding
+def n 3 end each ([x:Integer] => [x mul n]) [1 2]	[3 6]	the capture rides the closure, not a re-lookup
+def k 5 end def addk x:Integer => [x add k] end each addk/v [1 2]	[6 7]	a def-bound closure reached through /v
+def cfg {scale:3} end each ([x:Integer] => [x mul (cfg.scale)]) [1 2]	[3 6]	the capture is a MAP FIELD read
+def cfg {scale:3} end each [mul (cfg.scale)] [1 2]	[3 6]	…and a code body captures it just as well
+def n 2 end def f ([x:Integer] => [x mul n]) end each f [1 2]	[2 4]	captured before any shadow
+def n 2 end def f ([x:Integer] => [x mul n]) end def n 10 end each f [1 2]	[10 20]	a later shadow push changes what the SAME closure computes
+def xs [1 2 3] end each ([x:Integer] => [0 fold [add] xs add x]) xs	[7 8 9]	the callback captures the very list being walked
+#
+# §8  NESTED each
+[[1 2] [3 4]] each [each [mul 2]]	[[2 4] [6 8]]	an each inside a code body
+each ([x:Integer] => [each ([y:Integer] => [x mul y]) [1 2 3]]) [1 2]	[[1 2 3] [2 4 6]]	an each inside a lambda, outer element captured
+each ([x:Integer] => [each ([y:Integer] => [each ([z:Integer] => [x add y add z]) [100]]) [10]]) [1 2]	[[[111]] [[112]]]	three deep
+each ([x:Integer] => [each ([y:Integer] => [y add x]) (iota x)]) [1 2 3]	[[1] [2 3] [3 4 5]]	the INNER collection depends on the outer element
+def grid [[1 2] [3 4]] end each ([r:List] => [0 fold [add] r]) grid	[3 7]	each outside, fold inside — row sums
+def grid [[1 2] [3 4]] end 0 fold [add] (each ([r:List] => [0 fold [add] r]) grid)	10	…and a fold over that
+#
+# §9  each INSIDE a fn body
+def dbl-all fn [[xs:List][List][each [mul 2] xs]] end dbl-all [1 2 3]	[2 4 6]	a code body inside a fn
+def dbl-all fn [[xs:List][List][xs each [mul 2]]] end dbl-all [1 2 3]	[2 4 6]	the stack spelling inside a fn
+def pipeline fn [[xs:List][List][each [add 1] (each [mul 2] xs)]] end pipeline [1 2 3]	[3 5 7]	two eaches in one fn body
+def sum-all fn [[xs:List][Integer][0 fold [add] (each [mul 2] xs)]] end sum-all [1 2 3]	12	each feeding a fold inside a fn
+def norm fn [[m:Map][Map][each [mul 2] m]] end norm {a:1 b:2}	{a:2 b:4}	the map form inside a fn
+def stats fn [[xs:List][Map][{n: (size xs) total: (0 fold [add] xs) doubled: (each [mul 2] xs)}]] end stats [1 2 3]	{n:3 total:6 doubled:[2 4 6]}	each inside a map literal inside a fn
+def report fn [[m:Map][List][each ([kv:KeyVal] => [kv.k]) m end vals]] end report {a:1 b:2}	['a' 'b']	a KeyVal lambda inside a fn, projected back to a list
+def deep fn [[xs:List][List][each ([x:Any] => [if (typeof x eq List) [each [mul 2] x] [x mul 2]]) xs]] end deep [1 [2 3]]	[2 [4 6]]	a type test picks between a nested each and a scalar step
+def go fn [[flag:Boolean][List][if flag [each [mul 2] [1 2]] [[]]]] end go true	[2 4]	each inside a branch inside a fn
+#
+# §10  an each body that DEFINES A LOCAL
+each ([x:Integer] => [def d (x mul x) d]) [2 3]	[4 9]	one local per iteration
+each ([x:Integer] => [def d (x mul x) def e (d add 1) e]) [1 2 3]	[2 5 10]	a local reading the previous local
+#
+# §11  an each body that CALLS A USER FN
+def f x:Integer => [add 1 x] end each [f] [1 2 3]	[2 3 4]	a user word in a code body
+def f x:Integer => [add 1 x] end each f/v [1 2 3]	[2 3 4]	…the same word as a value
+def bump fn [[x:Integer][Integer][x add 1]] end each ([y:Integer] => [bump (bump y)]) [1 2]	[3 4]	called twice, nested, inside a lambda
+def f x:Integer => [mul 2 x] end def g y:Integer => [f (f y)] end each g/v [1 2 3]	[4 8 12]	a user fn that itself calls a user fn
+def fact fn [[n:Integer][Integer][if (n lte 1) [1] [n mul (fact (n sub 1))]]] end each fact/v [1 2 3 4]	[1 2 6 24]	a RECURSIVE user fn as the callback
+def fib fn [[n:Integer][Integer][if (n lt 2) [n] [(fib (n sub 1)) add (fib (n sub 2))]]] end each fib/v [0 1 2 3 4 5]	[0 1 1 2 3 5]	…binary recursion, six elements
+import "boru:string-util" end each [StringUtil.upper] ['a' 'b']	['A' 'B']	a MODULE word in a code body
+import "boru:string-util" end each ([s:String] => [StringUtil.lower s]) ['AB' 'Cd']	['ab' 'cd']	…and in a lambda
+import "boru:math-util" end each ([x:Integer] => [MathUtil.max x 2]) [1 3]	[2 3]	a two-argument module word inside the callback
+import module [export "M" {dbl: (fn [[x:Integer][Integer][x mul 2]])}] end each ([x:Integer] => [M.dbl x]) [1 2]	[2 4]	an inline module's export called from the callback
+#
+# §12  a body that produces a COMPOUND value per iteration
+each ([x:Integer] => [[] push x push x]) [1 2]	[[1 1] [2 2]]	a two-element list per element
+each ([x:Integer] => [push x [0]]) [1 2]	[[0 1] [0 2]]	…built the other way round
+def pair fn [[x:Integer][List][[x x]]] end each pair/v [1 2]	[[1 1] [2 2]]	a fn value returning a list literal
+def mk fn [[x:Integer][Map][{v: x}]] end each mk/v [1 2]	[{v:1} {v:2}]	a MAP per element
+each ([kv:KeyVal] => [({k: (kv.k) v: (kv.v)})]) {a:1}	{a:{k:'a' v:1}}	a map per entry, over a map
+each ([kv:KeyVal] => [{k: (kv.k) v: (kv.v)}]) {a:1}	ERROR:undefined_word	NUR153, the residual rule: an anonymous `=>` whose body is a single BARE container defers past the frame, so `kv` is unbound — wrap the container to compute in-frame (the row above)
+def tolist fn [[m:Map][List][each ([kv:KeyVal] => [([(kv.k) (kv.v)])]) m end vals]] end tolist {a:1}	[['a' 1]]	entries rebuilt as [key value] pairs
+#
+# §13  each over a COMPUTED / dynamic collection
+each [mul 2] (reverse [1 2 3])	[6 4 2]	the collection is a word's result
+each [mul 2] (sort [3 1 2])	[2 4 6]	…sorted first
+each [mul 2] (take 2 [1 2 3 4])	[2 4]	…sliced first
+each [size] (keys {aa:1 b:2})	[2 1]	…projected off a map
+each [mul 2] (vals {a:1 b:2})	[2 4]	…the values half
+def mkl fn [[n:Integer][List][iota n]] end each [mul 2] (mkl 3)	[0 2 4]	a user fn builds the collection
+def get-rows fn [[][List][[1 2 3]]] end each [mul 2] (get-rows)	[2 4 6]	a NILADIC user fn builds it
+def data {rows: [1 2 3]} end each [mul 2] (data.rows)	[2 4 6]	read out of a map field
+def nested {a: {b: [1 2]}} end each [mul 2] (nested.a.b)	[2 4]	…two levels down
+def evens (filter [mod 2 eq 0] (iota 10)) end each [mul 10] evens	[0 20 40 60 80]	a filtered collection
+import "boru:array-util" end each [reverse] (ArrayUtil.window 2 [1 2 3])	[[2 1] [3 2]]	a module word builds the collection
+import "boru:string-util" end each ([s:String] => [StringUtil.trim s]) [' a ' ' b']	['a' 'b']	…a split/trim string pipeline
+import "boru:string-util" end each ([c:String] => [StringUtil.upper c]) (StringUtil.split '' 'abc')	['A' 'B' 'C']	each over a STRING's characters — `each` has no String signature, so real code splits first
+def xs (flex [1 2 3]) end each [mul 2] xs	[2 4 6]	a FLEX list collection
+each [mul 2] (do [[1 2 3]])	[2 4 6]	the collection comes out of a `do` body
+#
+# §14  EMPTY collections — the callback runs zero times
+each [mul 2] []	[]	empty list, code body
+each ([x:Integer] => [x add 1]) []	[]	empty list, lambda
+{} each [mul 2]	{}	empty map
+each [mul 2] (flex [])	[]	empty flex list
+for-each ([x:Integer] => [x]) []		for-each over an empty list leaves nothing at all
+#
+# §15  each WITH AN INDEX
+def xs ['a' 'b' 'c'] end each ([i:Integer] => [xs get i]) (iota (size xs))	['a' 'b' 'c']	the list idiom: walk the indices, read the element
+def xs [10 20 30] end each ([i:Integer] => [i mul (xs get i)]) (iota 3)	[0 20 60]	…and use both index and element
+iota 4 each ([i:Integer] => [i mul i])	[0 1 4 9]	iota as the index source, stack form
+def m {a:1 b:2} end each ([kv:KeyVal] => [({key: (kv.k) idx: (kv.i) tot: (kv.n)})]) m	{a:{key:'a' idx:0 tot:2} b:{key:'b' idx:1 tot:2}}	the map form carries the index for free
+import "boru:string-util" end def cs (StringUtil.split '' 'hey') end each ([i:Integer] => [cs get i]) (iota (size cs))	['h' 'e' 'y']	indexing a string's characters
+#
+# §16  CHAINING — each into each, each into fold, fold over each
+[1 2 3] each [dup add] each [add 1]	[3 5 7]	two eaches, stack form
+each [mul 2] [1 2 3] each [mul 2] each [mul 2] each [mul 2]	[16 32 48]	four in a row
+each ([x:Integer] => [x mul 2]) [1 2 3] each ([y:Integer] => [y add 1]) each ([z:Integer] => [z mul z])	[9 25 49]	three lambda stages
+each ([x:Integer] => [x add 1]) (each ([y:Integer] => [y mul 2]) (each ([z:Integer] => [z sub 1]) [1 2 3]))	[1 3 5]	…the parenthesised spelling of the same pipeline
+0 fold [add] (each [mul 2] [1 2 3])	12	each feeding fold
+0 fold [add] (each ([x:Integer] => [x mul x]) (iota 5))	30	…with a lambda stage
+[] fold [push] (each [mul 2] [1 2])	[2 4]	fold rebuilding a list from an each
+size (each [mul 2] [1 2 3])	3	each feeding a scalar word
+sort (each ([x:Integer] => [10 sub x]) [1 2 3])	[7 8 9]	each feeding sort
+filter [gt 2] (each [mul 2] [1 2 3])	[4 6]	each feeding filter
+def tags ['a' 'bb'] end def lens (each [size] tags) end 0 fold [add] lens	3	the staged spelling: bind the each result, then fold it
+def xs [1 2 3] end def ys (each [mul 2] xs) end each [add 1] ys	[3 5 7]	…two bound stages
+def m {a:1 b:2} end 0 fold [add] (vals (each [mul 10] m))	30	map each, projected to a list, folded
+#
+# §17  for-each — the side-effecting twin (every result discarded)
+{a:1 b:2} for-each [drop]		a for-each body may leave the stack empty; nothing is produced
+def acc (flex []) end for-each ([x:Integer] => [acc push (x mul 2)]) [1 2 3] end acc	(flex [2 4 6])	the real-code accumulator shape
+def acc (flex []) end for-each ([kv:KeyVal] => [acc push (kv.k)]) {a:1 b:2} end acc	(flex ['a' 'b'])	…over a map, collecting keys
+def seen (flex []) end for-each ([kv:KeyVal] => [seen push (kv.i)]) {a:1 b:2 c:3} end seen	(flex [0 1 2])	…collecting the iteration index
+def t (flex {n:0}) end for-each ([x:Integer] => [t set 'n' (t.n add x)]) [1 2 3] end t	(flex {n:6})	a running total in a flex map
+def xs [10 20 30] end def acc (flex []) end for-each ([i:Integer] => [acc push (xs get i)]) (iota 3) end acc	(flex [10 20 30])	for-each over an index range
+#
+# ---------------------------------------------------------------------
+# §18  REFUSALS — verified on the interpreter, REJECTED by the compiler.
+#      Every row below is a real-code shape. They are recorded here
+#      DELIBERATELY as open defects: the note carries the refusal
+#      reason force-compile printed.
+#
+# callback-not-a-literal: the callback arrives through a value, not written at the call site
+def m {f: ([x:Integer] => [x mul 3])} end each (m.f) [1 2]	[3 6]	a callback stored in a MAP FIELD — the commonest real-code callback shape [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def m {f: (fn [[x:Integer][Integer][x mul 3]])} end each (m.f) [1 2]	[3 6]	…the same with a named fn literal in the field [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def handler ([x:Integer] => [x add 1]) end def hs {h: handler/v} end each (hs.h) [1 2]	[2 3]	…and with the lambda bound first, then stored [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def tbl {d:([a:Integer] => [mul 2 a])} end def k 'd' end each (tbl get k) [1 2]	[2 4]	callback chosen by a DYNAMIC KEY [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def apply-all fn [[f:Function xs:List][List][each f/v xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	the callback arrives as a fn PARAMETER [REFUSES: function-valued operand at each (Stage 3)]
+def apply-all fn [[f:Function xs:List][List][each f xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	…same, spelled without /v [REFUSES: function-valued operand at each (Stage 3)]
+def mk fn [[n:Integer][Function][([x:Integer] => [x mul n])]] end each (mk 3) [1 2]	[3 6]	a callback built by a FACTORY fn [REFUSES: function-valued operand at each (Stage 3)]
+def make-scaler fn [[k:Integer][Function][([x:Integer] => [x mul k])]] end each (make-scaler 5) [1 2]	[5 10]	…the scaler-factory spelling [REFUSES: function-valued operand at each (Stage 3)]
+def dispatch fn [[name:String][Function][if (name eq 'dbl') [([x:Integer] => [x mul 2])] [([x:Integer] => [x add 1])]]] end each (dispatch 'dbl') [1 2]	[2 4]	a callback selected by a BRANCH inside a factory [REFUSES: function-valued operand at each (Stage 3)]
+def compose fn [[f:Function g:Function][Function][([x:Integer] => [g (f x)])]] end each (compose ([a:Integer] => [a add 1]) ([b:Integer] => [b mul 10])) [1 2]	[20 30]	a COMPOSED callback [REFUSES: function-valued operand at each (Stage 3)]
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f/v [1 2 3]	[11 12 13]	a computed closure bound, then driven through /v [REFUSES: unmatched dispatch recovered at each]
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [(f 1)] [1 2 3]	[2 2 2]	a code body that CALLS a computed closure (the body ignores the element) [REFUSES: code-body word each (Stage 2)]
+def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]	[fn [[x:Integer][Any][word(x) word(mul) 2]] fn [[x:Integer][Any][word(x) word(mul) 2]]]	a code body whose only token is a stored fn — the interpreter leaves the fn value itself [REFUSES: fn each$body: result above a literal (Stage 3)]
+import module [export "M" {dbl: (fn [[x:Integer][Integer][x mul 2]])}] end each [M.dbl] [1 2]	[2 4]	a module export inside a CODE BODY (the lambda spelling in §11 compiles) [REFUSES: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it]
+each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in a code body — force-compile CRASHES with an internal engine error [REFUSES: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1]
+#
+# ---------------------------------------------------------------------
+# §19  MISCOMPILES — the row COMPILES, but the compiled answer is NOT the
+#      interpreter's. The expected column holds the INTERPRETER's answer
+#      (the engine this spec runner drives); the compiled lane disagrees,
+#      which a differential run must flag. Recorded deliberately.
+#
+# compiled answer diverges from the interpreter
+each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]]]	an Integer-typed lambda over a HETEROGENEOUS list: the interpreter leaves the unmatched callback as data per element [COMPILED ANSWER DIVERGES: compiled answer '[Integer ProperString List Map Boolean None]' != interpreter '[Integer fn (Integer) fn (Integer) fn (Integer) fn (Integer) fn (Integer)]']

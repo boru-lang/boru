@@ -149,8 +149,6 @@ func TestX5UnifyInnerDisjunctPredicateBSide(t *testing.T) {
 func TestX5UnifyDisjunctRNoMatch(t *testing.T) {
 	r := x5reg(t)
 	_, fn := x5PredType(t, r, "X5PosD")
-	pushUnifyRegistry(r)
-	defer popUnifyRegistry()
 	disj := DisjunctInfo{Alternatives: []Value{fn}}
 	if _, err := unifyDisjunctR(disj, NewString("nope"), r); err == nil {
 		t.Fatal("a string does not satisfy an Integer predicate disjunct")
@@ -213,7 +211,7 @@ func TestX5UnifyObjectTypeInstance(t *testing.T) {
 	// class-type value with the instance node itself as the minted node.
 	ot := NewClassType(node, ClassTypeInfo{ID: "X5Cls", Name: "Class/X5Cls", Fields: NewOrderedMap()})
 	inst := NewValueRaw(node, IntPayload{N: 1})
-	got, err := unifyObjectType(ot, inst)
+	got, err := unifyObjectType(ot, inst, nil)
 	if err != nil {
 		t.Fatalf("instance vs its object type: %v", err)
 	}
@@ -261,7 +259,7 @@ func TestX5PredicateUnifierUnifyDirect(t *testing.T) {
 	pu := def.Behavior().(*PredicateUnifier)
 
 	// Abstract a / concrete c: the candidate is the c side.
-	got, uerr := pu.Unify(NewTypeLiteral(def), NewInteger(3))
+	got, uerr := pu.Unify(NewTypeLiteral(def), NewInteger(3), nil)
 	if uerr != nil {
 		t.Fatalf("predicate Unify literal-vs-3: %v", uerr)
 	}
@@ -270,7 +268,7 @@ func TestX5PredicateUnifierUnifyDirect(t *testing.T) {
 	}
 
 	// Rejected candidate fails definitively.
-	if _, uerr := pu.Unify(NewString("x"), NewTypeLiteral(def)); uerr == nil {
+	if _, uerr := pu.Unify(NewString("x"), NewTypeLiteral(def), nil); uerr == nil {
 		t.Fatal("a String candidate must be rejected")
 	}
 }
@@ -385,7 +383,7 @@ func TestX5OptionsOnRightSide(t *testing.T) {
 	opts := x5Options(map[string]Value{"a": NewInteger(1)}, []string{"a"})
 	conc := x5Map(map[string]Value{"a": NewInteger(2)}, []string{"a"})
 	// Options on the b side exercises the else-canonicalisation.
-	got, uerr := unifyOptionsFamily(conc, ShapeMap, opts, ShapeOptions)
+	got, uerr := unifyOptionsFamily(conc, ShapeMap, opts, ShapeOptions, nil)
 	if uerr != nil {
 		t.Fatalf("map vs options: %v", uerr)
 	}
@@ -399,7 +397,7 @@ func TestX5OptionsOnRightSide(t *testing.T) {
 func TestX5OptionsUnknownKey(t *testing.T) {
 	opts := x5Options(map[string]Value{"a": NewInteger(1)}, []string{"a"})
 	conc := x5Map(map[string]Value{"z": NewInteger(2)}, []string{"z"})
-	if _, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap); uerr == nil {
+	if _, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap, nil); uerr == nil {
 		t.Fatal("unknown key must fail")
 	}
 }
@@ -408,7 +406,7 @@ func TestX5OptionsDefaultsAndRequired(t *testing.T) {
 	// Absent key with a concrete default fills in.
 	opts := x5Options(map[string]Value{"a": NewInteger(9)}, []string{"a"})
 	conc := x5Map(nil, nil)
-	got, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap)
+	got, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap, nil)
 	if uerr != nil {
 		t.Fatalf("default fill: %v", uerr)
 	}
@@ -420,7 +418,7 @@ func TestX5OptionsDefaultsAndRequired(t *testing.T) {
 
 	// Absent key with a bare type-literal schema (no default) fails.
 	req := x5Options(map[string]Value{"a": NewTypeLiteral(TInteger)}, []string{"a"})
-	if _, uerr := unifyOptionsFamily(req, ShapeOptions, conc, ShapeMap); uerr == nil {
+	if _, uerr := unifyOptionsFamily(req, ShapeOptions, conc, ShapeMap, nil); uerr == nil {
 		t.Fatal("missing required key must fail")
 	}
 }
@@ -429,7 +427,7 @@ func TestX5OptionsFieldRules(t *testing.T) {
 	// Concrete schema value, matching base type: caller value wins.
 	opts := x5Options(map[string]Value{"a": NewInteger(1)}, []string{"a"})
 	conc := x5Map(map[string]Value{"a": NewInteger(5)}, []string{"a"})
-	got, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap)
+	got, uerr := unifyOptionsFamily(opts, ShapeOptions, conc, ShapeMap, nil)
 	if uerr != nil {
 		t.Fatalf("same-base field: %v", uerr)
 	}
@@ -441,7 +439,7 @@ func TestX5OptionsFieldRules(t *testing.T) {
 
 	// Base-type mismatch fails with the field path.
 	bad := x5Map(map[string]Value{"a": NewString("x")}, []string{"a"})
-	if _, uerr := unifyOptionsFamily(opts, ShapeOptions, bad, ShapeMap); uerr == nil {
+	if _, uerr := unifyOptionsFamily(opts, ShapeOptions, bad, ShapeMap, nil); uerr == nil {
 		t.Fatal("base-type mismatch must fail")
 	}
 
@@ -449,12 +447,12 @@ func TestX5OptionsFieldRules(t *testing.T) {
 	dopts := x5Options(map[string]Value{
 		"a": NewDisjunct([]Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)}),
 	}, []string{"a"})
-	if _, uerr = unifyOptionsFamily(dopts, ShapeOptions, conc, ShapeMap); uerr != nil {
+	if _, uerr = unifyOptionsFamily(dopts, ShapeOptions, conc, ShapeMap, nil); uerr != nil {
 		t.Fatalf("disjunct field admit: %v", uerr)
 	}
 	// No alternative admits a boolean.
 	bbad := x5Map(map[string]Value{"a": NewBoolean(true)}, []string{"a"})
-	if _, uerr := unifyOptionsFamily(dopts, ShapeOptions, bbad, ShapeMap); uerr == nil {
+	if _, uerr := unifyOptionsFamily(dopts, ShapeOptions, bbad, ShapeMap, nil); uerr == nil {
 		t.Fatal("no disjunct alternative matches a boolean")
 	}
 }
@@ -464,7 +462,7 @@ func TestX5OptionsFieldRules(t *testing.T) {
 func TestX5UnifyListConcretePairs(t *testing.T) {
 	a := NewList([]Value{NewInteger(1), NewInteger(2)})
 	b := NewList([]Value{NewInteger(1), NewInteger(2)})
-	got, uerr := unifyListFamily(a, ShapeList, b, ShapeList)
+	got, uerr := unifyListFamily(a, ShapeList, b, ShapeList, nil)
 	if uerr != nil {
 		t.Fatalf("equal lists: %v", uerr)
 	}
@@ -475,13 +473,13 @@ func TestX5UnifyListConcretePairs(t *testing.T) {
 
 	// Length mismatch.
 	c := NewList([]Value{NewInteger(1)})
-	if _, uerr := unifyListFamily(a, ShapeList, c, ShapeList); uerr == nil {
+	if _, uerr := unifyListFamily(a, ShapeList, c, ShapeList, nil); uerr == nil {
 		t.Fatal("length mismatch must fail")
 	}
 
 	// Element mismatch.
 	d := NewList([]Value{NewInteger(1), NewString("x")})
-	if _, uerr := unifyListFamily(a, ShapeList, d, ShapeList); uerr == nil {
+	if _, uerr := unifyListFamily(a, ShapeList, d, ShapeList, nil); uerr == nil {
 		t.Fatal("element mismatch must fail")
 	}
 }
@@ -489,7 +487,7 @@ func TestX5UnifyListConcretePairs(t *testing.T) {
 func TestX5UnifyListTypedOnRight(t *testing.T) {
 	conc := NewList([]Value{NewInteger(1)})
 	typed := NewTypedList(NewTypeLiteral(TInteger))
-	got, uerr := unifyListFamily(conc, ShapeList, typed, ShapeTypedList)
+	got, uerr := unifyListFamily(conc, ShapeList, typed, ShapeTypedList, nil)
 	if uerr != nil {
 		t.Fatalf("concrete vs typed: %v", uerr)
 	}
@@ -503,23 +501,21 @@ func TestX5ReparentSwappedElem(t *testing.T) {
 	src := NewInteger(5)
 	lit := NewTypeLiteral(TInteger)
 
-	// No registry in flight: reparent to the literal's type directly.
-	got := reparentSwappedElem(src, lit)
+	// No registry on the chain: reparent to the literal's type directly.
+	got := reparentSwappedElem(src, lit, nil)
 	if n, _ := AsInteger(got); n != 5 {
 		t.Fatalf("expected the source payload back, got %v", got)
 	}
 
-	// With a registry in flight the type routes through CanonicalType.
+	// An armed chain routes the type through CanonicalType.
 	r := x5reg(t)
-	pushUnifyRegistry(r)
-	defer popUnifyRegistry()
-	got = reparentSwappedElem(src, lit)
+	got = reparentSwappedElem(src, lit, r)
 	if n, _ := AsInteger(got); n != 5 {
 		t.Fatalf("expected the source payload back, got %v", got)
 	}
 
 	// Non-swap results pass through untouched.
-	same := reparentSwappedElem(src, NewInteger(7))
+	same := reparentSwappedElem(src, NewInteger(7), nil)
 	if n, _ := AsInteger(same); n != 7 {
 		t.Fatalf("non-swap must pass through, got %v", same)
 	}

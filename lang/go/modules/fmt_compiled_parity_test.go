@@ -32,7 +32,7 @@ func runBothEngines(t *testing.T, prog string) (compiled, interpreted string) {
 		// fn reaches `apply` as an untyped carrier, and the record refuses
 		// ("apply over a dynamic lead") rather than lower an unprovable
 		// overload — the interpreter owns the shape until it graduates.
-		if strings.Contains(errC.Error(), "compile_refused") {
+		if strings.Contains(errC.Error(), "compile_failed") {
 			t.Skipf("compiled lane refused: %v", errC)
 		}
 		t.Fatalf("RunCompiled: %v", errC)

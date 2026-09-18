@@ -75,7 +75,12 @@ func (p *PredicateUnifier) Match(v Value, t *Type) bool {
 // unifySameOrSubtype-first candidate step whose "narrower literal →
 // admit" branch could admit a non-member without ever running the body
 // — the same hole the Go path avoids; the two now share one rule.)
-func (p *PredicateUnifier) Unify(a, b Value) (Value, *UnifyError) {
+// The body runs under the Unifier's OWN registry (the one InstallType
+// attached), not the chain's — one Unifier per (predicate type,
+// registry) — so the threaded registry is not consulted here, and the
+// body's own dispatch starts unarmed like top-level code (see
+// UnifyExplainR: the chain ends where the engine begins).
+func (p *PredicateUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	return unifyMembership(a, b, "predicate "+p.typeName, func(v Value) (Value, bool, error) {
 		if p.registry == nil {
 			return Value{}, false, fmt.Errorf("predicate type %s has no registry attached", p.typeName)

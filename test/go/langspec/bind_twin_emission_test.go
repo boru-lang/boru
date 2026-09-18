@@ -17,11 +17,9 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"sort"
+	"sync"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -59,75 +57,57 @@ func twinRowMismatch(src, where string) string {
 // TestBindTwinsEqualLedger runs the emission gate over the corpus and the
 // synthetic rows.
 func TestBindTwinsEqualLedger(t *testing.T) {
+	t.Parallel()
 	for _, src := range syntheticBranchArmSources {
 		if bad := twinRowMismatch(src, "synthetic"); bad != "" {
 			t.Errorf("%s", bad)
 		}
 	}
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var mu sync.Mutex
 	compiled, withTwins, mismatched := 0, 0, 0
 	var worst []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		src := r.Input
+		a, aerr := lang.New()
+		if aerr != nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			a, aerr := lang.New()
-			if aerr != nil {
-				continue
-			}
-			prog, _, res, _ := a.CompileCheck(src)
-			if prog == nil {
-				continue
-			}
-			compiled++
-			if len(prog.BindTwins) > 0 {
-				withTwins++
-			}
-			where := fmt.Sprintf("%s:%d", e.Name(), lineNo)
-			bad := ""
-			if len(prog.BindTwins) != len(res.BindLedger) {
-				bad = fmt.Sprintf("%s twins=%d ledger=%d  %s", where, len(prog.BindTwins), len(res.BindLedger), src)
-			} else {
-				for i, tw := range prog.BindTwins {
-					ld := res.BindLedger[i]
-					if tw.Kind != ld.Kind || tw.Name != ld.Name || tw.Depth != ld.Depth || tw.Pos != ld.Pos {
-						bad = fmt.Sprintf("%s entry %d: twin=%+v ledger=%+v", where, i, tw, ld)
-						break
-					}
-				}
-			}
-			if bad != "" {
-				mismatched++
-				if len(worst) < 15 {
-					worst = append(worst, bad)
+		prog, _, res, _ := a.CompileCheck(src)
+		if prog == nil {
+			return
+		}
+		where := fmt.Sprintf("%s:%d", r.File, r.Line)
+		bad := ""
+		if len(prog.BindTwins) != len(res.BindLedger) {
+			bad = fmt.Sprintf("%s twins=%d ledger=%d  %s", where, len(prog.BindTwins), len(res.BindLedger), src)
+		} else {
+			for i, tw := range prog.BindTwins {
+				ld := res.BindLedger[i]
+				if tw.Kind != ld.Kind || tw.Name != ld.Name || tw.Depth != ld.Depth || tw.Pos != ld.Pos {
+					bad = fmt.Sprintf("%s entry %d: twin=%+v ledger=%+v", where, i, tw, ld)
+					break
 				}
 			}
 		}
-		_ = f.Close()
-	}
+
+		mu.Lock()
+		defer mu.Unlock()
+		compiled++
+		if len(prog.BindTwins) > 0 {
+			withTwins++
+		}
+		if bad != "" {
+			mismatched++
+			if len(worst) < 15 {
+				worst = append(worst, bad)
+			}
+		}
+	})
+	sort.Strings(worst) // the mismatch worklist reads the same whichever worker saw a row first
 
 	t.Logf("bind-twin emission: %d compiled rows, %d with twins, %d mismatched", compiled, withTwins, mismatched)
 	for _, w := range worst {
@@ -166,72 +146,55 @@ func twinOpIdxs(code []compiler.Instr) []int {
 // must either gain an op or refuse the program, and this gate is what that
 // refusal logic will tighten.
 func TestBindTwinOpsArePlacedOrderedSubset(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	var mu sync.Mutex
 	rowsWithOps, opsTotal, twinsTotal, bad := 0, 0, 0, 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		src := r.Input
+		a, aerr := lang.New()
+		if aerr != nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
+		prog, _, _, _ := a.CompileCheck(src)
+		if prog == nil {
+			return
+		}
+		units := [][]compiler.Instr{prog.Code}
+		for i := range prog.Fns {
+			units = append(units, prog.Fns[i].Code)
+		}
+		rowOps, rowBad, sawOp := 0, 0, false
+		for _, code := range units {
+			idxs := twinOpIdxs(code)
+			if len(idxs) > 0 {
+				sawOp = true
 			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			a, aerr := lang.New()
-			if aerr != nil {
-				continue
-			}
-			prog, _, _, _ := a.CompileCheck(src)
-			if prog == nil {
-				continue
-			}
-			twinsTotal += len(prog.BindTwins)
-			units := [][]compiler.Instr{prog.Code}
-			for i := range prog.Fns {
-				units = append(units, prog.Fns[i].Code)
-			}
-			sawOp := false
-			for _, code := range units {
-				idxs := twinOpIdxs(code)
-				if len(idxs) > 0 {
-					sawOp = true
-				}
-				opsTotal += len(idxs)
-				for i, idx := range idxs {
-					if idx < 0 || idx >= len(prog.BindTwins) {
-						bad++
-						t.Errorf("%s:%d: BIND_TWIN arg %d outside the %d-entry table",
-							e.Name(), lineNo, idx, len(prog.BindTwins))
-					} else if i > 0 && idx <= idxs[i-1] {
-						bad++
-						t.Errorf("%s:%d: BIND_TWIN order broken (%d after %d) — the stream must "+
-							"replay transitions in the pass's order", e.Name(), lineNo, idx, idxs[i-1])
-					}
+			rowOps += len(idxs)
+			for i, idx := range idxs {
+				if idx < 0 || idx >= len(prog.BindTwins) {
+					rowBad++
+					t.Errorf("%s:%d: BIND_TWIN arg %d outside the %d-entry table",
+						r.File, r.Line, idx, len(prog.BindTwins))
+				} else if i > 0 && idx <= idxs[i-1] {
+					rowBad++
+					t.Errorf("%s:%d: BIND_TWIN order broken (%d after %d) — the stream must "+
+						"replay transitions in the pass's order", r.File, r.Line, idx, idxs[i-1])
 				}
 			}
-			if sawOp {
-				rowsWithOps++
-			}
 		}
-		_ = f.Close()
-	}
+
+		mu.Lock()
+		defer mu.Unlock()
+		twinsTotal += len(prog.BindTwins)
+		opsTotal += rowOps
+		bad += rowBad
+		if sawOp {
+			rowsWithOps++
+		}
+	})
 	t.Logf("bind-twin placement: %d rows with ops, %d ops placed over %d table entries", rowsWithOps, opsTotal, twinsTotal)
 	if rowsWithOps == 0 || opsTotal == 0 {
 		t.Fatal("no OpBindTwin was placed anywhere — the placement is not wired")

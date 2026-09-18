@@ -14,7 +14,7 @@ func TestW8UnifyMapLiteralVsOptions(t *testing.T) {
 	of := NewOrderedMap()
 	of.Set("x", NewTypeLiteral(TInteger))
 	opts := NewOptionsType(of)
-	got, err := unifyMapFamily(lit, Shape(lit), opts, Shape(opts))
+	got, err := unifyMapFamily(lit, Shape(lit), opts, Shape(opts), nil)
 	if err != nil {
 		t.Fatalf("Map literal vs Options: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestW8UnifyMapLiteralVsOptions(t *testing.T) {
 		t.Fatalf("expected Options result, got %v", got)
 	}
 	// Swapped: Options on the left, Map literal on the right.
-	got2, err2 := unifyMapFamily(opts, Shape(opts), lit, Shape(lit))
+	got2, err2 := unifyMapFamily(opts, Shape(opts), lit, Shape(lit), nil)
 	if err2 != nil {
 		t.Fatalf("Options vs Map literal: %v", err2)
 	}
@@ -42,7 +42,7 @@ func TestW8UnifyConcreteMapsAbsentOmitted(t *testing.T) {
 	bm.Set("keep", NewInteger(1))
 	aMap, _ := AsMap(NewMap(am))
 	bMap, _ := AsMap(NewMap(bm))
-	got, err := unifyConcreteMaps(aMap, bMap)
+	got, err := unifyConcreteMaps(aMap, bMap, nil)
 	if err != nil {
 		t.Fatalf("unifyConcreteMaps: %v", err)
 	}

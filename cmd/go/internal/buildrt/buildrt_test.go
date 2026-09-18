@@ -332,7 +332,7 @@ func TestMainIsSilentAboutCompileRefusal(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit=%d, want 0 (stderr=%q)", code, stderr.String())
 	}
-	if strings.Contains(stderr.String(), "bytecode compilation refused") {
+	if strings.Contains(stderr.String(), "bytecode compilation FAILED") {
 		t.Errorf("a built binary warned about its own compile refusal: %q", stderr.String())
 	}
 	if stderr.Len() != 0 {

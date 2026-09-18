@@ -78,6 +78,12 @@ type Opts struct {
 	// documented meaning intact (design/ROC-ADOPTION-PLAN.0.md, A3).
 	Pedantic bool
 	Color    bool
+	// Base, when set, is the directory a target's RELATIVE imports resolve
+	// against instead of the target's own directory — `boru check --base .
+	// tests/x.boru` checks a file the way `boru tests/x.boru` runs it from
+	// the same cwd (run anchors on the process cwd; check anchors on the
+	// file, which `boru build` needs). Empty keeps the file's directory.
+	Base string
 }
 
 // Target is one unit of work: Source is the boru text and Path is the
@@ -101,6 +107,7 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	pedantic := fs.Bool("pedantic", false, "gate on the advisory tiers too, not only on errors (composes under --soft)")
 	emit := fs.Bool("emit", false, "print the bytecode disassembly instead of the check report")
 	colorMode := fs.String("color", "auto", "colorize diagnostics: auto|always|never")
+	base := fs.String("base", "", "resolve relative imports against this directory instead of the file's own")
 	registry := fs.String("r", "", "registry path")
 	var seed int64
 	fs.Int64Var(&seed, "s", 0, "random seed")
@@ -175,6 +182,7 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		Strict:   *strict,
 		Pedantic: *pedantic,
 		Color:    lang.ResolveColor(nil, stderr, *colorMode),
+		Base:     *base,
 	}
 	if err := RunTargets(stdout, stderr, work, opts); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
@@ -343,6 +351,8 @@ Options:
                  composes under --soft, so --soft --pedantic exits 0
   --emit         print the bytecode disassembly instead of checking
   --color MODE   auto (default), always, or never
+  --base DIR     resolve relative imports against DIR, not the file's
+                 own directory (check a file the way boru runs it)
   -r PATH        registry path
   -s SEED        random seed
   -h, --help     print this message
@@ -478,7 +488,11 @@ func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 		if err != nil {
 			return fmt.Errorf("init error: %s", err)
 		}
-		if dir := anchorOf(t.Path); dir != "" {
+		dir := anchorOf(t.Path)
+		if o.Base != "" {
+			dir = anchorOf(filepath.Join(o.Base, "x")) // the directory itself, made absolute
+		}
+		if dir != "" {
 			a.NativeRegistry().BaseDir = dir
 		}
 		if o.Strict {

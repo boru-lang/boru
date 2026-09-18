@@ -77,11 +77,11 @@ func fcStampedRun(src, name string) error {
 	}
 	a.SetOutput(&bytes.Buffer{})
 	if _, _, err := a.RunCompiled(src); err != nil {
-		// A refusing fixture returns compile_refused under the Stage-J
+		// A refusing fixture returns compile_failed under the Stage-J
 		// default; this case's contract is the STAMP REPORT, not the
 		// refusal policy, so fall back explicitly (the CLI's own pattern)
 		// and assert stamps over the interpreter run.
-		if !strings.Contains(fmt.Sprint(err), "compile_refused") {
+		if !strings.Contains(fmt.Sprint(err), "compile_failed") {
 			return fmt.Errorf("run failed before the stamp assertion: %w", err)
 		}
 		disarm := a.ArmRuntimeStamping()
@@ -293,7 +293,7 @@ var frontierCases = []frontierCase{
 	}},
 	{"p11/no-unbounded-fallback", func() error {
 		// GRADUATED 2026-07-15 (permanent pin): the Stage-J DEFAULT is
-		// compile_refused — a genuine refusal returns the reason as an
+		// compile_failed — a genuine refusal returns the reason as an
 		// error and never silently re-runs the source (the one-release
 		// BORU_COMPILE_FALLBACK=1 hatch restores the old behavior for the
 		// legacy contracts that pin it explicitly).

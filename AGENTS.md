@@ -133,19 +133,38 @@ Full REPL reference: [CLI.md → REPL meta-commands](CLI.md#repl-meta-commands).
 
 ## Build, test, verify
 
-From the repo root, the **pre-commit checklist** (run all five before every
-commit — `make lint` catches what `vet` and `test` miss):
+From the repo root, the **commit gate** — three minutes or less, on what
+the change touched — before every commit:
 
 ```bash
-make fmt && make vet && make lint && make test && make cover-gate
+make commit-gate
 ```
+
+It runs gofmt, vet and golangci-lint on the touched modules (in parallel),
+the touched modules' unit tests (for `lang/go` and `cmd/go` the changed
+packages only — their full suites are CI's), the langspec gates over a
+smoke corpus plus every spec file the change touched, and the knowledge
+graph when docs or tooling changed; `scripts/commit-gate.sh` is the
+definition and prints each lane's time against the ceiling. Before a
+push, `make ci-local` runs exactly the steps CI runs, in CI's order
+(`scripts/ci-steps.sh` is the one definition both share); CI runs the same
+steps as parallel jobs, each under the same three-minute ceiling, and
+renders the gate table into every run's summary from the langspec shards.
+Two switches make iteration fast: `BORU_SPEC_FILES=callbacks.tsv,fold-*.tsv`
+restricts every corpus walk in `test/go/langspec` to the named spec files
+(the ten gates over one family run in seconds), and `BORU_DIRECTION_GATES=1`
+arms the direction lane — the gates against their END STATE, red by design
+until full compilation is done (`make test-direction`; the default lane
+asserts only the regression ceilings and is what blocks). `make gate-status`
+prints every gate's live value against both numbers.
 
 `make cover-gate` enforces **ADR-008**: 100% unit-test coverage of every
 reachable Go statement, the sole exclusions being provably-unreachable
 guards carrying a proof-carrying `//covergate:allow <reason>` comment on the
-guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). It is the
-slowest of the five and the one most often skipped; skipping it is how a
-merged PR turns CI red.
+guard's opening line (`design/COVERAGE-ALLOWLIST.10.md`). It is cached per
+module and takes about half an hour cold, so it runs nightly
+(`cover-gate.yml`) and before a merge, not on every commit — skipping it
+before a merge is how a merged PR turns CI red.
 
 Faster, scoped iteration:
 

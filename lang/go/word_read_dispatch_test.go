@@ -413,33 +413,29 @@ func TestDoBodyCaptureResidualPlainFn(t *testing.T) {
 	}
 }
 
-// The lambda-body deopt's own boundaries, each measured. A read the island
-// cannot seat, and a factory whose result the residual model cannot place,
-// keep the whole-program refusal — a sound interpreter fallback, never a
-// wrong answer. The `if` arm row is the one shape still DIVERGING (pinned
-// as the interpreter's answer via the fallback lane, not as parity on a
-// compiled run): a read inside a branch arm of a lambda body plans no point
-// and keeps its slot push, exactly as it did before this increment.
-func TestLambdaValueBodyDeoptRefusals(t *testing.T) {
+// The lambda-body deopt's own boundaries, each measured. Both rows once
+// refused and now compile with parity; the refusal each one pinned was a
+// measured gap, not a rule, and the pin moved to parity the increment the gap
+// closed. The `if` arm row is the one shape still DIVERGING (pinned as the
+// interpreter's answer via the fallback lane, not as parity on a compiled
+// run): a read inside a branch arm of a lambda body plans no point and keeps
+// its slot push, exactly as it did before this increment.
+func TestLambdaValueBodyDeoptCompiles(t *testing.T) {
 	const hf = `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any]`
-	refuse := []struct{ src, reason string }{
-		{hf + `[{a: j}]] )]]  def q (h {f: ([] => [42])})  (q 7)`, "body result of unknown provenance"},
-	}
-	for _, c := range refuse {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
+	// The single-container row refused "body result of unknown provenance"
+	// while compileClosureBody analysed every fn-value body as anonymous: a
+	// `fn`-word factory result evaluates its residual container IN-FRAME
+	// (core's EvalResidual rule is `!anonymous || BodyEvalsResidual`), so
+	// the container now records and the row compiles — {a:42}, both engines.
+	{
+		src := hf + `[{a: j}]] )]]  def q (h {f: ([] => [42])})  (q 7)`
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if !compiled {
+			t.Fatalf("%q: must compile now; err=%v", src, errC)
 		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: check: %v", c.src, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%q: want a refusal, got a compiled program", c.src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal = %q, want %q", c.src, reason, c.reason)
+		requireParity(t, src, gotC, errC, gotI, errI)
+		if fmt.Sprint(gotC) != "[{a:42}]" {
+			t.Errorf("%q = %v, want [{a:42}]", src, gotC)
 		}
 	}
 	// The two-factory row refused "fn value precedes residual args" until the

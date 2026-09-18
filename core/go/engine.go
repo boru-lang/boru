@@ -133,6 +133,13 @@ type Engine struct {
 	// container eval runs in-frame at its own recordable site.
 	ElemEvalRecordable bool
 	ReuseTape          bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	// DeferResidual leaves the finished stack's pending containers
+	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
+	// Set by CallBoru for a body whose residual defers past the frame
+	// (ResidualEvalsInFrame false): the sub-run must not evaluate the
+	// container while the params are still bound — the caller sweeps it
+	// after the teardown, in the scope the consumer would have.
+	DeferResidual bool
 	// flowUnwind marks a VM ISLAND engine: a break/continue that escapes the
 	// island's tape (no enclosing loop there) must TEAR DOWN the island's live
 	// spliced frames before returning — in the interpreter the frame and the
@@ -1520,8 +1527,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// Lists are evaluated as sub-programs: [1 add 2] → [3].
 	// Maps have their values evaluated recursively.
 	// Values marked Quoted (by the quote word) are left as-is.
-	if err := e.autoEvalStack(); err != nil {
-		return nil, e.faultReturn(err)
+	// A DeferResidual run (CallBoru's deferring lambda body) hands them
+	// back pending; the caller sweeps them after its frame teardown.
+	if !e.DeferResidual {
+		if err := e.autoEvalStack(); err != nil {
+			return nil, e.faultReturn(err)
+		}
 	}
 
 	// Orphan GenSpec residue (generics plan D1/D2): a `gen [...]`
@@ -4117,32 +4128,39 @@ func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 
 func (e *Engine) autoEvalStack() error {
 	for i := 0; i < e.Tape.Len(); i++ {
-		val := e.Tape.At(i)
-		if !val.Quoted {
-			// Typed containers carry no Eval flag — resolve by shape.
-			if rv, ok := e.resolveInertTypeShape(val); ok {
-				e.Tape.Set(i, rv)
-				continue
-			}
+		result, err := e.autoEvalResidual(e.Tape.At(i))
+		if err != nil {
+			return err
 		}
-		if !val.Eval || val.Quoted {
-			continue
-		}
-		if val.Parent.Equal(TList) && val.Data != nil && !IsTypedList(val) && !IsTableType(val) {
-			result, err := e.autoEvalList(val, false)
-			if err != nil {
-				return err
-			}
-			e.Tape.Set(i, result)
-		} else if val.Parent.Equal(TMap) && val.Data != nil && !IsTypedMap(val) && !IsRecordType(val) && !IsOptionsType(val) {
-			result, err := e.AutoEvalMap(val, false, false)
-			if err != nil {
-				return err
-			}
-			e.Tape.Set(i, result)
-		}
+		e.Tape.Set(i, result)
 	}
 	return nil
+}
+
+// autoEvalResidual evaluates ONE end-of-run residual value exactly as the
+// final-stack sweep does — a pending plain list or map evaluates as a
+// sub-program, an inert typed container resolves by shape, everything
+// else passes through. Shared by autoEvalStack and by CallBoru's
+// post-teardown sweep of a DEFERRED lambda residual (ResidualEvalsInFrame
+// false), so the deferred container is evaluated by the same routine a
+// consumer would have applied to it.
+func (e *Engine) autoEvalResidual(val Value) (Value, error) {
+	if !val.Quoted {
+		// Typed containers carry no Eval flag — resolve by shape.
+		if rv, ok := e.resolveInertTypeShape(val); ok {
+			return rv, nil
+		}
+	}
+	if !val.Eval || val.Quoted {
+		return val, nil
+	}
+	if val.Parent.Equal(TList) && val.Data != nil && !IsTypedList(val) && !IsTableType(val) {
+		return e.autoEvalList(val, false)
+	}
+	if val.Parent.Equal(TMap) && val.Data != nil && !IsTypedMap(val) && !IsRecordType(val) && !IsOptionsType(val) {
+		return e.AutoEvalMap(val, false, false)
+	}
+	return val, nil
 }
 
 // autoEvalList evaluates the contents of a plain list in a sub-engine,
@@ -5110,19 +5128,13 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// it falls through to the name-lookup branch below. Anonymous closures
 	// keep their own sigs even when they captured a module registry.
 	var fn *FnDefInfo
-	foreignReg := fnDef.Registry != nil && fnDef.Registry != e.Registry
+	foreignReg := FnHomeForeign(e.Registry, &fnDef)
 	if len(fnDef.Signatures) > 0 && (fnDef.Anonymous || !foreignReg) {
-		reg := fnDef.Registry
-		if reg == nil {
-			reg = e.Registry
-		}
+		reg, _ := FnHome(e.Registry, &fnDef)
 		fn = compileFnDef(reg, fnDef)
 	}
 	if fn == nil && fnDef.Name != "" {
-		reg := fnDef.Registry
-		if reg == nil {
-			reg = e.Registry
-		}
+		reg, _ := FnHome(e.Registry, &fnDef)
 		fn = reg.Lookup(fnDef.Name)
 	}
 	if fn == nil && len(fnDef.Signatures) > 0 {
@@ -5305,7 +5317,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// Body-less sigs and a real Go Handler — it must dispatch straight
 	// through execMatch below, exactly like any other native, so we require
 	// a body-bearing own sig before entering this branch.
-	if fnDef.Registry != nil && fnDef.Registry != e.Registry {
+	if FnHomeForeign(e.Registry, &fnDef) {
 		ownSigs := fnDef.OwnSigs()
 		var wrapperSig *FnSig
 		// Select the own sig CORRESPONDING TO THE MATCHED sig — same
@@ -5395,7 +5407,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// IS the interpreter's dispatch. Interpretation is unchanged — Reg is
 	// read only at the check-mode carrierResults seam (execMatch:2625).
 	match := &MatchResult{Sig: sig, Positions: positions, Name: fnDef.Name}
-	if fnDef.Registry != nil && fnDef.Registry != e.Registry {
+	if FnHomeForeign(e.Registry, &fnDef) {
 		match.Reg = fnDef.Registry
 	}
 	if len(positions) > 0 {
@@ -5609,7 +5621,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// body must run via CallBoru in that registry — the execFnDefLiteral
 	// sub-registry branch handles them) and macros.
 	checkFnValue := e.Registry != nil && e.Registry.analysisMode() && !fnDef.Anonymous && !fnDef.Macro &&
-		(fnDef.Registry == nil || fnDef.Registry == e.Registry) &&
+		!FnHomeForeign(e.Registry, &fnDef) &&
 		e.Registry.analysisRecorder().Active()
 	ownSigs := fnDef.OwnSigs()
 	for i := range ownSigs {
@@ -5739,8 +5751,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// analysis position is unconditionally reached and untrapped, because a
 	// fn body analysed against generalised carrier args can fail to match
 	// for want of precision rather than because the program is wrong.
-	if e.Registry != nil &&
-		fnDef.Name != "" && !fnDef.Anonymous &&
+	if e.Registry != nil && fnDef.NamedDef() &&
 		valIdx < e.Tape.Len() && !e.Tape.At(valIdx).Quoted {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
@@ -6023,7 +6034,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		args[i].Undefined = false
 	}
 
-	if capturedReg != nil && (capturedReg != e.Registry || e.Registry.Lookup("__pa") == nil) {
+	if capturedReg != nil && (!capturedReg.SameHome(e.Registry) || e.Registry.Lookup("__pa") == nil) {
 		// Execute in the captured module's registry via CallBoru.
 		// Pass the FnDef's lexical captures so the body sees them as
 		// defs (alongside the module-registry's own bindings).
@@ -6180,7 +6191,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		UnnamedCount:   unnamedCount,
 		FuncName:       "<fn>",
 		Pos:            callPos,
-		EvalResidual:   !anonymous || BodyEvalsResidual(sig.Body()),
+		EvalResidual:   ResidualEvalsInFrame(anonymous, sig.Body()),
 	})
 	tokens = append(tokens, NewCloseParen())
 
@@ -6366,8 +6377,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 		return
 	}
 	v := e.Tape.At(idx)
-	if fd, isFn := v.Data.(FnDefInfo); isFn &&
-		fd.Name != "" && !fd.Anonymous && !v.Quoted {
+	if fd, isFn := v.Data.(FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
 		v.ReachGroup = true
 		e.Tape.Set(idx, v)
 	}

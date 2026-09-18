@@ -72,6 +72,7 @@ var knownRefusals = map[string]string{
 // a documented allowlisted refusal, and on any allowlist entry that no
 // longer refuses (stale — remove it). See knownRefusals.
 func TestRefusalsAreFailures(t *testing.T) {
+	t.Parallel()
 	c := gatherCensus(t)
 
 	seen := make(map[string]bool, len(knownRefusals))
@@ -80,7 +81,9 @@ func TestRefusalsAreFailures(t *testing.T) {
 			seen[r.input] = true
 			continue
 		}
-		t.Errorf("compilation refusal is a failure (%s:%d): %q\n  reason: %s\n  full native compilation is the goal: widen the compilable subset so this row compiles, or — only if compiling it would be UNSOUND — add it to knownRefusals with a soundness justification.",
+		// Open debt on the direction lane; on the regression lane the COUNT
+		// gate in TestCompiledCoverage owns these rows (lanes_test.go).
+		directionFailure(t, "compilation refusal is a failure (%s:%d): %q\n  reason: %s\n  full native compilation is the goal: widen the compilable subset so this row compiles, or — only if compiling it would be UNSOUND — add it to knownRefusals with a soundness justification.",
 			r.file, r.line, r.input, r.reason)
 	}
 

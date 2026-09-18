@@ -1,0 +1,104 @@
+name: boru setup
+description: >
+  The setup every CI job shares — Go with the shared module cache and a
+  per-job build cache — and, only when a job asks for it, Node for the
+  parser parity, the lint or vuln tool, the CLI build. One definition so
+  the jobs that run in parallel cannot drift, and inputs so no job pays
+  for a tool it does not run (the 3-minute ceiling in ci.yml is what the
+  inputs buy: node+npm was 4-9 s and the tools 5-6 s on every job).
+inputs:
+  cache-name:
+    description: >
+      the build cache's name — the job's name unless a matrix job passes
+      its own, so every shard restores the cache IT last saved
+    default: ''
+  node:
+    description: install Node and the TypeScript core/parser dependencies
+    default: 'false'
+  tools:
+    description: the Go tools to install, a subset of "lint vuln"
+    default: ''
+  build-cli:
+    description: build cmd/go/bin/boru
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: lang/go/go.mod
+        # The action's own cache is OFF: it keys on a go.sum at the
+        # repository ROOT, and this go.work workspace has none, so it
+        # cached nothing. The two caches below are the replacement.
+        cache: false
+
+    # The module cache is the same for every job, so one entry keyed by
+    # the dependency set serves them all; the first job to see a new set
+    # saves it, the rest find the key and never save.
+    - name: Go module cache (shared, keyed by the dependency set)
+      uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: go-mod-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}
+        restore-keys: go-mod-${{ runner.os }}-
+
+    # The build cache is per JOB and keyed per RUN: a job compiles its own
+    # packages, so it restores the entry it saved last (the first
+    # restore-key), or any job's on its first run; the run id tails the key
+    # so the exact key never hits and every green job saves its fresh
+    # state (actions/cache saves only on an exact-key miss, and only when
+    # the job reaches its post step, so a red job seeds nothing). Measured
+    # on the one-job layout this replaced: tool installs 72s -> 7s, the
+    # CLI build 38s -> 2s, vet 21s -> 6s. Test results are never reused
+    # across runs (checkout rewrites every mtime). golangci-lint's own
+    # cache rides along: a warm one turns a 127 s lint into seconds.
+    - name: Go build cache (per job, keyed per run)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/.cache/golangci-lint
+        key: go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-${{ github.run_id }}
+        restore-keys: |
+          go-build-${{ runner.os }}-${{ inputs.cache-name || github.job }}-
+          go-build-${{ runner.os }}-
+
+    - uses: actions/setup-node@v4
+      if: inputs.node == 'true'
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: |
+          core/ts/package-lock.json
+          parser/ts/package-lock.json
+
+    - name: Install TypeScript core/parser dependencies
+      if: inputs.node == 'true'
+      shell: bash
+      run: |
+        npm ci --prefix core/ts
+        npm ci --prefix parser/ts
+
+    # The release binary, not `go install`: building golangci-lint from
+    # source is 85 s on a cold build cache (the first run under a new
+    # cache key, or after an eviction), the download is three seconds
+    # either way. Pinned to the version `make lint` documents.
+    - name: Install golangci-lint
+      if: contains(inputs.tools, 'lint')
+      shell: bash
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.5.0
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        golangci-lint version
+
+    - name: Install govulncheck
+      if: contains(inputs.tools, 'vuln')
+      shell: bash
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Build CLI
+      if: inputs.build-cli == 'true'
+      shell: bash
+      run: scripts/ci-steps.sh build-cli

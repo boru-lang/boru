@@ -84,7 +84,7 @@ the next two increments it orders.
 
 The design defines the mission as four terms (§1):
 
-- **T1, totality:** `CompileCheck` never refuses; `compile_refused` and
+- **T1, totality:** `CompileCheck` never refuses; `compile_failed` and
   the `BORU_COMPILE_FALLBACK` hatch retire.
 - **T2, no islands:** a compiled program never re-enters the interpreter
   over tokens or value windows, and never bails to a whole-program re-run.
@@ -131,7 +131,7 @@ the Stage-1 baseline and the end state each gate's own comment names.
 | twin-placement frontier | body shapes the rollback-and-replay regime cannot yet replay | 4 (09-02) | **2** | 0 | 2 shapes |
 | opcodes | declared in `compiler/go/bytecode.go` | | 53 | | |
 | `OpCollect` / `OpDispatchGeneric` | the generic lane's two opcodes | 0 | **0 declared** (comments only); `Program.Regions` carries 38,734 inert descriptors over 5,629 programs, mono-native dispatch only | live | unbuilt |
-| escape valves | `OpFallback`, the drift window (`OpCallDynamicMixed`), `OpCallDynFrame`, `vmDefer`, `compile_refused`, `BORU_COMPILE_FALLBACK` | all live | **all live and still emitted** | deleted at Stage 9 | 0 |
+| escape valves | `OpFallback`, the drift window (`OpCallDynamicMixed`), `OpCallDynFrame`, `vmDefer`, `compile_failed`, `BORU_COMPILE_FALLBACK` | all live | **all live and still emitted** | deleted at Stage 9 | 0 |
 
 Three readings of that table matter more than any single row.
 
@@ -331,7 +331,7 @@ sample curves.
 - **Valve retirement (Stage 9).** 17 `vmDefer` sites, each with a named
   native replacement in §6.10; `OpFallback`, its lowerer, `islandRun`,
   the drift window and the P7 machinery deleted; the C1 fence reduced to
-  error propagation; `compile_refused` becomes a structured internal
+  error propagation; `compile_failed` becomes a structured internal
   error; `BORU_COMPILE_FALLBACK` deleted. Mechanical once everything above
   lands, and impossible before.
 - **The off-corpus oracle.** T1 has to be proven against generated sweeps

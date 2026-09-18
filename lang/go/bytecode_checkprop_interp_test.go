@@ -49,7 +49,7 @@ res get "ok"`
 func TestCheckPropInterpStringFnScopeRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `import "boru:test" end
 def run-props fn [[pfx:Integer] [Boolean] [

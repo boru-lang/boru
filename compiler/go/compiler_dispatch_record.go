@@ -430,13 +430,30 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 		return false
 	}
 	// A word that DECLARES CompileQuoteInert (quote / codequote / raise / timeout
-	// / interval): its quoted operand is inert data the handler consumes verbatim
-	// — a quoted symbol, or a quoted code body held as data — so it bakes as a
-	// plain CALL_NATIVE once every quoted operand is an inert const (an Atom, or a
-	// quoted code list). The VM runs the same handler over the same baked value.
-	// Unlike the module-inner branch below, this admits a non-Atom inert operand
-	// (a `[body]` list) and a core builtin, but a non-inert quoted operand still
-	// declines so the program falls back.
+	// / interval / inspect): its quoted operand is inert data the handler consumes
+	// verbatim — a quoted symbol, or a quoted code body held as data — so it bakes
+	// as a plain CALL_NATIVE
+	// once every quoted operand is an inert const (an Atom, or a quoted code
+	// list). The VM runs the same handler over the same baked value. Unlike the
+	// module-inner branch below, this admits a non-Atom inert operand (a `[body]`
+	// list) and a core builtin, but a non-inert quoted operand still declines so
+	// the program falls back.
+	//
+	// What keeps a COUNTERFEIT off this exemption is the RunInCheckMode screen
+	// above, and that is worth stating because the obvious guards do not work.
+	// A runtime re-dispatch wrapper (`def set (usurp set)`) copies the whole
+	// signature off the wrapped one, so it inherits BOTH CompileEffect and
+	// Locked; and although UsurpFunction / rebarrierFunction clear QuoteArgs,
+	// NormalizeSig rebuilds them from Params (FnParam.Quote survives), so the
+	// wrapper presents a quoted operand too. Neither the declaration nor a
+	// binding-identity flag can tell it apart from the kernel handler — NUR057's
+	// Locked key never excluded a real usurp wrapper, only a hand-built sig.
+	// What DOES exclude it is that a re-dispatch wrapper must be steppable by
+	// the carrier compiler, so every one of them is built `Go(handler,
+	// RunInCheck())` and dies on the screen above before reaching here. That is
+	// the property quoted_operand_exemption_test.go pins, across every wrapper
+	// constructor, so a new one that skipped RunInCheck would fail loudly rather
+	// than silently ride a mutator's argument.
 	if sig.CompileEffect.Has(core.CompileQuoteInert) {
 		for i := range args {
 			if sig.QuoteArgs[i] && !core.IsInertConst(args[i]) {
@@ -475,10 +492,10 @@ func isModuleInnerSig(r *core.Registry, word string, sig *core.Signature) bool {
 			for _, k := range em.Keys() {
 				v, _ := em.Get(k)
 				fd, ok := v.Data.(core.FnDefInfo)
-				if !ok || fd.Registry == nil || fd.Name != word {
+				if !ok || fd.Name != word {
 					continue
 				}
-				inner := fd.Registry.Lookup(fd.Name)
+				inner := core.FnHomeLookup(&fd)
 				if inner == nil {
 					continue
 				}
@@ -602,10 +619,27 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// (Map/List) are faithful under runtime re-match: callPoly runs the same
 	// handler over the same concrete receiver the interpreter would. Other
 	// quoted-operand words (usurp / ref-family meta) re-step tokens and stay
-	// out. The set/del admission is keyed on BINDING IDENTITY against
-	// matchReg's own Locked registration (setDelKernelSig, NUR057), not the
-	// bare name — an open-words extension sig declines to the ordinary paths.
-	if len(sig.QuoteArgs) > 0 && !core.IsGetWord(word) && !core.IsGetrWord(word) && !setDelKernelSig(matchReg, word, sig) {
+	// out. set/del are admitted by DECLARATION rather than by name — their
+	// sixteen quoted-receiver sigs carry CompileQuoteKey (quotedKeySig) — which
+	// retired setDelKernelSig (NUR057), whose two admitted classes were each
+	// justified by a claim that does not hold; the pins and the reasons are in
+	// quoted_operand_exemption_test.go.
+	//
+	// The test is the DECLARATION, deliberately not quoteOperandInertOK. Reading
+	// the broader predicate here was measured and reverted: it admits every
+	// CompileQuoteInert declarer and the module-inner branch besides, and one of
+	// those declarers is `raise`, which also carries CompileDiverges. The poly
+	// event built at emit.go's RecordPolyCall site carries no `sig` and no
+	// `diverges`, so a poly-recorded `raise` stops being a divergent terminal:
+	// its `if` arm is counted as a 0-value contributor, the enclosing fn turns
+	// variadic and every fixed-arity consumer refuses. `do [((f …) add 1)] error
+	// [(42)]` over a fn raising a DYNAMIC message answered 42 interpreted and
+	// refused compiled. TestEmitRaiseArmDivergence does not catch it because its
+	// raise operand is static, so the word never goes poly there. That latent
+	// hole is the poly event's to close, not this gate's; keeping the gate on
+	// the declaration keeps it out of reach.
+	if len(sig.QuoteArgs) > 0 && !core.IsGetWord(word) && !core.IsGetrWord(word) &&
+		!quotedKeySig(sig) {
 		return false
 	}
 	// A fn-valued operand or result means a fn-invoking / fn-returning word

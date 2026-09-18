@@ -247,6 +247,7 @@ const (
 	CompileScalarFold       = core.CompileScalarFold
 	CompileFallbackBody     = core.CompileFallbackBody
 	CompileQuoteInert       = core.CompileQuoteInert
+	CompileQuoteKey         = core.CompileQuoteKey
 	CompileDiverges         = core.CompileDiverges
 	CompileValueDiverges    = core.CompileValueDiverges
 	CompileStoresBody       = core.CompileStoresBody
@@ -491,6 +492,8 @@ var (
 	InvokeCallbackFn         = core.InvokeCallbackFn
 	FnValueOnlyZeroArgSigs   = core.FnValueOnlyZeroArgSigs
 	FnHome                   = core.FnHome
+	FnHomeLookup             = core.FnHomeLookup
+	HomeExportedFn           = core.HomeExportedFn
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
 	IsCompiledClosure        = compiler.IsCompiledClosure

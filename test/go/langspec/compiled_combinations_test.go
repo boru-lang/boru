@@ -145,16 +145,17 @@ var comboParity = []string{
 }
 
 func TestCompiledCombinationParity(t *testing.T) {
+	t.Parallel()
 	var diverge int
 	for _, src := range comboParity {
 		ac := newDifferentialInstance(t)
 		gotC, _, errC := ac.RunCompiled(src)
-		// Stage J: a whole-program refusal returns compile_refused instead
+		// Stage J: a whole-program refusal returns compile_failed instead
 		// of the library silently re-running. This harness's contract is
 		// parity-VIA-FALLBACK (the fixture comments name it), so it performs
 		// the explicit fallback itself — same instance, exactly the caller
 		// side of the new contract.
-		if errCode(errC) == "compile_refused" {
+		if errCode(errC) == "compile_failed" {
 			gotC, errC = ac.RunInterp(src)
 		}
 		ai := newDifferentialInstance(t)
@@ -179,7 +180,7 @@ func TestCompiledCombinationParity(t *testing.T) {
 // pathOf classifies how a program compiles: "fallback" (whole-program),
 // "island" (compiles with an OpFallback island), or "native" (compiles,
 // no island).
-func pathOf(t *testing.T, src string) string {
+func pathOf(t testing.TB, src string) string {
 	t.Helper()
 	a := newDifferentialInstance(t)
 	prog, _, _, err := a.CompileCheck(src)
@@ -197,6 +198,7 @@ func pathOf(t *testing.T, src string) string {
 // (e.g. islanding a concrete dispatch, or refusing a shape that used to
 // compile) is caught even when the result stays correct.
 func TestCompiledCombinationPath(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src  string
 		want string

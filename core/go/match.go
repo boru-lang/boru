@@ -106,7 +106,7 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// top-level shape, never on nested word resolution, so the
 		// direct path is verdict-identical.
 		if ni, err := AsNegation(pattern); err == nil {
-			if _, uerr := unifyNegation(ni, val); uerr != nil {
+			if _, uerr := unifyNegation(ni, val, nil); uerr != nil {
 				return false
 			}
 			continue
@@ -150,7 +150,7 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 	// Direct unifyNegation path for negation patterns — see the twin
 	// fast path in patternsOk: skips ResolveWordsDeep, verdict-identical.
 	if ni, err := AsNegation(pattern); err == nil {
-		_, uerr := unifyNegation(ni, val)
+		_, uerr := unifyNegation(ni, val, nil)
 		return uerr != nil
 	}
 	_, uOk := Unify(val, pattern)
@@ -171,6 +171,14 @@ func forwardPatternRejects(sig *Signature, pos int, val Value) bool {
 // implements the "? means None or absent" rule via the type system —
 // no out-of-band optional-key metadata required.
 func OpenUnifyMap(pattern, candidate Value) bool {
+	return openUnifyMap(pattern, candidate, nil)
+}
+
+// openUnifyMap is OpenUnifyMap with the enclosing unify chain's
+// registry: the disjunct walk (unifyDisjunct) runs the subset match on
+// a concrete map alternative from INSIDE a unify, so each per-key
+// unify keeps the chain armed. The public entry passes nil.
+func openUnifyMap(pattern, candidate Value, r *Registry) bool {
 	pMap, _ := AsMap(pattern)
 	cMap, _ := AsMap(candidate)
 
@@ -181,8 +189,8 @@ func OpenUnifyMap(pattern, candidate Value) bool {
 	// panicking on pMap.Keys(). Callers' guards vary; this is the
 	// single defensive boundary.
 	if pMap == nil || cMap == nil {
-		_, ok := Unify(pattern, candidate)
-		return ok
+		_, uerr := unifyWithin(pattern, candidate, r)
+		return uerr == nil
 	}
 
 	absentVal := NewTypeLiteral(TAbsent)
@@ -190,12 +198,12 @@ func OpenUnifyMap(pattern, candidate Value) bool {
 		pVal, _ := pMap.Get(key)
 		cVal, ok := cMap.Get(key)
 		if !ok {
-			if _, uOk := Unify(pVal, absentVal); !uOk {
+			if _, uerr := unifyWithin(pVal, absentVal, r); uerr != nil {
 				return false
 			}
 			continue
 		}
-		if _, uOk := Unify(pVal, cVal); !uOk {
+		if _, uerr := unifyWithin(pVal, cVal, r); uerr != nil {
 			return false
 		}
 	}

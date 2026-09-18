@@ -38,8 +38,8 @@ func TestRunCompiledReason(t *testing.T) {
 		if !strings.Contains(reason, "def `xs` consumes loop results") {
 			t.Fatalf("refusal reason %q does not name the offending construct", reason)
 		}
-		if codeOf(err) != "compile_refused" {
-			t.Fatalf("Stage J: refusal must return compile_refused, got [%s] %v", codeOf(err), err)
+		if codeOf(err) != "compile_failed" {
+			t.Fatalf("Stage J: refusal must return compile_failed, got [%s] %v", codeOf(err), err)
 		}
 	})
 

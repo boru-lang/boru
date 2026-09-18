@@ -22,11 +22,10 @@
 package langspec
 
 import (
-	"bufio"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	lang "github.com/boru-lang/boru/lang/go"
@@ -90,7 +89,7 @@ import (
 // nothing silently. The whole point of the row is that it now RAISES where it
 // used to answer 'str'. Its sibling, the conforming `okr` row, is clean on
 // both passes.
-const diagnosticParityCeiling = 320 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 321 (+1 twenty-seventh-increment row, the graduated apply-over-a-gradual-lead negative twin, diverging: the plain check flags its runtime no-match at the call over the concrete rule map, the compiled unit's carrier analysis does not repeat it — the "lost under compilation" class) -> 317 (the unreachable_branch attribution fix: a constant-condition dead branch is a claim about the CODE, so it is no longer emitted from a body analysis SPECIALISED to one call shape — CheckState.CallShapeDepth. Four corpus rows stop diverging because they stop being flagged at all, each proven a false positive by execution: bytecode-migrated.tsv:84, generics-fn.tsv:48, and recursion.tsv:78/:79, whose "dead" arms are the base cases `MR.fac 10 1` and `MR.aev 9` actually return through. The ratchet only falls, and this is the fall) -> 0 (Stage 8) -> 320 (2026-09-10, the forty-sixth and fiftieth increments' corpus rows: THREE more rows diverge and the checker's behaviour is unchanged — each falls into a shape this ledger already carries in bulk. apply.tsv:L64 `p apply $.name` and :L65 `[10 20 30] apply $.1` (the forty-sixth increment's graduated negatives) report `plain=no_signature/apply armed=` — the documented no_signature suppression on the compiling pass, which L37/L38 of the same file already carry; control.tsv:L144 `while [true] [ (7 add 2) if true [break] [5] end ] end 'x'` (the fiftieth increment's break-trims-the-round witness) reports `plain=unreachable_branch/if armed=` for its CONSTANT condition, the single largest shape here at 86 rows and one every constant-condition row in control.tsv §1/§6 already contributes. Named rather than counted because a ratchet that moves without naming what moved it stops being evidence)
+const diagnosticParityCeiling = 358 // the REGRESSION ceiling (lanes_test.go; end state 0): 358 on 2026-09-17 — the corpus expansion added 38 diverging rows in the shapes this ledger already carries in bulk (unused_def and fn_body_error on the armed pass; unreachable_branch and no_signature on the plain one), named by BORU_LOG_PARITY_ROWS=1. History: 320 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 321 (+1 twenty-seventh-increment row, the graduated apply-over-a-gradual-lead negative twin, diverging: the plain check flags its runtime no-match at the call over the concrete rule map, the compiled unit's carrier analysis does not repeat it — the "lost under compilation" class) -> 317 (the unreachable_branch attribution fix: a constant-condition dead branch is a claim about the CODE, so it is no longer emitted from a body analysis SPECIALISED to one call shape — CheckState.CallShapeDepth. Four corpus rows stop diverging because they stop being flagged at all, each proven a false positive by execution: bytecode-migrated.tsv:84, generics-fn.tsv:48, and recursion.tsv:78/:79, whose "dead" arms are the base cases `MR.fac 10 1` and `MR.aev 9` actually return through. The ratchet only falls, and this is the fall) -> 0 (Stage 8) -> 320 (2026-09-10, the forty-sixth and fiftieth increments' corpus rows: THREE more rows diverge and the checker's behaviour is unchanged — each falls into a shape this ledger already carries in bulk. apply.tsv:L64 `p apply $.name` and :L65 `[10 20 30] apply $.1` (the forty-sixth increment's graduated negatives) report `plain=no_signature/apply armed=` — the documented no_signature suppression on the compiling pass, which L37/L38 of the same file already carry; control.tsv:L144 `while [true] [ (7 add 2) if true [break] [5] end ] end 'x'` (the fiftieth increment's break-trims-the-round witness) reports `plain=unreachable_branch/if armed=` for its CONSTANT condition, the single largest shape here at 86 rows and one every constant-condition row in control.tsv §1/§6 already contributes. Named rather than counted because a ratchet that moves without naming what moved it stops being evidence)
 
 // armedOnlyCeiling is the sharpest of the three classes: rows the plain
 // check calls clean and the compile-armed pass finds fault with. It is the
@@ -111,7 +110,7 @@ const diagnosticParityCeiling = 320 // 318 (2026-08-26, Stage-1 baseline) -> 317
 // and the step loop no longer dispatches a word-typed CARRIER as a nameless
 // token. NUR103 has the full trace; its `h2` half is a different defect and
 // is not among these four.
-const armedOnlyCeiling = 4 // 5 (2026-08-26) -> 4 (NUR103 record-field fix) -> 0 (Stage 8)
+const armedOnlyCeiling = 16 // the REGRESSION ceiling (lanes_test.go; end state 0): 16 on 2026-09-17 — the corpus expansion added 12 armed-only rows (fn-locals-scope ×7, fold-map-filter ×2, callbacks, each-variants, module-composition, generics-fn, edge-quote-1, case ×2 — the test names each); checker debt the new idioms exposed. History: 4 // 5 (2026-08-26) -> 4 (NUR103 record-field fix) -> 0 (Stage 8)
 
 // diagKey renders a diagnostic's identity for set comparison: the code and
 // the word it is about. Detail text is deliberately excluded — it embeds
@@ -160,101 +159,86 @@ func infoSet(ds []lang.CheckDiagnostic) []string {
 }
 
 func TestDiagnosticParityAcrossPasses(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatalf("read %s: %v", specDir, err)
-	}
-
+	t.Parallel()
+	var mu sync.Mutex
 	var rows, diverged, infoDiverged int
 	var armedOnly, carriedByRefusal, lostUnderCompile int
 	var armedOnlyRows []string
 	byShape := map[string]int{}
 	var examples []string
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, err := os.Open(filepath.Join(specDir, e.Name()))
-		if err != nil {
-			t.Fatalf("open %s: %v", e.Name(), err)
-		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := strings.TrimRight(scanner.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			input := strings.TrimSpace(parts[0])
-			rows++
+		input := r.Input
+		mu.Lock()
+		rows++
+		mu.Unlock()
 
-			ap := newDifferentialInstance(t)
-			plain, perr := ap.Check(input)
-			if perr != nil {
-				continue // a pass that cannot run is not a parity question
-			}
-			ac := newDifferentialInstance(t)
-			prog, _, armed, cerr := ac.CompileCheck(input)
-			if cerr != nil {
-				continue
-			}
-			refused := prog == nil
-
-			if strings.Join(infoSet(plain.Diagnostics), ",") != strings.Join(infoSet(armed.Diagnostics), ",") {
-				infoDiverged++
-			}
-			p, c := diagSet(plain.Diagnostics), diagSet(armed.Diagnostics)
-			if strings.Join(p, ",") == strings.Join(c, ",") {
-				continue
-			}
-			diverged++
-			// Classify by what the USER sees, which is the property that
-			// matters. A finding the armed pass drops is not lost if that
-			// pass REFUSED — the refusal reason carries it, which is
-			// exactly why no_signature is suppressed while compiling
-			// (check/go/check_recovery.go: emitting it there would mask the
-			// specific reason as the generic sentinel). What is serious is a
-			// finding only ONE lane surfaces at all.
-			switch {
-			case len(c) > len(p):
-				armedOnly++ // the NUR103 class: clean to `boru check`, refused by the compiler
-				// Few enough to name. Listing them is the difference between
-				// a ratchet and a worklist.
-				armedOnlyRows = append(armedOnlyRows,
-					e.Name()+":L"+itoa(lineNum)+"  "+strings.Join(c, "|")+"  "+firstNRunes(input, 70))
-			case refused:
-				carriedByRefusal++ // dropped as a diagnostic, still reported as a refusal
-			default:
-				lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
-			}
-			// BORU_LOG_PARITY_ROWS=1 names every diverged row and both
-			// passes' findings. The ceiling is a ratchet whose every past
-			// move was justified by naming the exact row that moved it, and
-			// re-deriving that row by hand across a 7,700-row corpus is the
-			// step this switch removes. Mirrors BORU_LOG_CENSUS_ROWS
-			// (interp_entry_census_test.go) and BORU_LOG_UNFLAGGED
-			// (check_accuracy_test.go).
-			if os.Getenv("BORU_LOG_PARITY_ROWS") != "" {
-				t.Logf("PARITY ROW %s:L%d plain=%s armed=%s: %s",
-					e.Name(), lineNum, strings.Join(p, "|"), strings.Join(c, "|"),
-					firstNRunes(input, 90))
-			}
-			shape := "plain=" + strings.Join(p, "|") + " armed=" + strings.Join(c, "|")
-			byShape[shape]++
-			if len(examples) < 5 {
-				examples = append(examples, e.Name()+":L"+itoa(lineNum)+"  "+firstNRunes(input, 60))
-			}
+		ap := newDifferentialInstance(t)
+		plain, perr := ap.Check(input)
+		if perr != nil {
+			return // a pass that cannot run is not a parity question
 		}
-		f.Close()
-	}
+		ac := newDifferentialInstance(t)
+		prog, _, armed, cerr := ac.CompileCheck(input)
+		if cerr != nil {
+			return
+		}
+		refused := prog == nil
+
+		infoDiffers := strings.Join(infoSet(plain.Diagnostics), ",") != strings.Join(infoSet(armed.Diagnostics), ",")
+		p, c := diagSet(plain.Diagnostics), diagSet(armed.Diagnostics)
+		findingsAgree := strings.Join(p, ",") == strings.Join(c, ",")
+
+		mu.Lock()
+		defer mu.Unlock()
+		if infoDiffers {
+			infoDiverged++
+		}
+		if findingsAgree {
+			return
+		}
+		diverged++
+		// Classify by what the USER sees, which is the property that
+		// matters. A finding the armed pass drops is not lost if that
+		// pass REFUSED — the refusal reason carries it, which is
+		// exactly why no_signature is suppressed while compiling
+		// (check/go/check_recovery.go: emitting it there would mask the
+		// specific reason as the generic sentinel). What is serious is a
+		// finding only ONE lane surfaces at all.
+		switch {
+		case len(c) > len(p):
+			armedOnly++ // the NUR103 class: clean to `boru check`, refused by the compiler
+			// Few enough to name. Listing them is the difference between
+			// a ratchet and a worklist.
+			armedOnlyRows = append(armedOnlyRows,
+				r.Key()+"  "+strings.Join(c, "|")+"  "+firstNRunes(input, 70))
+		case refused:
+			carriedByRefusal++ // dropped as a diagnostic, still reported as a refusal
+		default:
+			lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
+		}
+		// BORU_LOG_PARITY_ROWS=1 names every diverged row and both
+		// passes' findings. The ceiling is a ratchet whose every past
+		// move was justified by naming the exact row that moved it, and
+		// re-deriving that row by hand across a 7,700-row corpus is the
+		// step this switch removes. Mirrors BORU_LOG_CENSUS_ROWS
+		// (interp_entry_census_test.go) and BORU_LOG_UNFLAGGED
+		// (check_accuracy_test.go).
+		if os.Getenv("BORU_LOG_PARITY_ROWS") != "" {
+			t.Logf("PARITY ROW %s plain=%s armed=%s: %s",
+				r.Key(), strings.Join(p, "|"), strings.Join(c, "|"),
+				firstNRunes(input, 90))
+		}
+		shape := "plain=" + strings.Join(p, "|") + " armed=" + strings.Join(c, "|")
+		byShape[shape]++
+		if len(examples) < 5 {
+			examples = append(examples, r.Key()+"  "+firstNRunes(input, 60))
+		}
+	})
+	sort.Strings(armedOnlyRows) // the worklist reads the same whichever worker saw a row first
 
 	t.Logf("diagnostic parity: %d rows, %d diverged on FINDINGS, %d on info-only advisories", rows, diverged, infoDiverged)
 	t.Logf("  by user impact: %d armed-only (clean to check, refused compiling — the NUR103 class), %d carried by the refusal reason instead, %d lost under compilation (check errors that vanish while the program compiles)",
@@ -265,14 +249,10 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 	for _, r := range armedOnlyRows {
 		t.Logf("  armed-only: %s", r)
 	}
-	if armedOnly > armedOnlyCeiling {
-		t.Errorf("armed-only findings %d exceed ceiling %d — programs that `boru check` calls clean and the compiler refuses, which a user cannot diagnose (NUR103)",
-			armedOnly, armedOnlyCeiling)
-	}
-	if diverged > diagnosticParityCeiling {
-		t.Errorf("diagnostic parity: %d rows exceed ceiling %d — the checker's verdict depends on who is asking (NUR103). Top shapes:\n%s",
-			diverged, diagnosticParityCeiling, topShapes(byShape, 8))
-	}
+	gate(t, "armed-only diagnostics", armedOnly, 0, armedOnlyCeiling, false,
+		"programs `boru check` calls clean and compiling FAILS — a user cannot diagnose them (NUR103)")
+	gate(t, "diagnostic parity divergences", diverged, 0, diagnosticParityCeiling, false,
+		"rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes: "+strings.ReplaceAll(topShapes(byShape, 3), "\n", "; "))
 }
 
 // topShapes renders the n most frequent divergence shapes. The full map

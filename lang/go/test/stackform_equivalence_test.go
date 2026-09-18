@@ -112,8 +112,22 @@ func isFn(v core.Value) bool {
 // place returns a permanently-inert copy of a live value. Canon cannot stand
 // in either — its Function branch renders name, params, returns and body, and
 // never the flag.
+//
+// The HOME is normalised away. A fn value carries the registry that minted it
+// and deq compares homes by module, but this harness runs the direct baseline
+// and the replay on two separate registries by construction (equivalentRun),
+// so a same-text fn from each is two modules to deq and one function to this
+// round trip. Stripping the home leaves everything the round trip is about.
 func fnValuesEqual(a, b core.Value) bool {
-	return a.Quoted == b.Quoted && core.DeepEqual(a, b)
+	return a.Quoted == b.Quoted && core.DeepEqual(stripFnHome(a), stripFnHome(b))
+}
+
+func stripFnHome(v core.Value) core.Value {
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		fd.Registry = nil
+		v.Data = fd
+	}
+	return v
 }
 
 // TestStackFormEquivalence_Arithmetic covers integer + decimal

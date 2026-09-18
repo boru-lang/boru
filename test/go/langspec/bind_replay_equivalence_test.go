@@ -36,11 +36,9 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"sort"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -143,6 +141,7 @@ func composeLedger(src string, led []core.BindTransition, where string) []string
 // TestBindLedgerBranchArmDepthsCompose is TestBindLedgerDepthsCompose over the
 // synthetic rows above — the population the corpus cannot supply.
 func TestBindLedgerBranchArmDepthsCompose(t *testing.T) {
+	t.Parallel()
 	for _, src := range syntheticBranchArmSources {
 		a, err := lang.New()
 		if err != nil {
@@ -160,57 +159,37 @@ func TestBindLedgerBranchArmDepthsCompose(t *testing.T) {
 }
 
 func TestBindLedgerDepthsCompose(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	t.Parallel()
+	var mu sync.Mutex
 	checked, incoherent := 0, 0
 	var worst []string
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		src := r.Input
+		a, aerr := lang.New()
+		if aerr != nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			a, aerr := lang.New()
-			if aerr != nil {
-				continue
-			}
-			_, _, res, _ := a.CompileCheck(src)
-			if len(res.BindLedger) == 0 {
-				continue
-			}
-			checked++
+		_, _, res, _ := a.CompileCheck(src)
+		if len(res.BindLedger) == 0 {
+			return
+		}
+		bad := composeLedger(src, res.BindLedger, fmt.Sprintf("%s:%d", r.File, r.Line))
 
-			bad := composeLedger(src, res.BindLedger, fmt.Sprintf("%s:%d", e.Name(), lineNo))
-			incoherent += len(bad)
-			for _, b := range bad {
-				if len(worst) < 12 {
-					worst = append(worst, b)
-				}
+		mu.Lock()
+		defer mu.Unlock()
+		checked++
+		incoherent += len(bad)
+		for _, b := range bad {
+			if len(worst) < 12 {
+				worst = append(worst, b)
 			}
 		}
-		_ = f.Close()
-	}
+	})
+	sort.Strings(worst) // the examples read the same whichever worker saw a row first
 
 	t.Logf("bind-ledger depth coherence: %d rows with a ledger, %d incoherent transitions", checked, incoherent)
 	for _, w := range worst {

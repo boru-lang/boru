@@ -311,6 +311,16 @@ type FnSig struct {
 	// receives its operands as code. See design/legacy/MACROS-PHASE1.10.ignore §3.
 	FormArgs map[int]bool
 
+	// Anonymous marks a signature minted by the `=>` sugar (`afn`) — the
+	// per-signature reading of FnDefInfo.Anonymous, stamped by NewFunction
+	// on every signature of an anonymous definition so the two never
+	// disagree for a minted value. It answers the ONE question a dispatch
+	// that holds only the signature (CallBoru) has to ask about the value
+	// it came from: how the body's residual evaluates
+	// (ResidualEvalsInFrame — an anonymous fn's single bare container
+	// literal DEFERS past the frame; NUR153).
+	Anonymous bool
+
 	// --- Run implementation + dispatch metadata. ---
 
 	// Impl is the signature's run implementation as a sealed sum
@@ -470,6 +480,25 @@ const (
 	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
 	// the handler.
 	CompileQuoteInert
+	// CompileQuoteKey marks a word whose implicit-quote (QuoteArgs) operand is a
+	// KEY the handler READS at dispatch — the atom field name of a container write
+	// or removal (`p set x 7`, `m del a`) — rather than a literal the handler bakes
+	// into its result. That difference is the whole reason it is a separate flag
+	// from CompileQuoteInert: an inert operand is a precondition THERE, because the
+	// baked const IS the handler's datum, but here the operand is just the key, so
+	// it lowers as an ordinary operand and the VM reads whatever the interpreter
+	// would. A CARRIER-delivered key therefore stays compilable — `set (k) v m`
+	// inside a fn whose `k` is an `Atom/q` param, which is how an open-words
+	// override delegates to the base overload (lang/spec/as.tsv:52-54). Requiring
+	// inertness here cost exactly those rows and put three refusals back on the
+	// regression ceiling, which is how the distinction was found.
+	//
+	// This is the declared form of what used to be a by-name test for `set`/`del`
+	// (setDelKernelSig, NUR057) at the recorder's two quoted-operand gates. As with
+	// CompileQuoteInert, do NOT set it on a dispatch-manipulating meta word whose
+	// quoted operand drives a RE-STEPPING result the VM cannot reproduce by
+	// re-running the handler.
+	CompileQuoteKey
 	// CompileDiverges marks a word whose handler ALWAYS raises (it never returns
 	// normally) — `raise`, the user-error constructor. A call to it is recorded as
 	// a CALL_NATIVE (the handler raises the byte-identical error at run time) but
@@ -717,9 +746,13 @@ type CallableSpec struct {
 }
 
 // FnDefInfo holds the function specification for a def-defined function.
-// Name is the function's registered name (set by InstallDef). If Registry is
-// non-nil, the function was defined in a module and should execute in that
-// registry's context (closure semantics).
+// Name is the function's registered name (set by InstallDef). Registry is the
+// fn value's HOME — the registry that minted it (FnConstruct, `=>`, `macro`,
+// a module's own exports), main program and module alike; its free words
+// resolve there when it is applied from a foreign module (FnHome). Nil means
+// a Go-built value with no boru body to resolve, never "defined in the
+// running scope" — read it through HasHome / FnHomeLookup / FnHomeForeign,
+// not by comparing the field (NUR152).
 //
 // Signatures is the SINGLE per-function signature slice — one full-fidelity
 // overload per entry. Each Signature carries the authored shape (Params with
@@ -2852,6 +2885,25 @@ func NewFunction(info FnDefInfo) Value {
 	if info.ident == nil {
 		info.ident = &fnIdent{}
 	}
+	// An anonymous definition stamps its anonymity onto every signature
+	// (FnSig.Anonymous) here, at the one seam every fn value passes
+	// through, so a dispatch holding only the matched signature — CallBoru
+	// — reads the same fact the frame builders read from the definition.
+	// The slice is cloned before the first stamp so a caller's authored
+	// signatures are never written through.
+	if info.Anonymous {
+		stamped := false
+		for i := range info.Signatures {
+			if info.Signatures[i].Anonymous {
+				continue
+			}
+			if !stamped {
+				info.Signatures = append([]Signature(nil), info.Signatures...)
+				stamped = true
+			}
+			info.Signatures[i].Anonymous = true
+		}
+	}
 	return NewValueRaw(TFunction, info)
 }
 
@@ -3239,6 +3291,14 @@ func IsDefCleanup(v Value) bool {
 }
 
 // AsDefCleanup returns the DefCleanupInfo, panics if not a def-cleanup.
+// FrameOn reports whether the frame's per-call state lives on r — by
+// IDENTITY, not by module: teardown pops r's Args/baseline and undefs against
+// r's def table, so a fork of the same module is the wrong registry here.
+// This is the one place a DefCleanup marker's registry is compared.
+func (dc DefCleanupInfo) FrameOn(r *Registry) bool {
+	return dc.Registry == r //sentinel:home a frame's registry is compared by identity: the teardown pops that registry's stacks
+}
+
 func AsDefCleanup(v Value) (DefCleanupInfo, error) {
 	info, ok := v.Data.(DefCleanupInfo)
 	if !ok {

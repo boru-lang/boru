@@ -89,7 +89,7 @@ func TestDoOutOfOrderResidualPromotes(t *testing.T) {
 func TestErrorStripInputClosure(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	dis := compileDisasm(t, `do [raise x "e"] error ["fallback"]`)
 	if strings.Contains(dis, "FALLBACK") {
@@ -143,7 +143,7 @@ func TestEmptyBodyClosureParity(t *testing.T) {
 func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `for 3 [ do [break] drop ]`
 	gotC, _, errC, gotI, errI := runBothEngines(t, src)
@@ -167,7 +167,7 @@ func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
 func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	compiles := []string{
 		`def b true  do [do [1 2 (if b [] [9 9])]]`,

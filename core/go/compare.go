@@ -1199,8 +1199,10 @@ func sameFnIdentity(a, b FnDefInfo) bool {
 // content addressing wholesale the way Unison does: Unison hashes
 // dependencies transitively and has no ambient namespace, while boru keeps
 // one deliberately (module-level dynamic binding is what hot reload rides
-// on). Registry is set only at module-export resolution, so two locally
-// defined fns both carry nil and compare on content alone.
+// on). Every boru-bodied fn carries the registry that minted it, so the
+// comparison is by MODULE (Registry.Home): a fn and the copy of it a
+// concurrent fork sees are the same function, while two identical bodies in
+// two modules are not.
 func fnStructurallyEqual(a, b FnDefInfo) bool {
 	// The same function is trivially deq to itself, and that is the common
 	// case — worth short-circuiting before rendering two canons.
@@ -1208,12 +1210,12 @@ func fnStructurallyEqual(a, b FnDefInfo) bool {
 		return true
 	}
 	// The DEFINING SCOPE is part of the content, and a nil Registry is a
-	// scope like any other — it means "wherever this is running", which is
-	// not the same place as a named module. Admitting a nil/non-nil pair
-	// here (as an earlier `both non-nil` guard did) let a module-owned fn
-	// and a locally defined one with identical text compare deq although
-	// their free words resolve in different registries.
-	if a.Registry != b.Registry {
+	// scope like any other — a Go-built value with no home of its own, which
+	// is not the same place as a module. Admitting a nil/non-nil pair here
+	// (as an earlier `both non-nil` guard did) let a module-owned fn and a
+	// Go-built one with identical text compare deq although their free words
+	// resolve in different registries.
+	if !a.Registry.SameHome(b.Registry) {
 		return false
 	}
 	// CAPTURES are content too. canonFnDef renders params, returns and

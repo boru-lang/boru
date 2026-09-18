@@ -1137,7 +1137,7 @@ func render(n *gnode, scope []string) string {
 // diverges runs the program on both engines and reports whether the COMPILED
 // path was taken and whether the two results disagree (value or error presence
 // — the TestSpecCompiledDifferential invariant).
-func diverges(t *testing.T, src string) (compiled, bad bool) {
+func diverges(t testing.TB, src string) (compiled, bad bool) {
 	ac := newDifferentialInstance(t)
 	gotC, comp, errC := ac.RunCompiled(src)
 	if !comp {
@@ -1155,6 +1155,7 @@ func diverges(t *testing.T, src string) (compiled, bad bool) {
 }
 
 func TestPropertyDifferential(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("property fuzz: skipped in -short")
 	}

@@ -1262,9 +1262,7 @@ func calleeLeaksFlow(r *core.Registry, name string, seen map[string]bool) bool {
 // fnDefLeaksFlow scans every overload body of fd for a leaking
 // break/continue. A module fn's body words resolve in its OWN registry.
 func fnDefLeaksFlow(r *core.Registry, fd *core.FnDefInfo, seen map[string]bool) bool {
-	if fd.Registry != nil {
-		r = fd.Registry
-	}
+	r, _ = core.FnHome(r, fd)
 	for i := range fd.Signatures {
 		for _, t := range fd.Signatures[i].Body() {
 			if calleeValueLeaksFlow(r, t, seen) {
@@ -2711,6 +2709,15 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// mini-redis catch-all shape). Mirrors the branch arm's treatment
 	// (core.RunCarrierBodyWithDefs, peekCaptureArm).
 	//
+	// The by-NAME admission is the interpreter's CallBoru regime: a native
+	// seam invoking a stored value (service `call`, a spawn) evaluates the
+	// residual in the live frame whatever the value's anonymity, so a stored
+	// `=>` handler's computed map reads its params there. The SAME value
+	// applied on the tape (`find` then `h {z:1}`) takes the lambda rule and
+	// defers — one value, two regimes, recorded as NUR153. The stamp is one
+	// unit and takes the CallBoru regime; the tape apply of a stamped stored
+	// `=>` value diverges until the interpreter has one rule.
+	//
 	// Admitted for CALLBACK bodies and MULTI-TOKEN fn bodies. A callback is
 	// only ever invoked via InvokeCallback / CallBoru, which evaluate the
 	// body residual IN the live frame on both engines. A multi-token body's
@@ -2734,7 +2741,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// like any in-frame computation. Only an anonymous lambda keeps the
 	// single-bare-literal transparency (BodyEvalsResidual), where in-frame
 	// assembly would bake the param and diverge — that shape keeps refusing.
-	if r.Check.Recorder().Active() && (isCallbackBodyName(name) || !anonymous || core.BodyEvalsResidual(body)) {
+	if r.Check.Recorder().Active() && core.ResidualEvalsInFrame(anonymous, body) {
 		sub.ElemEvalRecordable = true
 	}
 	result, err := sub.Run(input)
@@ -2761,20 +2768,6 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	}
 	r.Defs.Restore(snapshot)
 	return result
-}
-
-// isCallbackBodyName reports whether name is a stored-fn / spawn callback
-// body — compileClosureBody builds "storedfn$body" / "spawnbody$body" for the
-// words "storedfn" / "spawnbody" (callable_words.go). Such a body is invoked
-// only via InvokeCallback / CallBoru, which evaluate a residual COMPUTED
-// container (`{message: (join …)}` / `[a b]`) IN the live frame on both
-// engines, so recording its OpMakeMap / OpMakeList assembly is safe (it
-// re-assembles per run, matching the interpreter). A normal user fn applied
-// directly at top level leaves a DEFERRED residual the interpreter evaluates
-// after the frame pops — recording there would diverge, so RunFnBodyOnce gates
-// elemEvalRecordable on this predicate.
-func isCallbackBodyName(name string) bool {
-	return name == "storedfn$body" || name == "spawnbody$body"
 }
 
 // AnalyseFnBody runs a user-defined fn body through a sub-engine in

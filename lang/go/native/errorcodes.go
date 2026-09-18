@@ -33,7 +33,7 @@ var langErrorCodes = []string{
 	"binary_error", "body_error", "bytes_error", "cancel-interval_error",
 	"cancel-timeout_error", "capability_not_installed", "case_error", "check_error",
 	"check_prop_error", "class_error", "close_error", "closed",
-	"codec_error", "compile_refused", "const_error", "context_error",
+	"codec_error", "compile_failed", "const_error", "context_error",
 	"convert_error", "copy_error", "create_error", "debug_error",
 	"decode_error", "default_outside_gen", "del_error", "do_error",
 	"each_error", "eachrank_error", "emit_bad_signature", "emit_error",

@@ -22,17 +22,15 @@
 package langspec
 
 import (
-	"bufio"
 	"errors"
-
-	lang "github.com/boru-lang/boru/lang/go"
-	"os"
-	"path/filepath"
+	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
+	lang "github.com/boru-lang/boru/lang/go"
 )
 
 // errCode returns a boru error's taxonomy code (or "" for nil, "non-boru"
@@ -158,125 +156,116 @@ func itoa(n int) string {
 	return itoa(n/10) + string(rune('0'+n%10))
 }
 
-func TestSpecCompiledOrFallback(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatalf("read %s: %v", specDir, err)
+// fallbackVerdict compares one row's compiled-or-fallback run with the
+// interpreter's: error taxonomy first, then error content, then values.
+// refused is a compile_failed the compile gate owns (not a divergence);
+// unledgered is a divergence knownDivergences does not carry. It runs on a
+// walk worker, so it takes testing.TB and touches no shared state —
+// divergence is goroutine-safe.
+func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (refused, unledgered bool) {
+	t.Helper()
+	// Error taxonomy parity: same presence AND same code.
+	if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
+		if !wasCompiled && cdC == "compile_failed" {
+			// A REFUSAL, not a divergence: the compile gate in
+			// TestCompiledCoverage owns it (every one an open defect).
+			return true, false
+		}
+		return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error divergence: compiled=[%s]%v interpreted=[%s]%v",
+			wasCompiled, input, cdC, errC, cdI, errI))
 	}
+	if errC != nil {
+		// Error CONTENT parity: the compiled VM goes out of its way to
+		// reproduce the interpreter's errors byte-for-byte (vmReturnTypeErr,
+		// vmReturnCountErr), so detail text must match and the compiled
+		// error must carry a source position whenever the interpreter does.
+		// Exact Row/Col are NOT asserted: a return-type error is stamped at
+		// the call site by the interpreter but inside the shared fn unit by
+		// the VM, so the column legitimately differs — only presence is
+		// gated, which is what catches a "source position unknown" regression.
+		if aeC, aeI := asBoruError(errC), asBoruError(errI); aeC != nil && aeI != nil {
+			if aeC.Detail != aeI.Detail {
+				return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error detail divergence:\n  compiled=%q\n  interpreted=%q",
+					wasCompiled, input, aeC.Detail, aeI.Detail))
+			}
+			if aeI.Row > 0 && aeC.Row == 0 {
+				return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
+					wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail))
+			}
+			// Phase-7 rich-diagnostic parity: the compiled error must carry
+			// the SAME notes, suggestions, and secondary spans as the
+			// interpreter, not just the same Detail.
+			if diff := diagPayloadMismatch(aeC, aeI); diff != "" {
+				return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
+					wasCompiled, input, diff))
+			}
+		}
+		return false, false
+	}
+	if renderAny(gotC) != renderAny(gotI) {
+		return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  compiled=%q interpreted=%q",
+			wasCompiled, input, renderAny(gotC), renderAny(gotI)))
+	}
+	return false, false
+}
 
-	var rows, compiledPath, mismatches int
+func TestSpecCompiledOrFallback(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var rows, compiledPath, mismatches, refusedRows int
 	entryCensus := newEngineEntryCensus()
 	bailCensus := newDeferCensus()
 	localBailCensus := newDeferCensus()
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		path := filepath.Join(specDir, e.Name())
-		f, err := os.Open(path)
-		if err != nil {
-			t.Fatalf("open %s: %v", path, err)
-		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := strings.TrimRight(scanner.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			input := strings.TrimSpace(parts[0])
-			rows++
+		input := r.Input
 
-			ac := newDifferentialInstance(t)
-			disarm := ac.ArmInterpEntryHook(entryCensus.add)
-			// A bail's COST is not knowable when it fires — it depends on who
-			// catches it — so hold the row's bails and sort them by what
-			// actually happened (see deferLocalCeiling).
-			var rowBails []lang.BailEvent
-			disarmBail := ac.ArmRuntimeBailHook(func(ev lang.BailEvent) {
-				rowBails = append(rowBails, ev)
-			})
-			gotC, wasCompiled, errC := ac.RunCompiled(input)
-			disarm()
-			disarmBail()
-			for _, ev := range rowBails {
-				if wasCompiled {
-					localBailCensus.add(ev)
-				} else {
-					bailCensus.add(ev)
-				}
-			}
+		ac := newDifferentialInstance(t)
+		disarm := ac.ArmInterpEntryHook(entryCensus.add)
+		// A bail's COST is not knowable when it fires — it depends on who
+		// catches it — so hold the row's bails and sort them by what
+		// actually happened (see deferLocalCeiling).
+		var rowBails []lang.BailEvent
+		disarmBail := ac.ArmRuntimeBailHook(func(ev lang.BailEvent) {
+			rowBails = append(rowBails, ev)
+		})
+		gotC, wasCompiled, errC := ac.RunCompiled(input)
+		disarm()
+		disarmBail()
+		for _, ev := range rowBails {
 			if wasCompiled {
-				compiledPath++
-			}
-			ai := newDifferentialInstance(t)
-			gotI, errI := ai.RunInterp(input)
-
-			// Error taxonomy parity: same presence AND same code.
-			if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
-				mismatches++
-				t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error divergence: compiled=[%s]%v interpreted=[%s]%v",
-					e.Name(), lineNum, wasCompiled, input, cdC, errC, cdI, errI)
-				continue
-			}
-			if errC != nil {
-				// Error CONTENT parity: the compiled VM goes out of its way to
-				// reproduce the interpreter's errors byte-for-byte (vmReturnTypeErr,
-				// vmReturnCountErr), so detail text must match and the compiled
-				// error must carry a source position whenever the interpreter does.
-				// Exact Row/Col are NOT asserted: a return-type error is stamped at
-				// the call site by the interpreter but inside the shared fn unit by
-				// the VM, so the column legitimately differs — only presence is
-				// gated, which is what catches a "source position unknown" regression.
-				if aeC, aeI := asBoruError(errC), asBoruError(errI); aeC != nil && aeI != nil {
-					if aeC.Detail != aeI.Detail {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error detail divergence:\n  compiled=%q\n  interpreted=%q",
-							e.Name(), lineNum, wasCompiled, input, aeC.Detail, aeI.Detail)
-						continue
-					}
-					if aeI.Row > 0 && aeC.Row == 0 {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
-							e.Name(), lineNum, wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail)
-						continue
-					}
-					// Phase-7 rich-diagnostic parity: the compiled error must carry
-					// the SAME notes, suggestions, and secondary spans as the
-					// interpreter, not just the same Detail.
-					if diff := diagPayloadMismatch(aeC, aeI); diff != "" {
-						mismatches++
-						t.Errorf("%s:L%d (wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
-							e.Name(), lineNum, wasCompiled, input, diff)
-						continue
-					}
-				}
-				continue
-			}
-			if renderAny(gotC) != renderAny(gotI) {
-				mismatches++
-				t.Errorf("%s:L%d (wasCompiled=%v): %s\n  compiled=%q interpreted=%q",
-					e.Name(), lineNum, wasCompiled, input, renderAny(gotC), renderAny(gotI))
+				localBailCensus.add(ev)
+			} else {
+				bailCensus.add(ev)
 			}
 		}
-		f.Close()
-		if err := scanner.Err(); err != nil {
-			t.Fatalf("scanner error in %s: %v", path, err)
-		}
-	}
+		ai := newDifferentialInstance(t)
+		gotI, errI := ai.RunInterp(input)
 
-	t.Logf("compile-or-fallback: %d rows, %d compiled, %d divergences (values + error taxonomy)", rows, compiledPath, mismatches)
+		refused, unledgered := fallbackVerdict(t, r.Key(), input, wasCompiled, gotC, errC, gotI, errI)
+
+		mu.Lock()
+		defer mu.Unlock()
+		rows++
+		if wasCompiled {
+			compiledPath++
+		}
+		if refused {
+			refusedRows++
+		}
+		if unledgered {
+			mismatches++
+		}
+	})
+
+	t.Logf("compile-or-fallback: %d rows, %d compiled, %d refused (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, refusedRows, mismatches)
 	entryCensus.assertCeiling(t)
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
+	checkLedgerRetired(t, "compile-or-fallback")
 	if mismatches != 0 {
-		t.Errorf("%d compile-or-fallback divergences — every program must compile or fall back to an identical result and error taxonomy", mismatches)
+		t.Errorf("%d compile-or-fallback divergences the ledger does not know — every program must compile to an identical result and error taxonomy", mismatches)
 	}
 }

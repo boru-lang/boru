@@ -91,7 +91,52 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.errs = nil
 	fork.SDKCache = make(map[string]any)
 	fork.VmRunning = 0 // the fork starts idle, independent of the parent's run
+	// Check is a POINTER the shallow copy would alias, and a fork is a
+	// RUNTIME instance — a timer or interval body, a connection handler, a
+	// model watcher's action, an await branch. It must neither count
+	// against, race, nor inherit the ACTIVITY of the parent's check pass:
+	// with the alias, a timer body firing while the parent's next
+	// CompileCheck was mid-pass read and wrote the parent's step meter from
+	// the timer goroutine (the data race lang/go's
+	// TestTimeoutBodyAppliesParentFnOnItsFork pins under -race) and ran
+	// under the parent's analysis mode. The fork starts with the fresh,
+	// inactive state a new registry gets, keeping only the configured step
+	// budget; a compile that runs ON a fork arms the fork's own state
+	// (compiler's StampDetachedSig).
+	fork.Check = NewCheckState()
+	fork.Check.StepBudget = r.Check.StepBudget
+	// The fork is an instance of the parent's module, never a module of its
+	// own: a fn the parent minted runs on the fork when invoked there (FnHome).
+	fork.home = r.Home()
 	return &fork
+}
+
+// Home returns the canonical registry of the module r is an instance of —
+// r itself unless r is a concurrent fork, in which case the registry it was
+// forked from (transitively). Two registries with the same Home are the same
+// module: a fn minted in one is at home in the other.
+func (r *Registry) Home() *Registry {
+	if r != nil && r.home != nil { //sentinel:home the one reading of a nil home: r is its own canonical registry
+		return r.home
+	}
+	return r
+}
+
+// SameHome reports whether r and other are instances of the same module.
+func (r *Registry) SameHome(other *Registry) bool {
+	return r.Home() == other.Home()
+}
+
+// IsModule reports whether r is an instance of a MODULE — a registry a
+// resolved import gave a stable, policy-addressable id (ModuleRef:
+// "boru:time-util", "./lib.boru"), or a concurrent fork of one (the fork
+// copies the id, and the per-export policy that keys on it applies on the
+// fork exactly as on the module). The main program's registry, a fork of it,
+// an inline `module […]` body (no stable id) and a sandbox all answer false.
+// Nil-safe, because the VM reads it through a compiled unit's OWNING
+// registry, which is nil for a unit that runs on the program's own.
+func (r *Registry) IsModule() bool {
+	return r != nil && r.ModuleRef != "" //sentinel:home the one reading of an empty ModuleRef: not a module
 }
 
 // SyncWriter serializes concurrent Write calls so that several forked

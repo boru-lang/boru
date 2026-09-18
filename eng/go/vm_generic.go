@@ -105,11 +105,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	// (RegionDesc.Reg — a module's sub-registry for a native reached through
 	// its wrapper), as CALL_NATIVE_POLY resolves its word in PolyRef.Reg;
 	// the operands and the handler's registry are the running one's.
-	lookup := reg
-	if d.Reg != nil {
-		lookup = d.Reg
-	}
-	fn := lookup.Lookup(d.Word)
+	fn := dispatchRegistry(d.Reg, reg).Lookup(d.Word)
 	if fn == nil {
 		if liveLeadWord(p, d.Word) {
 			// A fn family a conditional body defines (Program.SpecFnNames)

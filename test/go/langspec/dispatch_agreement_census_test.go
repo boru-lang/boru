@@ -31,10 +31,7 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -154,6 +151,18 @@ func windowComparable(v core.Value, depth int) bool {
 }
 
 func TestDispatchAdmissionAgreementCensus(t *testing.T) {
+	// No t.Parallel(): core.InstallDispatchProbe is PROCESS-WIDE — one
+	// atomic.Pointer every Engine in the binary fires through
+	// (core/go/dispatch_probe.go) — so while it is armed, every dispatch of
+	// every OTHER test running an interpreter would land in this tally:
+	// the agreed/diverged/speculative/skipped counts would move with
+	// scheduling, a foreign occurrence could mask a stale ledger entry,
+	// and a divergence from a program that is not in the corpus could fail
+	// the UNLEDGERED direction. A sequential top-level test runs while
+	// every parallel test is still parked at its own t.Parallel(), so no
+	// other test dispatches while the probe is armed — the
+	// TestRegionCollectOracle precedent (region_oracle_test.go). The WALK
+	// below is still specWalk, parallel across files.
 	type stats struct {
 		agreed, engineNoMatch, speculative int
 		skipped                            map[string]int
@@ -221,47 +230,43 @@ func TestDispatchAdmissionAgreementCensus(t *testing.T) {
 		}
 		key := class + "/" + fn.Name
 		s.diverged[key]++
-		if _, ok := s.examples[key]; !ok {
-			s.examples[key] = fmt.Sprintf("arity=%d window=%s", len(window), renderWindow(window))
+		// The logged example is the SMALLEST rendering seen for the shape,
+		// not the first: the walk is parallel across files, so "first" is
+		// whichever worker got there first, and the ledger comment points
+		// readers at this log for the exact windows. The windows a shape
+		// produces are fixed by the corpus, so their minimum is the same
+		// every run; a divergence is rare (tens per corpus), so rendering
+		// each one costs nothing.
+		if ex := fmt.Sprintf("arity=%d window=%s", len(window), renderWindow(window)); s.examples[key] == "" || ex < s.examples[key] {
+			s.examples[key] = ex
 		}
 	})
 	defer uninstall()
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := os.ReadDir(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The rows walk in parallel (walk_test.go) and the probe is built for
+	// it: mu serializes every compare, and the rematch goid suppresses
+	// ONLY the census's own predicate dispatches on the rematching
+	// goroutine — a dispatch arriving from another worker while a rematch
+	// runs blocks on mu and is processed, the concurrent-branch case the
+	// goid check exists for (Codex P2, PR #420). The probe is installed
+	// before the walk and removed after it, and — see the top of the test
+	// — no other test runs in between. rows is the one accumulator the
+	// body itself touches, and it is counted under mu.
 	rows := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		a, aerr := lang.New()
+		if aerr != nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		for sc.Scan() {
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			a, aerr := lang.New()
-			if aerr != nil {
-				continue
-			}
-			a.SetClock(specClock)
-			_, _ = a.RunInterp(strings.TrimSpace(parts[0]))
-			rows++
-		}
-		_ = f.Close()
-	}
+		a.SetClock(specClock)
+		_, _ = a.RunInterp(r.Input)
+		mu.Lock()
+		rows++
+		mu.Unlock()
+	})
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -295,9 +300,13 @@ func TestDispatchAdmissionAgreementCensus(t *testing.T) {
 				k, s.diverged[k], s.examples[k])
 		}
 	}
-	for k, why := range agreementLedger {
-		if s.diverged[k] == 0 && !timingDependentShapes[k] {
-			t.Errorf("stale ledger entry %q (%s): the divergence no longer occurs — delete the entry so the ledger stays exact", k, why)
+	// The stale-entry half of the ledger is a corpus-wide claim: skipped
+	// under BORU_SPEC_FILES, where a shape may simply not be in the subset.
+	if !filteredCorpus() {
+		for k, why := range agreementLedger {
+			if s.diverged[k] == 0 && !timingDependentShapes[k] {
+				t.Errorf("stale ledger entry %q (%s): the divergence no longer occurs — delete the entry so the ledger stays exact", k, why)
+			}
 		}
 	}
 }

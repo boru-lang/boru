@@ -44,11 +44,11 @@ jobs:
           cache: false
 
       # Go module + build cache, keyed PER RUN, restored by prefix — the
-      # same design as ci.yml's build-and-test job, whose comment says why
-      # setup-go's own cache is off (no root go.sum in this go.work
+      # same design as ci.yml's composite setup action, whose comments say
+      # why setup-go's own cache is off (no root go.sum in this go.work
       # workspace: it cached nothing) and why the run id tails the key
       # (every run saves; setup-go would save once per go.sum and go
-      # stale). Its own prefix: this job's cache is not the CI job's.
+      # stale). Its own prefix: this job's cache is not a CI job's.
       - name: Go module and build cache
         uses: actions/cache@v4
         with:

@@ -85,7 +85,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if reg := fnDef.Registry; reg != nil && reg != r {
+		if FnHomeForeign(r, &fnDef) {
+			reg := fnDef.Registry
 			own := fnDef.OwnSigs()
 			// EVERY own sig must be a trivial delegation to the SAME
 			// inner native — a multi-overload wrapper (e.g. IO.write)
@@ -398,7 +399,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   u,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		skeleton = append(skeleton, NewCloseParen())
 		// When the body provably never reads `args` (sound under the
@@ -572,7 +573,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			Decl:           s.Decl,
 			UnnamedCount:   unnamedCount,
 			FuncName:       name,
-			EvalResidual:   !fnDefCopy.Anonymous || BodyEvalsResidual(s.Body()),
+			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		result = append(result, NewCloseParen())
 		return result, nil

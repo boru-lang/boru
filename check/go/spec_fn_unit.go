@@ -29,10 +29,7 @@ func CompileFnSigUnit(caller *core.Registry, fnDef core.FnDefInfo, sigIdx int) i
 	if _, isBoru := s.Impl.(*core.BoruImpl); !isBoru || s.Fallback {
 		return -1
 	}
-	r := caller
-	if fnDef.Registry != nil {
-		r = fnDef.Registry
-	}
+	r, _ := core.FnHome(caller, &fnDef)
 	restore := shareCheckStateFrom(r, caller)
 	defer restore()
 	es := r.Check.Recorder()

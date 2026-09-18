@@ -16,8 +16,10 @@ package core
 
 // unifyNegation admits val against `tnot Inner`. Asymmetric by design:
 // neg is always the negation side. Returns val (the admitted value) on
-// success, or a failure when val satisfies the negated inner type.
-func unifyNegation(neg NegationInfo, val Value) (Value, *UnifyError) {
+// success, or a failure when val satisfies the negated inner type. r is
+// the enclosing chain's registry, threaded into the inner membership
+// test.
+func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError) {
 	// Any narrows to the negation constraint itself: Any tand (tnot T)
 	// = tnot T (the top intersected with the complement is the
 	// complement).
@@ -31,7 +33,7 @@ func unifyNegation(neg NegationInfo, val Value) (Value, *UnifyError) {
 	// negation, DepScalar bounds — so a refined inner like (Integer gt
 	// 0) is checked pointwise against the value.
 	if IsConcrete(val) {
-		if _, err := unifyInner(neg.Inner, val); err != nil {
+		if _, err := unifyInner(neg.Inner, val, r); err != nil {
 			return val, nil
 		}
 		return Value{}, unifyFail("value satisfies the negated type", NewNegation(neg.Inner), val)
@@ -83,10 +85,16 @@ type NegationUnifier struct {
 func (*NegationUnifier) ContentMembership() {}
 
 func (n *NegationUnifier) Match(v Value, t *Type) bool {
+	return n.matchR(v, t, nil)
+}
+
+// matchR is Match with the enclosing unify chain's registry threaded
+// into the complement walk (see isR).
+func (n *NegationUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	if IsBareTypeNode(v) {
 		return baseBehavior(n.prev).Match(v, t)
 	}
-	_, err := unifyNegation(NegationInfo{Inner: n.inner}, v)
+	_, err := unifyNegation(NegationInfo{Inner: n.inner}, v, r)
 	return err == nil
 }
 
@@ -95,7 +103,7 @@ func (n *NegationUnifier) Match(v Value, t *Type) bool {
 // fails definitively, and a type-level pair defers to the structural
 // rule — the Unify capability every membership kind carries
 // (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
-func (n *NegationUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (n *NegationUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// The complement rule decides whenever exactly one side IS this
 	// negation's node — concrete, carrier, or type-level candidate
 	// alike, exactly as the payload fold decided them for the body.
@@ -108,7 +116,7 @@ func (n *NegationUnifier) Unify(a, b Value) (Value, *UnifyError) {
 	if aSelf {
 		candidate = b
 	}
-	return unifyNegation(NegationInfo{Inner: n.inner}, candidate)
+	return unifyNegation(NegationInfo{Inner: n.inner}, candidate, r)
 }
 
 // installNegationUnifier attaches a negationUnifier to def, wrapping any

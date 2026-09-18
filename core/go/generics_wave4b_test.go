@@ -731,17 +731,17 @@ func TestUnifyTypeParamAndLitNode(t *testing.T) {
 		t.Error("typeParamLitNode overclaims")
 	}
 	// Same placeholder on both sides.
-	if got, err := unifyTypeParam(lit, pn, NewTypeLiteral(pn)); err != nil || !IsBareTypeNode(got) {
+	if got, err := unifyTypeParam(lit, pn, NewTypeLiteral(pn), nil); err != nil || !IsBareTypeNode(got) {
 		t.Errorf("T vs T = %v, %v", got, err)
 	}
 	// A value satisfying the bound is admitted.
-	if got, err := unifyTypeParam(lit, pn, NewInteger(5)); err != nil {
+	if got, err := unifyTypeParam(lit, pn, NewInteger(5), nil); err != nil {
 		t.Errorf("5 vs T extends Number: %v", err)
 	} else if n, _ := AsInteger(got); n != 5 {
 		t.Errorf("admitted = %v", got)
 	}
 	// A value outside the bound fails.
-	if _, err := unifyTypeParam(lit, pn, NewString("s")); err == nil {
+	if _, err := unifyTypeParam(lit, pn, NewString("s"), nil); err == nil {
 		t.Error("string admitted by extends Number")
 	}
 	// The Unify fold reaches the placeholder embedded in a typed list.

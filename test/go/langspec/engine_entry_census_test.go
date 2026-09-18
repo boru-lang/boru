@@ -50,7 +50,7 @@ import (
 // as diagnosticParityCeiling's history names each corpus row that moved
 // it. What stays forbidden is an unnamed rise, or a rise whose cause is a
 // new seam rather than a new row on a known one.
-const engineEntryCeiling = 277 // 505 (2026-08-25, Stage-1 baseline) -> 281 (2026-09-14, the first lowering: measured three times at exactly 281 on c34a2fb, the tree that closed increment 59 — Engine.Run×281 with CallBoru×240 beneath it, most of those Test.property's ~100 invocations per row, so the ENTRY count is concentrated in two or three module-test.tsv rows while the interp-entry ROW census stands at 28. The ceiling had sat 80% above the live value for seventeen days, which is a ceiling that cannot catch a regression; it is now the live value, as a ratchet must be) -> 277 (2026-09-16, the seventy-first increment: a stored handler reads its module-scope deps live, so module-io.tsv's mount handlers stamp instead of falling to CallBoru — Engine.Run×277 with CallBoru×238 beneath it, measured on 65e9372) -> 0 (Stage 9)
+const engineEntryCeiling = 366 // the REGRESSION ceiling (lanes_test.go; end state 0): 379 on 2026-09-17 — the corpus expansion (Engine.Run×379 with CallBoru×253 beneath it; the new fn-value islands, raw-token code bodies and boru:test quotation rows). History: 277 // 505 (2026-08-25, Stage-1 baseline) -> 281 (2026-09-14, the first lowering: measured three times at exactly 281 on c34a2fb, the tree that closed increment 59 — Engine.Run×281 with CallBoru×240 beneath it, most of those Test.property's ~100 invocations per row, so the ENTRY count is concentrated in two or three module-test.tsv rows while the interp-entry ROW census stands at 28. The ceiling had sat 80% above the live value for seventeen days, which is a ceiling that cannot catch a regression; it is now the live value, as a ratchet must be) -> 277 (2026-09-16, the seventy-first increment: a stored handler reads its module-scope deps live, so module-io.tsv's mount handlers stamp instead of falling to CallBoru — Engine.Run×277 with CallBoru×238 beneath it, measured on 65e9372) -> 366 (2026-09-18, NUR153 closed — one residual rule at every seam: a stored `=>` value applied through a native seam used to have its residual evaluated in the live frame, which is an Engine.Run entry this census counts; core.ResidualEvalsInFrame gives the tape rule everywhere and CallBoruNamed sweeps the deferred residual after teardown. Thirteen entries go, Engine.Run×366 with CallBoru×250 beneath it. Attributed by measurement across three heads, not inference: the same gate reports 379 at e04fa21, 366 at 3e15778, 366 at 5618223 — so the fall is NUR153's and the quoted-class commit moved none of it) -> 0 (Stage 9)
 
 // deferCeiling is the maximum number of runtime bails (vmDefer activations)
 // the compiled corpus walk may produce. A bail is the VM meeting a runtime
@@ -63,7 +63,7 @@ const engineEntryCeiling = 277 // 505 (2026-08-25, Stage-1 baseline) -> 281 (202
 // vmDefer (eng/go/vm_defer.go) is the single chokepoint every reachable
 // designed-defer site routes through, so each defer is seen exactly once
 // with a stable site tag.
-const deferCeiling = 5 // 5 (2026-08-25, Stage-1 baseline) -> 0 (Stage 9)
+const deferCeiling = 8 // the REGRESSION ceiling (lanes_test.go; end state 0): 8 on 2026-09-17 — vm:poly-nout-drift×3, vm:rematch-matched×3 (the corpus expansion), vm:poly-no-match×2. History: 5 // 5 (2026-08-25, Stage-1 baseline) -> 0 (Stage 9)
 
 // deferLocalCeiling is the second, weaker kind of bail — and it exists because
 // a change made the difference measurable rather than theoretical.
@@ -124,10 +124,8 @@ func (c *deferCensus) assertCeiling(t *testing.T) {
 	total := c.total
 	c.mu.Unlock()
 	t.Logf("defer census: %d runtime bails on the compiled path (sites: %s)", total, c.report())
-	if total > deferCeiling {
-		t.Errorf("defer census %d exceeds ceiling %d — the VM bailed to the interpreter at runtime: %s",
-			total, deferCeiling, c.report())
-	}
+	gate(t, "runtime defers", total, 0, deferCeiling, false,
+		"vmDefer activations on the corpus walk — the VM bailing to the whole-program interpreter re-run, by site: "+c.report())
 }
 
 // assertLocalCeiling is assertCeiling for the locally-resolved kind: the VM
@@ -138,10 +136,8 @@ func (c *deferCensus) assertLocalCeiling(t *testing.T) {
 	total := c.total
 	c.mu.Unlock()
 	t.Logf("defer census (locally resolved, program stayed compiled): %d (sites: %s)", total, c.report())
-	if total > deferLocalCeiling {
-		t.Errorf("locally-resolved defer census %d exceeds ceiling %d — a caller's "+
-			"fallback absorbed a VM bail somewhere new: %s", total, deferLocalCeiling, c.report())
-	}
+	gate(t, "locally-resolved defers", total, 0, deferLocalCeiling, false,
+		"VM bails a caller's own fallback absorbed, the program staying compiled: "+c.report())
 }
 
 // renderTally renders a count map most-frequent-first, ties broken by name.
@@ -218,8 +214,6 @@ func (c *engineEntryCensus) assertCeiling(t *testing.T) {
 	total := c.total
 	c.mu.Unlock()
 	t.Logf("engine-entry census: %d unattributed interpreter runs on the compiled path (routes: %s)", total, c.report())
-	if total > engineEntryCeiling {
-		t.Errorf("engine-entry census %d exceeds ceiling %d — a compiled program re-entered the interpreter: %s",
-			total, engineEntryCeiling, c.report())
-	}
+	gate(t, "engine entries", total, 0, engineEntryCeiling, false,
+		"unattributed interpreter runs on the compiled path, by seam: "+c.report())
 }

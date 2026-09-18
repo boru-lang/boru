@@ -377,7 +377,7 @@ func TestComputedArmConditions(t *testing.T) {
 func TestBothComputedIfLowers(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `add 10 (if (1 eq 1) (add 1 2) (sub 9 4))`
 	a, err := New()
@@ -724,7 +724,7 @@ func TestWordSpliceCompilesNative(t *testing.T) {
 func TestMacroexpandCompilesNative(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct {
 		src  string
@@ -1655,7 +1655,7 @@ func TestStepBudgetNoSpuriousLimit(t *testing.T) {
 func TestFactoryApplyCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const factory = `def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]] `
 
@@ -2043,7 +2043,7 @@ func TestTopTakingClosureTrim(t *testing.T) {
 func TestInterpStringRuntimePartCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// nm is a field read over the each-element carrier → a runtime hole. It now
 	// lowers to OpInterp (the VM rebuilds the string from the popped hole at run
@@ -2284,7 +2284,7 @@ func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
 func TestModuleExportGetrNotFoundTrapCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `import "boru:math-util"  MathUtil!.nope`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
@@ -3115,7 +3115,7 @@ func TestStageAVariadicBranchResult(t *testing.T) {
 func TestStageAVariadicSoundnessGate(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	mustRefuse := []string{
 		// A 0-or-1 variadic fn result consumed by add.
@@ -3165,7 +3165,7 @@ func TestStageAVariadicSoundnessGate(t *testing.T) {
 func TestReturnedCapturingClosureApply(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	positive := []struct {
 		src  string
@@ -3652,7 +3652,7 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 func TestFnValueAutoApplyRefusals(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	refusals := []struct{ name, src, want string }{
 		{"multi-overload 0-arg member", `def z fn [[] [Integer] [42] [n:Integer] [Integer] [n]]  def m {k: z/v}  (m.k)`, "auto-dispatches"},
@@ -3740,7 +3740,7 @@ func TestFnValueAutoApplyRefusals(t *testing.T) {
 func TestWalkHookClosureCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	parity := []struct{ name, src, want string }{
 		{"tier-2 corpus row (empty-flex ascend consumed as 4th arg)",
@@ -3948,7 +3948,7 @@ func TestUnmatchedDispatchTrapPreservesPriorEffects(t *testing.T) {
 func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// (The former "carrier operand declines" negative — `5 inc apply` —
 	// became a POSITIVE with the Phase 6 M4 carrier-disjointness extension,
@@ -4313,7 +4313,7 @@ func TestTypedDefBindCompiles(t *testing.T) {
 func TestPR225P1Refusals(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// (1) A fn-body literal EMBEDDING an enclosing binding's container:
 	// interp = fresh spine + SHARED member, which neither a deep-clone
@@ -4368,7 +4368,7 @@ func TestPR225P1Refusals(t *testing.T) {
 func TestFilterLambdaCaptureCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_refused; migrate this contract or retire it with the hatch).
+	// to compile_failed; migrate this contract or retire it with the hatch).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	parity := []struct{ name, src, want string }{
 		{"enclosing-fn param capture (list pair shape)",

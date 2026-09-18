@@ -183,7 +183,7 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	// and refused programs re-run on the interpreter — containment for a
 	// compile failure, never a fallback the design leans on
 	// (plan Phase 2 — entry-point routing). Post-Stage-J a refusal
-	// returns compile_refused instead of the library silently re-running,
+	// returns compile_failed instead of the library silently re-running,
 	// so this surface performs the fallback itself. The policy-gated
 	// registry is the canonical arm: compiled dispatch does not consult
 	// word rules, so a policy-bound server ALWAYS refuses and every
@@ -193,7 +193,7 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	// policy, so arming never re-opens the gate).
 	stack, _, _, runErr := a.RunCompiledReason(req.Code)
 	var refused *lang.BoruError
-	if errors.As(runErr, &refused) && refused.Code == "compile_refused" {
+	if errors.As(runErr, &refused) && refused.Code == "compile_failed" {
 		disarm := a.ArmRuntimeStamping()
 		stack, runErr = a.RunInterp(req.Code)
 		disarm()

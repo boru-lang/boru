@@ -1,0 +1,76 @@
+# shards.tsv — the langspec corpus split into CI shards, one line per
+# top-level Test function: <shard>\t<TestName>. TestLangspecShardsPartition
+# (shards_test.go) keeps it complete and disjoint; `make test-langspec
+# SHARD=n` runs one shard and the ci.yml matrix runs them in parallel.
+# Tests that share a memoised walk (gatherCensus: TestCompiledCoverage,
+# TestOnlyMetaFallsBack, TestRefusalsAreFailures, TestCompiledStatus; the
+# two TestSpecProd*) stay together so the walk runs once. Balanced greedily
+# on each test's wall clock with the parallel corpus walk on four idle
+# cores, one test at a time (`go test ./langspec -v -parallel 1`,
+# 2026-09-18: about 105 s per shard; a CI runner ran the eight-way split's
+# shards in 95–165 s of test time, so nine is what the three-minute
+# ceiling needs with the job's setup, not a preference). Rebalance when
+# one shard drifts past the others by more than a minute.
+1	TestDiagnosticSurfaceParity
+1	TestPropertyDifferential
+1	TestCompiledCombinationParity
+1	TestBindLedgerBranchArmDepthsCompose
+1	TestLangspecShardsPartition
+2	TestSpecProdTCODisabled
+2	TestSpecProd
+2	TestCheckTypeSoundness
+3	TestDiagnosticParityAcrossPasses
+3	TestBindLedgerCensus
+4	TestSpecCompiledOrFallback
+4	TestDispatchAdmissionAgreementCensus
+4	TestRegionSlotTokenKinds
+4	TestFrontierSpecCompiled
+4	TestReturnsAnnotationNarrowing
+4	TestModuleExportCoverage
+4	TestCallbackReturnContractIsChecked
+5	TestSpecCompiledDifferential
+5	TestRegionTableWellFormed
+5	TestCheckAccuracyRatchet
+6	TestInterpEntryCensus
+6	TestCompiledCoverage
+6	TestVariationDifferential
+6	TestIOSurfaceCompilesNoRefusal
+6	TestRefusalDispositionCensus
+6	TestFnValueApplicationCompiles
+6	TestDotAccessKeepsSourcePosition
+6	TestOnlyMetaFallsBack
+6	TestRefusalsAreFailures
+6	TestCompiledStatus
+6	TestRowTBAbortsTheRowNotTheTest
+6	TestParseSpecRowsCountsEveryLine
+6	TestVariadicSpreadOracle
+6	TestRegionDescriptorValidateRejects
+6	TestRegionDescriptorOracle
+6	TestRefusalSiteKeysAreSyntactic
+6	TestRefusalDispositionGateRefuses
+6	TestDeclaresCheckReturnsPredicate
+6	TestFrontierRefusalRowsCompile
+6	TestTwinRegimeSmoke
+6	TestDeclarationCensus
+7	TestBindLedgerLiveDepths
+7	TestBindTwinOpsArePlacedOrderedSubset
+7	TestRealProgramsCompile
+7	TestCorpusThreeModes
+7	TestSpecCompiledConcurrentRowsRaceFree
+7	TestCompiledCombinationPath
+7	TestRefusalSiteCensus
+7	TestWhileSpreadElementCoversEveryResidualValue
+7	TestBindLedgerEntriesArePositioned
+8	TestBindingSandboxRollbackAndReplay
+8	TestBindTwinsEqualLedger
+8	TestCheckRunFalsePositive
+8	TestRegionDescriptorReach
+8	TestMultiRunBindParityOracle
+8	TestFrontierSpecInterp
+8	TestNativeReturnsCoverage
+8	TestValueDivergesCompilesNative
+8	TestSpecWalkVisitsEveryRowOnce
+8	TestGeneralisedResidualStaysSilent
+9	TestBindLedgerDepthsCompose
+9	TestRegionCollectOracle
+9	TestCheckAnyFrontier

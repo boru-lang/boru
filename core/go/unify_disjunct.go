@@ -29,9 +29,6 @@ type DisjunctUnifier struct {
 func (*DisjunctUnifier) ContentMembership() {}
 
 func (d *DisjunctUnifier) Match(v Value, t *Type) bool {
-	if IsBareTypeNode(v) {
-		return baseBehavior(d.prev).Match(v, t)
-	}
 	// Deliberately LOOSE on the newtype-alternative swap: `42` against
 	// `(P tor String)` admits via the subtype rule even though
 	// `42 is M` is false — dispatch decomposes the union to base
@@ -39,7 +36,16 @@ func (d *DisjunctUnifier) Match(v Value, t *Type) bool {
 	// looser than `is` (edge-types-2's DIVERGENCE PIN). The `is` word
 	// applies its post-unify value-identity check on top of this Match
 	// (IsDisjunctTypeNode routes it past the short-circuit).
-	_, err := unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, v)
+	return d.matchR(v, t, nil)
+}
+
+// matchR is Match with the enclosing unify chain's registry threaded
+// into the alternatives walk (see isR).
+func (d *DisjunctUnifier) matchR(v Value, t *Type, r *Registry) bool {
+	if IsBareTypeNode(v) {
+		return baseBehavior(d.prev).Match(v, t)
+	}
+	_, err := unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, v, r)
 	return err == nil
 }
 
@@ -68,7 +74,7 @@ func IsDisjunctTypeNode(v Value) bool {
 // Unify capability every membership kind carries
 // (design/legacy/TYPE-REPRESENTATION.1.ignore §N3), so `def x:Maybe 5` against the
 // node constraint runs the alternatives.
-func (d *DisjunctUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (d *DisjunctUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	// The alternatives rule decides whenever exactly one side IS this
 	// disjunct's node; the candidate may be concrete, a carrier, or a
 	// TYPE-level operand (`OptNum unify None` — None is an
@@ -84,7 +90,7 @@ func (d *DisjunctUnifier) Unify(a, b Value) (Value, *UnifyError) {
 	if aSelf {
 		candidate = b
 	}
-	return unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, candidate)
+	return unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, candidate, r)
 }
 
 // installDisjunctUnifier attaches a disjunctUnifier to def, wrapping
@@ -104,8 +110,9 @@ func installDisjunctUnifier(def *Type, alternatives []Value, name string) {
 // needs to contain the alternative's key-value pairs.
 //
 // Asymmetric by design: disj is always the disjunct side, val is the
-// other side. The top dispatcher in unify.go handles the swap.
-func unifyDisjunct(disj DisjunctInfo, val Value) (Value, *UnifyError) {
+// other side. The top dispatcher in unify.go handles the swap. r is the
+// enclosing chain's registry, threaded into every alternative's walk.
+func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
 	// "any" unifies with the whole disjunct, preserving it. Covers
 	// two value shapes: the bare type literal NewTypeLiteral(TAny)
 	// (Data=nil; the value IS the TAny lattice node) and the Any-
@@ -123,13 +130,13 @@ func unifyDisjunct(disj DisjunctInfo, val Value) (Value, *UnifyError) {
 			!IsTypedMap(alt) && !IsTypedMap(val) &&
 			!IsOptionsType(alt) && !IsOptionsType(val) {
 			if alt.Data != nil && val.Data != nil {
-				if OpenUnifyMap(alt, val) {
+				if openUnifyMap(alt, val, r) {
 					return val, nil
 				}
 				continue
 			}
 		}
-		if unified, err := unifyInner(alt, val); err == nil {
+		if unified, err := unifyInner(alt, val, r); err == nil {
 			return unified, nil
 		}
 	}

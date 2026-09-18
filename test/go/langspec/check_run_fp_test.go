@@ -70,6 +70,7 @@ const pinnedCheckRunDivergent = 161
 // like TestPropertyDifferential (the pin applies only at the default
 // budget — a cranked run reports without gating).
 func TestCheckRunFalsePositive(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("check-run fp fuzz: skipped in -short")
 	}
@@ -126,7 +127,7 @@ func TestCheckRunFalsePositive(t *testing.T) {
 // error-severity diagnostic. A check-run error (parse failure, handler
 // error) is NOT a rejection here — the interpreter fails the same way, so
 // there is nothing to differentiate.
-func checkRejects(t *testing.T, src string) bool {
+func checkRejects(t testing.TB, src string) bool {
 	t.Helper()
 	ac := newDifferentialInstance(t)
 	cr, err := ac.Check(src)

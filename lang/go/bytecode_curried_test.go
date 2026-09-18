@@ -54,8 +54,8 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 		}
 		b, _ := New()
 		_, _, errC := b.RunCompiled(src)
-		if !strings.Contains(fmt.Sprint(errC), "compile_refused") {
-			t.Errorf("three-level currying: err=%v, want compile_refused", errC)
+		if !strings.Contains(fmt.Sprint(errC), "compile_failed") {
+			t.Errorf("three-level currying: err=%v, want compile_failed", errC)
 		}
 		c, _ := New()
 		if out, err := c.RunInterp(src); err != nil || fmt.Sprint(out) != "[6]" {

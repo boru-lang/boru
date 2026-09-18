@@ -69,7 +69,7 @@ for 2 [7 (mk 1) apply]`,
 
 			compiled, ran, reason, err := mustNew(t).RunAutoValues(tc.src)
 			if err != nil {
-				if tc.tolerateRefusal && strings.Contains(err.Error(), "compile_refused") {
+				if tc.tolerateRefusal && strings.Contains(err.Error(), "compile_failed") {
 					t.Skipf("compiled lane refused (%v)", err)
 				}
 				t.Fatalf("compiled: %v", err)

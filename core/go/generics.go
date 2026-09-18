@@ -237,6 +237,14 @@ type genParamUnifier struct {
 func (*genParamUnifier) ContentMembership() {}
 
 func (g *genParamUnifier) Match(v Value, t *Type) bool {
+	return g.matchR(v, t, nil)
+}
+
+// matchR is Match with the enclosing unify chain's registry threaded
+// into the bound check (see isR): a placeholder reached from inside an
+// armed unify (`xs:[:T]` element by element) keeps the chain armed for
+// a compound bound's own walk.
+func (g *genParamUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	if v.Parent != nil && v.Parent.ConformsTo(t) {
 		return true
 	}
@@ -247,10 +255,10 @@ func (g *genParamUnifier) Match(v Value, t *Type) bool {
 	// v.Is doctrine): lattice bounds, predicates, disjuncts,
 	// negations, and surfaces all answer uniformly.
 	if bnode := boundNode(g.param.Bound); bnode != nil {
-		return v.Is(bnode)
+		return isR(v, bnode, r)
 	}
-	_, ok := Unify(v, g.param.Bound)
-	return ok
+	_, uerr := unifyWithin(v, g.param.Bound, r)
+	return uerr == nil
 }
 
 func (g *genParamUnifier) Format(v Value) string {

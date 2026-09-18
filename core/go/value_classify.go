@@ -216,10 +216,7 @@ func IsInertConst(v Value) bool {
 		if len(d.Captured) > 0 {
 			return false
 		}
-		if d.Registry == nil {
-			return true
-		}
-		// A module-export fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
+		// A HOMED fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
 		// a branch-arm operand, a container member, OR a comparator passed to another
 		// fn (`xs M.sort M.by-num`). The sub-registry pointer it carries is the SAME
 		// object the compiled run shares (RunProgram runs on the check-pass
@@ -231,8 +228,10 @@ func IsInertConst(v Value) bool {
 		//   - a REAL boru body via the island sub-engine (callDynTrailTop/…'s
 		//     `vc.island().Run([fn, args…])`), which INTERPRETS the fn in
 		//     fnDef.Registry — CallBoru, module-private scope and all. So a real body
-		//     applies soundly too (compile == interpret, verified). A macro stays
-		//     refused (applied only by name / compile-time expansion, never as data).
+		//     applies soundly too (compile == interpret, verified). A Go-built value
+		//     (no home) is the degenerate case: nothing to resolve. A macro stays
+		//     refused (applied only by name / compile-time expansion, never as data),
+		//     homed or not.
 		return !d.Macro
 	case *SurfaceInfo:
 		// A surface type (`def Shape surface {area: (fnsig …)}`): an immutable
@@ -643,7 +642,13 @@ func IsInertConstMember(v Value) bool {
 			return true
 		}
 		if fd, ok := v.Data.(FnDefInfo); ok {
-			return len(fd.Captured) == 0 && fd.Registry == nil
+			// A fn value carries its HOME registry from construction (a
+			// main-file fn as much as a module export), so the home says
+			// nothing about mutability: the value is immutable code either
+			// way, and the fn-value-call boundary applies it against that home
+			// (FnHome) exactly as the interpreter does. Only a lexical capture
+			// makes it non-inert — the captured cell is live state.
+			return len(fd.Captured) == 0
 		}
 		// A dot-access reach (`r.int`, `m.a.b`) riding inside a NEVER-evaluated
 		// compound — a NoEvalArgs code body the driving word stores or drops

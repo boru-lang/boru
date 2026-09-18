@@ -1,0 +1,146 @@
+# boru Language Specification: MODULE and multi-construct COMPOSITION
+# Format: input<TAB>expected<TAB>description
+#
+# Family: module-composition. Every row deliberately combines 3-5
+# constructs in ONE program — the way a real .boru file does, and the way
+# the old one-liner corpus never did. The recurring shapes: an inline
+# `module […]` (or a native `boru:*` import) that exports a fn, a class, a
+# minted type or a dispatch table; an importer-side `def fn` that wraps
+# it; an `each` / `for-each` / `filter` / `for` / `while` driving it over
+# a collection; and a `fold` / `join` / `emit` closing the pipeline.
+#
+# WHY THIS FILE EXISTS. A compile refusal is WHOLE-PROGRAM and latches on
+# the FIRST unsupported construct. The median spec row is ~40 characters;
+# the median real .boru file is ~10,472. So a corpus of one-liners scores
+# ~96% while real programs score ~65% — the gap is composition, not any
+# single word. These rows put the constructs together on purpose.
+#
+# EVERY row's expected column is the INTERPRETER's own answer, rendered
+# through core.Canon exactly as the spec runner renders it, and measured —
+# never guessed. Every row leaves exactly ONE value on the stack.
+#
+# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN DEFECTS.
+# They are gathered in §6 and each description quotes the reason
+# `BORU_FORCE_COMPILE=1` printed, verbatim, so the reason text is the
+# ledger of what is left to build. They are not mistakes and must not be
+# deleted to make a ceiling green.
+#
+# THREE ROWS IN §6 ARE WORSE THAN A REFUSAL: they COMPILE and then give a
+# DIFFERENT ANSWER (or no answer at all) from the interpreter. Those are
+# marked "DIVERGES (no refusal)". They are the reason a refusal ratchet
+# alone is not enough — the compiled lane can be wrong silently.
+#
+# NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
+# refusalCeiling = 0 and compiled_fullcorpus_test.go asserts interpreter/
+# compiled parity for every row. The §6 rows are NEW EVIDENCE, not
+# regressions — the ceiling must be re-based (or this file moved under
+# lang/spec/frontier/) when the corpus is next gated.
+#
+# Counts at the time of writing: 69 rows, 56 compile, 10 refuse with a
+# force-compile reason, 1 aborts the compiled lane with tape_exhausted,
+# 2 compile to the wrong value.
+#
+# ─────────────────────────────────────────────────────────────────────
+# §1  An INLINE MODULE whose exported fn drives an each, folded to a scalar.
+#     Four constructs a row: module body + def fn + each + fold.
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end fold [add] (each [M.dbl] [1 2 3]) 0	12	module + fn + each over the export + fold — the smallest whole-file shape
+import module [def sq fn n:Integer Integer [n mul n] export "M" {sq: sq/v}] end def f fn xs:List Integer [fold [add] (each [M.sq] xs) 0] end f [1 2 3]	14	module + exported fn + an IMPORTER fn whose body does each+fold over it
+import module [def a1 fn n:Integer Integer [n add 1] def m10 fn n:Integer Integer [n mul 10] export "M" {a: a1/v m: m10/v}] end each [M.m] (each [M.a] [1 2 3])	[20 30 40]	two exports from one module chained as two nested eaches
+import module [def seed 10 def steps [1 2 3] def run fn [[][Integer][fold [add] (each [add seed] steps) 0]] export "M" {run: run/v}] end each [mul (M.run)] [1 2]	[36 72]	a 0-arity exported fn closing over two module-private defs, called inside an each body
+import module [def cfg {base: 10 step: 2} export "M" {cfg: cfg}] end each [mul M.cfg.step] (each [add M.cfg.base] [1 2 3])	[22 24 26]	a MAP export read by dot chain inside two stacked each bodies
+import module [def conf {f: 2} def scale fn n:Integer Integer [n mul conf.f] export "M" {scale: scale/v conf: conf}] end each [M.scale] (each [add M.conf.f] [1 2 3])	[6 8 10]	module-private config read by an exported fn AND by the importer, both inside eaches
+#
+# §2  A NATIVE module (boru:*) behind a user fn, driven over a collection and
+#     reduced — import + def fn + each/filter + fold/join.
+import "boru:string-util" end def f fn s:String String [StringUtil.upper (StringUtil.trim s)] end join ',' (each [f] ['  a ' ' b '])	'A,B'	import + fn wrapping two module words + each + join
+import "boru:string-util" end def kvs fn s:String List [StringUtil.split '=' s] end fold [add] (each [size] (each [kvs] ['a=1' 'bb=22'])) 0	4	a splitting fn, each-ed, then each-ed again for size, then folded
+import "boru:string-util" end def up fn r:Map Map [{k: (StringUtil.upper r.k)}] end each [up] [{k:'a'} {k:'b'}]	[{k:'A'} {k:'B'}]	a fn that rebuilds a MAP LITERAL from a module word, mapped over records
+import "boru:string-util" end def rows [{n:'ann' a:30} {n:'bob' a:20}] end join ',' (each ([r:Map] => [StringUtil.upper r.n]) (filter ([p:Any] => [p.value.a gt 25]) rows))	'ANN'	filter with a Function callback, each with a lambda calling a module word, then join
+import "boru:math-util" end def mean fn xs:List Float [(fold [add] xs 0.0) div (size xs)] end mean [1.0 2.0 6.0]	3.0	import + fn whose body folds and divides — the statistics-helper shape
+import "boru:array-util" end def top fn xs:List List [ArrayUtil.unique (each [mul 2] xs)] end fold [add] (top [1 1 2]) 0	6	an each nested INSIDE a fn body that calls a module word, result folded outside
+import "boru:array-util" end def rows [{g:'x' v:1} {g:'y' v:2} {g:'x' v:3}] end each [size] (ArrayUtil.group (each [dot g] rows) rows)	{x:2 y:1}	each projecting a key, ArrayUtil.group over it, each again for the bucket sizes
+#
+# §3  A CLASS or minted TYPE that crosses the module boundary: export + make +
+#     each + dot + fold.
+import module [def P class {n:Integer} export "M" {P: P}] end def ps [(make M.P {n:1}) (make M.P {n:2})] end fold [add] (each [dot n] ps) 0	3	exported class + make importer-side + each dot + fold
+import module [def cls class {n:Integer} def mk fn v:Integer cls [make cls {n: v}] export "M" {mk: mk/v cls: cls}] end fold [add] (each [dot n] (each [M.mk] [1 2 3])) 0	6	the constructor fn is exported too — each builds the instances, each reads them, fold sums
+import module [def Shape class {n:Integer} def area fn s:Shape Integer [s.n mul s.n] export "M" {Shape: Shape area: area/v}] end fold [add] (each [M.area] (each ([k:Integer] => [make M.Shape {n: k}]) [1 2 3])) 0	14	a method-like fn typed on the exported class, over instances built by a lambda each
+import module [def Shape class {n:Integer} def area fn s:Shape Integer [s.n mul s.n] export "M" {Shape: Shape area: area/v}] end def shapes (each ([k:Integer] => [make M.Shape {n: k}]) [1 2 3]) end join ',' (each [convert String] (each [M.area] shapes))	'1,4,9'	the same, bound to a local, then each + convert + join — five constructs in one row
+import module [def A (refine Integer) def mk fn n:Integer A [def v:A n v] export "M" {A: A mk: mk/v}] end each [typeof] (each [M.mk] [1 2])	[A A]	a NEWTYPE minted in the module body survives each — typeof reports the nominal mint
+import module [import "boru:math-util" end def P class {x:Float y:Float} def norm fn p:P Float [MathUtil.sqrt ((p.x mul p.x) add (p.y mul p.y))] export "M" {P: P norm: norm/v}] end each [M.norm] [(make M.P {x:3.0 y:4.0}) (make M.P {x:6.0 y:8.0})]	[5.0 10.0]	the module body imports its OWN dependency (the importer namespace is invisible there)
+#
+# §4  DISPATCH TABLES exported from a module: a map of fns or of data, looked
+#     up by key inside a callback.
+import module [def tbl {a: 1 b: 2} def lookup fn k:String Integer [tbl k get] export "M" {lookup: lookup/v tbl: tbl}] end fold [add] (each [M.lookup] (keys M.tbl)) 0	3	a module-private table behind an exported lookup, driven over its own exported keys
+import module [def h1 fn n:Integer Integer [n add 1] def h2 fn n:Integer Integer [n mul 10] def tbl {inc: h1/v ten: h2/v} export "M" {tbl: tbl}] end each ([k:String] => [((M.tbl k get) 4)]) ['inc' 'ten']	[5 40]	a HANDLER TABLE of fn values exported whole, each entry fetched by key and called
+import module [def t {inc: (fn n:Integer Integer [n add 1])} export "M" {t: t}] end fold [add] (each ([k:String] => [((M.t k get) 10)]) ['inc' 'inc']) 0	22	an anonymous fn parked in an exported map, called back twice and folded
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end fold [add] (vals (each [M.inc] {a:1 b:2})) 0	5	each over a MAP with a module callback, vals, then fold
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def g M.inc/v end fold [add] (each [g] [1 2 3]) 0	9	an export re-bound importer-side with /v, then used as an each body and folded
+#
+# §5  MUTABLE ACCUMULATORS — flex stores fed by for-each / for with a module
+#     word in the body. This is the loop real files write.
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def acc (flex []) end for-each ([x:Integer] => [acc push (M.dbl x)]) [1 2 3] end acc	(flex [2 4 6])	flex list + for-each lambda + module fn — the canonical accumulator
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def t (flex {n:0}) end for-each ([x:Integer] => [t set 'n' (t.n add (M.dbl x))]) [1 2 3] end t	(flex {n:12})	a running total in a flex MAP, updated through set with a module call
+import "boru:string-util" end def acc (flex {}) end for-each ([kv:KeyVal] => [acc set (StringUtil.upper kv.k) (kv.v mul 2)]) {a:1 b:2} end acc	(flex {A:2 B:4})	for-each over a map: a native module word rewrites the KEY, the value is scaled
+import "boru:array-util" end import module [def norm fn n:Integer Integer [n mod 4] export "M" {norm: norm/v}] end def acc (flex []) end for-each ([x:Integer] => [acc push (M.norm x)]) (ArrayUtil.unique [1 5 9 2]) end acc	(flex [1 1 1 2])	two modules + flex + for-each over a COMPUTED collection
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def acc (flex []) end for 3 [acc push (M.dbl i) drop] end acc	(flex [0 2 4])	the numeric `for` range form with the loop variable i feeding a module call
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def stp fn e:Integer Any [acc push (M.dbl e)] end def acc (flex []) end for-each stp/v [1 2] end acc	(flex [2 4])	a NAMED step fn (declared before the store it writes) handed to for-each as a value
+#
+# §6  The OPEN DEFECTS. Every row below runs correctly on the interpreter and
+#     is rejected (or silently mis-executed) by the bytecode compiler. The
+#     reason text is quoted verbatim from `BORU_FORCE_COMPILE=1`.
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def acc (flex []) end for-each [M.dbl acc swap append drop] [1 2 3] end acc	(flex [2 4 6])	REFUSES: "residual value of unknown provenance" — the same accumulator with a CODE body
+import "boru:string-util" end def acc (flex []) end for-each [StringUtil.upper acc swap append drop] ['a' 'b'] end join ',' (valof acc)	'A,B'	REFUSES: "operand of unknown provenance or not statically materialisable at join" — flex fill then join
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each [a5] [1 2 3]	[6 7 8]	REFUSES: "code-body word each (Stage 2)" — a module-made CLOSURE bound, then used as an each body
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]	[6 7 8]	REFUSES: "unmatched dispatch recovered at each" — the /v spelling of the same call
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def fs {a: (M.mk 1) b: (M.mk 2)} end (fs.b 10)	12	REFUSES: "fn-value application bounded by a paren (dynamic value precedes args)" — a MAP of module-made closures
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def hof fn f:Function Function [f/v] end def g (hof M.inc/v) end (g 4)	5	REFUSES: "def-bound computed fn apply (closure shape unknown — Stage 1)" — an export through a higher-order fn
+import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end fold [add] (each [M.tbl.inc] [1 2 3]) 0	9	REFUSES: "fn each$body: result above a literal (Stage 3)" — a two-step dotted path to a handler
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def r (flex {}) end r set 'cb' M.inc/v drop end typeof (r.cb)	Function	REFUSES: "function value reaches set (Stage 3)" — the mutable module-handler registry
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def m {f: M.inc/v} end 5 (m 'f' get) apply	6	REFUSES: "apply over a dynamic lead (overload unprovable)" — an export fetched by get and applied
+import module [def Handler class {cb: Function} export "M" {Handler: Handler}] end def h (make M.Handler {cb: (fn n:Integer Integer [n add 1])}) end each h.cb [1 2 3]	[2 3 4]	REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply	6	DIVERGES (no refusal): the interpreter applies the export and yields 6; the compiled lane leaves 5 and the unapplied fn
+import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end each [f] [1 2 3]	[2 3 4]	DIVERGES (no refusal): the compiled lane returns three fn VALUES instead of [2 3 4]
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i	3	DIVERGES (no refusal): compiled, this while loop never terminates and aborts with boru/tape_exhausted
+import module [def big fn n:Integer Boolean [n gt 1] export "M" {big: big/v}] end fold [add] (filter [M.big] [1 2 3]) 0	5	the quotation form of filter over an export COMPILES — contrast the fn-value form, which refuses
+#
+# §7  SEVERAL MODULES in one program — what a real file's preamble looks like.
+import "boru:string-util" end import "boru:array-util" end join '-' (each [StringUtil.upper] (ArrayUtil.unique ['a' 'a' 'b']))	'A-B'	two native modules, each + join over a deduplicated list
+import "boru:string-util" end import "boru:emitlang" end def up fn r:Map Map [{k: (StringUtil.upper r.k)}] end emit json (each [up] [{k:'a'} {k:'b'}])	'[{"k":"A"},{"k":"B"}]'	two native modules + a fn + each + emit — the transform-and-serialise pipeline
+import "boru:array-util" end import module [def bucket fn n:Integer Integer [n mod 3] export "M" {bucket: bucket/v}] end ArrayUtil.unique (each [M.bucket] [1 2 3 4 5 6])	[1 2 0]	a native module AND an inline module in the same program
+import "boru:logic-util" end import module [def pos fn n:Integer Boolean [n gt 0] export "M" {pos: pos/v}] end fold [and] (each [M.pos] [1 2 3]) true	true	a predicate export each-ed, then folded with a boolean connective
+import "boru:sift" end import module [def total fn m:Map Integer [fold [add] (vals m) 0] export "M" {total: total/v}] end M.total (Sift.parse kv/q {sep:':' vtype:'integer'} "a: 1\nb: 2")	3	parse semi-structured text with boru:sift, reduce it with an inline module fn
+import "boru:minilang" end def hits fn s:String Integer [(s mini re '\\d').n] end fold [add] (each [hits] ['a1b2' 'c3']) 0	3	the `mini re` sugar inside a fn body, each-ed over strings and folded
+import module [import "boru:bin-util" end def h fn s:String Integer [BinUtil.fnv32 s] export "M" {h: h/v}] end fold [add] (each [M.h] ['a' 'b']) 0	7702337297	a module that wraps a native module word and re-exports it as its own
+#
+# §8  CONTROL FLOW inside a module fn — case, if, recursion, while — driven by
+#     an importer-side each/fold.
+import module [def name fn n:Integer String [case n [[eq 1] 'one' [eq 2] 'two' 'many']] export "M" {name: name/v}] end join '-' (each [M.name] [1 2 3])	'one-two-many'	case with predicate clauses inside an exported fn, each-ed and joined
+import "boru:string-util" end import module [def tag fn n:Integer String [case n [[lt 0] 'neg' [eq 0] 'zero' 'pos']] export "M" {tag: tag/v}] end join ',' (each [StringUtil.upper] (each [M.tag] [-1 0 1]))	'NEG,ZERO,POS'	case in a module fn, each, a native module word in a second each, then join
+import module [def f fn n:Integer Integer [if (n lte 1) [1] [n mul (f (n sub 1))]] export "M" {fact: f/v}] end fold [add] (each [M.fact] [1 2 3 4]) 0	33	RECURSION inside the module body, exported and driven by each + fold
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def loop fn n:Integer List [if (n lte 0) [[]] [(loop (n sub 1)) push (M.inc n)]] end fold [add] (loop 3) 0	9	an IMPORTER-side recursive fn that calls the export at every level, then folds
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end def out [] end while [i lt 3] [def out (out push (M.inc i)) def i (i add 1)] end out	[1 2 3]	a while loop rebinding two locals, calling the export each turn
+import module [def safe fn n:Integer Integer [if (n eq 0) [raise zero_div 'no'] [100 div n]] export "M" {safe: safe/v}] end fold [add] (each [M.safe] [1 2 4]) 0	175	a guarded export that raises on the bad branch, each-ed over good input and folded
+#
+# §9  NESTING and UNPACK — modules inside modules, re-exported namespaces, and
+#     the namespace-free `unpack` spelling.
+import module [import module [import "boru:string-util" end def up fn s:String String [StringUtil.upper s] export "I" {up: up/v}] end def run fn xs:List List [each [I.up] xs] export "O" {run: run/v}] end join ',' (O.run ['a' 'b'])	'A,B'	a module inside a module inside a native import — three nesting levels + each + join
+import module [import module [export "I" {v: 40}] export "O" {I: I}] end fold [add] (each [add O.I.v] [1 2]) 0	83	an inner NAMESPACE re-exported whole, reached by a two-step dot inside an each body
+import module [def cfg {names: ['a' 'b']} export "C" {cfg: cfg}] end import "boru:string-util" end join '|' (each [StringUtil.upper] C.cfg.names)	'A|B'	a config module supplying the collection, a native module supplying the callback
+unpack "boru:string-util" end def f fn s:String Integer [size (upper s)] end fold [add] (each [f] ['ab' 'cde']) 0	5	unpack binds the module words BARE — the fn calls `upper` with no namespace
+unpack "boru:logic-util" end def f fn a:Boolean Boolean [nand a true] end each [f] [true false]	[false true]	the same unpack shape over the boolean connectives
+#
+# §10  SERIALISATION pipelines — the end of most real programs: compute, then
+#      emit. module + fn + each + emit/jsonify.
+import "boru:emitlang" end import module [def f fn n:Integer Map [{v: (n mul 2)}] export "M" {f: f/v}] end emit json (each [M.f] [1 2])	'[{"v":2},{"v":4}]'	an inline module builds the records, boru:emitlang serialises the each result
+import "boru:emitlang" end import module [def rows [{a:1} {a:2}] def total fn [[][Integer][fold [add] (each [dot a] rows) 0]] export "M" {total: total/v rows: rows}] end emit jsonic {n: (M.total)}	'{n:3}'	module-private data + a 0-arity fn folding it + emit jsonic of a map literal
+import module [import "boru:struct-util" end def tag fn m:Map Map [StructUtil.merge m {tag: 'x'}] export "M" {tag: tag/v}] end each [M.tag] [{a:1} {b:2}]	[{a:1 tag:'x'} {b:2 tag:'x'}]	a module wrapping StructUtil.merge, mapped over records
+import module [import "boru:string-util" end def slug fn s:String String [StringUtil.lower (StringUtil.trim s)] export "S" {slug: slug/v}] end import "boru:emitlang" end emit json (each [S.slug] [' A ' ' B '])	'["a","b"]'	module-body import + importer import + each + emit — four import/each constructs
+import "boru:string-util" end import "boru:struct-util" end def row fn s:String Map [{k: (StringUtil.upper s)}] end StructUtil.jsonify (each [row] ['a'])	'[\n  {\n    "k": "A"\n  }\n]'	two native modules, a record-building fn, each, then jsonify
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end scan [add] (each [M.dbl] [1 2 3])	[2 6 12]	scan (the prefix fold) over an each driven by a module export
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def out (each [M.dbl] [1 2 3]) end def f fn xs:List Map [{n: (size xs) s: (fold [add] xs 0)}] end f out	{n:3 s:12}	each bound to a local, then a summarising fn that folds it into a map literal
+import module [def run fn [[f:Function][Integer][(f 5)]] export "M" {run: run/v}] end def secret 1 end def pub fn [[x:Integer][Integer][x add secret]] end M.run pub/v	6	NUR152: a MAIN-program fn handed INTO a module resolves its free words at HOME (main) — the module has no `secret`, and main's is the one that binds
+import module [def secret 100 end def run fn [[f:Function][Integer][(f 5)]] export "M" {run: run/v}] end def secret 1 end def pub fn [[x:Integer][Integer][x add secret]] end M.run pub/v	6	NUR152: the module has its OWN `secret`; main's fn still reads main's (both engines answered 105 before the fix)
+import module [def secret 100 end def run fn [[f:Function][Integer][(f 5)]] export "M" {run: run/v}] end def secret 1 end M.run ([x:Integer] => [x add secret])	6	NUR152: the lambda form of the same — a `=>` value is stamped with its home at construction too
+import module [def secret 100 end def run2 fn [[f:Function][Function][(f 5)]] export "M" {run2: run2/v}] end def secret 1 end def mk fn [[k:Integer][Function][([y:Integer] => [y add k add secret])]] end 1 (M.run2 mk/v) apply	7	NUR152: a main factory applied inside the module returns a closure minted in main's frame; its unit compiles at main, not at the emitter's registry mid-foreign-compile
+import module [def secret 100 end def pub fn [[x:Integer][Integer][x add secret]] export "M" {pub: pub/v}] end def secret 1 end (M.pub 5)	105	NUR152 control: the documented direction — a module fn applied from main reads the MODULE's secret

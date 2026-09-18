@@ -172,7 +172,7 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 		}
 
 		result, _, _, err := boruInst.RunAutoValues(line)
-		// Post-Stage-J a whole-line refusal returns compile_refused instead
+		// Post-Stage-J a whole-line refusal returns compile_failed instead
 		// of the library silently re-running; this surface performs the
 		// fallback itself (the same CompileTry semantics as `boru run`) —
 		// silently, matching the REPL's historical UX: an interactive line's
@@ -180,7 +180,7 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 		// armed across the fallback so callbacks stored by a refused line
 		// keep the VM path for later lines (the compiled mode's contract).
 		var refused *lang.BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_refused" {
+		if errors.As(err, &refused) && refused.Code == "compile_failed" {
 			disarm := boruInst.ArmRuntimeStamping()
 			result, err = boruInst.RunInterpValues(line)
 			disarm()

@@ -194,10 +194,10 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 // collapse (which folds the apply to dynamic(Any)).
 func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*core.Signature, []int, bool) {
 	fnDef, ok := member.Data.(core.FnDefInfo)
-	if !ok || fnDef.Registry == nil {
+	if !ok {
 		return nil, nil, false
 	}
-	fn := fnDef.Registry.Lookup(fnDef.Name)
+	fn := core.FnHomeLookup(&fnDef)
 	if fn == nil {
 		return nil, nil, false
 	}
@@ -490,7 +490,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 	}
 	decline := func() bool { return declineMemberFnArrival(es, member) }
 	fnDef, _ := member.Data.(core.FnDefInfo) // validated by memberFnReadValue
-	if fnDef.Name == "" || fnDef.Anonymous || fnDef.Macro || len(fnDef.Captured) != 0 {
+	if !fnDef.NamedDef() || fnDef.Macro || len(fnDef.Captured) != 0 {
 		return decline()
 	}
 	var sig *core.Signature

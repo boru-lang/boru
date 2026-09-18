@@ -216,12 +216,12 @@ func init() {
 	// Vm.run's sub-engine runner (modules/vm.go CompiledSubRun): the module
 	// package cannot import lang, so the compiled-by-default entry point is
 	// injected here — the same contract as the public Run (explicit armed
-	// interpreter fallback on compile_refused).
+	// interpreter fallback on compile_failed).
 	modules.CompiledSubRun = func(reg *native.Registry, src string) ([]native.Value, error) {
 		a := &Boru{registry: reg}
 		vals, _, _, err := a.RunAutoValues(src)
 		var refused *BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_refused" {
+		if errors.As(err, &refused) && refused.Code == "compile_failed" {
 			disarm := a.ArmRuntimeStamping()
 			vals, err = a.RunInterpValues(src)
 			disarm()
@@ -405,7 +405,7 @@ func (a *Boru) ArmRegionOracleHook(fn func(RegionOracleEvent)) func() {
 // this instance and returns the restoring disarm func. RunCompiled /
 // RunAutoValues arm it themselves for the duration of the call; this is the
 // caller-side half of the Stage-J explicit-fallback contract: a host or CLI
-// surface that receives compile_refused and chooses to run RunInterp itself
+// surface that receives compile_failed and chooses to run RunInterp itself
 // keeps the compiled mode's callback contract — runtime-constructed callbacks
 // (service handlers, codec fns) still compile to VM units at their store
 // sites — by arming around the fallback run. The returned func restores the
@@ -849,7 +849,7 @@ func (a *Boru) SetSDK(spec string, sdk any) {
 // natively: the fn-predicate transform family, the mini host-compile
 // hook, the model-watch ledger race, and the cross-request def
 // persistence OpBindGlobal fixed). A genuine whole-program refusal
-// degrades gracefully: RunAutoValues returns compile_refused — a
+// degrades gracefully: RunAutoValues returns compile_failed — a
 // guarantee that no observable effect escaped — and Run performs the
 // explicit interpreter fallback itself, with detached fn-unit stamping
 // kept armed so stored callbacks still earn the VM path (the same
@@ -860,7 +860,7 @@ func (a *Boru) SetSDK(spec string, sdk any) {
 func (a *Boru) Run(src string) ([]any, error) {
 	out, _, _, err := a.RunCompiledReason(src)
 	var refused *BoruError
-	if errors.As(err, &refused) && refused.Code == "compile_refused" {
+	if errors.As(err, &refused) && refused.Code == "compile_failed" {
 		disarm := a.ArmRuntimeStamping()
 		out, err = a.RunInterp(src)
 		disarm()
@@ -883,7 +883,7 @@ func (a *Boru) RunInterp(src string) ([]any, error) {
 
 // RunInterpValues is RunInterp without the host-value projection — the raw
 // engine Values, for callers whose renderer needs the engine's own
-// Value.String() (the REPL's per-line echo and its compile_refused
+// Value.String() (the REPL's per-line echo and its compile_failed
 // fallback). Same contract as RunInterp: unconditionally the tree-walking
 // interpreter, never the VM.
 func (a *Boru) RunInterpValues(src string) ([]native.Value, error) {
@@ -1114,14 +1114,14 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// refusal: before Stage 1 every program in that class refused
 		// behind the SILENT check-diagnostics sentinel (the read raised a
 		// false undefined_word), and a working program must not trade its
-		// quiet slow path for a loud compile_refused because the
+		// quiet slow path for a loud compile_failed because the
 		// diagnostic became honest. The refusal REASON is still reported
 		// (the CLI's performance warning), and programs whose model now
 		// succeeds compile natively instead.
 		if err == nil && reason != "" && reason != "check diagnostics" &&
 			!carrierRead &&
 			os.Getenv("BORU_COMPILE_FALLBACK") != "1" {
-			// compile_refused is a GUARANTEE to the caller: no observable
+			// compile_failed is a GUARANTEE to the caller: no observable
 			// effect escaped, so an explicit whole-source re-run (Run's own
 			// fallback, the CLI surfaces') is sound. A refusal whose CHECK
 			// PASS already emitted output (an import-time module-body print)
@@ -1133,8 +1133,9 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 					a.registry.BoruError("internal_error",
 						"compiled-mode refusal after the check pass emitted observable output ("+forceCompileReason(reason)+")", ""))
 			}
-			return nil, false, reason, a.registry.BoruError("compile_refused",
-				"bytecode compilation refused: "+reason+
+			return nil, false, reason, a.registry.BoruError("compile_failed",
+				"bytecode compilation FAILED: "+reason+
+					" — this is a compiler defect, not a policy: valid code must compile."+
 					" (interpret explicitly with RunInterp, or set BORU_COMPILE_FALLBACK=1 for the one-release silent fallback)", "")
 		}
 		if a.registry.Effects.Count() != effectsAt {

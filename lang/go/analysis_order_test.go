@@ -84,7 +84,7 @@ func TestAnalysisOrderShapesCompileWithParity(t *testing.T) {
 func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 	// The fallback rows run under the one-release silent-fallback hatch so
 	// the compiled entry point answers through the interpreter instead of
-	// surfacing compile_refused (the same contract
+	// surfacing compile_failed (the same contract
 	// TestModuleReadRebindRefusesAndMatches pins).
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
