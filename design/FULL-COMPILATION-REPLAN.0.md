@@ -73,6 +73,23 @@ the binding gate from twelve minutes to six seconds for the majority of
 iterations. It is roughly one session-day and it pays back for the rest of
 the programme.
 
+**Landed 2026-09-18**, the same day, on `main` after PR #471 merged
+(`4ed08d2`). `test/go/langspec/compile_failures.tsv` is the ledger — one
+line per spec file, sorted, a note column for what moved it, a file absent
+meaning zero — and `TestCompiledCoverage` asserts it BOTH ways for every
+file the run walked, under `BORU_SPEC_FILES` exactly as over the corpus; the
+corpus-wide ceiling is its sum (`compile_failure_ledger_test.go`).
+Measured on four cores: the whole-corpus gate 41 s; a filtered run over
+`callbacks.tsv` 1.7 s, green against its line of 25; the incident replayed
+— a failing row appended to `as.tsv`, a filtered run over `as.tsv` — **red
+in 1.1 s**, naming `as.tsv:L84` and its reason. The 113 sit in six files,
+every one from the corpus expansion: fold-map-filter 30, code-bodies 27,
+callbacks 25, each-variants 13, fn-locals-scope 10, module-composition 8.
+What the ledger does NOT yet carry is islands and the other corpus-wide
+counts (the same `callbacks.tsv` run reports 5 islands and asserts none);
+the mechanism is per file and generic, and S0's re-basing of every ratchet
+is where extending it belongs.
+
 ## 4. The debt, re-measured
 
 Census on `fb094de`: **8513 rows — 8054 compiled (10 islanded), 346

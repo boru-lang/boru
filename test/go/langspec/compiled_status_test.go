@@ -29,7 +29,11 @@ const compiledStatusFile = "COMPILED_STATUS.md"
 func TestCompiledStatus(t *testing.T) {
 	t.Parallel()
 	c := gatherCensus(t)
-	want := renderCompiledStatus(c)
+	ledger, err := readCompileFailureLedger(compileFailureLedgerFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := renderCompiledStatus(c, ledgerTotal(ledger))
 
 	if os.Getenv("BORU_WRITE_STATUS") != "" {
 		if err := os.WriteFile(compiledStatusFile, []byte(want), 0o644); err != nil {
@@ -54,7 +58,7 @@ func TestCompiledStatus(t *testing.T) {
 // renderCompiledStatus renders the census as the deterministic status document.
 // Every histogram is sorted (most-frequent first, then name) so the output is
 // byte-stable across runs and the golden compare is meaningful.
-func renderCompiledStatus(c *census) string {
+func renderCompiledStatus(c *census, failureCeiling int) string {
 	var b strings.Builder
 
 	b.WriteString("# Compiled-coverage status\n\n")
@@ -80,7 +84,7 @@ func renderCompiledStatus(c *census) string {
 	b.WriteString("## Ceilings (downward ratchets toward runtime independence)\n\n")
 	b.WriteString("The compiler is interpreter-independent once refusals and islands both reach 0 and only tier 1 falls back. Each ceiling never rises.\n\n")
 	b.WriteString("| ratchet | current | ceiling | finish line |\n| --- | ---: | ---: | --- |\n")
-	b.WriteString(fmt.Sprintf("| refusals (whole-program fallback) | %d | %d | → 0 |\n", c.refused, refusalCeiling))
+	b.WriteString(fmt.Sprintf("| refusals (whole-program fallback) | %d | %d | → 0 |\n", c.refused, failureCeiling))
 	b.WriteString(fmt.Sprintf("| interpreter islands (OpFallback) | %d | %d | → 0 |\n", c.islanded, islandCeiling))
 	b.WriteString(fmt.Sprintf("| tier 1 interpreter-only | %d | %d | capped (permanent) |\n", c.interp, interpreterOnlyCeiling))
 	b.WriteString(fmt.Sprintf("| tier 2 reducible | %d | %d | → 0 |\n", c.reducible, reducibleCeiling))

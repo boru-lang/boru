@@ -131,7 +131,11 @@ the author's own filtered spec runs passed. **They passed because
 refusal ceiling is only enforced on a full unfiltered corpus run. A filtered
 run over `as.tsv` was green while the row was refused. `lang/go/
 bytecode_quotedkey_test.go` now pins both shapes directly, in hundredths of
-a second.
+a second. **Closed by P0** (2026-09-18,
+[FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md) §3):
+`test/go/langspec/compile_failures.tsv` ledgers the compile-failure count per
+spec file and every filtered run asserts it for the files it walks, so the
+same change now fails a six-second run over `as.tsv`, naming rows 52–54.
 
 And the key's own two admitted classes were each justified by a claim that
 does not hold:

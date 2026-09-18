@@ -10,7 +10,12 @@
 //     corpus. Under the filter every ABSOLUTE count — a ceiling, a floor, a
 //     both-ways ledger — is reported and not asserted, because a subset has
 //     no meaningful count; the per-row verdicts (a divergence, an island, an
-//     interpreter entry, a refusal) are what the filter is for.
+//     interpreter entry, a compile failure) are what the filter is for. The
+//     one count that IS asserted under the filter is the per-file
+//     compile-failure ledger (compile_failures.tsv,
+//     compile_failure_ledger_test.go): a file's count is the file's own, so
+//     every selected file's line asserts and a compile regression in one
+//     family fails the six-second run — P0 of FULL-COMPILATION-REPLAN.0.md.
 //
 //   - BORU_DIRECTION_GATES=1 arms the DIRECTION lane. Every ratchet in this
 //     package has two numbers: the END STATE the programme is heading for

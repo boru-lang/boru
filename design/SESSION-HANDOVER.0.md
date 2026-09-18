@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-17**.
+Last updated: **2026-09-18**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -107,7 +107,7 @@ and appends the instant censuses. The values on 2026-09-17, head of PR
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy |
+| compile failures | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too |
 | compute gaps | 104 | 0 | 107 at the expansion; three fell when NUR153 closed |
 | interpreter islands | 10 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed |
 | interp-entry census rows | 52 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed |
@@ -127,9 +127,12 @@ the end of each step of §5, not each increment.
 > first (2026-09-18).** It re-estimates the remainder at **75–130
 > session-days** (the review said 105–175, measured two hours before the
 > velocity work landed), and changes the order in four ways: **P0** per-file
-> compile-failure ratchets go FIRST — `BORU_SPEC_FILES` reports counts
+> compile-failure ratchets go FIRST — `BORU_SPEC_FILES` reported counts
 > instead of asserting them, which is how two regressions reached a working
-> tree on 2026-09-18 while six-second filtered runs stayed green; **S1a**,
+> tree on 2026-09-18 while six-second filtered runs stayed green — **P0
+> LANDED the same day**: `test/go/langspec/compile_failures.tsv`, one
+> compile-failure count per spec file, asserted for every file a run walks,
+> filtered or not (`compile_failure_ledger_test.go`); **S1a**,
 > the gradual-Any collection overload commitment, is carved out ahead of S1
 > as 19 rows on one mechanism; **S2 splits**, because only 35 of its 94
 > signatures are a sweep and the other 59 need a mechanism that depends on
@@ -205,7 +208,11 @@ The first is the one that cost the most, four times in one session:
 11. **Iterate on one family with `BORU_SPEC_FILES`**, and run the whole
     package (`make test-langspec SHARD=n` for every shard) before the push:
     the corpus-wide ceilings, floors and both-ways ledgers are reported,
-    not asserted, under a filter.
+    not asserted, under a filter. The per-file compile-failure ledger
+    (`compile_failures.tsv`) is the exception: it asserts on every file the
+    filtered run walks, both ways, so a change that compiles a file's rows
+    lowers its line in the same change, and one that stops a row compiling
+    fails the six-second run with the rows named.
 
 ## Instruments
 
@@ -218,7 +225,8 @@ The first is the one that cost the most, four times in one session:
 - A temporary `println` at the decision site beats reading the code. Several
   increments' real causes were found that way and only that way.
 - `BORU_SPEC_FILES=<names or globs>` — every corpus walk in langspec and
-  the interpreter oracle (`TestSpecProd`) over the named files only. Every
+  the interpreter oracle (`TestSpecProd`) over the named files only; the
+  per-file compile-failure ledger still asserts for those files. Every
   walk runs on all cores through `specWalk` (`walk_test.go`);
   `BORU_SPEC_WORKERS=1` is the sequential, directory-ordered form for a
   temporary println.

@@ -1,0 +1,33 @@
+# compile_failures.tsv — the per-file compile-failure ratchets
+# (design/FULL-COMPILATION-REPLAN.0.md §3, P0; compile_failure_ledger_test.go).
+#
+# One line per lang/spec file that has rows which FAIL to compile:
+#
+#   <spec file> TAB <compile failures> TAB <what moved it>
+#
+# sorted by file name; a file not listed has none. TestCompiledCoverage
+# asserts every line against the live count of every file the run walks —
+# under BORU_SPEC_FILES too, so a filtered run over one family catches a
+# regression in that family in seconds — and the corpus-wide "compile
+# failures" ceiling is the sum of the second column.
+#
+# Every count is a RATCHET ON A BUG COUNT, never a budget: a row that does
+# not compile is a defect in the compiler (design/COMPILABLE-SUBSET.md §5),
+# not a decision it made. A line moves DOWN with the change that compiles
+# its rows (deleted at zero), and only UP with the rows that regressed named
+# in the third column — that is the record of debt put back, never a fix.
+# Lowering a line by deleting a corpus row is not allowed. Nothing
+# regenerates this file: edit it by hand, in the change that moved it.
+#
+# History of the sum: 0 until 2026-09-17, when the corpus expansion (707
+# rows of the idioms real programs use — a callback not written at the call
+# site, code bodies, fn-locals, module composition) exposed 113 compile
+# failures the old one-liner corpus could not see; that 0 was thin
+# coverage, not an achievement. 113 on 2026-09-18, when the ledger was
+# taken per file (P0) on main 4ed08d2, the head that merged PR #471.
+callbacks.tsv	25	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
+code-bodies.tsv	27	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
+each-variants.tsv	13	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
+fn-locals-scope.tsv	10	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
+fold-map-filter.tsv	30	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
+module-composition.tsv	8	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)

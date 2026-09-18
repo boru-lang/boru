@@ -41,6 +41,9 @@
 6	TestOnlyMetaFallsBack
 6	TestRefusalsAreFailures
 6	TestCompiledStatus
+6	TestCompileFailureLedgerIsWellFormed
+6	TestCompileFailureLedgerParses
+6	TestCompileFailureLedgerAssertsEveryWalkedFile
 6	TestRowTBAbortsTheRowNotTheTest
 6	TestParseSpecRowsCountsEveryLine
 6	TestVariadicSpreadOracle

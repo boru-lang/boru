@@ -10074,3 +10074,62 @@ its blocks at old line addresses read as a thousand phantom uncovered
 statements in the merged view. The key now reads the block form too;
 with it the gate re-profiles the stale module alone and passes at 100%
 in 78 s on a warm cache.
+
+## P0 — the per-file compile-failure ledger (2026-09-18)
+
+The first step of [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md)
+§3, landed on `main` the same day, after PR #471 merged (`4ed08d2`).
+
+**What was wrong.** `BORU_SPEC_FILES` made a corpus walk over one family
+cost seconds, and every corpus-wide count under it was reported rather
+than asserted, because a subset's count is not comparable with a
+whole-corpus ceiling. So the six-second loop proved nothing about the
+compile-failure ratchet, and the first regression it let through was the
+same day's: declaring `CompileQuoteInert` on `set`/`del` stopped `as.tsv`
+52–54 compiling, every filtered run over `as.tsv` stayed green, and the
+whole-corpus gate — twelve minutes, run by a review agent — found
+113 → 116.
+
+**What landed.** `test/go/langspec/compile_failures.tsv`: one line per
+spec file with rows that fail to compile — `<file> TAB <count> TAB
+<note>`, sorted, a file absent meaning zero — and
+`checkCompileFailureLedger` (`compile_failure_ledger_test.go`), called
+from `TestCompiledCoverage` before the corpus-wide gate, asserting every
+walked file BOTH ways: a count above the line is a regression, and the
+error lists the file's failing rows with their reasons and the exact line
+a regression would need, so that raising it is a visible act; a count
+below the line is the ratchet tightening, and the error says which line
+to lower or delete. The corpus-wide ceiling is the ledger's sum —
+`refusalCeiling` and `refusalGate` are gone, their history moved into the
+ledger's header — and the corpus-wide gate still reports under a filter.
+Unfiltered, a line naming a file the corpus does not have is an error;
+`TestCompileFailureLedgerIsWellFormed` checks the file's shape and every
+name in milliseconds, so the smoke run sees a stale line too. Nothing
+regenerates the ledger: a write switch would bake a regression in as
+quietly as the unasserted filter used to let one through. The census
+gained `byFile` — `tallyFile` records its file's count, zero included,
+and `add` folds it like every other histogram — which is the live side.
+
+**Measured**, four cores, `go test ./langspec -run TestCompiledCoverage`:
+
+| run | wall | verdict |
+|---|---:|---|
+| whole corpus, ledger empty (the harvest) | 40 s | red: six files named, every failing row listed |
+| whole corpus, ledger written | 41 s | green: 130 files walked, 6 listed, sum 113 = the live 113 |
+| `BORU_SPEC_FILES=callbacks.tsv` | 1.7 s | green against its line (25) |
+| the incident replayed: a failing row appended to `as.tsv`, `BORU_SPEC_FILES=as.tsv` | **1.1 s** | **red**, naming `as.tsv:L84` and its reason |
+
+The 113 sit in six files, every one from the corpus expansion:
+fold-map-filter 30, code-bodies 27, callbacks 25, each-variants 13,
+fn-locals-scope 10, module-composition 8. The other 124 files are at
+zero, which every filtered run over them now asserts as well.
+
+**Rule for the ledger** (in its header and on the handover page): a line
+moves down in the change that compiles its rows, never by deleting a row;
+it moves up only with the regressed rows named in the note column, and
+that is the record of a regression, not a fix.
+
+**Not done.** Islands and the other corpus-wide counts still report under
+a filter — the same `callbacks.tsv` run reports 5 islands and asserts
+none. The mechanism is per file and generic; extending it is a small
+step, and S0's re-basing of every ratchet is where it belongs.
