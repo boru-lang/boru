@@ -113,6 +113,23 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(usurpHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the fn-operand class): the operand is never
+				// invoked here — UsurpFunction READS its signatures to build
+				// the wrapper and STORES the original (FnDefInfo.Wraps) for
+				// the wrapper's later re-dispatch, so it is a store-fn slot,
+				// not a pure introspection one: a capturing fn must keep its
+				// real binding (CompileStoresFn), and the native VALIDATES the
+				// operand as an FnDefInfo (UsurpFunction's payload assertion),
+				// so a compiled closure — a ClosurePayload the assertion
+				// rejects with illegal_ref where the interpreter wraps it — is
+				// the CompileFnHandlerStrict shape and must refuse, never
+				// lower. Under analysis the concrete value form folds at check
+				// time (the wrapper is a pure function of the fn's shape, and
+				// the VM dispatches it through UnwrapModifierChain with no
+				// tape); the gradual form's poly record is gated by the same
+				// declaration in recordGradualWrap.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -134,6 +151,10 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(stackArgsHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's value form: the fn is read for its
+				// shape and stored in the wrapper (rebarrierFunction) for the
+				// later re-dispatch; validated as an FnDefInfo.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -157,6 +178,10 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forceArityHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's value form (ForceArityFunction
+				// reads the shape, stores the original in the wrapper,
+				// validates it as an FnDefInfo).
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TInteger, TAtom},
@@ -177,6 +202,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forwardArgsHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// Same contract as usurp's / stack-args' value form.
+				CompileEffect: CompileStoresFn | CompileFnHandlerStrict,
 			},
 			{
 				Args:       []*Type{TAtom},
@@ -511,15 +538,59 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // (downstream provenance refuses and the program falls back, the status quo).
 // RecordPolyCall declining (an unresolvable operand, inactive recorder) leaves
 // the recorder untouched — the residual then refuses, never miscompiles.
+//
+// The poly record is the ONE seat of these words the recorder's declaration
+// check (RecordCallOperands' CompileFnHandlerStrict arm) never sees — the
+// value-form sigs run in check mode, so RecordCall refuses them before the
+// operand walk, and RecordPolyCall reads no declaration. So the declaration
+// is honoured HERE, by the word's own check-mode half: a TYPED Function
+// carrier (a user fn's declared Function result the check pass could not
+// materialise — a returned closure, a branch-selected fn) is declined,
+// because the VM delivers a capturing closure to the poly'd native as a
+// ClosurePayload and the native's FnDefInfo validation raises illegal_ref
+// where the interpreter wraps the real closure (measured 2026-09-18: `def r
+// (usurp (mk 100))  r 10 3` answered illegal_ref against the interpreter's
+// 93). The residual then refuses — the strict slot's contract; a capture-free
+// returned fn refuses with it (the carrier cannot tell them apart), which is
+// the sound side. Two gradual carriers keep their poly record: the DYNAMIC
+// Function carrier a sibling modifier's own gradual wrap produced (a
+// composed chain `usurp (forward-args (m.s))`, path-modifier.tsv:52-55 —
+// the inner poly's runtime result is always the wrapper FnDefInfo the
+// rebarrier/usurp constructors build, so the outer slot is as safe as the
+// inner), and the dynamic-Any carrier of a `m.a` read (path-modifier.tsv:17):
+// its runtime value is usually a plain fn value, and the same closure
+// delivered THAT way is the residual NUR158 records for the poly seat
+// itself to close.
 func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 	if reg == nil {
 		return
 	}
 	pos := core.SrcPos{}
 	if len(args) > 0 {
-		pos = args[len(args)-1].Pos()
+		fnArg := args[len(args)-1]
+		pos = fnArg.Pos()
+		if strictFnSlotWord(reg, word) && fnArg.Parent.ConformsTo(TFunction) && !fnArg.Dynamic {
+			return
+		}
 	}
 	reg.Check.Recorder().RecordPolyCall(word, args, outs, pos, nil, nil)
+}
+
+// strictFnSlotWord reports whether any signature of word declares
+// CompileFnHandlerStrict — the native validates its fn operand as an
+// FnDefInfo, so a compiled closure at the slot must refuse rather than lower
+// (the declaration recordGradualWrap honours at the poly seat).
+func strictFnSlotWord(reg *Registry, word string) bool {
+	fd := reg.Lookup(word)
+	if fd == nil {
+		return false
+	}
+	for i := range fd.Signatures {
+		if fd.Signatures[i].CompileEffect.Has(core.CompileFnHandlerStrict) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkModeGradualFn handles a dispatch-modifier word (usurp / stack-args /

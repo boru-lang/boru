@@ -43,7 +43,12 @@ import (
 // program that imports modules registers more, so this is a floor on the
 // worklist, not its total; it is the part that is always present and can
 // therefore be ratcheted deterministically.
-const undeclaredHandlerCeiling = 114 // 114 (2026-08-25, Stage-1 baseline) -> 0 (Stage 6)
+// History: 114 (2026-08-25, Stage-1 baseline) -> 110 (2026-09-18, the
+// fn-operand pilot of design/HANDLER-MIGRATION-LINE.0.md: the dispatch-
+// modifier VALUE forms — usurp [Function], stack-args [Function],
+// forward-args [Function], force-arity [Integer Function] — declared
+// CompileStoresFn|CompileFnHandlerStrict) -> 0 (Stage 6).
+const undeclaredHandlerCeiling = 110
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.

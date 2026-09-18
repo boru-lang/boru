@@ -85,3 +85,51 @@ census's `relevant` / `declared` predicates say which a signature is.
 - The interpreter is the oracle: `RunInterp`, never `Run` (NUR106).
 - Every non-uniformity found on the way goes to `NUR.md` (answer
   divergences only); every refusal to `design/COMPILABLE-SUBSET.md` §5.
+
+## Progress
+
+**2026-09-18 — the fn-operand class, as the pilot (11 signatures).**
+Ceiling `undeclaredHandlerCeiling` 114 → 110. Declared, all
+`CompileStoresFn | CompileFnHandlerStrict` (`lang/go/native/native_valof.go`):
+`usurp [Function]`, `stack-args [Function]`, `forward-args [Function]`,
+`force-arity [Integer Function]`. Each handler reads the fn's signatures
+to build a wrapper and STORES the original (`FnDefInfo.Wraps`) for the
+wrapper's later re-dispatch — never an invocation at the word — and
+validates the operand as an `FnDefInfo`, which is exactly the strict
+store-fn contract. The VM dispatches the wrapper through
+`UnwrapModifierChain` with no tape, so the value form is not the
+"re-stepping result the VM cannot reproduce" the `CompileQuoteInert`
+comment warns about; that warning is about the by-name Atom forms, which
+are the quoted class and untouched here. The declaration found a live
+MISCOMPILE on the way: these words run in check mode, so their only
+recorder seat is the gradual poly record, and it delivered a capturing
+closure to the native as a `ClosurePayload` the validation rejects —
+compiled `illegal_ref` against the interpreter's value. The word's
+check-mode half (`recordGradualWrap`) now honours the declaration by
+declining the poly record for a typed `Function` carrier, so that shape
+refuses with parity; the dynamic-Any `m.a` form of the same defect is
+NUR158, owed to the poly seat (compiler/VM), not to the word. Gates over
+the class's rows (usurp, path-modifier, apply, fn-value, modifiers,
+module-minilang/parselang/emitlang/parse, callbacks, forward-barrier,
+valof): 749 rows, 666 compiled, 25 refused, 0 divergences, 10 census
+rows — unchanged before and after (a first, wider decline regressed
+path-modifier.tsv:52-55, the composed wrapper chains, and was narrowed
+to the typed carrier).
+
+Left undeclared, with the reason recorded in `COMPILABLE-SUBSET.md` §5:
+`apply [Function]` — its handler marks the value and the RE-STEP applies
+it; the recorder owns the word by name (the fn-value elision, the
+pending-apply window, `OpCallDynTrailTop`), no flag says "applies through
+the Apply kernel", and `CompileReadsFn` would let a top-level fn-typed
+carrier bake a `CALL_NATIVE` that leaves the marked fn as data — the S1
+line's word. `mini` ×2, `parse` ×2, `emit` ×2 value forms — the handler
+returns a SPLICE that applies the fn on the tape (`<fn> <src> <opts>
+end`): a token-returning macro, this brief's rewrite class; the rewrite
+(apply the transducer through the kernel from Go, with a `ReturnsFn`
+twin) is not small — it changes the expansion's `end`-terminated forward
+collection and the filter-shaped partials — so the honest state is
+"undeclared, refused/modelled at the residual", not a permissive flag.
+No declaration in `core/go/value.go` means "refuse here, by name": the
+refusal is `CompileDefault`'s zero value, which the census counts as
+undeclared — a refusing declaration (a tri-state `tapeBound: Yes`) is
+the triple's C1 and is not yet a flag.

@@ -203,6 +203,41 @@ user still gets an answer while the case is open:
   captures.
 - **Quoted-operand word** — usurp / force-arity / ref-family (results re-stepped)
   — except `get`/`getr`/`set` and module-inner natives over inert atom keys.
+- **Dispatch-modifier VALUE form over a computed fn** (the fn-operand pilot
+  of [HANDLER-MIGRATION-LINE.0.md](HANDLER-MIGRATION-LINE.0.md), 2026-09-18)
+  — `usurp` / `stack-args` / `forward-args` / `force-arity` over a TYPED
+  `Function` carrier: a user fn's declared `Function` result (`def r (usurp
+  (mk 100))  r 10 3`). The value-form sigs now declare `CompileStoresFn |
+  CompileFnHandlerStrict` — the native reads the fn's shape, stores the
+  original in the wrapper (`FnDefInfo.Wraps`) for the later re-dispatch, and
+  VALIDATES it as an `FnDefInfo` — and the only recorder seat these
+  check-mode words reach is the gradual poly record (`recordGradualWrap`),
+  which reads no declaration on the compiler side: it lowered the wrap to
+  `OpCallNativePoly`, the VM handed the native a `ClosurePayload`, and the
+  validation raised `illegal_ref` where the interpreter wraps the closure
+  (NUR158). The word's check-mode half honours the declaration by declining
+  the poly record, so the residual refuses (`… of unknown provenance`); a
+  capture-free returned fn refuses with it, since the carrier cannot tell
+  the two apart. The DYNAMIC Function carrier a sibling modifier's gradual
+  wrap produced (`usurp (forward-args (m.s))`, path-modifier.tsv:52-55) and
+  the dynamic-Any `m.a` read (path-modifier.tsv:17) keep their poly record
+  and compile; the `m.a` form over a closure is NUR158's open half.
+- **Fn-operand words still undeclared** (the pilot's open half, 7 of the
+  census's 11 fn-operand signatures): `apply [Function]` — the recorder owns
+  it by NAME (`recordCallElided`'s fn-value elision, the pending-apply
+  window, `OpCallDynTrailTop`) and no flag says "applies its operand through
+  the Apply kernel"; `CompileReadsFn` would be a permissive lie (a top-level
+  fn-typed carrier would bake a `CALL_NATIVE` whose handler leaves the marked
+  fn as DATA — the S1 fn-value line owns the word). `mini` / `parse` /
+  `emit` value forms (`(Function String Map)`, `(Function String)`,
+  `(Function Map Any)`, `(Function Any)`, `(Function Any Any)`) — the
+  handler returns a SPLICE, `<fn> <src> <opts> end`, that applies the fn on
+  the tape: a token-returning macro, the brief's REWRITE class, not a
+  declaration (`CompileReadsFn`/`CompileStoresFn` promise the fn is never
+  invoked on the tape). The check pass models the expansion (`RunInCheck`)
+  and the recorder refuses the residual (`mini`/`emit` over a computed fn:
+  "residual value of unknown provenance") or records the parser dispatch
+  (`parse`, `recordParseLangFnDispatch` + `FnDataArgs`).
 - **Code-body word** — a `NoEvalArgs` body that is not inert (a computed paren,
   or a body carrying a flow-control sentinel that targets an enclosing frame).
 - **Code-body naming a FN-LOCAL fn** (NUR037) — a body word whose current
