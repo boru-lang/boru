@@ -593,6 +593,33 @@ the log parsed by hand to prove nothing new broke.
 | the second parallel line | [HANDLER-MIGRATION-LINE.0.md](HANDLER-MIGRATION-LINE.0.md), a session brief with `make handler-worklist` (the 114 signatures, one per line) and the per-word procedure |
 | the flakes | the kg `check` target: not a flake — `boru check` anchors relative imports on the file where `boru` anchors on the cwd, so every `tests/*_test.boru` lost its `./util.boru` import silently (28 phantom errors per file); `boru check --base DIR` now anchors where run does and the target passes. `TestModelWatchForkNoRace`: 40 of 40 under concurrent load, not reproduced, left as is. The registry race at the spawn seam: every spawn seam already forks and NUR152's `FnHome` keeps a parent-minted callback on the fork, which is the mechanism both recorded witnesses had; `TestTimeoutBodyAppliesParentFnOnItsFork` pins it under the race detector |
 
+### 9.1 The three-minute contract (2026-09-17, later the same day)
+
+The maintainer then set a ceiling: **three minutes at most for standard
+CI, and three minutes for the commit gate.** Measured before: the 12.5
+minute run above, whose shape was four langspec shards of six minutes
+(each test walking the corpus on one core while three idled), a
+test-modules job of six minutes (`cmd/go/internal/vault` alone 231 s, all
+of it scrypt at the production work factor), a checks job of 3.5 minutes
+(golangci-lint 127 s in sequence), the gates job of six (the borudebug
+corpus differentials 193 s), and the direction job of eleven, which
+re-ran ten corpus walks to print a table the regression shards already
+had the numbers for. What landed:
+
+| where | what | mechanism |
+|---|---|---|
+| every corpus walk | one shared parallel walk | `test/go/langspec/walk_test.go`: `specWalk`/`specWalkFiles` parse the selected spec files once and hand them to one worker per CPU, largest file first; a body gets a `testing.TB` whose `Fatal`/`Skip` abort the row, not the test, and a panic names its row. Sixteen walks converted; every gate value unchanged; race-clean under the detector on a corpus subset; `BORU_SPEC_WORKERS=1` is the sequential form |
+| every langspec test | `t.Parallel()` | the one exception is `TestRegionCollectOracle`, which sets the package-global `compiler.RegionOracle` and runs alone, before the parallel batch |
+| `cmd/go/internal/vault` | the scrypt work factor is a variable the package's tests lower | 293 s → 14 s; the format pins 2^15 and nothing outside a test file may assign it |
+| vet, lint | every module in parallel | `scripts/each-module.sh`, output captured per module; golangci-lint's cache in the per-job build cache, so a warm run is seconds |
+| CI | small jobs, each under the ceiling, setup per job | `.github/actions/setup` takes inputs (`node`, `tools`, `build-cli`, `cache-name`) so a job installs only what it runs; the module cache is one shared entry keyed by the dependency set, the build cache one entry per job; test-modules split into test-core, test-lang (root and rest), test-cmd; the gates split by what they need installed; borudebug its own job; five langspec shards |
+| the direction lane | no job — a table from the shards | every shard appends its gates' rows (`BORU_GATE_SUMMARY`) and uploads them; the `gate-table` job renders the one table into the run's summary. `make test-direction` is the lane as a local run; `make gate-status` refreshes the committed table, now sorted so it does not churn |
+| the kernel | the unify registry threaded, a package-global stack gone | the parallel walks were the first to race on `core.unifyRegistryStack`, the slice every `UnifyExplainR` pushed and every goroutine's registry-less `Unify` read (class construction, conditionals, the `unify` word — hot paths, so any concurrent program raced too). The registry is now a parameter through the whole unify recursion and the `Unifier` interface; pinned under the detector by `TestUnifyRegistryArmedConcurrentNoRace` (403 reports before, none after) and in CI's race gates. One deliberate change fell out and is pinned: a predicate body's dispatch is unarmed like top level (it used to be armed by whatever unify was in flight on ANY goroutine); one pre-existing oddity the threading kept verbatim is NUR157 |
+| the commit gate | `make commit-gate` | `scripts/commit-gate.sh`: gofmt, vet and lint on the touched modules in parallel; the touched modules' unit tests (the changed packages of `lang/go` and `cmd/go`); the langspec gates over a smoke corpus (eleven files, one per family that has bitten) plus every spec file the change touched, under `BORU_SPEC_FILES`; the knowledge graph when docs or tooling changed. Each lane prints its time; a breach of the ceiling is a warning whose fix is in the script or the tests, never in a skipped lane |
+
+The measured result of the first run under the new layout is recorded
+with it in the log (FULL-COMPILATION-HANDOFF.0.md).
+
 One checker defect the kg investigation exposed and this note only
 records: a relative import that resolves to nothing is silent in check
 mode — the namespace's words come back `undefined_word` one by one instead

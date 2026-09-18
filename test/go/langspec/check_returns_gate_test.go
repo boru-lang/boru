@@ -49,6 +49,7 @@ var nativeReturnsOptOut = map[string]string{
 }
 
 func TestNativeReturnsCoverage(t *testing.T) {
+	t.Parallel()
 	reg, err := native.DefaultRegistry()
 	if err != nil {
 		t.Fatalf("registry: %v", err)

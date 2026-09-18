@@ -83,9 +83,10 @@ day and open until answered:
 
 The gates carry two numbers each (`test/go/langspec/lanes_test.go`): an
 END STATE — the design's number, asserted by the direction lane
-(`BORU_DIRECTION_GATES=1`, `make test-direction`, CI's `direction-gates`
-job, red by design until the work is done) — and a REGRESSION ceiling, the
-last merged value, which only falls and which the default lane asserts.
+(`BORU_DIRECTION_GATES=1`, `make test-direction`, red by design until the
+work is done; CI renders the lane's table from the regression shards into
+every run's summary) — and a REGRESSION ceiling, the last merged value,
+which only falls and which the default lane asserts.
 `make gate-status` prints both for every gate, refreshes
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
 and appends the instant censuses. The values on 2026-09-17, head of PR
@@ -126,12 +127,12 @@ SESSION-HANDOVER.0.md (2026-09-17)".
 The first is the one that cost the most, four times in one session:
 
 1. **Re-run the gate that owns the edit — including when the edit looks
-   cosmetic.** `make fmt && make vet && make lint && make test`, in order,
-   all four. A refactor made *while* fixing something else is itself the
-   trigger to re-run everything. Four separate red CIs traced to skipping
-   this: the variation lane, `gocyclo`, the ADR-008 statement floor, and a
-   stale knowledge graph on a commit that contained nothing but a design
-   note.
+   cosmetic.** `make commit-gate` (three minutes, on what the change
+   touched) before every commit. A refactor made *while* fixing something
+   else is itself the trigger to re-run everything. Four separate red CIs
+   traced to skipping this: the variation lane, `gocyclo`, the ADR-008
+   statement floor, and a stale knowledge graph on a commit that contained
+   nothing but a design note.
 2. **"CI green" ≠ "gated".** `ci.yml` runs `make test` + `cover-gate-core`.
    The repo-wide merged ADR-008 gate is a SEPARATE workflow
    (`cover-gate.yml`, nightly + `workflow_dispatch`). Dispatch it on the
@@ -163,11 +164,13 @@ The first is the one that cost the most, four times in one session:
    typed lowering later, by proof — every miscompile of 2026-09-17 was a
    bespoke typed lowering, none in shared-kernel code — and the count of
    `vm:generic-*` defer arms may only fall (FULL-COMPILATION.0.md §10.1).
-10. **Run `make ci-local` before a push**, not the five-target line: it is
-    exactly `ci.yml`'s steps (`scripts/ci-steps.sh` is the one definition).
-    The regression lane is what blocks; the direction lane is a report.
-    A regression ceiling is raised only with the row that moved it named
-    in the constant's comment; an end state is never raised.
+10. **`make commit-gate` before a commit, `make ci-local` before a push.**
+    Both are three-minute contracts: the commit gate on what the change
+    touched, CI as parallel jobs each under the ceiling (`scripts/ci-steps.sh`
+    is the one definition `ci.yml` and `ci-local` share). The regression
+    lane is what blocks; the direction lane is the gate table CI renders
+    from the shards. A regression ceiling is raised only with the row that
+    moved it named in the constant's comment; an end state is never raised.
 11. **Iterate on one family with `BORU_SPEC_FILES`**, and run the whole
     package (`make test-langspec SHARD=n` for every shard) before the push:
     the corpus-wide ceilings, floors and both-ways ledgers are reported,
@@ -184,7 +187,10 @@ The first is the one that cost the most, four times in one session:
 - A temporary `println` at the decision site beats reading the code. Several
   increments' real causes were found that way and only that way.
 - `BORU_SPEC_FILES=<names or globs>` — every corpus walk in langspec and
-  the interpreter oracle (`TestSpecProd`) over the named files only.
+  the interpreter oracle (`TestSpecProd`) over the named files only. Every
+  walk runs on all cores through `specWalk` (`walk_test.go`);
+  `BORU_SPEC_WORKERS=1` is the sequential, directory-ordered form for a
+  temporary println.
 - `make gate-status` / `BORU_DIRECTION_GATES=1` — every gate's live value
   against its end state and its regression ceiling; the ledgers
   (`knownDivergences`, `regionOracleFindings`, `diagSurfaceLedger`) are
@@ -196,4 +202,8 @@ The first is the one that cost the most, four times in one session:
   acceptor and each connection) all run their bodies on a fork; a
   parent-minted callback stays on the fork (NUR152's `FnHome`), pinned
   under the race detector by `TestTimeoutBodyAppliesParentFnOnItsFork` and
-  `TestModelWatchForkNoRace` (40/40 under load on 2026-09-17).
+  `TestModelWatchForkNoRace` (40/40 under load on 2026-09-17). The
+  registry a unify is armed with is threaded through the kernel, not
+  kept on a package-global stack (2026-09-18; the parallel corpus walks
+  found the race); `TestUnifyRegistryArmedConcurrentNoRace` pins it and
+  CI's race gates run it. NUR157 is the one oddity that threading kept.

@@ -136,7 +136,7 @@ func patternRejects(pattern Value, v Value) bool {
 	// fast path (the verdict depends only on the operand's top-level
 	// shape).
 	if ni, err := AsNegation(pattern); err == nil {
-		_, uerr := unifyNegation(ni, v)
+		_, uerr := unifyNegation(ni, v, nil)
 		return uerr != nil
 	}
 	_, ok := Unify(v, pattern)

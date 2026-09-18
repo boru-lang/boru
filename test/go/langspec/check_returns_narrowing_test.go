@@ -15,6 +15,7 @@ import (
 )
 
 func TestReturnsAnnotationNarrowing(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -177,6 +178,7 @@ func TestReturnsAnnotationNarrowing(t *testing.T) {
 // TestDeclaresCheckReturnsPredicate pins the four annotation surfaces the
 // coverage gate accepts — and that an unannotated Go sig is refused.
 func TestDeclaresCheckReturnsPredicate(t *testing.T) {
+	t.Parallel()
 	noop := func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 		return nil, nil
 	}

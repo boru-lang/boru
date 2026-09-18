@@ -777,8 +777,17 @@ func keyringFileFormat(folder string) (int, error) {
 // developer machine; it dominates each Set/Get on the file backend
 // by ~tens of milliseconds, which is acceptable.
 func scryptKey(passphrase string, salt []byte) ([]byte, error) {
-	return scrypt.Key([]byte(passphrase), salt, 1<<15, 8, 1, 32)
+	return scrypt.Key([]byte(passphrase), salt, scryptN, 8, 1, 32)
 }
+
+// scryptN is the scrypt work factor. It is a variable for ONE reader: the
+// package's own tests lower it (kdf_cost_test.go) because the suite
+// derives a key a few thousand times and the production cost made the
+// package the slowest in the tree by an order of magnitude (293 s, 4.7 s
+// with the test cost). Nothing outside a _test file may assign it: the
+// keyring and export formats do not record N, so a file written under
+// one cost is unreadable under another. keyringFormat below pins 2^15.
+var scryptN = 1 << 15
 
 const (
 	// keyringMagic prefixes a self-describing keyring file. Older files

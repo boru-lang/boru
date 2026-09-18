@@ -31,12 +31,9 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
+	"sync"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -87,16 +84,21 @@ func sourceName(s compiler.SlotSource) string {
 	return fmt.Sprintf("OTHER:%d", s)
 }
 
-// tallyRow compiles one row and folds its region table into the tally.
-func (tl *regionTally) tallyRow(src, where string) {
+// compileForRegions compiles one row on an Engine of its own and returns
+// the program, nil when the row does not compile. It is the walk's per-row
+// work and runs outside the tally's lock.
+func compileForRegions(src string) *lang.Program {
 	a, err := lang.New()
 	if err != nil {
-		return
+		return nil
 	}
 	prog, _, _, _ := a.CompileCheck(src)
-	if prog == nil {
-		return
-	}
+	return prog
+}
+
+// fold folds one compiled row's region table into the tally. The caller
+// holds the tally's lock.
+func (tl *regionTally) fold(prog *lang.Program, where string) {
 	tl.rows++
 	if len(prog.Regions) == 0 {
 		return
@@ -141,39 +143,30 @@ func (tl *regionTally) tallyRow(src, where string) {
 
 // TestRegionTableWellFormed walks the corpus, compiles every row, and
 // validates every descriptor the program carries.
+//
+// The walk is specWalk (walk_test.go): every row compiles on an Engine of
+// its own, on a worker goroutine, and the tally is the one shared state,
+// folded under mu once the compile is done. Nothing here depends on row
+// order — every count is a sum, and the `bad` list is sorted before it is
+// printed, so the log reads the same whichever worker saw a row first.
 func TestRegionTableWellFormed(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
 	tl := &regionTally{sources: map[string]int{}}
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := specEntries(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		prog := compileForRegions(r.Input)
+		if prog == nil {
+			return
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			tl.tallyRow(strings.TrimSpace(parts[0]), fmt.Sprintf("%s:%d", e.Name(), lineNo))
-		}
-		_ = f.Close()
-	}
+		mu.Lock()
+		defer mu.Unlock()
+		tl.fold(prog, fmt.Sprintf("%s:%d", r.File, r.Line))
+	})
+	sort.Strings(tl.bad) // the same log whichever worker saw a malformed row first
 
 	names := make([]string, 0, len(tl.sources))
 	for k := range tl.sources {
@@ -181,7 +174,7 @@ func TestRegionTableWellFormed(t *testing.T) {
 	}
 	sort.Strings(names)
 	t.Logf("region table: %d compiled rows, %d carrying regions, %d descriptors, %d dispatches routed through one", tl.rows, tl.withRegions, tl.descs, tl.routed)
-	if tl.routed < routedFloor {
+	if !filteredCorpus() && tl.routed < routedFloor { // an absolute count: reported, not asserted, under BORU_SPEC_FILES (lanes_test.go)
 		t.Errorf("only %d dispatches route through their descriptor (floor %d) — a seat stopped routing", tl.routed, routedFloor)
 	}
 	t.Logf("   slots: %d claimed of %d in span", tl.claimedSlots, tl.spanSlots)
@@ -204,7 +197,7 @@ func TestRegionTableWellFormed(t *testing.T) {
 	// stops matching — and leaving a green test measuring nothing. The floor
 	// is an order of magnitude below the live figure for that reason.
 	const descFloor = 4000
-	if tl.descs < descFloor {
+	if !filteredCorpus() && tl.descs < descFloor { // an absolute count: reported, not asserted, under BORU_SPEC_FILES (lanes_test.go)
 		t.Errorf("only %d descriptors emitted (floor %d) — Phase A or the (word, pos) join "+
 			"has stopped firing; find the seam, do not lower the floor", tl.descs, descFloor)
 	}

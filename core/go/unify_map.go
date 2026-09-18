@@ -8,7 +8,10 @@ package core
 // canonicalization principle applies: type literals normalize to the
 // `lit` slot, exclusive shapes (Record, Options) only unify with their
 // own kind, and typed-vs-concrete arms are collapsed by ordering.
-func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *UnifyError) {
+//
+// r is the enclosing chain's registry (nil when unarmed), handed to
+// every field / value / child recursion.
+func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, *UnifyError) {
 	// Bare FlexMap type literal: nominal-subtype rule — unifies only
 	// with a concrete FlexMap (or another FlexMap literal). A plain
 	// map is NOT a FlexMap; the supertype literal `Map` accepts flex
@@ -81,28 +84,28 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Uni
 	// order is part of a record's identity.
 	if sa == ShapeRecord || sb == ShapeRecord {
 		if sa != sb {
-			if res, handled, err := unifyRecordSchemaCarrierVsMap(a, sa, b, sb); handled {
+			if res, handled, err := unifyRecordSchemaCarrierVsMap(a, sa, b, sb, r); handled {
 				return res, err
 			}
 			return Value{}, unifyFail("Record only unifies with Record", a, b)
 		}
 		aRT, _ := AsRecordType(a)
 		bRT, _ := AsRecordType(b)
-		return unifyRecordTypes(aRT, bRT)
+		return unifyRecordTypes(aRT, bRT, r)
 	}
 
 	// Options dispatches to its own handler — the field rules
 	// (defaults, disjunct alternatives, concrete-vs-literal) are
 	// substantial enough to keep separate.
 	if sa == ShapeOptions || sb == ShapeOptions {
-		return unifyOptionsFamily(a, sa, b, sb)
+		return unifyOptionsFamily(a, sa, b, sb, r)
 	}
 
 	// Both typed maps → unify child types.
 	if sa == ShapeTypedMap && sb == ShapeTypedMap {
 		aCT, _ := AsChildType(a)
 		bCT, _ := AsChildType(b)
-		unified, err := unifyInner(aCT.Child, bCT.Child)
+		unified, err := unifyInner(aCT.Child, bCT.Child, r)
 		if err != nil {
 			return Value{}, err.withPath("child")
 		}
@@ -119,17 +122,19 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape) (Value, *Uni
 			typed, concrete = b, a
 		}
 		ct, _ := AsChildType(typed)
-		return unifyTypedMapWithConcrete(concrete, ct.Child)
+		return unifyTypedMapWithConcrete(concrete, ct.Child, r)
 	}
 
 	// Both concrete maps: key-by-key unification, with absent-on-one-
 	// side keys defaulting against None.
 	aMap, _ := AsMap(a)
 	bMap, _ := AsMap(b)
-	return unifyConcreteMaps(aMap, bMap)
+	return unifyConcreteMaps(aMap, bMap, r)
 }
 
-func unifyConcreteMaps(aMap, bMap ReadMap) (Value, *UnifyError) {
+// unifyConcreteMaps unifies two concrete maps key by key; r is the
+// enclosing chain's registry, handed to every per-key unify.
+func unifyConcreteMaps(aMap, bMap ReadMap, r *Registry) (Value, *UnifyError) {
 	absentVal := NewTypeLiteral(TAbsent)
 	result := NewOrderedMap()
 
@@ -146,7 +151,7 @@ func unifyConcreteMaps(aMap, bMap ReadMap) (Value, *UnifyError) {
 		aVal, _ := aMap.Get(key)
 		bVal, ok := bMap.Get(key)
 		if !ok {
-			unified, err := unifyInner(aVal, absentVal)
+			unified, err := unifyInner(aVal, absentVal, r)
 			if err != nil {
 				return Value{}, err.withPath("key:" + key)
 			}
@@ -156,7 +161,7 @@ func unifyConcreteMaps(aMap, bMap ReadMap) (Value, *UnifyError) {
 			result.Set(key, unified) //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			continue
 		}
-		unified, err := unifyInner(aVal, bVal)
+		unified, err := unifyInner(aVal, bVal, r)
 		if err != nil {
 			return Value{}, err.withPath("key:" + key)
 		}
@@ -170,7 +175,7 @@ func unifyConcreteMaps(aMap, bMap ReadMap) (Value, *UnifyError) {
 			continue
 		}
 		bVal, _ := bMap.Get(key)
-		unified, err := unifyInner(bVal, absentVal)
+		unified, err := unifyInner(bVal, absentVal, r)
 		if err != nil {
 			return Value{}, err.withPath("key:" + key)
 		}
@@ -191,8 +196,9 @@ func unifyConcreteMaps(aMap, bMap ReadMap) (Value, *UnifyError) {
 // check-mode abstract map, IsConcrete false — e.g. the residual of
 // `(flex {…})`) has no readable entries: unify gradually to the carrier's own
 // kind, tagged, rather than dereferencing nil (the flex-{:T} panic).
-// See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
-func unifyTypedMapWithConcrete(concrete, childType Value) (Value, *UnifyError) {
+// See design/TYPED-CONTAINER-TAG-RETENTION.0.md. r is the enclosing
+// chain's registry, handed to every value unify and to the reparent.
+func unifyTypedMapWithConcrete(concrete, childType Value, r *Registry) (Value, *UnifyError) {
 	if !IsConcrete(concrete) {
 		// A carrier (a check-mode abstract map with no readable entries) tags
 		// gradually; its concrete elements are validated at runtime.
@@ -201,7 +207,7 @@ func unifyTypedMapWithConcrete(concrete, childType Value) (Value, *UnifyError) {
 		return out, nil
 	}
 	m, _ := AsMap(concrete) // concrete map-family (plain or flex) → readable
-	res, err := unifyMapValues(m, func(string) Value { return childType })
+	res, err := unifyMapValues(m, func(string) Value { return childType }, r)
 	if err != nil {
 		return Value{}, err
 	}
@@ -209,7 +215,7 @@ func unifyTypedMapWithConcrete(concrete, childType Value) (Value, *UnifyError) {
 		for _, k := range om.Keys() {
 			uv, _ := om.Get(k)
 			sv, _ := m.Get(k)
-			om.Set(k, reparentSwappedElem(sv, uv))
+			om.Set(k, reparentSwappedElem(sv, uv, r))
 		}
 	}
 	if IsFlexMap(concrete) {
@@ -224,8 +230,9 @@ func unifyTypedMapWithConcrete(concrete, childType Value) (Value, *UnifyError) {
 // hold the same number of fields and each field-type pair must unify.
 // When orderStrict is true the keys must also appear in the same order
 // (record-type semantics); when false key order is irrelevant
-// (options-type semantics).
-func unifyFieldBags(a, b *OrderedMap, orderStrict bool) (*OrderedMap, *UnifyError) {
+// (options-type semantics). r is the enclosing chain's registry,
+// handed to every field-pair unify.
+func unifyFieldBags(a, b *OrderedMap, orderStrict bool, r *Registry) (*OrderedMap, *UnifyError) {
 	if a.Len() != b.Len() {
 		return nil, &UnifyError{Reason: "field-count mismatch"}
 	}
@@ -241,7 +248,7 @@ func unifyFieldBags(a, b *OrderedMap, orderStrict bool) (*OrderedMap, *UnifyErro
 			return nil, &UnifyError{Reason: "field " + key + " missing on right side"}
 		}
 		aVal, _ := a.Get(key)
-		unified, err := unifyInner(aVal, bVal)
+		unified, err := unifyInner(aVal, bVal, r)
 		if err != nil {
 			return nil, err.withPath("field:" + key)
 		}
@@ -252,8 +259,8 @@ func unifyFieldBags(a, b *OrderedMap, orderStrict bool) (*OrderedMap, *UnifyErro
 
 // unifyRecordTypes unifies two record types by unifying their field
 // schemas. Keys must match in the same order.
-func unifyRecordTypes(a, b RecordTypeInfo) (Value, *UnifyError) {
-	result, err := unifyFieldBags(a.Fields, b.Fields, true)
+func unifyRecordTypes(a, b RecordTypeInfo, r *Registry) (Value, *UnifyError) {
+	result, err := unifyFieldBags(a.Fields, b.Fields, true, r)
 	if err != nil {
 		return Value{}, err
 	}
@@ -279,8 +286,9 @@ func unifyRecordTypes(a, b RecordTypeInfo) (Value, *UnifyError) {
 // child; a field type that cannot meet it makes every instance fail).
 // handled=false (fall through to the nominal refusal) for a non-carrier
 // record side or an unreadable map; a record type BODY as a value keeps
-// Record-only-unifies-with-Record.
-func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShape) (Value, bool, *UnifyError) {
+// Record-only-unifies-with-Record. r is the enclosing chain's
+// registry, handed to every field / key unify.
+func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry) (Value, bool, *UnifyError) {
 	var rec, m Value
 	switch {
 	case sa == ShapeRecord && a.Carrier && (sb == ShapeMap || sb == ShapeTypedMap):
@@ -303,7 +311,7 @@ func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShap
 	if ct, err := AsChildType(m); err == nil {
 		for _, key := range rt.Fields.Keys() {
 			fVal, _ := rt.Fields.Get(key)
-			if _, uerr := unifyInner(fVal, ct.Child); uerr != nil {
+			if _, uerr := unifyInner(fVal, ct.Child, r); uerr != nil {
 				return Value{}, true, uerr.withPath("field:" + key)
 			}
 		}
@@ -324,12 +332,12 @@ func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShap
 		mVal, _ := mm.Get(key)
 		fVal, ok := rt.Fields.Get(key)
 		if !ok {
-			if _, err := unifyInner(mVal, absentVal); err != nil {
+			if _, err := unifyInner(mVal, absentVal, r); err != nil {
 				return Value{}, true, err.withPath("key:" + key)
 			}
 			continue
 		}
-		if _, err := unifyInner(fVal, mVal); err != nil {
+		if _, err := unifyInner(fVal, mVal, r); err != nil {
 			return Value{}, true, err.withPath("key:" + key)
 		}
 	}

@@ -29,6 +29,14 @@ func (*BindingBodyUnifier) ContentMembership() {}
 func (u *BindingBodyUnifier) Body() Value { return u.body }
 
 func (u *BindingBodyUnifier) Match(v Value, t *Type) bool {
+	return u.matchR(v, t, nil)
+}
+
+// matchR is Match with the enclosing unify chain's registry threaded
+// into the body unify (see isR): the candidate-vs-body walk is a unify
+// made from inside a unify, so it keeps the chain's registry rather
+// than starting an unarmed one.
+func (u *BindingBodyUnifier) matchR(v Value, t *Type, r *Registry) bool {
 	if v.Carrier {
 		// Sound check-mode over-approximation, the FnUndefUnifier
 		// discipline: admit a carrier that could still be a member at
@@ -43,8 +51,8 @@ func (u *BindingBodyUnifier) Match(v Value, t *Type) bool {
 		return v.Parent != nil && u.body.Parent != nil && v.Parent.ConformsTo(u.body.Parent)
 	}
 	return matchMembership(v, t, u.prev, func(v Value) bool {
-		_, ok := Unify(v, u.body)
-		return ok
+		_, uerr := unifyWithin(v, u.body, r)
+		return uerr == nil
 	})
 }
 
@@ -54,11 +62,15 @@ func (u *BindingBodyUnifier) Match(v Value, t *Type) bool {
 // hazard unifySameOrSubtype's narrower-literal arm would introduce).
 // A rejected concrete candidate fails definitively per the shared
 // membership contract, so the structural fallback cannot re-admit a
-// non-member by lattice subtyping alone.
-func (u *BindingBodyUnifier) Unify(a, b Value) (Value, *UnifyError) {
+// non-member by lattice subtyping alone. The body unify is a unify
+// made from inside a unify (dispatchUnifier reached this node from
+// unifyInner), so it runs through unifyWithin with the chain's
+// registry: a predicate-typed field or a `[:Foo]` child inside the
+// body is decided exactly as at the chain's top level.
+func (u *BindingBodyUnifier) Unify(a, b Value, r *Registry) (Value, *UnifyError) {
 	return unifyMembership(a, b, "type "+u.typeName, func(v Value) (Value, bool, error) {
-		out, ok := Unify(v, u.body)
-		if !ok {
+		out, uerr := unifyWithin(v, u.body, r)
+		if uerr != nil {
 			return Value{}, false, nil
 		}
 		return out, true, nil

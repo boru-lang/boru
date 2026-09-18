@@ -21,6 +21,7 @@ import (
 // dispatch change made any of these refuse, the runtime rematch that currently
 // keeps them native would have silently broken.
 func TestIOSurfaceCompilesNoRefusal(t *testing.T) {
+	t.Parallel()
 	// Each program is valid and must lower to a non-nil Program. The mem-FS
 	// toggle rows exercise the bare extension sitting after a dynamic value on
 	// the stack — the case the checker cannot statically resolve, which must

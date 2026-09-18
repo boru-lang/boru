@@ -29,11 +29,9 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"sort"
+	"sync"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -128,55 +126,36 @@ func replaySandboxRow(src, where string) string {
 // TestBindingSandboxRollbackAndReplay runs the cycle over the corpus and the
 // synthetic rows. No allowance.
 func TestBindingSandboxRollbackAndReplay(t *testing.T) {
+	t.Parallel()
 	for _, src := range syntheticBranchArmSources {
 		if bad := replaySandboxRow(src, "synthetic"); bad != "" && bad != "skip" {
 			t.Errorf("%s", bad)
 		}
 	}
 
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := specEntries(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var mu sync.Mutex
 	replayed, skipped, failed := 0, 0, 0
 	var worst []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		bad := replaySandboxRow(r.Input, fmt.Sprintf("%s:%d", r.File, r.Line))
+		mu.Lock()
+		defer mu.Unlock()
+		switch bad {
+		case "":
+		case "skip":
+			skipped++
+		default:
+			failed++
+			if len(worst) < 12 {
+				worst = append(worst, bad)
+			}
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			src := strings.TrimSpace(parts[0])
-			switch bad := replaySandboxRow(src, fmt.Sprintf("%s:%d", e.Name(), lineNo)); bad {
-			case "":
-			case "skip":
-				skipped++
-			default:
-				failed++
-				if len(worst) < 12 {
-					worst = append(worst, bad)
-				}
-			}
-			replayed++
-		}
-		_ = f.Close()
-	}
+		replayed++
+	})
+	sort.Strings(worst) // the printed failures read the same whichever worker saw a row first
 
 	t.Logf("binding-sandbox rollback+replay: %d rows cycled, %d skipped (undef/def-replace/sig-undef), %d failed",
 		replayed, skipped, failed)

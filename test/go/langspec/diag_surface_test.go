@@ -49,6 +49,7 @@ var diagSurfaceLedger = map[string]string{
 }
 
 func TestDiagnosticSurfaceParity(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("diag-surface sweep: skipped in -short")
 	}
@@ -144,9 +145,13 @@ func TestDiagnosticSurfaceParity(t *testing.T) {
 		t.Errorf("NEW compile-only diagnostic class %q — the compile surface emits a diagnostic the plain `check` surface cannot see:\n  detail: %.100s\n  row:    %.120s\ntriage: unify the surfaces, or adjudicate the class in diagSurfaceLedger (designed asymmetry or named-graduation vestige)",
 			f.code, f.detail, f.row)
 	}
-	for code, why := range diagSurfaceLedger {
-		if observed[code] == 0 {
-			t.Errorf("stale diagSurfaceLedger class %q — no corpus row shows it as compile-only any more; graduate it (delete the entry).\n  was ledgered because: %.140s", code, why)
+	// The stale-entry half of the ledger is a corpus-wide claim: skipped
+	// under BORU_SPEC_FILES, where a class may simply not be in the subset.
+	if !filteredCorpus() {
+		for code, why := range diagSurfaceLedger {
+			if observed[code] == 0 {
+				t.Errorf("stale diagSurfaceLedger class %q — no corpus row shows it as compile-only any more; graduate it (delete the entry).\n  was ledgered because: %.140s", code, why)
+			}
 		}
 	}
 	t.Logf("diag-surface parity: %d rows swept, %d with compile-only diagnostics; per class: %v", len(rows), deltaRows, observed)

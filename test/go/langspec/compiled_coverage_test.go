@@ -146,6 +146,7 @@ const islandCeilingLive = 12
 const correctErrorCeiling = 1
 
 func TestCompiledCoverage(t *testing.T) {
+	t.Parallel()
 	c := gatherCensus(t)
 	rows, compiled, checkErr, refused, islanded := c.rows, c.compiled, c.checkErr, c.refused, c.islanded
 	buckets := c.refusalBuckets

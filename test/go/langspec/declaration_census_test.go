@@ -78,6 +78,7 @@ func declared(sig *core.Signature) bool {
 }
 
 func TestDeclarationCensus(t *testing.T) {
+	t.Parallel()
 	reg, err := native.DefaultRegistry()
 	if err != nil {
 		t.Fatalf("DefaultRegistry: %v", err)

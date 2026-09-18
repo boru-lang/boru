@@ -14,6 +14,7 @@ import (
 // instead of islanding. islandGate=0 guards the corpus; this documents the
 // specific shape and the runtime parity.
 func TestValueDivergesCompilesNative(t *testing.T) {
+	t.Parallel()
 	// Positive: a static-zero div/mod inside a `do` body compiles FULLY NATIVE.
 	native := []string{
 		`def e (do [1 div 0]) convert Map e`, // the cleared island (error.tsv:25)

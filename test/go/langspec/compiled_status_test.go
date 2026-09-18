@@ -27,6 +27,7 @@ import (
 const compiledStatusFile = "COMPILED_STATUS.md"
 
 func TestCompiledStatus(t *testing.T) {
+	t.Parallel()
 	c := gatherCensus(t)
 	want := renderCompiledStatus(c)
 

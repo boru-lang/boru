@@ -9941,3 +9941,79 @@ Rejected, with reasons on the PR: minting a fresh module instance per element
 - Recorded-not-done: tasks on the fn-analysis memo (NUR128 and the
   pass-scoping), NUR129/130/131's open edge, NUR134, the `codeMintPatterns`
   blind spot, the registry-spawn race.
+
+## The three-minute contract, and the kernel race it found (2026-09-18)
+
+The maintainer set a ceiling the day after the velocity work: three
+minutes at most for standard CI, and three minutes for the commit gate.
+The design is FULL-COMPILATION-REVIEW.0.md §9.1; this is the record.
+
+**What was measured before.** The 12.5-minute run of `7178699`: four
+langspec shards of six minutes each (every corpus walk on one core), a
+six-minute test-modules job (`cmd/go/internal/vault` 231 s of scrypt at
+the production work factor), a 3.5-minute checks job (golangci-lint 127 s
+in sequence), a six-minute gates job (the borudebug corpus differentials
+193 s), and an eleven-minute direction job that re-ran ten corpus walks
+to print a table the shards already had the numbers for.
+
+**What landed.**
+
+- `test/go/langspec/walk_test.go`: one parallel corpus walk
+  (`specWalk`, `specWalkFiles`); sixteen walks converted, every gate
+  value unchanged, every test `t.Parallel()` except the two that own a
+  process-wide instrument (`compiler.RegionOracle`,
+  `core.InstallDispatchProbe`), which run first, alone. Fourteen
+  conversions were done by parallel agents, each verified against the
+  committed gate values, under the race detector on a corpus subset, and
+  by an independent adversarial review; three reviews sent a file back
+  (one of them for the kernel race below), all three fixed.
+- Six corpus-wide claims that asserted under `BORU_SPEC_FILES` now
+  report there (the smoke lane of the commit gate found them):
+  `TestRegionTableWellFormed`'s floors, `TestCheckAnyFrontier`'s ratio,
+  the stale-entry halves of `diagSurfaceLedger` and `agreementLedger`,
+  `TestModuleExportCoverage`.
+- The vault's scrypt work factor is a variable its tests lower (293 s to
+  14 s); vet and lint run every module in parallel
+  (`scripts/each-module.sh`); CI is fourteen small jobs over a composite
+  setup with per-job inputs and split caches; the direction job is gone,
+  its table rendered from the shards' rows by a collector job;
+  `make commit-gate` (`scripts/commit-gate.sh`) is the pre-commit gate
+  on what the change touched, with a smoke corpus of eleven spec files.
+
+**The race.** The differential walk's race check reported
+`core.unifyRegistryStack` (core/go/unify.go): a package-global slice
+every `UnifyExplainR` pushed and every registry-less `Unify` read — from
+`unifyInner`'s predicate pre-pass and `reparentSwappedElem` — on ANY
+goroutine. Its comment said the kernel is single-threaded per engine;
+the process is not (timer and interval bodies, the net acceptor's
+per-connection forks, spawned forks), and `UnifyExplainR` is on hot
+paths (class-instance construction, `if`/`case`, `unify`, generics
+instantiation), so any concurrent program raced on it: a lost push, a
+stale registry read (a predicate resolved against another engine's
+instance), an index out of range. Fixed by threading the registry as a
+parameter through the whole unify recursion, the fold table and the
+`Unifier` interface (28 signatures; no exported function changed but the
+interface method), with `matchR` twins on the membership behaviours so
+an `Is` asked from inside an armed chain keeps its registry. Pinned by
+`TestUnifyRegistryArmedConcurrentNoRace` (403 detector reports before,
+none after; four goroutines, own registry each, through the list, map,
+predicate and disjunct handlers) and `TestUnifyThreaded*` (the armed and
+unarmed verdicts of every rerouted site); `cover-gate-core` 100%. The
+implementation and two adversarial reviews (semantics; concurrency,
+coverage, conventions) ran as agents in a detached worktree; the
+semantics review's differential between the two binaries found one
+missed site (`FnSigSatisfiesSpec`'s plain `Unify`, rerouted) and one
+observable change, decided deliberately: a predicate body's dispatch is
+now unarmed like top level — it used to be armed by whatever unify was
+in flight on any goroutine, so `[1 2] is Wrap` (a predicate whose body
+dispatches a fn over `[:Pos]`) answered `true` in the body and
+`signature_error` at top level. Now `false` on both engines, pinned by
+`TestPredicateBodyDispatchIsUnarmedLikeTopLevel`. The one oddity the
+threading kept verbatim is NUR157 (a predicate-typed container child
+refuses to unify with its own text under a registry).
+
+**Measured after.** Locally, one test at a time on four cores: the
+heaviest walks fell from 70–125 s to 20–70 s each; the vault suite from
+293 s to 14 s; golangci-lint over thirteen modules from 127 s to under
+10 s warm. The first CI run under the new layout is recorded in the
+next entry.

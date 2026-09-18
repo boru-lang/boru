@@ -59,7 +59,7 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 // evaluation yields nodes — design/legacy/TYPE-REPRESENTATION.1.ignore §N3) would
 // fall to unifySameOrSubtype's narrower-literal arm and bind without
 // ever running the constraint.
-func (d *DepScalarUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (d *DepScalarUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// TWO refinement sides — the other operand is itself DepScalar
 	// content (an inline body, or a sibling NAME's node recording one):
 	// the pair meets to the interval intersection, exactly as the

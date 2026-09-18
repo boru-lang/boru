@@ -45,7 +45,7 @@ func TestW8ResolvePredicateRefGuards(t *testing.T) {
 
 func TestW8UnifyResolvedPredicateNotPredicate(t *testing.T) {
 	// A type whose Behavior is not a predicateUnifier fails cleanly.
-	if _, err := unifyResolvedPredicate(TInteger, NewInteger(1)); err == nil {
+	if _, err := unifyResolvedPredicate(TInteger, NewInteger(1), nil); err == nil {
 		t.Fatal("non-predicate type must fail unifyResolvedPredicate")
 	}
 }

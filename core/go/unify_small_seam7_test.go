@@ -54,7 +54,7 @@ func TestS7UnifyErrorNilReceivers(t *testing.T) {
 func TestS7DispatchUnifierNilDenoted(t *testing.T) {
 	// A Value{} denotes no lattice type (nil Parent, empty ID): dispatch
 	// must decline immediately.
-	if _, _, ok := dispatchUnifier(Value{}, NewInteger(1)); ok {
+	if _, _, ok := dispatchUnifier(Value{}, NewInteger(1), nil); ok {
 		t.Error("dispatchUnifier with a nil-denoted operand must decline")
 	}
 }
@@ -65,7 +65,7 @@ func TestS7DispatchUnifierNilBehaviorInChain(t *testing.T) {
 	adhoc := &Type{tmeta: &typeMeta{Name: "S7Adhoc"}, ID: "S7Adhoc"}
 	a := Value{Parent: adhoc, Data: IntPayload{N: 1}}
 	b := Value{Parent: adhoc, Data: IntPayload{N: 2}}
-	if _, _, ok := dispatchUnifier(a, b); ok {
+	if _, _, ok := dispatchUnifier(a, b, nil); ok {
 		t.Error("a nil-Behavior chain has no Unifier; dispatch must decline")
 	}
 }
@@ -174,7 +174,7 @@ func TestS7UnifyFnUndefShapeUndefOnRight(t *testing.T) {
 	// non-function other side then fails.
 	a := NewInteger(1)
 	b := NewInteger(2)
-	if _, uerr := unifyFnUndefShape(a, ShapeScalar, b, ShapeFnUndef); uerr == nil {
+	if _, uerr := unifyFnUndefShape(a, ShapeScalar, b, ShapeFnUndef, nil); uerr == nil {
 		t.Error("FnUndef vs non-function must fail to unify")
 	}
 }
@@ -215,7 +215,7 @@ func TestS7PredicateUnifierNilRegistry(t *testing.T) {
 	_ = p.Match(NewInteger(1), TInteger)
 	// Unify with exactly one concrete operand and nil registry -> error.
 	abstract := NewCarrier(TInteger)
-	if _, uerr := p.Unify(NewInteger(1), abstract); uerr == nil {
+	if _, uerr := p.Unify(NewInteger(1), abstract, nil); uerr == nil {
 		t.Error("predicateUnifier.Unify with nil registry must fail")
 	}
 }

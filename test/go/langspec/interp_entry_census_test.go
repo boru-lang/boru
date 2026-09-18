@@ -21,10 +21,8 @@
 package langspec
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -753,11 +751,8 @@ import (
 const interpEntryRowCeiling = 54 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away
 
 func TestInterpEntryCensus(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := specEntries(specDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	var mu sync.Mutex
 	seams := map[string]int{}
 	perFile := map[string]int{}
 	// fileSeamRows counts ROWS, not entries: file → seam → how many of that
@@ -767,61 +762,71 @@ func TestInterpEntryCensus(t *testing.T) {
 	// to be in the same unit the ceiling is.
 	fileSeamRows := map[string]map[string]int{}
 	rows, dirty, ran := 0, 0, 0
+	// censusRows holds the BORU_LOG_CENSUS_ROWS lines until the walk is done:
+	// workers see rows in no promised order, and a listing a reader diffs
+	// between two runs has to read the same every time, so it is sorted into
+	// file-then-line order before it is printed.
+	type censusRow struct {
+		file string
+		line int
+		text string
+	}
+	var censusRows []censusRow
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, ferr := os.Open(filepath.Join(specDir, e.Name()))
-		if ferr != nil {
-			t.Fatal(ferr)
+		mu.Lock()
+		rows++
+		mu.Unlock()
+		n, seen, ok := runWithEntryHook(t, r.Input)
+		if !ok {
+			return // refused or check-error: the interpreter owns it by design
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNo := 0
-		for sc.Scan() {
-			lineNo++
-			line := strings.TrimRight(sc.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			rows++
-			n, seen, ok := runWithEntryHook(t, strings.TrimSpace(parts[0]))
-			if !ok {
-				continue // refused or check-error: the interpreter owns it by design
-			}
-			ran++
-			if n == 0 {
-				continue
-			}
-			dirty++
-			// BORU_LOG_CENSUS_ROWS=1 names every dirty row and the seams it
-			// entered through. The file × seam table above ranks CLUSTERS,
-			// which is what you want when choosing a mechanism — but once a
-			// cluster is chosen you need the rows themselves, and without this
-			// the only way to get them was to re-derive them by hand (and get
-			// it wrong: `--compile-report` prints a line containing the word
-			// "interpreter" for every program, islanded or not, so grepping
-			// for it names rows that compile perfectly well).
-			// Mirrors BORU_LOG_UNFLAGGED in check_accuracy_test.go.
-			if os.Getenv("BORU_LOG_CENSUS_ROWS") != "" {
-				t.Logf("CENSUS ROW %s:L%d via %s: %s",
-					e.Name(), lineNo, seamBreakdown(rowSeams(seen)), strings.TrimSpace(parts[0]))
-			}
-			perFile[e.Name()]++
-			if fileSeamRows[e.Name()] == nil {
-				fileSeamRows[e.Name()] = map[string]int{}
-			}
-			for s, c := range seen {
-				seams[s] += c
-				fileSeamRows[e.Name()][s]++ // once per ROW, whatever c is
-			}
+		// BORU_LOG_CENSUS_ROWS=1 names every dirty row and the seams it
+		// entered through. The file × seam table above ranks CLUSTERS,
+		// which is what you want when choosing a mechanism — but once a
+		// cluster is chosen you need the rows themselves, and without this
+		// the only way to get them was to re-derive them by hand (and get
+		// it wrong: `--compile-report` prints a line containing the word
+		// "interpreter" for every program, islanded or not, so grepping
+		// for it names rows that compile perfectly well).
+		// Mirrors BORU_LOG_UNFLAGGED in check_accuracy_test.go.
+		var logLine string
+		if n != 0 && os.Getenv("BORU_LOG_CENSUS_ROWS") != "" {
+			logLine = fmt.Sprintf("CENSUS ROW %s via %s: %s",
+				r.Key(), seamBreakdown(rowSeams(seen)), r.Input)
 		}
-		f.Close()
+
+		mu.Lock()
+		defer mu.Unlock()
+		ran++
+		if n == 0 {
+			return
+		}
+		dirty++
+		if logLine != "" {
+			censusRows = append(censusRows, censusRow{file: r.File, line: r.Line, text: logLine})
+		}
+		perFile[r.File]++
+		if fileSeamRows[r.File] == nil {
+			fileSeamRows[r.File] = map[string]int{}
+		}
+		for s, c := range seen {
+			seams[s] += c
+			fileSeamRows[r.File][s]++ // once per ROW, whatever c is
+		}
+	})
+
+	sort.Slice(censusRows, func(i, j int) bool {
+		if censusRows[i].file != censusRows[j].file {
+			return censusRows[i].file < censusRows[j].file
+		}
+		return censusRows[i].line < censusRows[j].line
+	})
+	for _, c := range censusRows {
+		t.Log(c.text)
 	}
 
 	t.Logf("interp-entry census: %d rows, %d ran compiled, %d with UNATTRIBUTED interpreter entries (ceiling %d)",
@@ -843,7 +848,7 @@ func TestInterpEntryCensus(t *testing.T) {
 // and returns the unattributed entry count. ok is false when the row did not
 // run compiled at all — a refusal or a static check error, where the
 // interpreter owning the program is the designed behaviour and not an island.
-func runWithEntryHook(t *testing.T, src string) (int, map[string]int, bool) {
+func runWithEntryHook(t testing.TB, src string) (int, map[string]int, bool) {
 	t.Helper()
 	a, err := lang.New()
 	if err != nil {

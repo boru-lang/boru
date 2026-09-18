@@ -101,6 +101,7 @@ func moduleOf(root, path string) string {
 }
 
 func TestRefusalSiteCensus(t *testing.T) {
+	t.Parallel()
 	byModule, total := refusalSites(t)
 
 	mods := make([]string, 0, len(byModule))

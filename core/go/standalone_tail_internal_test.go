@@ -336,10 +336,10 @@ func TestUnifyFamilyTailArms(t *testing.T) {
 	}
 
 	// Both sides outside the family: the family guard.
-	if _, err := unifyMapFamily(NewInteger(1), ShapeScalar, NewInteger(2), ShapeScalar); err == nil {
+	if _, err := unifyMapFamily(NewInteger(1), ShapeScalar, NewInteger(2), ShapeScalar, nil); err == nil {
 		t.Error("map family must reject two non-map shapes")
 	}
-	if _, err := unifyListFamily(NewInteger(1), ShapeScalar, NewInteger(2), ShapeScalar); err == nil {
+	if _, err := unifyListFamily(NewInteger(1), ShapeScalar, NewInteger(2), ShapeScalar, nil); err == nil {
 		t.Error("list family must reject two non-list shapes")
 	}
 }

@@ -22,9 +22,10 @@
 //     FALLS below it (the ratchet tightened and must be lowered so it keeps
 //     catching regressions). The direction lane additionally fails while a
 //     value is above its end state: it is red by design until the work is
-//     done, it is what CI's direction job runs and reports on every PR, and
-//     it is the number the maintainer's ruling names ("there should be no
-//     islanding at all"; "failure to compile is a failure").
+//     done, `make test-direction` runs it, CI renders its table from the
+//     regression shards on every run (the gate-table job), and it is the
+//     number the maintainer's ruling names ("there should be no islanding
+//     at all"; "failure to compile is a failure").
 //
 //     Raising a regression ceiling is never a fix — it is the record that a
 //     change added debt, and it is done only with the row that added it
@@ -32,8 +33,8 @@
 //     is. Raising an END STATE is not possible: they are the design's.
 //
 // A gate writes one line per call, and — when BORU_GATE_SUMMARY names a
-// file — appends a Markdown table row to it, which is how the CI direction
-// job renders the live gate table into the PR's job summary and how
+// file — appends a Markdown table row to it, which is how every CI shard
+// contributes to the live gate table in the run's summary and how
 // `make gate-status` refreshes test/go/langspec/GATE_STATUS.md.
 package langspec
 

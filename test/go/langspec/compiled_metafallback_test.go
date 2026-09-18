@@ -130,6 +130,7 @@ const (
 )
 
 func TestOnlyMetaFallsBack(t *testing.T) {
+	t.Parallel()
 	c := gatherCensus(t)
 	interp, reducible, errorRows, computeGap := c.interp, c.reducible, c.errorRows, c.computeGap
 	tier1By, tier2By, computeByReason := c.tier1By, c.tier2By, c.computeBy

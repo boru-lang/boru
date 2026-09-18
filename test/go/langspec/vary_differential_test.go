@@ -33,6 +33,7 @@ import (
 // whole corpus). The default is modest for CI wall-clock; the full sweep
 // lives in `specgen -vary`.
 func TestVariationDifferential(t *testing.T) {
+	t.Parallel()
 	seeds, err := vary.LoadSeeds(filepath.Join("..", "..", "..", "lang", "spec"))
 	if err != nil {
 		t.Fatalf("seeds: %v", err)

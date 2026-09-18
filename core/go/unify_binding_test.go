@@ -120,7 +120,7 @@ func TestDepScalarUnifyGateOne(t *testing.T) {
 		depInfo:         DepScalarInfo{},
 		typeName:        "Ub0Gate",
 	}
-	if _, uerr := u.Unify(NewString("hi"), NewTypeLiteral(TInteger)); uerr == nil {
+	if _, uerr := u.Unify(NewString("hi"), NewTypeLiteral(TInteger), nil); uerr == nil {
 		t.Error("a non-base candidate must fail gate 1")
 	}
 }

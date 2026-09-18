@@ -89,6 +89,7 @@ var realProgramRoots = []string{
 }
 
 func TestRealProgramsCompile(t *testing.T) {
+	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 
 	type result struct{ path, reason string }

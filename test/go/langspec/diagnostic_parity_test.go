@@ -22,11 +22,10 @@
 package langspec
 
 import (
-	"bufio"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	lang "github.com/boru-lang/boru/lang/go"
@@ -160,101 +159,86 @@ func infoSet(ds []lang.CheckDiagnostic) []string {
 }
 
 func TestDiagnosticParityAcrossPasses(t *testing.T) {
-	specDir := filepath.Join("..", "..", "..", "lang", "spec")
-	entries, err := specEntries(specDir)
-	if err != nil {
-		t.Fatalf("read %s: %v", specDir, err)
-	}
-
+	t.Parallel()
+	var mu sync.Mutex
 	var rows, diverged, infoDiverged int
 	var armedOnly, carriedByRefusal, lostUnderCompile int
 	var armedOnlyRows []string
 	byShape := map[string]int{}
 	var examples []string
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
-			continue
+	specWalk(t, func(t testing.TB, r specRow) {
+		if len(r.Cells) < 2 {
+			return
 		}
-		f, err := os.Open(filepath.Join(specDir, e.Name()))
-		if err != nil {
-			t.Fatalf("open %s: %v", e.Name(), err)
-		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := strings.TrimRight(scanner.Text(), " \t")
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Split(line, "\t")
-			if len(parts) < 2 {
-				continue
-			}
-			input := strings.TrimSpace(parts[0])
-			rows++
+		input := r.Input
+		mu.Lock()
+		rows++
+		mu.Unlock()
 
-			ap := newDifferentialInstance(t)
-			plain, perr := ap.Check(input)
-			if perr != nil {
-				continue // a pass that cannot run is not a parity question
-			}
-			ac := newDifferentialInstance(t)
-			prog, _, armed, cerr := ac.CompileCheck(input)
-			if cerr != nil {
-				continue
-			}
-			refused := prog == nil
-
-			if strings.Join(infoSet(plain.Diagnostics), ",") != strings.Join(infoSet(armed.Diagnostics), ",") {
-				infoDiverged++
-			}
-			p, c := diagSet(plain.Diagnostics), diagSet(armed.Diagnostics)
-			if strings.Join(p, ",") == strings.Join(c, ",") {
-				continue
-			}
-			diverged++
-			// Classify by what the USER sees, which is the property that
-			// matters. A finding the armed pass drops is not lost if that
-			// pass REFUSED — the refusal reason carries it, which is
-			// exactly why no_signature is suppressed while compiling
-			// (check/go/check_recovery.go: emitting it there would mask the
-			// specific reason as the generic sentinel). What is serious is a
-			// finding only ONE lane surfaces at all.
-			switch {
-			case len(c) > len(p):
-				armedOnly++ // the NUR103 class: clean to `boru check`, refused by the compiler
-				// Few enough to name. Listing them is the difference between
-				// a ratchet and a worklist.
-				armedOnlyRows = append(armedOnlyRows,
-					e.Name()+":L"+itoa(lineNum)+"  "+strings.Join(c, "|")+"  "+firstNRunes(input, 70))
-			case refused:
-				carriedByRefusal++ // dropped as a diagnostic, still reported as a refusal
-			default:
-				lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
-			}
-			// BORU_LOG_PARITY_ROWS=1 names every diverged row and both
-			// passes' findings. The ceiling is a ratchet whose every past
-			// move was justified by naming the exact row that moved it, and
-			// re-deriving that row by hand across a 7,700-row corpus is the
-			// step this switch removes. Mirrors BORU_LOG_CENSUS_ROWS
-			// (interp_entry_census_test.go) and BORU_LOG_UNFLAGGED
-			// (check_accuracy_test.go).
-			if os.Getenv("BORU_LOG_PARITY_ROWS") != "" {
-				t.Logf("PARITY ROW %s:L%d plain=%s armed=%s: %s",
-					e.Name(), lineNum, strings.Join(p, "|"), strings.Join(c, "|"),
-					firstNRunes(input, 90))
-			}
-			shape := "plain=" + strings.Join(p, "|") + " armed=" + strings.Join(c, "|")
-			byShape[shape]++
-			if len(examples) < 5 {
-				examples = append(examples, e.Name()+":L"+itoa(lineNum)+"  "+firstNRunes(input, 60))
-			}
+		ap := newDifferentialInstance(t)
+		plain, perr := ap.Check(input)
+		if perr != nil {
+			return // a pass that cannot run is not a parity question
 		}
-		f.Close()
-	}
+		ac := newDifferentialInstance(t)
+		prog, _, armed, cerr := ac.CompileCheck(input)
+		if cerr != nil {
+			return
+		}
+		refused := prog == nil
+
+		infoDiffers := strings.Join(infoSet(plain.Diagnostics), ",") != strings.Join(infoSet(armed.Diagnostics), ",")
+		p, c := diagSet(plain.Diagnostics), diagSet(armed.Diagnostics)
+		findingsAgree := strings.Join(p, ",") == strings.Join(c, ",")
+
+		mu.Lock()
+		defer mu.Unlock()
+		if infoDiffers {
+			infoDiverged++
+		}
+		if findingsAgree {
+			return
+		}
+		diverged++
+		// Classify by what the USER sees, which is the property that
+		// matters. A finding the armed pass drops is not lost if that
+		// pass REFUSED — the refusal reason carries it, which is
+		// exactly why no_signature is suppressed while compiling
+		// (check/go/check_recovery.go: emitting it there would mask the
+		// specific reason as the generic sentinel). What is serious is a
+		// finding only ONE lane surfaces at all.
+		switch {
+		case len(c) > len(p):
+			armedOnly++ // the NUR103 class: clean to `boru check`, refused by the compiler
+			// Few enough to name. Listing them is the difference between
+			// a ratchet and a worklist.
+			armedOnlyRows = append(armedOnlyRows,
+				r.Key()+"  "+strings.Join(c, "|")+"  "+firstNRunes(input, 70))
+		case refused:
+			carriedByRefusal++ // dropped as a diagnostic, still reported as a refusal
+		default:
+			lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
+		}
+		// BORU_LOG_PARITY_ROWS=1 names every diverged row and both
+		// passes' findings. The ceiling is a ratchet whose every past
+		// move was justified by naming the exact row that moved it, and
+		// re-deriving that row by hand across a 7,700-row corpus is the
+		// step this switch removes. Mirrors BORU_LOG_CENSUS_ROWS
+		// (interp_entry_census_test.go) and BORU_LOG_UNFLAGGED
+		// (check_accuracy_test.go).
+		if os.Getenv("BORU_LOG_PARITY_ROWS") != "" {
+			t.Logf("PARITY ROW %s plain=%s armed=%s: %s",
+				r.Key(), strings.Join(p, "|"), strings.Join(c, "|"),
+				firstNRunes(input, 90))
+		}
+		shape := "plain=" + strings.Join(p, "|") + " armed=" + strings.Join(c, "|")
+		byShape[shape]++
+		if len(examples) < 5 {
+			examples = append(examples, r.Key()+"  "+firstNRunes(input, 60))
+		}
+	})
+	sort.Strings(armedOnlyRows) // the worklist reads the same whichever worker saw a row first
 
 	t.Logf("diagnostic parity: %d rows, %d diverged on FINDINGS, %d on info-only advisories", rows, diverged, infoDiverged)
 	t.Logf("  by user impact: %d armed-only (clean to check, refused compiling — the NUR103 class), %d carried by the refusal reason instead, %d lost under compilation (check errors that vanish while the program compiles)",

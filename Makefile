@@ -1,4 +1,4 @@
-.PHONY: all build install test test-race test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
+.PHONY: all build install test test-race test-module commit-gate test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
         spec-gen spec-test crossdiff parser-crossdiff parser-parity cover-gate-eng cover-gate-check cover-gate-compiler cover-gate-parser \
         verify-bytecode fuzz-bytecode status \
         publish publish-eng publish-basic publish-lang publish-cmd release tags \
@@ -120,9 +120,14 @@ test:
 # asserts (BORU_DIRECTION_GATES=1) — red by design until the
 # full-compilation programme is done. So:
 #
+#   make commit-gate             the pre-commit gate, three minutes or less
+#                                on what the change touched
 #   make test-modules            every module's tests except langspec
+#   make test-module M=d         one module (ONLY=root|rest splits it)
 #   make test-langspec SHARD=n   one langspec shard (shards.tsv; the CI
-#                                matrix runs them in parallel)
+#                                matrix runs them in parallel; each shard's
+#                                gates append to BORU_GATE_SUMMARY and CI
+#                                renders the table from the shards)
 #   make test-direction          the direction lane, writing GATE_STATUS.md
 #   make gate-status             refresh GATE_STATUS.md without asserting,
 #                                and print it with the instant censuses
@@ -140,14 +145,20 @@ langspec-shard-count:
 	@awk -F'\t' '!/^#/ && NF==2 {if ($$1+0 > n) n = $$1+0} END {print n+0}' $(LANGSPEC_DIR)/shards.tsv
 
 test-modules:
-	@set -e; for m in $(MODULES); do \
-	  echo "==> test $$m"; \
-	  if [ "$$m" = "test/go" ]; then \
-	    ( cd $$m && go test -timeout 35m $$(go list ./... | grep -v '/langspec$$') ); \
-	  else \
-	    ( cd $$m && go test -timeout 35m ./... ); \
-	  fi; \
-	done
+	@set -e; for m in $(MODULES); do $(MAKE) --no-print-directory test-module M=$$m; done
+
+# One module's tests. ONLY=root runs its root package alone and ONLY=rest
+# every other package — the split CI uses for lang/go, whose root package
+# is as long as everything else in the module together. test/go never
+# includes the langspec corpus here (that is test-langspec).
+test-module:
+	@test -n "$(M)" || { echo "usage: make test-module M=<dir> [ONLY=root|rest]"; exit 2; }
+	@echo "==> test $(M) $(ONLY)"
+	@cd $(M) && case "$(ONLY)" in \
+	  root) go test -timeout 35m . ;; \
+	  rest) go test -timeout 35m $$(go list ./... | grep -v "^$$(go list .)$$") ;; \
+	  *) if [ "$(M)" = "test/go" ]; then go test -timeout 35m $$(go list ./... | grep -v '/langspec$$'); else go test -timeout 35m ./...; fi ;; \
+	esac
 
 test-langspec:
 	@test -n "$(SHARD)" || { echo "usage: make test-langspec SHARD=n   (n in 1..$$($(MAKE) -s langspec-shard-count))"; exit 2; }
@@ -162,9 +173,10 @@ test-direction:
 
 gate-status:
 	@rm -f $(LANGSPEC_DIR)/GATE_STATUS.md
-	@echo "==> gate-status: running the direction tests in report mode (about ten minutes)"
+	@echo "==> gate-status: running the direction tests in report mode (a few minutes)"
 	@cd test/go && BORU_GATE_SUMMARY=$(abspath $(LANGSPEC_DIR))/GATE_STATUS.md go test -timeout 35m ./langspec/ -run '^($(DIRECTION_TESTS))$$' > /dev/null || true
-	@echo; echo "| gate | live | end state | regression ceiling | status | measures |"; echo "|---|---:|---:|---:|---|---|"; cat $(LANGSPEC_DIR)/GATE_STATUS.md; echo
+	@sort -o $(LANGSPEC_DIR)/GATE_STATUS.md $(LANGSPEC_DIR)/GATE_STATUS.md
+	@scripts/ci-steps.sh gate-table $(LANGSPEC_DIR)/GATE_STATUS.md
 	@$(MAKE) --no-print-directory status-static
 
 status-static:
@@ -172,6 +184,12 @@ status-static:
 
 ci-local:
 	scripts/ci-steps.sh all
+
+# The pre-commit gate: three minutes or less, on what the change touched
+# (scripts/commit-gate.sh says exactly what runs). ci-local is the full
+# gate, CI runs it in parallel jobs under the same three-minute ceiling.
+commit-gate:
+	scripts/commit-gate.sh
 
 handler-worklist:
 	@cd test/go && BORU_LOG_UNDECLARED=1 go test ./langspec/ -run 'TestDeclarationCensus$$' -v 2>&1 | grep 'UNDECLARED' | cut -f2- | sort
@@ -198,11 +216,12 @@ test-race:
 	@echo "==> test-race test/go/langspec (concurrency rows)"
 	cd test/go && go test -race -short -timeout 15m ./langspec/ -run 'Concurrent|RaceFree|Race'
 
+# vet and lint run in every module in parallel (scripts/each-module.sh;
+# JOBS=1 for the sequential form): golangci-lint over the thirteen modules
+# took 127 s in sequence on CI, under 10 s four at a time with a warm cache.
+JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 vet:
-	@set -e; for m in $(MODULES); do \
-	  echo "==> vet $$m"; \
-	  ( cd $$m && go vet ./... ); \
-	done
+	@scripts/each-module.sh -j $(JOBS) go vet ./...
 
 fmt:
 	@set -e; for m in $(MODULES); do \
@@ -221,10 +240,7 @@ fmt-docs:
 	@cd cmd/go && go run ./boru fmt $(addprefix ../../,$(DOC_FILES))
 
 lint:
-	@set -e; for m in $(MODULES); do \
-	  echo "==> lint $$m"; \
-	  ( cd $$m && golangci-lint run ./... ); \
-	done
+	@scripts/each-module.sh -j $(JOBS) golangci-lint run ./...
 
 vuln:
 	@set -e; for m in $(MODULES); do \

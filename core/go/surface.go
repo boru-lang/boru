@@ -175,7 +175,7 @@ func (s *surfaceUnifier) Match(v Value, t *Type) bool {
 // (`def x:Shape (make Circle …)`) unifies against the NODE the name
 // now denotes, where it used to unify against the body via the
 // surface fold.
-func (s *surfaceUnifier) Unify(a, b Value) (Value, *UnifyError) {
+func (s *surfaceUnifier) Unify(a, b Value, _ *Registry) (Value, *UnifyError) {
 	// The conformance rule decides whenever exactly one side IS this
 	// surface's node — the candidate may be a concrete value, a
 	// carrier, or a TYPE-level operand (a generic bound check:

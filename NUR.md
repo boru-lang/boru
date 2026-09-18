@@ -89,6 +89,7 @@ keep the two in sync in the same commit.
 | [NUR154](#nur154) | A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR155](#nur155) | A TYPED callback over a HETEROGENEOUS collection is applied to every element compiled where the interpreter applies it only to the matching ones: `each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]` is `[Integer fn… fn… fn… fn… fn…]` interpreted (a non-matching element leaves the fn VALUE as data, no_signature swallowed) and `[Integer ProperString List Map Boolean None]` compiled. The compiled callback dispatch drops the per-element signature match the interpreter performs; it must keep it, or refuse a collection it cannot prove homogeneous. Row `lang/spec/each-variants.tsv:L215` | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR156](#nur156) | A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
 | [NUR153](#nur153) | One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
 | [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
@@ -6708,3 +6709,51 @@ name the rows; they stay in the main corpus. The reverse-direction rows
 NUR152 added to the same file are the control: applying the fn INSIDE
 the module compiles with parity; applying the exported value FROM main
 does not.
+
+## NUR157 — a predicate-typed container child refuses to unify with its own text under a registry {#nur157}
+
+**Status:** Pending (recorded 2026-09-18).
+**Found:** threading the registry through the kernel's unify calls in
+#471 (`core/go/unify.go` — the registry a `UnifyExplainR` is armed with
+once sat on a package-global stack that every goroutine's unify read;
+the parallel corpus walks were the first to race on it); the review's
+differential between the old and the new binary.
+
+**Rule:** a value unifies with its own denotation; two references to
+one type are the same type.
+
+**Divergence.** Armed with a registry, as the `unify` word and a typed
+def are:
+
+```
+def Pos fnpred n:Integer [n gt 0]
+def T fnsig [[xs:[:Pos]] [Boolean]]
+((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)     ~unify-fail
+```
+
+Unarmed (`core.Unify` with no registry, the exported
+`FnSigSatisfiesSpec`) the same pair admits: two `[:Pos]` patterns settle
+structurally. The armed pre-pass (`unifyInner`'s predicate-constraint
+arm, `resolvePredicateRef`'s Atom case) resolves the atom `Pos` inside
+one pattern to its predicate and runs that predicate against the OTHER
+pattern's atom `Pos`, which is not a positive integer — a membership
+test where a type comparison was meant. HEAD's verdict, kept verbatim by
+the threading (the review's lens was "identical semantics"), pinned as
+such by `TestUnifyThreadedFnShapePatternKeepsRegistry`; the fix is one
+arm in the pre-pass (an atom against an atom naming the same predicate
+is the type, not a candidate) and belongs with the checker-precision
+programme.
+
+**What the same change closed, deliberately.** Before it, a predicate
+BODY that dispatched a fn whose parameter is a predicate-typed container
+(`def chk fn [[xs:[:Pos]] [Boolean] [true]]  def Wrap fnpred xs:List
+[(chk xs)]  [1 2] is Wrap`) matched — but only because the dispatcher's
+registry-less `Unify` read whatever registry-armed unify happened to be
+in flight, on ANY goroutine: the same call at top level, `(chk [1 2])`,
+raised `signature_error` on both engines, and under concurrency the
+in-body answer depended on another goroutine's timing. Engine re-entry
+now starts unarmed, exactly like top level (`[1 2] is Wrap` is `false`,
+`([1 2] unify Wrap)` is `~unify-fail false`, `{a:5} is Wrap` `false`),
+on both engines with parity, pinned by
+`TestPredicateBodyDispatchIsUnarmedLikeTopLevel` (lang/go). One rule
+where there were two.

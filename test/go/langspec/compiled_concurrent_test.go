@@ -15,6 +15,7 @@ import (
 )
 
 func TestSpecCompiledConcurrentRowsRaceFree(t *testing.T) {
+	t.Parallel()
 	const tu = `import "boru:time-util" `
 	cases := []struct {
 		src  string

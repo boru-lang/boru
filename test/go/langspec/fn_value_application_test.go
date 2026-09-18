@@ -21,6 +21,7 @@ import (
 // asserts the COMPILATION DECISION (native vs refuse) for the milestone shapes,
 // so the coverage can't erode without a conscious change.
 func TestFnValueApplicationCompiles(t *testing.T) {
+	t.Parallel()
 	// Positive: fn-value application shapes that must compile NATIVELY.
 	native := []struct {
 		name string
@@ -86,7 +87,7 @@ func TestFnValueApplicationCompiles(t *testing.T) {
 
 // compileRow runs one source through CompileCheck against a fresh instance
 // under the frozen spec clock (matching the census harness).
-func compileRow(t *testing.T, src string) (*lang.Program, string, lang.CheckResult, error) {
+func compileRow(t testing.TB, src string) (*lang.Program, string, lang.CheckResult, error) {
 	t.Helper()
 	a, err := lang.New()
 	if err != nil {

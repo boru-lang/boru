@@ -86,6 +86,7 @@ func packageTests(t *testing.T) []string {
 // name in the file is a test that exists. A test added without a shard
 // would otherwise never run in CI; a renamed one would leave a stale row.
 func TestLangspecShardsPartition(t *testing.T) {
+	t.Parallel()
 	byShard, assigned := readShards(t)
 	tests := packageTests(t)
 	known := map[string]bool{}

@@ -114,6 +114,7 @@ func runFrontierInterp(input string) (string, error) {
 // populating a new row's expected column is enforced, exactly like the
 // ledger's failsWith sentinel.
 func TestFrontierSpecInterp(t *testing.T) {
+	t.Parallel()
 	for _, row := range loadFrontierRows(t) {
 		got, err := runFrontierInterp(row.input)
 		if err != nil {
@@ -781,6 +782,7 @@ type frontierEntryLS struct {
 // ledgered row must refuse with the pinned reason (stale → graduate; drift →
 // re-diagnose).
 func TestFrontierSpecCompiled(t *testing.T) {
+	t.Parallel()
 	for _, row := range loadFrontierRows(t) {
 		err := frontierRowCompiles(row.input)
 		key := row.input
@@ -904,6 +906,7 @@ var refusalRowLedger = func() map[string]frontierEntryLS {
 // interpreter's error byte-for-byte. All 9 are expected-red until Phase 3
 // lands, ratcheting down row-by-row in lockstep with knownRefusals.
 func TestFrontierRefusalRowsCompile(t *testing.T) {
+	t.Parallel()
 	for input := range knownRefusals {
 		err := frontierRowCompiles(input)
 		entry, ledgered := refusalRowLedger[input]

@@ -105,8 +105,10 @@ func DenotedTypeNode(v Value) *Type {
 // (behavioral bounds — a named disjunct or predicate carried as a
 // reparented body) unifies against the body, whose disjunct fold
 // admits each alternative's literals. Together these mirror how the
-// bound answers `is` for ordinary values.
-func boundedTypeSatisfied(v Value, child Value) bool {
+// bound answers `is` for ordinary values. r is the enclosing unify
+// chain's registry: both the membership walk and the body unify are
+// made from inside a unify, so they keep the chain armed.
+func boundedTypeSatisfied(v Value, child Value, r *Registry) bool {
 	if !TypeMembership(v) {
 		return false
 	}
@@ -115,12 +117,12 @@ func boundedTypeSatisfied(v Value, child Value) bool {
 		if node := DenotedTypeNode(v); node != nil && node.ConformsTo(bound) {
 			return true
 		}
-		if v.Is(bound) {
+		if isR(v, bound, r) {
 			return true
 		}
 	}
 	if !IsBareTypeNode(child) {
-		if _, ok := Unify(v, child); ok {
+		if _, uerr := unifyWithin(v, child, r); uerr == nil {
 			return true
 		}
 	}
@@ -130,8 +132,9 @@ func boundedTypeSatisfied(v Value, child Value) bool {
 // unifyBoundedType handles Unify when either side is a `Type of [B]`
 // body. A type value vs the bound: the value wins when its denoted
 // node conforms. Bounded vs bounded: the narrower bound wins. Anything
-// else fails with a structured error.
-func unifyBoundedType(a, b Value) (Value, *UnifyError) {
+// else fails with a structured error. r is the enclosing chain's
+// registry, threaded into the bound check.
+func unifyBoundedType(a, b Value, r *Registry) (Value, *UnifyError) {
 	ac, aok := boundedChild(a)
 	bc, bok := boundedChild(b)
 	switch {
@@ -146,11 +149,11 @@ func unifyBoundedType(a, b Value) (Value, *UnifyError) {
 			}
 		}
 	case aok:
-		if boundedTypeSatisfied(b, ac) {
+		if boundedTypeSatisfied(b, ac, r) {
 			return b, nil
 		}
 	case bok:
-		if boundedTypeSatisfied(a, bc) {
+		if boundedTypeSatisfied(a, bc, r) {
 			return a, nil
 		}
 	}

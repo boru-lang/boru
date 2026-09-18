@@ -72,6 +72,7 @@ var knownRefusals = map[string]string{
 // a documented allowlisted refusal, and on any allowlist entry that no
 // longer refuses (stale — remove it). See knownRefusals.
 func TestRefusalsAreFailures(t *testing.T) {
+	t.Parallel()
 	c := gatherCensus(t)
 
 	seen := make(map[string]bool, len(knownRefusals))

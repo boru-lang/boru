@@ -123,6 +123,7 @@ func regionSpans(w core.CollectWindow) (spans [][2]int, delims []int, ok bool) {
 // do. The cases are chosen to exercise the paren-depth logic the corpus walk
 // never reached.
 func TestRegionDescriptorOracle(t *testing.T) {
+	t.Parallel()
 	open, closep, end := core.NewOpenParen(), core.NewCloseParen(), core.NewEnd()
 	w := func(s string) core.Value { return core.NewWord(s) }
 	i := func(n int64) core.Value { return core.NewInteger(n) }
@@ -209,6 +210,7 @@ func TestRegionDescriptorOracle(t *testing.T) {
 // suite only ever proves that well-formed input is accepted, which is the
 // half that cannot catch a regression (AGENTS.md, test discipline).
 func TestRegionDescriptorValidateRejects(t *testing.T) {
+	t.Parallel()
 	pos := core.SrcPos{Row: 1, Col: 1}
 	// The invalid zero: a slot nobody gave a source to. NFwd 1 puts it INSIDE
 	// the recorded claim, which is what makes the missing source a defect —
@@ -297,6 +299,7 @@ func sameInts(a, b []int) bool {
 // is the tautology this file exists to have stopped making. Boundaries are
 // pinned by the oracle above.
 func TestRegionDescriptorReach(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
 	entries, err := specEntries(specDir)
 	if err != nil {
@@ -446,6 +449,7 @@ func slotKind(v core.Value) string {
 // its own type rather than land in a silent remainder. A residue that hides
 // is exactly how the previous numbers passed.
 func TestRegionSlotTokenKinds(t *testing.T) {
+	t.Parallel()
 	specDir := filepath.Join("..", "..", "..", "lang", "spec")
 	entries, err := specEntries(specDir)
 	if err != nil {

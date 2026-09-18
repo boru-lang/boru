@@ -283,6 +283,7 @@ func dispositionFindings(keys []string, table map[string]refusalDisposition, cei
 }
 
 func TestRefusalDispositionCensus(t *testing.T) {
+	t.Parallel()
 	keys := refusalSiteKeys(t)
 	_, total := refusalSites(t)
 	if len(keys) != total {
@@ -312,6 +313,7 @@ func TestRefusalDispositionCensus(t *testing.T) {
 // none. The growth case is the one the membership checks alone cannot see —
 // a site and its row added together.
 func TestRefusalDispositionGateRefuses(t *testing.T) {
+	t.Parallel()
 	ok := refusalDisposition{dispGeneric, 5, "a region"}
 	base := map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok}
 	keys := []string{"m/a.go:f#1", "m/a.go:f#2"}
@@ -357,6 +359,7 @@ func TestRefusalDispositionGateRefuses(t *testing.T) {
 }
 
 func TestRefusalSiteKeysAreSyntactic(t *testing.T) {
+	t.Parallel()
 	src := "package x\n\nfunc (es *E) A() {\n\tes.MarkUncompilable(\"one\")\n\tes.MarkUncompilable(\n\t\t\"two\")\n}\n\ntype R interface {\n\tMarkUncompilable(reason string)\n}\n\nfunc b() {\n\tx.MarkUncompilable(\"three\")\n}\n"
 	got := siteKeysIn("m/f.go", src)
 	want := []string{"m/f.go:A#1", "m/f.go:A#2", "m/f.go:<decl>#1", "m/f.go:b#1"}

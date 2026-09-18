@@ -70,6 +70,18 @@ func FnSigMatchesSpec(sig FnSig, spec FnSigSpec) bool {
 // structural shape), so the type system can't declare a barrier
 // requirement. Candidates may have any BarrierPos.
 func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
+	return fnSigSatisfiesSpecR(sig, spec, nil)
+}
+
+// fnSigSatisfiesSpecR is FnSigSatisfiesSpec with the registry of an
+// enclosing unify chain threaded into the Pattern-compatibility unify.
+// The fn-shape unifiers (unifyFnUndefShape, FnUndefUnifier) run this
+// check from INSIDE unifyInner, so a pattern pair such as `[:Pos]`
+// against `[:Pos]` is decided with the chain's registry — a
+// predicate-typed child resolves exactly as it would at the chain's
+// top level. The exported entry, called from outside any unify, passes
+// nil and stays unarmed.
+func fnSigSatisfiesSpecR(sig FnSig, spec FnSigSpec, r *Registry) bool {
 	if len(sig.Params) != len(spec.Params) {
 		return false
 	}
@@ -97,7 +109,7 @@ func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
 				// still satisfies the spec's narrower demand.
 				continue
 			}
-			if _, ok := Unify(*sp.Pattern, *sg.Pattern); !ok {
+			if _, uerr := unifyWithin(*sp.Pattern, *sg.Pattern, r); uerr != nil {
 				return false
 			}
 		}
@@ -118,6 +130,13 @@ func FnSigSatisfiesSpec(sig FnSig, spec FnSigSpec) bool {
 // (TFunction wrapping FnDefInfo) satisfies every FnSigSpec
 // declared by the FnUndef constraint.
 func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
+	return fnUndefMatchesFnDefR(undef, fnVal, nil)
+}
+
+// fnUndefMatchesFnDefR is FnUndefMatchesFnDef with the enclosing unify
+// chain's registry threaded through to the Pattern-compatibility unify
+// (see fnSigSatisfiesSpecR).
+func fnUndefMatchesFnDefR(undef Value, fnVal Value, r *Registry) bool {
 	uInfo, ok := undef.Data.(FnUndefInfo)
 	if !ok {
 		return false
@@ -133,7 +152,7 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 		return true
 	}
 	for _, want := range uInfo.Sigs {
-		if !FnDefHasSig(fnDef, want) {
+		if !fnDefHasSigR(fnDef, want, r) {
 			return false
 		}
 	}
@@ -146,8 +165,14 @@ func FnUndefMatchesFnDef(undef Value, fnVal Value) bool {
 // fallback excluded) so both boru fns and Go-implemented words are
 // considered. The variance rule is delegated to FnSigSatisfiesSpec.
 func FnDefHasSig(fnDef FnDefInfo, want FnSigSpec) bool {
+	return fnDefHasSigR(fnDef, want, nil)
+}
+
+// fnDefHasSigR is FnDefHasSig with the enclosing unify chain's registry
+// threaded through (see fnSigSatisfiesSpecR).
+func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
 	for _, s := range fnDef.OwnSigs() {
-		if FnSigSatisfiesSpec(s, want) {
+		if fnSigSatisfiesSpecR(s, want, r) {
 			return true
 		}
 	}
