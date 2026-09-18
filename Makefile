@@ -1,4 +1,4 @@
-.PHONY: all build install test test-race test-module commit-gate test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
+.PHONY: all build install test test-race test-module commit-gate sweep-status test-ts test-ts-core test-ts-parser test-ts-parser-package vet fmt fmt-docs lint vuln bench clean cover cover-gate cover-profile cover-check cover-html cover-html-open \
         spec-gen spec-test crossdiff parser-crossdiff parser-parity cover-gate-eng cover-gate-check cover-gate-compiler cover-gate-parser \
         verify-bytecode fuzz-bytecode status \
         publish publish-eng publish-basic publish-lang publish-cmd release tags \
@@ -512,6 +512,14 @@ parser-parity:
 status:
 	cd test/go && BORU_WRITE_STATUS=1 go test ./langspec/ -run TestCompiledStatus
 	@echo "==> wrote test/go/langspec/COMPILED_STATUS.md"
+
+# The generated sweep's matrix (test/go/sweep; design/FULL-COMPILATION-REPLAN.0.md
+# S0): every declaration-relevant word × operand kind, classified through
+# both engines and every call form. The counts are gated in
+# TestGeneratedSweep; this refreshes the committed list they summarise.
+sweep-status:
+	cd test/go && BORU_WRITE_SWEEP=1 go test ./langspec/ -run '^TestGeneratedSweep$$'
+	@echo "==> wrote test/go/langspec/SWEEP_STATUS.md"
 
 # ---- bytecode verification gate ----------------------------------------
 #

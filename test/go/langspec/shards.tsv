@@ -78,3 +78,5 @@
 9	TestBindLedgerDepthsCompose
 9	TestRegionCollectOracle
 9	TestCheckAnyFrontier
+9	TestGeneratedSweep
+9	TestSweepMiscompilePinsTheDivergence

@@ -10142,3 +10142,89 @@ files but not on one typo among several; outside this PR.)
 a filter — the same `callbacks.tsv` run reports 5 islands and asserts
 none. The mechanism is per file and generic; extending it is a small
 step, and S0's re-basing of every ratchet is where it belongs.
+
+## S0 — the generated sweep, first increment (2026-09-18)
+
+Started the afternoon P0 merged, on `main` at `cd8e335`. The instrument
+the review's §3.5 asked for, in its first shape: `test/go/sweep`.
+
+**What it is.** One program per declaration-relevant word × operand kind
+— the 53 words of the default registry whose 172 signatures take a code
+body, a callable, a quoted operand or a fn value (the declaration
+census's `relevant()`), and seven kinds of operand: written literally,
+an inline lambda, a fn value from a `def`, from a factory, read from a
+container, exported by a module, a body bound at run time. The seeds
+are hand-written (`seeds.tsv`, 305 lines): a valid program for `def`,
+`import` or `walk` cannot be synthesised from a signature, and what the
+sweep automates is the kinds, the call forms and the classification.
+Each seed goes through `vary.Classify` — the interpreter is the oracle;
+compile, disassemble for islands, run compiled for parity — and a
+passing seed through all fourteen of `vary`'s call-form transforms. A
+cell the language cannot express is claimed with an n/a PROBE, a program
+the interpreter must reject: 115 of them, each checked on every run so a
+claim the language outgrows fails as stale (22 of my first claims were
+wrong that way; the probes said so). `TestGeneratedSweep` gates seven
+counts, every one an end state of 0 and a regression ceiling at the live
+value, both ways, asserted under `BORU_SPEC_FILES` too (the new
+`gateAssert`) — crashes and hangs on their own ceilings, never inside a
+failure count; a divergence is a miscompile and fails every lane unless
+pinned, with the divergence it shows, to its NUR (a changed wrong answer
+is a new finding). `SWEEP_STATUS.md` is the matrix and the defect list;
+`make sweep-status` refreshes it. About 15 s for 2,237 classifications
+on four cores.
+
+**The first run.** 305 cells: 138 pass, 44 fail to compile (41 refused,
+3 check-reject), 5 island (`inner` ×2, `scan` ×3), 3 diverge, 115 n/a, 0
+empty, 0 invalid, 0 crash. 1,932 call-form variants: 1,701 pass, 200
+fail to compile, 2 diverge, 2 panic, 27 the interpreter rejects. The
+failures are the families the corpus names — a fn value from a factory
+or a container at every higher-order word, the gradual-Any collection
+overload (S1a's nineteen rows, here as `each`/`filter`/`fold`/`scan`/
+`for-each` × container), `walk`'s hooks, `behave`, the dispatch modifiers
+over a factory result — and some only the sweep sees.
+
+**Found on the first day** — every one recorded in NUR.md:
+
+- **NUR159** `if true one/v [2]` is 1 interpreted and `fn one` compiled: a
+  named fn value in a branch position is applied by one lane and pushed
+  by the other.
+- **NUR160** `7 … 5 (mk) apply` is `[7 6]` vs `[7 5 fn]`: the apply of a
+  factory-built fn value does not fire compiled under a dirty stack; the
+  clean-stack form agrees. Only the `prefix-stack` call form sees it.
+- **NUR161** `7 … def f ([x:Integer] afn m.f) end f 5` is `[7 fn]` vs
+  `[8]`: the mirror image — the compiled lane over-applies under a dirty
+  stack.
+- **NUR162** `(def dbl word ([] => [1]) end 5 dbl)`: the compiler PANICS in
+  `Disassemble` — a native call recorded without a signature — under the
+  paren-group and module-body call forms. It took the first run's binary
+  down.
+- **NUR163** `mini M.dbl 'ab'` and `emit M.up {a:1}` are rejected by the
+  words' signature validation while the same fn rebound locally passes:
+  a module member read in place is not the fn its rebind is
+  (interpreter-side).
+- And two known ones the sweep re-finds from its own direction: NUR156
+  (`5 M.inc/v apply`) and NUR154 (`case 2 M.cl`).
+
+**What the instrument had to learn.** A panic in one classification took
+the whole binary down — `vary.Classify` now recovers it into
+`vary.Panicked`, named by the phase. A `receive` whose clause list
+arrived through a module member ran at top level and blocked on the
+mailbox forever (the module-export probe was ACCEPTED, so its variants
+ran), and every `spawn [receive …]` seed left a goroutine parked in
+`Process.PopFront` — 8,462 of them in the dump. `vary.Classify` now has
+a `Deadline` (30 s; a hung program is `vary.Hung`, its goroutine
+abandoned), the receive seeds carry `after 0`, and the variation lane
+errors on a panic or a hang. Both are the walk's rule again: one broken
+program names itself, the sweep goes on.
+
+**Measured against the plan.** §9 said "S0 will probably raise them"; it
+raised them on its first day, by five records, from 53 words and no
+module exports yet. What S0 still owes: the 264 module-export signatures
+as rows; signature-level cells (a seed exercises one overload — `def`
+has 43); the corpus ratchets re-based on the sweep's defect list; and a
+generated falsifier for the call-form axis beyond `vary`'s fourteen.
+
+**Cost.** The sweep runs in the smoke lane of `make commit-gate` (it
+asserts there, under the filter) and adds about 15 s to it; the one gate
+run measured on this change took 155 s, with the whole langspec package
+running alongside on the same four cores. Shard 9 takes the gate in CI.

@@ -108,6 +108,7 @@ and appends the instant censuses. The values on 2026-09-17, head of PR
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
 | compile failures | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too |
+| the generated sweep (S0): cells failing to compile / islanded / diverged | 44 / 5 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned |
 | compute gaps | 104 | 0 | 107 at the expansion; three fell when NUR153 closed |
 | interpreter islands | 10 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed |
 | interp-entry census rows | 52 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed |
@@ -132,7 +133,15 @@ the end of each step of §5, not each increment.
 > tree on 2026-09-18 while six-second filtered runs stayed green — **P0
 > LANDED the same day**: `test/go/langspec/compile_failures.tsv`, one
 > compile-failure count per spec file, asserted for every file a run walks,
-> filtered or not (`compile_failure_ledger_test.go`); **S1a**,
+> filtered or not (`compile_failure_ledger_test.go`). **S0 STARTED the same
+> day**: the generated sweep — `test/go/sweep` (the seed table
+> `seeds.tsv`, one hand-written program per declaration-relevant word ×
+> operand kind), `TestGeneratedSweep` (its gates, asserted under a corpus
+> filter too) and `make sweep-status` (the matrix,
+> `test/go/langspec/SWEEP_STATUS.md`) — whose first run found NUR159–163:
+> three miscompiles, a compiler panic, an interpreter non-uniformity. S0
+> still owes the module exports as rows, signature-level cells, and the
+> corpus ratchets re-based on the sweep; **S1a**,
 > the gradual-Any collection overload commitment, is carved out ahead of S1
 > as 19 rows on one mechanism; **S2 splits**, because only 35 of its 94
 > signatures are a sweep and the other 59 need a mechanism that depends on
@@ -237,6 +246,14 @@ The first is the one that cost the most, four times in one session:
 - `make handler-worklist` — the Stage-6 list, one undeclared signature per
   line; `make cover-gate` is cached per module (`COVER_FRESH=1` to redo)
   and profiles every module before failing.
+- `TestGeneratedSweep` / `make sweep-status` — the generated sweep (S0):
+  every declaration-relevant word × operand kind (`test/go/sweep/seeds.tsv`)
+  through both engines and every call form of `vary`'s transform table,
+  in about 15 s; its word × kind matrix is `SWEEP_STATUS.md`, its counts
+  are ratchets that assert under `BORU_SPEC_FILES` too, and a divergence
+  is a miscompile pinned to its NUR (`sweepKnownMiscompiles`). A program
+  that panics an engine or blocks past `vary.Deadline` names itself
+  instead of taking the run down.
 - The spawn seams (`timeout`, `interval`, the model watcher, the net
   acceptor and each connection) all run their bodies on a fork; a
   parent-minted callback stays on the fork (NUR152's `FnHome`), pinned

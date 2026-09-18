@@ -164,6 +164,21 @@ reading and it is the number to plan against. A fiftyfold speedup on a loop
 that was already a minute, and a twofold speedup on the loop that actually
 blocks, cannot produce more than this.
 
+**S0 started 2026-09-18**, the same day P0 landed, with its instrument:
+`test/go/sweep` generates one program per declaration-relevant word ×
+operand kind (53 words, 305 cells, from a hand-written seed table — a
+valid program for `def` or `walk` cannot be synthesised from a signature)
+and runs each through `vary`'s dual-engine classifier and its fourteen
+call forms, in about 15 s; `TestGeneratedSweep` gates the counts both
+ways and `SWEEP_STATUS.md` is the matrix. The first run: 138 cells pass,
+44 fail to compile, 5 island, 3 diverge; 1,932 call-form variants, 200
+failing, 2 panicking. It found NUR159–163 in one afternoon — three
+miscompiles, one compiler panic, one interpreter non-uniformity — which
+is the §9 prediction ("S0 will probably raise them") coming true on its
+first day. What S0 still owes: the module exports as rows (264
+signatures across 11 modules), signature-level cells, and every corpus
+ratchet re-based on the sweep's defect list.
+
 **Conditional further reduction.** If P0 lands and filtered runs assert,
 the four gate-bound steps (S0, S2a, S4, S7) should compress a further
 15–25%, taking the range to roughly **65–115**. Not banked here, because it

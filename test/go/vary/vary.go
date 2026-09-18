@@ -192,7 +192,26 @@ const (
 	// Diverged: it compiled and ran, and the result differs from the
 	// interpreter — a MISCOMPILE.
 	Diverged
+	// Panicked: one of the engines PANICKED on the program — a crash in
+	// the compiler or the interpreter, recovered so that one broken
+	// program names itself instead of taking the whole sweep down.
+	Panicked
+	// Hung: no engine answered within Deadline — a program that blocks
+	// (a top-level `receive` with no `after` clause waits for a message
+	// that never comes). Its goroutine is abandoned so the sweep goes on.
+	Hung
 )
+
+// Deadline bounds one classification. Every corpus program answers in
+// milliseconds; a program that has not answered by the deadline is Hung.
+// Its classification is abandoned, not stopped — the goroutine runs on
+// until the engine returns, if it ever does — and inflight counts it, so a
+// caller that swaps the seams (the unit tests) can wait for it to end
+// before restoring them.
+var Deadline = 30 * time.Second
+
+// inflight counts classifications still running, abandoned ones included.
+var inflight sync.WaitGroup
 
 // String names the outcome for reports.
 func (o Outcome) String() string {
@@ -207,8 +226,12 @@ func (o Outcome) String() string {
 		return "refused"
 	case Islanded:
 		return "islanded"
-	default:
+	case Diverged:
 		return "DIVERGED"
+	case Panicked:
+		return "PANIC"
+	default:
+		return "HUNG"
 	}
 }
 
@@ -221,8 +244,32 @@ type Result struct {
 // Classify runs one program through the dual pipeline on fresh, isolated
 // instances (the freshDivergence discipline — no reused-instance artifacts):
 // interpreter oracle first, then CompileCheck + island scan + RunCompiled
-// parity. Output is discarded so print-bearing variants stay quiet.
+// parity. Output is discarded so print-bearing variants stay quiet. A
+// panic in either engine is recovered into Panicked, named by the phase it
+// fired in, and a program that has not answered within Deadline is Hung.
 func Classify(src string) Result {
+	done := make(chan Result, 1)
+	inflight.Add(1)
+	go func() {
+		defer inflight.Done()
+		done <- classify(src)
+	}()
+	select {
+	case r := <-done:
+		return r
+	case <-time.After(Deadline):
+		return Result{Hung, fmt.Sprintf("HUNG: no answer within %s", Deadline)}
+	}
+}
+
+// classify is Classify without the deadline.
+func classify(src string) (res Result) {
+	phase := "interp"
+	defer func() {
+		if r := recover(); r != nil {
+			res = Result{Panicked, fmt.Sprintf("PANIC in %s: %v", phase, r)}
+		}
+	}()
 	ai, err := langNew()
 	if err != nil {
 		return Result{CheckReject, "harness: " + err.Error()}
@@ -240,6 +287,7 @@ func Classify(src string) Result {
 	}
 	ac.SetClock(SpecClock)
 	ac.SetOutput(discard{})
+	phase = "compile"
 	prog, reason, _, cerr := compileCheck(ac, src)
 	if cerr != nil {
 		return Result{CheckReject, reason + ": " + cerr.Error()}
@@ -247,6 +295,7 @@ func Classify(src string) Result {
 	if prog == nil {
 		return Result{Refused, reason}
 	}
+	phase = "disassemble"
 	if strings.Contains(disasm(prog), "FALLBACK") {
 		return Result{Islanded, "program embeds an OpFallback island"}
 	}
@@ -257,6 +306,7 @@ func Classify(src string) Result {
 	}
 	ar.SetClock(SpecClock)
 	ar.SetOutput(discard{})
+	phase = "run"
 	gotC, wasC, errC := runCompiled(ar, src)
 	if !wasC {
 		return Result{Refused, fmt.Sprintf("runtime bail: did not run compiled (err=%v)", errC)}
