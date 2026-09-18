@@ -2387,7 +2387,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					nl[i].Quoted = true
 				}
 			}
-			if err := checkParamContract(r, fn, nl); err != nil { //covergate:allow the live match (PlanMatch, then unitMatchesSig) already proved each arg against the SAME declared types and the same signature patterns the unit's contract re-checks, and a stripped ascription still conforms where its widened view did; the guard is kept for the entry's symmetry with OpCallUserPoly, whose subset match can admit what the unit's contract rejects (§compiler)
+			// Live, not symmetry: the plan-time match (PlanMatch, then
+			// unitMatchesSig) proves each arg against the unit's declared
+			// TYPES, while the contract re-checks the parameter PATTERNS
+			// too — a predicate-typed child such as `[:Pos]` — unarmed,
+			// the way top-level dispatch does. A predicate body that
+			// dispatches over such a pattern reaches this return (lang/go's
+			// TestPredicateBodyDispatchIsUnarmedLikeTopLevel pins it on
+			// both engines); it used to be admitted only because the
+			// contract's plain Unify read an ambient registry stack that
+			// another unify had left armed, which the kernel no longer has.
+			if err := checkParamContract(r, fn, nl); err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
