@@ -7749,7 +7749,7 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		//     clause always bakes a plain CALL_NATIVE.)
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("code-body word " + word + " (Stage 2)")
-	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !setDelKernelSig(es.reg, word, sig) && !quoteInertOK:
+	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK:
 		// Implicit-quote operands (usurp, force-arity, ref-family):
 		// dispatch-manipulating meta words whose results the engine
 		// re-steps. get/getr/set/del are exempt — plain accessors/mutators whose
@@ -7759,12 +7759,19 @@ func (es *EmitState) recordCallRefusal(word string, sig *core.Signature, args, o
 		// an object/class/store/flex field write (`p set x 7`); the receiver is
 		// a non-const instance (mutation-safety holds — instance types are
 		// absent from isInertConst, exactly as the integer-keyed array `set 1 v
-		// a` already relies on), and the set/del exemption is keyed on BINDING
-		// IDENTITY (setDelKernelSig, NUR057) — the matched sig must be the
-		// kernel registration's own Locked signature, so an open-words
-		// extension of set/del never rides an argument made for the mutator.
-		// `del` is `set`'s inverse (atom-keyed map-entry removal, copy-return
-		// on Map / in-place on FlexMap) and inherits the same argument verbatim.
+		// a` already relies on). set/del reach the exemption by DECLARATION, not
+		// by name: their sixteen quoted-receiver sigs carry CompileQuoteKey,
+		// read by quotedKeySig. That retired setDelKernelSig (NUR057), whose
+		// Locked half read as a counterfeit-proof registration identity and is
+		// not one — a re-dispatch wrapper copies the whole sig, inheriting
+		// Locked and CompileEffect, and NormalizeSig rebuilds the QuoteArgs the
+		// constructor cleared. What keeps a wrapper off this arm is
+		// `case sig.RunInCheckMode()` above, pinned across every wrapper
+		// constructor in quoted_operand_exemption_test.go; the same file records
+		// why the key's boru-bodied half was unreachable (`case sig.FnFrame() !=
+		// nil`, also above). `del` is `set`'s inverse (atom-keyed map-entry
+		// removal, copy-return on Map / in-place on FlexMap) and declares the
+		// same.
 		// quoteInertOK is the principled extension of that exemption to a MODULE
 		// INNER NATIVE whose quoted operands are inert Atom consts — the query
 		// DSL's table names (`Query.from people`, `Query.join visits`): the inner
@@ -7869,37 +7876,23 @@ func (es *EmitState) recordShuffleElided(word string, sig *core.Signature, args,
 // a shadowed name (a user `def swap …`, whose sig has an fnFrame anyway) never
 // rides the exemption. depth/pick/roll are full-stack words and refused earlier.
 
-// setDelKernelSig is the binding-identity key that replaced the bare name
-// test in the two set/del quote-arg exemptions (NUR057). Those exemptions
-// were argued for the kernel mutator ("`set` cannot be shadowed (it is a
-// builtin)"), but `set`/`del` are NOT in sealedWords — they are extendable —
-// so the name alone could admit a shape the argument does not cover. The
-// admitted set is exactly what the corpus differential proves sound:
+// quotedKeySig reports whether a signature DECLARES that its implicit-quote
+// operand is a KEY the handler reads at dispatch (CompileQuoteKey — `set`/`del`'s
+// atom field name), rather than a literal it bakes. Unlike quoteInertOK this
+// asks nothing of the operand's VALUE: a key delivered through a carrier (`set
+// (k) v m`, where k is an `Atom/q` param) lowers as an ordinary operand and the
+// VM reads what the interpreter reads. Requiring inertness here is exactly the
+// mistake that put lang/spec/as.tsv:52-54 back on the refusal ceiling.
 //
-//   - a LOCKED sig — a Go registration (the kernel mutator, or a module
-//     inner native reached by delegation). Locked is stamped only by the
-//     Go registration path, so it is a registration identity no runtime
-//     construction can counterfeit; pointer identity into Lookup's table
-//     was tried and is fragile (the aggregate rebuilds when an extension
-//     entry lands, invalidating element addresses).
-//   - a BORU-BODIED sig under the name — an open-words extension
-//     (`def set fn [[k:Atom/q …] …]`): its /q param is an ordinary
-//     forward-capture bound into a CALL_USER frame, nothing re-steps, and
-//     the as.tsv/open-words.tsv extension rows compile with verified parity.
-//
-// What can no longer ride is a RUNTIME-MINTED handler sig under the name —
-// the usurp-wrapper class the old comment feared (`def set (usurp …)`
-// copies QuoteArgs onto a handler that RE-STEPS its result): never Locked,
-// no boru body, and precisely the shape the quoted-operand refusal exists
-// for.
-func setDelKernelSig(_ *core.Registry, word string, sig *core.Signature) bool {
-	if word != "set" && word != "del" {
-		return false
-	}
-	if sig == nil {
-		return false
-	}
-	return sig.Locked || len(sig.Body()) > 0
+// This replaced setDelKernelSig (NUR057), which asked the word's NAME. Neither
+// of that key's two admitted classes held up: its Locked half was not the
+// counterfeit-proof registration identity its comment claimed (a re-dispatch
+// wrapper inherits Locked and CompileEffect, and NormalizeSig rebuilds the
+// QuoteArgs the constructor cleared — the real screen is RunInCheckMode), and
+// its boru-bodied half was unreachable behind `case sig.FnFrame() != nil`.
+// Both are pinned in quoted_operand_exemption_test.go.
+func quotedKeySig(sig *core.Signature) bool {
+	return sig != nil && sig.CompileEffect.Has(core.CompileQuoteKey)
 }
 
 func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) bool {

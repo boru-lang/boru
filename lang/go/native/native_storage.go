@@ -36,11 +36,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: setStoreReturnsFn, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TStore},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setStoreHandler),
-				Returns:   []*Type{},
-				ReturnsFn: setStoreReturnsFn, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TStore},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setStoreHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     setStoreReturnsFn, BarrierPos: -1,
 			},
 
 			// Map (immutable — copy-returning). Unlike the three
@@ -54,11 +55,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: setMapTypedReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setMapHandler),
-				Returns:   []*Type{TMap},
-				ReturnsFn: setMapTypedReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setMapHandler),
+				Returns:       []*Type{TMap},
+				ReturnsFn:     setMapTypedReturns, BarrierPos: -1,
 			},
 
 			// List (immutable — copy-returning, completing the column
@@ -85,10 +87,11 @@ var storageNatives = []NativeFunc{
 				Returns: []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TClass},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setClassInstanceHandler),
-				Returns:   []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TClass},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setClassInstanceHandler),
+				Returns:       []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 
 			// FlexMap (in-place key set; returns the node for chaining)
@@ -99,11 +102,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: setFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TFlexMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setFlexMapHandler),
-				Returns:   []*Type{TFlexMap},
-				ReturnsFn: setFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TFlexMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setFlexMapHandler),
+				Returns:       []*Type{TFlexMap},
+				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
 			},
 
 			// FlexList (in-place index set; 0..len-1 only — sparse is
@@ -123,10 +127,11 @@ var storageNatives = []NativeFunc{
 				Returns: []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TFlexXml},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setFlexXmlHandler),
-				Returns:   []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TFlexXml},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setFlexXmlHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 
 			// WeakFlexMap (in-place key set; scalars store STRONGLY,
@@ -142,11 +147,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: weakSetMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TWeakFlexMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setWeakFlexMapHandler),
-				Returns:   []*Type{TWeakFlexMap},
-				ReturnsFn: weakSetMapReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TWeakFlexMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setWeakFlexMapHandler),
+				Returns:       []*Type{TWeakFlexMap},
+				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexList (in-place index set over the post-sweep
@@ -166,10 +172,11 @@ var storageNatives = []NativeFunc{
 				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TWeakFlexXml},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setWeakFlexXmlHandler),
-				Returns:   []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TWeakFlexXml},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setWeakFlexXmlHandler),
+				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 
 			// Micron (IMMUTABLE — always errors): the explicit erroring
@@ -184,11 +191,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: setMicronReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TAny, TMicron},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(setMicronHandler),
-				Returns:   []*Type{},
-				ReturnsFn: setMicronReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TMicron},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(setMicronHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     setMicronReturns, BarrierPos: -1,
 			},
 		},
 	},
@@ -233,11 +241,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delStoreReturnsFn, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TStore},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delStoreHandler),
-				Returns:   []*Type{},
-				ReturnsFn: delStoreReturnsFn, BarrierPos: -1,
+				Args:          []*Type{TAtom, TStore},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delStoreHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     delStoreReturnsFn, BarrierPos: -1,
 			},
 
 			// Map (immutable — copy-returning, mirroring set's Map form).
@@ -248,11 +257,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delMapTypedReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delMapHandler),
-				Returns:   []*Type{TMap},
-				ReturnsFn: delMapTypedReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delMapHandler),
+				Returns:       []*Type{TMap},
+				ReturnsFn:     delMapTypedReturns, BarrierPos: -1,
 			},
 
 			// FlexMap (in-place key delete; returns the node for chaining).
@@ -263,11 +273,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TFlexMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delFlexMapHandler),
-				Returns:   []*Type{TFlexMap},
-				ReturnsFn: delFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TFlexMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delFlexMapHandler),
+				Returns:       []*Type{TFlexMap},
+				ReturnsFn:     delFlexMapReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexMap. The dedicated sig is forced for the same
@@ -280,11 +291,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delWeakFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TWeakFlexMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delWeakFlexMapHandler),
-				Returns:   []*Type{TWeakFlexMap},
-				ReturnsFn: delWeakFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TWeakFlexMap},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delWeakFlexMapHandler),
+				Returns:       []*Type{TWeakFlexMap},
+				ReturnsFn:     delWeakFlexMapReturns, BarrierPos: -1,
 			},
 
 			// FlexXml / WeakFlexXml (in-place attribute delete).
@@ -294,10 +306,11 @@ var storageNatives = []NativeFunc{
 				Returns: []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TFlexXml},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delFlexXmlHandler),
-				Returns:   []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TFlexXml},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delFlexXmlHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:    []*Type{TString, TWeakFlexXml},
@@ -305,10 +318,11 @@ var storageNatives = []NativeFunc{
 				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TWeakFlexXml},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delWeakFlexXmlHandler),
-				Returns:   []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TWeakFlexXml},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delWeakFlexXmlHandler),
+				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 
 			// Class (SEALED — always errors): a declared field is part
@@ -321,11 +335,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delClassInstanceReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TClass},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delClassInstanceHandler),
-				Returns:   []*Type{},
-				ReturnsFn: delClassInstanceReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TClass},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delClassInstanceHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     delClassInstanceReturns, BarrierPos: -1,
 			},
 
 			// Micron (IMMUTABLE — always errors), mirroring set's pair.
@@ -336,11 +351,12 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delMicronReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAtom, TMicron},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(delMicronHandler),
-				Returns:   []*Type{},
-				ReturnsFn: delMicronReturns, BarrierPos: -1,
+				Args:          []*Type{TAtom, TMicron},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey,
+				Impl:          Go(delMicronHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     delMicronReturns, BarrierPos: -1,
 			},
 
 			// List / FlexList / WeakFlexList (always error): removal at

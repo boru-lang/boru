@@ -88,6 +88,94 @@ census's `relevant` / `declared` predicates say which a signature is.
 
 ## Progress
 
+**2026-09-18 — the quoted class's set/del cluster (16 signatures), a new
+flag, and three claims it retired.** Ceiling `undeclaredHandlerCeiling`
+110 → 94. The sixteen quoted-receiver overloads of `set` and `del` — the
+`[Atom …]` forms over Store, Map, Class, FlexMap, FlexXml, WeakFlexMap,
+WeakFlexXml and Micron — declare **`CompileQuoteKey`**, a new flag, read by
+`quotedKeySig` at the recorder's two quoted-operand gates
+(`compiler/go/emit.go`'s uncompilable switch and `recordPolyCall`). That
+retired `setDelKernelSig` (NUR057), which asked the word's NAME at both.
+NUR153's lesson, applied a second time: a recorder that asks a name cannot
+be extended by a word that declares.
+
+**The flag is new because `CompileQuoteInert` was the wrong contract, and
+the difference cost three corpus rows before it was found.** That flag's
+admission requires every quoted operand to be an `IsInertConst`, which is
+right when the baked const IS the handler's datum (`quote`, `raise`,
+`timeout`). `set`/`del`'s quoted operand is a KEY the handler READS, so it
+needs no const bake and may arrive through a carrier — which is exactly how
+an open-words override delegates to the base overload (`set (k) v (m as
+FlexMap)` with `k` an `Atom/q` param). Declaring the inert flag refused
+`lang/spec/as.tsv` 52–54 and moved the compile-refusal ceiling **113 → 116**,
+breaking the blocking lane. `CompileQuoteKey` names the distinction.
+
+**The same first attempt also routed the poly gate through
+`quoteOperandInertOK`, which was too wide.** That predicate admits every
+`CompileQuoteInert` declarer plus its module-inner branch, and one of those
+declarers is `raise`, which also carries `CompileDiverges`. A poly event is
+built without its `sig`, so it carries no `diverges`: a poly-recorded
+`raise` stops being a divergent terminal, its `if` arm counts as a 0-value
+contributor, the enclosing fn turns variadic and every fixed-arity consumer
+refuses. `do [((f …) add 1)] error [(42)]` over a fn raising a DYNAMIC
+message answered 42 interpreted and refused compiled. The gate now reads the
+narrow declaration, which keeps `raise` out of reach. **The latent hole is
+still there** — the poly event carries no divergence flag, and
+`TestEmitRaiseArmDivergence` cannot catch it because its raise operand is
+static, so the word never goes poly there. It belongs to the poly event, not
+to this gate; `TestQuotedKeyGateKeepsRaiseOutOfPoly` records the reproducer.
+
+Both were found by an adversarial review agent run against the change, after
+the author's own filtered spec runs passed. **They passed because
+`BORU_SPEC_FILES` reports absolute counts rather than asserting them** — the
+refusal ceiling is only enforced on a full unfiltered corpus run. A filtered
+run over `as.tsv` was green while the row was refused. `lang/go/
+bytecode_quotedkey_test.go` now pins both shapes directly, in hundredths of
+a second.
+
+And the key's own two admitted classes were each justified by a claim that
+does not hold:
+
+- The LOCKED half was argued as "a registration identity no runtime
+  construction can counterfeit". It is not. `UsurpFunction` /
+  `rebarrierFunction` copy the whole signature off the wrapped one, so a
+  wrapper inherits `Locked` AND `CompileEffect`; they clear `QuoteArgs`, but
+  `NormalizeSig` rebuilds it from `Params` (`FnParam.Quote` survives).
+  Measured on a real usurp wrapper of `set`: `locked=true`,
+  `quoteArgs=map[2:true]`, flag present. The unit pin of the day asserted
+  against a HAND-BUILT bodiless sig, never a real wrapper, so the guarantee
+  was never tested where it mattered. What actually excludes a wrapper is the
+  `RunInCheckMode` screen preceding both gates — a re-dispatch wrapper must be
+  steppable by the carrier compiler, so every constructor builds it
+  `Go(handler, RunInCheck())`. Now pinned across all four constructors
+  (`compiler/go/quoted_operand_exemption_test.go`).
+- The BORU-BODIED half was unreachable. A user-fn signature carries an
+  `FnFrame`, and `case sig.FnFrame() != nil` sits above the quoted-operand
+  arm in both switches. Deleting that half alone leaves the whole corpus
+  byte-identical (8054 compiled / 113 refused, unchanged).
+- What the Locked half WAS carrying, and what the first attempt dropped, is
+  UNCONDITIONAL admission — the point above.
+
+One construction does reach the gate carrying the declaration: a value
+rebind (`def myset set/v`), whose `compileFnSigs` copy preserves QuoteArgs,
+CompileEffect and Locked with no FnFrame and no RunInCheck. It is sound
+because a declaration can only travel ATTACHED to the handler it was
+registered on — the rebind carries the kernel mutator too — and it is a real
+widening beyond the two names, now compiling with parity and pinned.
+
+Cost: two compiler unit tests rewritten. `zz_placed_test.go`'s
+quoted-operand pair used to turn on a name (an identically-shaped sig
+"REGISTERED UNDER THE NAME `del`" had to poly); it now turns on the
+declaration, and gained the negative the by-name key could not express — a
+sig named `del` with no declaration DECLINES. No corpus row moved, no spec
+file changed, no ceiling raised.
+
+Next in the quoted class: `def` (9 signatures) is now its largest cluster.
+The remaining by-name exemption at these two sites is `get`/`getr` via
+`core.IsGetWord` / `IsGetrWord`, which `dot`/`dotr` reach — a wider change,
+because those helpers key every compiler, checker and VM fold site that
+special-cases the accessor family, not just this gate.
+
 **2026-09-18 — the fn-operand class, as the pilot (11 signatures).**
 Ceiling `undeclaredHandlerCeiling` 114 → 110. Declared, all
 `CompileStoresFn | CompileFnHandlerStrict` (`lang/go/native/native_valof.go`):

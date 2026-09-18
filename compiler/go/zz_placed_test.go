@@ -39,19 +39,53 @@ func TestS6aTryRecordPolyQuotedNonGetDeclines(t *testing.T) {
 	}
 	sig := &r.Lookup("s6apolyq").Signatures[0]
 	if tryRecordPoly(r, "s6apolyq", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
-		t.Error("a quoted-operand word other than get/getr/set/del must not poly")
+		t.Error("an UNDECLARED quoted-operand word must not poly")
 	}
 }
 
-// TestS6aTryRecordPolyQuotedDelAdmits is the POSITIVE twin of the decline
-// test above: `del` sits in the get/getr/set exemption family (one QuoteArg
-// — the inert Atom key — baked as a const operand; an unshadowable builtin
-// mutator), so an identically-shaped sig REGISTERED UNDER THE NAME `del`
-// must pass the quoted-operand gate and record the poly. The pairing pins
-// the admitted arm the same way the decline test pins the refused arm — a
-// regression that drops del from the exemption fails here, not silently in
-// a compiled corpus somewhere.
-func TestS6aTryRecordPolyQuotedDelAdmits(t *testing.T) {
+// TestS6aTryRecordPolyQuotedDeclarationAdmits is the POSITIVE twin of the
+// decline test above, and the pair now turns on a DECLARATION rather than a
+// word's name. `set`/`del` used to be admitted by setDelKernelSig (NUR057),
+// a by-name key; their quoted-receiver overloads declare CompileQuoteKey
+// instead, so the gate reads a contract about the operand. The two tests are
+// therefore the same signature shape under two arbitrary names: the one that
+// declares records the poly, the one that does not declines.
+//
+// The flag is CompileQuoteKey and not CompileQuoteInert on purpose. Reading
+// the wider quoteOperandInertOK here admits every CompileQuoteInert declarer,
+// `raise` among them, and a poly-recorded `raise` loses its divergence (the
+// poly event carries no sig) — measured, and the reason this gate tests the
+// narrow declaration.
+func TestS6aTryRecordPolyQuotedDeclarationAdmits(t *testing.T) {
+	r := newTestRegistry(t)
+	armEmit(r)
+	r.RegisterNativeFunc(core.NativeFunc{
+		Name: "s6apolyd",
+		Signatures: []core.Signature{{
+			Args:      []*core.Type{core.TAtom},
+			QuoteArgs: map[int]bool{0: true},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+				return nil, nil
+			}),
+			Returns: []*core.Type{}, BarrierPos: -1,
+			CompileEffect: core.CompileQuoteKey,
+		}},
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+	sig := &r.Lookup("s6apolyd").Signatures[0]
+	if !tryRecordPoly(r, "s6apolyd", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
+		t.Error("a sig DECLARING CompileQuoteKey must poly")
+	}
+}
+
+// TestS6aTryRecordPolyQuotedDelNameAloneDeclines is the negative that the
+// old by-name key could not express: an identically-shaped sig registered
+// under the name `del` but carrying NO declaration must decline. The name
+// is not the contract, and a regression that restored a name test would
+// pass the admit test above while failing here.
+func TestS6aTryRecordPolyQuotedDelNameAloneDeclines(t *testing.T) {
 	r := newTestRegistry(t)
 	armEmit(r)
 	r.RegisterNativeFunc(core.NativeFunc{
@@ -69,8 +103,8 @@ func TestS6aTryRecordPolyQuotedDelAdmits(t *testing.T) {
 		t.Fatalf("registration: %v", err)
 	}
 	sig := &r.Lookup("del").Signatures[0]
-	if !tryRecordPoly(r, "del", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
-		t.Error("del carries the get/getr/set quoted-operand exemption and must poly")
+	if tryRecordPoly(r, "del", sig, []core.Value{core.NewAtom("k")}, []core.Value{}, core.SrcPos{}, true, nil, false, nil) {
+		t.Error("the name `del` alone must no longer admit — the declaration is the key")
 	}
 }
 

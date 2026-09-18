@@ -480,6 +480,25 @@ const (
 	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
 	// the handler.
 	CompileQuoteInert
+	// CompileQuoteKey marks a word whose implicit-quote (QuoteArgs) operand is a
+	// KEY the handler READS at dispatch — the atom field name of a container write
+	// or removal (`p set x 7`, `m del a`) — rather than a literal the handler bakes
+	// into its result. That difference is the whole reason it is a separate flag
+	// from CompileQuoteInert: an inert operand is a precondition THERE, because the
+	// baked const IS the handler's datum, but here the operand is just the key, so
+	// it lowers as an ordinary operand and the VM reads whatever the interpreter
+	// would. A CARRIER-delivered key therefore stays compilable — `set (k) v m`
+	// inside a fn whose `k` is an `Atom/q` param, which is how an open-words
+	// override delegates to the base overload (lang/spec/as.tsv:52-54). Requiring
+	// inertness here cost exactly those rows and put three refusals back on the
+	// regression ceiling, which is how the distinction was found.
+	//
+	// This is the declared form of what used to be a by-name test for `set`/`del`
+	// (setDelKernelSig, NUR057) at the recorder's two quoted-operand gates. As with
+	// CompileQuoteInert, do NOT set it on a dispatch-manipulating meta word whose
+	// quoted operand drives a RE-STEPPING result the VM cannot reproduce by
+	// re-running the handler.
+	CompileQuoteKey
 	// CompileDiverges marks a word whose handler ALWAYS raises (it never returns
 	// normally) — `raise`, the user-error constructor. A call to it is recorded as
 	// a CALL_NATIVE (the handler raises the byte-identical error at run time) but

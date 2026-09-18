@@ -47,8 +47,12 @@ import (
 // fn-operand pilot of design/HANDLER-MIGRATION-LINE.0.md: the dispatch-
 // modifier VALUE forms — usurp [Function], stack-args [Function],
 // forward-args [Function], force-arity [Integer Function] — declared
-// CompileStoresFn|CompileFnHandlerStrict) -> 0 (Stage 6).
-const undeclaredHandlerCeiling = 110
+// CompileStoresFn|CompileFnHandlerStrict) -> 94 (2026-09-18, the quoted
+// class's set/del cluster: the sixteen quoted-receiver overloads of `set`
+// and `del` — Store, Map, Class, FlexMap, FlexXml, WeakFlexMap,
+// WeakFlexXml, Micron — declared CompileQuoteKey, which let the
+// recorder's by-name set/del exemption go) -> 0 (Stage 6).
+const undeclaredHandlerCeiling = 94
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.
