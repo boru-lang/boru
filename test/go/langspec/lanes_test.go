@@ -135,6 +135,14 @@ var gateSummaryMu sync.Mutex
 // account of what the number measures, for the summary.
 func gate(t testing.TB, name string, got, end, ceiling int, bothWays bool, why string) {
 	t.Helper()
+	gateAssert(t, name, got, end, ceiling, bothWays, why, !filteredCorpus())
+}
+
+// gateAssert is gate with the assertion decided by the caller: a count that
+// does not depend on the spec corpus — the generated sweep's — asserts
+// under a corpus filter too, where a corpus count only reports.
+func gateAssert(t testing.TB, name string, got, end, ceiling int, bothWays bool, why string, assert bool) {
+	t.Helper()
 	status := "at end state"
 	switch {
 	case got > ceiling:
@@ -144,12 +152,12 @@ func gate(t testing.TB, name string, got, end, ceiling int, bothWays bool, why s
 	case got > end:
 		status = "open"
 	}
-	if filteredCorpus() {
+	if !assert {
 		status += " (filtered: not asserted)"
 	}
 	t.Logf("gate %s: %d (end state %d, regression ceiling %d) — %s", name, got, end, ceiling, status)
 	appendGateSummary(name, got, end, ceiling, status, why)
-	if filteredCorpus() {
+	if !assert {
 		return // a subset's count is not the corpus's
 	}
 	if got > ceiling {

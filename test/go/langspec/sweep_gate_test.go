@@ -1,0 +1,177 @@
+// sweep_gate_test.go — the generated sweep's gates: S0 of
+// design/FULL-COMPILATION-REPLAN.0.md (FULL-COMPILATION-REVIEW.0.md §3.5).
+//
+// The corpus is a sample and under-measures by construction: 710 rows of
+// ordinary idioms took the compile-failure count from 0 to 113. The sweep
+// (test/go/sweep) is the instrument the corpus is not — one program per
+// declaration-relevant word × operand kind, hand-written in seeds.tsv,
+// classified through the dual pipeline and re-embedded in every call form
+// of vary's transform table. Its word × kind matrix is committed as
+// SWEEP_STATUS.md (informational, like COMPILED_STATUS.md; refresh with
+// `make sweep-status`), and its counts are the gates here: every one an
+// END STATE of 0 and a REGRESSION ceiling that is the live value, BOTH
+// ways, asserted under a corpus filter too because none of them is a
+// corpus count. A divergence is a miscompile and fails every lane unless
+// pinned to its NUR in sweepKnownMiscompiles, itself pinned both ways.
+package langspec
+
+import (
+	"os"
+	"testing"
+
+	native "github.com/boru-lang/boru/lang/go/native"
+	"github.com/boru-lang/boru/test/go/sweep"
+	"github.com/boru-lang/boru/test/go/vary"
+)
+
+const sweepStatusFile = "SWEEP_STATUS.md"
+
+// The REGRESSION ceilings (lanes_test.go; every end state 0), each the live
+// value on the day it was set, moving only with the cell that moved it named
+// here. The instrument's own holes (empty, invalid, crashes) are at their
+// end state and stay there; the compiler's debt is the rest. History: set
+// 2026-09-18 with the sweep's first run on main after PR #472 — 53 words,
+// 305 cells, 138 passing; the 44 compile failures and 5 islands are the
+// fn-value and code-body families the corpus already names, plus the ones
+// only the sweep sees (SWEEP_STATUS.md lists every cell).
+const (
+	sweepEmptyCeiling          = 0   // word × kind cells with no seed and no n/a probe — holes in the instrument
+	sweepInvalidCeiling        = 0   // seeds the interpreter rejects — a seed to fix, or an n/a to claim with a probe
+	sweepFailureCeiling        = 44  // valid seeds that FAIL to compile (41) or hard-error in CompileCheck (3) — every one a BUG
+	sweepIslandCeiling         = 5   // valid seeds that compile with an interpreter island: inner ×2, scan ×3
+	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
+	sweepVariantFailureCeiling = 202 // call-form variants of passing seeds that fail to compile (200) or PANIC (2: word/lambda under paren-group and module-body, NUR162)
+)
+
+// sweepKnownMiscompiles keys a diverging program — a cell's seed or one of
+// its call-form variants, by source — to the NUR that records it. Pinned
+// both ways: an unlisted divergence is a NEW miscompile and fails every
+// lane; a listed one that stops diverging is retired with its fix.
+var sweepKnownMiscompiles = map[string]string{
+	// The first run of the sweep, 2026-09-18 — every one recorded in NUR.md.
+	`import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply`:   "NUR156 — the apply of a module-export fn value does not fire on the compiled lane: 6 interpreted, `5 fn inc(Integer)` compiled",
+	`import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl`: "NUR154 — `case` lowers its clause list as a static literal, so a clause list a module fn returns is never read: 'two' interpreted, case_error compiled",
+	`def one fn [[][Integer][1]] end if true one/v [2]`:                                                    "NUR159 — a named fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: 1 vs `fn one`",
+	`7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply`:                              "NUR160 — the apply of a factory-built fn value does not fire on the compiled lane when a value sits below it on the stack: [7 6] vs [7 5 fn]; the clean-stack form agrees",
+	`7 def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5`:                      "NUR161 — an afn whose body is a fn value read from a container: the interpreter returns the value, the compiled lane applies it, and only with a value below on the stack: [7 fn (Integer)] vs [8]",
+}
+
+// sweepInventory is the matrix's rows: every declaration-relevant word of
+// the default registry (the declaration census's relevant()), classed Body
+// when any of its relevant signatures takes a code body, a callable or a
+// fn operand, and Quoted when they only quote an operand.
+func sweepInventory(t *testing.T) map[string]sweep.Class {
+	t.Helper()
+	reg, err := native.DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry: %v", err)
+	}
+	inv := map[string]sweep.Class{}
+	for _, name := range reg.RegisteredWordNames() {
+		fd := reg.Lookup(name)
+		if fd == nil {
+			continue
+		}
+		for i := range fd.Signatures {
+			ok, why := relevant(&fd.Signatures[i])
+			if !ok {
+				continue
+			}
+			if why != "quoted" {
+				inv[name] = sweep.Body
+			} else if _, seen := inv[name]; !seen {
+				inv[name] = sweep.Quoted
+			}
+		}
+	}
+	return inv
+}
+
+func TestGeneratedSweep(t *testing.T) {
+	t.Parallel()
+	inv := sweepInventory(t)
+	seeds, err := sweep.Seeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sweep.Orphans(inv, seeds) {
+		t.Errorf("seeds.tsv: %s %s is not a cell of the matrix — the word is not declaration-relevant in the default registry, or the kind is not one its class admits; delete the line", s.Word, s.Kind)
+	}
+
+	cells := sweep.Run(inv, seeds, nil)
+	seen := map[string]bool{}
+	for _, c := range cells {
+		switch c.Status() {
+		case sweep.StaleNA:
+			t.Errorf("%s: the n/a probe is ACCEPTED by the interpreter, so the language expresses this cell — drop the n/a and make it a real seed: %s", c.Key(), c.Seed.Src)
+		case sweep.Diverged:
+			sweepMiscompile(t, c.Key()+" (the seed)", c.Seed.Src, c.Base.Detail, seen)
+		}
+		for _, v := range c.Variants {
+			if v.Res.Outcome == vary.Diverged {
+				sweepMiscompile(t, c.Key()+" · "+v.Transform, v.Src, v.Res.Detail, seen)
+			}
+		}
+	}
+	for src, why := range sweepKnownMiscompiles {
+		if !seen[src] {
+			t.Errorf("stale sweepKnownMiscompiles pin — this program no longer diverges; retire the entry with the fix that closed it (was: %s):\n  %.160s", why, src)
+		}
+	}
+
+	counts := sweep.Count(cells)
+	variantFailures := counts.Variants[vary.Refused] + counts.Variants[vary.Islanded] + counts.Variants[vary.CheckReject] + counts.Variants[vary.Panicked] + counts.Variants[vary.Hung]
+	gateAssert(t, "sweep empty cells", counts.Cells[sweep.Empty], 0, sweepEmptyCeiling, true,
+		"word × operand-kind cells of the generated sweep with no seed program — holes in the instrument (test/go/sweep/seeds.tsv)", true)
+	gateAssert(t, "sweep invalid seeds", counts.Cells[sweep.Invalid], 0, sweepInvalidCeiling, true,
+		"seed programs the interpreter rejects — fix the seed, or claim n/a with a probe", true)
+	gateAssert(t, "sweep compile failures", counts.Cells[sweep.Failed]+counts.Cells[sweep.CheckReject], 0, sweepFailureCeiling, true,
+		"valid seed programs that FAIL to compile — every one a BUG; SWEEP_STATUS.md lists them", true)
+	gateAssert(t, "sweep islands", counts.Cells[sweep.Islanded], 0, sweepIslandCeiling, true,
+		"valid seed programs that compile with an interpreter island", true)
+	gateAssert(t, "sweep crashes", counts.Cells[sweep.Panicked]+counts.Cells[sweep.Hung], 0, sweepCrashCeiling, true,
+		"valid seed programs an engine PANICS on or never answers — recovered or abandoned by the classifier so the sweep goes on", true)
+	gateAssert(t, "sweep call-form failures", variantFailures, 0, sweepVariantFailureCeiling, true,
+		"call-form variants of passing seeds that fail to compile, island, panic or hang", true)
+	t.Logf("generated sweep: %d cells — pass %d, failed %d, islanded %d, diverged %d, panicked %d, hung %d, check-reject %d, invalid %d, n/a %d, empty %d; %d call-form variants — pass %d, refused %d, islanded %d, diverged %d, panicked %d, hung %d, interp-reject %d, check-reject %d",
+		len(cells), counts.Cells[sweep.Pass], counts.Cells[sweep.Failed], counts.Cells[sweep.Islanded], counts.Cells[sweep.Diverged], counts.Cells[sweep.Panicked], counts.Cells[sweep.Hung], counts.Cells[sweep.CheckReject], counts.Cells[sweep.Invalid], counts.Cells[sweep.NotApplicable], counts.Cells[sweep.Empty],
+		sumVariants(counts), counts.Variants[vary.Pass], counts.Variants[vary.Refused], counts.Variants[vary.Islanded], counts.Variants[vary.Diverged], counts.Variants[vary.Panicked], counts.Variants[vary.Hung], counts.Variants[vary.InterpReject], counts.Variants[vary.CheckReject])
+
+	want := sweep.Render(cells)
+	if os.Getenv("BORU_WRITE_SWEEP") != "" {
+		if err := os.WriteFile(sweepStatusFile, []byte(want), 0o644); err != nil {
+			t.Fatalf("write %s: %v", sweepStatusFile, err)
+		}
+		t.Logf("wrote %s (%d bytes)", sweepStatusFile, len(want))
+		return
+	}
+	got, err := os.ReadFile(sweepStatusFile)
+	if err != nil {
+		t.Fatalf("read %s: %v (run `make sweep-status` to generate it)", sweepStatusFile, err)
+	}
+	if string(got) != want {
+		// Informational, as COMPILED_STATUS.md is: the COUNTS above are the
+		// gate, both ways; the list is the ledger the later steps read, and
+		// `make sweep-status` refreshes it.
+		t.Logf("%s is stale (the sweep moved) — refresh with `make sweep-status`", sweepStatusFile)
+	}
+}
+
+// sweepMiscompile reports one diverging program: an error unless pinned.
+func sweepMiscompile(t testing.TB, where, src, detail string, seen map[string]bool) {
+	t.Helper()
+	seen[src] = true
+	if why, known := sweepKnownMiscompiles[src]; known {
+		directionFailure(t, "%s: known miscompile (%s)", where, why)
+		return
+	}
+	t.Errorf("MISCOMPILE — %s diverges from the interpreter:\n  program: %s\n  %s\ntriage: shrink and fix, or record the non-uniformity in NUR.md and pin the program in sweepKnownMiscompiles (never leave a divergence unpinned)", where, src, detail)
+}
+
+func sumVariants(c sweep.Counts) int {
+	n := 0
+	for _, v := range c.Variants {
+		n += v
+	}
+	return n
+}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	lang "github.com/boru-lang/boru/lang/go"
 )
@@ -221,6 +222,29 @@ func TestClassifySeamArms(t *testing.T) {
 		r := Classify("1 add 2")
 		if r.Outcome != Islanded {
 			t.Errorf("%v %q, want islanded", r.Outcome, r.Detail)
+		}
+	})
+
+	t.Run("a program that does not answer by the deadline is hung", func(t *testing.T) {
+		swap(t)
+		prev := Deadline
+		Deadline = 10 * time.Millisecond
+		t.Cleanup(func() { Deadline = prev })
+		block := make(chan struct{})
+		t.Cleanup(func() { close(block) })
+		disasm = func(*lang.Program) string { <-block; return "" }
+		r := Classify("1 add 2")
+		if r.Outcome != Hung || !strings.Contains(r.Detail, "HUNG: no answer within 10ms") || r.Outcome.String() != "HUNG" {
+			t.Errorf("%v %q, want hung", r.Outcome, r.Detail)
+		}
+	})
+
+	t.Run("a panic in an engine is recovered, named by its phase", func(t *testing.T) {
+		swap(t)
+		disasm = func(*lang.Program) string { panic("boom") }
+		r := Classify("1 add 2")
+		if r.Outcome != Panicked || r.Detail != "PANIC in disassemble: boom" || r.Outcome.String() != "PANIC" {
+			t.Errorf("%v %q, want the recovered panic", r.Outcome, r.Detail)
 		}
 	})
 

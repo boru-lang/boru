@@ -1,0 +1,325 @@
+# seeds.tsv — the generated sweep's seed programs (design/FULL-COMPILATION-REPLAN.0.md S0;
+# sweep.go). One line per (word, operand kind) cell of the matrix:
+#
+#   <word> TAB <kind> TAB <program> [TAB n/a]
+#
+# The kinds: literal (the body or operand written at the call site), lambda,
+# named-fn (a fn value from a def), factory (a fn value a fn returns),
+# container (a fn value read from a map, list or class field), module-export
+# (a fn value a module exports), computed (a body bound at run time with quote
+# and passed by name). A quoted-only word has the literal cell alone.
+#
+# A line marked n/a is a PROBE: a program the interpreter must reject, which is
+# how a cell the language cannot express is claimed — checkably, because a
+# probe the interpreter starts accepting fails the gate as a stale claim.
+#
+# The interpreter is the oracle: a seed need not be meaningful, only valid, and
+# the gate reads every seed's own verdict. Write the seed so the operand is
+# actually exercised (the callback runs, the body is entered) — a seed that
+# merely mentions the word proves nothing about its lowering.
+
+__varundef	literal	def x 5 end __varundef x end 1
+afn	literal	def f ([x:Integer] afn [x mul 2]) end f 5
+afn	lambda	def f ([x:Integer] => [x mul 2]) end f 5
+afn	named-fn	def inc fn n:Integer Integer [n add 1] end def f ([x:Integer] afn inc/v) end f 5	n/a
+afn	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def f ([x:Integer] afn (mk)) end f 5
+afn	container	def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5
+afn	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def f ([x:Integer] afn M.inc) end f 5	n/a
+afn	computed	def body (quote [x mul 2]) end def f ([x:Integer] afn body) end f 5
+apply	literal	5 [add 1] apply	n/a
+apply	lambda	5 ([n:Integer] => [n add 1]) apply
+apply	named-fn	def inc fn n:Integer Integer [n add 1] end 5 inc/v apply
+apply	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply
+apply	container	def m {f: ([n:Integer] => [n add 1])} end 5 m.f/v apply
+apply	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply
+apply	computed	def b (quote [add 1]) end 5 b apply	n/a
+behave	literal	def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)
+behave	lambda	def Temp refine Integer end behave canon/q ([t:Temp] => ['T']) end canon (make Temp 5)	n/a
+behave	named-fn	def Temp refine Integer end def c fn [[t:Temp][String]['T']] end behave canon/q c/v end canon (make Temp 5)
+behave	factory	def Temp refine Integer end def mk fn [[][Function][(fn [[t:Temp][String]['T']])]] end behave canon/q (mk) end canon (make Temp 5)
+behave	container	def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)
+behave	module-export	import module [def Temp refine Integer def c fn [[t:Temp][String]['T']] export "M" {c: c/v Temp: Temp}] end behave canon/q M.c end canon (make M.Temp 5)
+behave	computed	def Temp refine Integer end def b (quote [(fn [[t:Temp][String]['T']])]) end behave canon/q b end canon (make Temp 5)	n/a
+case	literal	case 2 [1 'one' 2 'two' 'many']
+case	lambda	case 2 ([] => [1 'one' 2 'two' 'many'])	n/a
+case	named-fn	def cl fn [[][List][[1 'one' 2 'two' 'many']]] end case 2 cl/v	n/a
+case	factory	def mk fn [[][Function][([] => [1 'one' 2 'two' 'many'])]] end case 2 (mk)	n/a
+case	container	def m {c: ([] => [1 'one' 2 'two' 'many'])} end case 2 m.c	n/a
+case	module-export	import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl
+case	computed	def clauses (quote [1 'one' 2 'two' 'many']) end case 2 clauses
+codequote	literal	typeof (codequote (1 add 2))
+codequote	lambda	typeof (codequote ([] => [1]))
+codequote	named-fn	def inc fn n:Integer Integer [n add 1] end typeof (codequote inc/v)	n/a
+codequote	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (codequote (mk))
+codequote	container	def m {f: ([n:Integer] => [n add 1])} end typeof (codequote m.f)
+codequote	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (codequote M.inc)
+codequote	computed	def b (quote [1 add 2]) end typeof (codequote b)
+def	literal	def f fn n:Integer Integer [n add 1] end f 5
+def	lambda	def f ([n:Integer] => [n add 1]) end f 5
+def	named-fn	def inc fn n:Integer Integer [n add 1] end def f inc/v end f 5
+def	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def f (mk) end f 5
+def	container	def m {f: ([n:Integer] => [n add 1])} end def f m.f end f 5
+def	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def f M.inc/v end f 5
+def	computed	def body (quote [n add 1]) end def f fn n:Integer Integer body end f 5
+del	literal	{a:1 b:2} del a
+describe	literal	describe add end 1
+do	literal	do [1 add 2]
+do	lambda	do ([] => [1 add 2])	n/a
+do	named-fn	def three fn [[][Integer][1 add 2]] end do three/v	n/a
+do	factory	def mk fn [[][Function][([] => [1 add 2])]] end do (mk)	n/a
+do	container	def m {f: ([] => [1 add 2])} end do m.f	n/a
+do	module-export	import module [def three fn [[][Integer][1 add 2]] export "M" {three: three/v}] end do M.three	n/a
+do	computed	def body (quote [1 add 2]) end do body
+dot	literal	{k:9} dot k
+dotr	literal	{a:1 b:2} dotr a
+each	literal	each [add 1] [1 2 3]
+each	lambda	each ([n:Integer] => [n add 1]) [1 2 3]
+each	named-fn	def inc fn n:Integer Integer [n add 1] end each inc/v [1 2 3]
+each	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end each (mk) [1 2 3]
+each	container	def m {f: ([n:Integer] => [n add 1])} end each m.f [1 2 3]
+each	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end each M.inc [1 2 3]
+each	computed	def b (quote [add 1]) end each b [1 2 3]
+emit	literal	import "boru:emitlang" end emit json {a:1}
+emit	lambda	import "boru:emitlang" end emit ([value:Any opts:Map] => ['UP']) {a:1}	n/a
+emit	named-fn	import "boru:emitlang" end def up fn [[value:Any opts:Map] [String] ['UP']] end emit up {a:1}
+emit	factory	import "boru:emitlang" end def mk fn [[][Function][(fn [[value:Any opts:Map] [String] ['UP']])]] end emit (mk) {a:1}
+emit	container	import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}
+emit	module-export	import "boru:emitlang" end import module [def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v}] end def g (M.up) end emit g {a:1}
+emit	computed	import "boru:emitlang" end def b (quote ['UP']) end emit b {a:1}	n/a
+enum	literal	def E enum ['a' 'b'] end E deq E
+enum	lambda	def E enum ([] => [1]) end E deq E	n/a
+enum	named-fn	def inc fn n:Integer Integer [n add 1] end def E enum inc/v end E deq E	n/a
+enum	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def E enum (mk) end E deq E	n/a
+enum	container	def m {f: ([n:Integer] => [n add 1])} end def E enum m.f end E deq E	n/a
+enum	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def E enum M.inc end E deq E	n/a
+enum	computed	def names (quote ['a' 'b']) end def E enum names end E deq E
+error	literal	do [raise bad_input 'boom'] error [dot code]
+error	lambda	do [raise bad_input 'boom'] error ([e:Error] => [e dot code])	n/a
+error	named-fn	def h fn [[e:Error][Any][e dot code]] end do [raise bad_input 'boom'] error h/v	n/a
+error	factory	def mk fn [[][Function][([e:Error] => [e dot code])]] end do [raise bad_input 'boom'] error (mk)	n/a
+error	container	def m {h: ([e:Error] => [e dot code])} end do [raise bad_input 'boom'] error m.h	n/a
+error	module-export	import module [def h fn [[e:Error][Any][e dot code]] export "M" {h: h/v}] end do [raise bad_input 'boom'] error M.h	n/a
+error	computed	def b (quote [dot code]) end do [raise bad_input 'boom'] error b
+filter	literal	filter [gt 1] [1 2 3]
+filter	lambda	filter ([p:Any] => [p.value gt 1]) [1 2 3]
+filter	named-fn	def big fn [[p:Any][Boolean][p.value gt 1]] end filter big/v [1 2 3]
+filter	factory	def mk fn [[][Function][([p:Any] => [p.value gt 1])]] end filter (mk) [1 2 3]
+filter	container	def m {f: ([p:Any] => [p.value gt 1])} end filter m.f [1 2 3]
+filter	module-export	import module [def big fn [[p:Any][Boolean][p.value gt 1]] export "M" {big: big/v}] end filter M.big [1 2 3]
+filter	computed	def b (quote [gt 1]) end filter b [1 2 3]
+fn	literal	def f (fn [[n:Integer][Integer][n add 1]]) end f 5
+fn	lambda	def f (fn [[n:Integer][Integer] ([n:Integer] => [n add 1])]) end f 5	n/a
+fn	named-fn	def inc fn n:Integer Integer [n add 1] end def f (fn [[n:Integer][Integer] inc/v]) end f 5	n/a
+fn	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def f (fn [[n:Integer][Integer] (mk)]) end f 5	n/a
+fn	container	def m {f: ([n:Integer] => [n add 1])} end def f (fn [[n:Integer][Integer] m.f]) end f 5	n/a
+fn	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def f (fn [[n:Integer][Integer] M.inc]) end f 5	n/a
+fn	computed	def body (quote [n add 1]) end def f (fn [[n:Integer][Integer] body]) end f 5	n/a
+fnpred	literal	def Even fnpred n:Integer [eq 0 (mod 2 n)] end 4 is Even
+fnpred	lambda	def Even fnpred n:Integer ([n:Integer] => [eq 0 (mod 2 n)]) end 4 is Even
+fnpred	named-fn	def ev fn [[n:Integer][Boolean][eq 0 (mod 2 n)]] end def Even fnpred n:Integer ev/v end 4 is Even
+fnpred	factory	def mk fn [[][Function][([n:Integer] => [eq 0 (mod 2 n)])]] end def Even fnpred n:Integer (mk) end 4 is Even
+fnpred	container	def m {p: ([n:Integer] => [eq 0 (mod 2 n)])} end def Even fnpred n:Integer m.p end 4 is Even
+fnpred	module-export	import module [def ev fn [[n:Integer][Boolean][eq 0 (mod 2 n)]] export "M" {ev: ev/v}] end def Even fnpred n:Integer M.ev end 4 is Even
+fnpred	computed	def body (quote [eq 0 (mod 2 n)]) end def Even fnpred n:Integer body end 4 is Even
+fnsig	literal	def T fnsig Integer String end def f fn x:Integer String [convert String x] end f/v is T
+fnsig	lambda	def T fnsig ([] => [Integer String]) end 1	n/a
+fnsig	named-fn	def sg fn [[][List][[Integer String]]] end def T fnsig sg/v end 1	n/a
+fnsig	factory	def mk fn [[][Function][([] => [Integer String])]] end def T fnsig (mk) end 1	n/a
+fnsig	container	def m {s: ([] => [Integer String])} end def T fnsig m.s end 1	n/a
+fnsig	module-export	import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1
+fnsig	computed	def sg (quote [Integer String]) end def T fnsig sg end def f fn x:Integer String [convert String x] end f/v is T
+fold	literal	fold [add] [1 2 3 4] 0
+fold	lambda	fold ([a:Integer b:Integer] => [a add b]) [1 2 3 4] 0
+fold	named-fn	def sum2 fn [[a:Integer b:Integer][Integer][a add b]] end fold sum2/v [1 2 3 4] 0
+fold	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a add b])]] end fold (mk) [1 2 3 4] 0
+fold	container	def m {f: ([a:Integer b:Integer] => [a add b])} end fold m.f [1 2 3 4] 0
+fold	module-export	import module [def sum2 fn [[a:Integer b:Integer][Integer][a add b]] export "M" {sum2: sum2/v}] end fold M.sum2 [1 2 3 4] 0
+fold	computed	def b (quote [add]) end fold b [1 2 3 4] 0
+for	literal	for 3 [i mul 2]
+for	lambda	for 3 ([] => [7])	n/a
+for	named-fn	def body fn [[][Integer][7]] end for 3 body/v	n/a
+for	factory	def mk fn [[][Function][([] => [7])]] end for 3 (mk)	n/a
+for	container	def m {b: ([] => [7])} end for 3 m.b	n/a
+for	module-export	import module [def body fn [[][Integer][7]] export "M" {body: body/v}] end for 3 M.body	n/a
+for	computed	def b (quote [i mul 2]) end for 3 b
+for-each	literal	def acc (flex []) end for-each [acc swap push] [1 2 3] end size acc
+for-each	lambda	def acc (flex []) end for-each ([e:Integer] => [acc push e]) [1 2 3] end size acc
+for-each	named-fn	def acc (flex []) end def stp fn [[e:Integer][Any][acc push e]] end for-each stp/v [1 2 3] end size acc
+for-each	factory	def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc
+for-each	container	def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc
+for-each	module-export	import module [def acc (flex []) def stp fn [[e:Integer][Any][acc push e]] export "M" {stp: stp/v acc: acc}] end for-each M.stp [1 2 3] end size M.acc
+for-each	computed	def acc (flex []) end def b (quote [acc swap push]) end for-each b [1 2 3] end size acc
+force-arity	literal	force-arity 2 add 1 2
+force-arity	lambda	force-arity 2 ([a:Integer b:Integer] => [a sub b]) 1 2
+force-arity	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end force-arity 2 (sub2/v) 1 2
+force-arity	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end force-arity 2 (mk) 1 2
+force-arity	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end force-arity 2 (m.s) 1 2
+force-arity	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end force-arity 2 M.sub2 1 2
+force-arity	computed	def b (quote [sub]) end force-arity 2 b 1 2	n/a
+forward-args	literal	forward-args sub 10 3
+forward-args	lambda	forward-args ([a:Integer b:Integer] => [a sub b]) 10 3
+forward-args	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end forward-args (sub2/v) 10 3
+forward-args	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end forward-args (mk) 10 3
+forward-args	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end forward-args (m.s) 10 3
+forward-args	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end forward-args M.sub2 10 3
+forward-args	computed	def b (quote [sub]) end forward-args b 10 3	n/a
+gen	literal	def Box gen [T] class {v:T} end (Box of [Integer]) teq (Box of [Integer])
+gen	lambda	def Box gen ([] => [1]) class {v:T} end 1	n/a
+gen	named-fn	def inc fn n:Integer Integer [n add 1] end def Box gen inc/v class {v:T} end 1	n/a
+gen	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def Box gen (mk) class {v:T} end 1	n/a
+gen	container	def m {f: ([n:Integer] => [n add 1])} end def Box gen m.f class {v:T} end 1	n/a
+gen	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def Box gen M.inc class {v:T} end 1	n/a
+gen	computed	def ps (quote [T]) end def Box gen ps class {v:T} end (Box of [Integer]) teq (Box of [Integer])
+if	literal	if true [1] [2]
+if	lambda	if true ([] => [1]) ([] => [2])
+if	named-fn	def one fn [[][Integer][1]] end if true one/v [2]
+if	factory	def mk fn [[][Function][([] => [1])]] end if true (mk) [2]
+if	container	def m {f: ([] => [1])} end if true m.f [2]
+if	module-export	import module [def one fn [[][Integer][1]] export "M" {one: one/v}] end if true M.one [2]
+if	computed	def th (quote [1]) end if true th [2]
+import	literal	import module [export "M" {x: 1}] end M.x
+import	lambda	import module ([] => [1]) end 1	n/a
+import	named-fn	def inc fn n:Integer Integer [n add 1] end import module inc/v end 1	n/a
+import	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end import module (mk) end 1	n/a
+import	container	def m {f: ([n:Integer] => [n add 1])} end import module m.f end 1	n/a
+import	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end import module M.inc end 1	n/a
+import	computed	def body (quote [export "M" {x: 1}]) end import module body end M.x
+inner	literal	inner [add] [mul] [1 2] [3 4]
+inner	lambda	inner ([a:Integer b:Integer] => [a add b]) [mul] [1 2] [3 4]	n/a
+inner	named-fn	def add2 fn [[a:Integer b:Integer][Integer][a add b]] end inner add2/v [mul] [1 2] [3 4]	n/a
+inner	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a add b])]] end inner (mk) [mul] [1 2] [3 4]	n/a
+inner	container	def m {c: ([a:Integer b:Integer] => [a add b])} end inner m.c [mul] [1 2] [3 4]	n/a
+inner	module-export	import module [def add2 fn [[a:Integer b:Integer][Integer][a add b]] export "M" {add2: add2/v}] end inner M.add2 [mul] [1 2] [3 4]	n/a
+inner	computed	def c (quote [add]) end inner c [mul] [1 2] [3 4]
+inspect	literal	inspect a/q
+macro	literal	def m (macro [[e] [quote [unquote e add 1]]]) end m 5
+macro	lambda	def m (macro ([] => [1])) end m 5	n/a
+macro	named-fn	def inc fn n:Integer Integer [n add 1] end def m (macro inc/v) end m 5	n/a
+macro	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def m (macro (mk)) end m 5	n/a
+macro	container	def m {f: ([n:Integer] => [n add 1])} end def m (macro m.f) end m 5	n/a
+macro	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def m (macro M.inc) end m 5	n/a
+macro	computed	def body (quote [[e] [quote [unquote e add 1]]]) end def m (macro body) end m 5
+mini	literal	import "boru:minilang" end mini bf '++++++++[>++++++++<-]>+.'
+mini	lambda	import "boru:minilang" end mini ([src:String opts:Map] => [src add src]) 'ab'
+mini	named-fn	import "boru:minilang" end def dbl fn [[src:String opts:Map] [String] [src add src]] end mini dbl 'ab'
+mini	factory	import "boru:minilang" end def mk fn [[][Function][([src:String opts:Map] => [src add src])]] end mini (mk) 'ab'
+mini	container	import "boru:minilang" end def m {d: ([src:String opts:Map] => [src add src])} end mini m.d 'ab'
+mini	module-export	import "boru:minilang" end import module [def dbl fn [[src:String opts:Map] [String] [src add src]] export "M" {dbl: dbl/v}] end def g M.dbl/v end mini g 'ab'
+mini	computed	import "boru:minilang" end def b (quote [src add src]) end mini b 'ab'	n/a
+module	literal	typeof (module [export "M" {x: 1}])
+module	lambda	typeof (module ([] => [1]))	n/a
+module	named-fn	def inc fn n:Integer Integer [n add 1] end typeof (module inc/v)	n/a
+module	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (module (mk))	n/a
+module	container	def m {f: ([n:Integer] => [n add 1])} end typeof (module m.f)	n/a
+module	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (module M.inc)	n/a
+module	computed	def body (quote [export "M" {x: 1}]) end typeof (module body)
+outer	literal	outer [mul] [1 2] [3 4]
+outer	lambda	outer ([a:Integer b:Integer] => [a mul b]) [1 2] [3 4]	n/a
+outer	named-fn	def mul2 fn [[a:Integer b:Integer][Integer][a mul b]] end outer mul2/v [1 2] [3 4]	n/a
+outer	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a mul b])]] end outer (mk) [1 2] [3 4]	n/a
+outer	container	def m {c: ([a:Integer b:Integer] => [a mul b])} end outer m.c [1 2] [3 4]	n/a
+outer	module-export	import module [def mul2 fn [[a:Integer b:Integer][Integer][a mul b]] export "M" {mul2: mul2/v}] end outer M.mul2 [1 2] [3 4]	n/a
+outer	computed	def b (quote [mul]) end outer b [1 2] [3 4]
+parse	literal	import "boru:parselang" end (parse ini 'b = hello') get 'b'
+parse	lambda	import "boru:parselang" end parse ([source:String opts:Map] => [source]) 'x'
+parse	named-fn	import "boru:parselang" end def p fn [[source:String opts:Map] [Any] [source]] end parse p 'x'
+parse	factory	import "boru:parselang" end def mk fn [[][Function][([source:String opts:Map] => [source])]] end parse (mk) 'x'
+parse	container	import "boru:parselang" end def m {p: ([source:String opts:Map] => [source])} end parse m.p 'x'
+parse	module-export	import "boru:parselang" end import module [def p fn [[source:String opts:Map] [Any] [source]] export "M" {p: p/v}] end def g M.p/v end parse g 'x'
+parse	computed	import "boru:parselang" end def b (quote [source]) end parse b 'x'	n/a
+quote	literal	size (quote [1 add 2])
+quote	lambda	typeof (quote ([] => [1]))
+quote	named-fn	def inc fn n:Integer Integer [n add 1] end typeof (quote inc/v)	n/a
+quote	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (quote (mk))
+quote	container	def m {f: ([n:Integer] => [n add 1])} end typeof (quote m.f)
+quote	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (quote M.inc)
+quote	computed	def b (quote [1 add 2]) end size (quote b)
+raise	literal	do [raise bad_input 'boom'] error [dot code]
+reach	literal	def r (reach 2 [a b]) end typeof r
+reach	lambda	typeof (reach 2 ([] => [1]))	n/a
+reach	named-fn	def inc fn n:Integer Integer [n add 1] end typeof (reach 2 inc/v)	n/a
+reach	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (reach 2 (mk))	n/a
+reach	container	def m {f: ([n:Integer] => [n add 1])} end typeof (reach 2 m.f)	n/a
+reach	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (reach 2 M.inc)	n/a
+reach	computed	def p (quote [a b]) end typeof (reach 2 p)
+receive	literal	receive [{} [1] after 0 [0]]
+receive	lambda	receive ([] => [{} [1] after 0 [0]])	n/a
+receive	named-fn	def cl fn [[][List][(quote [{} [1] after 0 [0]])]] end receive cl/v	n/a
+receive	factory	def mk fn [[][Function][([] => [{} [1] after 0 [0]])]] end receive (mk)	n/a
+receive	container	def m {c: ([] => [{} [1] after 0 [0]])} end receive m.c	n/a
+receive	module-export	import module [def cl fn [[][List][(quote [{} [1] after 0 [0]])]] export "M" {cl: cl/v}] end receive M.cl
+receive	computed	def b (quote [{} [1] after 0 [0]]) end receive b
+scan	literal	scan [add 1] [1 2 3]
+scan	lambda	scan ([n:Integer] => [n add 1]) [1 2 3]
+scan	named-fn	def inc fn n:Integer Integer [n add 1] end scan inc/v [1 2 3]
+scan	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end scan (mk) [1 2 3]
+scan	container	def m {f: ([n:Integer] => [n add 1])} end scan m.f [1 2 3]
+scan	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end scan M.inc [1 2 3]
+scan	computed	def b (quote [add 1]) end scan b [1 2 3]
+set	literal	{a:1} set b 2
+spawn	literal	typeof (spawn [1 add 2])
+spawn	lambda	typeof (spawn ([] => [1 add 2]))	n/a
+spawn	named-fn	def three fn [[][Integer][1 add 2]] end typeof (spawn three/v)	n/a
+spawn	factory	def mk fn [[][Function][([] => [1 add 2])]] end typeof (spawn (mk))	n/a
+spawn	container	def m {f: ([] => [1 add 2])} end typeof (spawn m.f)	n/a
+spawn	module-export	import module [def three fn [[][Integer][1 add 2]] export "M" {three: three/v}] end typeof (spawn M.three)	n/a
+spawn	computed	def b (quote [1 add 2]) end typeof (spawn b)
+stack-args	literal	10 3 stack-args sub
+stack-args	lambda	10 3 stack-args ([a:Integer b:Integer] => [a sub b])
+stack-args	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end 10 3 stack-args (sub2/v)
+stack-args	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end 10 3 stack-args (mk)
+stack-args	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end 10 3 stack-args (m.s)
+stack-args	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end 10 3 stack-args M.sub2
+stack-args	computed	def b (quote [sub]) end 10 3 stack-args b	n/a
+undef	literal	def x 5 end undef x end 1
+unpack	literal	unpack [a b] {a:1 b:2} end a add b
+unpack	lambda	unpack ([] => [1]) {a:1 b:2} end 1	n/a
+unpack	named-fn	def inc fn n:Integer Integer [n add 1] end unpack inc/v {a:1 b:2} end 1	n/a
+unpack	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end unpack (mk) {a:1 b:2} end 1	n/a
+unpack	container	def m {f: ([n:Integer] => [n add 1])} end unpack m.f {a:1 b:2} end 1	n/a
+unpack	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end unpack M.inc {a:1 b:2} end 1	n/a
+unpack	computed	def names (quote [a b]) end unpack names {a:1 b:2} end a add b	n/a
+usurp	literal	usurp sub 10 3
+usurp	lambda	usurp ([a:Integer b:Integer] => [a sub b]) 10 3
+usurp	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end usurp (sub2/v) 10 3
+usurp	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end usurp (mk) 10 3
+usurp	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end usurp (m.s) 10 3
+usurp	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end usurp M.sub2 10 3
+usurp	computed	def b (quote [sub]) end usurp b 10 3	n/a
+valof	literal	def n 5 end valof n
+var	literal	var [[[a 1] [b 2]] a add b]
+var	lambda	var ([] => [1])	n/a
+var	named-fn	def inc fn n:Integer Integer [n add 1] end var inc/v	n/a
+var	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end var (mk)	n/a
+var	container	def m {f: ([n:Integer] => [n add 1])} end var m.f	n/a
+var	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end var M.inc	n/a
+var	computed	def body (quote [[[a 1] [b 2]] a add b]) end var body
+walk	literal	def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} [dot path acc swap push] end size acc
+walk	lambda	def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} (m:Any => [acc push m.path]) end size acc
+walk	named-fn	def acc (flex []) end def h fn [[m:Any][Any][acc push m.path]] end walk {mode: "depth"} {a:1 b:[2 3]} h/v end size acc
+walk	factory	def acc (flex []) end def mk fn [[][Function][(m:Any => [acc push m.path])]] end walk {mode: "depth"} {a:1 b:[2 3]} (mk) end size acc
+walk	container	def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc
+walk	module-export	import module [def acc (flex []) def h fn [[m:Any][Any][acc push m.path]] export "M" {h: h/v acc: acc}] end walk {mode: "depth"} {a:1 b:[2 3]} M.h end size M.acc
+walk	computed	def acc (flex []) end def b (quote [dot path acc swap push]) end walk {mode: "depth"} {a:1 b:[2 3]} b end size acc
+while	literal	def i 0 end while [i lt 3] [def i (i add 1)] end i
+while	lambda	def i 0 end while ([] => [i lt 3]) [def i (i add 1)] end i	n/a
+while	named-fn	def i 0 end def c fn [[][Boolean][i lt 3]] end while c/v [def i (i add 1)] end i	n/a
+while	factory	def i 0 end def mk fn [[][Function][([] => [i lt 3])]] end while (mk) [def i (i add 1)] end i	n/a
+while	container	def i 0 end def m {c: ([] => [i lt 3])} end while m.c [def i (i add 1)] end i	n/a
+while	module-export	import module [def i (flex {n:0}) def c fn [[][Boolean][i.n lt 3]] def step fn [[][Any][i set n (i.n add 1)]] export "M" {c: c/v step: step/v i: i}] end while M.c [M.step] end M.i.n	n/a
+while	computed	def b (quote [i lt 3]) end def i 0 end while b [def i (i add 1)] end i
+with-decimal	literal	with-decimal {precision: 5} [0d1.0 div 0d3.0]
+with-decimal	lambda	with-decimal {precision: 5} ([] => [0d1.0 div 0d3.0])	n/a
+with-decimal	named-fn	def b fn [[][Any][0d1.0 div 0d3.0]] end with-decimal {precision: 5} b/v	n/a
+with-decimal	factory	def mk fn [[][Function][([] => [0d1.0 div 0d3.0])]] end with-decimal {precision: 5} (mk)	n/a
+with-decimal	container	def m {b: ([] => [0d1.0 div 0d3.0])} end with-decimal {precision: 5} m.b	n/a
+with-decimal	module-export	import module [def b fn [[][Any][0d1.0 div 0d3.0]] export "M" {b: b/v}] end with-decimal {precision: 5} M.b	n/a
+with-decimal	computed	def b (quote [0d1.0 div 0d3.0]) end with-decimal {precision: 5} b
+word	literal	def dbl word [dup add] end 5 dbl
+word	lambda	def dbl word ([] => [1]) end 5 dbl
+word	named-fn	def inc fn n:Integer Integer [n add 1] end def dbl word inc/v end 5 dbl
+word	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end def dbl word (mk) end 5 dbl
+word	container	def m {f: ([n:Integer] => [n add 1])} end def dbl word m.f end 5 dbl
+word	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def dbl word M.inc end 5 dbl
+word	computed	def b (quote [dup add]) end def dbl word b end 5 dbl
+xml-attr	literal	xml-attr 'x' <a x="1"/>

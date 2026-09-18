@@ -69,6 +69,9 @@ func TestVariationDifferential(t *testing.T) {
 			}
 			t.Errorf("MISCOMPILE — variant diverges from the interpreter:\n  seed:      %s (%s:%d)\n  transform: %s\n  variant:   %s\n  %s\ntriage: shrink + fix, or pin in varyKnownMiscompiles AND add a frontier row (never leave a divergence unpinned)",
 				v.Seed.Input, v.Seed.File, v.Seed.Line, v.Transform, v.Src, v.Res.Detail)
+		case vary.Panicked, vary.Hung:
+			t.Errorf("ENGINE CRASH OR HANG on a variant — no answer:\n  seed:      %s (%s:%d)\n  transform: %s\n  variant:   %s\n  %s",
+				v.Seed.Input, v.Seed.File, v.Seed.Line, v.Transform, v.Src, v.Res.Detail)
 		case vary.Refused, vary.Islanded:
 			bucket := varyBucket(v.Res.Detail)
 			observed[bucket]++
