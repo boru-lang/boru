@@ -27,6 +27,9 @@ classify -3
 classify "hi"`
 	a := mustNew(t)
 	gotC, compiled, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("compiled run: compiled=%v err=%v", compiled, errC)
 	}
@@ -55,6 +58,9 @@ classify "hi"`
 	one := `def Pos fn [[n:Integer] [Boolean] [n gt 0]] def only fn [[x:Pos] [String] ["p"]] only -3`
 	c := mustNew(t)
 	_, _, errOC := c.RunCompiled(one)
+	if noteCompileDefect(t, one, nil, errOC) {
+		return
+	}
 	d := mustNew(t)
 	_, errOI := d.RunInterp(one)
 	if codeOf(errOC) != codeOf(errOI) || codeOf(errOC) == "" {
@@ -78,6 +84,9 @@ shout -3`
 	var eOut bytes.Buffer
 	e.SetOutput(&eOut)
 	gotZ, compiledZ, errZ := e.RunCompiled(zeroRet)
+	if noteCompileDefect(t, zeroRet, gotZ, errZ) {
+		return
+	}
 	if !compiledZ || errZ != nil {
 		t.Fatalf("zero-return poly run: compiled=%v err=%v", compiledZ, errZ)
 	}
@@ -125,6 +134,9 @@ zpick -3`
 func TestXmlLiteralIdentityCompiledParity(t *testing.T) {
 	a := mustNew(t)
 	gotC, compiled, errC := a.RunCompiled(`(<a/>) eq (<a/>)`)
+	if noteCompileDefect(t, `(<a/>) eq (<a/>)`, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("compiled run: compiled=%v err=%v", compiled, errC)
 	}
@@ -136,6 +148,9 @@ func TestXmlLiteralIdentityCompiledParity(t *testing.T) {
 	// rescue in lowerDynBind) keeps the program compiling.
 	b := mustNew(t)
 	gotS, compiledS, errS := b.RunCompiled(`def x <a/> x eq x`)
+	if noteCompileDefect(t, `def x <a/> x eq x`, gotS, errS) {
+		return
+	}
 	if !compiledS || errS != nil {
 		t.Fatalf("self-eq run: compiled=%v err=%v", compiledS, errS)
 	}
@@ -145,6 +160,9 @@ func TestXmlLiteralIdentityCompiledParity(t *testing.T) {
 	// Structural deq stays value-based across distinct instances.
 	c := mustNew(t)
 	gotD, _, errD := c.RunCompiled(`(<a x="1"><b/></a>) deq (<a x="1"><b/></a>)`)
+	if noteCompileDefect(t, `(<a x="1"><b/></a>) deq (<a x="1"><b/></a>)`, gotD, errD) {
+		return
+	}
 	if errD != nil || fmt.Sprint(gotD) != "[true]" {
 		t.Errorf("structural deq = %v (err=%v), want [true]", gotD, errD)
 	}

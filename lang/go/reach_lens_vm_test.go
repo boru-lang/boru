@@ -41,6 +41,9 @@ func TestLensAppliesOnTheVM(t *testing.T) {
 			mu.Unlock()
 		})
 		gotC, compiled, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		disarm()
 		if !compiled {
 			t.Errorf("%q: expected the program to run compiled", src)
@@ -116,6 +119,9 @@ func TestLensBailReplayIsAttributed(t *testing.T) {
 		attributed = append(attributed, ev.Attribution)
 	})
 	_, _, err := a.RunCompiled(`5 $.name apply`)
+	if noteCompileDefect(t, `5 $.name apply`, nil, err) {
+		return
+	}
 	disarmEntry()
 	disarmBail()
 

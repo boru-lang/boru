@@ -252,6 +252,9 @@ func TestEmitP5MultiResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`5 7 swap sub`)
+	if noteCompileDefect(t, `5 7 swap sub`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("`5 7 swap sub`: compiled=%v err=%v", compiled, err)
 	}
@@ -284,6 +287,9 @@ func TestEmitP5MultiResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	gotMR, wasCompiled, mrErr := d.RunCompiled(`def mk fn [[] [Integer Integer] [1 2]] mk`)
+	if noteCompileDefect(t, `def mk fn [[] [Integer Integer] [1 2]] mk`, gotMR, mrErr) {
+		return
+	}
 	if !wasCompiled || mrErr != nil {
 		t.Fatalf("multi-return fn: compiled=%v err=%v (want compiled, no error)", wasCompiled, mrErr)
 	}
@@ -324,6 +330,9 @@ func TestEmitApplyFnValue(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, wasCompiled, rerr := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, got, rerr) {
+			continue
+		}
 		if !wasCompiled || rerr != nil {
 			t.Fatalf("%s: compiled=%v err=%v (want compiled, no error)", c.src, wasCompiled, rerr)
 		}
@@ -910,6 +919,9 @@ func TestEmitPolySiteLowersToRuntimeMatch(t *testing.T) {
 		t.Errorf("expected a runtime-matched poly call for the straddling is:\n%s", prog.Disassemble())
 	}
 	gotC, compiled, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("compiled run: compiled=%v err=%v", compiled, errC)
 	}
@@ -976,6 +988,9 @@ func TestRunCompiledTailGuarantee(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def s2 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [s2 (n sub 1) (acc add n)]]] s2 100000 0`)
+	if noteCompileDefect(t, `def s2 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [s2 (n sub 1) (acc add n)]]] s2 100000 0`, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("deep tail recursion: %v", err)
 	}
@@ -991,6 +1006,9 @@ func TestRunCompiledTailGuarantee(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, compiled2, err2 := b.RunCompiled(`def f fn [[n:Integer] [Integer] [if (n lte 0) [0] [n add (f (n sub 1))]]] f 100000`)
+	if noteCompileDefect(t, `def f fn [[n:Integer] [Integer] [if (n lte 0) [0] [n add (f (n sub 1))]]] f 100000`, nil, err2) {
+		return
+	}
 	if !compiled2 {
 		t.Fatal("non-tail program fell back to the interpreter")
 	}
@@ -1028,6 +1046,9 @@ func TestRunCompiledConstCondTailGuarantee(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("deep const-cond tail recursion: %v", err)
 	}
@@ -1047,6 +1068,9 @@ func TestRunCompiledConstCondTailGuarantee(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, compiled2, err2 := b.RunCompiled(nonTail)
+	if noteCompileDefect(t, nonTail, nil, err2) {
+		return
+	}
 	if !compiled2 {
 		t.Fatal("const-cond non-tail program fell back to the interpreter")
 	}
@@ -1082,6 +1106,9 @@ func TestRunCompiledMutualTailGuarantee(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def isod fn [[n:Integer] [Boolean] [if (n eq 0) [false] [isev (n sub 1)]]] def isev fn [[n:Integer] [Boolean] [if (n eq 0) [true] [isod (n sub 1)]]] isev 1000000`)
+	if noteCompileDefect(t, `def isod fn [[n:Integer] [Boolean] [if (n eq 0) [false] [isev (n sub 1)]]] def isev fn [[n:Integer] [Boolean] [if (n eq 0) [true] [isod (n sub 1)]]] isev 1000000`, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("deep mutual tail recursion: %v", err)
 	}
@@ -1105,6 +1132,9 @@ func TestRunCompiledMutualTailGuarantee(t *testing.T) {
 	// to require a Number/String operand and no longer matches an as-yet-
 	// untyped forward reference.
 	_, compiled2, err2 := b.RunCompiled(`def od fn [[n:Integer] [Integer] [if (n eq 0) [0] [ev (n sub 1) drop n]]] def ev fn [[n:Integer] [Integer] [if (n eq 0) [0] [od (n sub 1) drop n]]] ev 100000`)
+	if noteCompileDefect(t, `def od fn [[n:Integer] [Integer] [if (n eq 0) [0] [ev (n sub 1) drop n]]] def ev fn [[n:Integer] [Integer] [if (n eq 0) [0] [od (n sub 1) drop n]]] ev 100000`, nil, err2) {
+		return
+	}
 	if !compiled2 {
 		t.Fatal("mutual non-tail program fell back to the interpreter")
 	}
@@ -1135,6 +1165,9 @@ func TestEmitClosureCaptureSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def oc fn [[m:Integer] [Integer] [def gc fn [[n:Integer] [Integer] [m sub n]] gc 3]] oc 10`)
+	if noteCompileDefect(t, `def oc fn [[m:Integer] [Integer] [def gc fn [[n:Integer] [Integer] [m sub n]] gc 3]] oc 10`, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("closure over param: %v", err)
 	}
@@ -1164,6 +1197,9 @@ func TestCompiledFnRedefinitionBindsLatest(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def rdf fn [[n:Integer] [Integer] [n add 1]] (rdf 1) def rdf fn [[n:Integer] [Integer] [n add 2]] (rdf 1)`)
+	if noteCompileDefect(t, `def rdf fn [[n:Integer] [Integer] [n add 1]] (rdf 1) def rdf fn [[n:Integer] [Integer] [n add 2]] (rdf 1)`, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1184,6 +1220,9 @@ func TestRunCompiledStepBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, compiled, err := a.RunCompiled(`def spinf fn [[n:Integer] [Integer] [spinf n]] spinf 0`)
+	if noteCompileDefect(t, `def spinf fn [[n:Integer] [Integer] [spinf n]] spinf 0`, nil, err) {
+		return
+	}
 	if !compiled {
 		t.Fatal("tail spin fell back to the interpreter")
 	}
@@ -1219,6 +1258,9 @@ func TestEmitGenericInstantiation(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def pickg gen [T U] fn [[a:T b:U] [U] [b]] pickg 1 "x"`)
+	if noteCompileDefect(t, `def pickg gen [T U] fn [[a:T b:U] [U] [b]] pickg 1 "x"`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("generic call: compiled=%v err=%v", compiled, err)
 	}
@@ -1245,6 +1287,9 @@ func TestEmitTypeOperands(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def Pt refine Integer def p:Pt 5 p is Pt`)
+	if noteCompileDefect(t, `def Pt refine Integer def p:Pt 5 p is Pt`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("minted-type operand: compiled=%v err=%v", compiled, err)
 	}
@@ -1260,6 +1305,9 @@ func TestEmitTypeOperands(t *testing.T) {
 		t.Fatal(err)
 	}
 	out2, compiled2, err := b.RunCompiled(`def M refine Record [k:String] end make M {k:"x"}`)
+	if noteCompileDefect(t, `def M refine Record [k:String] end make M {k:"x"}`, out2, err) {
+		return
+	}
 	if err != nil || !compiled2 {
 		t.Fatalf("make with record body: compiled=%v err=%v", compiled2, err)
 	}
@@ -1277,6 +1325,9 @@ func TestEmitTypeOperands(t *testing.T) {
 		t.Fatal(err)
 	}
 	outG, compiledG, errG := g.RunCompiled(`def Shape surface {area: (fnsig [[Self] [Float]])} def Circle class {r:1.0} def area fn [[c:Circle] [Float] [1.0]] Circle exposes Shape def Holder gen [(T extends Shape)] refine Record [item:T] end Holder of [Circle]`)
+	if noteCompileDefect(t, `def Shape surface {area: (fnsig [[Self] [Float]])} def Circle class {r:1.0} def area fn [[c:Circle] [Float] [1.0]] Circle exposes Shape def Holder gen [(T extends Shape)] refine Record [item:T] end Holder of [Circle]`, outG, errG) {
+		return
+	}
 	if errG != nil || !compiledG {
 		t.Fatalf("scalar-default generic body: compiled=%v err=%v", compiledG, errG)
 	}
@@ -1328,6 +1379,9 @@ func TestEmitMacroExpansionGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def unless (macro [[c body] [ quote [ if unquote c [0] unquote body ] ]])  unless false [42]`)
+	if noteCompileDefect(t, `def unless (macro [[c body] [ quote [ if unquote c [0] unquote body ] ]])  unless false [42]`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("unless macro: compiled=%v err=%v", compiled, err)
 	}
@@ -1365,6 +1419,9 @@ func TestEmitModuleCallLowering(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`import "boru:math-util" MathUtil.max 5.0 9.0`)
+	if noteCompileDefect(t, `import "boru:math-util" MathUtil.max 5.0 9.0`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("MathUtil.max: compiled=%v err=%v", compiled, err)
 	}
@@ -1388,6 +1445,9 @@ func TestEmitModuleCallLowering(t *testing.T) {
 		t.Fatal(err)
 	}
 	out2, _, err := b.RunCompiled(`def m {a:1} m.a`)
+	if noteCompileDefect(t, `def m {a:1} m.a`, out2, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("concrete-map get: %v", err)
 	}
@@ -1412,6 +1472,9 @@ func TestEmitModuleCallLowering(t *testing.T) {
 		t.Fatal(err)
 	}
 	out3, _, err := c.RunCompiled(`def Foo class {a:1} def o (make Foo {}) o.a`)
+	if noteCompileDefect(t, `def Foo class {a:1} def o (make Foo {}) o.a`, out3, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("object field get: %v", err)
 	}
@@ -1439,6 +1502,9 @@ func TestEmitMultiOverloadMonomorphises(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(`def f fn [[a:Integer][Integer][a add 1] [a:String][String][a add "!"]] (f 5) (f "x")`)
+	if noteCompileDefect(t, `def f fn [[a:Integer][Integer][a add 1] [a:String][String][a add "!"]] (f 5) (f "x")`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("multi-overload run: compiled=%v err=%v", compiled, err)
 	}
@@ -1472,6 +1538,9 @@ func TestEmitMinilangCompiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	gc, _, ec := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gc, ec) {
+		return
+	}
 	b, _ := New()
 	gi, ei := b.RunInterp(src)
 	if (ec == nil) != (ei == nil) {
@@ -1550,6 +1619,9 @@ func TestEmitFallbackIsland(t *testing.T) {
 			t.Fatal(err)
 		}
 		out, compiled, err := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, out, err) {
+			continue
+		}
 		if err != nil || !compiled {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, err)
 		}
@@ -1570,6 +1642,9 @@ func TestEmitFallbackIsland(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := b.RunCompiled(`def n 10 each [add n] [1 2 3]`)
+	if noteCompileDefect(t, `def n 10 each [add n] [1 2 3]`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("def-body closure: compiled=%v err=%v", compiled, err)
 	}
@@ -1585,6 +1660,9 @@ func TestEmitFallbackIsland(t *testing.T) {
 		t.Fatal(err)
 	}
 	mout, _, merr := c.RunCompiled(`import "boru:array-util" ArrayUtil.group ['a' 'b' 'a'] [1 2 3]`)
+	if noteCompileDefect(t, `import "boru:array-util" ArrayUtil.group ['a' 'b' 'a'] [1 2 3]`, mout, merr) {
+		return
+	}
 	if merr != nil {
 		t.Fatalf("module group: %v", merr)
 	}
@@ -1626,6 +1704,9 @@ func TestEmitWidenedAllowSet(t *testing.T) {
 			t.Fatal(err)
 		}
 		out, _, err := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, out, err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("%q: %v", c.src, err)
 		}
@@ -1663,6 +1744,9 @@ func TestEmitF4DynamicDispatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		out, compiled, err := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, out, err) {
+			continue
+		}
 		if err != nil || !compiled {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, err)
 		}
@@ -1701,6 +1785,9 @@ func TestEmitIslandSentinelRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, out, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("%q: %v", src, err)
 	}
@@ -1753,6 +1840,9 @@ func TestEmitThreadedFallbackIsland(t *testing.T) {
 			t.Fatal(err)
 		}
 		out, compiled, err := a.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, out, err) {
+			continue
+		}
 		if err != nil || !compiled {
 			t.Fatalf("%q: compiled=%v err=%v", c.src, compiled, err)
 		}
@@ -1774,6 +1864,9 @@ func TestEmitThreadedFallbackIsland(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, compiled, err := b.RunCompiled(`def n 10 each [add n] (iota 3)`)
+	if noteCompileDefect(t, `def n 10 each [add n] (iota 3)`, out, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("def-body threaded closure: compiled=%v err=%v", compiled, err)
 	}

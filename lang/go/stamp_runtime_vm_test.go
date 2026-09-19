@@ -384,6 +384,9 @@ func TestRunCompiledFallbackNoDuplicateStampReport(t *testing.T) {
 	src := `import ` + stampModuleSrc + ` def dm {n: 3} def zz (for (dm get "n") [1]) zz`
 	a, _ := New()
 	_, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, err) {
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

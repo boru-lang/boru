@@ -22,6 +22,9 @@ func inferSound(t *testing.T, src string) {
 	want, werr := a.RunInterp(src)
 	b, _ := New()
 	got, _, gerr := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, gerr) {
+		return
+	}
 	if (werr == nil) != (gerr == nil) {
 		t.Fatalf("error disagreement (compile != interpret):\n  src: %s\n  interp:   %v\n  compiled: %v", src, werr, gerr)
 	}

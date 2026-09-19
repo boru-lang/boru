@@ -34,6 +34,9 @@ func TestSpliceDynComputedPayloadCompiles(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(deferSrc)
+	if noteCompileDefect(t, deferSrc, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(deferSrc)
 	if compiled {

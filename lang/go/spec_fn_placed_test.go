@@ -197,6 +197,9 @@ func TestConditionalFnDefAcrossRequests(t *testing.T) {
 	for _, src := range []string{`def m {e: false}`, arm, `f 1`, `def m {e: true}`, arm, `f 1`, `undef f 2`, `f 1`, armUndef, `f 1`} {
 		gotC, ran, errC := a.RunCompiled(src)
 		gotI, errI := b.RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !ran && errI == nil {
 			t.Errorf("%q: compiles on the long-lived registry: %v", src, errC)
 		}

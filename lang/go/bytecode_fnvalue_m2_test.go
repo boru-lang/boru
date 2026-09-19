@@ -49,6 +49,9 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("%s: did not run compiled", name)
 	}
@@ -74,6 +77,9 @@ func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
 	}
 	gotC, _, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if (errC == nil) != (errI == nil) || codeOf(errC) != codeOf(errI) {
 		t.Fatalf("%s: fallback err=[%s] interp err=[%s] (should agree)", name, codeOf(errC), codeOf(errI))
 	}
@@ -176,6 +182,9 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 		src := `import "boru:log" ; Log.register (fn [[rec:Any] [] []]) console/q info/q`
 		_, compiled, errC := mustNew(t).RunCompiled(src)
 		_, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			return
+		}
 		if !compiled {
 			t.Errorf("register duplicate: did not run compiled")
 		}

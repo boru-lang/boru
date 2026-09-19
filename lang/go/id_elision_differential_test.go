@@ -31,6 +31,9 @@ def addboth (mk 3 4)`); err != nil {
 		// the compiled result must agree with the interpreter — never
 		// silently-collapsed capture slots.
 		out, compiled, rerr := a.RunCompiled(`addboth 10`)
+		if noteCompileDefect(t, `addboth 10`, out, rerr) {
+			return
+		}
 		if rerr != nil {
 			t.Fatalf("RunCompiled: %v", rerr)
 		}

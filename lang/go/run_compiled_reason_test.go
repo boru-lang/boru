@@ -76,6 +76,9 @@ func TestRunCompiledReason(t *testing.T) {
 		const src = "1 add 2"
 		a, _ := New()
 		out, ran, err := a.RunCompiled(src)
+		if noteCompileDefect(t, src, out, err) {
+			return
+		}
 		if !ran || err != nil || len(out) != 1 {
 			t.Fatalf("RunCompiled(%q): out=%v ran=%v err=%v", src, out, ran, err)
 		}

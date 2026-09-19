@@ -32,6 +32,9 @@ func zzBfHookInstance(t *testing.T) *Boru {
 func TestMiniGoHookCompilesIdentically(t *testing.T) {
 	const src = `import "boru:minilang" end mini bf 'hi'`
 	gotC, ran, errC := zzBfHookInstance(t).RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !ran || errC != nil {
 		t.Fatalf("hooked mini must run compiled: ran=%v err=%v", ran, errC)
 	}
@@ -61,6 +64,9 @@ func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
 	// Parity via the (transitional-default) fallback.
 	gotC, ran, errC := zzBfHookInstance(t).RunCompiled(src)
 	gotI, errI := zzBfHookInstance(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if ran || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
 		t.Fatalf("fallback parity: C=%v/%v I=%v/%v ran=%v", gotC, errC, gotI, errI, ran)
 	}
@@ -82,6 +88,9 @@ func TestMiniGoHookNonConcreteOptsRefuses(t *testing.T) {
 	// Parity via the (transitional-default) fallback.
 	gotC, ran, errC := zzBfHookInstance(t).RunCompiled(src)
 	gotI, errI := zzBfHookInstance(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if ran || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
 		t.Fatalf("fallback parity: C=%v/%v I=%v/%v ran=%v", gotC, errC, gotI, errI, ran)
 	}

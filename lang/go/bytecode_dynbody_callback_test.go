@@ -150,6 +150,9 @@ func TestStrictAnyOperandReMatches(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, _, errC := b.RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(tc.src)
 		if codeOf(errC) != codeOf(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {

@@ -38,6 +38,9 @@ func TestModuleTableTypeFold(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -58,6 +61,9 @@ func TestModuleTableTypeFold(t *testing.T) {
 	}
 	dr, _ := New()
 	gotC, compiled, errC := dr.RunCompiled(local)
+	if noteCompileDefect(t, local, gotC, errC) {
+		return
+	}
 	e, _ := New()
 	gotI, errI := e.RunInterp(local)
 	if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[true]" {

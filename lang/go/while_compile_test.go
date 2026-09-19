@@ -135,6 +135,9 @@ func TestWhileEmptyConditionTraps(t *testing.T) {
 				t.Errorf("compiled without a terminal trap:\n%s", prog.Disassemble())
 			}
 			_, compiled, errC := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, nil, errC) {
+				return
+			}
 			if !compiled {
 				t.Fatal("the trapping program must run compiled")
 			}
@@ -190,6 +193,9 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

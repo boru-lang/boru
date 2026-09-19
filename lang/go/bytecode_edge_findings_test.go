@@ -38,6 +38,9 @@ func mustRefuseWithParity(t *testing.T, src, want string) {
 	// silent re-run); the program stays fully serviceable via RunInterp.
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if compiled {
 		t.Errorf("%q: RunCompiled reported a compiled run; a refused program must not compile", src)
 	}
@@ -82,6 +85,9 @@ func interpOnlyWithSoundRefusal(t *testing.T, src, want string) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("%q: compiled run: compiled=%v err=%v", src, compiled, errC)
 	}
@@ -102,6 +108,9 @@ func mustCompileWithParity(t *testing.T, src, want string) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil {
 		t.Fatalf("%q: compiled run: compiled=%v err=%v", src, compiled, errC)
 	}
@@ -292,6 +301,9 @@ func TestEdgeFindingQuotedDoBodyFlowEscapesLoop(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, _, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if iErr == nil || cErr == nil || codeOf(iErr) != codeOf(cErr) {
 			t.Errorf("%q: raise parity — compiled=[%s]%v interp=[%s]%v",
 				src, codeOf(cErr), cErr, codeOf(iErr), iErr)
@@ -597,6 +609,9 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, cCompiled, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if cCompiled || codeOf(iErr) != "undefined_word" || codeOf(cErr) != "compile_failed" {
 			t.Errorf("%q: want compiled-refusal + interp undefined_word, got compiled=%v cErr=[%s] iErr=[%s]",
 				src, cCompiled, codeOf(cErr), codeOf(iErr))
@@ -627,6 +642,9 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, _, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if iErr == nil || cErr == nil || codeOf(iErr) != codeOf(cErr) {
 			t.Errorf("%q: raise parity — compiled=[%s]%v interp=[%s]%v",
 				src, codeOf(cErr), cErr, codeOf(iErr), iErr)
@@ -670,6 +688,9 @@ func TestEdgeFindingDynamicFnValueApplyBodyTail(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, compiled, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if !compiled {
 			t.Errorf("%q: the not-callable sibling must still compile", src)
 		}

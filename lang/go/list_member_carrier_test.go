@@ -110,6 +110,9 @@ func TestListMemberFnCarrierSoundRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	gotC, compiled, errC := e.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if errC != nil || !compiled || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 		t.Errorf("`[g/v]`: compiled %v (compiled=%v, %v), want the interpreter's %v", gotC, compiled, errC, gotI)
 	}

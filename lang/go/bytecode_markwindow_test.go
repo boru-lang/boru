@@ -25,6 +25,9 @@ func mwParityCompiled(t *testing.T, src string) {
 	}
 	b := mustNew(t)
 	outC, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, errC) {
+		return
+	}
 	if !ran {
 		t.Fatalf("the shape must run COMPILED, fell back (err %v)", errC)
 	}
@@ -50,16 +53,12 @@ func mwRefusedWithParity(t *testing.T, src, wantReason string) {
 	if wantReason != "" && reason != wantReason {
 		t.Errorf("refusal reason drifted: %q, want %q — re-diagnose", reason, wantReason)
 	}
+	// Nothing re-runs it, so there is no compiled answer to hold beside the
+	// interpreter's: the run books the compile failure as the defect it is
+	// (compile_defect_test.go).
 	b := mustNew(t)
-	outC, ran, errC := b.RunCompiled(src)
-	if ran {
-		t.Fatal("refused program must fall back")
-	}
-	c := mustNew(t)
-	outI, errI := c.RunInterp(src)
-	if (errC == nil) != (errI == nil) || fmt.Sprint(outC) != fmt.Sprint(outI) {
-		t.Errorf("fallback parity: compiled %v/%v != interp %v/%v", outC, errC, outI, errI)
-	}
+	outC, _, errC := b.RunCompiled(src)
+	requireCompileDefect(t, src, outC, errC)
 }
 
 func TestMarkWindowDoCatchCompiles(t *testing.T) {

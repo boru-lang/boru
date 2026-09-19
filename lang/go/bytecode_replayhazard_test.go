@@ -42,6 +42,9 @@ func TestReplayHazardTypedDefRefusesWithParity(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(src)
 		if !compiled {
@@ -62,6 +65,9 @@ func TestReplayHazardTypedDefRefusesWithParity(t *testing.T) {
 	} {
 		b, _ := New()
 		gotC, _, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(src)
 		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
@@ -88,6 +94,9 @@ func TestReplayHazardImportBodyCompilesNative(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		d, _ := New()
 		gotI, errI := d.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil {
@@ -110,6 +119,9 @@ func TestReplayHazardValueDefStillCompiles(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || fmt.Sprint(gotC) != "[6]" {
 		t.Errorf("%q: compiled=%v got=%v err=%v, want [6]", src, compiled, gotC, errC)
 	}

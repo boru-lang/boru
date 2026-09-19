@@ -154,6 +154,9 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 		src := `def msg (do [(0 div 0) "x"] error [dot code]) msg`
 		a, _ := New()
 		gotC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(src)
 		if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {

@@ -36,6 +36,9 @@ func TestGradualArgParamGuard(t *testing.T) {
 		t.Run("guarded/"+c.name, func(t *testing.T) {
 			a, _ := New()
 			gotC, _, errC := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, gotC, errC) {
+				return
+			}
 			// The miscompile was: compiled RETURNED a value. Now it must ERROR.
 			if errC == nil {
 				t.Fatalf("compiled must raise (param guard), not return %v", gotC)

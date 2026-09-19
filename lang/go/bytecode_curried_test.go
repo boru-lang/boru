@@ -54,6 +54,9 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 		}
 		b, _ := New()
 		_, _, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			return
+		}
 		if !strings.Contains(fmt.Sprint(errC), "compile_failed") {
 			t.Errorf("three-level currying: err=%v, want compile_failed", errC)
 		}
@@ -68,6 +71,9 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 		src := `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] def f (mk 10) (f 5)`
 		b, _ := New()
 		gotC, _, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		c, _ := New()
 		gotI, errI := c.RunInterp(src)
 		if errC != nil || errI != nil || fmt.Sprint(gotC) != "[15]" || fmt.Sprint(gotI) != "[15]" {

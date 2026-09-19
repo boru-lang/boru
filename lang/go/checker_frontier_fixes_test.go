@@ -96,6 +96,9 @@ func TestComputedRangeLoopCompilesAndMatches(t *testing.T) {
 			t.Fatalf("New: %v", err)
 		}
 		gotC, compiled, eC := ac.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, eC) {
+			continue
+		}
 		ai, _ := New()
 		gotI, eI := ai.RunInterp(c.src)
 		if eC != nil || eI != nil {

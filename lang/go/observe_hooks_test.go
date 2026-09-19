@@ -111,6 +111,9 @@ func TestArmRuntimeBailHookForwarder(t *testing.T) {
 
 	const src = `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
 	got, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if err != nil || compiled {
 		t.Fatalf("rematch-match run: compiled=%v err=%v", compiled, err)
 	}

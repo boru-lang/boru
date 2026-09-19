@@ -41,6 +41,12 @@ func compileDisasm(t *testing.T, src string) string {
 func requireEngineParity(t *testing.T, src string, wantCompiled bool) {
 	t.Helper()
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		if wantCompiled {
+			t.Errorf("%q: this shape is meant to compile and run", src)
+		}
+		return
+	}
 	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
 		t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
 	}

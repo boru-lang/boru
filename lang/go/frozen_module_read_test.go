@@ -210,14 +210,15 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 				t.Errorf("%q: refusal drifted: want %q in %q", src, c.reason, reason)
 			}
 		}
-		gotC, compiled, errC, _, _ := runBothEngines(t, src)
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if compiled {
 			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
 			continue
 		}
-		// No fallback re-runs it, so there is no compiled answer to compare:
-		// the failure is booked as the defect it is (compile_defect_test.go).
-		requireCompileDefect(t, src, gotC, errC)
+		// No fallback re-runs it: a compile failure is booked as the defect
+		// it is (compile_defect_test.go), and anything else the compiled
+		// lane reports is the program's own error and must match.
+		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 

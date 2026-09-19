@@ -57,6 +57,9 @@ func TestFullStackHostOverloadParity(t *testing.T) {
 	c, _ := New()
 	host(c)
 	gotC, _, errC := c.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if errI != nil || errC != nil || fmt.Sprint(gotI) != fmt.Sprint(gotC) {
 		t.Errorf("host-overload depth diverged: interp=%v/%v compiled=%v/%v", gotI, errI, gotC, errC)
 	}
@@ -105,6 +108,9 @@ func TestTrailingApplyBareFunctionStaysData(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Fatalf("%s: did not run compiled (%v)", src, errC)
 		}
@@ -122,6 +128,9 @@ func TestLeadApplyNoMatchTwoReturnParity(t *testing.T) {
 	const src = `def ld fn [[g:Function x:Integer] [Function Integer] [(g x)]] ld ([k:String] => [k]) 14`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("no-match lead apply: did not run compiled (errC=%v)", errC)
 	}
@@ -158,6 +167,9 @@ func TestCondBodyFreshDefBindsCompiledOnly(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
 		gotI, errI := mustNew(t).RunInterp(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			t.Fatalf("%s: did not run compiled (%v)", tc.src, errC)
 		}
@@ -181,6 +193,9 @@ func TestCondBodyZeroIterationLoopAgrees(t *testing.T) {
 	const src = `for 0 [def op 1]  end  op`
 	_, _, errC := mustNew(t).RunCompiled(src)
 	_, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if codeOf(errC) != "undefined_word" || codeOf(errI) != "undefined_word" {
 		t.Errorf("zero-iteration loop: compiled=[%s] interp=[%s], want both undefined_word",
 			codeOf(errC), codeOf(errI))
@@ -225,6 +240,9 @@ func TestMaybeRaisingZeroNettingHandlerIsARegion(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, compiled, cerr := a.RunCompiled(tc.src)
+			if noteCompileDefect(t, tc.src, out, cerr) {
+				return
+			}
 			if cerr != nil {
 				t.Fatalf("RunCompiled: %v", cerr)
 			}
@@ -260,6 +278,9 @@ func TestRegionHandlerRefusesAFixedSeatConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, cerr := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, cerr) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

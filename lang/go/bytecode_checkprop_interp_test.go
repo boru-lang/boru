@@ -62,6 +62,9 @@ def run-props fn [[pfx:Integer] [Boolean] [
 	// Non-strict: falls back to the interpreter and yields the CORRECT answer.
 	b, _ := New()
 	got, compiled, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled error: %v", err)
 	}

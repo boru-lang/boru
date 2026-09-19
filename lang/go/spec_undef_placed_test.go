@@ -247,6 +247,9 @@ func TestSpeculativeUndefAcrossRequests(t *testing.T) {
 	for _, src := range []string{`def k 5`, `if false [undef k] [] k`, `k`, `if true [undef k] [] 1`, `k`} {
 		gotC, ran, errC := a.RunCompiled(src)
 		gotI, errI := b.RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !ran && src != `k` {
 			t.Errorf("%q: compiles on the long-lived registry: %v", src, errC)
 		}

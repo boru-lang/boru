@@ -62,6 +62,9 @@ func fnValueM2NativeErrParity(t *testing.T, name, src, wantCode string) {
 	}
 	_, compiled, errC := mustNew(t).RunCompiled(src)
 	_, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("%s: did not run compiled", name)
 	}

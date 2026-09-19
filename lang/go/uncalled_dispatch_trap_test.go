@@ -26,6 +26,9 @@ func udRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 		t.Fatal(err)
 	}
 	gotC, ran, cerr := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, cerr) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

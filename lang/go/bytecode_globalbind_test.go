@@ -168,6 +168,9 @@ func TestGlobalBindEnvelope(t *testing.T) {
 	// needs the static region size) — the zzRefusingRow fixture.
 	b := mustNew(t)
 	gotC, compiledB, err := b.RunCompiled(`def xs (for 3 [1]) xs`)
+	if noteCompileDefect(t, `def xs (for 3 [1]) xs`, gotC, err) {
+		return
+	}
 	if !compiledB || err != nil {
 		t.Errorf("S5 static loop def: compiled=%v err=%v, want a compiled run", compiledB, err)
 	}

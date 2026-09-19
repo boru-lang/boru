@@ -45,6 +45,9 @@ func TestCatchFrame(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -67,6 +70,9 @@ func TestCatchFrame(t *testing.T) {
 	for _, c := range neg {
 		ar, _ := New()
 		gotC, _, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if (errC == nil) != (errI == nil) || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {

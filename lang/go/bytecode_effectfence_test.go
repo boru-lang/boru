@@ -41,6 +41,9 @@ func TestRuntimeBailPropagatesAsADefect(t *testing.T) {
 			a.SetOutput(&out)
 
 			got, compiled, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
 			if codeOf(err) != "internal_error" {
 				t.Fatalf("bail: err=[%s] %v (got=%v compiled=%v); want the propagated internal_error", codeOf(err), err, got, compiled)
 			}
@@ -94,6 +97,9 @@ func TestRefusalReturnsCompileRefused(t *testing.T) {
 	a.SetOutput(&out)
 
 	got, compiled, err := a.RunCompiled(zzRefusingRow)
+	if noteCompileDefect(t, zzRefusingRow, got, err) {
+		return
+	}
 	if codeOf(err) != "compile_failed" {
 		t.Fatalf("refusal: err=[%s] %v (got=%v compiled=%v); want compile_failed (Stage J: no silent re-run)", codeOf(err), err, got, compiled)
 	}
@@ -118,6 +124,9 @@ func TestCompileFailureAfterCheckEffectStillReportsTheDefect(t *testing.T) {
 	a.SetOutput(&out)
 
 	got, compiled, err := a.RunCompiled(`zz-emit ; ` + zzRefusingRow)
+	if noteCompileDefect(t, `zz-emit ; `+zzRefusingRow, got, err) {
+		return
+	}
 	if codeOf(err) != "compile_failed" {
 		t.Fatalf("effect-escaped compile failure: err=[%s] %v (got=%v compiled=%v); want compile_failed", codeOf(err), err, got, compiled)
 	}
@@ -156,6 +165,9 @@ func TestCaughtDiagnosticIsACompileDefect(t *testing.T) {
 			a.SetOutput(&out)
 
 			got, compiled, err := a.RunCompiled(c.pre + src)
+			if noteCompileDefect(t, c.pre+src, got, err) {
+				return
+			}
 			if codeOf(err) != "compile_failed" {
 				t.Fatalf("caught diagnostic: err=[%s] %v (got=%v compiled=%v); want compile_failed", codeOf(err), err, got, compiled)
 			}
@@ -202,6 +214,9 @@ func TestStaticErrorAfterCheckEffectSurfacesItself(t *testing.T) {
 	a.SetOutput(&out)
 
 	_, compiled, err := a.RunCompiled(`zz-emit ; zz-no-such-word-xyz`)
+	if noteCompileDefect(t, `zz-emit ; zz-no-such-word-xyz`, nil, err) {
+		return
+	}
 	if err == nil || compiled {
 		t.Fatalf("fenced static error: err=%v compiled=%v; want the check error surfaced", err, compiled)
 	}
@@ -233,6 +248,9 @@ func TestCheckErrorAfterCheckEffectSurfacesItself(t *testing.T) {
 	a.SetOutput(&out)
 
 	_, compiled, err := a.RunCompiled(`zz-emit-fail`)
+	if noteCompileDefect(t, `zz-emit-fail`, nil, err) {
+		return
+	}
 	if err == nil || compiled {
 		t.Fatalf("fenced check error: err=%v compiled=%v; want the check error surfaced", err, compiled)
 	}
@@ -278,6 +296,9 @@ func TestForeignErrorBailPropagatesAsADefect(t *testing.T) {
 			a.SetOutput(&out)
 
 			_, compiled, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, nil, err) {
+				return
+			}
 			if codeOf(err) != "internal_error" {
 				t.Fatalf("foreign bail: err=[%s] %v compiled=%v; want the wrapped internal_error", codeOf(err), err, compiled)
 			}

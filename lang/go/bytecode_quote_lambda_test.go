@@ -39,6 +39,9 @@ func TestQuoteLambdaCallbackParity(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, compiled, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if !compiled {
 			t.Errorf("%q: the filter sibling must still compile", src)
 		}

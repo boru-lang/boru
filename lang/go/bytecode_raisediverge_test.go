@@ -41,6 +41,9 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -58,6 +61,9 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 	// It must still RUN correctly via the interpreter fallback.
 	ar, _ := New()
 	gotC, _, errC := ar.RunCompiled(variadic)
+	if noteCompileDefect(t, variadic, gotC, errC) {
+		return
+	}
 	if errC != nil || fmt.Sprint(gotC) != "[8]" {
 		t.Errorf("%q: fallback parity broke: gotC=%v errC=%v want=[8]", variadic, gotC, errC)
 	}

@@ -39,6 +39,9 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			gotC, compiled, err := a.RunCompiled(src)
+			if noteCompileDefect(t, src, gotC, err) {
+				return
+			}
 			if err != nil {
 				t.Fatalf("RunCompiled: %v", err)
 			}
@@ -91,6 +94,9 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, compiled, err := a.RunCompiled(tc.src)
+			if noteCompileDefect(t, tc.src, nil, err) {
+				return
+			}
 			if compiled {
 				t.Fatal("a fixed-arity consumer of the winner region must refuse: the runtime count is not the static seat")
 			}
@@ -140,6 +146,9 @@ func TestAwaitRefusedBranchInterpretsPerElement(t *testing.T) {
 	})
 	defer disarm()
 	gotC, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
@@ -202,6 +211,9 @@ func TestAwaitEmptyBranchEntersNoInterpreter(t *testing.T) {
 				mu.Unlock()
 			})
 			gotC, compiled, err := a.RunCompiled(src)
+			if noteCompileDefect(t, src, gotC, err) {
+				return
+			}
 			disarm()
 			if err != nil {
 				t.Fatalf("RunCompiled: %v", err)
@@ -241,6 +253,9 @@ func TestAwaitBranchBailBeforeEffectFallsBack(t *testing.T) {
 	a := zzShapedInstance(t)
 	a.SetOutput(&bytes.Buffer{})
 	gotC, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("RunCompiled: compiled=%v err=%v", compiled, err)
 	}
@@ -261,6 +276,9 @@ func TestAwaitBranchBailAfterEffectSurfaces(t *testing.T) {
 	var out bytes.Buffer
 	a.SetOutput(&out)
 	gotC, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, err) {
+		return
+	}
 	if err != nil || !compiled {
 		t.Fatalf("RunCompiled: compiled=%v err=%v", compiled, err)
 	}

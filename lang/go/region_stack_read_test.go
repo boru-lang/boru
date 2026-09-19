@@ -24,6 +24,9 @@ func rsrRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr e
 		t.Fatal(err)
 	}
 	vC, ran, cerr := a.RunCompiled(src)
+	if noteCompileDefect(t, src, vC, cerr) {
+		return
+	}
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

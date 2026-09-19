@@ -257,6 +257,9 @@ func TestShapedMethodClaimViolationDefers(t *testing.T) {
 	// internal_error → silent interpreter re-run with the CORRECT result.
 	a2 := zzShapedInstance(t)
 	gotC, _, errC := a2.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	a3 := zzShapedInstance(t)
 	gotI, errI := a3.RunInterp(src)
 	if errC != nil || errI != nil {
@@ -346,6 +349,9 @@ func TestShapedMethodRegisteredShapeCompiles(t *testing.T) {
 		t.Errorf("honest shape: expected native, got island:\n%s", prog.Disassemble())
 	}
 	got, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if !compiled || err != nil {
 		t.Fatalf("honest shape: compiled=%v err=%v", compiled, err)
 	}

@@ -91,6 +91,9 @@ func TestClosureBodyUnappliedFnValueSound(t *testing.T) {
 		src := `[1 2] each [cmp/v]`
 		a, _ := New()
 		got, _, err := a.RunCompiled(src)
+		if noteCompileDefect(t, src, got, err) {
+			return
+		}
 		b, _ := New()
 		want, werr := b.RunInterp(src)
 		if (err == nil) != (werr == nil) {

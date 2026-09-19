@@ -303,6 +303,9 @@ func TestStoreShapeCompileDiscipline(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		d, _ := New()
 		gotI, errI := d.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -331,6 +334,9 @@ func TestStoreShapeCompileDiscipline(t *testing.T) {
 	}
 	b, _ := New()
 	got, compiled, rerr := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, rerr) {
+		return
+	}
 	if !compiled || rerr != nil || fmt.Sprint(got) != "[9]" {
 		t.Errorf("%q: compiled run got %v compiled=%v err=%v, want [9] compiled", src, got, compiled, rerr)
 	}

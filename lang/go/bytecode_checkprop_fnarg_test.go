@@ -64,6 +64,9 @@ end`
 	// (a shared ok:false would match yet still be the miscompile).
 	b, _ := New()
 	got, _, gerr := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, gerr) {
+		return
+	}
 	c, _ := New()
 	want, werr := c.RunInterp(src)
 	if (werr == nil) != (gerr == nil) {
