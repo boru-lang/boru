@@ -10732,3 +10732,92 @@ value with no producing event. The obstacle is timing — a loop registers
 the slot because it analyses its body in ROUNDS, while a branch arm is
 analysed once, so the arm's `def` records its store before any slot
 exists.
+
+---
+
+## F1–F2 (2026-09-19) — the interpreter fallbacks, removed
+
+**What the maintainer asked for.** "Remove all interpreter fallbacks,
+flags, modes, etc. Failure to compile is a plain bug only." This is the
+scaffolding [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md) §1 has described
+as scaffolding since it was written, brought forward from its planned
+Stage-9 retirement.
+
+**What was removed.** Eight mechanisms, which is more than anyone had
+counted, and the count is the finding:
+
+1. the `"check diagnostics"` carve-out in `RunAutoValues`;
+2. the fn-carrier-read (`FnCarrierReadSubstituted`) carve-out beside it;
+3. `BORU_COMPILE_FALLBACK=1`, the one-release hatch;
+4. the runtime-bail arm — an `internal_error`, a designed defer or a
+   foreign Go error rolled the registry back and re-ran the whole source;
+5. `Run`'s own explicit fallback, which is why removing it is what
+   surfaced the context-boundary rows;
+6. the CLI's try mode, its warning, and `CompileOff` / `CompileTry` /
+   `CompileForce` with `--no-compile`, `--force-compile`, `--compile` and
+   their three environment variables;
+7. the fn-value token seam's degrade (`invokeFnValue` handed the call to
+   the stepping path);
+8. the detached-callback retry (`InvokeCompiled` rode a bailed unit's
+   error back with `ran=false` so `InvokeCallback` re-ran the body through
+   `CallBoru`) and an `await` BRANCH's re-run of its raw tokens.
+
+The C1 effect fence went with them. It counted observable output escaping
+the check pass so a re-run could be blocked before it duplicated it; with
+no re-run there is nothing to fence. **That is the order that matters:**
+removing the fence first, and the seams second, left three fences reading
+clear and re-running unconditionally — the `await` test caught it,
+printing `once` twice. A fence is only ever as good as the arm it guards,
+and an unguarded arm looks exactly like a passing one.
+
+**What it exposed, which is the whole point.** Four genuine miscompiles
+the fallback had been absorbing, found the day it landed:
+
+- `unresolvable type operand` after an `undef`, twice (`type_shadow`);
+- `STORE_LOCAL stack underflow` in a net-zero `do` body;
+- NUR170 — a fn value read out of a Map and handed to a word taking
+  `(Any, Map)` arrives TRANSPOSED, so no signature matches and the
+  dispatch raises where the interpreter runs the emitter.
+
+Plus an inventory of the constructs the emitter cannot lower, which used
+to be a number nobody could see.
+
+**How the debt is counted.** Three ledgers, all ratchets on a bug count
+and never budgets:
+
+| ledger | what it counts | at |
+|---|---|---|
+| `test/go/langspec/compile_failures.tsv` | corpus rows that do not compile, per spec file | 53 |
+| `lang/go/compile_defect_test.go` | unit-test programs: do not compile / compile then bail | 281 / 32 |
+| `lang/go/test/compile_defect_test.go` | language tests answered on the reference engine | 111 |
+| `test/go/langspec/compiled_defect_test.go` | corpus rows that compile and then bail | measured |
+
+The corpus one is new and needed: a program that COMPILED and then
+abandoned the run used to be re-run, so the lanes agreed and five
+differential gates saw nothing. With no re-run those rows show the defect,
+and a gate reads it as a NEW miscompile — which it is not. It is an old
+one, finally visible, and `compiledDefect` is how a gate tells the two
+apart.
+
+**What did NOT get worse, stated because it looks like it did.** Two sweep
+ceilings TIGHTENED: compile failures 36 → 31, call-form failures 206 →
+200. Five seeds were classified as failures because the classifier read
+the try-mode fallback's error as a compile failure. They always compiled.
+
+**The method note.** Converting a test that asserted an answer the
+fallback supplied is not a free edit, and the two wrong ways were both
+tried here. Teaching a parity helper to tolerate a compile failure stops
+it reporting a compile REGRESSION — that is why every tolerant branch
+books against a ceiling. And injecting the booking as an early `return`
+in front of a helper's interpreter oracle swallows the oracle: five
+helpers reported that the ORACLE had moved when what had moved was the
+test. A booking that skips work is a fallback wearing a different hat;
+a booking that records and continues is not.
+
+**Still owed.** The island machinery (`OpFallback`, `lowerFallback`,
+`runFallback`) is untouched: islands are at 0 on the corpus and 2 in the
+sweep, and there is exactly ONE producer — `TryRecordFallback` at
+`compiler_dispatch_record.go:173` — so stopping them is a one-line change
+and deleting the machinery behind it is mechanical. `vmDefer`'s messages
+still say "deferring to the interpreter", which is now false in every one
+of them. Both are the next increment, and neither is load-bearing.
