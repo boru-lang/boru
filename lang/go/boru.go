@@ -1048,7 +1048,7 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		}
 		for _, d := range res.Diagnostics {
 			if !d.RuntimeMirror && d.Severity == SeverityError {
-				return nil, false, "", a.registry.BoruError(d.Code, d.Detail, d.Word)
+				return nil, false, "", diagnosticAsError(a.registry, d)
 			}
 		}
 		// Everything else is the compiler's defect, including a
@@ -1091,6 +1091,24 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 func (a *Boru) RunCompiledStrict(src string) ([]any, error) {
 	out, _, err := a.RunCompiled(src)
 	return out, err
+}
+
+// diagnosticAsError renders a blocking check diagnostic as the program's own
+// error. The whole payload travels — position, source fragment, notes and
+// suggestions — because this IS the error the user gets: an invalid program
+// fails the same way whatever runs it, and it used to be the interpreter
+// re-run that rendered it, with every hint intact. Dropping to a bare
+// code-and-detail here would make an invalid program's diagnostic worse than
+// it was, which is not a trade this change is entitled to make.
+func diagnosticAsError(r *native.Registry, d CheckDiagnostic) error {
+	src := ""
+	if r != nil {
+		src = r.Source
+	}
+	ae := core.MakeBoruErrorAt(d.Code, d.Detail, d.Word, src, "", core.SrcPos{Row: d.Row, Col: d.Col, Src: d.Src})
+	ae.Notes = append(ae.Notes, d.Notes...)
+	ae.Suggestions = append(ae.Suggestions, d.Suggestions...)
+	return ae
 }
 
 // compileFailureReason renders the emitter's reason for a compile_failed

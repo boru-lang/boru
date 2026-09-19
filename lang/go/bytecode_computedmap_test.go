@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -42,8 +41,8 @@ func TestComputedMapInFnBodyCompiles(t *testing.T) {
 			a, _ := New()
 			if _, err := a.RunCompiledStrict(c.src); err == nil {
 				t.Fatal("compiled path produced a value where the interpreter errors — divergence")
-			} else if !strings.Contains(err.Error(), "force-compile") {
-				t.Errorf("expected a force-compile refusal, got %q", err.Error())
+			} else if codeOf(err) != "compile_failed" {
+				t.Errorf("expected a compile failure, got %q", err.Error())
 			}
 		})
 	}

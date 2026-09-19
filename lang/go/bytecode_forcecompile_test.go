@@ -30,8 +30,8 @@ func TestRunCompiledStrict(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error for an uncompilable program, got nil")
 		}
-		if !strings.Contains(err.Error(), "force-compile") {
-			t.Errorf("error should name the force-compile refusal, got %q", err.Error())
+		if codeOf(err) != "compile_failed" {
+			t.Errorf("error should be the compile failure, got %q", err.Error())
 		}
 	})
 

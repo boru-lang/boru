@@ -205,15 +205,16 @@ func TestS7Lang_RunCompiledStrictCompileError(t *testing.T) {
 		t.Fatalf("expected syntax_error, got: %v", err)
 	}
 
-	// Negative sibling: an uncompilable-but-valid program returns the
-	// force-compile refusal (prog==nil arm, boru.go:727-729) — a distinct
-	// path that must NOT be the CompileCheck-error arm.
+	// Negative sibling: a program that does not compile takes the prog==nil
+	// arm — a distinct path that must NOT be the CompileCheck-error arm.
+	// `undefinedword123` is statically INVALID, so its own verdict is the
+	// error: the undefined word, with its position and hints intact.
 	_, err = a.RunCompiledStrict("undefinedword123")
 	if err == nil {
-		t.Fatal("expected force-compile refusal for uncompilable program")
+		t.Fatal("expected an error for an uncompilable program")
 	}
-	if !strings.Contains(err.Error(), "force-compile") {
-		t.Fatalf("expected force-compile refusal, got: %v", err)
+	if !strings.Contains(err.Error(), "undefined word") {
+		t.Fatalf("expected the program's own verdict, got: %v", err)
 	}
 }
 
