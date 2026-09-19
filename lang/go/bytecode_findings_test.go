@@ -4419,10 +4419,14 @@ def f (fn [[] [List] [ filter two [1 2 3] ]]) f`
 		prog, _, _, cerr := mustNew(t).CompileCheck(src)
 		if cerr == nil && prog != nil && !strings.Contains(prog.Disassemble(), "FALLBACK") {
 			// The multi-overload operand must not compile to a single closure
-			// unit; islanding or refusal are both sound.
+			// unit; islanding, refusal, or (since S1a) a dyn-body dispatch
+			// whose handler picks the overload at run time are all sound.
+			// Both engines RAISE on this program — filter delivers a
+			// {key,value} pair that neither overload of `two` takes — so
+			// parity here is error parity, code and message alike.
 			gotC, _, errC := mustNew(t).RunCompiled(src)
 			gotI, errI := mustNew(t).RunInterp(src)
-			if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+			if codeOf(errC) != codeOf(errI) || fmt.Sprint(errC) != fmt.Sprint(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 				t.Errorf("multi-overload operand diverged: compiled=%v/%v interp=%v/%v", gotC, errC, gotI, errI)
 			}
 		}

@@ -52,15 +52,6 @@ func crossmodCompiles(t *testing.T, src string) {
 	}
 }
 
-func crossmodRefuses(t *testing.T, src string) {
-	t.Helper()
-	crossmodSound(t, src) // must stay a SOUND interpreter fallback
-	a, _ := New()
-	if _, reason, _, err := a.CompileCheck(src); err == nil && reason == "" {
-		t.Fatalf("expected a refusal, but the shape compiled:\n  src: %s", src)
-	}
-}
-
 // The exact voxgig radix `edge-items` shape: `StructUtil.items` over the
 // DYNAMIC result of a Map field read, feeding `each` with a reach-lens body.
 // Previously refused "dynamic input at each"; now compiles + parity.
@@ -108,16 +99,15 @@ def edge-cols fn [[nd:Map] [List] [ ((nd "kids" get) StructUtil.items) each $.1 
 	}
 }
 
-// NEGATIVE: an `each` over a GENUINELY input-dependent Any (a `get` result,
-// whose declared return IS Any) must still refuse — the fix keeps only
-// concrete non-Any declared returns strict, so a dynamic Any element carrier
-// stays dynamic and `each` refuses, so the program is interpreted.
-func TestEachOverDynamicAnyStillRefuses(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	crossmodRefuses(t, `def f fn [[m:Map] [List] [ (m "xs" get) each $.0 ]]
+// An `each` over a GENUINELY input-dependent Any (a `get` result, whose
+// declared return IS Any) stays DYNAMIC — the fix keeps only concrete non-Any
+// declared returns strict. Until S1a that meant each refused and the program
+// was interpreted; since S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md)
+// each declares CompileDynBody, so the dispatch lowers to a poly re-match over
+// its own overloads and the live value picks the List form: compiled, with
+// parity. The dynamic carrier is still not narrowed — that is the point.
+func TestEachOverDynamicAnyCompiles(t *testing.T) {
+	crossmodCompiles(t, `def f fn [[m:Map] [List] [ (m "xs" get) each $.0 ]]
 (f {xs: [[1 2] [3 4]]})`)
 }
 

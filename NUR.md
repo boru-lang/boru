@@ -95,6 +95,7 @@ keep the two in sync in the same commit.
 | [NUR160](#nur160) | The apply of a FACTORY-built fn value does not fire on the compiled lane when a value sits below it on the stack: `7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply` is `[7 6]` interpreted and `[7 5 fn (Integer)]` compiled, while the clean-stack `def mk … end 5 (mk) apply` compiles with parity | the generated sweep, the prefix-stack call form of `apply` × factory |
 | [NUR161](#nur161) | An `afn` whose BODY is a fn value read from a container returns the value on both lanes — `def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5` is `fn (Integer)` — but with a value below on the stack the compiled lane APPLIES it to that value: `7 … f 5` is `[7 fn (Integer)]` interpreted and `[8]` compiled | the generated sweep, the prefix-stack call form of `afn` × container |
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
+| [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
 | [NUR163](#nur163) | A module member read IN PLACE is not the fn its local rebind is: `mini M.dbl 'ab'` and `emit M.up {a:1}` (and their parenthesised forms) are rejected by the words' signature-prefix validation — `mini_bad_signature`, `emit_bad_signature` — while `def g M.dbl/v end mini g 'ab'` answers `abab` and `def g (M.up) end emit g {a:1}` answers `UP`; `inspect (M.up)` reports a Function literal with no signatures where `inspect up` reports the defined fn and its signatures | the generated sweep, the module-export seeds of `emit`, `mini` and `parse` |
 | [NUR153](#nur153) | RESOLVED 2026-09-18 (the tape rule everywhere). One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
@@ -7013,6 +7014,39 @@ crash is what this record is for.
 **Where it belongs:** the recorder (which entry is emitted without a
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
+
+## NUR164 — a callback mismatch inside a native handler was a plain Go error, which the compiled lane read as its own bug {#nur164}
+
+**Status:** RESOLVED 2026-09-19 (S1a of design/FULL-COMPILATION-REPLAN.0.md).
+**Found:** the S1a pin `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}`, written to prove the poly re-match picks the Map overload the interpreter picks.
+
+**Rule:** a handler's verdict on the program is a BoruError. The
+compiled-by-default lane (`RunAutoValues` → `runtimeShouldFallback`)
+treats a non-Boru error off the VM as an INTERNAL error — a lowering or
+VM soundness bug — and resolves it by rolling the registry back and
+re-running the whole program on the interpreter.
+
+**Divergence.** Three sites raised a bare `fmt.Errorf` when a callback
+matched none of a fn value's signatures: the Map iteration of
+`each`/`fold`/`scan` (`no matching lambda signature for N argument(s)`,
+`lang/go/native/native_map_iter.go`), `filter` and `walk` (`no matching
+callback signature`). Both lanes raised the identical message, so every
+differential passed — and the auto lane answered `ran=false` with an
+interpreter re-run behind it: a correct compiled verdict reported as a
+bail, counted under the runtime-bail attribution, and blocked by the
+effect fence had the body printed first.
+
+```
+def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}
+  strict:  each: key "a": no matching lambda signature for 1 argument(s)
+  interp:  the same
+  auto:    the same — ran=false (re-run on the interpreter)
+```
+
+**Fix.** The three sites raise `signature_error` through `reg.BoruError`;
+the wrapping `each: key %q: %w` stays, and `errors.As` finds the code
+beneath it. The pin (`lang/go/bytecode_dynbody_callback_test.go`) asserts
+the compiled lane for the Map case.
 
 ## NUR163 — a module member read in place is not the fn its local rebind is {#nur163}
 

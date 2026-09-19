@@ -159,7 +159,7 @@ func TestForEachKeepsTheAmbiguousOverloadRefusal(t *testing.T) {
 	if prog != nil {
 		t.Fatalf("a gradual collection must refuse, not commit to the List overload:\n%s", prog.Disassemble())
 	}
-	if !strings.Contains(reason, "gradual-Any collection") {
+	if !strings.Contains(reason, "gradual-Any operand") {
 		t.Errorf("refused %q, want the ambiguous-overload refusal", reason)
 	}
 	b, err := New()

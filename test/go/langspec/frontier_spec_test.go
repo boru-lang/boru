@@ -687,8 +687,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// bytecode-migrated.tsv. The concrete-closure row keeps the code-body
 	// gate — a lambda factory's closure read inside the body's unit
 	// resolves to the FnDefInfo itself, whose home is outside the unit.
-	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2 3]` and `[(f 1)]` is the DATA — the read compiles as a typed list literal and the each islands on its three-value body (the interpreter keeps the top). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
-	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`:                {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
+	// GRADUATED 2026-09-19 (S1a of design/FULL-COMPILATION-REPLAN.0.md): the
+	// `each [1 2 3] [(f 1)]` and `filter [1 2] [gt 0 (h 5)]` forward-form rows
+	// (frontier-hof-audit.tsv:148, :166) — each/filter declare CompileDynBody,
+	// so the call over the computed-closure read lowers to a poly re-match
+	// over the word's own overloads instead of islanding on the multi-value
+	// body; both rows now compile natively with parity. The rows stay in
+	// frontier-hof-audit.tsv, asserted compiled by this gate.
+	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`: {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
 	// §9g — a computed closure at a WORD's argument slot. Found by a
 	// 690-program generated differential sweep (factory spelling x binding
 	// shape x consumption context); 24 diverged, in exactly two contexts.
@@ -696,7 +702,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// closure; the compiled model could leave the paren uncollapsed, so an
 	// Any-typed slot swallowed the FUNCTION and stranded the argument.
 	// Unmasked by 3d914ad — before the Stage 2 admission these refused.
-	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2]` and `[gt 0 (h 5)]` is the DATA — the read compiles into the data literal and the filter islands on its two-value body (both lanes raise filter's non-Boolean error). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
 	// §9h — the two binding stores (both P1 findings of the #397 review). A
 	// computed fn is not installed in Defs, so it lives only in the carrier
 	// table and the stores can disagree. Shadowing a live binding leaves the

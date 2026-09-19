@@ -301,7 +301,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 		if sig.CompileEffect.Has(core.CompileDynBody) {
 			return false
 		}
-		es.MarkUncompilable("higher-order `" + word + "` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match")
+		es.MarkUncompilable("higher-order `" + word + "` with a gradual-Any operand — the callback or the collection: ambiguous overload, no static commit and no poly re-match (the word does not declare CompileDynBody)")
 		return true
 	}
 

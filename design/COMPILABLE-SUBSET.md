@@ -206,10 +206,23 @@ user still gets an answer while the case is open:
   lambda has a single own sig and the word has a callback convention; the BODY
   lambda may carry LEXICAL captures (resolved to compiled homes and threaded
   at OpPushClosure — the mini-redis KEYS shape) and the collection operand may
-  be a typed non-dynamic carrier (a computed `keys` result). Still refusing:
-  multi-overload lambdas, DYNAMIC (gradual) collections (the pair-vs-KeyVal
-  convention is ambiguous), captures on the extras/hook path, and unreachable
-  captures.
+  be a typed non-dynamic carrier (a computed `keys` result). Since S1a
+  (2026-09-19, [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md)
+  §5) `each`/`fold`/`scan`/`filter` declare `CompileDynBody`, so a
+  gradual-Any operand — the COLLECTION (`c:Any` at run time a List or a
+  Map, where the pair-vs-KeyVal convention is ambiguous) or the CALLBACK (a
+  class field, a map field, a dynamic key, a factory result, a code body
+  read from a flex) — no longer refuses at the ambiguous-overload gate: the
+  site lowers to a CALL_NATIVE poly re-match over the word's own overloads
+  (`tryRecordDynBody`, arming DynEnv mode) and the handler picks the
+  overload the live value matches, running the callback through the
+  RunResolved seam. That seam is counted by the interp-entry census
+  (52 → 102 rows) and the engine-entry census (366 → 489), the G-lane-first
+  landing the re-plan names, which S1b retires by lowering the re-matched
+  overload's body natively. Still refusing: `for-each` (nets no result, so
+  the dyn-body seat cannot hold it) and `walk` (its own code-body gate) over
+  the same shapes, captures on the extras/hook path, and unreachable
+  captures. A multi-overload lambda at the four words takes the same seat.
 - **Quoted-operand word** — usurp / force-arity / ref-family (results re-stepped)
   — except `get`/`getr`/`set` and module-inner natives over inert atom keys.
 - **Dispatch-modifier VALUE form over a computed fn** (the fn-operand pilot

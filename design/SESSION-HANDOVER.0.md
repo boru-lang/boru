@@ -102,17 +102,18 @@ every run's summary) — and a REGRESSION ceiling, the last merged value,
 which only falls and which the default lane asserts.
 `make gate-status` prints both for every gate, refreshes
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
-and appends the instant censuses. The values on 2026-09-17, head of PR
-#471 (`658fc85`; increments 1–73 are on `main`):
+and appends the instant censuses. The values on 2026-09-19, head of the S1a
+change (2026-09-17's values, head of PR #471, in the history column;
+increments 1–73, P0, S0 and S1a are on `main`):
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 113 | 0 | the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too |
-| the generated sweep (S0): cells failing to compile / islanded / diverged | 44 / 5 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned |
-| compute gaps | 104 | 0 | 107 at the expansion; three fell when NUR153 closed |
-| interpreter islands | 10 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed |
-| interp-entry census rows | 52 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed |
-| engine entries / runtime defers | 366 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed |
+| compile failures | 60 | 0 | 113 at the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 on 2026-09-19 (S1a: each/fold/scan/filter declare CompileDynBody) |
+| the generated sweep (S0): cells failing to compile / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned. 44 / 5 → 36 / 2 on 2026-09-19 (S1a); 149 cells pass, 2086 variants with 206 failing — the six new failures are variants of cells S1a released |
+| compute gaps | 56 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 at S1a |
+| interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a (the fn-value callbacks now lower to a poly re-match) |
+| interp-entry census rows | 102 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed; 52 → 102 at S1a — the fifty-one rows the ambiguity gate released run compiled and enter the interpreter once through the RunResolved seam (the G-lane-first landing; S1b retires it), measured row by row against `main` |
+| engine entries / runtime defers | 489 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 at S1a, the same rows as the census (Engine.Run×489, RunResolved×179) |
 | known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
 | type-soundness violations | 5 | 0 | checker debt the expansion exposed |
 | diagnostic parity / armed-only | 358 / 16 | 0 / 0 | checker debt the expansion exposed |
@@ -143,7 +144,11 @@ the end of each step of §5, not each increment.
 > still owes the module exports as rows, signature-level cells, and the
 > corpus ratchets re-based on the sweep; **S1a**,
 > the gradual-Any collection overload commitment, is carved out ahead of S1
-> as 19 rows on one mechanism; **S2 splits**, because only 35 of its 94
+> as 19 rows on one mechanism — **S1a LANDED 2026-09-19**, in one
+> session-day: each/fold/scan/filter declare `CompileDynBody`, the nineteen
+> rows and thirty-one more compile (113 → 60), islands 10 → 0, at the cost
+> of the interp-entry census (52 → 102) and engine entries (366 → 489),
+> which is the G-lane-first landing S1b retires; **S2 splits**, because only 35 of its 94
 > signatures are a sweep and the other 59 need a mechanism that depends on
 > S1b; and S2 is judged by `undeclaredHandlerCeiling`, never by the compile-
 > failure count. The binding gate is the full unfiltered corpus at about

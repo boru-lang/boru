@@ -107,7 +107,12 @@ func invokeBodyTop(reg *Registry, body Value, inputs []Value) (Value, bool, erro
 func (mb mapBody) callLambda(reg *Registry, args []Value) (Value, bool, error) {
 	sig := MatchFnSig(mb.fn, args)
 	if sig == nil {
-		return Value{}, false, fmt.Errorf("no matching lambda signature for %d argument(s)", len(args))
+		// A BoruError, not a bare fmt.Errorf (NUR164): the compiled-by-default
+		// lane reads every non-Boru error off the VM as an internal bail and
+		// re-runs the whole program on the interpreter, so a plain Go error
+		// here turned a correct compiled verdict into a silent re-run.
+		return Value{}, false, reg.BoruError("signature_error",
+			fmt.Sprintf("no matching lambda signature for %d argument(s)", len(args)), "")
 	}
 	// InvokeCallbackFn, not reg.CallBoru: a lambda passed in from another module
 	// runs on its DEFINING registry (design/FUNCTION-VALUE-SCOPE.0.md), and a

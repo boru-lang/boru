@@ -743,11 +743,17 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	}
 	es.SiteCounts[SiteDynamic]++
 	// A GRADUAL (Any-widened) operand could be either overload (do's List
-	// code-body vs Map value-eval): record a POLY re-match over the word's
+	// code-body vs Map value-eval; each's Function-versus-List callback, or
+	// its List-versus-Map collection): record a POLY re-match over the word's
 	// own sigs — the runtime value picks the overload exactly as the
-	// interpreter's dispatch does. A strictly-List operand bakes the sig.
+	// interpreter's dispatch does. The body being Dynamic is the `do` case;
+	// a higher-order word (S1a: each/fold/scan/filter declare the flag) may
+	// have the gradual operand in ANY slot — a lambda over a collection the
+	// check pass could not type — and then the sig it committed is a guess,
+	// so the re-match covers every operand that leaves two overloads
+	// reachable. Fully-typed operands bake the sig.
 	call := emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}
-	if body.Dynamic {
+	if body.Dynamic || (check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2) {
 		call.sig = nil
 		call.poly = true
 	}

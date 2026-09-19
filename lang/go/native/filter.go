@@ -150,7 +150,9 @@ func runFilterCallback(r *Registry, cb Value, cbArgs []Value) ([]Value, error) {
 	}
 	sig := MatchFnSig(cb, cbArgs)
 	if sig == nil {
-		return nil, fmt.Errorf("filter: no matching callback signature")
+		// A BoruError, not a bare fmt.Errorf (NUR164): a non-Boru error off
+		// the VM reads as an internal bail and re-runs the interpreter.
+		return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 	}
 	var fnDef *FnDefInfo
 	if fd, ok := cb.Data.(FnDefInfo); ok {

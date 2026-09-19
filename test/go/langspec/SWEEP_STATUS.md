@@ -17,15 +17,15 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `do` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `dot` | ✓ 14/14 | — | — | — | — | — | — |
 | `dotr` | ✓ 14/14 | — | — | — | — | — | — |
-| `each` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | F | ✓ 13/14 | ✓ 14/14 |
+| `each` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `emit` | ✓ 12/14 | n/a | ✓ 12/14 | F | F | ✓ 12/14 | n/a |
 | `enum` | ✓ 10/14 | n/a | n/a | n/a | n/a | n/a | ✓ 10/14 |
 | `error` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | F | ✓ 13/14 | ✓ 14/14 |
+| `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `fn` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | n/a |
 | `fnpred` | ✓ 7/14 | ✓ 7/14 | ✓ 8/14 | ✓ 5/14 | ✓ 8/14 | ✓ 8/14 | ✓ 8/14 |
 | `fnsig` | ✓ 11/14 | n/a | n/a | n/a | n/a | C | ✓ 11/14 |
-| `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | F | ✓ 13/14 | ✓ 14/14 |
+| `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `for` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
 | `for-each` | F | ✓ 14/14 | ✓ 12/14 | F | F | F | F |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 5/14 | ✓ 13/14 | n/a |
@@ -44,7 +44,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `raise` | ✓ 14/14 | — | — | — | — | — | — |
 | `reach` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `receive` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
-| `scan` | ✓ 14/14 | I | I | F | F | I | ✓ 14/14 |
+| `scan` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `set` | ✓ 14/14 | — | — | — | — | — | — |
 | `spawn` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `stack-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 5/14 | ✓ 13/14 | n/a |
@@ -61,9 +61,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 138
-- failed: 41
-- islanded: 5
+- pass: 149
+- failed: 33
+- islanded: 2
 - DIVERGED: 3
 - PANIC: 0
 - HUNG: 0
@@ -88,18 +88,12 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `codequote` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (codequote (mk))` — runtime bail: did not run compiled (err=<nil>)
 - `codequote` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end typeof (codequote m.f)` — operand of unknown provenance or not statically materialisable at typeof
 - `codequote` module-export — **failed**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (codequote M.inc)` — operand of unknown provenance or not statically materialisable at typeof
-- `each` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end each (mk) [1 2 3]` — function-valued operand at each (Stage 3)
-- `each` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end each m.f [1 2 3]` — higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-mat…
 - `emit` factory — **failed**: `import "boru:emitlang" end def mk fn [[][Function][(fn [[value:Any opts:Map] [String] ['UP']])]] end emit (mk) {a:1}` — residual value of unknown provenance
 - `emit` container — **failed**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — runtime bail: did not run compiled (err=<nil>)
-- `filter` factory — **failed**: `def mk fn [[][Function][([p:Any] => [p.value gt 1])]] end filter (mk) [1 2 3]` — function-valued operand at filter (Stage 3)
-- `filter` container — **failed**: `def m {f: ([p:Any] => [p.value gt 1])} end filter m.f [1 2 3]` — higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-m…
 - `fnsig` module-export — **check-reject**: `import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1` — check error: [boru/fnsig_invalid_spec]: fnsig: argument must be a concrete list   --> 1:82   1 | import module [def sg f…
-- `fold` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a add b])]] end fold (mk) [1 2 3 4] 0` — function-valued operand at fold (Stage 3)
-- `fold` container — **failed**: `def m {f: ([a:Integer b:Integer] => [a add b])} end fold m.f [1 2 3 4] 0` — higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-mat…
 - `for-each` literal — **failed**: `def acc (flex []) end for-each [acc swap push] [1 2 3] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `for-each` factory — **failed**: `def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc` — function-valued operand at for-each (Stage 3)
-- `for-each` container — **failed**: `def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc` — higher-order `for-each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re…
+- `for-each` container — **failed**: `def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc` — higher-order `for-each` with a gradual-Any operand — the callback or the collection: ambiguous overload, no static com…
 - `for-each` module-export — **failed**: `import module [def acc (flex []) def stp fn [[e:Integer][Any][acc push e]] export "M" {stp: stp/v acc: acc}] end for-eac…` — function-valued operand at for-each (Stage 3)
 - `for-each` computed — **failed**: `def acc (flex []) end def b (quote [acc swap push]) end for-each b [1 2 3] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `force-arity` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end force-arity 2 (mk) 1 2` — residual value of unknown provenance
@@ -113,11 +107,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `mini` container — **check-reject**: `import "boru:minilang" end def m {d: ([src:String opts:Map] => [src add src])} end mini m.d 'ab'` — check error: [boru/mini_error]: mini: the kind must be a literal name   --> 1:84   1 | import "boru:minilang" end def m …
 - `parse` container — **check-reject**: `import "boru:parselang" end def m {p: ([source:String opts:Map] => [source])} end parse m.p 'x'` — check error: [boru/parse_error]: parse: the kind must be a literal name   --> 1:83   1 | import "boru:parselang" end def…
 - `receive` module-export — **failed**: `import module [def cl fn [[][List][(quote [{} [1] after 0 [0]])]] export "M" {cl: cl/v}] end receive M.cl` — code-body word receive (Stage 2)
-- `scan` lambda — **islanded**: `scan ([n:Integer] => [n add 1]) [1 2 3]` — program embeds an OpFallback island
-- `scan` named-fn — **islanded**: `def inc fn n:Integer Integer [n add 1] end scan inc/v [1 2 3]` — program embeds an OpFallback island
-- `scan` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end scan (mk) [1 2 3]` — function-valued operand at scan (Stage 3)
-- `scan` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end scan m.f [1 2 3]` — higher-order `scan` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-mat…
-- `scan` module-export — **islanded**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end scan M.inc [1 2 3]` — program embeds an OpFallback island
 - `stack-args` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end 10 3 stack-args (mk)` — unconsumed fn-value carrier in residual (closure render)
 - `usurp` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end usurp (mk) 10 3` — residual value of unknown provenance
 - `walk` literal — **failed**: `def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} [dot path acc swap push] end size acc` — operand of unknown provenance or not statically materialisable at size
@@ -136,7 +125,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `afn` factory · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `afn` factory · each-body — **refused** — code-body word each (Stage 2)
+- `afn` factory · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · module-body — **refused** — unconsumed fn-value carrier in residual (closure render)
 - `afn` factory · prefix-stack — **refused** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` container · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -152,7 +141,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` factory · if-then — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `apply` factory · if-else — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `apply` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` factory · each-body — **refused** — code-body word each (Stage 2)
+- `apply` factory · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` factory · module-body — **refused** — trailing fn-value apply over a call result (runtime quote state unknown)
 - `apply` factory · suffix-def — **refused** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `apply` factory · prefix-stack — **DIVERGED** — value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]
@@ -170,12 +159,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` container · if-then — **refused** — if: then-branch result of unknown provenance
 - `def` container · if-else — **refused** — if: else-branch result of unknown provenance
 - `def` container · for-body — **refused** — for: body nets multiple values per iteration
-- `def` container · each-body — **refused** — code-body word each (Stage 2)
+- `def` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · module-body — **refused** — runtime bail: did not run compiled (err=<nil>)
 - `def` module-export · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` computed · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `each` named-fn · for-body — **refused** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `each` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `each` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` literal · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` literal · prefix-stack — **interp-reject** — [boru/uncalled_function]: call to 'emitlang-host-json' matched no signature   --> 1:1   1 | 7 import "boru:emitlang" end…
@@ -192,6 +182,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `enum` computed · for-body — **refused** — check diagnostics
 - `enum` computed · suffix-def — **interp-reject** — [boru/signature_error]: deq is still waiting for 1 argument(s) when `def` begins its own dispatch — a function word is…
 - `filter` named-fn · for-body — **refused** — fn 'big' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `filter` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `filter` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `fn` literal · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fnpred` literal · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `]` — nothing valid can appear here   --> 1:43   1 | (def Even fnpred n:Integer [eq 0 …
@@ -248,6 +239,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `fnsig` computed · lambda-body — **refused** — check diagnostics
 - `fnsig` computed · for-body — **refused** — check diagnostics
 - `fold` named-fn · for-body — **refused** — fn 'sum2' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `fold` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fold` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 3 — [0 2 4]   --> 1:38   1 | def zzvlam ([] => [for 3 [i mu…
 - `for` literal · do-catch — **refused** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
@@ -265,7 +257,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `force-arity` container · if-then — **refused** — if: then-branch result of unknown provenance
 - `force-arity` container · if-else — **refused** — if: else-branch result of unknown provenance
 - `force-arity` container · for-body — **refused** — loop body apply: leading fn value not the sole residual
-- `force-arity` container · each-body — **refused** — code-body word each (Stage 2)
+- `force-arity` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · module-body — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
 - `force-arity` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` named-fn · for-body — **refused** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -276,7 +268,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `forward-args` container · if-then — **refused** — if: then-branch result of unknown provenance
 - `forward-args` container · if-else — **refused** — if: else-branch result of unknown provenance
 - `forward-args` container · for-body — **refused** — loop body apply: leading fn value not the sole residual
-- `forward-args` container · each-body — **refused** — code-body word each (Stage 2)
+- `forward-args` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · module-body — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
 - `forward-args` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `gen` literal · fn-body — **refused** — check diagnostics
@@ -311,6 +303,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `parse` module-export · prefix-stack — **refused** — residual shape beyond Stage 1 (call result above a literal)
 - `quote` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `quote` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `scan` named-fn · for-body — **refused** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `scan` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `scan` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` named-fn · for-body — **refused** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `stack-args` container · fn-body — **refused** — unconsumed fn-value carrier in residual (closure render)
 - `stack-args` container · lambda-body — **refused** — unconsumed fn-value carrier in residual (closure render)
@@ -319,7 +314,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `stack-args` container · if-then — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `stack-args` container · if-else — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `stack-args` container · for-body — **refused** — for: body nets multiple values per iteration
-- `stack-args` container · each-body — **refused** — code-body word each (Stage 2)
+- `stack-args` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` container · module-body — **refused** — unconsumed fn-value carrier in residual (closure render)
 - `stack-args` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `undef` literal · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -331,7 +326,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `usurp` container · if-then — **refused** — if: then-branch result of unknown provenance
 - `usurp` container · if-else — **refused** — if: else-branch result of unknown provenance
 - `usurp` container · for-body — **refused** — loop body apply: leading fn value not the sole residual
-- `usurp` container · each-body — **refused** — code-body word each (Stage 2)
+- `usurp` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · module-body — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
 - `usurp` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` literal · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -355,7 +350,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` lambda · if-then — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · if-else — **refused** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · for-body — **refused** — for: body nets multiple values per iteration
-- `word` lambda · each-body — **refused** — code-body word each (Stage 2)
+- `word` lambda · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` lambda · module-body — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
 - `word` named-fn · for-body — **refused** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `word` named-fn · each-body — **refused** — fn each$body: arm-resident def `dbl` of unknown provenance

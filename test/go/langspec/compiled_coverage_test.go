@@ -143,8 +143,14 @@ func rootCause(bucket string) string {
 // CallBoruNamed sweeping the deferred residual after teardown) removes the
 // seam that islanded two callback rows. Attributed by measurement, not
 // inference: the same gate run at e04fa21 — the commit before NUR153 closed
-// — reports 12, and this head reports 10. -> 0 (the maintainer's direction).
-const islandCeilingLive = 10
+// — reports 12, and this head reports 10. -> 0 (2026-09-19, S1a): every
+// remaining island was a fn-VALUE callback the closure path declined; with
+// each/fold/scan/filter declaring CompileDynBody the dispatch lowers to a
+// poly re-match CALL_NATIVE instead of an OpFallback span, and the corpus
+// islands at 0 — the maintainer's end state, now held here as the ceiling.
+// The callback still runs through the handler's interpreter seam, which
+// the interp-entry census counts (its ceiling rose by the same rows).
+const islandCeilingLive = 0
 
 // correctErrorCeiling is the REGRESSION ceiling of the correct-error bucket
 // (end state 0): code-bodies.tsv:L173 (2026-09-17), an `unpack` inside a fn

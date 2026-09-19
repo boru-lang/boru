@@ -148,7 +148,7 @@ Design-bound work barely moves; sweep and deletion work moves most.
 |---|---|---|---:|---:|
 | **P0** | per-file compile-failure ratchets | a filtered run asserts its own subset | — | **1** |
 | **S0** | the generated sweep; the coverage-matrix gate; every ratchet re-based | no empty matrix cell | 6–10 | **4–7** |
-| **S1a** | gradual-Any collection overload commitment | the 19 higher-order rows compile | — | **3–6** |
+| **S1a** | gradual-Any collection overload commitment | the 19 higher-order rows compile | — | **3–6** (landed in 1, 2026-09-19) |
 | **S1b** | fn values as ONE convention; the Apply kernel; the unit cache | islands 10 → 0; fn-value failures → 0 | 15–25 | **10–17** |
 | **S2a** | the 35 declaration-only handlers (quoted 28, fn-operand 7) | `undeclaredHandlerCeiling` 94 → 59 | — | **5–8** |
 | **S2b** | the 59 code-body handlers, on units | ceiling 59 → 0; code-body failures → 0 | — | **10–16** |
@@ -178,6 +178,27 @@ is the §9 prediction ("S0 will probably raise them") coming true on its
 first day. What S0 still owes: the module exports as rows (264
 signatures across 11 modules), signature-level cells, and every corpus
 ratchet re-based on the sweep's defect list.
+
+**S1a landed 2026-09-19**, in one session-day against the three to six
+estimated, on the mechanism §4 predicted: no unit cache, no Apply kernel.
+`each`, `fold`, `scan` and `filter` declare `CompileDynBody`, so a dispatch
+whose gradual-Any operand — the collection, or the callback read from a
+class field, a map field, a dynamic key or a factory — leaves two
+overloads reachable records a poly re-match over the word's own overloads
+instead of refusing at the ambiguity gate; the handler picks the overload
+the live value matches. All nineteen rows compile with parity, and the
+gate held more behind them than the nineteen: corpus compile failures
+113 → 60, islands 10 → 0, compute gaps 104 → 56, reducible rows 17 → 3,
+the sweep's failing cells 44 → 36 and its islands 5 → 2, `kg/main.boru`
+and two frontier rows graduated. The trade is the one §4 named as the
+G-lane-first landing: the re-matched callback runs through the
+RunResolved seam, so the interp-entry census rose 52 → 102 rows and the
+engine-entry census 366 → 489 — measured row by row against `main`, all
+fifty-one entering rows the ones the gate released — and S1b retires them
+by lowering the re-matched overload's body natively. `for-each` (nets no
+result) and `walk` (its own code-body gate) keep the refusal. Found on the
+way: NUR164, a callback mismatch inside a handler raised a plain Go error
+the compiled-by-default lane read as its own bug.
 
 **Conditional further reduction.** If P0 lands and filtered runs assert,
 the four gate-bound steps (S0, S2a, S4, S7) should compress a further

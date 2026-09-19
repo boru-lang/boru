@@ -10228,3 +10228,98 @@ generated falsifier for the call-form axis beyond `vary`'s fourteen.
 asserts there, under the filter) and adds about 15 s to it; the one gate
 run measured on this change took 155 s, with the whole langspec package
 running alongside on the same four cores. Shard 9 takes the gate in CI.
+
+## S1a — the gradual-Any collection overload commitment (2026-09-19)
+
+Started the morning S0's first increment merged, on `main` at the merge of
+PR #473. The re-plan's §4 finding, acted on: the third nineteen of the
+corpus's refusals were never a fn-value LOWERING problem — the callback
+lowered fine — but a higher-order word unable to COMMIT to an overload
+because one operand was statically `Any`.
+
+**What it is.** `each`, `fold`, `scan` and `filter` declare
+`CompileDynBody` (`lang/go/native/native_array.go`, `natives.go`) — the
+flag `do` has carried since DO-STRUCTURE-COMPILATION §8. The recorder's
+ambiguity gate (`tryRecordClosure`, `compiler/go/callable_words.go`) still
+declines when a gradual-Any operand leaves two of the word's overloads
+reachable, but the decline now falls through to `tryRecordDynBody`
+(`compiler_dispatch_record.go`), which records a CALL_NATIVE poly re-match
+over the word's own overloads — `call.poly` whenever any dynamic operand
+leaves two or more reachable, not only when the body itself is dynamic —
+and arms the program's DynEnv mode; at run time the handler picks the
+overload the live value matches, exactly as the interpreter's dispatch
+does. The gate's dynamic operand turned out to be the CALLBACK as often
+as the collection — a class field or a map field read through `dot`
+returns Any, a dynamic key or a factory result too — so the widening had
+to key on any dynamic operand, and the refusal message now says which:
+"higher-order `for-each` with a gradual-Any operand — the callback or the
+collection: ambiguous overload, no static commit and no poly re-match (the
+word does not declare CompileDynBody)".
+
+**Measured.** All nineteen rows compile with parity, and the gate had held
+more behind them:
+
+| gate | before | after |
+|---|---:|---:|
+| corpus compile failures (`compile_failures.tsv`) | 113 | 60 |
+| interpreter islands | 10 | 0 |
+| compute gaps | 104 | 56 |
+| reducible (tier-2) rows | 17 | 3 |
+| the sweep: cells failing / islanded | 44 / 5 | 36 / 2 |
+| the sweep: call-form variants failing | 200 | 206 |
+| real programs ledgered | 14 | 13 (`kg/main.boru` compiles) |
+| frontier ledger | | −2 (`frontier-hof-audit.tsv:148`, `:166` compile natively) |
+| interp-entry census rows | 52 | 102 |
+| engine entries | 366 | 489 |
+| runtime defers | 8 | 8 |
+
+The per-file ledger moved in five files: callbacks.tsv 25 → 20,
+code-bodies.tsv 30 → 13, each-variants.tsv 12 → 3, fold-map-filter.tsv
+25 → 7, module-composition.tsv 11 → 7. The sweep's six new variant
+failures are call forms of the eleven cells S1a released (each/filter/
+fold/scan × factory and scan × named-fn under `for-body`, scan ×
+module-export under `each-body`); no variant that passed before fails
+now — the sets were diffed. The differential passed.
+
+**The trade, stated.** The two censuses ROSE, and that is the
+G-lane-first landing the re-plan's §4 named, not a regression hidden in a
+ceiling move: a released row runs compiled and enters the interpreter once,
+through the `RunResolved` seam the dyn-body handler uses for the callback
+(Engine.Run 1, RunResolved 1 per row; 76 of the 102 rows). Attributed by
+measurement, not inference — `BORU_LOG_CENSUS_ROWS=1` on `origin/main`
+(52 rows) against this tree (102): fifty-one rows entered, every one a row
+the gate released (fold-map-filter.tsv ×17, code-bodies.tsv ×14,
+callbacks.tsv ×10, each-variants.tsv ×8, module-composition.tsv ×2), and
+one left (fold-map-filter.tsv:168, its fold now native). The ceiling
+comments name them. S1b retires the seam by lowering the re-matched
+overload's body natively.
+
+**What stays refused, and why.** `for-each` nets no result, which the
+dyn-body seat requires (the result is marked variadic; a 0-out word has
+nothing to seat), and `walk` keeps its own code-body gate — both pinned
+in `lang/go/bytecode_dynbody_callback_test.go` with the message that
+names the gap. The each-body args shape, the computed each body, the
+Atom-lambda-over-computed-keys shapes and the lambda over a dynamic map
+all compiled on this change; eight lang/go pins that asserted their
+refusal now assert their parity (`args_closure_body_test.go`,
+`frozen_module_read_test.go`, `bytecode_quote_lambda_test.go`,
+`bytecode_gradual_each_test.go`, `bytecode_stage2_crossmod_elem_test.go`,
+`closure_read_model_test.go`, `nested_body_fn_carrier_test.go`,
+`bytecode_findings_test.go`), and `analysis_order_test.go`'s two
+rebind-in-a-multi-run-body rows still refuse, now at the dyn-body seat's
+twin-regime gate rather than the word's.
+
+**Found on the way — NUR164** (resolved). The Map pin `def f fn
+[[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised
+the identical `no matching lambda signature` on both lanes and reported
+`ran=false`: the Map iteration of each/fold/scan, `filter` and `walk`
+raised a bare `fmt.Errorf`, and the compiled-by-default lane reads every
+non-Boru error off the VM as an INTERNAL bail — rollback, whole-program
+re-run on the interpreter. Invisible to every differential (the answers
+agree); a correct compiled verdict reported as a bail. The three sites
+raise `signature_error` now.
+
+**Cost.** One session-day against the three to six estimated. The full
+langspec package: 13 min on four cores alongside the other runs;
+`make cover-gate-compiler` passes; `cd compiler/go && go test ./...`
+passes; the whole `lang/go` suite passes in 93 s.

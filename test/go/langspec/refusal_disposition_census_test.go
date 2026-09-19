@@ -86,7 +86,7 @@ var refusalDispositions = map[string]refusalDisposition{
 	"check/go/method_shape.go:refuseArrival#1":             {dispGeneric, 3, "the member-arrival model's declines (the NUR038 seal): admit the stack form, the computed first argument, the anonymous member"},
 
 	// compiler/go — the recorder.
-	"compiler/go/callable_words.go:tryRecordClosure#1":                {dispGeneric, 4, "a gradual-Any collection's List-versus-Map overload: a runtime re-match"},
+	"compiler/go/callable_words.go:tryRecordClosure#1":                {dispGeneric, 4, "a gradual-Any callback or collection: a runtime re-match — each/fold/scan/filter take it through CompileDynBody (S1a, 2026-09-19); the words that do not declare the flag still refuse here"},
 	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#1": {dispGeneric, 4, "a code body naming a fn-local fn (NUR037), narrowed by the seventy-second increment to a CAPTURING local fn (a closure the frame placement cannot bake) or a def the unit's frames do not hold: a capture-free local fn's def is placed as a registry-visible install for the frame and the body resolves it on every path"},
 	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#2": {dispGeneric, 6, "a context read inside an inline-lowered body: a per-region context frame (family K)"},
 	"compiler/go/emit.go:resolveOperand#1":                            {dispGeneric, 5, "a body literal embedding an enclosing container: construct the spine per call over a live member read"},

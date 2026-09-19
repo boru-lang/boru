@@ -108,10 +108,13 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 			"fn do$body: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
 		// A multi-run body reading a name it rebinds: the read is
 		// iteration-varying, its residual re-push would trail the resident
-		// install, so the closure declines to the word's Stage-2 refusal.
+		// install, so the closure declines. Since S1a (2026-09-19, each
+		// declares CompileDynBody) the decline no longer lands on the word's
+		// Stage-2 refusal but on the dyn-body seat's twin-regime gate: the
+		// body's bind transition has no stream placement in a multi-run body.
 		// Measured before: `[9 9]` for `[5 9]`, `[6 7]` for `[5 6]`.
-		{`def k 5  [1 2] each [ k  def k 9 ]`, "code-body word each (Stage 2)"},
-		{`def k 5  [1 2] each [ k  def k (k add 1) ]`, "code-body word each (Stage 2)"},
+		{`def k 5  [1 2] each [ k  def k 9 ]`, "twin regime: a bind transition has no stream placement"},
+		{`def k 5  [1 2] each [ k  def k (k add 1) ]`, "twin regime: a bind transition has no stream placement"},
 		// A resident def whose value is a live read of the same body's
 		// rebound name has no re-pushable source for the resident install.
 		{`def k 5  [1 2] each [ def t k  def k 9  t ]`, "arm-resident def `t` of unknown provenance"},
