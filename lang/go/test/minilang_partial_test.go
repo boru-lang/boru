@@ -69,8 +69,8 @@ func TestMiniPartialTypedParam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := runReference(t, a, miniImp +
-		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  ` +
+	got, err := runReference(t, a, miniImp+
+		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  `+
 		`find-with (+re/[a-z]+/) "AbcD"`)
 	if err != nil {
 		t.Fatalf("typed-param call: %v", err)
