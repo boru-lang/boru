@@ -99,7 +99,6 @@ func TestReturnedClosureParkInFnBodyRaisesTheCountError(t *testing.T) {
 // closure is a bare-name dispatch whose closure shape the compiler cannot
 // recover. Both answer through the interpreter.
 func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
 		{mk1 + `  def g fn [[] [Any Any] [mk 7]] g`, "dynamic value precedes residual args (fn-value-call boundary)"},
 		// A user fn returning a fn it was HANDED: the interpreter renders the
@@ -132,13 +131,14 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 		if !strings.Contains(reason, c.reason) {
 			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", c.src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", c.src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence on the fallback: compiled=%v/%v interp=%v/%v", c.src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it, so there is no compiled answer to compare:
+		// the failure is booked as the defect it is (compile_defect_test.go).
+		requireCompileDefect(t, c.src, gotC, errC)
 	}
 }
 

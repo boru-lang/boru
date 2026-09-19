@@ -14,7 +14,7 @@ import (
 
 func TestW4EvalCompileTry(t *testing.T) {
 	var out bytes.Buffer
-	if err := Eval(&out, "2 mul 21", lang.Options{}, CompileTry); err != nil {
+	if err := Eval(&out, "2 mul 21", lang.Options{}); err != nil {
 		t.Fatalf("Eval(CompileTry): %s", err)
 	}
 	if !strings.Contains(out.String(), "42") {

@@ -104,7 +104,7 @@ func TestParseLangTabnasKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(`import "boru:parselang"  ParseLang.kinds`)
+	res, err := runReference(t, a, `import "boru:parselang"  ParseLang.kinds`)
 	if err != nil {
 		t.Fatalf("kinds: %v", err)
 	}

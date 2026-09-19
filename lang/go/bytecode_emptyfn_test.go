@@ -33,6 +33,9 @@ func TestEmptyBodyFnLowers(t *testing.T) {
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		d, _ := New()
 		gotI, _ := d.RunInterp(c.src)
 		if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != c.want {
@@ -55,6 +58,9 @@ func TestEmptyBodyFnVoidConsumed(t *testing.T) {
 	} {
 		b, _ := New()
 		_, _, errC := b.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		d, _ := New()
 		_, errI := d.RunInterp(c.src)
 		if errC == nil || errI == nil {

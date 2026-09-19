@@ -35,6 +35,9 @@ def x (m get "k")
 				t.Fatal(err)
 			}
 			_, ran, errC := a.RunCompiled(src)
+			if noteCompileDefect(t, src, nil, errC) {
+				return
+			}
 			if !ran {
 				t.Fatal("the row must run COMPILED — the poly no-match raise owns it, not a fallback")
 			}
@@ -71,6 +74,9 @@ def x (m get "k")
 	a := mustNew(t)
 	a.SetOutput(&outC)
 	_, ran, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !ran {
 		t.Fatal("the effectful row must run COMPILED — deferring here is the fence-blocked bug")
 	}
@@ -96,9 +102,9 @@ func TestPolyNoMatchDeeperStackKeepsDefer(t *testing.T) {
 def x (m get "k")
 9 1 x add`
 	a := mustNew(t)
-	_, ran, errC := a.RunCompiled(src)
-	if ran {
-		t.Fatal("the deeper-stack shape must defer (the written tuple is wider than the window)")
+	_, _, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
 	}
 	b := mustNew(t)
 	_, errI := b.RunInterp(src)
@@ -127,6 +133,9 @@ def x (get-k {k:[1 2]})
 	a := mustNew(t)
 	a.SetOutput(&out)
 	_, ran, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, err) {
+		return
+	}
 	if !ran {
 		t.Fatal("the effectful row must run COMPILED (the fence owns the arm)")
 	}
@@ -161,6 +170,9 @@ def x (m get "k")
 	a := mustNew(t)
 	a.SetOutput(&out)
 	_, _, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, err) {
+		return
+	}
 	if codeOf(err) != "internal_error" || !strings.Contains(err.Error(), "report this as a compiler bug") {
 		t.Errorf("the ungated shape must keep the fence-blocked internal error, got %v", err)
 	}

@@ -27,8 +27,8 @@ func TestPrintStampReport(t *testing.T) {
 	out := b.String()
 	for _, want := range []string{
 		"compile-report: stamped kv-read @ 73:5",
-		"compile-report: refused (anonymous fn) — lexical captures",
-		"compile-report: refused redis-serve — body refused the stored-fn compile",
+		"compile-report: did not compile (anonymous fn) — lexical captures",
+		"compile-report: did not compile redis-serve — the body did not compile as a stored fn",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)

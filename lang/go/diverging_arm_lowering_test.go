@@ -30,6 +30,10 @@ func daRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr er
 		t.Fatal(err)
 	}
 	vC, ran, cerr := a.RunCompiled(src)
+	// Booked, not returned: the interpreter oracle below is what the
+	// caller asserts, and reading it is not a fallback — the compiled
+	// lane already returned its error.
+	noteCompileDefect(t, src, vC, cerr)
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)

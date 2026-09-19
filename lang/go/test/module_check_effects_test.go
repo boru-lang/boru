@@ -139,7 +139,7 @@ func checkAndRun(t *testing.T, src string) (checkOut, runOut string) {
 		t.Fatalf("new: %v", err)
 	}
 	ra.SetOutput(&rbuf)
-	if _, err := ra.Run(src); err != nil {
+	if _, err := runReference(t, ra, src); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	return cbuf.String(), rbuf.String()
@@ -177,7 +177,7 @@ M.v`
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	if _, err := b.Run(src); err != nil {
+	if _, err := runReference(t, b, src); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if _, err := os.Stat(target); err != nil {
@@ -218,7 +218,7 @@ M.v`
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	got, err := a.Run(src)
+	got, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -253,7 +253,7 @@ M.v`
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	got, err := a.Run(src)
+	got, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -324,7 +324,7 @@ IO.write (make Pathon '` + target + `') 'top level' drop`
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	if _, err := a.Run(src); err != nil {
+	if _, err := runReference(t, a, src); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	data, err := os.ReadFile(target)

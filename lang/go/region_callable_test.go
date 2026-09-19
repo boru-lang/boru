@@ -71,6 +71,10 @@ func TestRegionCarryingACallableRefuses(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, compiled, cerr := a.RunCompiled(tc.src)
+			// Booked, not returned: the interpreter oracle below is what
+			// this case asserts, and every source here fails to compile —
+			// an early return would make it dead code.
+			noteCompileDefect(t, tc.src, nil, cerr)
 			if compiled {
 				t.Fatal("a region that may carry a callable must not compile: only the interpreter re-steps one")
 			}
@@ -102,6 +106,9 @@ func TestRegionCollectOfACallableRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, compiled, cerr := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, cerr) {
+		return
+	}
 	if compiled {
 		t.Fatal("collecting a region that may carry a callable must not compile")
 	}

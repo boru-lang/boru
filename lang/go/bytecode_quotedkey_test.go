@@ -18,6 +18,9 @@ func compiledEqualsInterp(t *testing.T, label, src string) {
 	}
 	ar, _ := New()
 	gotC, compiled, errC := ar.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	b, _ := New()
 	gotI, errI := b.RunInterp(src)
 	if !compiled {

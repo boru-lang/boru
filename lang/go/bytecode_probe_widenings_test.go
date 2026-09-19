@@ -35,6 +35,9 @@ func TestProbeWideningComputedRangeStartStep(t *testing.T) {
 		_, errI := a.RunInterp(src)
 		b, _ := New()
 		gotC, _, errC2 := b.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC2) {
+			return
+		}
 		_ = gotC
 		if codeOf(errI) != "for_error" || codeOf(errC2) != "for_error" {
 			t.Errorf("4-elem range: want for_error both, got interp [%s] compiled [%s]", codeOf(errI), codeOf(errC2))

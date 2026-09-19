@@ -242,6 +242,12 @@ context has y/q`},
 			compiled, cErr := a.Run(c.src)
 			b, _ := lang.New()
 			interp, iErr := b.RunInterp(c.src)
+			// A program that does not compile has no compiled answer to
+			// compare: the row books a compile defect instead of an
+			// agreement the interpreter fallback used to manufacture.
+			if lang.NoteCompileDefect(t, c.src, compiled, cErr) {
+				return
+			}
 			if cErr != nil || iErr != nil {
 				t.Fatalf("both engines must run the program — compiled: %v / interpreted: %v",
 					cErr, iErr)

@@ -28,6 +28,9 @@ func ljoinParityCompiled(t *testing.T, src string) {
 	var bails []BailEvent
 	defer b.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e) })()
 	outC, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, errC) {
+		return
+	}
 	if !ran {
 		t.Fatalf("the shape must run COMPILED, fell back (err %v)", errC)
 	}
@@ -104,6 +107,9 @@ def f fn [[n:Any] [Any] [
 		src := srcFor(rec)
 		a := mustNew(t)
 		outC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, outC, errC) {
+			continue
+		}
 		b := mustNew(t)
 		outI, errI := b.RunInterp(src)
 		if (errC == nil) != (errI == nil) || fmt.Sprint(outC) != fmt.Sprint(outI) {

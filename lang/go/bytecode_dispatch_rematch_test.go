@@ -28,6 +28,9 @@ func TestDispatchRematchRaisesByteIdentical(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, ran, errC := a.RunCompiled(src)
+			if noteCompileDefect(t, src, nil, errC) {
+				return
+			}
 			if !ran {
 				t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 			}
@@ -69,6 +72,9 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 		t.Fatal(err)
 	}
 	outC, ran, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, outC, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
@@ -116,6 +122,9 @@ func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ran, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !ran {
 		t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 	}
@@ -157,6 +166,9 @@ func TestDispatchRematchVariadicIfGraduated(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, ran, errC := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			continue
+		}
 		if !ran {
 			t.Fatal("the row must run COMPILED — the rematch owns the raise, not a fallback")
 		}

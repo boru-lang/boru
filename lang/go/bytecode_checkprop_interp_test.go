@@ -48,9 +48,6 @@ res get "ok"`
 // to (the leaf's central soundness boundary).
 func TestCheckPropInterpStringFnScopeRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `import "boru:test" end
 def run-props fn [[pfx:Integer] [Boolean] [
   def res (Test.check-prop "x" [r.int 1 9] [ var [[k] (` + bt("${pfx}-${k}") + `) eq ` + bt("${pfx}-${k}") + ` ] ] 5 1 0)
@@ -65,6 +62,9 @@ def run-props fn [[pfx:Integer] [Boolean] [
 	// Non-strict: falls back to the interpreter and yields the CORRECT answer.
 	b, _ := New()
 	got, compiled, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled error: %v", err)
 	}

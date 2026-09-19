@@ -131,19 +131,19 @@ func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 	// interpreter, where the seam previously degraded permanently.
 	// The compiled fast path lives behind the CompiledRuntime seam
 	// (compiled_runtime.go, Stage 1 of the four-piece split): the VM
-	// piece owns ref freshness, the JIT re-stamp, the C1 effect fence,
-	// and the internal-error degrade decision. ran=false — including a
-	// bailed unit with no observable effect — leaves the interpreter
-	// path to the code below.
+	// piece owns ref freshness and the JIT re-stamp. A unit that RAN
+	// returns what it produced, a bail included — the bail used to ride
+	// back with ran=false so the body was retried here, guarded by the
+	// effect fence, and that retry is gone: it is a compiler defect and
+	// it surfaces.
 	res, err, ran := compiledRuntime.InvokeCompiled(r, sig, args)
 	if ran {
 		return res, err
 	}
-	// A unit that RAN and deferred is a designed bail, not an island: the
-	// replay below is the second sanctioned interpreter entry, already in the
-	// bail ledger (bailReplayAttribution). A ref that was never there declines
-	// with a nil error, attributes nothing, and stays visible as the island it
-	// is.
+	// ran=false means there was no compiled unit to run at all — a ref that
+	// was never stamped, or a stale one whose re-stamp declined. That is an
+	// interpreter ISLAND, not a fallback from a failure, and it stays
+	// visible as one.
 	defer bailReplayAttribution(r, err)()
 	// Observability seam (interp_entry.go): the callback seam's interpreter
 	// fallback — its own name so the C4 decline tag can attach later without

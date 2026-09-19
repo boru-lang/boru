@@ -14,9 +14,9 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '7009931532680561777');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '3849819923348319249');
 INSERT INTO input_files VALUES ('../AGENTS.md', '2200695068082150409', 13966);
-INSERT INTO input_files VALUES ('../CLI.md', '4023829496696922290', 84748);
+INSERT INTO input_files VALUES ('../CLI.md', '6821607043254790718', 82100);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
 INSERT INTO input_files VALUES ('../STYLE-GUIDE.md', '3527342302034149151', 16295);
 INSERT INTO input_files VALUES ('../basic/go/go.mod', '592614718618454325', 457);
@@ -37,7 +37,7 @@ INSERT INTO input_files VALUES ('../design/DIAGNOSTIC-VALUES.0.md', '17448187561
 INSERT INTO input_files VALUES ('../design/ENG-COVERAGE-PARITY.0.md', '9166176367028368975', 20202);
 INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '727730013582454290', 32779);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-ASSESSMENT.0.md', '7332750673059097753', 38325);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '1642975869977140281', 675485);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '6654476253955817765', 681523);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REPLAN.0.md', '5131828316944983469', 17603);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REVIEW.0.md', '970125114741399286', 47240);
 INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '6309326583045746625', 258284);
@@ -48,7 +48,7 @@ INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '418100228937
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '7264810753193244686', 16133);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '5505284367359717561', 19908);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '1625489332689348117', 27685);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '3988227259832537239', 89115);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
 INSERT INTO input_files VALUES ('../design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', '5471579664599608073', 28469);
@@ -74,7 +74,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '1887050269164847928', 91361);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '109985226710069875', 91952);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -99,7 +99,7 @@ INSERT INTO sources VALUES ('src:boru-viz', 'text', 'design/BORU-VIZ.0.md', 'bor
 INSERT INTO sources VALUES ('src:canon-roundtrip', 'text', 'design/CANON-ROUNDTRIP.0.md', 'CANON-ROUNDTRIP — canon always round-trips', NULL, 'canon-roundtrip-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
-INSERT INTO sources VALUES ('src:cli-md', 'text', 'CLI.md', 'CLI.md subcommand reference', NULL, 'cli-md-2026-08', 'primary', '{
+INSERT INTO sources VALUES ('src:cli-md', 'text', 'CLI.md', 'CLI.md subcommand reference', NULL, 'cli-md-2026-09-19', 'primary', '{
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:compile-declaration-model', 'text', 'design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', 'the compile declaration model: one general solution, or fifteen special cases?', NULL, 'compile-declaration-model-2026-08', 'primary', '{
@@ -251,7 +251,7 @@ INSERT INTO sources VALUES ('src:reload-invalidation', 'text', 'design/RELOAD-IN
 INSERT INTO sources VALUES ('src:root-module', 'text', 'design/legacy/ROOT-MODULE-FEASIBILITY.0.ignore', 'root module below core and parser, measured', NULL, 'root-module-2026-08', 'primary', '{
   "repository": "boru-lang/boru"
 }');
-INSERT INTO sources VALUES ('src:session-handover', 'text', 'design/SESSION-HANDOVER.0.md', 'session handover for the full-compilation project', NULL, 'session-handover-2026-09-11', 'primary', '{
+INSERT INTO sources VALUES ('src:session-handover', 'text', 'design/SESSION-HANDOVER.0.md', 'session handover for the full-compilation project', NULL, 'session-handover-2026-09-19', 'primary', '{
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:state-machines', 'text', 'design/STATE-MACHINES.0.md', 'general-purpose state machines: the boru:state module', NULL, 'state-machines-2026-08-14', 'primary', '{
@@ -323,6 +323,7 @@ INSERT INTO entity_attributes VALUES ('ent:Document:4880036076125012648', 'role'
 INSERT INTO entities VALUES ('ent:Document:4967568806387328379', 'Document', 'design/legacy/TABNAS-DOT-BOUNDARY-REPORT.0.ignore', 'design/legacy/tabnas-dot-boundary-report.0.ignore', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:4967568806387328379', 'role', 'the file-ready upstream defect report for the last live tabnas shim: both ports'' runnable reproduction against the bare dependency, the follow-character table showing the divergence is conditional (0xFF.5 differs, 0xFF.x agrees), and the acceptance criterion that a regression test must cover both');
 INSERT INTO entities VALUES ('ent:Document:4990200910103175455', 'Document', 'CLI.md', 'cli.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:4990200910103175455', 'role', 'the subcommand reference. Its bytecode-compilation section is the user-facing statement of the ONE-OUTCOME contract as of 2026-09-19: there are no compile modes and no flags to select between them, because a program that does not compile is an error rather than one that quietly runs somewhere else. --compile, --force-compile, --no-compile and their three env vars are retired with the fallback they selected between, and the coverage notes say plainly that compiled coverage UNDERSTATES rather than overstates — the safe direction for a number you gate on');
 INSERT INTO entities VALUES ('ent:Document:5105101056062860425', 'Document', 'design/ENG-COVERAGE-PARITY.0.md', 'design/eng-coverage-parity.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:5105101056062860425', 'role', 'the standalone 100%/100% coverage program for eng/go and eng/ts: the ratcheting gate floors (make cover-gate-eng, make test-ts), the gap inventories, and the staged plans');
 INSERT INTO entities VALUES ('ent:Document:5175176782070740682', 'Document', 'design/BORU-INFOVIEW.0.md', 'design/boru-infoview.0.md', 'accepted');

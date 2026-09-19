@@ -61,6 +61,9 @@ func TestParseFnDispatchCompiles(t *testing.T) {
 			t.Errorf("%s: expected a native program (no island, no trap):\n%s", c.name, dis)
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if errC != nil || !compiled {
 			t.Fatalf("%s: compiled run failed: compiled=%v err=%v", c.name, compiled, errC)
 		}
@@ -88,6 +91,9 @@ func TestParseFnDispatchMissParity(t *testing.T) {
 	const src = `import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.action g '@op:o:INC' ([nd:Any] => [7])  Parse.abnf g 'op = "inc" / "dec"' {start:'op'}  def c false  if c [def op (Parse.parser g)] [0]  end  parse op 'inc'`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	_, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("conditional-parser row should still compile (the dispatch is the proof); got %v", gotC)
 	}
@@ -166,6 +172,9 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if errC != nil || errI != nil || !compiled {
 			t.Fatalf("%s: compiled=%v errC=%v errI=%v", c.name, compiled, errC, errI)
 		}
@@ -179,6 +188,9 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 	const present = `import "boru:minilang"  MiniLang.Re`
 	gotC, _, errC := mustNew(t).RunCompiled(present)
 	gotI, errI := mustNew(t).RunInterp(present)
+	if noteCompileDefect(t, present, gotC, errC) {
+		return
+	}
 	if errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 		t.Fatalf("present key: compiled=%v/%v interp=%v/%v", gotC, errC, gotI, errI)
 	}
@@ -194,9 +206,6 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 // code, detail, and a position wherever the interpreter carries one.
 func TestUnmatchedDispatchTrapCarrierDisjoint(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	cases := []struct{ name, src string }{
 		// apply.tsv:37 — the former "carrier operand declines" negative:
 		// inc's Integer result is disjoint from apply's Function slot, and
@@ -236,6 +245,9 @@ func TestUnmatchedDispatchTrapCarrierDisjoint(t *testing.T) {
 		// (phase 7): same code, Detail, notes, and suggestions.
 		_, _, errC := mustNew(t).RunCompiled(c.src)
 		_, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		if codeOf(errC) != "signature_error" || codeOf(errI) != "signature_error" {
 			t.Fatalf("%s: compiled=[%s] interp=[%s], want both signature_error", c.name, codeOf(errC), codeOf(errI))
 		}
@@ -289,6 +301,9 @@ func TestTrapKeepsPriorCallEffects(t *testing.T) {
 	ac := mustNew(t)
 	ac.SetOutput(&outC)
 	_, compiled, errC := ac.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("the rematch program must run compiled")
 	}

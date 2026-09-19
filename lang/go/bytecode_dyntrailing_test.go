@@ -28,6 +28,9 @@ func TestEmitTrailingFnValueApply(t *testing.T) {
 	}
 	ar, _ := New()
 	gotC, compiled, errC := ar.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	b, _ := New()
 	gotI, _ := b.RunInterp(src)
 	if !compiled || errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[6]" {

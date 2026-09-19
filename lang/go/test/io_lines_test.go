@@ -29,7 +29,7 @@ func runStdin(t *testing.T, in, src string) []any {
 		t.Fatal(err)
 	}
 	a.NativeRegistry().Input = strings.NewReader(in)
-	res, err := a.Run(`import "boru:io"  ` + src)
+	res, err := runReference(t, a, `import "boru:io"  `+src)
 	if err != nil {
 		t.Fatalf("%s: %v", src, err)
 	}
@@ -147,11 +147,11 @@ func TestReadLineRebuildsOnInputSwap(t *testing.T) {
 	}
 	reg := a.NativeRegistry()
 	reg.Input = strings.NewReader("first\nbuffered-but-never-read\n")
-	if _, err := a.Run(`import "boru:io"  IO.read-line (IO.stdin)`); err != nil {
+	if _, err := runReference(t, a, `import "boru:io"  IO.read-line (IO.stdin)`); err != nil {
 		t.Fatal(err)
 	}
 	reg.Input = strings.NewReader("second\n")
-	res, err := a.Run(`import "boru:io"  IO.read-line (IO.stdin)`)
+	res, err := runReference(t, a, `import "boru:io"  IO.read-line (IO.stdin)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestTTYTrueArm(t *testing.T) {
 		{`IO.is-tty (IO.stderr)`, "true"},
 		{`IO.is-tty (IO.stdin)`, "false"}, // absent from the map
 	} {
-		res, err := a.Run(`import "boru:io"  ` + tc.src)
+		res, err := runReference(t, a, `import "boru:io"  `+tc.src)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.src, err)
 		}
@@ -200,7 +200,7 @@ func TestTTYIsPerStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := a.Run(`import "boru:io"  [(IO.is-tty (IO.stdout)) (IO.is-tty (IO.stderr))]`)
+	res, err := runReference(t, a, `import "boru:io"  [(IO.is-tty (IO.stdout)) (IO.is-tty (IO.stderr))]`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestOSStreamProbeRedirectedIsFalse(t *testing.T) {
 	}
 	var buf strings.Builder
 	a.SetOutput(&buf)
-	res, err := a.Run(`import "boru:io"  IO.is-tty (IO.stdout)`)
+	res, err := runReference(t, a, `import "boru:io"  IO.is-tty (IO.stdout)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestTTYUnderUninstalledTerminalScope(t *testing.T) {
 	if probe := native.HostStreamProbe(a.NativeRegistry()); probe != nil {
 		t.Errorf("sandbox uninstalls the terminal scope: probe = %T, want nil", probe)
 	}
-	res, err := a.Run(`import "boru:io"  IO.is-tty (IO.stdout)`)
+	res, err := runReference(t, a, `import "boru:io"  IO.is-tty (IO.stdout)`)
 	if err != nil {
 		t.Fatalf("IO.is-tty raised under a sandbox instead of answering: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestTTYUnderTrustedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := a.Run(`import "boru:io"  IO.is-tty (IO.stdout)`)
+	res, err := runReference(t, a, `import "boru:io"  IO.is-tty (IO.stdout)`)
 	if err != nil {
 		t.Fatal(err)
 	}

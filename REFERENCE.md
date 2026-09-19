@@ -3087,8 +3087,8 @@ One-shot commands (run and exit):
 
 | Subcommand | Purpose | Key flags |
 |------------|---------|-----------|
-| `run` / `boru [script]` | Execute a script, `-e` expression, or (no args) the REPL | `-e`, `-check`, `-compile`, `-options`, `--perms`, `--allow`/`--deny` |
-| `do <words…>` | Evaluate the arguments as one boru expression and print the result | `--perms`, `--allow`/`--deny`, `--compile` |
+| `run` / `boru [script]` | Execute a script, `-e` expression, or (no args) the REPL | `-e`, `-check`, `-options`, `--perms`, `--allow`/`--deny` |
+| `do <words…>` | Evaluate the arguments as one boru expression and print the result | `--perms`, `--allow`/`--deny` |
 | `check [script]` | Static type-check; print diagnostics | `--json`, `--soft`, `--emit`, `-e` |
 | `fmt [file…]` | Format `.boru` files in place (whole tree if no args) | — |
 | `describe [name]` | Document a word, category, or module (the *language*) | — |
@@ -3170,9 +3170,12 @@ and the REPL). A *policy* is a set of allow/deny rules over
 | `--allow-global <cap>` | Raise a global hard cap (repeatable) |
 | `--deny-global <cap>` | Lower a global hard cap (repeatable) |
 
-Environment fallbacks: `BORU_POLICY`, `BORU_POLICY_FILE`. Bytecode
-compilation: `-compile` / `BORU_COMPILE` enable it, `BORU_NO_COMPILE`
-disables.
+Environment fallbacks: `BORU_POLICY`, `BORU_POLICY_FILE`.
+
+Bytecode compilation has no flags and no environment variables. Every
+program is compiled and run; one that does not compile is an error naming
+the construct, and there is no interpreter to select instead (see
+[CLI.md](CLI.md#bytecode-compilation)).
 
 ### Exit codes
 

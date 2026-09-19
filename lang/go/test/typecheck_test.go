@@ -378,7 +378,7 @@ func TestCheckRunParity(t *testing.T) {
 
 	// Then run. Must still produce 3 (not a carrier) because
 	// CheckMode is reset after Check returns.
-	out, err := a.Run("1 add 2")
+	out, err := runReference(t, a, "1 add 2")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -1005,7 +1005,7 @@ func runPerfComparison(t *testing.T, program string, iters int) PerfSample {
 	// Fresh boru for runtime so Check-mode state doesn't influence.
 	a2, _ := lang.New()
 	seedBoru(a2)
-	runRes, err := a2.Run(program)
+	runRes, err := runReference(t, a2, program)
 	if err != nil {
 		t.Fatalf("run err: %v", err)
 	}
@@ -1016,7 +1016,7 @@ func runPerfComparison(t *testing.T, program string, iters int) PerfSample {
 		a3, _ := lang.New()
 		seedBoru(a3)
 		start := time.Now()
-		_, err := a3.Run(program)
+		_, err := runReference(t, a3, program)
 		if err != nil {
 			t.Fatalf("run iter %d: %v", i, err)
 		}

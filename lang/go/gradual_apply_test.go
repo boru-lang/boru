@@ -64,10 +64,10 @@ func TestGradualApplyDefers(t *testing.T) {
 		gaAdd2 + `def w fn [[m:Map x:Integer][Any][x (m get "f") apply]]  w {f: (fn [[a:Integer b:Integer][Integer][a sub b]])} 4`,
 	}
 	for _, src := range rows {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if compiled {
-			t.Errorf("%q: ran compiled — the op must defer this runtime state", src)
-		}
+		gotC, _, errC, gotI, errI := runBothEngines(t, src)
+		// The op used to defer this runtime state to the interpreter and the
+		// two lanes agreed. There is nothing to defer to: the bail is booked
+		// as the defect it is.
 		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }

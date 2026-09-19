@@ -21,7 +21,6 @@ import (
 // rebind of a live lead TO a lambda or a data value (the routed op could
 // not run it — refused through the undef site).
 func TestStoredHandlerReadsLiveBinding(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const named = "def helper fn [[x:Integer][Integer][x add 1]] end def svc (service {}) add {} ([r:Map state:Any] => [helper 5]) svc "
 	compiled := []struct{ src, want string }{
 		// A named helper rebound after the store: the routed lead runs the

@@ -173,7 +173,7 @@ func TestTypeFnPredicate_NotIndependentlyCallable(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	result, err := a.Run(bbdSource + `Bbd "c"`)
+	result, err := runReference(t, a, bbdSource+`Bbd "c"`)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

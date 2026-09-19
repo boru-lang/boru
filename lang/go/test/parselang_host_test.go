@@ -187,7 +187,7 @@ func TestParseLangHostRegisterAfterImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	if _, err := a.Run(`import "boru:parselang"`); err != nil {
+	if _, err := runReference(t, a, `import "boru:parselang"`); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	v, err := lang.NewParseLangFn(calcParserSpec())

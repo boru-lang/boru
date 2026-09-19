@@ -30,11 +30,13 @@ func TestW4DoEvaluatesExpression(t *testing.T) {
 	}
 }
 
-func TestW4DoCompileFlag(t *testing.T) {
+// `boru do` compiles and runs its expression. The --compile/--no-compile/
+// --force-compile family is gone with the fallback it selected between.
+func TestW4DoEvaluatesCompiled(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := New().Run([]string{"--compile", "2", "mul", "3"}, nil, &stdout, &stderr)
+	code := New().Run([]string{"2", "mul", "3"}, nil, &stdout, &stderr)
 	if code != 0 {
-		t.Fatalf("Run(--compile) = %d, want 0; stderr: %s", code, stderr.String())
+		t.Fatalf("Run() = %d, want 0; stderr: %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "6") {
 		t.Errorf("stdout = %q, want it to contain 6", stdout.String())

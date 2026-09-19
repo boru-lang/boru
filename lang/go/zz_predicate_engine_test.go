@@ -46,6 +46,9 @@ func TestPredicateBodyRunsOnTheVM(t *testing.T) {
 			}
 		})
 		_, ran, err := a.RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, nil, err) {
+			continue
+		}
 		disarm()
 		if !ran || err != nil {
 			t.Fatalf("%s: ran=%v err=%v", tc.name, ran, err)

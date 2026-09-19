@@ -60,6 +60,9 @@ func TestSuspendedFoldAnalysisNoSpuriousDynScope(t *testing.T) {
 	var bails []string
 	disarm := a.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e.Site) })
 	compiled, _, cerr := a.RunCompiled(suspendedRecordProg)
+	if noteCompileDefect(t, suspendedRecordProg, compiled, cerr) {
+		return
+	}
 	disarm()
 	if cerr != nil {
 		t.Fatalf("RunCompiled: %v", cerr)

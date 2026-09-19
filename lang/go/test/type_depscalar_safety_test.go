@@ -25,7 +25,7 @@ func runOK(t *testing.T, src string) []any {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	got, err := a.Run(src)
+	got, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("run %q: %v", src, err)
 	}
@@ -91,7 +91,7 @@ func TestDepScalar_LtTotalOrder(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	got, err := a.Run(`(Integer gt 10) lt (Integer gt 20)`)
+	got, err := runReference(t, a, `(Integer gt 10) lt (Integer gt 20)`)
 	if err != nil {
 		t.Fatalf("comparing DepScalars with lt errored: %v", err)
 	}

@@ -10,7 +10,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | F | D! | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
-| `codequote` | F | F | n/a | F | F | F | ✓ 14/14 |
+| `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
 | `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 5/14 | ✓ 12/14 | ✓ 13/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
 | `describe` | ✓ 14/14 | — | — | — | — | — | — |
@@ -18,7 +18,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `dot` | ✓ 14/14 | — | — | — | — | — | — |
 | `dotr` | ✓ 14/14 | — | — | — | — | — | — |
 | `each` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
-| `emit` | ✓ 12/14 | n/a | ✓ 12/14 | F | F | ✓ 12/14 | n/a |
+| `emit` | ✓ 12/14 | n/a | ✓ 12/14 | F | D! | ✓ 12/14 | n/a |
 | `enum` | ✓ 10/14 | n/a | n/a | n/a | n/a | n/a | ✓ 10/14 |
 | `error` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
@@ -56,15 +56,15 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `walk` | F | ✓ 11/14 | ✓ 10/14 | F | F | F | F |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `word` | ✓ 13/14 | ✓ 5/14 | ✓ 12/14 | F | F | ✓ 13/14 | ✓ 13/14 |
+| `word` | ✓ 13/14 | ✓ 5/14 | ✓ 12/14 | F | D! | ✓ 13/14 | ✓ 13/14 |
 | `xml-attr` | ✓ 14/14 | — | — | — | — | — | — |
 
 ## Cells
 
 - pass: 149
-- failed: 33
+- failed: 28
 - islanded: 2
-- DIVERGED: 3
+- DIVERGED: 8
 - PANIC: 0
 - HUNG: 0
 - check-reject: 3
@@ -83,13 +83,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `behave` container — **failed**: `def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)` — quoted-operand word behave
 - `behave` module-export — **failed**: `import module [def Temp refine Integer def c fn [[t:Temp][String]['T']] export "M" {c: c/v Temp: Temp}] end behave canon…` — quoted-operand word behave
 - `case` module-export — **DIVERGED**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional t…
-- `codequote` literal — **failed**: `typeof (codequote (1 add 2))` — runtime bail: did not run compiled (err=<nil>)
-- `codequote` lambda — **failed**: `typeof (codequote ([] => [1]))` — runtime bail: did not run compiled (err=<nil>)
-- `codequote` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (codequote (mk))` — runtime bail: did not run compiled (err=<nil>)
+- `codequote` literal — **DIVERGED**: `typeof (codequote (1 add 2))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
+- `codequote` lambda — **DIVERGED**: `typeof (codequote ([] => [1]))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
+- `codequote` factory — **DIVERGED**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (codequote (mk))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=2, src 1…
 - `codequote` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end typeof (codequote m.f)` — operand of unknown provenance or not statically materialisable at typeof
 - `codequote` module-export — **failed**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (codequote M.inc)` — operand of unknown provenance or not statically materialisable at typeof
 - `emit` factory — **failed**: `import "boru:emitlang" end def mk fn [[][Function][(fn [[value:Any opts:Map] [String] ['UP']])]] end emit (mk) {a:1}` — residual value of unknown provenance
-- `emit` container — **failed**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — runtime bail: did not run compiled (err=<nil>)
+- `emit` container — **DIVERGED**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — error divergence: compiled [boru/signature_error]: cannot call `emitlang-auto` — no signature matches the arguments   …
 - `fnsig` module-export — **check-reject**: `import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1` — check error: [boru/fnsig_invalid_spec]: fnsig: argument must be a concrete list   --> 1:82   1 | import module [def sg f…
 - `for-each` literal — **failed**: `def acc (flex []) end for-each [acc swap push] [1 2 3] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `for-each` factory — **failed**: `def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc` — function-valued operand at for-each (Stage 3)
@@ -115,7 +115,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` module-export — **failed**: `import module [def acc (flex []) def h fn [[m:Any][Any][acc push m.path]] export "M" {h: h/v acc: acc}] end walk {mode: …` — function value reaches walk (Stage 3)
 - `walk` computed — **failed**: `def acc (flex []) end def b (quote [dot path acc swap push]) end walk {mode: "depth"} {a:1 b:[2 3]} b end size acc` — operand of unknown provenance or not statically materialisable at size
 - `word` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end def dbl word (mk) end 5 dbl` — residual shape beyond Stage 1 (call result above a literal)
-- `word` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end def dbl word m.f end 5 dbl` — runtime bail: did not run compiled (err=<nil>)
+- `word` container — **DIVERGED**: `def m {f: ([n:Integer] => [n add 1])} end def dbl word m.f end 5 dbl` — error divergence: compiled [boru/internal_error]: bytecode: internal: splice of a code-bearing payload; deferring to the…
 
 ## Call-form variants that are not green
 
@@ -152,15 +152,15 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` factory · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` factory · for-body — **refused** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` factory · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · fn-body — **refused** — runtime bail: did not run compiled (err=<nil>)
-- `def` container · lambda-body — **refused** — runtime bail: did not run compiled (err=<nil>)
+- `def` container · fn-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
+- `def` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
 - `def` container · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · if-then — **refused** — if: then-branch result of unknown provenance
 - `def` container · if-else — **refused** — if: else-branch result of unknown provenance
 - `def` container · for-body — **refused** — for: body nets multiple values per iteration
 - `def` container · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · module-body — **refused** — runtime bail: did not run compiled (err=<nil>)
+- `def` container · module-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: SWAP underflow (pc=2, src 1:87)   --> 1:87   = not…
 - `def` module-export · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` computed · for-body — **refused** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -251,7 +251,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `for-each` named-fn · each-body — **refused** — fn each$body: arm-resident def `stp` of unknown provenance
 - `force-arity` named-fn · for-body — **refused** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `force-arity` container · paren-group — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
-- `force-arity` container · lambda-body — **refused** — runtime bail: did not run compiled (err=<nil>)
+- `force-arity` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
 - `force-arity` container · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · if-then — **refused** — if: then-branch result of unknown provenance
@@ -262,7 +262,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `force-arity` module-export · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` named-fn · for-body — **refused** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `forward-args` container · paren-group — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
-- `forward-args` container · lambda-body — **refused** — runtime bail: did not run compiled (err=<nil>)
+- `forward-args` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
 - `forward-args` container · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · if-then — **refused** — if: then-branch result of unknown provenance
@@ -320,7 +320,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `undef` literal · each-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` named-fn · for-body — **refused** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `usurp` container · paren-group — **refused** — fn-value application bounded by a paren (dynamic value precedes args)
-- `usurp` container · lambda-body — **refused** — runtime bail: did not run compiled (err=<nil>)
+- `usurp` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
 - `usurp` container · do-body — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · do-catch — **refused** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · if-then — **refused** — if: then-branch result of unknown provenance

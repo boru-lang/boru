@@ -22,9 +22,6 @@ import (
 // consumption and falls back, so the relaxation is scoped to diverging arms.
 func TestEmitRaiseArmDivergence(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// Positive: raise-terminated if-chain, result consumed as a fixed arg.
 	compiles := []struct{ src, want string }{
 		// Two String results (the non-raising arms) concatenated by `add`.
@@ -44,6 +41,9 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 		}
 		ar, _ := New()
 		gotC, compiled, errC := ar.RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(c.src)
 		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != c.want {
@@ -61,6 +61,9 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 	// It must still RUN correctly via the interpreter fallback.
 	ar, _ := New()
 	gotC, _, errC := ar.RunCompiled(variadic)
+	if noteCompileDefect(t, variadic, gotC, errC) {
+		return
+	}
 	if errC != nil || fmt.Sprint(gotC) != "[8]" {
 		t.Errorf("%q: fallback parity broke: gotC=%v errC=%v want=[8]", variadic, gotC, errC)
 	}

@@ -435,8 +435,10 @@ func TestModuleGateVMPolyRematchArm(t *testing.T) {
 // itself — when the stamped unit raises an internal_error (here a CALL_DYNAMIC
 // underflow, the vmErrAt soundness-bailout class), it falls back to CallBoru over
 // the sig's boru body instead of leaking the raw internal_error to the peer. The
-// body `[42]` returns 42, proving the fallback ran rather than the failing unit.
-func TestInvokeCallbackInternalErrorFallsBack(t *testing.T) {
+// body `[42]` is NOT run: the unit ran and failed, and its failure is the
+// answer. It used to be retried through CallBoru so the interpreter produced
+// 42 and the soundness bug left no mark.
+func TestInvokeCallbackInternalErrorPropagates(t *testing.T) {
 	// A unit that raises internal_error when run: CALL_DYNAMIC over an empty
 	// stack underflows → vmErrAt(internal_error).
 	p := &compiler.Program{Fns: []compiler.CompiledFn{{
@@ -452,14 +454,8 @@ func TestInvokeCallbackInternalErrorFallsBack(t *testing.T) {
 	// The sig carries the stamped ref AND a boru body CallBoru can run to 42.
 	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(42)}, ref)}
 	out, err := core.InvokeCallback(runUnitReg(t), sig, nil, nil)
-	if err != nil {
-		t.Fatalf("InvokeCallback should have fallen back to CallBoru, got err: %v", err)
-	}
-	if len(out) != 1 {
-		t.Fatalf("got %d results, want 1 (the CallBoru body residual)", len(out))
-	}
-	if n, _ := out[0].AsConcreteInteger(); n != 42 {
-		t.Fatalf("result = %v, want 42 from the interpreter fallback", out[0])
+	if !core.IsInternalErr(err) {
+		t.Fatalf("InvokeCallback must propagate the unit's internal error, got out=%v err=%v", out, err)
 	}
 }
 

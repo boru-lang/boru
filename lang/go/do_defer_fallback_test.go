@@ -17,7 +17,6 @@ import (
 // re-raised an IO.exit request), so the fallback completes. A genuine boru
 // error stays trapped — the escape hatch is unchanged.
 func TestDoDeferFallsBackNotTrapped(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// A poly native seat commits an arity over the first call's gradual
 	// residual and the second call bails at run time (NUR147); wrapped in a
 	// `do`, the bail must still fall back, not surface as a trapped Error.
@@ -33,12 +32,13 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 		// A nested do around the bail.
 		svc + `do [do [call {} svc call {} svc]]`,
 	}
+	// The bail must PROPAGATE out of the `do`, not be trapped as an Error
+	// value. It used to have to propagate so the whole-program fallback could
+	// complete; it has to propagate now so the defect is reported at all — a
+	// trapped bail surfaces the internal message as data, which is worse.
 	for _, src := range fellBack {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		requireParity(t, src, gotC, errC, gotI, errI)
-		if compiled {
-			t.Errorf("%q: the run bails inside `do` and must FALL BACK, not stay compiled", src)
-		}
+		gotC, _, errC, _, _ := runBothEngines(t, src)
+		requireCompileDefect(t, src, gotC, errC)
 	}
 	// The escape hatch is unchanged: a GENUINE boru error inside `do` is
 	// trapped as an Error value and the program stays compiled.
@@ -75,7 +75,6 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 // tear down, so InstallDef refuses and the whole program falls back — slow,
 // not wrong.
 func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const pre = `def m {e: %s} end  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end  `
 	const g = `def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  `
 	refused := []struct{ src, want string }{
@@ -97,10 +96,15 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 		if prog != nil || !strings.Contains(reason, "redefined inside a fn body replaces a module-scope speculative-family overload") {
 			t.Errorf("%q: want the family-L-in-fn-body refusal, got compiled=%v reason=%q", c.src, prog != nil, reason)
 		}
-		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
-		requireParity(t, c.src, gotC, errC, gotI, errI)
-		if got := fmt.Sprint(gotC); got != c.want {
-			t.Errorf("%q = %s, want %s", c.src, got, c.want)
+		gotC, _, errC, _, _ := runBothEngines(t, c.src)
+		requireCompileDefect(t, c.src, gotC, errC)
+		// The ANSWER is still pinned, on the reference engine: the program is
+		// valid, which is what makes the compile failure a defect and not a
+		// verdict.
+		b := mustNew(t)
+		gotI2, errI2 := b.RunInterp(c.src)
+		if got := fmt.Sprint(gotI2); errI2 != nil || got != c.want {
+			t.Errorf("%q interpreted = %s / %v, want %s", c.src, got, errI2, c.want)
 		}
 	}
 	// A DISJOINT signature is a fresh push above the family (placed for the
@@ -147,7 +151,7 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, src)
 		requireParity(t, src, gotC, errC, gotI, errI)
-		if got := fmt.Sprint(gotC); got != "[7]" {
+		if got := fmt.Sprint(gotI); got != "[7]" {
 			t.Errorf("in-function family = %s, want [7]", got)
 		}
 	}

@@ -103,6 +103,9 @@ func TestBodyResidualRebuildScreens(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _, cerr := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, cerr) {
+		return
+	}
 	if cerr != nil {
 		t.Fatalf("compiled: %v", cerr)
 	}

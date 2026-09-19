@@ -73,6 +73,9 @@ func TestSpecCompiledDifferential(t *testing.T) {
 		key := r.Key()
 		unledgered := false // a divergence the ledger does not know
 		switch {
+		case compiledDefect(errC):
+			// The compiled run BAILED. Not a divergence — the defect the
+			// interpreter re-run used to absorb, counted in its own ledger.
 		case (errC != nil) != (errI != nil):
 			unledgered = !divergence(t, "compiled-differential", key, fmt.Sprintf("%s\n  error divergence: compiled=%v interpreted=%v", input, errC, errI))
 		case errC != nil:

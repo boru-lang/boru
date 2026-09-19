@@ -75,21 +75,19 @@ func TestStartRefusedLineFallsBackWithResult(t *testing.T) {
 	}
 }
 
-// Post-Stage-J the library returns compile_failed for a refusing line
-// (no silent re-run); the REPL performs the interpreter fallback ITSELF,
-// silently — the user sees the line's result, never the refusal error.
-// The fixture is a genuinely-refusing shape (the mid-expression fn-value
-// apply; `for 3 [1 2]` above compiles natively since the refusal census
-// hit zero, so it pins the compiled path, not this fallback).
-func TestStartRefusedLineFallbackIsSilent(t *testing.T) {
+// A line that does not compile PRINTS the failure. The REPL used to re-run
+// it on the interpreter, silently, on the argument that an interactive line's
+// performance debt was not worth a per-line message. It was never about
+// performance: the line had hit a compiler defect and nothing said so — and a
+// REPL is where the user is most likely to be the one who can report it.
+// The fixture is the mid-expression fn-value apply (`for 3 [1 2]` above
+// compiles natively, so it pins the compiled path rather than this one).
+func TestStartLineThatDoesNotCompilePrintsTheFailure(t *testing.T) {
 	in := strings.NewReader(`def mk (fn [[n:Integer] [Any] [ def svc (service {}) add {cmd:"X"} ([req:Map state:Any] => [ n ]) svc svc ]]) def s (mk 7) (call {cmd:"X"} s)` + "\n")
 	out := &bytes.Buffer{}
 	Start(in, out, "")
-	if !strings.Contains(out.String(), "7") {
-		t.Fatalf("refused line must print the interpreter's result; got %q", out.String())
-	}
-	if strings.Contains(out.String(), "error:") || strings.Contains(out.String(), "compile_failed") {
-		t.Fatalf("refused line must fall back silently; got %q", out.String())
+	if !strings.Contains(out.String(), "bytecode compilation FAILED") {
+		t.Fatalf("a line that does not compile must say so; got %q", out.String())
 	}
 }
 

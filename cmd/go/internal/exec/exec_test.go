@@ -3,7 +3,6 @@ package exec
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -260,22 +259,20 @@ func TestExecHonoursPolicy(t *testing.T) {
 	}
 }
 
-// A genuinely-REFUSING program (the mid-expression fn-value apply) rides
-// the server's explicit interpreter fallback on compile_failed and still
-// answers — the exec surface's graceful-degradation contract post-lift
-// (policy-gated servers now compile, so the fallback arm is exercised by
-// refusal shapes, not by policies).
-func TestExecRefusingProgramFallsBack(t *testing.T) {
+// A program that does not compile (the mid-expression fn-value apply, whose
+// handler captures the factory's parameter) is REPORTED. The server used to
+// re-run it on the interpreter and answer 7, so a posted expression could hit
+// a compiler defect and nothing in the response said so — a served surface is
+// the last place that silence belongs, because the person who posted the code
+// is the one who can report it.
+func TestExecProgramThatDoesNotCompileIsReported(t *testing.T) {
 	srv := httptest.NewServer(Handler("", nil))
 	defer srv.Close()
 
 	var got execResponse
 	post(t, srv, "/v1/exec", execRequest{Code: `def mk (fn [[n:Integer] [Any] [ def svc (service {}) add {cmd:"X"} ([req:Map state:Any] => [ n ]) svc svc ]]) def s (mk 7) (call {cmd:"X"} s)`}, &got)
-	if got.Error != "" {
-		t.Fatalf("refusing program must fall back to the interpreter: %s", got.Error)
-	}
-	if fmt.Sprintf("%v", got.Result) != "7" {
-		t.Errorf("fallback result = %v, want 7", got.Result)
+	if !strings.Contains(got.Error, "bytecode compilation FAILED") {
+		t.Fatalf("error = %q, want the compile failure named (result=%v)", got.Error, got.Result)
 	}
 }
 

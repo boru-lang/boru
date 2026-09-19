@@ -42,6 +42,9 @@ func TestBoundParserDispatchNeverDiverges(t *testing.T) {
 
 			ca, _ := New()
 			got, _, gerr := ca.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, gerr) {
+				return
+			}
 
 			// Whether the program compiled or fell back, its result must match
 			// the interpreter exactly (value + error presence).

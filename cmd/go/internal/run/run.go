@@ -114,12 +114,9 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print version and exit")
 	checkFirst := fs.Bool("check", false, "verbose pre-flight: print ALL check diagnostics (the pre-flight itself runs by default; this flag adds the advisory tiers to stderr)")
 	noCheck := fs.Bool("no-check", false, "skip the static pre-flight check before execution (also enabled by BORU_NO_CHECK)")
-	compileFlag := fs.Bool("compile", false, "execute via the bytecode compiler when the program is compilable; silently falls back to the interpreter otherwise (the default; also enabled by BORU_COMPILE)")
-	noCompileFlag := fs.Bool("no-compile", false, "run the interpreter instead of the default bytecode compiler; wins over --compile/--force-compile and their env vars (also enabled by BORU_NO_COMPILE)")
-	forceCompileFlag := fs.Bool("force-compile", false, "REQUIRE the bytecode compiler — abort with the refusal reason instead of falling back to the interpreter (also enabled by BORU_FORCE_COMPILE; BORU_NO_COMPILE disables)")
 	optionsStr := fs.String("options", "", "engine options as jsonic (e.g. tape:initial:65536,tape:grows:9)")
 	colorMode := fs.String("color", "auto", "diagnostic color: auto (terminal-only, honors NO_COLOR), always, never")
-	compileReport := fs.Bool("compile-report", false, "after the run, print each runtime-constructed callback's stamp outcome (compiled to the VM, or the refusal reason) to stderr; requires a compiled mode")
+	compileReport := fs.Bool("compile-report", false, "after the run, print each runtime-constructed callback's stamp outcome (compiled to the VM, or the reason its body did not compile) to stderr")
 	var pf permsflags.Flags
 	permsflags.Register(fs, &pf)
 
@@ -218,7 +215,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if *compileReport {
 			report = stderr
 		}
-		if err := buildrt.EvalReport(stdout, report, stderr, source, o, ResolveCompileMode(*compileFlag, *forceCompileFlag, *noCompileFlag), color); err != nil {
+		if err := buildrt.EvalReport(stdout, report, stderr, source, o, color); err != nil {
 			// `IO.exit N` is a request, not a failure: exit with the code
 			// the program asked for and print nothing, including for a
 			// non-zero code (design/CLI-PROGRAMS.0.md §4).
@@ -264,88 +261,15 @@ func EvalWithPolicy(w io.Writer, source string, registry string, seed int64, pol
 
 // EvalOptions runs source under the full Options set (registry, seed,
 // policy, tape bounds). The CLI builds Options from its flags —
-// including --options — and calls this. It runs in the default engine
-// mode, CompileTry: bytecode when the program compiles, silent sound
-// interpreter fallback otherwise.
+// including --options — and calls this. There is one engine: the program
+// compiles and its bytecode runs, or it does not compile and that is an
+// error.
 func EvalOptions(w io.Writer, source string, o lang.Options) error {
-	return EvalOptionsMode(w, source, o, CompileTry)
+	return buildrt.Eval(w, source, o)
 }
 
-// CompileMode selects which execution engine EvalOptionsMode drives: the
-// best-effort bytecode compiler (silent fallback — the default), the
-// interpreter (--no-compile), or the bytecode compiler in FORCE mode
-// (error if uncompilable).
-// The type and its constants live in buildrt so the standalone executable
-// produced by `boru build` can reference them without importing run; run
-// aliases them here to keep its public surface unchanged.
-type CompileMode = buildrt.CompileMode
-
-const (
-	// CompileOff runs the interpreter (the `--no-compile` flag).
-	CompileOff = buildrt.CompileOff
-	// CompileTry runs the bytecode compiler when the program is compilable and
-	// silently falls back to the interpreter otherwise — the default.
-	CompileTry = buildrt.CompileTry
-	// CompileForce REQUIRES the bytecode path: an uncompilable program (or a VM
-	// soundness assertion) aborts with the refusal reason rather than falling
-	// back (the `--force-compile` flag).
-	CompileForce = buildrt.CompileForce
-)
-
-// ResolveCompileMode applies the bytecode-mode control contract, styled
-// exactly like the checker's flag family (--check / --no-check /
-// BORU_NO_CHECK): a positive flag, a force variant, and a --no twin
-// that wins over everything. Compiled mode is ON by default (maintainer
-// decision, design/legacy/P7-ENDGAME.10.ignore — the P7 endgame closed the refusal
-// ledger to the documented residue and flipped the default to TRY):
-//
-//	(default)                             → TRY: bytecode when compilable,
-//	                                        silently interpreted otherwise
-//	                                        (a hidden compile failure)
-//	--compile        / BORU_COMPILE        → TRY, explicitly
-//	--force-compile  / BORU_FORCE_COMPILE  → FORCE: refusal is a loud error
-//	--no-compile     / BORU_NO_COMPILE     → OFF, wins over all of the above
-//
-// FORCE wins over TRY when both are requested. Results are identical to the
-// interpreter either way; the differential gates hold compile == interpret
-// byte-identical across the corpus, combinations, and property fuzz.
-func ResolveCompileMode(compile, force, noCompile bool) CompileMode {
-	if noCompile || envEnabled("BORU_NO_COMPILE") {
-		return CompileOff
-	}
-	if force || envEnabled("BORU_FORCE_COMPILE") {
-		return CompileForce
-	}
-	if compile || envEnabled("BORU_COMPILE") {
-		return CompileTry
-	}
-	return CompileTry
-}
-
-// envEnabled reports whether an env var is set to a truthy value
-// (present and not one of the empty/0/false/no forms).
-func envEnabled(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-	case "", "0", "false", "no", "off":
-		return false
-	default:
-		return true
-	}
-}
-
-// EvalOptionsMode is EvalOptions with the execution engine selected by mode:
-// CompileOff runs the interpreter; CompileTry runs the bytecode path when the
-// emitter can lower the program and silently falls back otherwise; CompileForce
-// REQUIRES the bytecode path and errors (with the refusal reason) when the
-// program is not compilable. CompileTry results are identical to the
-// interpreter — the flag is opt-in performance, never semantics
-// (design/legacy/boru-bytecode-plan.0.ignore, ground rules).
-func EvalOptionsMode(w io.Writer, source string, o lang.Options, mode CompileMode) error {
-	return buildrt.Eval(w, source, o, mode)
-}
-
-// EvalOptionsModeColor is EvalOptionsMode with the caller-resolved
-// color decision for structured error rendering (the --color flag).
-func EvalOptionsModeColor(w io.Writer, source string, o lang.Options, mode CompileMode, color bool) error {
-	return buildrt.EvalColor(w, source, o, mode, color)
+// EvalOptionsColor is EvalOptions with the caller-resolved color decision
+// for structured error rendering (the --color flag).
+func EvalOptionsColor(w io.Writer, source string, o lang.Options, color bool) error {
+	return buildrt.EvalColor(w, source, o, color)
 }

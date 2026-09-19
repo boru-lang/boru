@@ -41,7 +41,7 @@ func TestMiniXPathResults(t *testing.T) {
 			if err != nil {
 				t.Fatalf("lang.New: %v", err)
 			}
-			res, err := a.Run(xpImp + c.src)
+			res, err := runReference(t, a, xpImp+c.src)
 			if err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
@@ -98,7 +98,7 @@ func TestMiniXPathNonXmlSubject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(xpImp + `{a:1} mini xp '//a' {} typeof`)
+	got, err := runReference(t, a, xpImp+`{a:1} mini xp '//a' {} typeof`)
 	if err != nil {
 		t.Fatalf("expected the partial to stay data, got error: %v", err)
 	}

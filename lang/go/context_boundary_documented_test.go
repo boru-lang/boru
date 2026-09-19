@@ -84,6 +84,9 @@ g`, leaked, leaked},
 			gotC, cErr := a.Run(src)
 			b, _ := lang.New()
 			gotI, iErr := b.RunInterp(src)
+			if lang.NoteCompileDefect(t, src, gotC, cErr) {
+				return
+			}
 			if cErr != nil || iErr != nil {
 				t.Fatalf("both engines must run the program — compiled: %v / interpreted: %v",
 					cErr, iErr)

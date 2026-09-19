@@ -150,9 +150,6 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 // routed op meets a live rebind only where no call site can re-record.
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const armRead = "twin regime: read of `k` after a multi-run body binds it"
 	// defer names the op's defer site for a row that compiles and hands the
 	// RUN to the interpreter; empty for a row that refuses at check.
@@ -215,11 +212,13 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		}
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it: a compile failure is booked as the defect
+		// it is (compile_defect_test.go), and anything else the compiled
+		// lane reports is the program's own error and must match.
+		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 

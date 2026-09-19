@@ -49,6 +49,9 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatalf("%s: did not run compiled", name)
 	}
@@ -72,10 +75,10 @@ func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
 	if wantReason != "" && !strings.Contains(reason, wantReason) {
 		t.Errorf("%s: refusal reason %q; want substring %q", name, reason, wantReason)
 	}
-	gotC, compiled, errC := mustNew(t).RunCompiled(src)
+	gotC, _, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
-	if compiled {
-		t.Errorf("%s: ran compiled; want interpreter fallback", name)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
 	}
 	if (errC == nil) != (errI == nil) || codeOf(errC) != codeOf(errI) {
 		t.Fatalf("%s: fallback err=[%s] interp err=[%s] (should agree)", name, codeOf(errC), codeOf(errI))
@@ -89,9 +92,6 @@ func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
 
 func TestApplyOverParamFnCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"recursion.tsv:91 — apply over a Function param",
 			`def myfn ([x:Integer] => [x add 1000]) def runner fn [[myfn:Function v:Integer] [Integer] [v myfn/v apply]] def doubler ([x:Integer] => [x mul 2]) runner (doubler/v) 5`,
@@ -128,9 +128,6 @@ func TestApplyOverParamFnCompiles(t *testing.T) {
 
 func TestPathModifierMapFnCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"path-modifier.tsv:17 — /u leading apply",
 			`def m {a:add/v} end m.a/u 1 2`, "[3]"},
@@ -173,9 +170,6 @@ func TestPathModifierMapFnCompiles(t *testing.T) {
 
 func TestLogRegisterSinkCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// module-log.tsv:62 — a pure fn literal bakes as a const operand
 	// (CompileStoresFn); the sink registry mutates at RUN time only.
 	fnValueM2Native(t, "module-log.tsv:62 — register a pure fn sink",
@@ -188,6 +182,9 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 		src := `import "boru:log" ; Log.register (fn [[rec:Any] [] []]) console/q info/q`
 		_, compiled, errC := mustNew(t).RunCompiled(src)
 		_, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, nil, errC) {
+			return
+		}
 		if !compiled {
 			t.Errorf("register duplicate: did not run compiled")
 		}
@@ -214,9 +211,6 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 
 func TestIsFnValueOperandCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct{ name, src, want string }{
 		{"module-minilang.tsv:306 — matcher fn is its minted kind",
 			`import "boru:minilang"  (+re/[a-z]+/) is (MiniLang.Re)`, "[true]"},

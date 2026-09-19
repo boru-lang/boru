@@ -46,6 +46,9 @@ func TestFnDoMapCountMismatchParity(t *testing.T) {
 	}
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
+		return
+	}
 	if !compiled {
 		t.Fatal("expected a compiled run")
 	}

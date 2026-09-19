@@ -9,60 +9,51 @@ import (
 	"github.com/boru-lang/boru/lang/go/native"
 )
 
-// The C1 effect fence on RunCompiled's two fallback arms (eng effects.go,
-// design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore): a silent interpreter
-// re-run is permitted only while no observable effect escaped since before
-// the check pass — RestoreForCompile rolls back registry scopes but cannot
-// un-print, so a re-run after an effect DUPLICATES it (the L-DUP class,
-// design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore — the whole trie smoke suite printed
-// twice). The pure-value differential corpus never exercises
-// emit-then-fall-back, so these are the pins.
+// These were the C1 effect fence's pins. The fence permitted a silent
+// interpreter re-run only while no observable effect had escaped since before
+// the check pass, because RestoreForCompile rolls back registry scopes but
+// cannot un-print: a re-run after an effect DUPLICATED it (the L-DUP class,
+// design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore — the whole trie smoke suite
+// printed twice).
+//
+// Nothing re-runs the source any more, so there is no arm left to fence and
+// the whole duplicate-effect class is gone by construction. What these tests
+// pin now is the contract that replaced it: whatever the compiled lane hits —
+// a compile failure, a runtime bail, a foreign error, before or after an
+// effect — it reports it and stops. The effect fires exactly once because
+// there is only ever one run.
 
-// --- the runtime-bail arm ---------------------------------------------------
+// --- a runtime bail ---------------------------------------------------------
 
-// A compiled run that PRINTS and then hits a runtime internal_error (the
-// zz-inst shape-claim violation from bytecode_methodshape_test.go) must
-// propagate the annotated internal_error with the output emitted exactly
-// once — the pre-fence behaviour re-ran the whole source and printed twice.
-func TestRuntimeBailAfterEffectPropagates(t *testing.T) {
-	src := `print "once" ; def i (zz-inst) ; i.m 5 ; 42`
-	a := zzShapedInstance(t)
-	var out bytes.Buffer
-	a.SetOutput(&out)
+// A compiled run that hits a runtime internal_error (the zz-inst shape-claim
+// violation from bytecode_methodshape_test.go) propagates the annotated
+// internal_error. It did so only when an effect had already escaped; with the
+// re-run gone it is unconditional, and the effect — when there is one — fires
+// exactly once because there is only one run.
+func TestRuntimeBailPropagatesAsADefect(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{"after an effect", `print "once" ; def i (zz-inst) ; i.m 5 ; 42`, "once\n"},
+		{"with no effect", `def i (zz-inst) ; i.m 5 ; 42`, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := zzShapedInstance(t)
+			var out bytes.Buffer
+			a.SetOutput(&out)
 
-	got, compiled, err := a.RunCompiled(src)
-	if codeOf(err) != "internal_error" {
-		t.Fatalf("fenced bail: err=[%s] %v (got=%v compiled=%v); want the propagated internal_error", codeOf(err), err, got, compiled)
-	}
-	if !strings.Contains(err.Error(), "--no-compile") {
-		t.Errorf("fenced bail: error should carry the --no-compile note, got: %v", err)
-	}
-	if out.String() != "once\n" {
-		t.Errorf("fenced bail: output = %q, want exactly one %q (no duplicate from a re-run)", out.String(), "once\n")
-	}
-}
-
-// The positive twin: the SAME runtime bail with NO effect before it still
-// falls back silently to the interpreter with the correct result — the fence
-// only blocks a re-run that would duplicate output.
-func TestRuntimeBailBeforeEffectStillFallsBack(t *testing.T) {
-	src := `def i (zz-inst) ; i.m 5 ; 42`
-	a := zzShapedInstance(t)
-	var out bytes.Buffer
-	a.SetOutput(&out)
-
-	got, compiled, err := a.RunCompiled(src)
-	if err != nil {
-		t.Fatalf("effect-free bail: err=%v; want the silent interpreter fallback", err)
-	}
-	if compiled {
-		t.Error("effect-free bail: ran compiled; want the interpreter fallback")
-	}
-	if fmt.Sprint(got) != "[7 42]" {
-		t.Errorf("effect-free bail: got %v, want [7 42] from the fallback", got)
-	}
-	if out.String() != "" {
-		t.Errorf("effect-free bail: unexpected output %q", out.String())
+			got, compiled, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
+			if codeOf(err) != "internal_error" {
+				t.Fatalf("bail: err=[%s] %v (got=%v compiled=%v); want the propagated internal_error", codeOf(err), err, got, compiled)
+			}
+			if !strings.Contains(err.Error(), "compiler defect") {
+				t.Errorf("bail: error should name itself a compiler defect, got: %v", err)
+			}
+			if out.String() != c.want {
+				t.Errorf("bail: output = %q, want exactly %q", out.String(), c.want)
+			}
+		})
 	}
 }
 
@@ -106,6 +97,9 @@ func TestRefusalReturnsCompileRefused(t *testing.T) {
 	a.SetOutput(&out)
 
 	got, compiled, err := a.RunCompiled(zzRefusingRow)
+	if noteCompileDefect(t, zzRefusingRow, got, err) {
+		return
+	}
 	if codeOf(err) != "compile_failed" {
 		t.Fatalf("refusal: err=[%s] %v (got=%v compiled=%v); want compile_failed (Stage J: no silent re-run)", codeOf(err), err, got, compiled)
 	}
@@ -117,111 +111,76 @@ func TestRefusalReturnsCompileRefused(t *testing.T) {
 	}
 }
 
-// A refusal whose CHECK PASS already emitted an observable effect must NOT
-// return compile_failed — the code's re-run guarantee would be a lie (the
-// caller's fallback would duplicate the effect). It returns the fence's
-// blocked-fallback internal_error, and the effect is emitted exactly once.
-func TestRefusalAfterCheckEffectIsFenceBlocked(t *testing.T) {
+// A compile failure whose CHECK PASS already emitted an observable effect is
+// still a compile failure. It used to be reported as a fence-blocked
+// internal_error, because compile_failed carried a promise that a caller's
+// whole-source re-run was sound and that promise would have been a lie. No
+// caller re-runs anything now, so the code makes no promise and the honest
+// report is the defect itself — with the effect emitted exactly once.
+func TestCompileFailureAfterCheckEffectStillReportsTheDefect(t *testing.T) {
 	a := mustNew(t)
 	zzCheckEmit(a)
 	var out bytes.Buffer
 	a.SetOutput(&out)
 
 	got, compiled, err := a.RunCompiled(`zz-emit ; ` + zzRefusingRow)
-	if codeOf(err) != "internal_error" || !strings.Contains(err.Error(), "emitted observable output") {
-		t.Fatalf("effect-escaped refusal: err=[%s] %v (got=%v compiled=%v); want the fence-blocked internal_error", codeOf(err), err, got, compiled)
+	if noteCompileDefect(t, `zz-emit ; `+zzRefusingRow, got, err) {
+		return
 	}
-	if codeOf(err) == "compile_failed" {
-		t.Fatalf("effect-escaped refusal must never claim the re-run-is-sound code")
+	if codeOf(err) != "compile_failed" {
+		t.Fatalf("effect-escaped compile failure: err=[%s] %v (got=%v compiled=%v); want compile_failed", codeOf(err), err, got, compiled)
 	}
 	if out.String() != "E" {
-		t.Errorf("effect-escaped refusal: output = %q, want exactly one %q", out.String(), "E")
+		t.Errorf("effect-escaped compile failure: output = %q, want exactly one %q", out.String(), "E")
 	}
-	// The public Run's explicit fallback honours the guarantee: it re-runs
-	// only on compile_failed, so the fence-blocked error propagates and
-	// the effect still fires exactly once.
+	// Run is the same entry point with the same one outcome.
 	b := mustNew(t)
 	zzCheckEmit(b)
 	var outB bytes.Buffer
 	b.SetOutput(&outB)
-	if _, rerr := b.Run(`zz-emit ; ` + zzRefusingRow); codeOf(rerr) != "internal_error" {
-		t.Fatalf("Run over an effect-escaped refusal: err=[%s] %v, want internal_error", codeOf(rerr), rerr)
+	if _, rerr := b.Run(`zz-emit ; ` + zzRefusingRow); codeOf(rerr) != "compile_failed" {
+		t.Fatalf("Run over an effect-escaped compile failure: err=[%s] %v, want compile_failed", codeOf(rerr), rerr)
 	}
 	if outB.String() != "E" {
-		t.Errorf("Run over an effect-escaped refusal: output = %q, want exactly one %q", outB.String(), "E")
+		t.Errorf("Run over an effect-escaped compile failure: output = %q, want exactly one %q", outB.String(), "E")
 	}
 }
 
-// A refusal whose ONLY sentinel diagnostic is a CAUGHT one (a do-body failure
-// the error handler recovers — severity info, CaughtAtRuntime) must NOT
-// surface that diagnostic as the program's verdict when the fence blocks the
-// fallback: the interpreter CONTINUES with the handler's result (the twin
-// below pins [caught]), so the honest report is the blocked-fallback
-// internal_error, like any other refusal the fence cannot resolve.
-func TestCaughtDiagnosticRefusalReportsBlockedFallback(t *testing.T) {
-	a := mustNew(t)
-	zzCheckEmit(a)
-	var out bytes.Buffer
-	a.SetOutput(&out)
+// A program whose only blocking diagnostic is a CAUGHT one (a do-body
+// failure the error handler recovers — severity info, CaughtAtRuntime) is
+// VALID: the interpreter continues with the handler's result. It bought a
+// silent interpreter run for exactly that reason. It does not compile, so it
+// is now a compile defect and says so — with or without a check-pass effect.
+// The defect is real and owed a fix; what it is not is a second outcome.
+func TestCaughtDiagnosticIsACompileDefect(t *testing.T) {
+	const src = `do [zz-missing-word-xyz] error ['caught']`
+	for _, c := range []struct{ name, pre, want string }{
+		{"after a check-pass effect", `zz-emit ; `, "E"},
+		{"with no effect", "", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := mustNew(t)
+			zzCheckEmit(a)
+			var out bytes.Buffer
+			a.SetOutput(&out)
 
-	got, compiled, err := a.RunCompiled(`zz-emit ; do [zz-missing-word-xyz] error ['caught']`)
-	if codeOf(err) != "internal_error" {
-		t.Fatalf("caught-diag refusal: err=[%s] %v (got=%v compiled=%v); want the blocked-fallback internal_error — a caught diagnostic is not the program's verdict", codeOf(err), err, got, compiled)
-	}
-	if !strings.Contains(err.Error(), "--no-compile") {
-		t.Errorf("caught-diag refusal: error should carry the --no-compile note, got: %v", err)
-	}
-	if out.String() != "E" {
-		t.Errorf("caught-diag refusal: output = %q, want exactly one %q", out.String(), "E")
-	}
-}
-
-// The effect-free twin: the same caught-diagnostic refusal with no check-pass
-// effect falls back silently and the program's REAL verdict is the handler's
-// value — which is why the fenced arm above must not report the caught
-// diagnostic as an error.
-func TestCaughtDiagnosticRefusalWithoutEffectFallsBack(t *testing.T) {
-	a := mustNew(t)
-	got, compiled, err := a.RunCompiled(`do [zz-missing-word-xyz] error ['caught']`)
-	if err != nil || compiled {
-		t.Fatalf("caught-diag fallback: err=%v compiled=%v; want the silent interpreter fallback", err, compiled)
-	}
-	if fmt.Sprint(got) != "[caught]" {
-		t.Errorf("caught-diag fallback: got %v, want [caught] from the handler", got)
-	}
-}
-
-// A late effect from a PREVIOUS request's detached work (a ForkConcurrent
-// body still printing) must not poison the CURRENT request's fence baseline:
-// the ledger is per-request, and a stale worker holds the pointer it captured
-// at its own fork/arm time. zz-stale-note stands in for that worker — it
-// notes the ledger that was live BEFORE this request began, during the new
-// request's check pass.
-func TestStaleLedgerEffectDoesNotBlockFallback(t *testing.T) {
-	a := mustNew(t)
-	stale := a.registry.Effects
-	a.Register("zz-stale-note", native.Signature{
-		Args:       []*native.Type{},
-		Returns:    []*native.Type{},
-		BarrierPos: -1,
-		Impl: native.Go(func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
-			stale.Note()
-			return nil, nil
-		}, native.RunInCheck()),
-	})
-
-	// The probe rides the STATIC-ORACLE class (the caught-diag sentinel row
-	// succeeds interpreted) — the class that KEEPS the bounded re-run post
-	// Stage J, which is exactly the arm a poisoned baseline would block.
-	got, compiled, err := a.RunCompiled(`zz-stale-note ; do [zz-missing-word-xyz] error ['caught']`)
-	if compiled || err != nil {
-		t.Fatalf("stale-note oracle re-run: compiled=%v err=%v; want the silent bounded fallback", compiled, err)
-	}
-	if fmt.Sprint(got) != "[caught]" {
-		t.Errorf("stale-note oracle re-run: got %v, want [caught] — a stale ledger note must not block the bounded fallback", got)
-	}
-	if a.registry.Effects != stale {
-		t.Error("the request must restore the prior ledger on return")
+			got, compiled, err := a.RunCompiled(c.pre + src)
+			if noteCompileDefect(t, c.pre+src, got, err) {
+				return
+			}
+			if codeOf(err) != "compile_failed" {
+				t.Fatalf("caught diagnostic: err=[%s] %v (got=%v compiled=%v); want compile_failed", codeOf(err), err, got, compiled)
+			}
+			if out.String() != c.want {
+				t.Errorf("caught diagnostic: output = %q, want %q", out.String(), c.want)
+			}
+			// The interpreter still answers it — the program is valid, which
+			// is what makes the compile failure a defect rather than a verdict.
+			b := mustNew(t)
+			if gotI, errI := b.RunInterp(c.pre + src); errI != nil || fmt.Sprint(gotI) != "[caught]" {
+				t.Errorf("interpreted: got %v / %v, want [caught] — the program is valid", gotI, errI)
+			}
+		})
 	}
 }
 
@@ -255,6 +214,9 @@ func TestStaticErrorAfterCheckEffectSurfacesItself(t *testing.T) {
 	a.SetOutput(&out)
 
 	_, compiled, err := a.RunCompiled(`zz-emit ; zz-no-such-word-xyz`)
+	if noteCompileDefect(t, `zz-emit ; zz-no-such-word-xyz`, nil, err) {
+		return
+	}
 	if err == nil || compiled {
 		t.Fatalf("fenced static error: err=%v compiled=%v; want the check error surfaced", err, compiled)
 	}
@@ -286,6 +248,9 @@ func TestCheckErrorAfterCheckEffectSurfacesItself(t *testing.T) {
 	a.SetOutput(&out)
 
 	_, compiled, err := a.RunCompiled(`zz-emit-fail`)
+	if noteCompileDefect(t, `zz-emit-fail`, nil, err) {
+		return
+	}
 	if err == nil || compiled {
 		t.Fatalf("fenced check error: err=%v compiled=%v; want the check error surfaced", err, compiled)
 	}
@@ -316,67 +281,34 @@ func zzForeignBoom(t *testing.T) *Boru {
 	return a
 }
 
-// A compiled run that prints and then fails with a FOREIGN error must also be
-// fenced: fenceBlockedFallback wraps the foreign text in an internal_error
-// carrying the --no-compile note, with the output emitted exactly once.
-func TestForeignErrorBailAfterEffectPropagates(t *testing.T) {
-	a := zzForeignBoom(t)
-	var out bytes.Buffer
-	a.SetOutput(&out)
+// A FOREIGN error out of a native handler is the same class: not a boru
+// error, so not the program's own verdict — it is wrapped in an
+// internal_error carrying the foreign text and the defect note, before or
+// after an effect, and the effect fires exactly once.
+func TestForeignErrorBailPropagatesAsADefect(t *testing.T) {
+	for _, c := range []struct{ name, src, want string }{
+		{"after an effect", `print "once" ; zz-boom`, "once\n"},
+		{"with no effect", `zz-boom`, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a := zzForeignBoom(t)
+			var out bytes.Buffer
+			a.SetOutput(&out)
 
-	_, compiled, err := a.RunCompiled(`print "once" ; zz-boom`)
-	if codeOf(err) != "internal_error" {
-		t.Fatalf("fenced foreign bail: err=[%s] %v compiled=%v; want the wrapped internal_error", codeOf(err), err, compiled)
-	}
-	if !strings.Contains(err.Error(), "zz-boom: foreign failure") || !strings.Contains(err.Error(), "--no-compile") {
-		t.Errorf("fenced foreign bail: error should carry the foreign text and the note, got: %v", err)
-	}
-	if out.String() != "once\n" {
-		t.Errorf("fenced foreign bail: output = %q, want exactly one %q", out.String(), "once\n")
-	}
-}
-
-// The positive twin: the same foreign failure with no prior effect still
-// falls back silently, and the interpreter re-run surfaces the same foreign
-// error as its own verdict.
-func TestForeignErrorBailWithoutEffectFallsBack(t *testing.T) {
-	a := zzForeignBoom(t)
-	var out bytes.Buffer
-	a.SetOutput(&out)
-
-	_, compiled, err := a.RunCompiled(`zz-boom`)
-	if compiled {
-		t.Error("effect-free foreign bail: ran compiled; want the interpreter fallback")
-	}
-	if err == nil || !strings.Contains(err.Error(), "zz-boom: foreign failure") {
-		t.Errorf("effect-free foreign bail: err=%v; want the interpreter's own foreign error", err)
-	}
-	if out.String() != "" {
-		t.Errorf("effect-free foreign bail: unexpected output %q", out.String())
-	}
-}
-
-// The hatch twin: BORU_COMPILE_FALLBACK=1 restores the pre-Stage-J silent
-// interpreter fallback for one release — the refused row then runs
-// interpreted and yields its canonical interpreter result.
-func TestRefusalHatchRestoresFallback(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
-	a := mustNew(t)
-	var out bytes.Buffer
-	a.SetOutput(&out)
-
-	got, compiled, err := a.RunCompiled(zzRefusingRow)
-	if compiled {
-		t.Error("hatched refusal: ran compiled; want the interpreter fallback")
-	}
-	if err != nil {
-		t.Errorf("hatched refusal: err=%v; want the silent interpreter fallback", err)
-	}
-	if fmt.Sprint(got) != "[1 1 1]" {
-		t.Errorf("hatched refusal: got %v, want [1 1 1] from the fallback", got)
-	}
-	if out.String() != "" {
-		t.Errorf("hatched refusal: unexpected output %q", out.String())
+			_, compiled, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, nil, err) {
+				return
+			}
+			if codeOf(err) != "internal_error" {
+				t.Fatalf("foreign bail: err=[%s] %v compiled=%v; want the wrapped internal_error", codeOf(err), err, compiled)
+			}
+			if !strings.Contains(err.Error(), "zz-boom: foreign failure") || !strings.Contains(err.Error(), "compiler defect") {
+				t.Errorf("foreign bail: error should carry the foreign text and the defect note, got: %v", err)
+			}
+			if out.String() != c.want {
+				t.Errorf("foreign bail: output = %q, want exactly %q", out.String(), c.want)
+			}
+		})
 	}
 }
 
@@ -384,9 +316,10 @@ func TestRefusalHatchRestoresFallback(t *testing.T) {
 
 // The check pass over ordinary programs — value words, defs and calls, a
 // module import, and a print in RUN position (check mode analyses it, never
-// executes it) — must emit NO observable effect: this is what keeps the
-// refusal arm's silent fallback sound for every corpus row, and what makes
-// the C2 error-oracle run single-emission.
+// executes it) — must emit NO observable effect. It is no longer what keeps a
+// re-run sound, because nothing re-runs; it is the plain obligation that
+// ANALYSING a program does not run it, and a program's output is emitted by
+// its run and only by its run.
 func TestCheckPassIsEffectFree(t *testing.T) {
 	for _, src := range []string{
 		`1 add 2`,

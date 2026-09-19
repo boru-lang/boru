@@ -5,33 +5,34 @@ import (
 	"testing"
 )
 
-// A whole-program compilation refusal is silently re-run on the interpreter
-// (design/COMPILABLE-SUBSET.md §1) — a defect that would otherwise go
-// unreported. The default compile-try
-// mode surfaces that as a one-line stderr warning naming the first offending
-// construct, so the performance cost is not a surprise. A compiled program, and
-// the interpreter (-no-compile) mode, print no warning.
-func TestExecuteCompileRefusalWarning(t *testing.T) {
-	// A program the compiler refuses to lower (an off-corpus shape — a `def`
-	// consuming a variadic loop region with a DYNAMIC count; the S5 split
-	// needs the static region size, so this is the stable refusing fixture
-	// now that the statically-counted sibling graduated 2026-07-17). The
-	// interpreter runs it fine, so the warning is the only stderr trace.
-	// -no-check skips the pre-flight so the run reaches the compile-try
-	// fallback.
-	refuses := `def m {n: 3} def xs (for (m get "n") [1]) xs`
-	const wantWarn = "warning: bytecode compilation FAILED"
+// A program the compiler cannot lower FAILS, and stderr names the construct.
+//
+// This used to be a WARNING: the run fell back to the interpreter, answered
+// correctly, and said so on one line — the warning existed because the
+// silence was the problem (design/COMPILABLE-SUBSET.md §1). There is no
+// fallback to warn about now. The failure says the same thing, without
+// needing a second engine to have produced an answer first.
+func TestExecuteNamesTheConstructThatDidNotCompile(t *testing.T) {
+	// An off-corpus shape — a `def` consuming a variadic loop region with a
+	// DYNAMIC count; the S5 split needs the static region size, so this is
+	// the stable fixture now that the statically-counted sibling graduated
+	// 2026-07-17. -no-check skips the pre-flight so the failure comes from
+	// the EMITTER rather than the checker.
+	doesNotCompile := `def m {n: 3} def xs (for (m get "n") [1]) xs`
+	const wantFail = "bytecode compilation FAILED"
 
 	var stdout, stderr strings.Builder
-	Execute([]string{"-no-check", "-e", refuses}, strings.NewReader(""), &stdout, &stderr)
-	if !strings.Contains(stderr.String(), wantWarn) {
-		t.Fatalf("expected a refusal warning, got stderr: %q", stderr.String())
+	if code := Execute([]string{"-no-check", "-e", doesNotCompile}, strings.NewReader(""), &stdout, &stderr); code == 0 {
+		t.Fatalf("exit 0 for a program that does not compile; stdout=%q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), wantFail) {
+		t.Fatalf("expected the compile failure named, got stderr: %q", stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "consumes loop results") {
-		t.Fatalf("refusal warning should name the offending construct, got: %q", stderr.String())
+		t.Fatalf("the failure should name the offending construct, got: %q", stderr.String())
 	}
 
-	// A compilable program prints no warning.
+	// A compilable program runs and says nothing on stderr.
 	stdout.Reset()
 	stderr.Reset()
 	if code := Execute([]string{"-e", "1 add 2"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
@@ -40,16 +41,7 @@ func TestExecuteCompileRefusalWarning(t *testing.T) {
 	if !strings.Contains(stdout.String(), "3") {
 		t.Fatalf("run result missing: %q", stdout.String())
 	}
-	if strings.Contains(stderr.String(), wantWarn) {
-		t.Fatalf("a compiled program must not warn, got: %q", stderr.String())
-	}
-
-	// -no-compile is an explicit opt-out of the bytecode path: no refusal, no
-	// warning, even for the program that would otherwise refuse.
-	stdout.Reset()
-	stderr.Reset()
-	Execute([]string{"-no-check", "-no-compile", "-e", refuses}, strings.NewReader(""), &stdout, &stderr)
-	if strings.Contains(stderr.String(), wantWarn) {
-		t.Fatalf("-no-compile must not warn about a refusal, got: %q", stderr.String())
+	if strings.Contains(stderr.String(), wantFail) {
+		t.Fatalf("a compiled program must say nothing, got: %q", stderr.String())
 	}
 }

@@ -32,6 +32,9 @@ func TestParenLeadingApplyCompiles(t *testing.T) {
 		src := `def q (if true [([y:Integer] => [y add 1])] [([y:Integer] => [y sub 1])]) add 1 (q 5)`
 		a, _ := New()
 		gotC, _, errC := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			return
+		}
 		b, _ := New()
 		gotI, errI := b.RunInterp(src)
 		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || errC != nil && errI == nil {

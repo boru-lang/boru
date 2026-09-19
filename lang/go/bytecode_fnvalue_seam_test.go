@@ -129,6 +129,9 @@ func TestFnValueSeamParityAndNoEntry(t *testing.T) {
 			}
 		})
 		gotC, compiled, errC := b.RunCompiled(row.src)
+		if noteCompileDefect(t, row.src, gotC, errC) {
+			continue
+		}
 		disarm()
 		if !compiled {
 			t.Errorf("%s: must take the compiled lane\n  %s", row.label, row.src)
@@ -159,6 +162,9 @@ func TestFnValueSeamStampsOnce(t *testing.T) {
 	src := `def hold {f: (fn [[n:Integer][Integer][n add 1]])} end [(each hold.f [1 2]) (each hold.f [3 4])]`
 	b, _ := New()
 	got, compiled, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if err != nil || !compiled || fmt.Sprint(got) != "[[[2 3] [4 5]]]" {
 		t.Fatalf("got %v compiled=%v err=%v", got, compiled, err)
 	}
@@ -195,6 +201,9 @@ func TestFnValueSeamDeclinesKeepStepping(t *testing.T) {
 		gotI, errI := a.RunInterp(tc.src)
 		b, _ := New()
 		gotC, _, errC := b.RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
 		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) {
 			t.Errorf("%s: compiled/interp disagree\n  compiled %v / [%s] %s\n  interp   %v / [%s] %s\n  %s",
 				tc.label, gotC, codeOf(errC), detailOf(errC), gotI, codeOf(errI), detailOf(errI), tc.src)

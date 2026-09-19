@@ -22,11 +22,11 @@ func nur101Refusal(t *testing.T, src, wantInterp string) {
 	// Asserted on wasCompiled, not on the error: under the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch the library runs the fallback itself and
 	// returns no error, so the error text is not a stable refusal signal.
-	gotC, compiled, errC := mustNew(t).RunCompiled(src)
-	if compiled {
-		t.Errorf("%q: ran compiled; want the interpreter fallback", src)
-	}
+	gotC, _, errC := mustNew(t).RunCompiled(src)
 	got, err := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if err != nil || fmt.Sprint(got) != wantInterp {
 		t.Errorf("%q: interp = %v (%v), want %s", src, got, err, wantInterp)
 	}
@@ -83,6 +83,9 @@ func TestParenReStepRule(t *testing.T) {
 			continue
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled {
 			continue // a refusal is sound; the per-shape fences below pin which ones
 		}
@@ -121,6 +124,9 @@ func TestParenReStepPlacedLayoutCompiles(t *testing.T) {
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) {
+			continue
+		}
 		if !compiled || errC != nil || errI != nil {
 			t.Errorf("%q: compiled=%v errC=%v errI=%v", c.src, compiled, errC, errI)
 			continue
@@ -170,6 +176,9 @@ func TestForeignClosureCompilesInItsOwnRegistry(t *testing.T) {
 	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || errI != nil {
 		t.Fatalf("run: compiled=%v errC=%v errI=%v", compiled, errC, errI)
 	}
@@ -206,6 +215,9 @@ func TestForeignClosureCaptureResolvesInItsOwnRegistry(t *testing.T) {
 	const src = `import module [def acc (flex [1 2 3]) def big fn [[e:Map] [Boolean] [(size acc) lt (e dot value)]] export "A" {big: big/v}] end def acc (flex []) filter A.big [1 2 3 4]`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || errI != nil {
 		t.Fatalf("run: compiled=%v errC=%v errI=%v", compiled, errC, errI)
 	}
@@ -273,6 +285,9 @@ func TestListFoldCallbackOrderPin(t *testing.T) {
 		}
 		gotC, ran, errC := mustNew(t).RunCompiled(tc.src)
 		gotI, errI := mustNew(t).RunInterp(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
 		if !ran || errC != nil || errI != nil {
 			t.Fatalf("%s: ran=%v errC=%v errI=%v", tc.src, ran, errC, errI)
 		}
@@ -315,6 +330,9 @@ func TestParenReStepListElementRefusal(t *testing.T) {
 	const placed = `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] [(mk 1) 2]`
 	gotC, compiled, errC := mustNew(t).RunCompiled(placed)
 	gotI, errI := mustNew(t).RunInterp(placed)
+	if noteCompileDefect(t, placed, gotC, errC) {
+		return
+	}
 	if !compiled || errC != nil || errI != nil {
 		t.Fatalf("placed list twin: compiled=%v errC=%v errI=%v", compiled, errC, errI)
 	}

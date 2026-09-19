@@ -130,42 +130,24 @@ func TestFnValueSeamForeignHomeTakesInvokeCallback(t *testing.T) {
 }
 
 // An internal error inside the hosted unit — a corrupted program, the panic
-// contained — degrades to the stepping path when no observable effect
-// escaped; after an effect it propagates, since a re-run would repeat it.
-func TestFnValueSeamInternalErrorDegradesOrPropagates(t *testing.T) {
+// contained — PROPAGATES. It used to degrade to the stepping path when no
+// observable effect had escaped, so the interpreter answered and the
+// soundness bug left no mark; the effect fence was there to stop a re-run
+// repeating an effect that had. Nothing re-runs now, so both shapes report
+// the same thing: a compiler defect, with ran=true because the call was
+// hosted and it is the host that failed.
+func TestFnValueSeamInternalErrorPropagates(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	broken := oneConstProg(42)
 	broken.Fns[0].Code[0].Arg = 99 // const index past the table → index panic
-	if _, err, ran := vc.invokeFnValue(r, fnValueWithRef(&compiler.CompiledFnRef{Prog: broken, Unit: 0}, nil, nil), nil); ran || err != nil {
-		t.Fatalf("a contained internal error with no effect degrades: ran=%v err=%v", ran, err)
+	_, err, ran := vc.invokeFnValue(r, fnValueWithRef(&compiler.CompiledFnRef{Prog: broken, Unit: 0}, nil, nil), nil)
+	if !ran || !core.IsInternalErr(err) {
+		t.Fatalf("a contained internal error propagates: ran=%v err=%v", ran, err)
 	}
 	if r.Invoker != nil || r.NestedRunner != nil {
 		t.Error("the hosted run must restore the enclosing body seams")
 	}
-	emitThenBoom := &compiler.Program{
-		Sigs: []compiler.SigRef{{Word: "zz-note", Sig: noteEffectSig()}},
-		Fns: []compiler.CompiledFn{{
-			Name: "emit-then-boom",
-			Code: []compiler.Instr{
-				{Op: compiler.OpCallNative, Arg: 0},
-				{Op: compiler.OpCallDynamic, Arg: 0},
-				{Op: compiler.OpRet, Arg: 0},
-			},
-			Debug: []core.SrcPos{{Row: 1, Col: 1}, {Row: 1, Col: 1}, {Row: 1, Col: 1}},
-		}},
-	}
-	_, err, ran := vc.invokeFnValue(r, fnValueWithRef(&compiler.CompiledFnRef{Prog: emitThenBoom, Unit: 0}, nil, nil), nil)
-	if !ran || !core.IsInternalErr(err) {
-		t.Fatalf("an internal error after an effect propagates: ran=%v err=%v", ran, err)
-	}
-	if got := r.Effects.Count(); got != 1 {
-		t.Fatalf("effect count = %d, want exactly 1 (no re-run)", got)
-	}
 }
-
-// A DynEnv unit gets the value's own args list for the duration and the
-// depth is restored after — the root frame the interpreter's dispatch would
-// have opened for the value.
 func TestFnValueSeamBracketsRootArgsForDynEnv(t *testing.T) {
 	vc, r := foreignVC(t, oneConstProg(1))
 	p := oneConstProg(42)

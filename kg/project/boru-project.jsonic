@@ -77,7 +77,7 @@
       locator: "CLI.md"
       title: "CLI.md subcommand reference"
       retrieved_at: null
-      content_hash: "cli-md-2026-08"
+      content_hash: "cli-md-2026-09-19"
       authority: "primary"
       metadata: { repository: "boru-lang/boru" }
     }
@@ -277,7 +277,7 @@
       locator: "design/SESSION-HANDOVER.0.md"
       title: "session handover for the full-compilation project"
       retrieved_at: null
-      content_hash: "session-handover-2026-09-11"
+      content_hash: "session-handover-2026-09-19"
       authority: "primary"
       metadata: { repository: "boru-lang/boru" }
     }
@@ -492,7 +492,8 @@
     { key: "howto", type: "Document", label: "HOWTO.md" }
     { key: "reference", type: "Document", label: "REFERENCE.md" }
     { key: "explanation", type: "Document", label: "EXPLANATION.md" }
-    { key: "cli-md", type: "Document", label: "CLI.md" }
+    { key: "cli-md", type: "Document", label: "CLI.md"
+      attributes: { role: "the subcommand reference. Its bytecode-compilation section is the user-facing statement of the ONE-OUTCOME contract as of 2026-09-19: there are no compile modes and no flags to select between them, because a program that does not compile is an error rather than one that quietly runs somewhere else. --compile, --force-compile, --no-compile and their three env vars are retired with the fallback they selected between, and the coverage notes say plainly that compiled coverage UNDERSTATES rather than overstates — the safe direction for a number you gate on" } }
     { key: "style-guide", type: "Document", label: "STYLE-GUIDE.md" }
     { key: "adr", type: "Document", label: "ADR.md" }
     { key: "nur", type: "Document", label: "NUR.md" }

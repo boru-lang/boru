@@ -24,7 +24,7 @@ func mcRun(t *testing.T, src string) any {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(src)
+	res, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("Run(%q): %v", src, err)
 	}
@@ -76,7 +76,7 @@ func TestMiniCompileRegisterTombstones(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			a, _ := lang.New()
-			if _, err := a.Run(c.prog); err == nil {
+			if err := runReferenceErr(t, a, c.prog); err == nil {
 				t.Fatalf("%s: expected mini_registry_frozen", c.name)
 			} else if !strings.Contains(err.Error(), "mini_registry_frozen") {
 				t.Fatalf("%s: error %q does not contain mini_registry_frozen", c.name, err.Error())

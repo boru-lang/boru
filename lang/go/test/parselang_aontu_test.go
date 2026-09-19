@@ -149,7 +149,7 @@ func TestParseLangAontuInKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(aontuImp + `ParseLang.kinds`)
+	res, err := runReference(t, a, aontuImp+`ParseLang.kinds`)
 	if err != nil {
 		t.Fatalf("kinds: %v", err)
 	}

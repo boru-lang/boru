@@ -29,7 +29,7 @@ func envFake() capabilities.EnvOps {
 
 func runEnv(t *testing.T, a *lang.Boru, src string) any {
 	t.Helper()
-	res, err := a.Run(`import "boru:io"  ` + src)
+	res, err := runReference(t, a, `import "boru:io"  `+src)
 	if err != nil {
 		t.Fatalf("%s: %v", src, err)
 	}

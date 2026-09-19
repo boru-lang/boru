@@ -38,6 +38,9 @@ func TestForBodyModuleValueCompiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			gotC, compiled, err := b.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, gotC, err) {
+				return
+			}
 			if err != nil {
 				t.Fatalf("RunCompiled: %v", err)
 			}

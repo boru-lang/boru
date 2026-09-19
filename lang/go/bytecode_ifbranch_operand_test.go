@@ -89,6 +89,9 @@ render {mode: "x", tabs: {a: 1}}`, "[2]"},
 				t.Fatal(err)
 			}
 			got, compiled, err := b.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
 			if err != nil {
 				t.Fatalf("RunCompiled: %v", err)
 			}
@@ -160,6 +163,9 @@ render {mode: "x", n: 7}`
 		t.Fatal(err)
 	}
 	got, _, err := b.RunCompiled(src)
+	if noteCompileDefect(t, src, got, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}

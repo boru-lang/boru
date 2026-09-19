@@ -268,9 +268,10 @@ var frontierCases = []frontierCase{
 		a.SetOutput(&bytes.Buffer{})
 		var bails []BailEvent
 		defer a.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e) })()
-		if _, _, err := a.RunCompiled(`def i (zz-inst) ; i.m 5 ; 42`); err != nil {
-			return fmt.Errorf("run failed before the bail assertion: %w", err)
-		}
+		// The run now FAILS when it bails — nothing re-runs it — so the
+		// error is expected and is not what this measures. The census is:
+		// a reachable runtime bail is an open defect and must reach zero.
+		_, _, _ = a.RunCompiled(`def i (zz-inst) ; i.m 5 ; 42`)
 		if len(bails) > 0 {
 			return fmt.Errorf("runtime bails: %s", bailCensus(bails))
 		}

@@ -1,7 +1,8 @@
-// Package test implements `boru test` — discover *_test.boru suites, run each on
-// the bytecode compiler by DEFAULT (the normal, fast execution mode; falls back
-// to the interpreter only when a file is uncompilable), print boru:test's
-// per-case report, and exit non-zero if any case failed or any file errored.
+// Package test implements `boru test` — discover *_test.boru suites, compile
+// and run each one, print boru:test's per-case report, and exit non-zero if
+// any case failed, any file errored, or any file did not compile. A suite
+// that does not compile is an error like any other: there is no second engine
+// to run it on.
 //
 // With --coverage the runner arms the engine's line-coverage hook BEFORE each
 // file runs, so a `*_test.boru` that imports a user module (`import "./mod.boru"`)
@@ -9,11 +10,13 @@
 // the hook is armed at import time). After the run it reports each imported
 // module's line coverage.
 //
-// Coverage is measured in whatever engine mode the suite runs — compiled by
-// default. The bytecode VM folds some source positions (e.g. a trailing
-// bare-word return), so compiled coverage is a SUBSET of the interpreter's:
-// pair --coverage with --no-compile for the interpreter's line-granular
-// coverage when the goal is to drive a module to 100%.
+// Coverage is measured on the compiled run, because that is the only run.
+// The bytecode VM folds some source positions (e.g. a trailing bare-word
+// return), so a folded row reads as uncovered where the interpreter would
+// have recorded it — the report UNDERSTATES coverage rather than overstating
+// it, which is the safe direction for a number you gate on. Each folded
+// position is a position the VM should be carrying, and closing them is
+// compiler work, not a reason to measure somewhere else.
 package test
 
 import (
@@ -60,9 +63,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	coverage := fs.Bool("coverage", false, "measure imported-user-module line coverage; print a summary and write an HTML report")
 	coverageDir := fs.String("coverage-dir", "coverage", "directory for the HTML coverage report written with --coverage")
 	coverageMin := fs.Float64("coverage-min", 0, "fail the run (exit 1) when aggregate line coverage is below this percentage; implies coverage measurement")
-	compileFlag := fs.Bool("compile", false, "execute via the bytecode compiler when possible; silent interpreter fallback (the default; also enabled by BORU_COMPILE)")
-	noCompileFlag := fs.Bool("no-compile", false, "run each suite on the interpreter instead of the default bytecode compiler (also enabled by BORU_NO_COMPILE)")
-	forceCompileFlag := fs.Bool("force-compile", false, "REQUIRE the bytecode compiler — a suite that is not compilable errors instead of falling back")
 	var pf permsflags.Flags
 	permsflags.Register(fs, &pf)
 	if err := fs.Parse(args); err != nil {
@@ -90,7 +90,6 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	o := run.OptionsFor(pathutil.Expand(*registry), 0, pol)
-	mode := run.ResolveCompileMode(*compileFlag, *forceCompileFlag, *noCompileFlag)
 
 	// A --coverage-min threshold implies coverage measurement even without
 	// --coverage (you can't gate on a number you don't measure).
@@ -101,7 +100,7 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	var passed, failed int
 	anyErr := false
 	for _, f := range files {
-		p, fl, errored := runFile(stdout, stderr, f, o, mode, accum)
+		p, fl, errored := runFile(stdout, stderr, f, o, accum)
 		passed += p
 		failed += fl
 		if errored {
@@ -186,7 +185,7 @@ func discover(targets []string) ([]string, error) {
 // passing cases followed by one stray error was indistinguishable from an
 // empty file. Only a suite that errored before boru:test loaded counts nothing,
 // because there is then no tally to read.
-func runFile(stdout, stderr io.Writer, path string, o lang.Options, mode run.CompileMode, accum *covAccum) (passed, failed int, errored bool) {
+func runFile(stdout, stderr io.Writer, path string, o lang.Options, accum *covAccum) (passed, failed int, errored bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %s: %s\n", path, err)
@@ -207,7 +206,7 @@ func runFile(stdout, stderr io.Writer, path string, o lang.Options, mode run.Com
 		defer disarm()
 	}
 	fmt.Fprintf(stdout, "# %s\n", path)
-	if runErr := runSource(a, string(data), mode); runErr != nil {
+	if runErr := runSource(a, string(data)); runErr != nil {
 		// An `IO.exit` inside a suite ends THAT FILE, not the test run: it
 		// stops the file's remaining cases exactly as any other raise does,
 		// and the cases already recorded are still salvaged and reported
@@ -242,22 +241,14 @@ func runFile(stdout, stderr io.Writer, path string, o lang.Options, mode run.Com
 	return passed, failed, false
 }
 
-// runSource executes src on the instance in the selected engine mode. The
-// default (CompileTry) is a.Run — bytecode when compilable, silent interpreter
-// fallback otherwise. A recorded test failure does NOT error the run (the
-// framework records it and continues); only a genuine runtime/parse error does.
-func runSource(a *lang.Boru, src string, mode run.CompileMode) error {
-	switch mode {
-	case run.CompileForce:
-		_, err := a.RunCompiledStrict(src)
-		return err
-	case run.CompileOff:
-		_, err := a.RunInterp(src)
-		return err
-	default:
-		_, err := a.Run(src)
-		return err
-	}
+// runSource executes src on the instance. There is one engine: the suite
+// compiles and its bytecode runs, or it does not compile and that is an
+// error. A recorded test FAILURE does not error the run (the framework
+// records it and continues); only a genuine runtime, parse or compile error
+// does.
+func runSource(a *lang.Boru, src string) error {
+	_, err := a.Run(src)
+	return err
 }
 
 // readOutcome reads boru:test's accumulated results off the (already-run)

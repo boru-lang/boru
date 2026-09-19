@@ -24,7 +24,7 @@ func TestResourceInstanceJsonify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	res, err := a.Run(`import "boru:struct-util"  StructUtil.jsonify (make Entity {kind:'api' spec:'s' entity:'x'})`)
+	res, err := runReference(t, a, `import "boru:struct-util"  StructUtil.jsonify (make Entity {kind:'api' spec:'s' entity:'x'})`)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestResourceInstanceFieldReturnType(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	okSrc := `def e:Entity {kind:'api' spec:'s' entity:'x'} def f fn [[x:Entity] [String] [x .spec]] f e`
-	res, err := a.Run(okSrc)
+	res, err := runReference(t, a, okSrc)
 	if err != nil {
 		t.Fatalf("String-return should type-check: %v", err)
 	}

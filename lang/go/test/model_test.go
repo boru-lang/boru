@@ -166,7 +166,7 @@ func TestModelWatchForkNoRace(t *testing.T) {
 			t.Fatalf("foreground boru corrupted during watch: got %v, want 42", got)
 		}
 	}
-	if _, err := a.Run("Model.stop mdl"); err != nil {
+	if _, err := runReference(t, a, "Model.stop mdl"); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 }

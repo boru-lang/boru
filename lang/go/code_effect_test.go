@@ -199,6 +199,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 	}
 	b, _ := New()
 	gotC, compiled, errC := b.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	c, _ := New()
 	gotI, errI := c.RunInterp(src)
 	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
@@ -231,6 +234,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 		}
 		e, _ := New()
 		got, compiled, rerr := e.RunCompiled(cc.src)
+		if noteCompileDefect(t, cc.src, got, rerr) {
+			continue
+		}
 		if !compiled || rerr != nil || fmt.Sprint(got) != cc.want {
 			t.Errorf("%q: want %s compiled; got %v compiled=%v err=%v", cc.src, cc.want, got, compiled, rerr)
 		}
@@ -257,6 +263,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 		}
 		e, _ := New()
 		got, compiled, rerr := e.RunCompiled(rc.src)
+		if noteCompileDefect(t, rc.src, got, rerr) {
+			continue
+		}
 		if !compiled || rerr != nil || fmt.Sprint(got) != rc.want {
 			t.Errorf("%q: want %s compiled; got %v compiled=%v err=%v", rc.src, rc.want, got, compiled, rerr)
 		}

@@ -117,6 +117,9 @@ func TestDroppedApplyDefRefusalNeighbours(t *testing.T) {
 		t.Fatal(err)
 	}
 	gotC, compiled, errC := b.RunCompiled(chain)
+	if noteCompileDefect(t, chain, gotC, errC) {
+		return
+	}
 	if !compiled {
 		t.Errorf("%q: not compiled — the modelled curry chain must not trip the dropped-apply guard", chain)
 	}

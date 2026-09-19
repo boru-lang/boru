@@ -41,6 +41,12 @@ func compileDisasm(t *testing.T, src string) string {
 func requireEngineParity(t *testing.T, src string, wantCompiled bool) {
 	t.Helper()
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if noteCompileDefect(t, src, gotC, errC) {
+		if wantCompiled {
+			t.Errorf("%q: this shape is meant to compile and run", src)
+		}
+		return
+	}
 	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
 		t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
 	}
@@ -88,9 +94,6 @@ func TestDoOutOfOrderResidualPromotes(t *testing.T) {
 // residual whose bottom is the unconsumed error.
 func TestErrorStripInputClosure(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	dis := compileDisasm(t, `do [raise x "e"] error ["fallback"]`)
 	if strings.Contains(dis, "FALLBACK") {
 		t.Errorf("error ignore-handler: must compile as a closure, not island:\n%s", dis)
@@ -141,15 +144,9 @@ func TestEmptyBodyClosureParity(t *testing.T) {
 // cannot reach across the call boundary); the fallback owns it, and parity
 // holds.
 func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `for 3 [ do [break] drop ]`
 	gotC, _, errC, gotI, errI := runBothEngines(t, src)
-	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-		t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
-	}
+	requireParity(t, src, gotC, errC, gotI, errI)
 }
 
 // TestDynBodyVariadicAndSpliceShapes — Phase E increment 2 pins:
@@ -166,9 +163,6 @@ func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
 //     with fallback parity.
 func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	compiles := []string{
 		`def b true  do [do [1 2 (if b [] [9 9])]]`,
 		`def mk fn [[] [List] [[7 8]]]  def xs (mk)  do [word xs]`,

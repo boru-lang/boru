@@ -34,6 +34,9 @@ func TestCompiledIslandReuseNoStateLeak(t *testing.T) {
 			t.Fatal(err)
 		}
 		out, compiled, err := a.RunCompiled(src)
+		if noteCompileDefect(t, src, out, err) {
+			continue
+		}
 		if err != nil || !compiled {
 			t.Fatalf("%q: compiled=%v err=%v", src, compiled, err)
 		}

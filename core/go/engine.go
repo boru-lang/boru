@@ -4679,18 +4679,21 @@ func expandReach(info ReachInfo) []Value {
 // receiverless-reach-as-Function higher-order behaviour.
 func ApplyReach(r *Registry, info ReachInfo, recv Value) (Value, error) {
 	// The compiled lane first: a stamped lens runs its unit on the VM instead of
-	// re-entering the interpreter for every application (reach_unit.go). ran is
-	// false for an unarmed registry, a lens whose body declined, and a unit that
-	// bailed with no observable effect — all of which keep the chain below.
+	// re-entering the interpreter for every application (reach_unit.go). A unit
+	// that RAN is the answer, a bail included — `5 $.name apply` defers at
+	// CALL_NATIVE_POLY and the defer's own signature_error is what comes back.
+	// ran is false only when there was no unit to run: an unarmed registry, a
+	// lens whose body declined to compile, a ref whose re-stamp declined. That
+	// is an interpreter ISLAND, not a fallback from a failure, and the chain
+	// below is it.
 	if sig := compiledLensSig(r, info.unit, info.Segments); sig != nil {
 		vres, verr, ran := compiledRuntime.InvokeCompiled(r, sig, []Value{recv})
 		if ran {
 			return lastReachResult(vres, verr)
 		}
-		// A non-nil verr here says the unit RAN and DEFERRED (`5 $.name apply`:
-		// CALL_NATIVE_POLY finds no `dot` for an Integer receiver and defers for
-		// the canonical signature_error). The chain below is that defer's
-		// replay, not an island — see bailReplayAttribution.
+		// The CompiledRuntime seam still ALLOWS ran=false alongside an error,
+		// so the replay stays attributed rather than counted as an island the
+		// frontier owes; the VM piece no longer produces that pair.
 		defer bailReplayAttribution(r, verr)()
 	}
 	toks := lowerReach(ReachInfo{Receiver: []Value{recv}, Segments: info.Segments})

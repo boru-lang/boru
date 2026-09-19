@@ -24,7 +24,6 @@ import (
 // compile and answer as the interpreter does, position included — with an
 // effect before the undef too, where a defer's re-run would be fenced.
 func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	compiled := []struct {
 		src, want string
 		live      bool // a read of the name follows the region: lowered as a live lookup
@@ -248,6 +247,9 @@ func TestSpeculativeUndefAcrossRequests(t *testing.T) {
 	for _, src := range []string{`def k 5`, `if false [undef k] [] k`, `k`, `if true [undef k] [] 1`, `k`} {
 		gotC, ran, errC := a.RunCompiled(src)
 		gotI, errI := b.RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		if !ran && src != `k` {
 			t.Errorf("%q: compiles on the long-lived registry: %v", src, errC)
 		}

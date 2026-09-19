@@ -7300,3 +7300,148 @@ local rebind, which is the spelling the language accepts.
 **Where it belongs:** the module member read (`dot` over a Module) and
 what it hands back for a fn export — the `FnDefInfo` the local rebind
 recovers, or the wrapper that hides it.
+
+## NUR170 — a container-read fn value at a word's operand slot arrives in the wrong position {#nur170}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** the generated sweep's `emit/container` seed, on the change that
+removed the interpreter fallbacks. It is not a new defect — it was there
+before, and the whole-program fallback answered the program correctly so the
+sweep classifier never saw a divergence. Removing the fallback is what made it
+visible, which is the point of removing it.
+
+**The witness.** A fn value read out of a MAP and handed to a word that takes
+`(Any, Map)`:
+
+```
+import "boru:emitlang" end
+def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end
+emit m.up {a:1}
+
+  interpreted   UP
+  compiled      [boru/signature_error]: cannot call `emitlang-auto` —
+                no signature matches the arguments
+                  = note: the arguments were {a:1} (a Map) and fn (Any, Map) (a Function)
+```
+
+The note is the diagnosis: the compiled lane dispatches `emitlang-auto` with
+`{a:1}` where the FN belongs and the fn where the Map belongs. The two
+operands arrive transposed, so no signature matches and the dispatch raises
+where the interpreter runs the emitter.
+
+**Where it sits.** `m.up` is a dot access, which `expandReach` expands to a
+paren group whose single net value is a dynamic `Any` carrier — the same
+machinery NUR169 turns on. A carrier at an operand slot has no declared
+position of its own, and this row is the case where the slot it lands in is
+not the one the interpreter gives it.
+
+**Its family.** NUR154, NUR156, NUR159, NUR160, NUR161 and NUR169 are all the
+compiled lane treating a computed fn VALUE differently from the interpreter —
+applying one it should pass, passing one it should apply, or (here) seating
+one in the wrong slot. S1b is the increment that owes them a single answer at
+every seam, not six.
+
+**Pinned:** `sweepKnownMiscompiles`, keyed to this entry. A pinned divergence
+is debt on the record, never a decision: the pin exists so the sweep fails the
+day the WRONG ANSWER changes shape, not so the row can stay wrong.
+
+## NUR171 — a compiled no-match diagnostic loses its source position {#nur171}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** `reach.tsv:L52` on the change that removed the interpreter
+fallbacks. Not a new defect: the position was always missing, and the
+whole-program re-run supplied one before anything could notice.
+
+**The witness.**
+
+```
+5 $.name apply
+
+  interpreted   [boru/signature_error]: cannot call `dot` — no signature
+                matches the arguments
+                  --> 1:1
+  compiled      the same code and the same detail,
+                  --> source position unknown
+```
+
+Code and detail match. What is missing is `Row`/`Col`, so the renderer prints
+"source position unknown" instead of underlining the token. (The two lanes'
+NOTES also differ at this site, for an unrelated reason — that is NUR172, and
+it is pinned separately.)
+
+**Where it sits.** The VM raises the interpreter's own error here rather than
+bailing, which is the right disposition — a trap that raises the interpreter's
+error at the same moment. It builds it through `polyNoMatchRaise` →
+`NoMatchDiag(…, spec.Pos, …)` and then `stampAt(ae, curDebug, pc, r)`, and
+BOTH position sources are empty for this site: the recorded
+`PolyNoMatchSpec.Pos` carries none, and the debug table has none at that `pc`.
+So the fix is in the RECORDER — give the no-match spec its dispatch position —
+and not in the raise, which already stamps whatever it is given.
+
+**What was tried and rejected.** Walking the debug table BACK from `pc` to the
+nearest earlier instruction that does carry a position. It is a reasonable
+degradation in general and it fixes nothing here, because the whole region is
+unpositioned; a change that broad with no measured benefit is not worth the
+risk to every other VM error's position.
+
+**Pinned:** `knownPositionLoss["reach.tsv:L52"]`, its own ledger rather than
+`knownDivergences`: position presence is asserted only by the
+compile-or-fallback gate, and a pin in `knownDivergences` must drift on every
+gate that walks the corpus. The gate compares error PRESENCE and position
+presence, not exact Row/Col — two lanes legitimately differ by a column — so
+this pin is specifically about a position that is absent, not one that is
+different.
+
+## NUR172 — the two lanes describe different argument windows at a poly no-match {#nur172}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** `reach.tsv:L52`, on the change that removed the interpreter
+fallbacks. Not a new defect: both diagnostics were always built this way, and
+the whole-program re-run replaced the compiled one before anything could
+compare them.
+
+**The witness.**
+
+```
+5 $.name apply        # a field lens applied to an Integer
+
+  both lanes    [boru/signature_error]: cannot call `dot` — no signature
+                matches the arguments
+
+  interpreted   the argument was 5 (an Integer)
+                candidate `dot (Integer, Node)` takes 2 arguments, but 1 was supplied
+                candidate `dot (Atom, Module)` takes 2 arguments, but 1 was supplied
+                …
+
+  compiled      the arguments were name (an Atom) and 5 (an Integer)
+                candidate `dot (Atom, Module)` — argument 2: expected Module, got 5 (an Integer)
+                candidate `dot (Atom, Class)` — argument 2: expected Class, got 5 (an Integer)
+                …
+```
+
+Code and detail are identical. The NOTES describe two different failures: an
+ARITY failure over one argument, and a TYPE failure on the second of two.
+
+**Where it sits.** Not in the lens, and not in the compiler. `5 dot name`
+typed straight at the interpreter reports the same one-argument window, so
+this is how the interpreter's matcher reports a word whose forward slot it
+never filled: no candidate's stack half matched, forward collection stopped,
+and the report is written over what was collected. The VM's
+`CALL_NATIVE_POLY` has both operands on the stack by construction, so
+`NoMatchDiag` writes the fuller — and more accurate — report.
+
+**The direction of the fix is the interpreter, not the VM.** The compiled
+report names the two values the user actually wrote; the interpreted one
+describes an arity the source does not have. Closing this means the
+interpreter's no-match diagnostic reporting the window it ATTEMPTED rather
+than the window it managed to fill. Weakening the compiled note to match is
+not a fix — it would trade an accurate diagnostic for a uniform one.
+
+**Not sized here.** It is an interpreter-diagnostic change that touches every
+`signature_error` the interpreter raises, so it is scheduled on its own, not
+carried by the fallback removal that found it.
+
+**Pinned:** `knownDiagDrift["reach.tsv:L52"]`, its own ledger for the same
+reason NUR171 has one: the notes are compared only by the compile-or-fallback
+gate, so a `knownDivergences` pin would fail the differential gate for not
+seeing a divergence it does not look for.

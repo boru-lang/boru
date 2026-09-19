@@ -66,8 +66,6 @@ func TestModifierValueFormsDeclareStoreFnStrict(t *testing.T) {
 // interpreter's value. Now the strict slot REFUSES and the fallback agrees
 // with the interpreter, value and taxonomy.
 func TestModifierOverReturnedClosureRefusesWithParity(t *testing.T) {
-	// Refusal+fallback-parity contract (the M2 tests' one-release hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const mk = `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  `
 	for _, c := range []struct{ name, src, want string }{
 		{"usurp over a returned closure, def-bound", mk + `def r (usurp (mk 100))  r 10 3`, "[93]"},

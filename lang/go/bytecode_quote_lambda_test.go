@@ -17,7 +17,6 @@ import (
 // faithful interpreter fallback — or compile with byte-identical outcomes.
 func TestQuoteLambdaCallbackParity(t *testing.T) {
 	// Legacy refusal+fallback-parity contract, like TestApplyOverParamFnCompiles.
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 
 	// Since S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) each and
 	// fold declare CompileDynBody: the code-body-over-a-computed-collection
@@ -40,6 +39,9 @@ func TestQuoteLambdaCallbackParity(t *testing.T) {
 		_, iErr := a.RunInterp(src)
 		b, _ := New()
 		_, compiled, cErr := b.RunCompiled(src)
+		if noteCompileDefect(t, src, nil, cErr) {
+			return
+		}
 		if !compiled {
 			t.Errorf("%q: the filter sibling must still compile", src)
 		}

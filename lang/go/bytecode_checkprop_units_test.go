@@ -125,6 +125,9 @@ def res (Test.check-prop "gen-raises" [raise bad_input "boom"] [ 0 gte ] 3 1 0)
 		}
 		a.SetOutput(&bytes.Buffer{})
 		gotC, compiled, err := a.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("RunCompiled: %v\nsrc: %s", err, src)
 		}
@@ -161,6 +164,9 @@ res get "ok"`
 	}
 	a.SetOutput(&bytes.Buffer{})
 	gotC, compiled, err := a.RunCompiled(src)
+	if noteCompileDefect(t, src, gotC, err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}

@@ -106,6 +106,9 @@ shrink (flex [1 2])`
 shrink 5`
 	_, _, eC := mustNew(t).RunCompiled(bad)
 	_, eI := mustNew(t).RunInterp(bad)
+	if noteCompileDefect(t, bad, nil, eC) {
+		return
+	}
 	if eC == nil || eI == nil {
 		t.Errorf("pop over Integer should error both: compiled=%v interp=%v", eC, eI)
 	}

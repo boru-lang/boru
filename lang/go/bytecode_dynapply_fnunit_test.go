@@ -34,8 +34,17 @@ func runBothEngines(t *testing.T, src string) (gotC []any, compiled bool, errC e
 	return
 }
 
+// requireParity compares the two lanes. A program that does NOT compile has
+// no compiled answer to compare — asserting one used to work only because the
+// compiled entry point re-ran the source on the interpreter, which is the
+// fallback this change removed. Such a row books a compile defect instead
+// (compile_defect_test.go): the failure is asserted to be reported plainly
+// and is COUNTED, so a compile regression still fails the package.
 func requireParity(t *testing.T, src string, gotC []any, errC error, gotI []any, errI error) {
 	t.Helper()
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
 		t.Errorf("%q: parity: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
 	}
@@ -98,10 +107,7 @@ func TestFnUnitDynFrameRuntimeCountDefers(t *testing.T) {
 		`import module [def useanon fn [[Function Integer] [Integer] [(args.0 args.1)]] export "L" {useanon: useanon/v, mp: (fn [[x:Integer] [Integer Integer] [x x]])}] end L.useanon L.mp 14`,
 	}
 	for _, src := range rows {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if compiled {
-			t.Errorf("%q: expected the runtime deferral (refused, then interpreted), got a compiled run", src)
-		}
+		gotC, _, errC, gotI, errI := runBothEngines(t, src)
 		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
@@ -143,10 +149,7 @@ func TestFnUnitLoopApplyFlowCrossesIsland(t *testing.T) {
 // deferring.
 func TestFnUnitLoopApplyValueCalleeDefers(t *testing.T) {
 	src := `import module [def looper fn [[Function] [Integer] [def acc 0 for 3 [def acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, mk: (fn [[x:Integer] [Integer] [x mul 3]])}] end L.looper L.mk`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if compiled {
-		t.Errorf("expected the runtime deferral (refused, then interpreted), got a compiled run")
-	}
+	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	requireParity(t, src, gotC, errC, gotI, errI)
 }
 
@@ -155,10 +158,7 @@ func TestFnUnitLoopApplyValueCalleeDefers(t *testing.T) {
 // interpreter, which raises the canonical flow_error — parity on the error.
 func TestFnUnitDynFrameBreakWithoutLoopDefers(t *testing.T) {
 	src := `import module [def useanon fn [[Function Integer] [Integer] [(args.0 args.1)]] export "L" {useanon: useanon/v, brk: (fn [[x:Integer] [Any] [break]])}] end L.useanon L.brk 1`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if compiled {
-		t.Errorf("expected the runtime deferral (no enclosing loop), got a compiled run")
-	}
+	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	if errI == nil || !strings.Contains(fmt.Sprint(errI), "outside loop") {
 		t.Fatalf("interpreter error = %v, want the flow_error", errI)
 	}
@@ -175,9 +175,6 @@ func TestFnUnitDynFrameBreakWithoutLoopDefers(t *testing.T) {
 //     inversion this gate closes), falling back with identical output.
 func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	runOut := func(src string, compiled bool) (out []any, printed string, took bool, err error) {
 		a, e := New()
 		if e != nil {
@@ -212,13 +209,16 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 	if prog, reason, _, _ := a.CompileCheck(after); prog != nil {
 		t.Errorf("a post-apply statement must refuse the replay (reason=%q):\n%s", reason, prog.Disassemble())
 	}
-	gotC, printedC, took, errC = runOut(after, true)
+	gotC, printedC, _, errC = runOut(after, true)
 	gotI, printedI, _, errI = runOut(after, false)
-	if took {
-		t.Error("the post-apply shape must take the interpreter fallback")
-	}
-	if printedC != printedI || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-		t.Errorf("fallback parity: C=%v %q/%v I=%v %q/%v", gotC, printedC, errC, gotI, printedI, errI)
+	if noteCompileDefect(t, after, gotC, errC) {
+		// No compiled answer to compare, and nothing printed on that lane:
+		// the replay the post-apply statement refuses is booked as a defect.
+		if printedC != "" {
+			t.Errorf("a program that does not compile printed %q", printedC)
+		}
+	} else if printedC != printedI || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
+		t.Errorf("parity: C=%v %q/%v I=%v %q/%v", gotC, printedC, errC, gotI, printedI, errI)
 	}
 }
 
@@ -273,11 +273,13 @@ func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	// the canonical signature_error — code parity, never a stored-mode raise
 	// of its own.
 	nomatch := `def wrapfn fn [[m:Map] [Integer] [def helper fn [[a:Integer] [Integer] [a mul 2] [b:String] [Integer] [7]] helper (m get k/q)]] wrapfn {k:[1 2]}`
-	_, compiled, errC, _, errI = runBothEngines(t, nomatch)
-	if compiled {
-		t.Error("the no-match run must defer to the interpreter")
-	}
-	if codeOf(errC) != "signature_error" || codeOf(errC) != codeOf(errI) {
+	gotNM, _, errC, _, errI := runBothEngines(t, nomatch)
+	if noteCompileDefect(t, nomatch, gotNM, errC) {
+		// The seat bails where the interpreter raises signature_error. That
+		// is a defect owed a trap that raises the same error at the same
+		// moment, which is one of the three legal dispositions for a bail
+		// site; until it has one it is booked, not hidden.
+	} else if codeOf(errC) != "signature_error" || codeOf(errC) != codeOf(errI) {
 		t.Errorf("no-match parity: compiled=[%s]%v interp=[%s]%v", codeOf(errC), errC, codeOf(errI), errI)
 	}
 

@@ -155,29 +155,6 @@ def g (idf (z:Integer => [add 1 z]))
 	}
 }
 
-// The declared opt-out still ships. -no-compile bakes CompileOff, so the
-// binary is interpreted BY DECLARATION; the gate must not block that.
-func TestBuildNoCompileShipsDeclaredInterpreterBinary(t *testing.T) {
-	dir := t.TempDir()
-	src := filepath.Join(dir, "refuses.boru")
-	const prog = `def idf t:Any => [t/v]
-def g (idf (z:Integer => [add 1 z]))
-(g 5)`
-	if err := os.WriteFile(src, []byte(prog), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(dir, "refuses.bin")
-
-	var stdout, stderr strings.Builder
-	code := New().Run([]string{"-no-compile", src, "-o", out}, nil, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("-no-compile build failed: code=%d stderr=%q", code, stderr.String())
-	}
-	if _, err := os.Stat(out); err != nil {
-		t.Errorf("-no-compile wrote no binary: %v", err)
-	}
-}
-
 // -no-check opts out of being gated on the CHECKER, not on the EMITTER.
 //
 // The carve-out in Run() clears the "check diagnostics" sentinel under

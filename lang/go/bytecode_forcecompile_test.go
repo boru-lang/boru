@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// RunCompiledStrict is the FORCE-mode entry point behind the CLI's
-// --force-compile flag: it REQUIRES the bytecode path, surfacing a refusal
-// instead of silently falling back the way RunCompiled does.
+// RunCompiledStrict is the spelling that says a call REQUIRES the bytecode
+// path. Every entry point does now — there is nothing to fall back to — so
+// these pin the one outcome: a program compiles and runs, or it reports the
+// defect that stopped it, leaving nothing behind on the registry.
 func TestRunCompiledStrict(t *testing.T) {
 	t.Run("compilable program runs on the VM", func(t *testing.T) {
 		a, _ := New()
@@ -29,8 +30,8 @@ func TestRunCompiledStrict(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error for an uncompilable program, got nil")
 		}
-		if !strings.Contains(err.Error(), "force-compile") {
-			t.Errorf("error should name the force-compile refusal, got %q", err.Error())
+		if codeOf(err) != "compile_failed" {
+			t.Errorf("error should be the compile failure, got %q", err.Error())
 		}
 	})
 
@@ -63,33 +64,38 @@ func TestRunCompiledStrict(t *testing.T) {
 		a, _ := New()
 		_, err := a.RunCompiledStrict(`case zed/q [zed "matched" "other"]`)
 		if err == nil {
-			t.Fatal("expected a check-diagnostics refusal, got nil")
+			t.Fatal("expected an error from the blocking diagnostic, got nil")
 		}
-		if !strings.Contains(err.Error(), "check diagnostics: [") {
-			t.Errorf("the refusal must name the blocking diagnostic, got %q", err.Error())
+		// The blocking diagnostic NAMES the compile failure rather than
+		// standing in as the program's verdict: the checker flags code the
+		// program never reaches, so claiming its finding as the answer
+		// would invent a failure where there is none.
+		if codeOf(err) != "compile_failed" {
+			t.Errorf("want compile_failed, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "the check pass stopped at [") {
+			t.Errorf("the failure must name the blocking diagnostic, got %q", err.Error())
 		}
 	})
 
-	t.Run("a plain refusal reason stays unannotated", func(t *testing.T) {
-		// checkDiagnosticsDetail is sentinel-gated: a performance refusal's
-		// reason must pass through untouched.
-		if got := checkDiagnosticsDetail("residual value of unknown provenance", CheckResult{}); got != "" {
-			t.Errorf("a non-sentinel reason must not gain a detail, got %q", got)
+	t.Run("a compile failure names the construct", func(t *testing.T) {
+		a, _ := New()
+		_, err := a.RunCompiledStrict("def leaked 42 (size (for 5 [i]))")
+		if codeOf(err) != "compile_failed" {
+			t.Fatalf("want compile_failed, got %v", err)
 		}
-		// The sentinel with NO blocking diagnostic on record (defensive —
-		// CompileCheck only returns it after finding one) appends nothing.
-		if got := checkDiagnosticsDetail("check diagnostics", CheckResult{}); got != "" {
-			t.Errorf("a diagnostic-less sentinel must append nothing, got %q", got)
+		if !strings.Contains(err.Error(), "compiler defect") {
+			t.Errorf("a compile failure must say it is a defect, got %q", err.Error())
 		}
 	})
 
 	t.Run("side effects roll back on a refusal", func(t *testing.T) {
 		// An uncompilable program that ALSO binds a name must not leak that
-		// binding into the registry when force mode aborts (the snapshot/restore
-		// parity with RunCompiled's fallback path).
+		// binding into the registry: the run is rolled back to the state it
+		// found, exactly as it was on the old fallback path.
 		a, _ := New()
 		if _, err := a.RunCompiledStrict("def leaked 42 (size (for 5 [i]))"); err == nil {
-			t.Fatal("expected a refusal")
+			t.Fatal("expected a compile failure")
 		}
 		// `leaked` must be gone: a follow-up interpreter run that references it
 		// errors as an undefined word rather than resolving to 42.

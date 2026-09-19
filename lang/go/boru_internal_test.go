@@ -35,7 +35,10 @@ func TestNewFormatParserFnLangSurface(t *testing.T) {
 	if err := a.DefineValue("bracket", v); err != nil {
 		t.Fatalf("DefineValue: %v", err)
 	}
-	got, err := a.Run(`parse bracket 'hi'`)
+	const parseSrc = "parse bracket 'hi'"
+	gotC, cErr := a.Run(parseSrc)
+	noteCompileDefect(t, parseSrc, gotC, cErr)
+	got, err := a.RunInterp(parseSrc)
 	if err != nil {
 		t.Fatalf("parse bracket: %v", err)
 	}

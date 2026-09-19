@@ -91,19 +91,17 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 		// silently (dynApplyEnter's rule) — the stepping path answers.
 		return nil, nil, false
 	}
-	disarm := reg.ArmEffectFence()
-	effectsAt := reg.Effects.Count()
 	delivered := deliverArgs(args)
 	// The fn's own frame: the interpreter's dispatch pushes the per-call
 	// args list for every frame, and a DynEnv unit reads `args` from it.
 	popArgs := pushRootArgs(reg, ref.Prog, delivered)
 	res, err := vc.hostFnValueUnit(reg, ref, delivered)
 	popArgs()
-	disarm()
 	if err != nil {
-		if core.IsInternalErr(err) && reg.Effects.Count() == effectsAt {
-			return nil, nil, false
-		}
+		// A soundness bail here used to hand the call to the stepping path
+		// and let the interpreter answer it, guarded by the effect fence so
+		// a unit that had already printed did not print twice. Nothing
+		// re-runs now: the bail is the defect it is and it surfaces.
 		return res, err, true
 	}
 	return checkFnValueReturn(reg, fd, sig, res, unit.NUnnamed, body.Pos())

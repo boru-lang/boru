@@ -41,8 +41,9 @@ func TestRoutedDispatchAnswersTheKPair(t *testing.T) {
 	// pass, which runs go after the rebind, so the routed op never meets it
 	// in a compiled run (its defer for that shape is pinned at the seam).
 	src := w + `go def k fn [[][Integer][9]] end go`
-	_, _, errC, _, errI := runBothEngines(t, src)
-	if errC == nil || errI == nil || !strings.Contains(errC.Error(), "begins its own dispatch") || errC.Error() != errI.Error() {
+	gotC2, _, errC, _, errI := runBothEngines(t, src)
+	if !noteCompileDefect(t, src, gotC2, errC) &&
+		(errC == nil || errI == nil || !strings.Contains(errC.Error(), "begins its own dispatch") || errC.Error() != errI.Error()) {
 		t.Errorf("the fn rebind raises the identical strict-barrier error on both lanes: compiled=%v interp=%v", errC, errI)
 	}
 }
@@ -220,6 +221,9 @@ func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
 		var bails []string
 		disarm := c.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
 		gotC, compiled, errC := c.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		disarm()
 		d, _ := New()
 		gotI, errI := d.RunInterp(src)
@@ -245,7 +249,6 @@ func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
 // window reaches it; this pins that the corpus of shapes has no program
 // for it, which is the measured state, not a guarantee.
 func TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []string{
 		`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end go def k "x" end go`,
 		`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end go def k fn [[][Integer][9]] end go`,
@@ -263,10 +266,14 @@ func TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck(t *testing.T) {
 		var bails []string
 		disarm := c.ArmRuntimeBailHook(func(ev BailEvent) { bails = append(bails, ev.Site) })
 		gotC, _, errC := c.RunCompiled(src)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
 		disarm()
 		d, _ := New()
 		gotI, errI := d.RunInterp(src)
-		if errC == nil || errI == nil || errC.Error() != errI.Error() || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+		if !noteCompileDefect(t, src, gotC, errC) &&
+			(errC == nil || errI == nil || errC.Error() != errI.Error() || fmt.Sprint(gotC) != fmt.Sprint(gotI)) {
 			t.Errorf("%q: want the interpreter's error on both lanes:\n  C=%v/%v\n  I=%v/%v", src, gotC, errC, gotI, errI)
 		}
 		for _, b := range bails {

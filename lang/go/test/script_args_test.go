@@ -10,7 +10,7 @@ import (
 // runOne runs source and returns the single resulting value.
 func runOneScriptArgs(t *testing.T, a *lang.Boru, src string) any {
 	t.Helper()
-	res, err := a.Run(src)
+	res, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("%s: %v", src, err)
 	}

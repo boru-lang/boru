@@ -28,6 +28,10 @@ func drRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 		t.Fatal(err)
 	}
 	gotC, ran, cerr := a.RunCompiled(src)
+	// Booked, not returned: the interpreter oracle below is what the
+	// caller asserts, and reading it is not a fallback — the compiled
+	// lane already returned its error.
+	noteCompileDefect(t, src, gotC, cerr)
 	b, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +89,9 @@ func TestDeferredWindowRematchDefersWhenItMatches(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, _, cerr := a.RunCompiled(tc.src)
+			if noteCompileDefect(t, tc.src, out, cerr) {
+				return
+			}
 			if cerr != nil {
 				t.Fatalf("RunCompiled: %v", cerr)
 			}
