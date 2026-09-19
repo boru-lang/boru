@@ -202,6 +202,7 @@ var knownDivergences = map[string]string{
 	// each-variants.tsv, shifting every row below by one. The divergence is
 	// unchanged — the KEY moved, not the defect.
 	"each-variants.tsv:L216":      "NUR155 — the compiled callback dispatch binds each element into the unit's param slot and never mirrors the interpreter's per-element MatchFnSig, so a typed lambda runs on every element",
+	"reach.tsv:L52":               "NUR171 — the compiled no-match diagnostic is byte-identical but carries no source position: the recorder gives PolyNoMatchSpec no dispatch position and the debug table has none at that pc, so the raise has nothing to stamp (the interpreter's re-run used to supply it)",
 	"module-composition.tsv:L102": "NUR156 — the apply of a module-homed fn value does not fire on the compiled lane (`5 M.inc/v apply` leaves 5 and the fn)",
 	"module-composition.tsv:L103": "NUR156 — the each-body apply of a module-export fn value returns the fn values",
 	"module-composition.tsv:L104": "NUR156 — the while-body apply never advances the counter and ends in tape_exhausted",

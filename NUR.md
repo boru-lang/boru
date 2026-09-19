@@ -7344,3 +7344,46 @@ every seam, not six.
 **Pinned:** `sweepKnownMiscompiles`, keyed to this entry. A pinned divergence
 is debt on the record, never a decision: the pin exists so the sweep fails the
 day the WRONG ANSWER changes shape, not so the row can stay wrong.
+
+## NUR171 — a compiled no-match diagnostic loses its source position {#nur171}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** `reach.tsv:L52` on the change that removed the interpreter
+fallbacks. Not a new defect: the position was always missing, and the
+whole-program re-run supplied one before anything could notice.
+
+**The witness.**
+
+```
+5 $.name apply
+
+  interpreted   [boru/signature_error]: cannot call `dot` — no signature
+                matches the arguments
+                  --> 1:1
+  compiled      the identical error, the identical notes and candidates,
+                  --> source position unknown
+```
+
+Code, detail, notes and suggestions all match. What is missing is `Row`/`Col`,
+so the renderer prints "source position unknown" instead of underlining the
+token.
+
+**Where it sits.** The VM raises the interpreter's own error here rather than
+bailing, which is the right disposition — a trap that raises the interpreter's
+error at the same moment. It builds it through `polyNoMatchRaise` →
+`NoMatchDiag(…, spec.Pos, …)` and then `stampAt(ae, curDebug, pc, r)`, and
+BOTH position sources are empty for this site: the recorded
+`PolyNoMatchSpec.Pos` carries none, and the debug table has none at that `pc`.
+So the fix is in the RECORDER — give the no-match spec its dispatch position —
+and not in the raise, which already stamps whatever it is given.
+
+**What was tried and rejected.** Walking the debug table BACK from `pc` to the
+nearest earlier instruction that does carry a position. It is a reasonable
+degradation in general and it fixes nothing here, because the whole region is
+unpositioned; a change that broad with no measured benefit is not worth the
+risk to every other VM error's position.
+
+**Pinned:** `knownDivergences["reach.tsv:L52"]`. The differential gate
+compares error PRESENCE and position presence, not exact Row/Col — two lanes
+legitimately differ by a column — so this pin is specifically about a position
+that is absent, not one that is different.
