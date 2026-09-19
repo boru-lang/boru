@@ -20,3 +20,4 @@ vm_markwindow.go	eng
 vm_poly_nomatch.go	eng	
 vm_rematch.go	eng	
 vm_dyn_words.go	eng
+vm_fnvalue_seam.go	eng	

@@ -169,7 +169,7 @@ func TestStampCompiledRef(t *testing.T) {
 // nil for a Go sig (the callback-invocation seam's "no compiled unit" signal).
 func TestSignatureCompiledRef(t *testing.T) {
 	ref := &CompiledFnRef{Prog: &Program{}, Unit: 3}
-	boruSig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}, Compiled: ref}}
+	boruSig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(1)}, ref)}
 	if got := CompiledRef(boruSig); got != ref {
 		t.Fatalf("boru-body CompiledRef = %v, want the stamped ref", got)
 	}

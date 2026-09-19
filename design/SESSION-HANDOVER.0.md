@@ -102,9 +102,9 @@ every run's summary) — and a REGRESSION ceiling, the last merged value,
 which only falls and which the default lane asserts.
 `make gate-status` prints both for every gate, refreshes
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
-and appends the instant censuses. The values on 2026-09-19, head of the S1a
+and appends the instant censuses. The values on 2026-09-19, head of the S1b-1
 change (2026-09-17's values, head of PR #471, in the history column;
-increments 1–73, P0, S0 and S1a are on `main`):
+increments 1–73, P0 and S0 are on `main`; S1a and S1b-1 on PR #474):
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
@@ -112,8 +112,8 @@ increments 1–73, P0, S0 and S1a are on `main`):
 | the generated sweep (S0): cells failing to compile / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned. 44 / 5 → 36 / 2 on 2026-09-19 (S1a); 149 cells pass, 2086 variants with 206 failing — the six new failures are variants of cells S1a released |
 | compute gaps | 56 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 at S1a |
 | interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a (the fn-value callbacks now lower to a poly re-match) |
-| interp-entry census rows | 102 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed; 52 → 102 at S1a — the fifty-one rows the ambiguity gate released run compiled and enter the interpreter once through the RunResolved seam (the G-lane-first landing; S1b retires it), measured row by row against `main` |
-| engine entries / runtime defers | 489 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 at S1a, the same rows as the census (Engine.Run×489, RunResolved×179) |
+| interp-entry census rows | 77 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed; 52 → 102 at S1a — the fifty-one rows the ambiguity gate released run compiled and enter the interpreter once through the RunResolved seam (the G-lane-first landing), measured row by row against `main`; 102 → 77 at S1b-1 — the fn-value seam made native, twenty-five fn-value callback rows leave, the token-body rows stay for S3 |
+| engine entries / runtime defers | 419 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 at S1a, the same rows as the census (Engine.Run×489, RunResolved×179); 489 → 419 at S1b-1 (RunResolved×109) |
 | known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
 | type-soundness violations | 5 | 0 | checker debt the expansion exposed |
 | diagnostic parity / armed-only | 358 / 16 | 0 / 0 | checker debt the expansion exposed |
@@ -148,7 +148,12 @@ the end of each step of §5, not each increment.
 > session-day: each/fold/scan/filter declare `CompileDynBody`, the nineteen
 > rows and thirty-one more compile (113 → 60), islands 10 → 0, at the cost
 > of the interp-entry census (52 → 102) and engine entries (366 → 489),
-> which is the G-lane-first landing S1b retires; **S2 splits**, because only 35 of its 94
+> which is the G-lane-first landing S1b retires — **S1b STARTED the same
+> day**: its first increment makes the fn-value seam native (a callback
+> value runs its unit on the VM, stamped at first application and memoised
+> on the value — the review's "unit half"), census 102 → 77, engine entries
+> 489 → 419, no compile-failure change; what S1b still owes is in the
+> handoff log's S1b entry; **S2 splits**, because only 35 of its 94
 > signatures are a sweep and the other 59 need a mechanism that depends on
 > S1b; and S2 is judged by `undeclaredHandlerCeiling`, never by the compile-
 > failure count. The binding gate is the full unfiltered corpus at about

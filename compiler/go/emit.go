@@ -844,7 +844,7 @@ type EmitState struct {
 
 	// stampDeclined memoises the sig impls whose stamp already refused, keyed
 	// by the impl pointer the stamp would write to. The succeeding case
-	// memoises itself through impl.Compiled; without this the failing case
+	// memoises itself through the impl's compiled slot; without this the failing case
 	// re-paid a full body compile at every operand occurrence.
 	stampDeclined map[*core.BoruImpl]bool
 
@@ -3400,7 +3400,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(tokens), liveNames: es.unitLiveNames(unit)}
 	es.storedFnRefs = append(es.storedFnRefs, ref)
 	carrier := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{
-		Signatures: []core.Signature{{Impl: &core.BoruImpl{Body: tokens, Compiled: ref}}},
+		Signatures: []core.Signature{{Impl: core.NewBoruImplCompiled(tokens, ref)}},
 	}}
 	return carrier, true
 }
@@ -3494,7 +3494,7 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 			Params:     append([]core.FnParam(nil), params...),
 			Returns:    []*core.Type{core.TAny},
 			BarrierPos: -1,
-			Impl:       &core.BoruImpl{Body: tokens, Compiled: ref},
+			Impl:       core.NewBoruImplCompiled(tokens, ref),
 		}},
 	}}
 	return carrier, true
@@ -3511,7 +3511,7 @@ func StampCompiledRef(fd core.FnDefInfo, ref *CompiledFnRef) bool {
 			continue
 		}
 		if a, ok := fd.Signatures[i].Impl.(*core.BoruImpl); ok {
-			a.Compiled = ref
+			a.SetCompiled(ref)
 			return true
 		}
 	}
@@ -3693,7 +3693,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 			continue
 		}
 		impl, implOK := fd.Signatures[si].Impl.(*core.BoruImpl)
-		if !implOK || impl.Compiled != nil || es.stampDeclined[impl] {
+		if !implOK || CompiledRef(&fd.Signatures[si]) != nil || es.stampDeclined[impl] {
 			continue // first stamp wins; a refusal is remembered, not re-paid
 		}
 		// EVERY unit the stamp compile creates is stamp-only, not just the
@@ -3757,7 +3757,7 @@ func (es *EmitState) stampFnConstAt(v core.Value, depth int) {
 			continue
 		}
 		ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), liveNames: es.unitLiveNames(unit), optional: true}
-		impl.Compiled = ref
+		impl.SetCompiled(ref)
 		es.storedFnRefs = append(es.storedFnRefs, ref)
 		if es.stampImpls == nil {
 			es.stampImpls = map[*core.BoruImpl]int{}
@@ -3792,7 +3792,7 @@ func (es *EmitState) recordStamp(ev core.StampEvent) {
 func (es *EmitState) dropStampRef(unit int) {
 	for impl, u := range es.stampImpls {
 		if u == unit {
-			impl.Compiled = nil
+			impl.SetCompiled(nil)
 			delete(es.stampImpls, impl)
 			return
 		}
@@ -8008,12 +8008,12 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 						continue
 					}
 					aImpl := fd.Signatures[si].Impl.(*core.BoruImpl)
-					if aImpl.Compiled != nil {
+					if CompiledRef(&fd.Signatures[si]) != nil {
 						continue // first stamp wins
 					}
 					if unit, cOK := es.compileStoredFnUnit(fd, si, a.Pos()); cOK {
 						ref := &CompiledFnRef{Unit: unit, depNames: es.storedHandlerDeps(fd.Signatures[si].Body()), liveNames: es.unitLiveNames(unit)}
-						aImpl.Compiled = ref
+						aImpl.SetCompiled(ref)
 						es.storedFnRefs = append(es.storedFnRefs, ref)
 					}
 				}

@@ -219,7 +219,15 @@ user still gets an answer while the case is open:
   RunResolved seam. That seam is counted by the interp-entry census
   (52 → 102 rows) and the engine-entry census (366 → 489), the G-lane-first
   landing the re-plan names, which S1b retires by lowering the re-matched
-  overload's body natively. Still refusing: `for-each` (nets no result, so
+  overload's body natively — its first increment (2026-09-19) does so for a
+  fn VALUE callback: the VM's body seam dispatches the value natively
+  (`eng/go/vm_fnvalue_seam.go` — the interpreter's match in the token seam's
+  top-down order, the value's unit hosted at its home with the token seam's
+  return discipline), the unit stamped at first application and memoised on
+  the value (`compiler.LazyStampFnSig`; a registry-mutating body is never
+  stamped lazily), and the fn-VALUE seam (InvokeCallbackFn) stamps the same
+  way. A TOKEN body read at run time still runs through RunResolved (S3).
+  Still refusing: `for-each` (nets no result, so
   the dyn-body seat cannot hold it) and `walk` (its own code-body gate) over
   the same shapes, captures on the extras/hook path, and unreachable
   captures. A multi-overload lambda at the four words takes the same seat.

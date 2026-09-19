@@ -178,7 +178,7 @@ func TestStampFnValueGates(t *testing.T) {
 
 	pre := &CompiledFnRef{Unit: 0, Prog: &Program{Fns: []CompiledFn{{}}}}
 	stampedAlready := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{
-		{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(1)}, Compiled: pre}},
+		{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(1)}, pre)},
 	}}}
 	if _, ok := StampFnValue(r, stampedAlready); ok {
 		t.Fatalf("already-stamped fn must decline (first stamp wins)")

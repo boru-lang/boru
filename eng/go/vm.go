@@ -305,6 +305,10 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = true
 	defer func() { vc.rootRetTrim = prev }()
+	// The value's own frame: its call args are the leading locals (inputs
+	// fill the leading param slots, captures the trailing ones).
+	fn := &vc.p.Fns[unit]
+	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures])()
 	return vc.enterBodyUnit(reg, unit, locals)
 }
 
@@ -526,9 +530,14 @@ func (vc *vmContext) invokeClosure(reg *core.Registry, body core.Value, inputs [
 func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error) {
 	cl, ok := body.Data.(core.ClosurePayload)
 	if !ok {
-		// Pooled + resolved inputs, mirroring InvokeBody's no-Invoker branch
-		// (never the island engine — see vmContext.islandEng's
-		// non-reentrancy contract).
+		// A fn VALUE handed to the seam runs its unit natively when it has
+		// one (vm_fnvalue_seam.go, S1b); otherwise — a token body, a value
+		// with no matching sig or no unit — pooled + resolved inputs,
+		// mirroring InvokeBody's no-Invoker branch (never the island engine —
+		// see vmContext.islandEng's non-reentrancy contract).
+		if res, err, ran := vc.invokeFnValue(reg, body, inputs); ran {
+			return res, err
+		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
 	// A closure minted by ANOTHER program indexes that program's Fns table, so

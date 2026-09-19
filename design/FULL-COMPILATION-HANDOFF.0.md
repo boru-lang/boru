@@ -10345,3 +10345,101 @@ rows importing a module whose fn defs a computed value refused with it
 langspec package: 13 min on four cores alongside the other runs;
 `make cover-gate-compiler` passes; `cd compiler/go && go test ./...`
 passes; the whole `lang/go` suite passes in 93 s.
+
+## S1b — the fn-value seam made native, first increment (2026-09-19)
+
+Started the same day S1a landed (PR #474, in review), on its branch. The
+review's §3.3 "unit half" — *every fn value carries, or obtains at first
+application, a compiled unit* — built at the two seams a callback crosses.
+
+**What it is.** A higher-order word's list arm hands its callback to
+InvokeBody whatever the callback is; for a fn VALUE the VM's invoker used to
+step the value on a pooled sub-engine (RunResolved) — the interpreter's
+dispatch, on the interpreter, once per element — which is the seam S1a's
+fifty-one released rows entered through. `eng/go/vm_fnvalue_seam.go` is that
+dispatch made native: the interpreter's own match (core.MatchFnSig) over the
+inputs in the TOKEN seam's order — the seam pushes the inputs and steps the
+value, so the sig binds from the stack top down (`fold ([a e] => [a sub e])
+[1 2 3] 10` is -8 on both lanes: a is the element); the value's unit hosted
+at its home as a nested unit (hostForeign, the arm a foreign closure already
+used) with the token seam's return discipline — the root RET trims nothing,
+the value's OWN contract is enforced over the residual, count and types, its
+name in the error; OpCallUserPoly's delivery (ascribed view stripped, list
+params quoted); an internal error degraded to the stepping path when no
+effect escaped. A value with no matching own sig DECLINES — the stepping
+path keeps the interpreter's data-versus-uncalled_function fork (NUR155's
+rule) — as does a value with no unit and no way to get one.
+
+The unit comes from the **lazy detached stamp** (`compiler.LazyStampFnSig`):
+a value whose matched sig carries no ref — a `fn` literal in a class field, a
+map field, a factory's result, a lambda at a gradual collection — is
+compiled NOW, at its home, by StampDetachedSig, and the ref is memoised on
+the sig's shared impl, so a container-held value applied a thousand times
+compiles once. A declined stamp is remembered the same way (a marker in the
+slot CompiledRef reads as "no ref"), so a refusing body is never re-paid; a
+body that mutates the registry (a capitalised def, an import —
+bodyHasReplayHazard) is never tried, because the detached compile pass RUNS
+the body and its mint would leak into the live registry (measured before
+the rule: `def T (class {})` in a callback conflicted one call early — and
+then found to conflict that way on `main` already, NUR167). The slot itself
+(`core.BoruImpl`) became atomic, because a fn value is shared by every copy
+of the Value that carries it — a container field, a module export, a value
+handed to a forked process — and the stamp writes it from whichever seam
+applies the value first. The second seam, InvokeCallbackFn (the map arm,
+filter, walk), stamps lazily through a new CompiledRuntime slot
+(`LazyStamp`, pinned inactive in core) and takes the VM path it already had
+for a stamped value.
+
+Both seams, and RunUnit / a foreign ref, open the value's own frame: the
+DynEnv args bracket (`pushRootArgs`) pushes the value's call args for a
+unit that reads `args`, where before only the CALL_USER frames a program
+opened for itself were bracketed.
+
+**Measured.**
+
+| gate | before | after |
+|---|---:|---:|
+| interp-entry census rows | 102 | 77 |
+| engine entries | 489 | 419 (RunResolved 179 → 109) |
+| corpus compile failures | 60 | 60 |
+| runtime defers | 8 | 8 |
+| the sweep: cells failing / islanded / diverged | 36 / 2 / 3 | 36 / 2 / 3 |
+
+Twenty-five rows left the census and none entered, measured row by row
+against the S1a head: fold-map-filter.tsv ×11, each-variants.tsv ×7,
+callbacks.tsv ×6, module-composition.tsv ×1 — every one a fn-value callback
+S1a had landed on the seam. What remains is the other half of S1a's trade:
+the 21 code-bodies.tsv rows are TOKEN bodies read at run time (a quoted
+list from a flex, a fn result, a List param — S3's runtime compilation, not
+a fn value), and the callbacks / fold-map-filter rows still there are fn
+values the seam does not reach yet (a fn result applied inside a token body
+`[(mk 2)]`, fn-util wrappers, the fn-value islands).
+
+**Pinned.** `lang/go/bytecode_fnvalue_seam_test.go`: eighteen seam-semantics
+rows measured on the interpreter before the change — top-down binding at
+the list arm against handler order at the map arm, a def-bound value
+reading a module def, the class-field and factory and module-export
+callbacks, the unnamed-param allowance, a lambda's and a named fn's count
+contract, a return-type error, the map arm's CallBoru trim, the three
+no-match shapes — every one agreeing on both lanes on value, error code AND
+error detail, and the native rows making no unattributed interpreter entry;
+the container-held value stamping once; the declining shapes.
+`eng/go/vm_fnvalue_seam_test.go`: the seam's arms with hand-built units —
+non-callee shapes, the token discipline, unenterable refs (index, param
+drift, a stale ref with no re-stamp box), the disarmed registry, the
+foreign home, the internal-error degrade with and without an effect, the
+DynEnv bracket. `compiler/go/stamp_lazy_test.go`: the stamp's gates, the
+remembered decline, the memoised ref.
+
+**Found on the way** — NUR166 (a def-bound fn value at a callback slot
+loses its own frame's `args`: the closure lowering takes it, and a closure's
+`args` is the enclosing frame's) and NUR167 (a type-minting fn body applied
+as a callback conflicts one call early: the check pass's mint persists on
+the compiled path). Both measured pre-existing on `main`, both recorded,
+neither closed here.
+
+**What S1b still owes.** The fn values the seam does not reach (the `[(mk
+2)]` shape, the wrappers, the islands in module-fnvalue-boundary.tsv), the
+Apply kernel's first branch, NUR154–156, and the 48 fn-value compile
+failures — provenance 16, dispatch recovery 9, fn value reaches word 7,
+the apply shapes 16 — which are S1b's lowering half, not its seam half.

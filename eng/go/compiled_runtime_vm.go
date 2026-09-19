@@ -94,3 +94,14 @@ func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos 
 		compiler.StampCompiledRef(fd, ref)
 	}
 }
+
+// LazyStamp is the compiled runtime's first-application stamp — the
+// detached stamp made universal (compiler.LazyStampFnSig): it stamps, or
+// finds the earlier stamp of, the sig a fn VALUE's application matched, and
+// says whether the sig now carries a unit for InvokeCompiled to run.
+func (vmCompiledRuntime) LazyStamp(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) bool {
+	if sig == nil {
+		return false
+	}
+	return compiler.LazyStampFnSig(r, fd, sig, pos) != nil
+}

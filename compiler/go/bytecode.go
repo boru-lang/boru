@@ -1681,7 +1681,7 @@ func (f *CompiledFn) ReturnPattern(k int) *core.Value {
 // Signature holds the ref as an OPAQUE handle it cannot name.
 func CompiledRef(s *core.Signature) *CompiledFnRef {
 	if a, ok := s.Impl.(*core.BoruImpl); ok {
-		ref, _ := a.Compiled.(*CompiledFnRef)
+		ref, _ := a.Compiled().(*CompiledFnRef)
 		return ref
 	}
 	return nil

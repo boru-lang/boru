@@ -83,7 +83,7 @@ func compiledLensSig(r *Registry, lu *lensUnit, segs []ReachSeg) *Signature {
 		compiledRuntime.StampDetached(r, fd, SrcPos{})
 		// The ref is the compiler piece's opaque handle (S4); core only asks
 		// whether one landed, exactly as compiler.CompiledRef reads it.
-		if bi, ok := fd.Signatures[0].Impl.(*BoruImpl); ok && bi.Compiled != nil {
+		if bi, ok := fd.Signatures[0].Impl.(*BoruImpl); ok && bi.Compiled() != nil {
 			lu.sig = &fd.Signatures[0]
 		}
 	})

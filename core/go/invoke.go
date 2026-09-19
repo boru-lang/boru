@@ -148,6 +148,15 @@ func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 // cases.
 func InvokeCallbackFn(r *Registry, fnDef *FnDefInfo, sig *Signature, args []Value) ([]Value, error) {
 	target, caps := FnHome(r, fnDef)
+	// The detached stamp at first application (S1b): a value with no unit for
+	// this sig obtains one now, at its home, memoised on the value — so the
+	// seam below takes the VM instead of CallBoru. Declined stamps are
+	// remembered on the value; the interpreter path stays byte-identical. A
+	// nil fnDef is a synthesized carrier sig with no fn value behind it (see
+	// FnHome): nothing to stamp.
+	if fnDef != nil {
+		compiledRuntime.LazyStamp(target, *fnDef, sig, SrcPos{})
+	}
 	return InvokeCallback(target, sig, args, caps)
 }
 

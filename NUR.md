@@ -95,6 +95,8 @@ keep the two in sync in the same commit.
 | [NUR160](#nur160) | The apply of a FACTORY-built fn value does not fire on the compiled lane when a value sits below it on the stack: `7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply` is `[7 6]` interpreted and `[7 5 fn (Integer)]` compiled, while the clean-stack `def mk … end 5 (mk) apply` compiles with parity | the generated sweep, the prefix-stack call form of `apply` × factory |
 | [NUR161](#nur161) | An `afn` whose BODY is a fn value read from a container returns the value on both lanes — `def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5` is `fn (Integer)` — but with a value below on the stack the compiled lane APPLIES it to that value: `7 … f 5` is `[7 fn (Integer)]` interpreted and `[8]` compiled | the generated sweep, the prefix-stack call form of `afn` × container |
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
+| [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
+| [NUR166](#nur166) | A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
 | [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
 | [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
 | [NUR163](#nur163) | A module member read IN PLACE is not the fn its local rebind is: `mini M.dbl 'ab'` and `emit M.up {a:1}` (and their parenthesised forms) are rejected by the words' signature-prefix validation — `mini_bad_signature`, `emit_bad_signature` — while `def g M.dbl/v end mini g 'ab'` answers `abab` and `def g (M.up) end emit g {a:1}` answers `UP`; `inspect (M.up)` reports a Function literal with no signatures where `inspect up` reports the defined fn and its signatures | the generated sweep, the module-export seeds of `emit`, `mini` and `parse` |
@@ -7015,6 +7017,70 @@ crash is what this record is for.
 **Where it belongs:** the recorder (which entry is emitted without a
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
+
+## NUR167 — a type-minting fn body, applied as a callback, conflicts one call early under compilation {#nur167}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** the S1b seam pins, probing which callback bodies the lazy
+detached stamp must never compile.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence.**
+
+```
+def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]
+  interp:    each: element 1: type: name part "T" in "T" conflicts with an existing type name
+  compiled:  each: element 0: … the same detail, one call early
+```
+
+The check pass runs `f`'s body once for the analysis and mints `T`; on
+the compiled path the pass's runtime-visible installs persist
+(RunAutoValues keeps them so OpPushType can resolve minted IDs), so the
+first real call re-mints against its own analysis-time twin. The direct
+call `[(f 1) (f 2)]` refuses to compile and falls back — the interpreter
+answers — which is why the shape hid until a callback form compiled.
+Pre-existing at #474's merge base (measured on `origin/main`).
+
+**Where it belongs:** the replay of a fn body's registry mutations
+across the check pass and the run — the same rollback-and-replay the
+bind twins give a top-level `def T` (§6.5), owed to a mint inside a fn
+body. S1b's lazy stamp declines such bodies (bodyHasReplayHazard) so
+the detached compile pass adds no third mint.
+
+## NUR166 — a def-bound fn value passed to a higher-order word loses its own frame's `args` {#nur166}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** the S1b seam pins.
+
+**Rule:** a fn value applied anywhere opens the frame its definition
+declares — with the value's own call args as `args`.
+
+**Divergence.**
+
+```
+def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]
+  interp:    [[1 1]]
+  compiled:  [[0 0]]
+def g fn [[n:Integer][Any][do [args]]] end each g/v [1 2]
+  interp:    [[[1] [2]]]
+  compiled:  [[error(args: not inside a function) error(args: not inside a function)]]
+```
+
+The recorder lowers the def-bound value's body as the `each` site's
+closure unit (the callback path), and a closure's `args` is the
+ENCLOSING frame's list — none at top level. The interpreter opens a
+frame for the value and pushes its call args. Pre-existing at #474's
+merge base (measured on `origin/main`). S1b's native fn-value seam
+pushes the value's own args for the units it hosts (`pushRootArgs`, at
+every fn-value entry: the token seam, RunUnit, a foreign ref), but this
+row never reaches the seam — the closure lowering takes it first.
+
+**Where it belongs:** the closure lowering of a NAMED fn value at a
+callback slot — either it opens the value's frame (an args push per
+element, the value's contract) or it declines to the fn-value seam,
+which does. Same family as NUR155 (the closure unit is not the value's
+frame).
 
 ## NUR165 — a token body over a declared-Any collection committed one arm and met an Integer {#nur165}
 
