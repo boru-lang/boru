@@ -268,17 +268,6 @@ func EvalOptions(w io.Writer, source string, o lang.Options) error {
 	return buildrt.Eval(w, source, o)
 }
 
-// envEnabled reports whether an env var is set to a truthy value
-// (present and not one of the empty/0/false/no forms).
-func envEnabled(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-	case "", "0", "false", "no", "off":
-		return false
-	default:
-		return true
-	}
-}
-
 // EvalOptionsColor is EvalOptions with the caller-resolved color decision
 // for structured error rendering (the --color flag).
 func EvalOptionsColor(w io.Writer, source string, o lang.Options, color bool) error {
