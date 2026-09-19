@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -1182,6 +1183,15 @@ func compileFailureReason(reason string) string {
 	return reason
 }
 
+// vmRaised reports whether an internal_error came from the VM itself rather
+// than from a handler running under it. These are the two texts the compiled
+// runtime builds its own internal errors with (eng/go/vm.go's vmErrAt, and
+// vm_foreign_unit.go's recovered panic).
+func vmRaised(detail string) bool {
+	return strings.HasPrefix(detail, "bytecode: internal: ") ||
+		strings.HasPrefix(detail, "internal bytecode VM error: ")
+}
+
 // isCompiledDefect reports whether a compiled run's error is the COMPILER's
 // rather than the program's: an internal_error (a VM/lowering soundness
 // assertion, a recovered handler panic, a designed defer) or a foreign Go
@@ -1196,16 +1206,25 @@ func isCompiledDefect(err error) bool {
 	if !errors.As(err, &ae) {
 		return true
 	}
-	return ae.Code == "internal_error"
+	return ae.Code == "internal_error" && vmRaised(ae.Detail)
 }
 
 // compiledRunError renders an error raised BY a compiled run. A genuine boru
-// runtime error is the program's own result and passes through untouched. An
-// internal_error — a VM/lowering soundness assertion, a recovered handler
-// panic, a designed defer — is a compiler DEFECT: there is no interpreter
-// re-run to resolve it any more, so the error carries a note saying what it
-// is and asking for it to be reported. A foreign Go error is wrapped in an
-// internal_error carrying its text, the same class.
+// runtime error is the program's own result and passes through untouched. A
+// VM/lowering soundness assertion, a designed defer or a recovered panic is a
+// compiler DEFECT: there is no interpreter re-run to resolve it any more, so
+// the error carries a note saying what it is and asking for it to be
+// reported. A foreign Go error is the same class.
+//
+// The VM's own errors are identified by their TEXT, not by their code. A
+// native handler may raise internal_error for a failure that is entirely the
+// program's — `convert: cannot convert Float to BigInteger`, `def q: value 0
+// does not satisfy predicate type Positive` — and the interpreter raises the
+// identical error running the identical handler. Marking those as compiler
+// defects would book the compiler for a handler's choice of error code, and
+// would put fifty-odd corpus rows in a ledger that is supposed to name VM
+// bails. That the code is a poor one for a user-facing failure is a real
+// complaint, and it is the handler's, not this function's.
 //
 // One case is not a defect report: a designed defer that PREPARED the
 // interpreter's own error for this exact moment (a no-match whose site proved
@@ -1226,7 +1245,7 @@ func compiledRunError(r *native.Registry, err error) error {
 		wrapped.Notes = append(wrapped.Notes, note)
 		return wrapped
 	}
-	if ae.Code != "internal_error" {
+	if ae.Code != "internal_error" || !vmRaised(ae.Detail) {
 		return err
 	}
 	if ae.DeferAlt != nil {

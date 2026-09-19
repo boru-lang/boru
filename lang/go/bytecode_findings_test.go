@@ -14,10 +14,13 @@ import (
 )
 
 // compiledRunError is the one classifier on a compiled RUN failure now that
-// nothing re-runs the source: a genuine boru runtime error (type_error, the
-// resource ceilings, a signature error) and a policy denial are the PROGRAM's
-// own result and pass through untouched; an internal_error or a foreign Go
-// error is a compiler DEFECT and gains the note that says so.
+// nothing re-runs the source. A genuine boru runtime error and a policy
+// denial are the PROGRAM's own result and pass through untouched. So is an
+// internal_error a HANDLER raised — the interpreter raises the identical one
+// running the identical handler, and booking the compiler for a handler's
+// choice of error code would put fifty-odd corpus rows in a ledger meant to
+// name VM bails. Only the VM's OWN internal errors, identified by the two
+// texts it builds them with, and a foreign Go error are compiler DEFECTS.
 func TestCompiledRunErrorClassifies(t *testing.T) {
 	a, err := New()
 	if err != nil {
@@ -30,7 +33,9 @@ func TestCompiledRunErrorClassifies(t *testing.T) {
 		err    error
 		defect bool
 	}{
-		{"internal_error is a defect", core.MakeBoruError("internal_error", "boom", "", "", ""), true},
+		{"a VM assertion is a defect", core.MakeBoruError("internal_error", "bytecode: internal: STORE_LOCAL stack underflow (pc=2)", "", "", ""), true},
+		{"a recovered panic is a defect", core.MakeBoruError("internal_error", "internal bytecode VM error: index out of range", "", "", ""), true},
+		{"a handler's internal_error is the program's", core.MakeBoruError("internal_error", "convert: cannot convert Float to BigInteger", "", "", ""), false},
 		{"foreign (non-Boru) error is a defect", errors.New("some go error"), true},
 		{"type_error is the program's result", core.MakeBoruError("type_error", "bad", "", "", ""), false},
 		{"evaluation_limit is the program's result", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
@@ -61,7 +66,7 @@ func TestCompiledRunErrorPrefersDeferAlt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ae := core.MakeBoruError("internal_error", "vm:poly-no-match", "", "", "")
+	ae := core.MakeBoruError("internal_error", "bytecode: internal: vm:poly-no-match (pc=5)", "", "", "")
 	ae.DeferAlt = core.MakeBoruError("signature_error", "no matching signature for `f`", "f", "", "")
 	got := compiledRunError(a.NativeRegistry(), ae)
 	if got != ae.DeferAlt {
