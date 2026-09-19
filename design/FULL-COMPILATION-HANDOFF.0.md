@@ -10814,10 +10814,32 @@ helpers reported that the ORACLE had moved when what had moved was the
 test. A booking that skips work is a fallback wearing a different hat;
 a booking that records and continues is not.
 
-**Still owed.** The island machinery (`OpFallback`, `lowerFallback`,
-`runFallback`) is untouched: islands are at 0 on the corpus and 2 in the
-sweep, and there is exactly ONE producer — `TryRecordFallback` at
-`compiler_dispatch_record.go:173` — so stopping them is a one-line change
-and deleting the machinery behind it is mechanical. `vmDefer`'s messages
-still say "deferring to the interpreter", which is now false in every one
-of them. Both are the next increment, and neither is load-bearing.
+**The islands were tried and put back, with the measurement.** They are
+the one mechanism in this sweep that was removed and restored, so the
+number is recorded rather than the judgement alone. There is exactly one
+producer — `TryRecordFallback` at `compiler_dispatch_record.go:173` — so
+stopping them is a one-line change, and it was made and measured:
+
+- unit-test programs that do not compile: **284 → 292**;
+- five pinned tests regress, and they are not edge shapes: `error [...]`
+  handlers with a code body, and a quoted `do` body inside a loop
+  (`def b (quote [break]) for 5 [do b i]`). Both stop compiling at
+  "code-body word error / do (Stage 2)".
+
+Put back, because an island is not what this change is about. The
+whole-program fallback HID a compile failure: an answer came back and
+nothing said the compile had failed. An island is a compiled program with
+an interpreted span, and it is counted (`islandCeiling` 0 on the corpus,
+`sweepIslandCeiling` 2) and ratcheted. Removing it does not make anything
+more honest — the count was already 0 — and it does take working
+compilation away from a core control-flow family. That is why
+[FULL-COMPILATION.0.md](FULL-COMPILATION.0.md) sequences the escape-valve
+deletion at Stage 9, AFTER those shapes lower natively: the order is the
+point, and the measurement above is what it costs to invert it.
+
+**Still owed.** The island machinery itself, at Stage 9 and in that order.
+And `vmDefer`'s messages, twenty-odd of which still say "deferring to the
+interpreter" — false in every one now, since nothing defers anywhere. That
+is a mechanical text sweep with no behaviour in it, and it is only left
+here because the messages ride in gate pins and each pin has to be re-read
+against the new text rather than rewritten with it.
