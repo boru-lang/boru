@@ -144,20 +144,20 @@ Four changes. Everything else in the review's S0–S7 stands.
 Applied per step, with the speedup weighted by how gate-bound that step is.
 Design-bound work barely moves; sweep and deletion work moves most.
 
-| step | content | gate | old | **new** |
-|---|---|---|---:|---:|
-| **P0** | per-file compile-failure ratchets | a filtered run asserts its own subset | — | **1** |
-| **S0** | the generated sweep; the coverage-matrix gate; every ratchet re-based | no empty matrix cell | 6–10 | **4–7** |
-| **S1a** | gradual-Any collection overload commitment | the 19 higher-order rows compile | — | **3–6** |
-| **S1b** | fn values as ONE convention; the Apply kernel; the unit cache | islands 10 → 0; fn-value failures → 0 | 15–25 | **10–17** |
-| **S2a** | the 35 declaration-only handlers (quoted 28, fn-operand 7) | `undeclaredHandlerCeiling` 94 → 59 | — | **5–8** |
-| **S2b** | the 59 code-body handlers, on units | ceiling 59 → 0; code-body failures → 0 | — | **10–16** |
-| **S3** | runtime compilation: computed bodies, splices, module bodies | round-trip census rows → 0 | 10–20 | **8–16** |
-| **S4** | the lane completed; the terminal arm flipped per family | `vm:generic-*` 10 → 0; 92 sites → trap or delete | 25–40 | **18–30** |
-| **S5** | provenance generality | provenance failures 15 → 0 | 10–15 | **8–13** |
-| **S6** | checker totality, T1 half | `armedOnlyCeiling` 16 → 0 | 5–10 | **4–8** |
-| **S7** | every valve deleted; `CompileCheck` total | engine entries 0; `deferCeiling` gone | 8–15 | **5–10** |
-| | **total remaining** | | 105–175 | **75–130** |
+| step | content | gate | old | **new** | **2026-09-19, after S1a** |
+|---|---|---|---:|---:|---:|
+| **P0** | per-file compile-failure ratchets | a filtered run asserts its own subset | — | **1** | done (1) |
+| **S0** | the generated sweep; the coverage-matrix gate; every ratchet re-based | no empty matrix cell | 6–10 | **4–7** | 2–4 left (1 spent) |
+| **S1a** | gradual-Any collection overload commitment | the 19 higher-order rows compile | — | **3–6** | done (1) |
+| **S1b** | fn values as ONE convention; the Apply kernel; the unit cache | islands 10 → 0; fn-value failures → 0 | 15–25 | **10–17** | 9–15 |
+| **S2a** | the 35 declaration-only handlers (quoted 28, fn-operand 7) | `undeclaredHandlerCeiling` 94 → 59 | — | **5–8** | 3–5 |
+| **S2b** | the 59 code-body handlers, on units | ceiling 59 → 0; code-body failures → 0 | — | **10–16** | 9–15 |
+| **S3** | runtime compilation: computed bodies, splices, module bodies | round-trip census rows → 0 | 10–20 | **8–16** | 8–16 |
+| **S4** | the lane completed; the terminal arm flipped per family | `vm:generic-*` 10 → 0; 92 sites → trap or delete | 25–40 | **18–30** | 18–30 |
+| **S5** | provenance generality | provenance failures 15 → 0 | 10–15 | **8–13** | 8–13 |
+| **S6** | checker totality, T1 half | `armedOnlyCeiling` 16 → 0 | 5–10 | **4–8** | 4–8 |
+| **S7** | every valve deleted; `CompileCheck` total | engine entries 0; `deferCeiling` gone | 8–15 | **5–10** | 5–10 |
+| | **total remaining** | | 105–175 | **75–130** | **66–116** |
 
 **The project got about 1.4× faster, not 50×.** That is the honest
 reading and it is the number to plan against. A fiftyfold speedup on a loop
@@ -179,6 +179,56 @@ first day. What S0 still owes: the module exports as rows (264
 signatures across 11 modules), signature-level cells, and every corpus
 ratchet re-based on the sweep's defect list.
 
+**S1a landed 2026-09-19**, in one session-day against the three to six
+estimated, on the mechanism §4 predicted: no unit cache, no Apply kernel.
+`each`, `fold`, `scan` and `filter` declare `CompileDynBody`, so a dispatch
+whose gradual-Any operand — the collection, or the callback read from a
+class field, a map field, a dynamic key or a factory — leaves two
+overloads reachable records a poly re-match over the word's own overloads
+instead of refusing at the ambiguity gate; the handler picks the overload
+the live value matches. All nineteen rows compile with parity, and the
+gate held more behind them than the nineteen: corpus compile failures
+113 → 60, islands 10 → 0, compute gaps 104 → 56, reducible rows 17 → 3,
+the sweep's failing cells 44 → 36 and its islands 5 → 2, `kg/main.boru`
+and two frontier rows graduated. The trade is the one §4 named as the
+G-lane-first landing: the re-matched callback runs through the
+RunResolved seam, so the interp-entry census rose 52 → 102 rows and the
+engine-entry census 366 → 489 — measured row by row against `main`, all
+fifty-one entering rows the ones the gate released — and S1b retires them
+by lowering the re-matched overload's body natively. `for-each` (nets no
+result) and `walk` (its own code-body gate) keep the refusal. Found on the
+way: NUR164, a callback mismatch inside a handler raised a plain Go error
+the compiled-by-default lane read as its own bug.
+
+**S1b's first two increments landed 2026-09-19** (the handoff log has
+both). The first made the fn-value seam native; the second resolved a
+computed fn value at a forward slot — the collection seat and the `/v`
+read consult the fn-carrier side table, so `each f/v xs` over a factory's
+result dispatches instead of refusing — and made a fn-VALUE CLOSURE a fn
+value at every callback seam, matched against its own signature before
+its unit runs. Compile failures 60 → 53, the census 77 → 78 and engine
+entries 419 → 422 on the one newly-compiling wrapper row. The estimate
+below is NOT refreshed for them: a step's numbers move at the end of the
+step, not per increment (SESSION-HANDOVER.0.md's rule), and S1b's owed
+half — the apply shapes, the wrappers, provenance — is the design-bound
+part the estimate was built on.
+
+**Re-estimated 2026-09-19, at the end of S1a (the last column).** Three
+session-days went on P0, S0's first increment and S1a against 8–14
+estimated for those slices, but only S1a's beat is evidence, and S1a was
+the step this note already called cheap. What moved each number: S1b's
+islands are already 0 and its ambiguity commitment is gone, and 48 of
+the 60 remaining failures are its family (provenance 16, dispatch
+recovery 9, fn value reaches word 7, the apply shapes 16) — all
+design-bound, so a modest cut, plus the 102 census rows to retire, which
+is the unit cache itself; S2a's declaration work has been measured twice
+(20 handlers in a day on 09-18, four with the full gate fallout on
+09-19); S2b's dyn-body seat is a G-lane-first landing for any code-body
+word, but arming DynEnv refused 53 rows on 09-19, so the seat is not
+free; S3–S7 have no new evidence. The design-bound steps were not
+extrapolated from S1a's beat: the project got about 1.4× faster, not
+fifty.
+
 **Conditional further reduction.** If P0 lands and filtered runs assert,
 the four gate-bound steps (S0, S2a, S4, S7) should compress a further
 15–25%, taking the range to roughly **65–115**. Not banked here, because it
@@ -197,6 +247,23 @@ Year end is about 75 session-days away, so **only the absolute low end with
 zero overrun reaches it**. T1 + T2 by year end: **about 20%**, against the
 review's 15%. It has barely moved, and it has barely moved for the reason
 §2 gives — the binding gate halved, it did not collapse.
+
+**Refreshed 2026-09-19, after S1a** (66–116 remaining, §6's last column):
+
+| | session-days | finishes |
+|---|---:|---|
+| low | 66 | around 19 December 2026 |
+| high | 116 | around 26 February 2027 |
+
+Year end is about 73 session-days away, so the low end now reaches it
+with a week's margin; the midpoint of 91 does not. T1 + T2 by year end:
+**about 30%**. It moves because the low end crossed into the year, not
+because the biggest step moved — S4 is unchanged and design-bound, and
+it is where the range's width lives. Two things could move it further:
+the DynEnv "unpromoted computed value" refusal, now a named cost (it
+blocked S1a's alternative fix and is three of the 60 failures), would
+widen the dyn-body seat's reach and compress S2b; and an early unit
+cache from S1b makes S2b's 59 handlers declaration work like S2a's.
 
 Two things would change that materially: P0 landing and delivering its
 compression, and a second session running the S2a track in parallel, which

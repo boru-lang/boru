@@ -38,10 +38,10 @@ const sweepStatusFile = "SWEEP_STATUS.md"
 const (
 	sweepEmptyCeiling          = 0   // word × kind cells with no seed and no n/a probe — holes in the instrument
 	sweepInvalidCeiling        = 0   // seeds the interpreter rejects — a seed to fix, or an n/a to claim with a probe
-	sweepFailureCeiling        = 44  // valid seeds that FAIL to compile (41) or hard-error in CompileCheck (3) — every one a BUG
-	sweepIslandCeiling         = 5   // valid seeds that compile with an interpreter island: inner ×2, scan ×3
+	sweepFailureCeiling        = 36  // valid seeds that FAIL to compile (33) or hard-error in CompileCheck (3) — every one a BUG. 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match
+	sweepIslandCeiling         = 2   // valid seeds that compile with an interpreter island: inner ×2. 5 -> 2 on 2026-09-19 (S1a): scan × lambda, named-fn and module-export lower to a poly re-match instead of an island
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (refused, islanded or check-reject)
+	sweepVariantFailureCeiling = 206 // call-form variants of passing seeds that fail to compile (refused, islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a): eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow refusal), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
 	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 

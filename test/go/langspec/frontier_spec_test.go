@@ -653,7 +653,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	//     dispatch recovery for the same reason — the trap declines a
 	//     window naming a table-bound word, engine.go's
 	//     TryRecordUnmatchedDispatchTrap).
-	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`: {why: "the `/v` read of def-bound computed `h` keeps its undefined_word diagnostic (the deliberate Stage 1 /v hold; audit §5.4's workaround row — its ((mk 1) 2) sibling compiles natively as the unledgered control)", failsWith: "check diagnostics"},
+	`def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end def h (mk 1) end 2 h/v apply`: {why: "RE-DIAGNOSED 2026-09-19 (S1b-2): the `/v` read of def-bound computed `h` now resolves the fn-carrier side table with the bare read's provenance notes (the Stage 1 /v hold is lifted — `each h/v xs` compiles), so the refusal moved PAST the read to the apply itself: the `/v` read delivers the carrier inert (deliverValRead — a `/v` read never dispatches), and the `apply` over it is the produced-closure shape the lowering cannot collapse, which is the apply-shape family S1b's lowering half owes. Audit §5.4's workaround row; its ((mk 1) 2) sibling compiles natively as the unledgered control. Was: the deliberate undefined_word hold on the /v read", failsWith: "computed closure at a word's argument slot (its apply did not collapse — Stage 2)"},
 	hofPitem + `def manyloop fn [[a:Function s:String acc:List][Map][ def r (a s) if (r.ok) [ (manyloop a/v (r.rest) (push (r.val) acc)) ] [ {ok:true val:acc rest:s} ] ]] end def pmany fn a:Function Function [ ( fn s:String Map [ def z [] (manyloop a/v s z) ] ) ] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def digits (pmany digit/v) end (digits '123ab')`: {why: "RE-DIAGNOSED 2026-08-27 (NUR101): still refused, still the same interpreted answer, but the refusal MOVED EARLIER. psat's inner `if` arm nets a Function-typed carrier LEADING further values, and resolveArm now declines that shape (residualLeadReStepped) instead of merging it as placed data — the arm body closes through a frame rewind, so the interpreter re-steps the lead into a call and the merge would have compiled the placed pair. The pmany trap decline below is still there; it is simply no longer the FIRST refusal. Original diagnosis, still accurate for that later gate: `digit/v` at pmany's Function slot is check-invisible (digit is table-bound), so the dispatch no-match declines the trap and refuses", failsWith: "fn psat: body result of unknown provenance"},
 	hofPalt + `(ab 'bzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
 	hofPalt + `(ab 'zzz')`: {why: "with the `ab` read resolved (Stage 1), palt's own unit refuses: its returned closure captures the alternation's parsers", failsWith: "body result of unknown provenance"},
@@ -687,8 +687,14 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// bytecode-migrated.tsv. The concrete-closure row keeps the code-body
 	// gate — a lambda factory's closure read inside the body's unit
 	// resolves to the FnDefInfo itself, whose home is outside the unit.
-	`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2 3]` and `[(f 1)]` is the DATA — the read compiles as a typed list literal and the each islands on its three-value body (the interpreter keeps the top). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
-	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`:                {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
+	// GRADUATED 2026-09-19 (S1a of design/FULL-COMPILATION-REPLAN.0.md): the
+	// `each [1 2 3] [(f 1)]` and `filter [1 2] [gt 0 (h 5)]` forward-form rows
+	// (frontier-hof-audit.tsv:148, :166) — each/filter declare CompileDynBody,
+	// so the call over the computed-closure read lowers to a poly re-match
+	// over the word's own overloads instead of islanding on the multi-value
+	// body; both rows now compile natively with parity. The rows stay in
+	// frontier-hof-audit.tsv, asserted compiled by this gate.
+	`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`: {why: "audit §5.8/§9f: a do body reading a def-bound COMPILED CLOSURE — an interpreter re-run cannot apply one", failsWith: "code body reads a def-bound compiled closure"},
 	// §9g — a computed closure at a WORD's argument slot. Found by a
 	// 690-program generated differential sweep (factory spelling x binding
 	// shape x consumption context); 24 diverged, in exactly two contexts.
@@ -696,7 +702,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// closure; the compiled model could leave the paren uncollapsed, so an
 	// Any-typed slot swallowed the FUNCTION and stranded the argument.
 	// Unmasked by 3d914ad — before the Stage 2 admission these refused.
-	`def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def h (mk (z:Integer => [add 7 z])) end filter [1 2] [gt 0 (h 5)]`: {why: "RE-DIAGNOSED 2026-09-09 (the thirty-eighth increment): in this forward form the BODY is `[1 2]` and `[gt 0 (h 5)]` is the DATA — the read compiles into the data literal and the filter islands on its two-value body (both lanes raise filter's non-Boolean error). Graduation = a multi-value HOF body netting its top value", failsWith: "islanded"},
 	// §9h — the two binding stores (both P1 findings of the #397 review). A
 	// computed fn is not installed in Defs, so it lives only in the carrier
 	// table and the stores can disagree. Shadowing a live binding leaves the

@@ -296,7 +296,7 @@ var allArrayNatives = []NativeFunc{
 	// ---- higher-order ----
 	{
 		Name:          "each",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// each [body] data — the body sees one element and returns the mapped value.
 		// A 0-net body is each's own each_error ("body produced no result"), raised
 		// faithfully from InvokeBody, so EmptyBodyErrors compiles it natively rather
@@ -395,7 +395,7 @@ var allArrayNatives = []NativeFunc{
 	},
 	{
 		Name:          "fold",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// fold [body] data init — the body sees (accumulator, element). InvokeBody
 		// supplies [acc, elem]; acc generalises to the init's type, or (no-init
 		// 2-arg form) to the element type, since the accumulator starts as the
@@ -456,7 +456,7 @@ var allArrayNatives = []NativeFunc{
 	},
 	{
 		Name:          "scan",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// scan [body] data — the body sees (accumulator, element); the accumulator
 		// starts as the first element, so both inputs carry the element type. A
 		// 0-net body is scan's own scan_error, raised faithfully, so EmptyBodyErrors

@@ -66,10 +66,12 @@ var realProgramLedger = map[string]string{
 	"utils/tests/truefalse_test.boru": "code-body word test-describe (Stage 2)",
 	"utils/tests/uniq_test.boru":      "code-body word test-describe (Stage 2)",
 
-	// `each` over a code body — the language's basic iteration idiom, in the
-	// shape real code reaches. This one refuses the knowledge-graph
-	// pipeline's own entry point, a tool this repo runs in CI.
-	"kg/main.boru": "code-body word each (Stage 2)",
+	// `kg/main.boru` GRADUATED 2026-09-19 (S1a of
+	// design/FULL-COMPILATION-REPLAN.0.md): the knowledge-graph pipeline's
+	// own entry point refused at `each` over a code body whose collection
+	// the pass could not type; each now declares CompileDynBody, so the
+	// dispatch lowers to a poly re-match over its own overloads instead of
+	// refusing at the ambiguous-overload gate.
 
 	// A dynamic-scope def of a value the pass could not promote.
 	"utils/cut.boru": "fn cli-usage-line: dynamic-scope def `ap2` of unpromoted computed value",

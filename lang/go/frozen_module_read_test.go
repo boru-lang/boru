@@ -368,16 +368,14 @@ func TestStaticSpliceBodiesCompile(t *testing.T) {
 	}
 }
 
-// TestComputedEachBodyStaysRefused — a COMPUTED body on a non-CompileDynBody
-// higher-order word (each) keeps the refusal with fallback parity: the island
-// cannot bake a carrier code body (its tokens carry the island's program), and
-// each declares no dyn-body backstop. Pins the island's non-bakeable
-// NoEvalArgs decline.
-func TestComputedEachBodyStaysRefused(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+// TestComputedEachBodyCompiles — a COMPUTED body on each compiles with parity
+// through the dyn-body backstop: since S1a (2026-09-19,
+// design/FULL-COMPILATION-REPLAN.0.md) each declares CompileDynBody, so the
+// carrier code body no island could bake (its tokens carry the island's
+// program) is handed to the handler at run time, exactly as `do`'s is.
+// Until S1a the shape refused with fallback parity; this pinned the
+// island's non-bakeable NoEvalArgs decline, which the backstop now bypasses.
+func TestComputedEachBodyCompiles(t *testing.T) {
 	src := `def op (quote [mul 2])  def f fn [[b:List] [List] [[1 2 3] each b]]  f op`
 	a, err := New()
 	if err != nil {
@@ -387,12 +385,12 @@ func TestComputedEachBodyStaysRefused(t *testing.T) {
 	if cerr != nil {
 		t.Fatalf("CompileCheck(%q): %v", src, cerr)
 	}
-	if prog != nil || reason == "" {
-		t.Errorf("%q: computed each body must refuse; got prog=%v reason=%q", src, prog != nil, reason)
+	if prog == nil {
+		t.Errorf("%q: the dyn-body backstop must compile a computed each body; reason=%q", src, reason)
 	}
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-		t.Errorf("%q: fallback parity broke: compiled=%v gotC=%v errC=%v gotI=%v errI=%v",
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotC) != "[[2 4 6]]" {
+		t.Errorf("%q: want [[2 4 6]] compiled with parity: compiled=%v gotC=%v errC=%v gotI=%v errI=%v",
 			src, compiled, gotC, errC, gotI, errI)
 	}
 }

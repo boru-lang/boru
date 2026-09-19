@@ -236,6 +236,8 @@ func (sweepCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 	return v, false
 }
 
+func (sweepCompiledRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool { return false }
+
 func TestSweepInvokeBodyRouting(t *testing.T) {
 	// Invoker installed: the VM seam owns body execution.
 	r := newTestRegistry(t)

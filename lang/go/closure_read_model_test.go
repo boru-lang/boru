@@ -113,10 +113,15 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 	}
 }
 
-// TestClosureReadModelFilterBodyIslanded pins the filter-body twin as
-// measured: it compiles and agrees (the filter_error on both lanes) but the
-// filter body islands, so it stays ledgered as islanded.
-func TestClosureReadModelFilterBodyIslanded(t *testing.T) {
+// TestClosureReadModelBodiesNative pins the filter-body twin and the
+// each-body forward form as measured since S1a (2026-09-19,
+// design/FULL-COMPILATION-REPLAN.0.md): each and filter declare
+// CompileDynBody, so the call over the computed-closure read lowers to a poly
+// re-match over the word's own overloads — no island — and agrees with the
+// interpreter (the filter_error on both lanes for the filter twin). Until
+// S1a both compiled with an island and were ledgered as islanded
+// (frontier-hof-audit.tsv:148, :166); the ledger entries are graduated.
+func TestClosureReadModelBodiesNative(t *testing.T) {
 	for _, src := range []string{
 		crmMk + `filter [1 2] [gt 0 (h 5)]`,
 		`def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]`,
@@ -125,8 +130,8 @@ func TestClosureReadModelFilterBodyIslanded(t *testing.T) {
 		if !compiled {
 			t.Fatalf("%q: not compiled", src)
 		}
-		if len(islands) == 0 {
-			t.Errorf("%q: runs VM-native now — graduate it from the ledger", src)
+		if len(islands) != 0 {
+			t.Errorf("%q: islands again (%v) — S1a's poly re-match must hold", src, islands)
 		}
 		d, err := New()
 		if err != nil {

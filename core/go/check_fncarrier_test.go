@@ -69,12 +69,15 @@ func TestStepWordCompileCarrierSubstitute(t *testing.T) {
 	}
 }
 
-// TestStepWordValCarrierKeepsUndefinedDiag — the `/v` read path must NOT
-// consult the side table, even on a compile pass with the name noted:
-// substituting there green-lights units whose lowering drops the operand
-// (the pmany/pseq miscompile — see stepWordVal). The diagnostic keeps
-// those units refused.
-func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
+// TestStepWordValCarrierSubstitutes — the `/v` read path resolves a
+// carrier-bound name through the side table exactly as the bare read does
+// (S1b-2): the carrier replaces the token, the pass is marked, no
+// undefined_word is reported. This path used to decline the table on
+// purpose (a substituted `/v` read once had no producing event and
+// `(pmany digit/v)` compiled to a 0-arg call); the bare read's provenance
+// notes — the def read and the local read — are what the lowering needs,
+// and the `/v` read now carries the same ones.
+func TestStepWordValCarrierSubstitutes(t *testing.T) {
 	r := compileCheckRegistry(t)
 	NoteCheckFnCarrierBind(r, "hv", NewCarrier(TFunction))
 
@@ -83,11 +86,56 @@ func TestStepWordValCarrierKeepsUndefinedDiag(t *testing.T) {
 	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "hv", ArgCount: -1, ForceVal: true}); err != nil {
 		t.Fatalf("/v step errored: %v", err)
 	}
+	got := e.Tape.At(0)
+	if got.Undefined || !got.Carrier || got.Parent == nil || !got.Parent.ConformsTo(TFunction) {
+		t.Errorf("a /v read of a carrier-bound name must substitute the carrier: %v", got)
+	}
+	if len(r.Check.Diagnostics) != 0 {
+		t.Errorf("no diagnostics expected, got %v", r.Check.Diagnostics)
+	}
+	if !r.Check.FnCarrierReadSubstituted {
+		t.Error("the substitution must mark the pass (the silent-fallback flag)")
+	}
+	// An UNBOUND name keeps the undefined_word diagnostic and the placeholder.
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{NewWord("nope")}, StackHeadroom)
+	if err := e.stepWordVal(e.Tape.At(0), WordInfo{Name: "nope", ArgCount: -1, ForceVal: true}); err != nil {
+		t.Fatalf("/v step of an unbound name errored: %v", err)
+	}
 	if got := e.Tape.At(0); !got.Undefined {
-		t.Errorf("a /v read of a carrier-bound name must keep the Undefined placeholder: %v", got)
+		t.Errorf("an unbound /v read must keep the Undefined placeholder: %v", got)
 	}
 	if len(r.Check.Diagnostics) != 1 {
 		t.Errorf("expected the one undefined_word diagnostic, got %v", r.Check.Diagnostics)
+	}
+}
+
+// TestDefTopResolvesCarrierUnderAnalysis — the collection seat's binding
+// lookup (Engine.DefTop, the plan walk's and the candidate scan's word
+// resolution) reads the side table under an analysis pass, so a forward
+// slot claims a computed fn's carrier where it used to see a bare word
+// (`each f/v [1 2 3]` over `def f (mk 10)` refused "unmatched dispatch
+// recovered at each"). A Defs binding wins; outside analysis the table is
+// never consulted.
+func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
+	r := compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "f", NewCarrier(TFunction))
+	r.Defs.Push("d", NewInteger(7))
+	e := NewTop(r)
+	if got, ok := e.DefTop("f"); !ok || !got.Carrier || !got.Parent.ConformsTo(TFunction) {
+		t.Errorf("under analysis the seat must resolve the table-bound carrier: %v %v", got, ok)
+	}
+	if got, ok := e.DefTop("d"); !ok || !IsConcrete(got) {
+		t.Errorf("a Defs binding must resolve as itself: %v %v", got, ok)
+	}
+	if _, ok := e.DefTop("zz"); ok {
+		t.Error("an unbound name must miss")
+	}
+
+	plain := covRegistry(t, nil)
+	NoteCheckFnCarrierBind(plain, "f", NewCarrier(TFunction))
+	if _, ok := NewTop(plain).DefTop("f"); ok {
+		t.Error("outside analysis the table must not be consulted")
 	}
 }
 

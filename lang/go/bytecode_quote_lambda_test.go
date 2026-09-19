@@ -19,12 +19,17 @@ func TestQuoteLambdaCallbackParity(t *testing.T) {
 	// Legacy refusal+fallback-parity contract, like TestApplyOverParamFnCompiles.
 	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 
-	fnValueM2Refusal(t, "each: Atom-lambda over computed keys stays data",
+	// Since S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) each and
+	// fold declare CompileDynBody: the code-body-over-a-computed-collection
+	// shape no longer refuses — it lowers to a poly re-match over the word's
+	// own overloads, and the Atom-typed lambda stays DATA in both engines,
+	// exactly as the quote-polarity screen requires.
+	fnValueM2Native(t, "each: Atom-lambda over computed keys stays data",
 		`def doc {meta: 7} each [[k:Atom] => [doc get k]] (keys doc)`,
-		"code-body word each")
-	fnValueM2Refusal(t, "fold: Atom-lambda over computed keys stays data",
+		"[[fn (Atom)]]")
+	fnValueM2Native(t, "fold: Atom-lambda over computed keys stays data",
 		`fold [[k:Atom acc:Integer] => [acc add 1]] (keys {a:1 b:2}) 0`,
-		"code-body word fold")
+		"[fn (Atom, Integer)]")
 
 	// filter's convention delivers a {key,value} pair, so the Atom lambda
 	// never matches in either engine: the body COMPILES and both engines

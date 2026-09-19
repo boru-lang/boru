@@ -450,7 +450,7 @@ func TestInvokeCallbackInternalErrorFallsBack(t *testing.T) {
 		t.Fatalf("RunUnit err = %v, want an internal_error to drive the fallback", err)
 	}
 	// The sig carries the stamped ref AND a boru body CallBoru can run to 42.
-	sig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(42)}, Compiled: ref}}
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(42)}, ref)}
 	out, err := core.InvokeCallback(runUnitReg(t), sig, nil, nil)
 	if err != nil {
 		t.Fatalf("InvokeCallback should have fallen back to CallBoru, got err: %v", err)
@@ -481,7 +481,7 @@ func TestInvokeCallbackBusyRegistryFallsBack(t *testing.T) {
 		t.Fatal("a busy registry with no nestedRunner must report ran=false")
 	}
 	// Via InvokeCallback: it falls through to CallBoru over the body.
-	sig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(7)}, Compiled: ref}}
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(7)}, ref)}
 	out, err := core.InvokeCallback(r, sig, nil, nil)
 	if err != nil {
 		t.Fatalf("InvokeCallback should have fallen back to CallBoru, got err: %v", err)

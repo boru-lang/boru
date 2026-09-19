@@ -190,7 +190,7 @@ func TestInvokeCallbackBailAfterWriterEffectPropagates(t *testing.T) {
 	r := runUnitReg(t)
 	var out bytes.Buffer
 	r.Output = &out
-	sig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(42)}, Compiled: ref}}
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(42)}, ref)}
 	res, err := core.InvokeCallback(r, sig, nil, nil)
 	if !core.IsInternalErr(err) {
 		t.Fatalf("fenced writer bail: err = %v (res=%v), want the propagated internal_error", err, res)
@@ -220,7 +220,7 @@ func TestInvokeCallbackBailAfterEffectPropagates(t *testing.T) {
 	r := runUnitReg(t)
 	// The sig carries a boru body the interpreter COULD run to 42 — the test
 	// is that the fence refuses to, because the effect already escaped.
-	sig := &core.Signature{Impl: &core.BoruImpl{Body: []core.Value{core.NewInteger(42)}, Compiled: ref}}
+	sig := &core.Signature{Impl: core.NewBoruImplCompiled([]core.Value{core.NewInteger(42)}, ref)}
 	out, err := core.InvokeCallback(r, sig, nil, nil)
 	if !core.IsInternalErr(err) {
 		t.Fatalf("fenced callback bail: err = %v (out=%v), want the propagated internal_error", err, out)

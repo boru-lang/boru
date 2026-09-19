@@ -12,7 +12,7 @@ import (
 // prog.Fns[unit] — the shape stampFnConst produces for a fn-value const.
 func dynApplyFn(params []core.FnParam, prog *compiler.Program, unit int) core.Value {
 	impl := core.Boru([]core.Value{core.NewInteger(0)})
-	impl.Compiled = &compiler.CompiledFnRef{Prog: prog, Unit: unit}
+	impl.SetCompiled(&compiler.CompiledFnRef{Prog: prog, Unit: unit})
 	fd := core.FnDefInfo{Signatures: []core.Signature{{
 		Params: params, Returns: []*core.Type{core.TAny}, BarrierPos: core.BarrierAllForward,
 		Impl: impl,

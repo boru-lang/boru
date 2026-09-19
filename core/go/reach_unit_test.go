@@ -27,7 +27,7 @@ func (s *stubLensRuntime) StampDetached(_ *Registry, fd FnDefInfo, _ SrcPos) {
 		return
 	}
 	if bi, ok := fd.Signatures[0].Impl.(*BoruImpl); ok {
-		bi.Compiled = "a ref (opaque to core)"
+		bi.SetCompiled("a ref (opaque to core)")
 	}
 }
 
@@ -37,6 +37,9 @@ func (s *stubLensRuntime) InvokeCompiled(_ *Registry, _ *Signature, args []Value
 }
 
 func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) { return v, false }
+func (s *stubLensRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
+	return false
+}
 
 func withStubLensRuntime(t *testing.T, rt CompiledRuntime) {
 	t.Helper()

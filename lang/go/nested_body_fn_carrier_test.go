@@ -36,6 +36,9 @@ func TestNestedBodyFnCarrierParity(t *testing.T) {
 		{nbfMk + `def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'`, "4 4 z — a while body"},
 		{nbfMk + `def g fn [[y:Integer][Any][do [(f y) args drop]]] end g 7`, "8 — an args-bearing do body inside a fn (the dyn-body backstop)"},
 		{nbfMk + `do [[1 2] each [(f 1)]]`, "[2 2] — a data-list read inside a do body"},
+		// Since S1a (2026-09-19) each declares CompileDynBody, so the read
+		// inside an each body compiles through the same seat as `do`'s.
+		{nbfMk + `[1 2] each [(f 1)]`, "[2 2] — a carrier-bound read inside an each body"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -110,8 +113,8 @@ func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
 		{`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `do [(p 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `if true [(p 1)] [0]`, "code body reads a def-bound compiled closure", "[8]"},
-		// A carrier-bound read the OTHER gates still refuse.
-		{nbfMk + `[1 2] each [(f 1)]`, "code-body word each (Stage 2)", "[[2 2]]"},
+		// A carrier-bound read the OTHER gates still refuse. (The each twin
+		// `[1 2] each [(f 1)]` compiled at S1a and moved to the parity rows.)
 		{nbfMk + `if true [(f 2) (f 3)] [0]`, "then-branch result of unknown provenance", "[3 4]"},
 	}
 	for _, c := range rows {

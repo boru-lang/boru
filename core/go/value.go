@@ -556,10 +556,14 @@ const (
 	// The flag scopes the "0 results ⇒ diverges" inference to these words: a
 	// genuinely void word (print/set, declared 0-result) is unaffected.
 	CompileValueDiverges
-	// CompileDynBody marks a body-running word (`do`) whose dispatch may lower
-	// to a plain CALL_NATIVE even when the closure path declines — a COMPUTED
-	// (carrier) body, or a concrete body carrying context-dependent words
-	// (args) — because the handler's runtime execution (InvokeBody →
+	// CompileDynBody marks a body-running word (`do`; since S1a of
+	// design/FULL-COMPILATION-REPLAN.0.md also each/fold/scan/filter) whose
+	// dispatch may lower to a plain CALL_NATIVE even when the closure path
+	// declines — a COMPUTED (carrier) body, a concrete body carrying
+	// context-dependent words (args), or a gradual-Any operand (the
+	// collection or the callback) that leaves two overloads reachable, where
+	// the site records a poly re-match over the word's own overloads and the
+	// handler picks the live one — because the handler's runtime execution (InvokeBody →
 	// RunResolved, or a JIT-compiled unit) IS the interpreter's own semantics
 	// PROVIDED the name environment matches. Recording such a site therefore
 	// arms the program's DynEnv mode: every def and every named unit param

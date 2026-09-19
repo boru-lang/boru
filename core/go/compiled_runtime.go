@@ -26,6 +26,12 @@ type CompiledRuntime interface {
 	// (InstallType's runtime-stamping route). A decline is silent: the
 	// binding stays interpreter-dispatched.
 	StampDetached(r *Registry, fd FnDefInfo, pos SrcPos)
+	// LazyStamp is the detached stamp at FIRST APPLICATION (S1b of
+	// design/FULL-COMPILATION-REPLAN.0.md): a fn VALUE reaching a runtime
+	// seam with no compiled unit for the sig its application matched obtains
+	// one now, compiled at its home, memoised on the value. It reports
+	// whether the sig now carries a unit; the inactive default never does.
+	LazyStamp(r *Registry, fd FnDefInfo, sig *Signature, pos SrcPos) bool
 	// ClosureAsFnDef bridges a compiled closure VALUE (a ClosurePayload the
 	// interpreter meets on the tape — an island's sub-engine re-stepping a
 	// shuffled `each` element, NUR124's payload axis) to the FnDefInfo the
@@ -46,6 +52,9 @@ func (noCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value
 	return nil, nil, false
 }
 func (noCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
+func (noCompiledRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
+	return false
+}
 func (noCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 	return v, false
 }

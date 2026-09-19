@@ -10228,3 +10228,401 @@ generated falsifier for the call-form axis beyond `vary`'s fourteen.
 asserts there, under the filter) and adds about 15 s to it; the one gate
 run measured on this change took 155 s, with the whole langspec package
 running alongside on the same four cores. Shard 9 takes the gate in CI.
+
+## S1a — the gradual-Any collection overload commitment (2026-09-19)
+
+Started the morning S0's first increment merged, on `main` at the merge of
+PR #473. The re-plan's §4 finding, acted on: the third nineteen of the
+corpus's refusals were never a fn-value LOWERING problem — the callback
+lowered fine — but a higher-order word unable to COMMIT to an overload
+because one operand was statically `Any`.
+
+**What it is.** `each`, `fold`, `scan` and `filter` declare
+`CompileDynBody` (`lang/go/native/native_array.go`, `natives.go`) — the
+flag `do` has carried since DO-STRUCTURE-COMPILATION §8. The recorder's
+ambiguity gate (`tryRecordClosure`, `compiler/go/callable_words.go`) still
+declines when a gradual-Any operand leaves two of the word's overloads
+reachable, but the decline now falls through to `tryRecordDynBody`
+(`compiler_dispatch_record.go`), which records a CALL_NATIVE poly re-match
+over the word's own overloads — `call.poly` whenever any dynamic operand
+leaves two or more reachable, not only when the body itself is dynamic —
+and arms the program's DynEnv mode; at run time the handler picks the
+overload the live value matches, exactly as the interpreter's dispatch
+does. The gate's dynamic operand turned out to be the CALLBACK as often
+as the collection — a class field or a map field read through `dot`
+returns Any, a dynamic key or a factory result too — so the widening had
+to key on any dynamic operand, and the refusal message now says which:
+"higher-order `for-each` with a gradual-Any operand — the callback or the
+collection: ambiguous overload, no static commit and no poly re-match (the
+word does not declare CompileDynBody)".
+
+**Measured.** All nineteen rows compile with parity, and the gate had held
+more behind them:
+
+| gate | before | after |
+|---|---:|---:|
+| corpus compile failures (`compile_failures.tsv`) | 113 | 60 |
+| interpreter islands | 10 | 0 |
+| compute gaps | 104 | 56 |
+| reducible (tier-2) rows | 17 | 3 |
+| the sweep: cells failing / islanded | 44 / 5 | 36 / 2 |
+| the sweep: call-form variants failing | 200 | 206 |
+| real programs ledgered | 14 | 13 (`kg/main.boru` compiles) |
+| frontier ledger | | −2 (`frontier-hof-audit.tsv:148`, `:166` compile natively) |
+| interp-entry census rows | 52 | 102 |
+| engine entries | 366 | 489 |
+| runtime defers | 8 | 8 |
+
+The per-file ledger moved in five files: callbacks.tsv 25 → 20,
+code-bodies.tsv 30 → 13, each-variants.tsv 12 → 3, fold-map-filter.tsv
+25 → 7, module-composition.tsv 11 → 7. The sweep's six new variant
+failures are call forms of the eleven cells S1a released (each/filter/
+fold/scan × factory and scan × named-fn under `for-body`, scan ×
+module-export under `each-body`); no variant that passed before fails
+now — the sets were diffed. The differential passed.
+
+**The trade, stated.** The two censuses ROSE, and that is the
+G-lane-first landing the re-plan's §4 named, not a regression hidden in a
+ceiling move: a released row runs compiled and enters the interpreter once,
+through the `RunResolved` seam the dyn-body handler uses for the callback
+(Engine.Run 1, RunResolved 1 per row; 76 of the 102 rows). Attributed by
+measurement, not inference — `BORU_LOG_CENSUS_ROWS=1` on `origin/main`
+(52 rows) against this tree (102): fifty-one rows entered, every one a row
+the gate released (fold-map-filter.tsv ×17, code-bodies.tsv ×14,
+callbacks.tsv ×10, each-variants.tsv ×8, module-composition.tsv ×2), and
+one left (fold-map-filter.tsv:168, its fold now native). The ceiling
+comments name them. S1b retires the seam by lowering the re-matched
+overload's body natively.
+
+**What stays refused, and why.** `for-each` nets no result, which the
+dyn-body seat requires (the result is marked variadic; a 0-out word has
+nothing to seat), and `walk` keeps its own code-body gate — both pinned
+in `lang/go/bytecode_dynbody_callback_test.go` with the message that
+names the gap. The each-body args shape, the computed each body, the
+Atom-lambda-over-computed-keys shapes and the lambda over a dynamic map
+all compiled on this change; eight lang/go pins that asserted their
+refusal now assert their parity (`args_closure_body_test.go`,
+`frozen_module_read_test.go`, `bytecode_quote_lambda_test.go`,
+`bytecode_gradual_each_test.go`, `bytecode_stage2_crossmod_elem_test.go`,
+`closure_read_model_test.go`, `nested_body_fn_carrier_test.go`,
+`bytecode_findings_test.go`), and `analysis_order_test.go`'s two
+rebind-in-a-multi-run-body rows still refuse, now at the dyn-body seat's
+twin-regime gate rather than the word's.
+
+**Found on the way — NUR164** (resolved). The Map pin `def f fn
+[[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised
+the identical `no matching lambda signature` on both lanes and reported
+`ran=false`: the Map iteration of each/fold/scan, `filter` and `walk`
+raised a bare `fmt.Errorf`, and the compiled-by-default lane reads every
+non-Boru error off the VM as an INTERNAL bail — rollback, whole-program
+re-run on the interpreter. Invisible to every differential (the answers
+agree); a correct compiled verdict reported as a bail. The three sites
+raise `signature_error` now.
+
+**The review's finding — NUR165** (resolved in the PR). Codex read
+the seat and found the hole in it: an operand the check pass knows only
+as `Any` (a fn's declared `Any` result — `def get fn [[][Any][1]] end
+each $.x (get)`) reached the dyn-body seat with ONE arm reachable, the
+(Reach, List) one, so the re-match never fired, the pick was baked, and
+the handler iterated a runtime Integer as an empty list: `[[]]` where the
+interpreter raises signature_error — a wrong value, silent. The sibling
+token-body shapes (`each [add 1] (get)`, `fold [add] (get) 0`) were
+diverging on `main` already, on the error CODE, through the
+cross-collection shortcut the closure seat has carried since before S1a
+(each_error / fold_error for signature_error; measured on `origin/main`).
+Two fixes: the dyn-body seat re-matches whenever an Any carrier is among
+the operands, whatever the arm count (a dispatch the pass cannot prove is
+a runtime re-match), and the committed arm's guard raises the
+dispatcher's own signature_error for a runtime value that is neither
+collection. The obvious alternative — route a CompileDynBody word off
+the shortcut and onto the dyn-body seat — was measured and rejected:
+the seat arms DynEnv mode program-wide, and fifty-three module-cli.tsv
+rows importing a module whose fn defs a computed value refused with it
+(113 compile failures, back from 60). Thirteen rows pinned
+(`TestStrictAnyOperandReMatches`), value and error code alike.
+
+**Cost.** One session-day against the three to six estimated. The full
+langspec package: 13 min on four cores alongside the other runs;
+`make cover-gate-compiler` passes; `cd compiler/go && go test ./...`
+passes; the whole `lang/go` suite passes in 93 s.
+
+## S1b — the fn-value seam made native, first increment (2026-09-19)
+
+Started the same day S1a landed (PR #474, in review), on its branch. The
+review's §3.3 "unit half" — *every fn value carries, or obtains at first
+application, a compiled unit* — built at the two seams a callback crosses.
+
+**What it is.** A higher-order word's list arm hands its callback to
+InvokeBody whatever the callback is; for a fn VALUE the VM's invoker used to
+step the value on a pooled sub-engine (RunResolved) — the interpreter's
+dispatch, on the interpreter, once per element — which is the seam S1a's
+fifty-one released rows entered through. `eng/go/vm_fnvalue_seam.go` is that
+dispatch made native: the interpreter's own match (core.MatchFnSig) over the
+inputs in the TOKEN seam's order — the seam pushes the inputs and steps the
+value, so the sig binds from the stack top down (`fold ([a e] => [a sub e])
+[1 2 3] 10` is -8 on both lanes: a is the element); the value's unit hosted
+at its home as a nested unit (hostForeign, the arm a foreign closure already
+used) with the token seam's return discipline — the root RET trims nothing,
+the value's OWN contract is enforced over the residual, count and types, its
+name in the error; OpCallUserPoly's delivery (ascribed view stripped, list
+params quoted); an internal error degraded to the stepping path when no
+effect escaped. A value with no matching own sig DECLINES — the stepping
+path keeps the interpreter's data-versus-uncalled_function fork (NUR155's
+rule) — as does a value with no unit and no way to get one.
+
+The unit comes from the **lazy detached stamp** (`compiler.LazyStampFnSig`):
+a value whose matched sig carries no ref — a `fn` literal in a class field, a
+map field, a factory's result, a lambda at a gradual collection — is
+compiled NOW, at its home, by StampDetachedSig, and the ref is memoised on
+the sig's shared impl, so a container-held value applied a thousand times
+compiles once. A declined stamp is remembered the same way (a marker in the
+slot CompiledRef reads as "no ref"), so a refusing body is never re-paid; a
+body that mutates the registry (a capitalised def, an import —
+bodyHasReplayHazard) is never tried, because the detached compile pass RUNS
+the body and its mint would leak into the live registry (measured before
+the rule: `def T (class {})` in a callback conflicted one call early — and
+then found to conflict that way on `main` already, NUR167). The slot itself
+(`core.BoruImpl`) became atomic, because a fn value is shared by every copy
+of the Value that carries it — a container field, a module export, a value
+handed to a forked process — and the stamp writes it from whichever seam
+applies the value first. The second seam, InvokeCallbackFn (the map arm,
+filter, walk), stamps lazily through a new CompiledRuntime slot
+(`LazyStamp`, pinned inactive in core) and takes the VM path it already had
+for a stamped value.
+
+Both seams, and RunUnit / a foreign ref, open the value's own frame: the
+DynEnv args bracket (`pushRootArgs`) pushes the value's call args for a
+unit that reads `args`, where before only the CALL_USER frames a program
+opened for itself were bracketed.
+
+**Measured.**
+
+| gate | before | after |
+|---|---:|---:|
+| interp-entry census rows | 102 | 77 |
+| engine entries | 489 | 419 (RunResolved 179 → 109) |
+| corpus compile failures | 60 | 60 |
+| runtime defers | 8 | 8 |
+| the sweep: cells failing / islanded / diverged | 36 / 2 / 3 | 36 / 2 / 3 |
+| compute gaps | 56 | 49 |
+| armed-only diagnostics | 16 | 11 |
+| diagnostic parity divergences | 358 | 351 |
+
+Twenty-five rows left the census and none entered, measured row by row
+against the S1a head: fold-map-filter.tsv ×11, each-variants.tsv ×7,
+callbacks.tsv ×6, module-composition.tsv ×1 — every one a fn-value callback
+S1a had landed on the seam. What remains is the other half of S1a's trade:
+the 21 code-bodies.tsv rows are TOKEN bodies read at run time (a quoted
+list from a flex, a fn result, a List param — S3's runtime compilation, not
+a fn value), and the callbacks / fold-map-filter rows still there are fn
+values the seam does not reach yet (a fn result applied inside a token body
+`[(mk 2)]`, fn-util wrappers, the fn-value islands).
+
+**Pinned.** `lang/go/bytecode_fnvalue_seam_test.go`: eighteen seam-semantics
+rows measured on the interpreter before the change — top-down binding at
+the list arm against handler order at the map arm, a def-bound value
+reading a module def, the class-field and factory and module-export
+callbacks, the unnamed-param allowance, a lambda's and a named fn's count
+contract, a return-type error, the map arm's CallBoru trim, the three
+no-match shapes — every one agreeing on both lanes on value, error code AND
+error detail, and the native rows making no unattributed interpreter entry;
+the container-held value stamping once; the declining shapes.
+`eng/go/vm_fnvalue_seam_test.go`: the seam's arms with hand-built units —
+non-callee shapes, the token discipline, unenterable refs (index, param
+drift, a stale ref with no re-stamp box), the disarmed registry, the
+foreign home, the internal-error degrade with and without an effect, the
+DynEnv bracket. `compiler/go/stamp_lazy_test.go`: the stamp's gates, the
+remembered decline, the memoised ref.
+
+**Found on the way** — NUR166 (a def-bound fn value at a callback slot
+loses its own frame's `args`: the closure lowering takes it, and a closure's
+`args` is the enclosing frame's) and NUR167 (a type-minting fn body applied
+as a callback conflicts one call early: the check pass's mint persists on
+the compiled path). Both measured pre-existing on `main`, both recorded,
+neither closed here.
+
+**What S1b still owes.** The fn values the seam does not reach (the `[(mk
+2)]` shape, the wrappers, the islands in module-fnvalue-boundary.tsv), the
+Apply kernel's first branch, NUR154–156, and the 48 fn-value compile
+failures — provenance 16, dispatch recovery 9, fn value reaches word 7,
+the apply shapes 16 — which are S1b's lowering half, not its seam half.
+
+## S1b — a computed fn value at a forward slot, and the fn-value closure convention (2026-09-19)
+
+The second increment, on PR #474's branch the same day as the first. Two
+pieces, one found while pinning the other.
+
+**A computed fn value at a forward slot.** `def f (mk 10)` binds `f` to a
+factory's result. Under an analysis pass that value is the factory's
+declared-Function CARRIER, and installDef's fn arm keeps it out of Defs
+(the per-pass fn-carrier side table, `core/go/check_fncarrier.go`, holds it
+so the compiled closure machinery owns the name). The pointer's bare read
+already resolved the table (the thirty-fifth increment), but the
+forward-collection scans — the plan walk and the per-candidate scan in
+`core/go/collect_kernel.go`, through the host seat `Engine.DefTop` —
+consulted Defs alone, so `each f/v [1 2 3]` and `each f [1 2 3]` dispatched
+with the bare WORD at each's Function slot: no overload matched, and the
+compile pass refused "unmatched dispatch recovered at each" where the plain
+pass, which runs the factory's body and binds the concrete fn, typed the
+same program clean. The `/v` read had a second decline of its own:
+stepWordVal refused the table on purpose, from an era when a substituted
+`/v` read carried no producing event and `(pmany digit/v)` compiled to a
+0-arg call. The seat now resolves the table under analysis (the engine's
+and the region descriptor's, `eng/go/region_host.go`), and the `/v` read
+substitutes the carrier with the bare read's provenance notes — the def
+read and the local read that give the lowering the binding's producer, the
+factory call's STORE_LOCAL — so the dispatch matches `[Function List]`,
+records the operand from its local, and S1b-1's seam runs the value
+natively. Seven corpus rows compile with parity: callbacks.tsv L82 and
+L154 (`FnUtil.compose`'s result), each-variants.tsv L203, fold-map-filter.tsv
+L73 (read bare at fold), L227 (filter), L229 (a branch-chosen value),
+module-composition.tsv L95 (a module factory's). The frontier's
+`2 h/v apply` row moved its first refusal from the undefined_word hold to
+the apply-shape gate it always had behind it (re-diagnosed in place).
+
+**The fn-value closure convention.** Pinning the map arm exposed a
+miscompile on the S1a/S1b-1 head: a CAPTURING `fn` / `=>` literal minted at
+run time — a factory's result, a def-bound one read back — is a compiled
+closure (PUSH_CLOSURE), and the closure branch of every callback seam ran
+its unit blind over whatever the handler pushed, where the interpreter
+matches a fn value against its own signature first. Measured on the head:
+`each (mk 1) ['a' 2]` answered `[1 3]` for the interpreter's
+`[fn (Integer) 3]`; `each (mk 1) {a:1 b:2}` over a `[n:Integer]` closure
+answered `{a:2 b:3}` for the interpreter's signature_error, and a
+`[kv:KeyVal]` one raised an internal `dot` no-match over the bare value it
+was handed; `filter (mk 1) [1 2]` answered `[]` for the interpreter's
+signature_error; fold's map arm likewise. Every one of those shapes was a
+refusal on `main` ("function-valued operand at each (Stage 3)") — S1a
+released them onto the closure branch. The convention now: a fn-VALUE
+closure (`compiler.ClosureIsFnValue` — the unit compiled from a literal,
+`CompiledFn.Lambda`, with its param contract recorded, in the plain value
+shape) is a fn value at every seam. The token seam (`invokeClosureOn`,
+`eng/go/vm_fnvalue_seam.go`'s new arm) matches the closure's bridged
+signature (closureFnDef — what the interpreter's dispatch of the same
+closure matches under) against the inputs top down, runs the unit over the
+signature-ordered args, and declines to the stepping path when nothing
+matches, where the sub-engine meets the closure at the pointer and the
+interpreter's data-versus-uncalled_function fork decides. The map arm
+(`newMapBody`), filter's Function form and walk's hooks bridge the closure
+(`core.ClosureAsFnDef`), hand it the lambda-shaped args — the KeyVal — and
+match first, raising the lambda no-match the interpreter raises. A seam
+that matched marks the value `SigMatched` (a per-seam mark on the value
+like `RetTrim`), so the invoker applies the unit positionally instead of
+matching again in the token seam's order; the two bridge handlers
+(closureAsWord, ClosureAsFnDef) mark it the same way, since the
+interpreter's dispatch matched before they run.
+
+**Measured.**
+
+| gate | before | after |
+|---|---:|---:|
+| corpus compile failures | 60 | 53 (callbacks.tsv 20 → 18, each-variants.tsv 3 → 2, fold-map-filter.tsv 7 → 4, module-composition.tsv 7 → 6) |
+| interp-entry census rows | 77 | 78 (+1) |
+| engine entries | 419 | 422 (+3) |
+| runtime defers | 8 | 8 |
+| the sweep: cells failing / islanded / diverged | 36 / 2 / 3 | 36 / 2 / 3 |
+
+Every number moved by the seven rows that compile for the first time, and
+the two that rose are one of them. Measured row by row against the S1b-1
+head: ONE census row entered and none left — callbacks.tsv:L154,
+`FnUtil.compose`'s wrapper applied through `each h/v [1 2 3]`, whose body
+is still stepped once per element (Engine.Run ×3, RunResolved ×3, which is
+the whole engine-entry move). The other six compile fully native and enter
+nothing: `each a5/v [1 2 3]` over a factory's value makes no interpreter
+entry at all. A compile FAILURE becoming a compiled row with one attributed
+seam is the S1a trade in miniature, and the wrapper is already on S1b's
+owed list.
+
+The three gates that FELL fell by the same seven rows: compute gaps by
+exactly seven (every one is a real-compute row), diagnostic parity by
+seven (both passes now type them the same way), and armed-only by five —
+the five rows `boru check` called clean while compiling refused, which
+are exactly the five the diagnostic-surface ledger named.
+
+Two ledger entries moved with it. The diagnostic-surface ledger's
+`unused_def` class GRADUATED — no corpus row shows a compile-only
+unused_def any more, because the dispatch that refused before the read
+could credit its def now matches — and its `undefined_word` entry was
+re-diagnosed: the Stage 1 `/v` hold it described is gone, and the two rows
+that keep the class are unrelated token-body word reads (`case zed/q
+[zed …]` and `0 fold [dot value add] bs` over a generic class's field),
+which S3's runtime compilation owns.
+
+**Pinned.** `lang/go/bytecode_fnvalue_seam_test.go`: eleven rows for the
+table-bound value — each/fold/filter over a factory's, a branch-chosen, a
+module factory's and a composed value, bare and through `/v`, at the list
+and the map arm, rebound, inside a loop body and a fn body — and twelve
+for the closure convention: the no-match data fork, the map arm's KeyVal
+and its no-match, fold's map arm and its list arm's top-down binding,
+filter's list and map forms, the count contract, a quoted list param, the
+bridge's identity. `core/go/check_fncarrier_test.go`: the `/v` read
+substitutes (the old hold's pin rewritten), the seat resolves under
+analysis and only there. `lang/go/list_member_carrier_test.go`: the `/v`
+member joins the guard's rows, with a CONCRETE fn value at a list member
+(`def g fn […] end [g/v]`, a Defs binding) as the negative the guard must
+not take with it. `eng/go/region_host_test.go`: the descriptor's
+seat. `eng/go/vm_fnvalue_closure_test.go`: the token seam's arm with a
+hand-built fn-value unit — match, no-match to the stepping path, the
+quoted and body-unit declines, the SigMatched positional apply.
+`compiler/go/closure_fnvalue_test.go`: the predicate.
+`core/go/closure_sigmatched_test.go`: the mark and the inactive bridge.
+
+**A miscompile the increment introduced, and how it was found.** The
+`/v` substitution first borrowed the bare read's arrival — `stepLiteral`,
+stepWord's own step — and that is not a `/v` read's discipline. A literal
+step runs the arrival machinery, which can turn a Function value into a
+call head, so a carrier delivered that way APPLIED where the interpreter
+places:
+
+```
+def mk fn [[a:Integer][Function][(fn [[b:Integer][Integer][a add b]])]] end def f (mk 1) end [f/v 5]
+  interp:    [fn f(Integer) 5]
+  compiled:  [6]          — silent, no fallback
+def mk … end def f (mk 1) end def xs [f/v 5] end size xs
+  interp: 2   compiled: 1
+```
+
+Neither shape diverges on `main` or on the S1b-1 head; the increment
+introduced both. It surfaced from a test the change had already broken —
+`TestListMemberFnCarrierSoundRefusals`, whose premise ("a `/v` member
+resolves through Defs and never consults the side table") the change had
+falsified — which is the argument for pinning a premise and not only a
+result. The fix is the discipline the path already had for a resolved
+binding, now shared: `deliverValRead` is the one tail every `/v` read
+takes, whichever store resolved it — the reference ARRIVES at a
+still-collecting forward, or is pushed and stepped over, and in neither
+case is it stepped as a literal that could dispatch. `each f/v [1 2 3]`
+still compiles native; `[f/v 5]` refuses and the interpreter answers.
+
+The `/v` spelling then joined the list-member guard
+(`RecordMakeListInner`) where the bare read already was: the compile model
+holds a carrier, not the value, so assembling it as an element bakes the
+wrong thing. One convention, one guard, both spellings.
+
+**A regression the guard caught, and the shape of its fix.** The first
+build of the closure convention minted the bridged value per element to
+ask MatchFnSig, and a bridge carries a capturing handler — so the closure
+payload escaped its caller's frame and EVERY closure invocation paid one
+extra allocation, token bodies included: `lang/go/bytecode_allocguard_test.go`'s
+do_body went 312 → 412 against a 400 ceiling. The seams now ask the
+verdict without minting: `closureMatchesArgs` builds the unit's param
+contract through the same `closureSigParams` the bridge uses and asks the
+same `core.MatchFnSig` — one matcher, one contract builder, no handler —
+and the native seams (the map arm, filter, walk) prepare their bridge ONCE
+per dispatch rather than once per entry. Every ceiling is back to the
+S1b-1 head's exact number (do_body 312, each_scalar 79, fold_scalar 77,
+filter_scalar 89).
+
+**Found on the way** — NUR168: a NON-capturing factory-built value,
+def-bound and escaping as data, renders without the def's name on the
+compiled lane (`fn (String)` for the interpreter's `fn f(String)`); the
+capturing twin is named at its PUSH_CLOSURE. Render-only, newly reachable
+because the shape compiles for the first time.
+
+**What S1b still owes.** Unchanged from the first increment's list, less
+the seven rows: the `[(mk 2)]` shape, the fn-util wrappers (the composed
+value still steps — pinned non-native), the module-fnvalue-boundary
+islands, the Apply kernel's first branch, NUR154–156, and the fn-value
+compile failures now 41 — provenance 16, dispatch recovery 2 (`rep`'s
+Function param at a recursive call, `sum2`'s Any collection inside a fn
+body), fn value reaches word 7, the apply shapes 16.

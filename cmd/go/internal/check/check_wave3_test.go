@@ -194,24 +194,28 @@ func TestRunCLIEmitParseErrorFails(t *testing.T) {
 // --- Emit direct ---
 
 func TestEmitIslandReport(t *testing.T) {
-	// A literal-list each islands (interpreter fallback span), so the
-	// compiled program carries a fallback and Emit prints the island list.
+	// A two-body `inner` islands (interpreter fallback span), so the compiled
+	// program carries a fallback and Emit prints the island list.
 	//
-	// The body is a lambda rather than the `[dup mul]` this used to use: that
-	// spelling does not type-check (dup gets a __FN), and a failed dispatch
-	// inside it is now an error diagnostic that refuses the compile outright
-	// (design/legacy/FN-VALUE-DISPATCH.0.ignore), which is a different report than the
-	// islanding this test is about. A check-clean program is the honest
-	// fixture for "the compiler islanded and Emit said so".
+	// The fixture used to be a literal-list `each` with a lambda body — a
+	// check-clean program, chosen over the `[dup mul]` spelling that does not
+	// type-check (a failed dispatch inside it refuses the compile outright,
+	// design/legacy/FN-VALUE-DISPATCH.0.ignore, a different report than the
+	// islanding this test is about). Since S1a of
+	// design/FULL-COMPILATION-REPLAN.0.md (2026-09-19) that each compiles
+	// natively — the corpus's island ceiling is 0 — and `inner`, whose two
+	// code bodies the recorder does not yet lower, is the honest fixture for
+	// "the compiler islanded and Emit said so" (the generated sweep's
+	// `inner × literal` cell, test/go/langspec/SWEEP_STATUS.md).
 	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "each [1,2,3] [(x:Any => [x mul 2])]"); err != nil {
+	if err := Emit(&stdout, &stderr, "inner [add] [mul] [1 2] [3 4]"); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "fallbacks=1") {
 		t.Errorf("stdout = %q, want a fallback", out)
 	}
-	if !strings.Contains(out, "; islands: each") {
+	if !strings.Contains(out, "; islands: inner") {
 		t.Errorf("stdout = %q, want island report", out)
 	}
 }

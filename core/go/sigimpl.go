@@ -1,5 +1,7 @@
 package core
 
+import "sync/atomic"
+
 // Signature implementation — a sealed sum type.
 //
 // A signature's run IMPLEMENTATION is one of two mutually-exclusive kinds:
@@ -52,17 +54,65 @@ type BoruImpl struct {
 	Body     []Value
 	FnFrame  *FnFrameMeta
 	dispatch Handler
-	// Compiled is the durable reference to this body's AOT-compiled unit, when
-	// the enclosing program compiled it (a store-fn handler bake). It rides
-	// ALONGSIDE Body: the value keeps both representations, so a callback runs
-	// the compiled unit via RunUnit when the registry can host a VM run and
-	// falls back to splicing Body on the interpreter otherwise. Nil for a body
-	// the compiler never armed (a plain interpreter run, or a refused body).
-	Compiled any // opaque *CompiledFnRef, owned by the compiler piece (S4 opaque handle)
+	// compiled is the durable reference to this body's compiled unit, when a
+	// program compiled it (a store-fn handler bake, a module-load stamp) or a
+	// runtime seam stamped it at the value's first application (the lazy
+	// detached stamp, S1b). It rides ALONGSIDE Body: the value keeps both
+	// representations, so a callback runs the compiled unit when the registry
+	// can host a VM run and falls back to splicing Body on the interpreter
+	// otherwise. Nil for a body the compiler never armed (a plain interpreter
+	// run, or a refused body). The slot is ATOMIC because a fn value is shared
+	// by every copy of the Value that carries it — a container field, a
+	// module export, a value handed to a forked process — and the lazy stamp
+	// writes it from whichever seam applies the value first while another
+	// fork may be reading it. Read through Compiled, written through
+	// SetCompiled; the compiler piece owns the payload (an opaque
+	// *CompiledFnRef, or its own declined marker — S4 opaque handle).
+	compiled atomic.Value // compiledSlot
 }
+
+// compiledSlot boxes the compiled ref so a nil ref is storable (atomic.Value
+// refuses a bare nil) and so a later Store never changes the stored type.
+type compiledSlot struct{ ref any }
 
 func (a *BoruImpl) DispatchHandler() Handler { return a.dispatch }
 func (a *BoruImpl) sigImpl()                 {}
+
+// Compiled returns the body's compiled-unit reference (opaque; nil when none
+// was ever stamped or the last stamp was dropped).
+func (a *BoruImpl) Compiled() any {
+	if a == nil {
+		return nil
+	}
+	slot, _ := a.compiled.Load().(compiledSlot)
+	return slot.ref
+}
+
+// SetCompiled stores the body's compiled-unit reference; nil drops it.
+func (a *BoruImpl) SetCompiled(ref any) { a.compiled.Store(compiledSlot{ref: ref}) }
+
+// NewBoruImplCompiled builds a bare body impl that already carries its
+// compiled-unit reference — the synthetic fn-value carriers the compiler mints
+// for a stored code body (spawn's process body, a compiled param body), whose
+// unit is known at construction.
+func NewBoruImplCompiled(body []Value, ref any) *BoruImpl {
+	a := &BoruImpl{Body: body}
+	a.SetCompiled(ref)
+	return a
+}
+
+// Clone returns a fresh impl carrying the same body, frame meta, dispatch
+// handler and compiled reference — the pre-publication copy a value-level
+// stamp mutates instead of the shared original (StampFnValue). A struct copy
+// would copy the atomic slot by value, which is what the accessors exist to
+// prevent.
+func (a *BoruImpl) Clone() *BoruImpl {
+	c := &BoruImpl{Body: a.Body, FnFrame: a.FnFrame, dispatch: a.dispatch}
+	if ref := a.Compiled(); ref != nil {
+		c.SetCompiled(ref)
+	}
+	return c
+}
 
 // --- Authoring constructors. Native words and internal Go-handler sites write
 // `Impl: Go(handler, opts...)`; module-refs / un-installed bodies write

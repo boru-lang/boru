@@ -498,6 +498,9 @@ var (
 	ConvertIdealToList       = core.ConvertIdealToList
 	IsCompiledClosure        = compiler.IsCompiledClosure
 	ClosureWantsKeyVal       = compiler.ClosureWantsKeyVal
+	ClosureIsFnValue         = compiler.ClosureIsFnValue
+	ClosureAsFnDef           = core.ClosureAsFnDef
+	ClosureSigMatched        = core.ClosureSigMatched
 	CloneValue               = core.CloneValue
 	NewSyncWriter            = core.NewSyncWriter
 	NewReadList              = core.NewReadList

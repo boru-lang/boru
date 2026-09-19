@@ -77,8 +77,12 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	// never outlives the run — a parked closure escapes as the payload, not
 	// as a handler bound to this run's context (Codex P2 on PR #444).
 	invoke := r.Invoker
+	// Applied after the interpreter's dispatch matched the bridged
+	// signature: SigMatched, so the invoker applies the unit positionally
+	// (ClosurePayload.SigMatched).
+	matched := core.ClosureSigMatched(v)
 	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
-		return invoke(r, v, args)
+		return invoke(r, matched, args)
 	})
 	if !ok {
 		return v, false
@@ -93,4 +97,15 @@ func (vmCompiledRuntime) StampDetached(r *core.Registry, fd core.FnDefInfo, pos 
 	if ref, stampOK := compiler.StampDetachedFn(r, fd, pos); stampOK {
 		compiler.StampCompiledRef(fd, ref)
 	}
+}
+
+// LazyStamp is the compiled runtime's first-application stamp — the
+// detached stamp made universal (compiler.LazyStampFnSig): it stamps, or
+// finds the earlier stamp of, the sig a fn VALUE's application matched, and
+// says whether the sig now carries a unit for InvokeCompiled to run.
+func (vmCompiledRuntime) LazyStamp(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) bool {
+	if sig == nil {
+		return false
+	}
+	return compiler.LazyStampFnSig(r, fd, sig, pos) != nil
 }

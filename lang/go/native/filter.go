@@ -41,7 +41,7 @@ func filterReturnsFn(args []Value, _ *Registry) []Value {
 }
 
 func filterHandler(args []Value, ctx map[string]Value, stack []Value, r *Registry) ([]Value, error) {
-	cb := args[0]
+	cb := newFilterCallback(r, args[0])
 
 	// Map input: hand the callback a KeyVal {k v i n} and keep the map shape,
 	// consistent with filter's quotation and lens forms. (List input keeps the
@@ -103,7 +103,7 @@ func filterHandler(args []Value, ctx map[string]Value, stack []Value, r *Registr
 // result is Boolean true and returning a Map (shape-preserving, like the
 // quotation and lens forms). A non-Boolean result is a loud error, matching the
 // quotation map form rather than dropping silently.
-func filterMapFunction(cb Value, mapVal Value, r *Registry) ([]Value, error) {
+func filterMapFunction(cb filterCallback, mapVal Value, r *Registry) ([]Value, error) {
 	data, _ := AsMap(mapVal)
 	keys := data.Keys()
 	n := int64(len(keys))
@@ -131,26 +131,59 @@ func filterMapFunction(cb Value, mapVal Value, r *Registry) ([]Value, error) {
 	return []Value{d2RetainElem(NewMap(out), mapVal)}, nil
 }
 
+// filterCallback is filter's Function-form callback, prepared ONCE per
+// dispatch. A fn-VALUE closure (a capturing `fn` / `=>` literal minted at run
+// time: a factory's result, a def-bound one read back) is a fn value to this
+// word exactly as it is to the interpreter, so it carries the bridged
+// FnDefInfo its declared signature is matched under (sigFn) and the value
+// itself carries the SigMatched mark; the bridge is built here rather than
+// per entry, where it would be an allocation per element. Every other shape
+// leaves sigFn empty and runs as before.
+type filterCallback struct {
+	val   Value
+	sigFn Value
+}
+
+func newFilterCallback(r *Registry, cb Value) filterCallback {
+	fc := filterCallback{val: cb}
+	if IsCompiledClosure(cb) && ClosureIsFnValue(cb) {
+		if fnv, ok := ClosureAsFnDef(r, cb); ok {
+			fc.sigFn = fnv
+			fc.val = ClosureSigMatched(cb)
+		}
+	}
+	return fc
+}
+
 // runFilterCallback invokes filter's Function-form callback once for one entry,
 // returning its result stack. A compiled CLOSURE (the bytecode VM driving
 // filter natively, the body operand lowered to OpPushClosure) runs through the
 // InvokeBody seam — its named param binds to the cbArgs shape the closure was
-// compiled against ({key,value} pair for a list, KeyVal for a map). An
-// interpreter FnDefINFO lambda matches a signature and runs through
-// InvokeCallbackFn — the VM when the body carries a stamped unit, CallBoru
-// otherwise, either way on the fn's DEFINING registry so a predicate written in
-// another module resolves its free words there
+// compiled against ({key,value} pair for a list, KeyVal for a map) — unless it
+// is a fn VALUE, which is matched against its own signature first and raises
+// the same no-match the lambda branch raises (S1b-2: `filter (mk 1) [1 2]`
+// over a `[n:Integer]` closure answered `[]` for the interpreter's
+// signature_error). An interpreter FnDefINFO lambda matches a signature and
+// runs through InvokeCallbackFn — the VM when the body carries a stamped unit,
+// CallBoru otherwise, either way on the fn's DEFINING registry so a predicate
+// written in another module resolves its free words there
 // (design/FUNCTION-VALUE-SCOPE.0.md). The
-// two shapes are byte-identical to the handler: both consume cbArgs and yield a
+// shapes are byte-identical to the handler: all consume cbArgs and yield a
 // Boolean predicate result.
-func runFilterCallback(r *Registry, cb Value, cbArgs []Value) ([]Value, error) {
+func runFilterCallback(r *Registry, fc filterCallback, cbArgs []Value) ([]Value, error) {
+	cb := fc.val
 	if IsCompiledClosure(cb) {
+		if fc.sigFn.Data != nil && MatchFnSig(fc.sigFn, cbArgs) == nil {
+			return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
+		}
 		// The fn-VALUE seam: the FnDefInfo branch below is InvokeCallbackFn's.
 		return InvokeCallbackBody(r, cb, cbArgs)
 	}
 	sig := MatchFnSig(cb, cbArgs)
 	if sig == nil {
-		return nil, fmt.Errorf("filter: no matching callback signature")
+		// A BoruError, not a bare fmt.Errorf (NUR164): a non-Boru error off
+		// the VM reads as an internal bail and re-runs the interpreter.
+		return nil, r.BoruError("signature_error", "filter: no matching callback signature", "filter")
 	}
 	var fnDef *FnDefInfo
 	if fd, ok := cb.Data.(FnDefInfo); ok {

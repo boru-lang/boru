@@ -92,34 +92,20 @@ func TestGradualAnyEachFoldScan(t *testing.T) {
 		// ELEMENT over a list and a KeyVal over a map, so a closure compiled
 		// against either shape is wrong for the other), and it is a real, if
 		// narrow, compile-coverage cost of the fix.
+		// S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) closed that
+		// cost: each/fold/scan/filter declare CompileDynBody, so the
+		// ambiguity gate no longer refuses — the dispatch lowers to a poly
+		// re-match over the word's own overloads and the LIVE collection
+		// picks the List or the Map form at run time. The row is back here,
+		// compiled with parity (the KeyVal lambda sees each map entry).
+		{"lambda over dynamic map", pre + `[(mkl {a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i]))]`},
 		{"each over dynamic empty list", pre + `[(mkl [] each [dup add])]`},
 		{"each over dynamic empty map", pre + `[(mkl {} each [dup add])]`},
 		{"scan over dynamic empty list", pre + `[(scan [add] (mkl []))]`},
 	}
-	// REFUSES AND FALLS BACK: the compile lane cannot commit, the default lane
-	// runs the program correctly on the interpreter with the loud performance
-	// warning. Asserted through CompileCheck (the refusal is the point) plus
-	// interpreter parity, since RunCompiled surfaces a loud refusal as an error.
-	refusesAndFallsBack := []struct{ name, src, reason string }{
-		{"lambda over dynamic map", pre + `[(mkl {a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i]))]`,
-			"ambiguous overload (List vs Map)"},
-	}
-	for _, c := range refusesAndFallsBack {
-		t.Run("refuses/"+c.name, func(t *testing.T) {
-			a, _ := New()
-			prog, reason, _, _ := a.CompileCheck(c.src)
-			if prog != nil {
-				t.Fatalf("expected a refusal (%s); it compiled — if the shape is now modelled, move it back to sound", c.reason)
-			}
-			if !strings.Contains(reason, c.reason) {
-				t.Errorf("refusal reason %q does not mention %q", reason, c.reason)
-			}
-			b, _ := New()
-			if _, werr := b.RunInterp(c.src); werr != nil {
-				t.Errorf("the interpreter must still run it: %v", werr)
-			}
-		})
-	}
+	// The "refuses and falls back" table that held the lambda-over-dynamic-map
+	// row until S1a is gone with the refusal: every gradual-collection shape
+	// here compiles, and the sound loop below is the whole contract.
 
 	for _, c := range sound {
 		t.Run("sound/"+c.name, func(t *testing.T) {

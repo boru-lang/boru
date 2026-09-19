@@ -305,6 +305,10 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = true
 	defer func() { vc.rootRetTrim = prev }()
+	// The value's own frame: its call args are the leading locals (inputs
+	// fill the leading param slots, captures the trailing ones).
+	fn := &vc.p.Fns[unit]
+	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures])()
 	return vc.enterBodyUnit(reg, unit, locals)
 }
 
@@ -526,11 +530,35 @@ func (vc *vmContext) invokeClosure(reg *core.Registry, body core.Value, inputs [
 func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error) {
 	cl, ok := body.Data.(core.ClosurePayload)
 	if !ok {
-		// Pooled + resolved inputs, mirroring InvokeBody's no-Invoker branch
-		// (never the island engine — see vmContext.islandEng's
-		// non-reentrancy contract).
+		// A fn VALUE handed to the seam runs its unit natively when it has
+		// one (vm_fnvalue_seam.go, S1b); otherwise — a token body, a value
+		// with no matching sig or no unit — pooled + resolved inputs,
+		// mirroring InvokeBody's no-Invoker branch (never the island engine —
+		// see vmContext.islandEng's non-reentrancy contract).
+		if res, err, ran := vc.invokeFnValue(reg, body, inputs); ran {
+			return res, err
+		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
+	// A fn-VALUE closure — a capturing `fn` / `=>` literal minted at run
+	// time — reaching the TOKEN seam with its inputs in stack order is
+	// matched against its own signature first, top down, exactly as the
+	// interpreter matches the stepped value, and declines to the stepping
+	// path when nothing matches (S1b-2; vm_fnvalue_seam.go). A seam that
+	// already matched it hands SigMatched args in signature order.
+	if !cl.SigMatched {
+		if res, err, ran := vc.invokeFnValueClosure(reg, body, cl, inputs); ran {
+			return res, err
+		}
+	}
+	return vc.applyClosure(reg, cl, shapeInputs(cl, inputs))
+}
+
+// applyClosure runs a closure's unit over args already in the unit's
+// positional order (the token seam's shaped inputs, a matched fn-value
+// closure's signature-ordered args, a bridge handler's dispatch args), with
+// the closure's own return contract applied to the residual.
+func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, args []core.Value) ([]core.Value, error) {
 	// A closure minted by ANOTHER program indexes that program's Fns table, so
 	// it runs in that program's own nested context rather than against vc.p
 	// (see closureProgram for why this became reachable).
@@ -540,7 +568,7 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		prev := vc.rootRetTrim
 		vc.rootRetTrim = false
 		defer func() { vc.rootRetTrim = prev }()
-		return vc.hostForeign(p, reg, cl.Unit, shapeInputs(cl, inputs), cl.Captures)
+		return vc.hostForeign(p, reg, cl.Unit, args, cl.Captures)
 	}
 	// Inputs fill the leading param slots, captures the trailing ones
 	// (StartFnCompile registers params before captures) — the same split
@@ -550,7 +578,7 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 	// seam the enclosing unit was entered through.
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = false
-	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], shapeInputs(cl, inputs), cl.Captures))
+	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], args, cl.Captures))
 	vc.rootRetTrim = prev
 	if err != nil {
 		return res, err

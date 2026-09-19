@@ -275,9 +275,9 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 			sigs = make([]core.Signature, len(fd.Signatures))
 			copy(sigs, fd.Signatures)
 		}
-		na := *(sigs[i].Impl.(*core.BoruImpl))
-		na.Compiled = ref
-		sigs[i].Impl = &na
+		na := sigs[i].Impl.(*core.BoruImpl).Clone()
+		na.SetCompiled(ref)
+		sigs[i].Impl = na
 	}
 	if sigs == nil {
 		// Nothing stamped: a Go-backed / fallback-only value (a built-in
@@ -321,8 +321,76 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 		if !ok {
 			continue
 		}
-		fd.Signatures[i].Impl.(*core.BoruImpl).Compiled = ref
+		fd.Signatures[i].Impl.(*core.BoruImpl).SetCompiled(ref)
 		any = true
 	}
 	return any
+}
+
+// stampDeclined is the marker LazyStampFnSig leaves in a body's compiled slot
+// when its detached stamp declined: the next application finds the marker
+// and takes the interpreter without paying the compile again. It is not a
+// *CompiledFnRef, so CompiledRef reads the slot as "no ref" and a later
+// compile-time stamp (which tests CompiledRef, not the raw slot) may still
+// replace it.
+type stampDeclined struct{}
+
+// LazyStampFnSig is the detached stamp made universal (S1b of
+// design/FULL-COMPILATION-REPLAN.0.md, the review's §3.3 "unit half"): a fn
+// VALUE applied through a runtime seam — a callback handed to each/fold/scan
+// through InvokeBody, a value InvokeCallback is about to fall back on —
+// obtains a compiled unit for the sig the application matched, NOW, compiled
+// at the value's home, and keeps it on the sig's shared impl so every later
+// application of the same value (a container field read again, a module
+// export applied in a loop) finds it without a second compile. The memo is
+// the value itself: the impl is shared by every copy of the Value that
+// carries the fn, and the slot is atomic (core.BoruImpl), so a fork applying
+// the same value concurrently reads either nothing or a whole ref.
+//
+// Returns the ref to run, or nil when the seam keeps the interpreter: the
+// sig is not a boru body, runtime stamping is not armed on r, the body is
+// not stampable, or the stamp declined (remembered on the slot). A declined
+// stamp is per value, not per application — the interpreter behaviour is
+// byte-identical either way (slow, never wrong).
+func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, pos core.SrcPos) *CompiledFnRef {
+	impl, ok := sig.Impl.(*core.BoruImpl)
+	if !ok {
+		return nil
+	}
+	if slot := impl.Compiled(); slot != nil {
+		ref, _ := slot.(*CompiledFnRef)
+		return ref // stamped already, or declined and remembered
+	}
+	if r == nil || !r.RuntimeStampingEnabled() {
+		return nil
+	}
+	idx := -1
+	for i := range fd.Signatures {
+		if fd.Signatures[i].Impl == sig.Impl {
+			idx = i
+			break
+		}
+	}
+	// A body that mutates the registry when run — a capitalised def, an
+	// import — is never stamped lazily: the detached compile pass RUNS the
+	// body in check mode, and the type it would mint or the module it would
+	// load leaks into the live registry the value is about to be applied on
+	// (measured: `def T (class {})` in a callback body raised the name
+	// conflict at the FIRST element, one call early). The compile-time seat
+	// has the same rule (bodyHasReplayHazard, the dyn-body seat).
+	if idx < 0 || !storedSigEligible(sig) || bodyHasReplayHazard(core.NewList(sig.Body())) {
+		impl.SetCompiled(stampDeclined{})
+		return nil
+	}
+	// The defining registry compiles the body, as every value-level stamp
+	// does (StampFnValue): a module export's free words resolve where it was
+	// written.
+	home, _ := core.FnHome(r, &fd)
+	ref, ok := StampDetachedSig(home, fd, idx, pos)
+	if !ok {
+		impl.SetCompiled(stampDeclined{})
+		return nil
+	}
+	impl.SetCompiled(ref)
+	return ref
 }
