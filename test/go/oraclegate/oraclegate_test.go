@@ -59,11 +59,11 @@ var allowed = map[string]struct {
 	// I/O behaviour over a fake stdin: what the program PRINTS and reads, on
 	// whichever lane Run picks. Its one genuine parity test (stream probes)
 	// already uses RunInterp explicitly.
-	"lang/go/test/io_lines_test.go": {12, "stdin/tty behaviour helpers; the parity test in this file uses RunInterp"},
+	"lang/go/test/io_lines_test.go": {4, "stdin/tty behaviour helpers; the parity test in this file uses RunInterp. 12 -> 4 on 2026-09-19 (the fallback removal): eight helpers route through runReference, which books the compile failure and reads the meaning off the reference engine"},
 
 	// Error-shape assertions (`err == nil` checks) and a canon round-trip that
 	// reads one lane only.
-	"lang/go/test/fn_triple_compiled_test.go":   {3, "single-lane error-shape checks; the parity loop uses RunInterp"},
+	"lang/go/test/fn_triple_compiled_test.go":   {2, "single-lane error-shape checks; the parity loop uses RunInterp. 3 -> 2 on 2026-09-19 (the fallback removal)"},
 	"lang/go/test/module_typed_exports_test.go": {1, "single-lane error-shape check; the parity loop uses RunInterp"},
 }
 
