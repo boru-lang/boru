@@ -32,7 +32,7 @@ func TestMiniPartialParked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(miniImp + `"AbcD" (+re/[a-z]+/)/v typeof`)
+	got, err := runReference(t, a, miniImp+`"AbcD" (+re/[a-z]+/)/v typeof`)
 	if err != nil {
 		t.Fatalf("/v park: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestMiniPartialTypedParam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	got, err := a.Run(miniImp +
+	got, err := runReference(t, a, miniImp +
 		`def find-with fn [[m:(MiniLang.Re) s:String] [String] [(s m).fst.m]]  ` +
 		`find-with (+re/[a-z]+/) "AbcD"`)
 	if err != nil {

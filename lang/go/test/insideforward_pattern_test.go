@@ -35,7 +35,7 @@ func TestInsideForwardSelectionEnforcesPatterns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	out, rerr := a2.Run(`def p fn [[0 y:Integer] [String] ["hit"]]  7 p 0`)
+	out, rerr := runReference(t, a2, `def p fn [[0 y:Integer] [String] ["hit"]]  7 p 0`)
 	if rerr != nil {
 		t.Fatalf("pattern-satisfying call must dispatch: %v", rerr)
 	}

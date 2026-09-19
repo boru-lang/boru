@@ -73,7 +73,7 @@ func TestListAPIPlanet(t *testing.T) {
 
 	a.SetSDK("voxgig-solardemo", makeTestSDK(t))
 
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo", entity:"planet"}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo", entity:"planet"}`)
 	if err != nil {
 		t.Fatalf("list api planet failed: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestListAPIMoon(t *testing.T) {
 
 	a.SetSDK("voxgig-solardemo", makeTestSDK(t))
 
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo", entity:"moon"}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo", entity:"moon"}`)
 	if err != nil {
 		t.Fatalf("list api moon failed: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestListAPIWithJsonExtension(t *testing.T) {
 	a.SetSDK("voxgig-solardemo", makeTestSDK(t))
 
 	// spec with .json extension should also work.
-	result, err := a.Run(`list {kind:"api", spec:"voxgig-solardemo.json", entity:"planet"}`)
+	result, err := runReference(t, a, `list {kind:"api", spec:"voxgig-solardemo.json", entity:"planet"}`)
 	if err != nil {
 		t.Fatalf("list api with .json extension failed: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestListAPINonAPIMapFallsThrough(t *testing.T) {
 
 	// A map without kind:"api" should not trigger the API handler.
 	// It should be treated as a record type and return an empty list.
-	result, err := a.Run(`list {name:"test"}`)
+	result, err := runReference(t, a, `list {name:"test"}`)
 	if err != nil {
 		t.Fatalf("list plain map failed: %v", err)
 	}

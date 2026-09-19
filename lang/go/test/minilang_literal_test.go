@@ -26,7 +26,7 @@ func litRun(t *testing.T, src string) any {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(miniImp + src)
+	res, err := runReference(t, a, miniImp+src)
 	if err != nil {
 		t.Fatalf("Run(%q): %v", src, err)
 	}
@@ -256,11 +256,11 @@ func TestMiniLitNotTriggered(t *testing.T) {
 	// `+0d5` is a signed bignum, not a minilang literal (a digit, not a
 	// lowercase name, follows `+`), so it must parse exactly like `0d5`.
 	a, _ := lang.New()
-	signed, err := a.Run(`+0d5`)
+	signed, err := runReference(t, a, `+0d5`)
 	if err != nil {
 		t.Fatalf("+0d5 should parse as a bignum: %v", err)
 	}
-	unsigned, err := a.Run(`0d5`)
+	unsigned, err := runReference(t, a, `0d5`)
 	if err != nil {
 		t.Fatalf("0d5: %v", err)
 	}

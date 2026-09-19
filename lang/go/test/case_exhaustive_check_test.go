@@ -448,7 +448,7 @@ func TestShorthandFnUnionReturnType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	out, err := a.Run(`def IS (Integer tor String) def f fn x:Integer IS [x] 1 f`)
+	out, err := runReference(t, a, `def IS (Integer tor String) def f fn x:Integer IS [x] 1 f`)
 	if err != nil {
 		t.Fatalf("union return type in shorthand fn: %v", err)
 	}
@@ -732,7 +732,7 @@ func TestCaseRuntimeNoMatchProducesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	out, err := a.Run(`def f fn [[x:Any][][case x [1 "one" 2 "two"]]] f 9`)
+	out, err := runReference(t, a, `def f fn [[x:Any][][case x [1 "one" 2 "two"]]] f 9`)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

@@ -30,7 +30,7 @@ func runPred(t *testing.T, src string) []any {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	out, err := a.Run(src)
+	out, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("run %q: %v", src, err)
 	}

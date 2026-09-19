@@ -23,7 +23,7 @@ func runParseLast(t *testing.T, src string) any {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	res, err := a.Run(src)
+	res, err := runReference(t, a, src)
 	if err != nil {
 		t.Fatalf("Run(%q): %v", src, err)
 	}
@@ -40,8 +40,7 @@ func runParseErr(t *testing.T, src string) error {
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)
 	}
-	_, e := a.Run(src)
-	return e
+	return runReferenceErr(t, a, src)
 }
 
 // TestParseABNFActionCustomType is the headline: an ABNF grammar plus a

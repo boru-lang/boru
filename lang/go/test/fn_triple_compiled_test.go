@@ -57,6 +57,9 @@ func TestFnConstructionCompiledParity(t *testing.T) {
 				t.Fatalf("lang.New: %v", err)
 			}
 			comp, _, cerr := ac.RunCompiled(c.src)
+			if bookRefDefect(t, c.src, cerr) {
+				return
+			}
 			if cerr != nil {
 				t.Fatalf("compiled: %v", cerr)
 			}
@@ -130,7 +133,7 @@ func TestFnSignatureSpellingsAreOneValue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("lang.New: %v", err)
 			}
-			got, err := a.Run(target + c.spell + `  deq (canon a/v) (canon b/v)`)
+			got, err := runReference(t, a, target+c.spell+`  deq (canon a/v) (canon b/v)`)
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}

@@ -1078,6 +1078,16 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// VM/lowering soundness assertion, a recovered handler panic, a
 		// designed defer — is a compiler DEFECT, and compiledRunError says so
 		// rather than re-running the source to hide it.
+		//
+		// Either way the run FAILED, so it leaves the registry as it found
+		// it: the check pass's installs persist for a run that succeeds and
+		// are rolled back for one that does not, or a failed run leaks a
+		// half-installed binding into whatever the caller does next (a
+		// second run on the same instance meets its own `def` as a name
+		// clash). The old runtime-bail arm did this before re-running; it is
+		// the run's own obligation, not the fallback's.
+		a.registry.RestoreForCompile(snap)
+		a.registry.ResetStampLog()
 		return nil, true, "", compiledRunError(a.registry, err)
 	}
 	return result, true, "", nil
