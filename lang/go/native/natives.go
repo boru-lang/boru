@@ -291,12 +291,16 @@ var Natives = []NativeFunc{
 	{
 		Name: "push",
 
+		// push / unshift STORE their operand into a list and never step it,
+		// so a fn-valued element is inert to the recorder: CompileStoresFn,
+		// the same declaration the container mutators carry (see `set` in
+		// native_storage.go for the rule and its soundness).
 		Signatures: []Signature{
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1},
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn},
 			// Returns a List (was undeclared → Any, which widened a fold/scan
 			// accumulator to Any on the second round and then wrongly rejected the
 			// next `push` — `[] fold [push] xs`). Mirrors unshift's List overload.
-			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1},
+			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn},
 		},
 	},
 	{
@@ -311,8 +315,8 @@ var Natives = []NativeFunc{
 		Name: "unshift",
 
 		Signatures: []Signature{
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1},
-			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1},
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn},
+			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn},
 		},
 	},
 	{

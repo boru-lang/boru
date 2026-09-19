@@ -36,9 +36,15 @@
 # side table holds it), and the forward-collection scans consulted only
 # Defs, so the dispatch saw a bare WORD at the Function slot; the
 # collection seat and the /v read now resolve the table.
-callbacks.tsv	18	25 at the corpus expansion of 2026-09-17; 25 -> 20 on 2026-09-19 (S1a: a dynamic callback poly re-matches — the container-read callbacks L57, L58 and three more); 20 -> 18 on 2026-09-19 (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a /v read — L82, L154)
+# 53 -> 47 on 2026-09-19 (S1b-3): set, push, unshift and append declare
+# CompileStoresFn. Each WRITES its operand into a container and never
+# steps it, so a fn-valued operand is inert to the recorder — the
+# "function value reaches <word> (Stage 3)" refusal was a missing
+# declaration, not a missing mechanism. callbacks.tsv:L61 stays: its
+# `((reg.cb) 5)` moves to the apply-shape family S1b's lowering half owes.
+callbacks.tsv	17	25 at the corpus expansion of 2026-09-17; 25 -> 20 on 2026-09-19 (S1a: a dynamic callback poly re-matches — the container-read callbacks L57, L58 and three more); 20 -> 18 on 2026-09-19 (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a /v read — L82, L154); 2026-09-19 (S1b-3: set/push/unshift/append declare CompileStoresFn — a fn value STORED in a container is inert to the recorder, where it refused "function value reaches <word>") — L62
 code-bodies.tsv	13	27 at the corpus expansion of 2026-09-17; 27 -> 13 on 2026-09-19 (S1a: a runtime code body — a quoted list read from a flex or a map — poly re-matches to the token overload)
 each-variants.tsv	2	13 at the corpus expansion of 2026-09-17; 13 -> 3 on 2026-09-19 (S1a: the container-read callbacks L193–L196 and the fn-value islands that became poly re-matches); 3 -> 2 on 2026-09-19 (S1b-2: L203, a factory-built value read at each)
-fn-locals-scope.tsv	10	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
-fold-map-filter.tsv	4	30 at the corpus expansion of 2026-09-17; 30 -> 7 on 2026-09-19 (S1a: fold/filter/scan over a container-read or factory-built callback poly re-match); 7 -> 4 on 2026-09-19 (S1b-2: L73, L227, L229 — a factory-built or branch-chosen value read bare at fold, filter and each)
-module-composition.tsv	6	8 at the corpus expansion of 2026-09-17; 8 -> 7 on 2026-09-19 (S1a: L101, a class-field callback from a module class); 7 -> 6 on 2026-09-19 (S1b-2: L95, a module factory's value read at each)
+fn-locals-scope.tsv	8	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0); 2026-09-19 (S1b-3: set/push/unshift/append declare CompileStoresFn — a fn value STORED in a container is inert to the recorder, where it refused "function value reaches <word>") — L218, L219
+fold-map-filter.tsv	2	30 at the corpus expansion of 2026-09-17; 30 -> 7 on 2026-09-19 (S1a: fold/filter/scan over a container-read or factory-built callback poly re-match); 7 -> 4 on 2026-09-19 (S1b-2: L73, L227, L229 — a factory-built or branch-chosen value read bare at fold, filter and each); 2026-09-19 (S1b-3: set/push/unshift/append declare CompileStoresFn — a fn value STORED in a container is inert to the recorder, where it refused "function value reaches <word>") — L234, L235
+module-composition.tsv	5	8 at the corpus expansion of 2026-09-17; 8 -> 7 on 2026-09-19 (S1a: L101, a class-field callback from a module class); 7 -> 6 on 2026-09-19 (S1b-2: L95, a module factory's value read at each); 2026-09-19 (S1b-3: set/push/unshift/append declare CompileStoresFn — a fn value STORED in a container is inert to the recorder, where it refused "function value reaches <word>") — L99
