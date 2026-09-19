@@ -109,6 +109,10 @@ func TestDoEmptyResidualAgreesAcrossEngines(t *testing.T) {
 					"is a semantic change, not a compile detail", is, c.want)
 			}
 
+			if lang.NoteCompileDefect(t, c.src, compiled, cErr) {
+				// No compiled answer to agree with: the failure is booked.
+				return
+			}
 			agree := cErr == nil && fmt.Sprint(compiled) == fmt.Sprint(interp)
 			switch {
 			case c.wantDiverge && agree:

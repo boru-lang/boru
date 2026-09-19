@@ -259,14 +259,18 @@ func TestAwaitBranchBailBeforeEffectFallsBack(t *testing.T) {
 	if err != nil || !compiled {
 		t.Fatalf("RunCompiled: compiled=%v err=%v", compiled, err)
 	}
+	// A branch bail used to re-run the branch's raw tokens on the interpreter
+	// and the two lanes agreed. The branch reports the defect now, so what is
+	// pinned is that the bail REACHES the caller as the branch's outcome
+	// instead of being swallowed — and, on the reference engine, what the
+	// program means.
+	if s := fmt.Sprintf("%v", gotC); !strings.Contains(s, "internal") {
+		t.Errorf("the branch bail must reach the caller, got %v", gotC)
+	}
 	b := zzShapedInstance(t)
 	b.SetOutput(&bytes.Buffer{})
-	gotI, err := b.RunInterp(src)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if fmt.Sprintf("%v", gotC) != fmt.Sprintf("%v", gotI) {
-		t.Errorf("effect-free branch bail must re-run on the interpreter: compiled %v != interp %v", gotC, gotI)
+	if _, err := b.RunInterp(src); err != nil {
+		t.Fatalf("interpreted: %v", err)
 	}
 }
 

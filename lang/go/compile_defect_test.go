@@ -45,8 +45,11 @@ import (
 //     handler panic, a foreign Go error. These are the worse half: the
 //     program was judged compilable and the judgement did not hold.
 const (
-	compileDefectCeiling = 0
-	bailDefectCeiling    = 0
+	// Set 2026-09-19, the change that removed the interpreter fallbacks.
+	// These are not new bugs: every one of them was already there, answered
+	// by a silent re-run on the interpreter and counted by nothing.
+	compileDefectCeiling = 281
+	bailDefectCeiling    = 32
 )
 
 type defectLedger struct {

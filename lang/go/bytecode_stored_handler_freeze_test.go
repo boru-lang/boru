@@ -74,6 +74,12 @@ call {} svc`, "[11]", true},
 				t.Errorf("refusal reason = %q, want the stored-handler rebind hammer", reason)
 			}
 			gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+			if noteCompileDefect(t, c.src, gotC, errC) {
+				if c.compiles {
+					t.Errorf("this row is meant to compile and run")
+				}
+				return
+			}
 			if compiled != c.compiles {
 				t.Errorf("compiled run = %v, want %v", compiled, c.compiles)
 			}
@@ -125,9 +131,19 @@ call {op:"go"} svc`
 	if prog == nil {
 		t.Fatalf("a mid-program rebind of a dep the handler reads live compiles; refused: %q", reason)
 	}
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if compiled {
-		t.Errorf("the second `call` bails at the poly native seat (vm:poly-no-match) today; the run compiled — retire this note with the bail")
+	gotC, _, errC, gotI, errI := runBothEngines(t, src)
+	// The second `call` bails at the poly native seat (vm:poly-no-match). It
+	// used to be resolved by re-running the source; it is booked as the
+	// defect it is, and the meaning of the program is pinned below on the
+	// reference engine.
+	if noteCompileDefect(t, src, gotC, errC) {
+		if errI != nil {
+			t.Fatalf("interpreted: %v", errI)
+		}
+		if fmt.Sprint(gotI) != "[6 105 12]" {
+			t.Errorf("interpreted = %v, want [6 105 12]", gotI)
+		}
+		return
 	}
 	if errC != nil || errI != nil {
 		t.Fatalf("run errors: compiled=%v interp=%v", errC, errI)

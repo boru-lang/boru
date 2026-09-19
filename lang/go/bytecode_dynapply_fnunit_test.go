@@ -209,13 +209,16 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 	if prog, reason, _, _ := a.CompileCheck(after); prog != nil {
 		t.Errorf("a post-apply statement must refuse the replay (reason=%q):\n%s", reason, prog.Disassemble())
 	}
-	gotC, printedC, took, errC = runOut(after, true)
+	gotC, printedC, _, errC = runOut(after, true)
 	gotI, printedI, _, errI = runOut(after, false)
-	if took {
-		t.Error("the post-apply shape must take the interpreter fallback")
-	}
-	if printedC != printedI || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-		t.Errorf("fallback parity: C=%v %q/%v I=%v %q/%v", gotC, printedC, errC, gotI, printedI, errI)
+	if noteCompileDefect(t, after, gotC, errC) {
+		// No compiled answer to compare, and nothing printed on that lane:
+		// the replay the post-apply statement refuses is booked as a defect.
+		if printedC != "" {
+			t.Errorf("a program that does not compile printed %q", printedC)
+		}
+	} else if printedC != printedI || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
+		t.Errorf("parity: C=%v %q/%v I=%v %q/%v", gotC, printedC, errC, gotI, printedI, errI)
 	}
 }
 
@@ -270,11 +273,13 @@ func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	// the canonical signature_error — code parity, never a stored-mode raise
 	// of its own.
 	nomatch := `def wrapfn fn [[m:Map] [Integer] [def helper fn [[a:Integer] [Integer] [a mul 2] [b:String] [Integer] [7]] helper (m get k/q)]] wrapfn {k:[1 2]}`
-	_, compiled, errC, _, errI = runBothEngines(t, nomatch)
-	if compiled {
-		t.Error("the no-match run must defer to the interpreter")
-	}
-	if codeOf(errC) != "signature_error" || codeOf(errC) != codeOf(errI) {
+	gotNM, _, errC, _, errI := runBothEngines(t, nomatch)
+	if noteCompileDefect(t, nomatch, gotNM, errC) {
+		// The seat bails where the interpreter raises signature_error. That
+		// is a defect owed a trap that raises the same error at the same
+		// moment, which is one of the three legal dispositions for a bail
+		// site; until it has one it is booked, not hidden.
+	} else if codeOf(errC) != "signature_error" || codeOf(errC) != codeOf(errI) {
 		t.Errorf("no-match parity: compiled=[%s]%v interp=[%s]%v", codeOf(errC), errC, codeOf(errI), errI)
 	}
 

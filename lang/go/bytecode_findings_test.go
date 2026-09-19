@@ -4558,6 +4558,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		// where the diagnostic points, which `.Error()` folds in — and this
 		// assertion read its interp side from `Run`, the compiled lane, until
 		// 2026-08-27 (NUR106), so it never compared anything at all.
+		if noteCompileDefect(t, c.src, nil, errC) {
+			continue
+		}
 		var aeC, aeI *core.BoruError
 		okC, okI := errors.As(errC, &aeC), errors.As(errI, &aeI)
 		if okC != okI {

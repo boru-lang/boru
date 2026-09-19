@@ -68,11 +68,13 @@ func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
 			if prog != nil {
 				t.Fatalf("must refuse, compiled to:\n%s", prog.Disassemble())
 			}
-			// Default mode must agree with the interpreter on value AND error.
 			ra, _ := New()
 			got, err := ra.Run(c.src)
 			b, _ := New()
 			want, wantErr := b.RunInterp(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
 			if fmt.Sprint(err) != fmt.Sprint(wantErr) {
 				t.Errorf("default-mode error %v != interpreter %v", err, wantErr)
 			}
