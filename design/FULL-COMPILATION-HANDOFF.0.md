@@ -10233,7 +10233,7 @@ running alongside on the same four cores. Shard 9 takes the gate in CI.
 
 Started the morning S0's first increment merged, on `main` at the merge of
 PR #473. The re-plan's §4 finding, acted on: the third nineteen of the
-corpus's refusals were never a fn-value LOWERING problem — the callback
+corpus's compile failures were never a fn-value LOWERING problem — the callback
 lowered fine — but a higher-order word unable to COMMIT to an overload
 because one operand was statically `Any`.
 
@@ -10251,7 +10251,7 @@ overload the live value matches, exactly as the interpreter's dispatch
 does. The gate's dynamic operand turned out to be the CALLBACK as often
 as the collection — a class field or a map field read through `dot`
 returns Any, a dynamic key or a factory result too — so the widening had
-to key on any dynamic operand, and the refusal message now says which:
+to key on any dynamic operand, and the failure message now says which:
 "higher-order `for-each` with a gradual-Any operand — the callback or the
 collection: ambiguous overload, no static commit and no poly re-match (the
 word does not declare CompileDynBody)".
@@ -10294,19 +10294,20 @@ one left (fold-map-filter.tsv:168, its fold now native). The ceiling
 comments name them. S1b retires the seam by lowering the re-matched
 overload's body natively.
 
-**What stays refused, and why.** `for-each` nets no result, which the
-dyn-body seat requires (the result is marked variadic; a 0-out word has
+**What still does not compile, and what stops it.** Not a boundary the
+design chose — each of these is an open defect with a named cause.
+`for-each` nets no result, which the dyn-body seat requires (the result is marked variadic; a 0-out word has
 nothing to seat), and `walk` keeps its own code-body gate — both pinned
 in `lang/go/bytecode_dynbody_callback_test.go` with the message that
 names the gap. The each-body args shape, the computed each body, the
 Atom-lambda-over-computed-keys shapes and the lambda over a dynamic map
 all compiled on this change; eight lang/go pins that asserted their
-refusal now assert their parity (`args_closure_body_test.go`,
+compile failure now assert their parity (`args_closure_body_test.go`,
 `frozen_module_read_test.go`, `bytecode_quote_lambda_test.go`,
 `bytecode_gradual_each_test.go`, `bytecode_stage2_crossmod_elem_test.go`,
 `closure_read_model_test.go`, `nested_body_fn_carrier_test.go`,
 `bytecode_findings_test.go`), and `analysis_order_test.go`'s two
-rebind-in-a-multi-run-body rows still refuse, now at the dyn-body seat's
+rebind-in-a-multi-run-body rows still fail to compile, now at the dyn-body seat's
 twin-regime gate rather than the word's.
 
 **Found on the way — NUR164** (resolved). The Map pin `def f fn
@@ -10337,7 +10338,7 @@ dispatcher's own signature_error for a runtime value that is neither
 collection. The obvious alternative — route a CompileDynBody word off
 the shortcut and onto the dyn-body seat — was measured and rejected:
 the seat arms DynEnv mode program-wide, and fifty-three module-cli.tsv
-rows importing a module whose fn defs a computed value refused with it
+rows importing a module whose fn defs a computed value stopped compiling with it
 (113 compile failures, back from 60). Thirteen rows pinned
 (`TestStrictAnyOperandReMatches`), value and error code alike.
 
@@ -10376,7 +10377,7 @@ map field, a factory's result, a lambda at a gradual collection — is
 compiled NOW, at its home, by StampDetachedSig, and the ref is memoised on
 the sig's shared impl, so a container-held value applied a thousand times
 compiles once. A declined stamp is remembered the same way (a marker in the
-slot CompiledRef reads as "no ref"), so a refusing body is never re-paid; a
+slot CompiledRef reads as "no ref"), so a declining body is never re-paid; a
 body that mutates the registry (a capitalised def, an import —
 bodyHasReplayHazard) is never tried, because the detached compile pass RUNS
 the body and its mint would leak into the live registry (measured before
@@ -10462,10 +10463,10 @@ forward-collection scans — the plan walk and the per-candidate scan in
 `core/go/collect_kernel.go`, through the host seat `Engine.DefTop` —
 consulted Defs alone, so `each f/v [1 2 3]` and `each f [1 2 3]` dispatched
 with the bare WORD at each's Function slot: no overload matched, and the
-compile pass refused "unmatched dispatch recovered at each" where the plain
+compile pass failed at "unmatched dispatch recovered at each" where the plain
 pass, which runs the factory's body and binds the concrete fn, typed the
 same program clean. The `/v` read had a second decline of its own:
-stepWordVal refused the table on purpose, from an era when a substituted
+stepWordVal declined the table on purpose, from an era when a substituted
 `/v` read carried no producing event and `(pmany digit/v)` compiled to a
 0-arg call. The seat now resolves the table under analysis (the engine's
 and the region descriptor's, `eng/go/region_host.go`), and the `/v` read
@@ -10477,7 +10478,7 @@ natively. Seven corpus rows compile with parity: callbacks.tsv L82 and
 L154 (`FnUtil.compose`'s result), each-variants.tsv L203, fold-map-filter.tsv
 L73 (read bare at fold), L227 (filter), L229 (a branch-chosen value),
 module-composition.tsv L95 (a module factory's). The frontier's
-`2 h/v apply` row moved its first refusal from the undefined_word hold to
+`2 h/v apply` row moved its first compile failure from the undefined_word hold to
 the apply-shape gate it always had behind it (re-diagnosed in place).
 
 **The fn-value closure convention.** Pinning the map arm exposed a
@@ -10492,7 +10493,7 @@ answered `{a:2 b:3}` for the interpreter's signature_error, and a
 `[kv:KeyVal]` one raised an internal `dot` no-match over the bare value it
 was handed; `filter (mk 1) [1 2]` answered `[]` for the interpreter's
 signature_error; fold's map arm likewise. Every one of those shapes was a
-refusal on `main` ("function-valued operand at each (Stage 3)") — S1a
+compile failure on `main` ("function-valued operand at each (Stage 3)") — S1a
 released them onto the closure branch. The convention now: a fn-VALUE
 closure (`compiler.ClosureIsFnValue` — the unit compiled from a literal,
 `CompiledFn.Lambda`, with its param contract recorded, in the plain value
@@ -10536,12 +10537,12 @@ owed list.
 The three gates that FELL fell by the same seven rows: compute gaps by
 exactly seven (every one is a real-compute row), diagnostic parity by
 seven (both passes now type them the same way), and armed-only by five —
-the five rows `boru check` called clean while compiling refused, which
+the five rows `boru check` called clean while compiling failed, which
 are exactly the five the diagnostic-surface ledger named.
 
 Two ledger entries moved with it. The diagnostic-surface ledger's
 `unused_def` class GRADUATED — no corpus row shows a compile-only
-unused_def any more, because the dispatch that refused before the read
+unused_def any more, because the dispatch that failed before the read
 could credit its def now matches — and its `undefined_word` entry was
 re-diagnosed: the Stage 1 `/v` hold it described is gone, and the two rows
 that keep the class are unrelated token-body word reads (`case zed/q
@@ -10592,7 +10593,9 @@ binding, now shared: `deliverValRead` is the one tail every `/v` read
 takes, whichever store resolved it — the reference ARRIVES at a
 still-collecting forward, or is pushed and stepped over, and in neither
 case is it stepped as a literal that could dispatch. `each f/v [1 2 3]`
-still compiles native; `[f/v 5]` refuses and the interpreter answers.
+still compiles native; `[f/v 5]` no longer miscompiles, and does not yet
+compile either — the wrong answer is gone and a defect is left in its
+place, which is the trade and not a resolution.
 
 The `/v` spelling then joined the list-member guard
 (`RecordMakeListInner`) where the bare read already was: the compile model
@@ -10635,9 +10638,9 @@ two silent miscompiles it exposed, and it is reverted. What survives is the
 diagnosis, which is worth more than the six rows were.
 
 **What it was.** Seven of the fifty-three remaining compile failures
-refused "function value reaches set (Stage 3)", or the same at `push`.
-That refusal is `RecordCallOperands`' blanket guard: a fn VALUE at an
-operand slot is refused because the handler may put it back on the TAPE,
+failed to compile at "function value reaches set (Stage 3)", or the same
+at `push`. That gate is `RecordCallOperands`' blanket one: a fn VALUE at
+an operand slot stops there because the handler may put it back on the TAPE,
 which the VM has no tape for. `set` and `push` do not — they WRITE the
 operand into a container and never step it — so a fn-valued operand is
 inert to the recorder, and the recorder already has the declaration for
@@ -10646,17 +10649,18 @@ register words). All nineteen `set` signatures, both `push` signatures,
 `unshift` and `append`'s element form declared it; `unshift` and `append`
 came from probing the siblings, so the rule was complete rather than ad
 hoc. Stated once, at `set`: a word that STORES what it is handed declares
-it; a word that INVOKES what it is handed keeps the refusal.
+it; a word that INVOKES what it is handed still fails to compile, which is
+the next defect in that line rather than a boundary the design chose.
 
 **What it measured.** Compile failures 53 → 47, compute gaps 49 → 42, and
 a seventh row (callbacks.tsv:L61) crossing into the reducible tier, which
-rose 3 → 4 — the same row, its refusal moving from a soundness-rooted
+rose 3 → 4 — the same row, its compile failure moving from a soundness-rooted
 bucket to a coverage-rooted one, not debt put back. The census, engine
 entries and sweep did not move: a row that compiles natively enters no
 seam. CI was green on all twenty checks.
 
 **Why it is reverted.** A Codex review found two shapes that COMPILE and
-answer wrongly, with no fallback:
+answer WRONGLY:
 
 ```
 def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)
@@ -10666,21 +10670,32 @@ def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)
 ```
 
 Neither is the declaration's own fault, and neither is reachable without
-it: on `main` the store refuses first and the whole program falls back to
-a correct answer. The declaration retires that refusal, and what it
-uncovers is NUR169 — a paren that nets exactly ONE value which is a
-function is auto-applied by the interpreter and silently not applied by
-the compiled lane, because `stepCloseParen`'s recorder switch has no
-`count == 1` case. A declaration that retires a refusal moves every row
-that used to stop there, and here one of the places they stop next
-produces a wrong answer instead of a later refusal.
+it: on `main` these programs FAIL TO COMPILE at the store, and the silent
+interpreter re-run hands back an answer that looks right. That is not a
+safe state and this note should not have called it one — §1 of
+COMPILABLE-SUBSET.md is explicit that the fallback is scaffolding around a
+known bug and that the silence indicts it, because a failure that hides
+itself is the harder one to find. What the declaration does is retire one
+defect and expose a worse one underneath it: NUR169, a paren that nets
+exactly ONE value which is a function, auto-applied by the interpreter and
+silently not applied by the compiled lane, because `stepCloseParen`'s
+recorder switch has no `count == 1` case.
 
-**What was tried before reverting.** Making the one-value paren refuse.
-It fixes both witnesses, and then refuses far more: a dot access is itself
+The trade the revert makes, stated without laundering either side: seven
+programs that must compile go back to not compiling, and two programs stop
+answering wrongly. Both states are defective and both are owed a fix. A
+wrong answer is the worse defect, which is why the revert is right — not
+because not-compiling is acceptable. It is not: "not wrong" is not the bar
+here, compiling is.
+
+**What was tried before reverting.** Gating the one-value paren —
+trading the wrong answers for more programs that do not compile, which is
+a lesser defect and still a defect. It fixes both witnesses, and then
+stops far more from compiling: a dot access is itself
 expanded to a paren group whose single net value is a dynamic `Any`
 carrier, so `0 fold reg.f [1 2 3]` — one of the six rows the increment had
-just won — refused too. Telling a user-written apply paren from an
-internal expansion, or lowering the apply instead of refusing it, is
+just won — stopped compiling too. Telling a user-written apply paren from
+an internal expansion, then LOWERING the apply, is
 design work rather than a patch. It belongs with the rest of S1b's
 lowering half, alongside NUR156, which is the same defect in a different
 spelling: an apply that does not fire.
@@ -10696,16 +10711,18 @@ and it was, and it passed. The partition gates are corpus-wide and a
 filtered walk only REPORTS them, so the tier-2 crossing was invisible
 locally and CI found it. Neither instrument finds a silent miscompile in a
 shape the corpus does not contain, which is what the review found. For a
-change that RETIRES a refusal, the question to ask first is not "which
-rows now compile" but "where do the rows that used to stop here stop
-next", and the answer has to be read row by row, not as a count.
+change that RETIRES a gate, the question to ask first is not "which rows
+now compile" but "where do the rows that used to stop here stop next", and
+the answer has to be read row by row, not as a count. A gate is a standing
+defect report, so retiring one does not close a case: it moves the failure
+to whatever is behind it, and that may be worse than what it replaced.
 
 **Still owed, unchanged by this increment.** The fn values the seam does
 not reach (the `[(mk 2)]` shape, the fn-util wrappers, the
 module-fnvalue-boundary islands), the Apply kernel's first branch,
 NUR154–156 and now NUR169, and the fn-value compile failures. The largest
 single family remains unrelated to fn values: a fn-local `def` inside a
-BRANCH arm, read after the branch, which refuses "body result of unknown
+BRANCH arm, read after the branch, which fails to compile at "body result of unknown
 provenance" (eight rows). The identical rebind inside a LOOP compiles
 today — the loop analysis gives the name a unit frame slot
 (`NoteLoopCarried` / `BeginLoopCarried`), stores at each rebind site

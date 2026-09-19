@@ -97,7 +97,7 @@ keep the two in sync in the same commit.
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
 | [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
 | [NUR168](#nur168) | A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
-| [NUR169](#nur169) | A paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane: `def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)` answers 42 interpreted and `fn h` compiled, with no fallback. The paren-collapse switch (core/go/engine.go stepCloseParen) has a case for a TRAILING fn applied to preceding args and one for a LEADING dynamic with `count >= 2` — whose whole test is "a dynamic value precedes args" — but NO case for `count == 1`, so the window records the member read and no call at all. Masked today because the shapes that reach it refuse earlier; found when `set`/`push` declared CompileStoresFn and removed that earlier refusal (PR #475, reverted) | a Codex review of PR #475, 2026-09-19 |
+| [NUR169](#nur169) | A paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane: `def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)` answers 42 interpreted and `fn h` compiled, with no fallback. The paren-collapse switch (core/go/engine.go stepCloseParen) has a case for a TRAILING fn applied to preceding args and one for a LEADING dynamic with `count >= 2` — whose whole test is "a dynamic value precedes args" — but NO case for `count == 1`, so the window records the member read and no call at all. Masked today because the shapes that reach it fail to compile earlier; found when `set`/`push` declared CompileStoresFn and retired that earlier gate (PR #475, reverted) | a Codex review of PR #475, 2026-09-19 |
 | [NUR166](#nur166) | A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
 | [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
 | [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
@@ -7024,13 +7024,14 @@ sweep's call-form ceiling names the two variants.
 
 **Status:** Pending (recorded 2026-09-19).
 **Found:** a Codex review of PR #475, whose `CompileStoresFn` declaration
-removed the refusal that had been masking this. The declaration is
-reverted; this is the defect that blocks it.
+retired the gate that had been masking this — the programs that reach it
+did not compile at all before, so the defect had nowhere to show. The
+declaration is reverted; this is the defect that blocks it.
 
 **Rule:** a compiled program answers as the interpreter does.
 
 **Divergence.** Two witnesses, both silent — the program compiles and
-answers wrongly, with no fallback:
+answers wrongly:
 
 ```
 def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)
@@ -7059,18 +7060,23 @@ the diverging twin emits the `dot` and stops.
 
 **Why the obvious fix is wrong.** Refusing whenever a one-value paren
 holds something that could be a function at run time was built and
-measured: it fixes both witnesses and then refuses far more, because a dot
-access is ITSELF expanded to a paren group whose single net value is a
-dynamic `Any` carrier (`expandReach`). `0 fold reg.f [1 2 3]` refused. The
-fix has to tell a user-written apply paren from an internal expansion, or
-lower the apply rather than refuse it; either is design work, not a patch.
+measured: it fixes both witnesses and then stops far more from compiling,
+because a dot access is ITSELF expanded to a paren group whose single net
+value is a dynamic `Any` carrier (`expandReach`). `0 fold reg.f [1 2 3]`
+stopped compiling. Trading wrong answers for programs that do not compile
+is a lesser defect, not a fix — the bar is compiling, not merely being
+right. So the real fix has to tell a user-written apply paren from an
+internal expansion and LOWER the apply; narrowing the gate instead is at
+best scaffolding to stop the bleeding while that is built.
 
 **Where it belongs:** the fn-value lowering half S1b owes — the same
 family as NUR156, an apply that does not fire. It is what must land before
 `set` / `push` / `unshift` / `append` can declare CompileStoresFn, which
 is worth six corpus rows (compile failures 53 → 47, compute gaps 49 → 42)
 and is otherwise sound: the declaration itself is right, a word that
-STORES what it is handed never puts it back on the tape.
+STORES what it is handed never puts it back on the tape. Until both land,
+those seven programs do not compile, which is seven open defects and not a
+position the compiler has chosen.
 
 ## NUR168 — a non-capturing factory-built fn value, def-bound, escapes anonymous on the compiled lane {#nur168}
 
@@ -7099,7 +7105,7 @@ lambda is a const fn value with no name of its own. A CAPTURING twin
 PUSH_CLOSURE carries the `/v` read's DefName (nameClosureValue, the
 thirty-third increment). Render-only: the value applies identically,
 its errors already name it (checkFnValueReturn reads the sig's own
-name), and the shape refused to compile before S1b-2 (unmatched
+name), and the shape failed to compile before S1b-2 (unmatched
 dispatch at each), so the divergence is newly reachable, not new.
 
 **Where it belongs:** the value-def lowering's fn arm — a def of a fn
