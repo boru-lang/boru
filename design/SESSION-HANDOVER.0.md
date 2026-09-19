@@ -185,12 +185,23 @@ compile failure. They always compiled.
 had been absorbing: `unresolvable type operand` after an `undef` (twice), a
 `STORE_LOCAL` stack underflow in a net-zero `do` body, and **NUR170** (a fn
 value read out of a Map and handed to a word taking `(Any, Map)` arrives
-TRANSPOSED). **NUR171** is the fifth and is position-only — the compiled
-no-match diagnostic is byte-identical and carries no source position, because
-neither the recorded `PolyNoMatchSpec` nor the debug table has one to stamp.
-It is pinned in `knownPositionLoss`, its own map: `knownDivergences` is
-checked by every corpus gate and its entries must diverge on all of them,
-while a position loss is visible only where position presence is asserted.
+TRANSPOSED). **NUR171** and **NUR172** are the fifth and sixth, both at
+the same site (`5 $.name apply`) and neither a miscompile. NUR171 is
+position-only: the compiled no-match diagnostic carries no source position,
+because neither the recorded `PolyNoMatchSpec` nor the debug table has one to
+stamp. NUR172 is the two lanes' NOTES describing different argument windows —
+`CALL_NATIVE_POLY` holds both operands and reports a type mismatch on the
+second, while the interpreter never filled the forward slot and reports an
+arity failure over one. There the compiled text is the accurate one, so the
+fix points at the interpreter's matcher, not the VM; weakening the compiled
+note to match would buy uniformity with a worse diagnostic.
+
+Each is pinned in its own `pinLedger` (`knownPositionLoss`, `knownDiagDrift`),
+not in `knownDivergences`: that map is checked by every corpus gate and its
+entries must diverge on all of them, while a PRESENTATION drift is visible
+only where presentation is asserted — which is the compile-or-fallback gate
+alone. Both ledgers carry the same retirement half: a pin that stops drifting
+on a full walk fails the gate.
 
 **Still owed on this line.** `vmDefer`'s ~20 messages still say "deferring to
 the interpreter", false in every one now. Mechanical, and left only because

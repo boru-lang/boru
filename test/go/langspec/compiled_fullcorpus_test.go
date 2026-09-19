@@ -162,47 +162,69 @@ func itoa(n int) string {
 // unledgered is a divergence knownDivergences does not carry. It runs on a
 // walk worker, so it takes testing.TB and touches no shared state —
 // divergence is goroutine-safe.
-// knownPositionLoss pins rows where the two lanes agree on the error in every
-// respect the taxonomy names — code, detail, notes, suggestions — and differ
-// only in that the compiled one carries no SOURCE POSITION.
+// A pinLedger records rows whose two lanes agree on everything the error
+// TAXONOMY names — code and detail — and differ only in how the diagnostic
+// is PRESENTED. Each pin carries the NUR that owns the drift.
 //
-// Its own map rather than knownDivergences, because it is its own kind of
+// Its own ledger rather than knownDivergences, because it is its own kind of
 // finding. knownDivergences is checked by every gate that walks the corpus
-// and its entries must diverge on all of them; a position loss is visible
-// only where position PRESENCE is asserted, which is here. Filing one there
-// would fail the differential gate for not seeing a divergence it does not
-// look for.
-var knownPositionLoss = map[string]string{
-	"reach.tsv:L52": "NUR171 — the compiled no-match diagnostic is byte-identical and carries no source position: the recorder gives PolyNoMatchSpec no dispatch position and the debug table has none at that pc, so the raise has nothing to stamp (the interpreter's re-run used to supply it)",
+// and its entries must diverge on all of them; a presentation drift is
+// visible only where presentation is asserted, which is here. Filing one
+// there would fail the differential gate for not seeing a divergence it does
+// not look for.
+//
+// The seen-set is the ledger's other half: a pin that stopped drifting is
+// retired with the change that fixed it, never left to rot.
+type pinLedger struct {
+	name string
+	pins map[string]string
+
+	mu   sync.Mutex
+	seen map[string]bool
 }
 
-var (
-	seenPositionLossMu sync.Mutex
-	seenPositionLossed = map[string]bool{}
-)
-
-func seenPositionLoss(key string) {
-	seenPositionLossMu.Lock()
-	seenPositionLossed[key] = true
-	seenPositionLossMu.Unlock()
+// known reports the pin for key, recording that the gate saw it drift.
+func (l *pinLedger) known(key string) (string, bool) {
+	why, ok := l.pins[key]
+	if !ok {
+		return "", false
+	}
+	l.mu.Lock()
+	if l.seen == nil {
+		l.seen = map[string]bool{}
+	}
+	l.seen[key] = true
+	l.mu.Unlock()
+	return why, true
 }
 
-// checkPositionLossRetired is knownPositionLoss's half of the ledger
-// contract: a pin that stopped diverging is retired with the change that
-// fixed it, never left to rot.
-func checkPositionLossRetired(t testing.TB) {
+// checkRetired fails for every pin the gate did not meet on a full walk.
+func (l *pinLedger) checkRetired(t testing.TB) {
 	t.Helper()
 	if filteredCorpus() {
 		return
 	}
-	seenPositionLossMu.Lock()
-	defer seenPositionLossMu.Unlock()
-	for key, why := range knownPositionLoss {
-		if !seenPositionLossed[key] {
-			t.Errorf("knownPositionLoss entry %s no longer loses its position — retire it with the change that fixed it (was: %s)", key, why)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for key, why := range l.pins {
+		if !l.seen[key] {
+			t.Errorf("%s entry %s no longer drifts — retire it with the change that fixed it (was: %s)", l.name, key, why)
 		}
 	}
 }
+
+// knownPositionLoss pins rows whose compiled error carries no SOURCE POSITION
+// where the interpreter's does.
+var knownPositionLoss = &pinLedger{name: "knownPositionLoss", pins: map[string]string{
+	"reach.tsv:L52": "NUR171 — the compiled no-match diagnostic carries no source position: the recorder gives PolyNoMatchSpec no dispatch position and the debug table has none at that pc, so the raise has nothing to stamp (the interpreter's re-run used to supply it)",
+}}
+
+// knownDiagDrift pins rows whose two lanes describe the SAME failure in
+// different words — the notes, suggestions or secondary spans differ while
+// code and detail agree.
+var knownDiagDrift = &pinLedger{name: "knownDiagDrift", pins: map[string]string{
+	"reach.tsv:L52": "NUR172 — the two lanes describe different argument windows at a poly no-match: CALL_NATIVE_POLY holds both the key atom and the receiver, so the compiled notes report a type mismatch on argument 2, while the interpreter never bound the forward atom and reports an arity failure over one argument",
+}}
 
 func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (refused, unledgered bool) {
 	t.Helper()
@@ -237,8 +259,7 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 					wasCompiled, input, aeC.Detail, aeI.Detail))
 			}
 			if aeI.Row > 0 && aeC.Row == 0 {
-				if why, known := knownPositionLoss[key]; known {
-					seenPositionLoss(key)
+				if why, known := knownPositionLoss.known(key); known {
 					directionFailure(t, "%s: known position loss (%s)", key, why)
 				} else {
 					return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
@@ -249,8 +270,12 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 			// the SAME notes, suggestions, and secondary spans as the
 			// interpreter, not just the same Detail.
 			if diff := diagPayloadMismatch(aeC, aeI); diff != "" {
-				return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
-					wasCompiled, input, diff))
+				why, known := knownDiagDrift.known(key)
+				if !known {
+					return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  diagnostic payload divergence — %s",
+						wasCompiled, input, diff))
+				}
+				directionFailure(t, "%s: known diagnostic drift (%s)", key, why)
 			}
 		}
 		return false, false
@@ -333,7 +358,8 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
 	checkLedgerRetired(t, "compile-or-fallback")
-	checkPositionLossRetired(t)
+	knownPositionLoss.checkRetired(t)
+	knownDiagDrift.checkRetired(t)
 	assertBailDefectLedger(t)
 	if mismatches != 0 {
 		t.Errorf("%d compile-or-fallback divergences the ledger does not know — every program must compile to an identical result and error taxonomy", mismatches)

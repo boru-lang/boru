@@ -7360,13 +7360,14 @@ whole-program re-run supplied one before anything could notice.
   interpreted   [boru/signature_error]: cannot call `dot` — no signature
                 matches the arguments
                   --> 1:1
-  compiled      the identical error, the identical notes and candidates,
+  compiled      the same code and the same detail,
                   --> source position unknown
 ```
 
-Code, detail, notes and suggestions all match. What is missing is `Row`/`Col`,
-so the renderer prints "source position unknown" instead of underlining the
-token.
+Code and detail match. What is missing is `Row`/`Col`, so the renderer prints
+"source position unknown" instead of underlining the token. (The two lanes'
+NOTES also differ at this site, for an unrelated reason — that is NUR172, and
+it is pinned separately.)
 
 **Where it sits.** The VM raises the interpreter's own error here rather than
 bailing, which is the right disposition — a trap that raises the interpreter's
@@ -7383,7 +7384,64 @@ degradation in general and it fixes nothing here, because the whole region is
 unpositioned; a change that broad with no measured benefit is not worth the
 risk to every other VM error's position.
 
-**Pinned:** `knownDivergences["reach.tsv:L52"]`. The differential gate
-compares error PRESENCE and position presence, not exact Row/Col — two lanes
-legitimately differ by a column — so this pin is specifically about a position
-that is absent, not one that is different.
+**Pinned:** `knownPositionLoss["reach.tsv:L52"]`, its own ledger rather than
+`knownDivergences`: position presence is asserted only by the
+compile-or-fallback gate, and a pin in `knownDivergences` must drift on every
+gate that walks the corpus. The gate compares error PRESENCE and position
+presence, not exact Row/Col — two lanes legitimately differ by a column — so
+this pin is specifically about a position that is absent, not one that is
+different.
+
+## NUR172 — the two lanes describe different argument windows at a poly no-match {#nur172}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** `reach.tsv:L52`, on the change that removed the interpreter
+fallbacks. Not a new defect: both diagnostics were always built this way, and
+the whole-program re-run replaced the compiled one before anything could
+compare them.
+
+**The witness.**
+
+```
+5 $.name apply        # a field lens applied to an Integer
+
+  both lanes    [boru/signature_error]: cannot call `dot` — no signature
+                matches the arguments
+
+  interpreted   the argument was 5 (an Integer)
+                candidate `dot (Integer, Node)` takes 2 arguments, but 1 was supplied
+                candidate `dot (Atom, Module)` takes 2 arguments, but 1 was supplied
+                …
+
+  compiled      the arguments were name (an Atom) and 5 (an Integer)
+                candidate `dot (Atom, Module)` — argument 2: expected Module, got 5 (an Integer)
+                candidate `dot (Atom, Class)` — argument 2: expected Class, got 5 (an Integer)
+                …
+```
+
+Code and detail are identical. The NOTES describe two different failures: an
+ARITY failure over one argument, and a TYPE failure on the second of two.
+
+**Where it sits.** Not in the lens, and not in the compiler. `5 dot name`
+typed straight at the interpreter reports the same one-argument window, so
+this is how the interpreter's matcher reports a word whose forward slot it
+never filled: no candidate's stack half matched, forward collection stopped,
+and the report is written over what was collected. The VM's
+`CALL_NATIVE_POLY` has both operands on the stack by construction, so
+`NoMatchDiag` writes the fuller — and more accurate — report.
+
+**The direction of the fix is the interpreter, not the VM.** The compiled
+report names the two values the user actually wrote; the interpreted one
+describes an arity the source does not have. Closing this means the
+interpreter's no-match diagnostic reporting the window it ATTEMPTED rather
+than the window it managed to fill. Weakening the compiled note to match is
+not a fix — it would trade an accurate diagnostic for a uniform one.
+
+**Not sized here.** It is an interpreter-diagnostic change that touches every
+`signature_error` the interpreter raises, so it is scheduled on its own, not
+carried by the fallback removal that found it.
+
+**Pinned:** `knownDiagDrift["reach.tsv:L52"]`, its own ledger for the same
+reason NUR171 has one: the notes are compared only by the compile-or-fallback
+gate, so a `knownDivergences` pin would fail the differential gate for not
+seeing a divergence it does not look for.
