@@ -194,9 +194,6 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 // code, detail, and a position wherever the interpreter carries one.
 func TestUnmatchedDispatchTrapCarrierDisjoint(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	cases := []struct{ name, src string }{
 		// apply.tsv:37 — the former "carrier operand declines" negative:
 		// inc's Integer result is disjoint from apply's Function slot, and

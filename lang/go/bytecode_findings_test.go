@@ -13,27 +13,59 @@ import (
 	"github.com/boru-lang/boru/lang/go/capabilities"
 )
 
-// Finding A / C — RunCompiled resolves a compiled-mode INTERNAL error (a VM
-// lowering assertion or a recovered handler panic) by re-running on the
-// interpreter, but surfaces genuine boru runtime errors (type_error, the
-// resource ceilings) as-is. runtimeShouldFallback is the decision point.
-func TestRuntimeShouldFallback(t *testing.T) {
+// compiledRunError is the one classifier on a compiled RUN failure now that
+// nothing re-runs the source: a genuine boru runtime error (type_error, the
+// resource ceilings, a signature error) and a policy denial are the PROGRAM's
+// own result and pass through untouched; an internal_error or a foreign Go
+// error is a compiler DEFECT and gains the note that says so.
+func TestCompiledRunErrorClassifies(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := a.NativeRegistry()
+	const note = "this is a compiler defect"
 	cases := []struct {
-		name string
-		err  error
-		want bool
+		name   string
+		err    error
+		defect bool
 	}{
-		{"internal_error falls back", core.MakeBoruError("internal_error", "boom", "", "", ""), true},
-		{"foreign (non-Boru) error falls back", errors.New("some go error"), true},
-		{"type_error surfaces", core.MakeBoruError("type_error", "bad", "", "", ""), false},
-		{"evaluation_limit surfaces (fast-fail by design)", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
-		{"tape_exhausted surfaces", core.MakeBoruError("tape_exhausted", "too big", "", "", ""), false},
-		{"signature_error surfaces", core.MakeBoruError("signature_error", "no sig", "", "", ""), false},
+		{"internal_error is a defect", core.MakeBoruError("internal_error", "boom", "", "", ""), true},
+		{"foreign (non-Boru) error is a defect", errors.New("some go error"), true},
+		{"type_error is the program's result", core.MakeBoruError("type_error", "bad", "", "", ""), false},
+		{"evaluation_limit is the program's result", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
+		{"tape_exhausted is the program's result", core.MakeBoruError("tape_exhausted", "too big", "", "", ""), false},
+		{"signature_error is the program's result", core.MakeBoruError("signature_error", "no sig", "", "", ""), false},
+		{"policy denial is the program's verdict", core.PolicyDenied{Err: errors.New("word `IO.print` denied by policy")}, false},
 	}
 	for _, c := range cases {
-		if got := runtimeShouldFallback(c.err); got != c.want {
-			t.Errorf("%s: runtimeShouldFallback = %v, want %v", c.name, got, c.want)
+		got := compiledRunError(reg, c.err)
+		var ae *core.BoruError
+		marked := errors.As(got, &ae) && len(ae.Notes) > 0 &&
+			strings.Contains(ae.Notes[len(ae.Notes)-1], note)
+		if marked != c.defect {
+			t.Errorf("%s: marked as a defect = %v, want %v (err=%v)", c.name, marked, c.defect, got)
 		}
+		if !c.defect && got != c.err {
+			t.Errorf("%s: the program's own error was rewritten: %v", c.name, got)
+		}
+	}
+}
+
+// A designed defer that prepared the interpreter's own error for this moment
+// raises THAT, not the defect note: it is the program's real failure at the
+// point it happens, which is one of the three legal dispositions for a defer
+// site — never a re-run looking for an answer.
+func TestCompiledRunErrorPrefersDeferAlt(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ae := core.MakeBoruError("internal_error", "vm:poly-no-match", "", "", "")
+	ae.DeferAlt = core.MakeBoruError("signature_error", "no matching signature for `f`", "f", "", "")
+	got := compiledRunError(a.NativeRegistry(), ae)
+	if got != ae.DeferAlt {
+		t.Fatalf("DeferAlt not surfaced: got %v", got)
 	}
 }
 
@@ -376,9 +408,6 @@ func TestComputedArmConditions(t *testing.T) {
 // refused (the negative half).
 func TestBothComputedIfLowers(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `add 10 (if (1 eq 1) (add 1 2) (sub 9 4))`
 	a, err := New()
 	if err != nil {
@@ -723,9 +752,6 @@ func TestWordSpliceCompilesNative(t *testing.T) {
 // reducible compiler work, not irreducible reflection.
 func TestMacroexpandCompilesNative(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	for _, c := range []struct {
 		src  string
 		want string
@@ -1654,9 +1680,6 @@ func TestStepBudgetNoSpuriousLimit(t *testing.T) {
 // args by a stack OpCallDynamic. `(mk2 5) 10` -> 11.
 func TestFactoryApplyCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const factory = `def mk2 fn [[x:Integer] [Function] [([x:Integer] => [x add 1])]] `
 
 	// WAS a positive: `(mk2 5) 10` compiled natively to 11, and this test
@@ -2042,9 +2065,6 @@ func TestTopTakingClosureTrim(t *testing.T) {
 // prop suites (`  pass: ${nm}` where nm = a get over the each-element carrier).
 func TestInterpStringRuntimePartCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// nm is a field read over the each-element carrier → a runtime hole. It now
 	// lowers to OpInterp (the VM rebuilds the string from the popped hole at run
 	// time) rather than refusing the program. Compiled == interp, no carrier leak,
@@ -2283,9 +2303,6 @@ func TestMiniParseUnknownLangTrapCompiles(t *testing.T) {
 // keys) does not refuse the program — the trap truncates it.
 func TestModuleExportGetrNotFoundTrapCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const src = `import "boru:math-util"  MathUtil!.nope`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil {
@@ -3114,9 +3131,6 @@ func TestStageAVariadicBranchResult(t *testing.T) {
 // (internal_error vs the interpreter's signature_error for f 0).
 func TestStageAVariadicSoundnessGate(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	mustRefuse := []string{
 		// A 0-or-1 variadic fn result consumed by add.
 		`def f fn [[n:Integer] [] [if (n lte 0) [] [n mul 2]]]  f 3 add 1`,
@@ -3164,9 +3178,6 @@ func TestStageAVariadicSoundnessGate(t *testing.T) {
 // interpreter.
 func TestReturnedCapturingClosureApply(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	positive := []struct {
 		src  string
 		want string
@@ -3651,9 +3662,6 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 // closure arity, which one OpCallDynamic cannot model.
 func TestFnValueAutoApplyRefusals(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	refusals := []struct{ name, src, want string }{
 		{"multi-overload 0-arg member", `def z fn [[] [Integer] [42] [n:Integer] [Integer] [n]]  def m {k: z/v}  (m.k)`, "auto-dispatches"},
 		// The read guard's OWN remaining territory after the break-2 closure:
@@ -3676,11 +3684,8 @@ func TestFnValueAutoApplyRefusals(t *testing.T) {
 			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
 		}
 		// The silent-fallback path must produce the interpreter's value.
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
-		}
 		if errC != nil || errI != nil {
 			t.Fatalf("%s: run errs compiled=%v interp=%v", c.name, errC, errI)
 		}
@@ -3739,9 +3744,6 @@ func TestFnValueAutoApplyRefusals(t *testing.T) {
 // ascend shape keeps its refusal (sound interpreter fallback).
 func TestWalkHookClosureCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	parity := []struct{ name, src, want string }{
 		{"tier-2 corpus row (empty-flex ascend consumed as 4th arg)",
 			`def acc (flex [])  walk {mode: "depth"} {a:1 b:[2 3]} (m:Any => [acc (m.path) append])  acc`,
@@ -3835,11 +3837,8 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 		if !strings.Contains(reason, c.want) {
 			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
-		}
 		if (errC == nil) != (errI == nil) || codeOf(errC) != codeOf(errI) {
 			t.Fatalf("%s: fallback err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
 		}
@@ -3947,9 +3946,6 @@ func TestUnmatchedDispatchTrapPreservesPriorEffects(t *testing.T) {
 // dispatch whose runtime outcome can differ from the static one.
 func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// (The former "carrier operand declines" negative — `5 inc apply` —
 	// became a POSITIVE with the Phase 6 M4 carrier-disjointness extension,
 	// and since OpDispatchRematch landed the whole single-carrier-window
@@ -4069,11 +4065,8 @@ func TestUnmatchedDispatchTrapNegatives(t *testing.T) {
 		if !strings.Contains(reason, c.want) {
 			t.Errorf("%s: refusal reason %q; want substring %q", c.name, reason, c.want)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotC, _, errC := mustNew(t).RunCompiled(c.src)
 		gotI, errI := mustNew(t).RunInterp(c.src)
-		if compiled {
-			t.Errorf("%s: ran compiled; want interpreter fallback", c.name)
-		}
 		if codeOf(errC) != codeOf(errI) {
 			t.Errorf("%s: fallback err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
 		}
@@ -4312,9 +4305,6 @@ func TestTypedDefBindCompiles(t *testing.T) {
 // probe-confirmed divergences before the fix, both now refusals.
 func TestPR225P1Refusals(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// (1) A fn-body literal EMBEDDING an enclosing binding's container:
 	// interp = fresh spine + SHARED member, which neither a deep-clone
 	// freshen nor a shared const models — must refuse; fallback restores
@@ -4367,9 +4357,6 @@ func TestPR225P1Refusals(t *testing.T) {
 // negative twins pin what must KEEP refusing.
 func TestFilterLambdaCaptureCompiles(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	parity := []struct{ name, src, want string }{
 		{"enclosing-fn param capture (list pair shape)",
 			`def f (fn [[y:Integer] [List] [ filter ([e:Any] => [ e.value gte y ]) [3 7 9] ]]) f 5`,

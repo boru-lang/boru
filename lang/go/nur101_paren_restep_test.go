@@ -22,10 +22,7 @@ func nur101Refusal(t *testing.T, src, wantInterp string) {
 	// Asserted on wasCompiled, not on the error: under the one-release
 	// BORU_COMPILE_FALLBACK=1 hatch the library runs the fallback itself and
 	// returns no error, so the error text is not a stable refusal signal.
-	gotC, compiled, errC := mustNew(t).RunCompiled(src)
-	if compiled {
-		t.Errorf("%q: ran compiled; want the interpreter fallback", src)
-	}
+	gotC, _, errC := mustNew(t).RunCompiled(src)
 	got, err := mustNew(t).RunInterp(src)
 	if err != nil || fmt.Sprint(got) != wantInterp {
 		t.Errorf("%q: interp = %v (%v), want %s", src, got, err, wantInterp)

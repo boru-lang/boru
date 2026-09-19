@@ -217,15 +217,15 @@ func TestS7Lang_RunCompiledStrictCompileError(t *testing.T) {
 	}
 }
 
-// TestS7Lang_ForceCompileReason drives forceCompileReason (boru.go:746-748
+// TestS7Lang_CompileFailureReason drives compileFailureReason (the
 // empty-reason default, plus the pass-through else): the empty reason maps
 // to a generic message; a non-empty reason passes through verbatim.
-func TestS7Lang_ForceCompileReason(t *testing.T) {
-	if got := forceCompileReason(""); got != "program is not compilable" {
-		t.Errorf("forceCompileReason(\"\") = %q, want the generic default", got)
+func TestS7Lang_CompileFailureReason(t *testing.T) {
+	if got := compileFailureReason(""); got != "program is not compilable" {
+		t.Errorf("compileFailureReason(\"\") = %q, want the generic default", got)
 	}
-	if got := forceCompileReason("some reason"); got != "some reason" {
-		t.Errorf("forceCompileReason non-empty = %q, want pass-through", got)
+	if got := compileFailureReason("some reason"); got != "some reason" {
+		t.Errorf("compileFailureReason non-empty = %q, want pass-through", got)
 	}
 }
 

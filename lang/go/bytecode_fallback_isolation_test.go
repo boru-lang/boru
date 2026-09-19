@@ -58,9 +58,6 @@ func TestCompiledReturnCheck(t *testing.T) {
 // (SnapshotForCompile / RestoreForCompile).
 func TestRunCompiledFallbackIsolation(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// Each row is UNCOMPILABLE (so it takes the fallback path) and
 	// side-effecting (so a double-execution would corrupt the result).
 	// RunCompiled must equal a clean interpreter Run.
@@ -245,9 +242,6 @@ func TestCompiledIslandErrorRendering(t *testing.T) {
 // would silently break it).
 func TestCompiledArgsWordFallsBack(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// Bare `args` (the WHOLE per-call list) still falls back: the args
 	// projection has no foldable consumer, so it refuses at its use site and
 	// the interpreter owns it. (Compiling it would need a build-list-from-locals

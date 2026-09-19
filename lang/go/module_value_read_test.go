@@ -18,7 +18,6 @@ package lang
 // are the shapes the corpus does not spell.
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -72,7 +71,6 @@ func TestModuleValueReadsCompileWithParity(t *testing.T) {
 // x 5`, `… undef x`) graduated to the parity rows above once every fn value
 // carried its home.
 func TestModuleValueReadSoundFallbacks(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
 		{`def f fn [[] [Any] [def m (module [export "X" {a: 1}]) m]] f`, "fn f: body result of unknown provenance"},
 	}
@@ -92,12 +90,13 @@ func TestModuleValueReadSoundFallbacks(t *testing.T) {
 		if !strings.Contains(reason, c.reason) {
 			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {
-			t.Errorf("%q: expected the interpreter fallback", c.src)
+			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", c.src)
+			continue
 		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%q: engine divergence on the fallback: compiled=%v/%v interp=%v/%v", c.src, gotC, errC, gotI, errI)
-		}
+		// No fallback re-runs it, so there is no compiled answer to compare:
+		// the failure is booked as the defect it is (compile_defect_test.go).
+		requireCompileDefect(t, c.src, gotC, errC)
 	}
 }

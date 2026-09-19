@@ -106,7 +106,6 @@ func TestLeadApplyArityMismatchParity(t *testing.T) {
 // native above.) Sound whole-program refusal with interpreter parity.
 func TestMultiArgChainedApplyRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract, like TestApplyOverParamFnCompiles.
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 
 	fnValueM2Refusal(t, "chained apply over a two-arg inner group f (g x y)",
 		`def c2 fn [[f:Function g:Function x:Integer y:Integer] [Integer] [f (g x y)]] c2 ([n:Integer] => [n mul 2]) ([[a:Integer b:Integer] [Integer] [a sub b]] fn) 10 3`,
@@ -121,7 +120,6 @@ func TestMultiArgChainedApplyRefuses(t *testing.T) {
 // otherwise reorder the tail apply against it. Both refuse with
 // interpreter-parity fallback.
 func TestTailProofNegatives(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 
 	fnValueM2Refusal(t, "an effect event between the def-split and the tail",
 		`def ld fn [[g:Function x:Integer] [Integer] [def r (g x) print "mid" g r]] ld ([n:Integer] => [n mul 2]) 14`,

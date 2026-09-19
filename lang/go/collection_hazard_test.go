@@ -19,7 +19,6 @@ import (
 const hzF = `def f fn [[g:Function x:Integer][Integer]`
 
 func TestCollectionHazardRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
 		{hzF + `[g x add 1]]  f (z:Integer => [mul 3 z]) 5`, "NUR121"},
 		{hzF + `[(g x add 1)]]  f (z:Integer => [mul 3 z]) 5`, "NUR121"},

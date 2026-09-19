@@ -17,7 +17,6 @@ import (
 // re-raised an IO.exit request), so the fallback completes. A genuine boru
 // error stays trapped — the escape hatch is unchanged.
 func TestDoDeferFallsBackNotTrapped(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// A poly native seat commits an arity over the first call's gradual
 	// residual and the second call bails at run time (NUR147); wrapped in a
 	// `do`, the bail must still fall back, not surface as a trapped Error.
@@ -75,7 +74,6 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 // tear down, so InstallDef refuses and the whole program falls back — slow,
 // not wrong.
 func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const pre = `def m {e: %s} end  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end  `
 	const g = `def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  `
 	refused := []struct{ src, want string }{

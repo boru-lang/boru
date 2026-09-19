@@ -376,9 +376,6 @@ func TestRunCompiledDoesNotLeakStampingIntoLaterRun(t *testing.T) {
 // them and only the fallback re-run's authoritative stamps reach the report.
 func TestRunCompiledFallbackNoDuplicateStampReport(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// A stampable module import followed by an uncompilable tail (a def
 	// consuming a DYNAMIC-count variadic loop region — the stable S5 refusing
 	// fixture) so the whole program falls back to the interpreter after the

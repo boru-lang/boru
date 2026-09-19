@@ -21,9 +21,6 @@ import (
 // enclosing binding (`cur`) alongside its own local (`j`) must capture only cur.
 func TestEachBodyLocalValueDef(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// Cases that MUST compile natively (RunCompiledStrict) — no island fallback.
 	strict := []struct{ name, src, want string }{
 		{"computed body-local in each", `def g fn [[][Integer][def _ ([1] each [def j (5 add 1) j]) 5]] (g)`, "[5]"},

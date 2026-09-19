@@ -18,7 +18,6 @@ import (
 // A capturing local fn keeps the refusal (its value is a closure the
 // placement cannot bake).
 func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const local = "def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end "
 	// placed: the local fn's def lowers as a placed install (BIND_DYN_SCOPE
 	// in the disassembly); false where the interpreter's own rule leaves

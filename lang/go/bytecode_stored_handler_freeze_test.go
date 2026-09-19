@@ -29,9 +29,6 @@ import (
 // latch.
 func TestCompiledStoredHandlerFreezeRedefine(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	cases := []struct {
 		name, src, want string
 		compiles        bool
@@ -112,7 +109,6 @@ call {} svc`, "[11]", true},
 // when it does.
 func TestStoredHandlerMidProgramRebindCompilesAndMatches(t *testing.T) {
 	// Legacy refusal+fallback-parity contract (see note above).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `def bonus 1
 def svc (service {})
 add {op:"go"} ([req:Map state:Any] => [bonus add 5]) svc

@@ -21,7 +21,6 @@ import (
 // a committed call, so `def m {e: false}  if (m "e" get) [def f fn […]] []
 // f 1` answered the arm's 101 where the interpreter raises.
 func TestConditionalFnDefIsSpeculative(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	const arm = `[def f fn [[x:Integer][Integer][x add 100]] end]`
 	const outer = `def f fn [[x:Integer][Integer][x add 1]] end `
 	compiled := []struct{ src, want string }{

@@ -27,6 +27,9 @@ import (
 // code and message agree, the notes name a marker only one side has.
 func requireParityHead(t *testing.T, src string, gotC []any, errC error, gotI []any, errI error) {
 	t.Helper()
+	if noteCompileDefect(t, src, gotC, errC) {
+		return
+	}
 	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || firstErrLine(errC) != firstErrLine(errI) {
 		t.Errorf("%q: parity: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
 	}
@@ -90,7 +93,6 @@ func TestWordReadDispatchParity(t *testing.T) {
 // mixed with a `/v` read of the same binding — each a refusal the interpreter absorbs that
 // answers the interpreter's value.
 func TestWordReadDispatchRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []struct{ src, reason string }{
 		{wrF + `[[g]]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{wrF + `[{a: g}]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
@@ -220,7 +222,6 @@ func TestBodyLocalWordReadParity(t *testing.T) {
 	}
 	// the top-level spelling has no frame to seat in: the Stage-3 refusal
 	// it always had, and the interpreter's answer
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	a, err := New()
 	if err != nil {
 		t.Fatalf("New: %v", err)

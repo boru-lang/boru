@@ -170,9 +170,6 @@ func TestShapedMethodCapturingMemberStaysRefused(t *testing.T) {
 // truer diagnosis; the methodShapeAnnotated decline still stands behind it.
 func TestShapedMethodComputedArgStaysRefused(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	fnValueM2Refusal(t, "computed arg in the statement window",
 		`import "boru:log" ; Log.add-sink memory/q ; Log.remove-sink console/q ; def c (Log.counter "n") ; c.add (1 add 2) ; Log.measurements size`,
 		"fn-value lead's argument was collected by a later dispatch (NUR121)")
@@ -259,12 +256,9 @@ func TestShapedMethodClaimViolationDefers(t *testing.T) {
 	// RunCompiled: the claim fails at run time (1 result vs 0 claimed) →
 	// internal_error → silent interpreter re-run with the CORRECT result.
 	a2 := zzShapedInstance(t)
-	gotC, compiled, errC := a2.RunCompiled(src)
+	gotC, _, errC := a2.RunCompiled(src)
 	a3 := zzShapedInstance(t)
 	gotI, errI := a3.RunInterp(src)
-	if compiled {
-		t.Errorf("claim violation: ran compiled; want the interpreter fallback")
-	}
 	if errC != nil || errI != nil {
 		t.Fatalf("claim violation: errs compiled=%v interp=%v", errC, errI)
 	}

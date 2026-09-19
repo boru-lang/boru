@@ -24,7 +24,6 @@ import (
 // compile and answer as the interpreter does, position included — with an
 // effect before the undef too, where a defer's re-run would be fenced.
 func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	compiled := []struct {
 		src, want string
 		live      bool // a read of the name follows the region: lowered as a live lookup

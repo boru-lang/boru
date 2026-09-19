@@ -110,9 +110,6 @@ func TestDynScopeUnreachableBranchArmStaysRefused(t *testing.T) {
 // registry install) — sound interpreter fallback.
 func TestDynScopeUnpromotedComputedDefRefuses(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	src := `def f fn [[n:Integer] [Integer] [if (n lte 0) [acc3] [def acc3 (n add 1) f (n sub 1)]]] f 2`
 	a, err := New()
 	if err != nil {

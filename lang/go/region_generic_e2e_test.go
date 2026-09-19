@@ -245,7 +245,6 @@ func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
 // window reaches it; this pins that the corpus of shapes has no program
 // for it, which is the measured state, not a guarantee.
 func TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	rows := []string{
 		`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end go def k "x" end go`,
 		`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end go def k fn [[][Integer][9]] end go`,

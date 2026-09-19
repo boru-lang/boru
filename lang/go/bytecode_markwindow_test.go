@@ -88,9 +88,6 @@ func TestMarkWindowDoCatchCompiles(t *testing.T) {
 // (The module-export-in-region sibling graduated 2026-07-17 — §9.1.)
 func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	// Re-diagnosed 2026-07-20 (PR #280 review): the promotion itself is now
 	// the refusal — a variadic catch region's stores would pop success-arity
 	// values the raising run never produced — caught at lowerCall's

@@ -16,9 +16,6 @@ import (
 // (MarkUncompilable) → the program falls back → compile==interpret.
 func TestEachFoldGradualCollection(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	gradual := []struct{ name, src string }{
 		{"each over gradual list", `def mk fn [[][Any][[1 2 3]]] (each [mul 2] (mk))`},
 		{"fold over gradual list", `def id fn [[x:Any][Any][x]] (fold [add] (id [1 2 3]) 0)`},

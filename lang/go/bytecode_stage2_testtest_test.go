@@ -82,9 +82,6 @@ Test.fail-count end`)
 // fail-count included.
 func TestTestBodyDotMethodStaysSound(t *testing.T) {
 	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	stage1aSound(t, `import "boru:test" end
 def mkrig fn [[] [Map] [ {int: ([a:Integer b:Integer] => [a b add])} ]]
 def rig (mkrig)

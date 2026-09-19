@@ -24,7 +24,6 @@ func TestPolyReturnJoinCompiles(t *testing.T) {
 // differ can never share one recorded call — the set refuses with faithful
 // interpreter fallback (userPolyArmShapeOK's count gate).
 func TestPolyReturnJoinCountMismatchRefuses(t *testing.T) {
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
 	fnValueM2Refusal(t, "arms with differing return counts",
 		`def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer] [Integer] [1] [a:String] [String String] ['a' 'b']] g (id 5)`,
 		"ambiguous dispatch, no poly re-match")
