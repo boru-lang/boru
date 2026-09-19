@@ -308,7 +308,6 @@ func TestRunNoCompile(t *testing.T) {
 	}
 }
 
-
 // discover: explicit files are added verbatim (even without the suffix) and
 // de-duplicated; a directory is walked for *_test.boru.
 func TestDiscover(t *testing.T) {
