@@ -213,13 +213,35 @@ func New(opts ...Options) (*Boru, error) {
 
 func init() {
 	// Vm.run's sub-engine runner (modules/vm.go CompiledSubRun): the module
-	// package cannot import lang, so the compiled entry point is injected
-	// here — the same one outcome as the public Run. It used to re-run the
-	// source on the interpreter for compile_failed, which made this a place
-	// a compile failure could still hide.
+	// package cannot import lang, so the entry point is injected here.
+	//
+	// This one keeps its interpreter arm, and the distinction is the whole
+	// point of the removal rather than an exception to it. Everywhere else,
+	// re-running on the interpreter HID a compile failure: the program had a
+	// static form the compiler was supposed to lower and did not, and the
+	// answer came back with nothing saying so. `Vm.run` executes source
+	// CONSTRUCTED AT RUNTIME, so there is no ahead-of-time program to
+	// compile — "compiling" it is parse+compile+run at run time, which is
+	// the interpreter. That is tier 1 of the three-tier partition
+	// (test/go/langspec/compiled_metafallback_test.go), the one category the
+	// project has reasoned is genuinely irreducible, and the sub-engine is
+	// its documented permanent home.
+	//
+	// So the compile is an OPPORTUNITY, not an obligation, and taking the
+	// interpreter when it does not compile is a sanctioned outcome rather
+	// than a hidden defect. It is attributed and counted like every other
+	// interpreter entry (the interp-entry census), which is what keeps it
+	// honest: a silence nobody measures is the thing being removed, and this
+	// one is measured.
 	modules.CompiledSubRun = func(reg *native.Registry, src string) ([]native.Value, error) {
 		a := &Boru{registry: reg}
 		vals, _, _, err := a.RunAutoValues(src)
+		var failed *BoruError
+		if errors.As(err, &failed) && failed.Code == "compile_failed" {
+			disarm := a.ArmRuntimeStamping()
+			vals, err = a.RunInterpValues(src)
+			disarm()
+		}
 		return vals, err
 	}
 }
