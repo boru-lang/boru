@@ -30,9 +30,15 @@
 # (a container read, a factory result, a quoted list from a flex) lowers
 # to a poly re-match over the word's own overloads instead of failing —
 # the interpreter's own dispatch, made at run time by the live value.
-callbacks.tsv	20	25 at the corpus expansion of 2026-09-17; 25 -> 20 on 2026-09-19 (S1a: a dynamic callback poly re-matches — the container-read callbacks L57, L58 and three more)
+# 60 -> 53 on 2026-09-19 (S1b-2): a computed fn value def-bound at the
+# top level — a factory's result, a module factory's, a branch-chosen one,
+# FnUtil.compose's — has no Defs binding under analysis (the fn-carrier
+# side table holds it), and the forward-collection scans consulted only
+# Defs, so the dispatch saw a bare WORD at the Function slot; the
+# collection seat and the /v read now resolve the table.
+callbacks.tsv	18	25 at the corpus expansion of 2026-09-17; 25 -> 20 on 2026-09-19 (S1a: a dynamic callback poly re-matches — the container-read callbacks L57, L58 and three more); 20 -> 18 on 2026-09-19 (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a /v read — L82, L154)
 code-bodies.tsv	13	27 at the corpus expansion of 2026-09-17; 27 -> 13 on 2026-09-19 (S1a: a runtime code body — a quoted list read from a flex or a map — poly re-matches to the token overload)
-each-variants.tsv	3	13 at the corpus expansion of 2026-09-17; 13 -> 3 on 2026-09-19 (S1a: the container-read callbacks L193–L196 and the fn-value islands that became poly re-matches)
+each-variants.tsv	2	13 at the corpus expansion of 2026-09-17; 13 -> 3 on 2026-09-19 (S1a: the container-read callbacks L193–L196 and the fn-value islands that became poly re-matches); 3 -> 2 on 2026-09-19 (S1b-2: L203, a factory-built value read at each)
 fn-locals-scope.tsv	10	the corpus expansion of 2026-09-17 (PR #471 §2); per file since 2026-09-18 (P0)
-fold-map-filter.tsv	7	30 at the corpus expansion of 2026-09-17; 30 -> 7 on 2026-09-19 (S1a: fold/filter/scan over a container-read or factory-built callback poly re-match)
-module-composition.tsv	7	8 at the corpus expansion of 2026-09-17; 8 -> 7 on 2026-09-19 (S1a: L101, a class-field callback from a module class)
+fold-map-filter.tsv	4	30 at the corpus expansion of 2026-09-17; 30 -> 7 on 2026-09-19 (S1a: fold/filter/scan over a container-read or factory-built callback poly re-match); 7 -> 4 on 2026-09-19 (S1b-2: L73, L227, L229 — a factory-built or branch-chosen value read bare at fold, filter and each)
+module-composition.tsv	6	8 at the corpus expansion of 2026-09-17; 8 -> 7 on 2026-09-19 (S1a: L101, a class-field callback from a module class); 7 -> 6 on 2026-09-19 (S1b-2: L95, a module factory's value read at each)

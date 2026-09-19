@@ -179,7 +179,20 @@ func (h *regionHost) ScratchParenSpan(items []core.Value) []core.Value {
 
 // --- classifications: delegated to core's shared implementations ---
 
-func (h *regionHost) DefTop(name string) (core.Value, bool) { return h.reg.Defs.Top(name) }
+// DefTop resolves a name to its active binding — and, under an analysis
+// pass, to the fn carrier a computed fn value's def left in the per-pass
+// side table (core.CheckFnCarrierBind), the binding the engine's own seat
+// resolves (Engine.DefTop, S1b-2), so the descriptor's plan walk and the
+// dispatch it describes claim the same forward slots.
+func (h *regionHost) DefTop(name string) (core.Value, bool) {
+	if top, ok := h.reg.Defs.Top(name); ok {
+		return top, true
+	}
+	if h.reg.Check.IsActive() {
+		return core.CheckFnCarrierBind(h.reg, name)
+	}
+	return core.Value{}, false
+}
 
 func (h *regionHost) IsFnWordBarrier(tok core.Value) bool {
 	return core.FnWordBarrierOn(h.reg, tok)

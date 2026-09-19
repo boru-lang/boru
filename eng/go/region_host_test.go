@@ -161,6 +161,26 @@ func TestRegionHostFlowInterruptedIsLive(t *testing.T) {
 	}
 }
 
+// TestRegionHostResolvesFnCarrierUnderAnalysis pins the seat's analysis
+// arm (S1b-2): a name def-bound to a computed fn's CARRIER — held in the
+// per-pass side table, not in Defs — resolves under an analysis pass and
+// only there, exactly as the engine's own seat resolves it.
+func TestRegionHostResolvesFnCarrierUnderAnalysis(t *testing.T) {
+	h, reg := newHost(t, core.NewWord("f"))
+	core.NoteCheckFnCarrierBind(reg, "f", core.NewCarrier(core.TFunction))
+	if _, ok := h.DefTop("f"); ok {
+		t.Fatal("outside analysis the table is not consulted")
+	}
+	end := reg.Check.Begin()
+	defer end()
+	if v, ok := h.DefTop("f"); !ok || !v.Carrier || !v.Parent.ConformsTo(core.TFunction) {
+		t.Errorf("under analysis the table-bound carrier resolves: %v/%v", v, ok)
+	}
+	if _, ok := h.DefTop("zz"); ok {
+		t.Error("an unbound name misses")
+	}
+}
+
 // THE CENTRAL PROPERTY: a word slot is resolved LIVE, so the same descriptor
 // answers differently as the binding moves. That is the whole reason the
 // model keeps a word slot as SlotWordRef instead of freezing its value, and

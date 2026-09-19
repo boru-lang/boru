@@ -77,8 +77,12 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	// never outlives the run — a parked closure escapes as the payload, not
 	// as a handler bound to this run's context (Codex P2 on PR #444).
 	invoke := r.Invoker
+	// Applied after the interpreter's dispatch matched the bridged
+	// signature: SigMatched, so the invoker applies the unit positionally
+	// (ClosurePayload.SigMatched).
+	matched := core.ClosureSigMatched(v)
 	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
-		return invoke(r, v, args)
+		return invoke(r, matched, args)
 	})
 	if !ok {
 		return v, false

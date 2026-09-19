@@ -9649,9 +9649,14 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 	// interpreter's `[3]`; `do [(f 2)]` compiled to an island that
 	// raised `undefined word: f` where the interpreter answers 3. A
 	// table carrier reaching a list MEMBER is exactly that corruption and
-	// nothing else — a genuine data list of a computed fn spells the
-	// member `f/v`, and stepWordVal deliberately never consults the
-	// table — so refuse and let the interpreter fallback own it.
+	// nothing else — a genuine data list of a fn value spells the member
+	// `g/v` over a CONCRETE binding, which Defs resolves and no carrier
+	// stands in for — so refuse and let the interpreter fallback own it.
+	// The `/v` read of a name bound to a COMPUTED fn joined this guard on
+	// 2026-09-19 (S1b-2): stepWordVal resolves the fn-carrier side table
+	// now, where it used to report undefined_word, so both spellings of
+	// the corruption arrive here instead of one arriving and the other
+	// refusing for a reason of its own.
 	if r != nil {
 		for i := range ins {
 			if _, tabled := core.CheckFnCarrierBoundName(r, ins[i].ID); tabled {

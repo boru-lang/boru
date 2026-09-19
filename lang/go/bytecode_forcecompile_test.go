@@ -50,14 +50,18 @@ func TestRunCompiledStrict(t *testing.T) {
 		// blocking diagnostic can be COMPILE-PASS-ONLY (`boru check` prints
 		// zero diagnostics for this program, which runs clean interpreted).
 		// The force-compile boundary appends the first blocking diagnostic's
-		// code and detail (completeness review §8.1(4)). The fixture is the
-		// Stage 1 `/v`-hold class: a `/v` read of a name def-bound to a
-		// computed fn keeps its compile-lane undefined_word (stepWordVal
-		// declines the fn-carrier table) — the plain-read spelling of this
-		// program compiles since Stage 1 and can no longer pin the sentinel.
+		// code and detail (completeness review §8.1(4)). The fixture is a
+		// corpus row (case.tsv:L97) whose clause list holds a bare `zed`:
+		// the plain pass leaves it an atom-match and answers 'matched', the
+		// compile pass reads it as a word and reports undefined_word — one
+		// of the two compile-only diagnostics the diagnostic-surface ledger
+		// still carries (diag_surface_test.go). The previous fixture was
+		// the Stage 1 `/v` hold, which S1b-2 lifted: a `/v` read of a name
+		// def-bound to a computed fn now resolves the fn-carrier side table,
+		// so that program refuses for a reason of its own and names no
+		// diagnostic.
 		a, _ := New()
-		_, err := a.RunCompiledStrict(
-			`def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] end def h (mk 1) end 2 h/v apply`)
+		_, err := a.RunCompiledStrict(`case zed/q [zed "matched" "other"]`)
 		if err == nil {
 			t.Fatal("expected a check-diagnostics refusal, got nil")
 		}

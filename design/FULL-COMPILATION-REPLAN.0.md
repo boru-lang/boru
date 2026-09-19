@@ -200,6 +200,19 @@ result) and `walk` (its own code-body gate) keep the refusal. Found on the
 way: NUR164, a callback mismatch inside a handler raised a plain Go error
 the compiled-by-default lane read as its own bug.
 
+**S1b's first two increments landed 2026-09-19** (the handoff log has
+both). The first made the fn-value seam native; the second resolved a
+computed fn value at a forward slot — the collection seat and the `/v`
+read consult the fn-carrier side table, so `each f/v xs` over a factory's
+result dispatches instead of refusing — and made a fn-VALUE CLOSURE a fn
+value at every callback seam, matched against its own signature before
+its unit runs. Compile failures 60 → 53, the census 77 → 78 and engine
+entries 419 → 422 on the one newly-compiling wrapper row. The estimate
+below is NOT refreshed for them: a step's numbers move at the end of the
+step, not per increment (SESSION-HANDOVER.0.md's rule), and S1b's owed
+half — the apply shapes, the wrappers, provenance — is the design-bound
+part the estimate was built on.
+
 **Re-estimated 2026-09-19, at the end of S1a (the last column).** Three
 session-days went on P0, S0's first increment and S1a against 8–14
 estimated for those slices, but only S1a's beat is evidence, and S1a was

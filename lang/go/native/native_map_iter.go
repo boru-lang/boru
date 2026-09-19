@@ -31,15 +31,35 @@ type mapBody struct {
 	body    Value      // when closure: the closure value (run via InvokeBody)
 	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
 	tokens  []Value    // when quotation: the body tokens
+	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
+	// FnDefInfo the closure's declared signature is matched under, so the
+	// arm hands it the KeyVal the lambda convention hands and raises the
+	// lambda no-match where the interpreter does (S1b-2). body then carries
+	// the SigMatched mark: the invoker applies the unit positionally.
+	sigFn Value
 }
 
 // newMapBody classifies the body arg: a compiled CLOSURE (the bytecode VM
 // driving each/fold over a map) runs per VALUE via the InvokeBody seam, like a
-// quotation; a (lambda) Function is handed a KeyVal; anything else must be a
-// concrete quotation list (handed the value).
+// quotation — unless it is a fn VALUE (a capturing `fn` / `=>` literal minted
+// at run time: a factory's result, a def-bound one read back), which is a
+// LAMBDA to this arm exactly as it is to the interpreter: handed the KeyVal
+// and matched against its own signature first; a (lambda) Function is handed
+// a KeyVal; anything else must be a concrete quotation list (handed the
+// value). Measured before the fn-value arm (2026-09-19, the S1a head): a
+// factory's `[n:Integer]` closure over `{a:1 b:2}` answered `{a:2 b:3}` for
+// the interpreter's signature_error, and a `[kv:KeyVal]` one raised an
+// internal `dot` no-match over the bare value it was handed.
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	if IsCompiledClosure(body) {
-		return mapBody{closure: true, body: body}, nil
+		mb := mapBody{closure: true, body: body}
+		if ClosureIsFnValue(body) {
+			if fnv, ok := ClosureAsFnDef(reg, body); ok {
+				mb.sigFn = fnv
+				mb.body = ClosureSigMatched(body)
+			}
+		}
+		return mb, nil
 	}
 	if body.Parent.ConformsTo(TFunction) {
 		mb := mapBody{lambda: true, fn: body}
@@ -62,6 +82,15 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 		return mb.callLambda(reg, []Value{NewKeyVal(k, v, i, n)})
 	}
 	if mb.closure {
+		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
+		// against the value's own signature (sigFn) before the unit runs.
+		if mb.sigFn.Data != nil {
+			args := []Value{NewKeyVal(k, v, i, n)}
+			if MatchFnSig(mb.sigFn, args) == nil {
+				return Value{}, false, noLambdaMatch(reg, args)
+			}
+			return invokeBodyTop(reg, mb.body, args)
+		}
 		// A closure compiled from a LAMBDA body expects a KeyVal (its named
 		// param destructures `kv.v`/`kv.i`); one compiled from a token body
 		// sees the bare value, like a quotation. The unit's recorded shape says
@@ -74,6 +103,15 @@ func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bo
 	return runQuotationBody(reg, mb.tokens, []Value{v})
 }
 
+// noLambdaMatch is the map arm's lambda no-match: a BoruError, not a bare
+// fmt.Errorf (NUR164), as the compiled-by-default lane reads every non-Boru
+// error off the VM as an internal bail and re-runs the whole program on the
+// interpreter.
+func noLambdaMatch(reg *Registry, args []Value) error {
+	return reg.BoruError("signature_error",
+		fmt.Sprintf("no matching lambda signature for %d argument(s)", len(args)), "")
+}
+
 // fold runs the body for one entry with an accumulator. The quotation form
 // pushes the accumulator first and the value on top (same stack order as list
 // fold: a 2-arg word sees value=top, acc=deeper); the lambda receives
@@ -83,6 +121,14 @@ func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) 
 		return mb.callLambda(reg, []Value{acc, NewKeyVal(k, v, i, n)})
 	}
 	if mb.closure {
+		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
+		if mb.sigFn.Data != nil {
+			args := []Value{acc, NewKeyVal(k, v, i, n)}
+			if MatchFnSig(mb.sigFn, args) == nil {
+				return Value{}, false, noLambdaMatch(reg, args)
+			}
+			return invokeBodyTop(reg, mb.body, args)
+		}
 		// (accumulator, entry): a lambda-derived closure takes the entry as a
 		// KeyVal, a token-derived one as the bare value.
 		if ClosureWantsKeyVal(mb.body) {
@@ -111,12 +157,7 @@ func invokeBodyTop(reg *Registry, body Value, inputs []Value) (Value, bool, erro
 func (mb mapBody) callLambda(reg *Registry, args []Value) (Value, bool, error) {
 	sig := MatchFnSig(mb.fn, args)
 	if sig == nil {
-		// A BoruError, not a bare fmt.Errorf (NUR164): the compiled-by-default
-		// lane reads every non-Boru error off the VM as an internal bail and
-		// re-runs the whole program on the interpreter, so a plain Go error
-		// here turned a correct compiled verdict into a silent re-run.
-		return Value{}, false, reg.BoruError("signature_error",
-			fmt.Sprintf("no matching lambda signature for %d argument(s)", len(args)), "")
+		return Value{}, false, noLambdaMatch(reg, args)
 	}
 	// InvokeCallbackFn, not reg.CallBoru: a lambda passed in from another module
 	// runs on its DEFINING registry (design/FUNCTION-VALUE-SCOPE.0.md), and a

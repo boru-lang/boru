@@ -791,6 +791,36 @@ func ClosureWantsKeyVal(v core.Value) bool {
 	return ok && cl.InShape == ClosureInKeyVal
 }
 
+// UnitIsFnValue reports whether a closure unit is a fn VALUE's — compiled
+// from a `fn` / `=>` literal (CompiledFn.Lambda) with its declared param
+// contract recorded, one Params entry per real arg (lamParamContract seats
+// it) — as opposed to a callback BODY unit compiled at a call site from a
+// quotation, which has no contract of its own (Params empty, NArgs the
+// word's input count).
+func UnitIsFnValue(fn *CompiledFn) bool {
+	return fn != nil && fn.Lambda && len(fn.Params) == fn.NArgs
+}
+
+// ClosureIsFnValue reports whether v is a compiled closure minted from a fn
+// VALUE — a capturing `fn` / `=>` literal pushed at run time (a factory's
+// result, a def-bound one read back), in the plain value shape — which every
+// callback seam must treat as the interpreter treats a fn value: matched
+// against its own signature over the args the seam hands (a KeyVal at the
+// map arm, the stack's top-down order at the token seam), never run blind
+// like a callback body unit (S1b-2). A closure minted by a program the
+// running one cannot name reads as data here, as it does to the bridge.
+func ClosureIsFnValue(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || cl.InShape != ClosureInValue {
+		return false
+	}
+	prog, ok := cl.Prog.(*Program)
+	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return false
+	}
+	return UnitIsFnValue(&prog.Fns[cl.Unit])
+}
+
 // IsCompiledClosure reports whether v is a compiled-closure VALUE (a body unit
 // the VM runs via InvokeBody), as opposed to an interpreter FnDefInfo lambda.
 // Both are Parent=TFunction, so a higher-order handler that treats a lambda

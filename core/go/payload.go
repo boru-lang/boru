@@ -558,6 +558,20 @@ type ClosurePayload struct {
 	// value is stepped and __RC enforces the count. Set on the VALUE at the
 	// seam, never on the stored closure: the same closure can cross both.
 	RetTrim bool
+	// SigMatched marks a closure whose OWN signature the handing seam has
+	// already matched, with the args in signature order: the closure bridge
+	// (a bridged FnDefInfo's handler — closureAsWord, ClosureAsFnDef — runs
+	// after the interpreter's dispatch matched), and a native seam that
+	// matched the value's contract over the lambda-shaped args it hands (the
+	// map arm's KeyVal, filter's entry, walk's payload). Off, the closure
+	// reached the TOKEN seam (InvokeBody: each over a list, a paren call)
+	// with its inputs in STACK order, and a fn-VALUE closure — one minted
+	// from a `fn` / `=>` literal, a factory's capturing result — is matched
+	// there the way the interpreter matches a stepped value, top down,
+	// before its unit runs, and declines to the stepping path when nothing
+	// matches (S1b-2; eng/go/vm_fnvalue_seam.go). Set on the VALUE at the
+	// seam, never on the stored closure.
+	SigMatched bool
 	// RetPos is where the callback REFERENCE was written (`cbad/v`), which is
 	// the position the interpreter anchors a return-contract error on: its
 	// ReturnCheckInfo.Pos, stamped onto the Function value by stampResultPos

@@ -246,7 +246,10 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	if cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
 		return v, false
 	}
-	body := v
+	// The bridge's handler runs AFTER the interpreter's dispatch matched
+	// the bridged signature, args in signature order: SigMatched, so the
+	// invoker applies the unit positionally (ClosurePayload.SigMatched).
+	body := core.ClosureSigMatched(v)
 	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
 	})
@@ -276,6 +279,26 @@ func closureSigParams(fn *compiler.CompiledFn) ([]core.FnParam, bool) {
 		}
 	}
 	return params, true
+}
+
+// closureMatchesArgs asks a closure unit's OWN declared signature whether it
+// admits these args — the question MatchFnSig answers of the bridged value
+// (closureFnDef below), without minting the bridge. The seams that only need
+// the verdict ask it once per element, and a bridged value carries a
+// capturing handler: building one per element is an allocation per element,
+// and a payload captured that way escapes its caller's frame (measured: one
+// extra alloc per closure invocation on every shape, token bodies included —
+// lang/go/bytecode_allocguard_test.go's do_body ceiling). One matcher and
+// one param-contract builder, shared with the bridge.
+func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
+	params, ok := closureSigParams(fn)
+	if !ok {
+		return false
+	}
+	sig := core.Signature{Params: params, BarrierPos: len(params)}
+	core.NormalizeSig(&sig)
+	probe := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: []core.Signature{sig}}}
+	return core.MatchFnSig(probe, args) != nil
 }
 
 // closureFnDef builds the FnDefInfo a compiled closure stands in for on the

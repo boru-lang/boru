@@ -59,6 +59,35 @@ func InvokeCallbackBody(r *Registry, body Value, inputs []Value) ([]Value, error
 	return InvokeBody(r, body, inputs)
 }
 
+// ClosureSigMatched is the SigMatched mark on a closure VALUE (see
+// ClosurePayload.SigMatched): the seam that hands the args has matched the
+// closure's own signature, so the VM's invoker applies the unit positionally
+// instead of matching again in the token seam's order. A non-closure value
+// is returned unchanged.
+func ClosureSigMatched(v Value) Value {
+	cl, ok := v.Data.(ClosurePayload)
+	if !ok || cl.SigMatched {
+		return v
+	}
+	cl.SigMatched = true
+	// A whole-value copy with the payload replaced, never a rebuild from
+	// selected fields: the mark must not quietly drop the value's id,
+	// position or any flag a later seam reads.
+	out := v
+	out.Data = cl
+	return out
+}
+
+// ClosureAsFnDef is the compiled runtime's closure bridge, reached from a
+// native seam (CompiledRuntime.ClosureAsFnDef): the FnDefInfo-shaped value a
+// compiled closure stands in for on the interpreter — one signature over the
+// unit's declared param contract — which is what a callback seam matches
+// the closure's args against (MatchFnSig) before it runs the unit. ok=false
+// outside a VM run, or for a unit with no contract of its own.
+func ClosureAsFnDef(r *Registry, v Value) (Value, bool) {
+	return compiledRuntime.ClosureAsFnDef(r, v)
+}
+
 // InvokeCallback runs a runtime fn VALUE (given its matched signature and the
 // per-call args) against the VM when the sig carries a compiled unit whose
 // program is stamped AND r can host a fresh run, else falling back to CallBoru —

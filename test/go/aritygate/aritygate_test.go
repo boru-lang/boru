@@ -232,6 +232,15 @@ var pinnedAritySites = map[string]int{
 	// A bounds check on a signature INDEX, not a decision about a function's
 	// shape (StampDetachedSig guarding fd.Signatures[sigIdx]).
 	"compiler/go/stamp_runtime.go": 1,
+	// UnitIsFnValue asks whether a closure unit RECORDS ITS OWN SIGNATURE —
+	// one declared Params entry per real arg — which is the precondition for
+	// matching it at all, and the same test closureSigParams makes before it
+	// builds the contract (eng/go/vm_dyn_words.go). A unit that records no
+	// contract is a callback BODY compiled at a call site, which has no
+	// signature to match; one that does is a fn VALUE, and every arity of
+	// one takes the same path. Matching machinery, not a decision by arity —
+	// S1b-2 of design/FULL-COMPILATION-REPLAN.0.md.
+	"compiler/go/bytecode.go": 1,
 
 	// ── Generics: instantiation matches a declaration's shape.
 	"core/go/generics_unify.go":       1,

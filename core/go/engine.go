@@ -1900,7 +1900,28 @@ func (e *Engine) FlowInterrupted() bool { return e.Registry.FlowCtrl != FlowNone
 
 func (e *Engine) ScratchParenSpan(items []Value) []Value { return e.expandParenExprScratch(items) }
 
-func (e *Engine) DefTop(name string) (Value, bool) { return e.Registry.Defs.Top(name) }
+// DefTop is the collection seat's binding lookup. Under an ANALYSIS pass a
+// name def-bound to a computed fn — `def f (mk 10)`, whose value is the
+// factory's declared-Function CARRIER — has no Defs binding (installDef's fn
+// arm keeps it in the per-pass side table, core/go/check_fncarrier.go), so
+// the plan walk and the per-candidate scan saw a bare WORD at the slot and
+// `each f/v [1 2 3]` dispatched with the token itself at each's Function
+// slot: no overload matched, and the compile pass refused "unmatched
+// dispatch recovered at each" where the plain pass — running the factory's
+// body and binding the concrete fn — typed the same program clean. The
+// seat resolves the table the way the pointer's own read does (stepWord's
+// analysis branch), so the scan claims the slot with the carrier the
+// arrival will deliver. Inert at run time: the table exists only under
+// analysis.
+func (e *Engine) DefTop(name string) (Value, bool) {
+	if top, ok := e.Registry.Defs.Top(name); ok {
+		return top, true
+	}
+	if e.Registry.analysisActive() {
+		return CheckFnCarrierBind(e.Registry, name)
+	}
+	return Value{}, false
+}
 
 func (e *Engine) IsFnWordBarrier(tok Value) bool { return e.fnWordBarrierAt(tok) }
 
@@ -2282,17 +2303,44 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 	v, ok := ResolveRef(e.Registry, w.Name)
 	if !ok {
 		if e.Registry != nil && e.Registry.analysisActive() {
-			// Deliberately NO fn-carrier side-table consult here, unlike
-			// stepWord's twin branch: substituting the carrier for a `/v`
-			// read of a carrier-bound name lets the check pass green-light
-			// a unit whose lowering DROPS the operand — the top-level read
-			// has no producing event and no fn-unit home for the dyn-scope
-			// rescue, so `(pmany digit/v)` compiled to a 0-arg call and
-			// raised signature_error where the interpreter succeeds
-			// (frontier-hof-audit.tsv's pmany/pseq rows). Until the
-			// residual re-push machinery can lower such a read, the
-			// undefined_word diagnostic below keeps those units refused —
-			// slow, never wrong.
+			// A name def-bound to a computed fn CARRIER (`def f (mk 10)`)
+			// has no Defs binding under analysis — installDef's fn arm
+			// keeps it in the per-pass side table — so the `/v` read
+			// resolves there, exactly as stepWord's bare-read branch does
+			// and with the same provenance notes: the def read and the
+			// local read give the recorder the binding's PRODUCER (the
+			// factory call's result event), which is what the lowering
+			// pushes for the operand. This branch used to decline the
+			// table on purpose: before the bare read carried those notes
+			// (the thirty-fifth increment), a substituted `/v` read had no
+			// producing event and `(pmany digit/v)` compiled to a 0-arg
+			// call. With the notes the read lowers as the bare read's
+			// twin, which is what lets `each f/v [1 2 3]` dispatch and
+			// compile; the APPLY shapes (`5 f/v apply`) still refuse, at
+			// their own gate rather than at this read, and the frontier's
+			// pmany / pseq rows refuse earlier than this read today and
+			// stay pinned there. No noteWordRead: a `/v` read never
+			// dispatches.
+			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
+				e.Registry.noteAnalysisUse(w.Name)
+				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
+				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
+				if e.Registry.analysisCompiling() {
+					e.Registry.Check.FnCarrierReadSubstituted = true
+				}
+				// DELIVERED as this path's own value, never through
+				// stepWord's literal step: `/v` denotes the binding and
+				// never dispatches, and the arrival machinery a literal
+				// step runs can turn a Function value into a call head.
+				// Measured when this branch borrowed stepWord's step:
+				// `def f (mk 1) end [f/v 5]` compiled to `[6]` — the list
+				// literal APPLIED the carrier — where the interpreter
+				// places both values, `[fn f(Integer) 5]`, and `size` of
+				// the same list compiled 1 for the interpreter's 2. The
+				// shared tail below is the discipline that keeps a `/v`
+				// read inert.
+				return e.deliverValRead(WithPos(cv, val), val)
+			}
 			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
@@ -2343,6 +2391,17 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 	// dispatches it: an engine divergence the differential gate catches.
 	// The former unconditional set+advance left the value BEHIND the
 	// pointer, so the forward stranded at end of run.
+	return e.deliverValRead(v, val)
+}
+
+// deliverValRead is the `/v` read's DELIVERY: the one tail every resolved
+// value takes, whichever store resolved it — the Defs binding ResolveRef
+// found, or the per-pass fn-carrier side table an analysis pass consults for
+// a name def-bound to a computed fn. It is the discipline that keeps the
+// read inert: a reference ARRIVES at a still-collecting forward, or is
+// pushed and stepped over, and in neither case is it stepped as a literal
+// whose arrival machinery could dispatch it.
+func (e *Engine) deliverValRead(v, val Value) error {
 	if e.hasPendingForwardCollecting() {
 		e.Tape.Set(e.Pointer, v)
 		return e.stepLiteral()

@@ -109,6 +109,42 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 	return checkFnValueReturn(reg, fd, sig, res, unit.NUnnamed, body.Pos())
 }
 
+// invokeFnValueClosure is the token seam's arm for a fn-VALUE CLOSURE — a
+// capturing `fn` / `=>` literal minted at run time (a factory's result, a
+// def-bound one read back; compiler.ClosureIsFnValue), where invokeFnValue
+// above handles an FnDefInfo value. The closure's unit carries the value's
+// declared param contract, so the interpreter's own match runs over it the
+// same way: the bridged signature (closureFnDef — what the interpreter's
+// dispatch of the same closure matches under) against the inputs in the
+// seam's top-down order. A match runs the unit over the signature-ordered
+// args; no match hands the value to the stepping path, where the sub-engine
+// meets the closure at the pointer and the interpreter's data-versus-
+// uncalled_function fork decides (NUR155's rule). Measured before the arm
+// (2026-09-19, the S1a/S1b-1 head): the unit ran blind over whatever the
+// handler pushed — `each (mk 1) ['a' 2]` answered `[1 3]` for the
+// interpreter's `[fn (Integer) 3]` — and every such shape was a refusal on
+// `main` ("function-valued operand at each"), so the release was S1a's and
+// the arm is what makes it sound.
+func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
+	if body.Quoted || !compiler.ClosureIsFnValue(body) {
+		return nil, nil, false
+	}
+	p := vc.p
+	if fp, foreign := vc.closureProgram(cl); foreign {
+		p = fp
+	}
+	args := make([]core.Value, len(inputs))
+	for i, v := range inputs {
+		args[len(inputs)-1-i] = v
+	}
+	if !closureMatchesArgs(&p.Fns[cl.Unit], args) {
+		res, err := core.RunResolved(reg, inputs, core.BodyTokens(body))
+		return res, err, true
+	}
+	res, err := vc.applyClosure(reg, cl, deliverArgs(args))
+	return res, err, true
+}
+
 // hostFnValueUnit hosts the value's unit with the TOKEN seam's root discipline
 // and contains a panic inside it as an internal_error, exactly as
 // runForeignUnit contains one for the fn-VALUE seam: a corrupted or

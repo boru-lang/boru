@@ -62,6 +62,59 @@ var fnValueSeamRows = []fnValueSeamRow{
 	{"an anonymous lambda that matches no element stays data", `each ([x:Integer] => [x add 1]) ['a' 2]`, false},
 	{"a named fn that matches no element raises", `def inc fn [[n:Integer][Integer][n add 1]] end each inc/v ['a' 2]`, false},
 	{"a named fn the map arm cannot match raises", `def two fn [[n:Integer][Integer][n 1]] end each two/v {a:1}`, false},
+	// S1b-2: a COMPUTED fn value def-bound at the top level — a factory's
+	// result, whose analysis-pass binding is the fn-carrier side table, not
+	// Defs — read at a higher-order word's forward slot, bare or through
+	// `/v`. The collection seat resolves the table (Engine.DefTop), so the
+	// dispatch matches the Function overload and the value rides as the
+	// STORE_LOCAL's operand; the seam then runs it natively. Each shape was
+	// "unmatched dispatch recovered at <word>" before (callbacks.tsv:82,
+	// :154, each-variants.tsv:203, fold-map-filter.tsv:73, :227, :229,
+	// module-composition.tsv:95).
+	{"a factory-built value at each, /v", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end each a5/v [1 2 3]`, true},
+	{"a factory-built value at each, bare", `def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f [1 2 3]`, true},
+	{"a factory-built value at fold", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]] end def f (mk 10) end 0 fold f [1 2]`, true},
+	{"a factory-built value at filter", `def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]] end def f (mk 1) end filter f [1 2 3]`, true},
+	{"a branch-chosen value at each", `def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]] end def f (choose false) end each f [1 2 3]`, true},
+	{"a module factory's value at each", `import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]`, true},
+	// FnUtil.compose's result is a fn-util wrapper whose body applies its
+	// captured values through the module's own seam — still stepped, one of
+	// the fn values S1b owes (the handoff's "wrappers"); compiles with
+	// parity today.
+	{"a composed value at each", `import "boru:fn-util" end def inc x:Integer => [add 1 x] end def dbl x:Integer => [mul 2 x] end def h (FnUtil.compose inc/v dbl/v) end each h/v [1 2 3]`, false},
+	{"a factory-built value at the map arm", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end each f/v {a:1 b:2}`, true},
+	{"a rebound factory-built value reads the latest bind", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end def f (mk 100) end each f/v [1 2 3]`, true},
+	{"a factory-built value at each inside a loop body", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end for 2 [each f/v [1 2 3]]`, true},
+	{"a factory-built value at each inside a fn body", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def run fn [[xs:List][List][def f (mk 2) each f/v xs]] end run [1 2 3]`, true},
+	// A def-bound CAPTURING value that matches no element takes the
+	// interpreter's data fork on both lanes, with the def's name on the
+	// value; the NON-capturing twin (`[s:String] => [s]`, a const fn value)
+	// prints anonymous on the compiled lane where the interpreter prints
+	// `fn f(String)` — NUR168, not pinned here.
+	{"a factory-built value whose sig matches no element", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end each f/v ['a' 2]`, false},
+	// S1b-2, the fn-VALUE CLOSURE convention: a CAPTURING `fn` / `=>`
+	// literal minted at run time is a compiled closure (PUSH_CLOSURE), and
+	// every callback seam matches it against its own signature the way the
+	// interpreter matches the value — the token seam top down, the map arm
+	// over the KeyVal, filter over its entry — instead of running the unit
+	// blind over whatever the handler pushed. Every row here was a refusal
+	// on `main` ("function-valued operand at <word>"), released by S1a and
+	// miscomputed on the S1a/S1b-1 head; measured on the interpreter.
+	{"a capturing closure that matches no element stays data", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) ['a' 2]`, false},
+	{"a capturing closure at the map arm is handed the KeyVal", `def mk fn [[k:Integer][Function][([kv:KeyVal] => [kv.v add k])]] end each (mk 1) {a:1 b:2}`, true},
+	{"a capturing closure the map arm cannot match raises", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) {a:1 b:2}`, true},
+	{"a capturing closure fold's map arm cannot match raises", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end fold (mk 1) {a:1 b:2} 0`, true},
+	{"a capturing closure at fold's map arm", `def mk fn [[k:Integer][Function][([a:Integer e:KeyVal] => [a add e.v add k])]] end fold (mk 1) {a:1 b:2} 0`, true},
+	{"a capturing closure at fold's list arm binds top-down", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a sub e add k])]] end fold (mk 0) [1 2 3] 10`, true},
+	{"a capturing closure filter cannot match raises", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end filter (mk 1) [1 2]`, true},
+	{"a capturing closure at filter's map form", `def mk fn [[k:Integer][Function][([kv:KeyVal] => [kv.v gt k])]] end filter (mk 1) {a:1 b:2}`, true},
+	// The two-value body reads the capture last, which islands the unit
+	// (vm:island-resolved) — a pre-existing island shape, not the seam's.
+	{"a capturing closure's count contract at the map arm", `def mk fn [[k:Integer][Function][([kv:KeyVal] => [kv.v k])]] end each (mk 1) {a:1}`, false},
+	{"a capturing closure's list param arrives quoted", `def mk fn [[k:Integer][Function][([xs:List] => [size xs add k])]] end each (mk 1) [[1 2] [3]]`, true},
+	// The token body over a list holding the closure islands (a pre-existing
+	// shape); the row pins the identity the bridge carries.
+	{"a bridged closure is eq to itself", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end [(mk 1)] each [dup eq]`, false},
 }
 
 func TestFnValueSeamParityAndNoEntry(t *testing.T) {
