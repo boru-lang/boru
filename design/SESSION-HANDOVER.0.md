@@ -31,8 +31,16 @@ carve-out list**:
 - Every program the interpreter accepts produces a `Program`. That is
   the whole contract, not one branch of two: `compile_failed` is not a
   result, it is a DEFECT against the contract — an unimplemented or
-  unproven case, owed a fix and tracked to closure — and the
-  `BORU_COMPILE_FALLBACK` hatch retires.
+  unproven case, owed a fix and tracked to closure. **The
+  `BORU_COMPILE_FALLBACK` hatch retired on 2026-09-19, with every other
+  fallback:** the two `RunCompiled` carve-outs, the runtime-bail re-run,
+  `Run`'s own fallback, the CLI's warn-and-re-run and its three compile
+  modes, the fn-value seam's degrade, the detached-callback retry, and
+  the `await` branch re-run. There is one outcome now, and the debt that
+  was hiding behind them is counted in three ledgers
+  (`test/go/langspec/compile_failures.tsv`,
+  `lang/go/compile_defect_test.go`,
+  `lang/go/test/compile_defect_test.go`).
 - A refusal site is such a defect, and its disposition is the fix it is
   owed: exactly three are legal — a generic lowering, a trap that raises
   the interpreter's own error at the same moment, or deletion.

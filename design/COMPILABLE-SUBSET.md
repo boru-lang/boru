@@ -4,15 +4,13 @@ The bytecode compiler (`eng/go/emit.go`, `lower.go`, `vm.go`, `bytecode.go`)
 is **the carrier type-checker run with a recording side effect**: every
 dispatch the checker resolves in a typed region is recorded as a classified
 event, and `Finalize` linearises the trace into a `Program`. Anything the
-recorder cannot prove it can lower **faithfully** is refused — and every such
-refusal is a **defect**: an unimplemented or unproven case, owed a fix and
+recorder cannot prove it can lower **faithfully** stops there — and every such
+stop is a **defect**: an unimplemented or unproven case, owed a fix and
 tracked to closure. Done is a language that compiles the way a developer
 expects — ALL valid code compiles, no exceptions. The interpreter is **not** a
-fallback for the compiler and is not allowed to become one; that
-`lang.(*Boru).RunCompiled` currently re-runs a refused program on the
-interpreter — **silently** — is **scaffolding** absorbing that defect, never a
-reason a refusal is acceptable. The silence makes it worse, not better: the
-failure hides itself, so nothing in the run says the compile was refused.
+fallback for the compiler, and as of 2026-09-19 it cannot become one: every
+mechanism that re-ran a failed program on it has been removed, so a program
+that does not compile is a plain error.
 
 This document is the **positive** statement of what compiles and why. The code
 expresses the subset as a pile of refusal gates (chiefly `EmitState.RecordCall`
@@ -35,23 +33,31 @@ The contract has ONE outcome, not two: **every valid source program compiles.**
 a residual byte-identical to the interpreter's `Run` for the same source (the one
 documented exception is §7).
 
-A **refusal** is a breach of that contract, not a second branch of it. When
-`CompileCheck` returns `(nil, reason)`, the `reason` names the first offending
-construct — which is to say it names the defect, and that defect is owed a fix
-and tracked to closure.
+A **compile failure** is a breach of that contract, not a second branch of it.
+When `CompileCheck` returns `(nil, reason)`, the `reason` names the first
+offending construct — which is to say it names the defect, and that defect is
+owed a fix and tracked to closure.
 
-The containment machinery is real and is described here accurately, as
-machinery: `RunCompiled` rolls the registry back to its pre-check snapshot
-(`CompileSandbox`) and **silently** re-runs the program on the interpreter — an
-answer comes back, and nothing in the run says the compile was refused. That is
-scaffolding around a known bug, and the silence indicts it rather than excusing
-it: a failure that hides itself is the harder one to find and the easier one to
-bank on. Not a supported outcome, not a success criterion, and never a reason to
-leave a construct uncompiled.
+**The containment machinery is gone (2026-09-19).** `RunCompiled` used to roll
+the registry back to its pre-check snapshot and **silently** re-run the
+program on the interpreter: an answer came back and nothing in the run said
+the compile had failed. So did `Run`, the CLI's try mode (with a warning), the
+`BORU_COMPILE_FALLBACK=1` hatch, a runtime bail after the program had already
+started, the fn-value seam, the detached-callback invoker, and an `await`
+branch. All of them are removed. A program that does not compile returns
+`compile_failed` naming the construct; a compiled program that bails returns
+the defect, annotated as one.
+
+What that buys is not correctness — the answers were right — but visibility.
+A failure that hides itself is the harder one to find and the easier one to
+bank on, and the day the removal landed it surfaced three miscompiles the
+fallback had been absorbing. The debt it made visible is counted, in
+`test/go/langspec/compile_failures.tsv`, `lang/go/compile_defect_test.go` and
+`lang/go/test/compile_defect_test.go` — ratchets on a bug count, never budgets.
 
 Compilation is sound by construction + the differential and property gates (§8);
-there is no independent proof. A refusal does not produce a *wrong* answer, but
-"not wrong" is not the bar here — compiling is.
+there is no independent proof. A compile failure does not produce a *wrong*
+answer, but "not wrong" is not the bar here — compiling is.
 
 ---
 
