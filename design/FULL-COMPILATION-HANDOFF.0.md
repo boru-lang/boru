@@ -10319,6 +10319,28 @@ re-run on the interpreter. Invisible to every differential (the answers
 agree); a correct compiled verdict reported as a bail. The three sites
 raise `signature_error` now.
 
+**The review's finding — NUR165** (resolved in the PR). Codex read
+the seat and found the hole in it: an operand the check pass knows only
+as `Any` (a fn's declared `Any` result — `def get fn [[][Any][1]] end
+each $.x (get)`) reached the dyn-body seat with ONE arm reachable, the
+(Reach, List) one, so the re-match never fired, the pick was baked, and
+the handler iterated a runtime Integer as an empty list: `[[]]` where the
+interpreter raises signature_error — a wrong value, silent. The sibling
+token-body shapes (`each [add 1] (get)`, `fold [add] (get) 0`) were
+diverging on `main` already, on the error CODE, through the
+cross-collection shortcut the closure seat has carried since before S1a
+(each_error / fold_error for signature_error; measured on `origin/main`).
+Two fixes: the dyn-body seat re-matches whenever an Any carrier is among
+the operands, whatever the arm count (a dispatch the pass cannot prove is
+a runtime re-match), and the committed arm's guard raises the
+dispatcher's own signature_error for a runtime value that is neither
+collection. The obvious alternative — route a CompileDynBody word off
+the shortcut and onto the dyn-body seat — was measured and rejected:
+the seat arms DynEnv mode program-wide, and fifty-three module-cli.tsv
+rows importing a module whose fn defs a computed value refused with it
+(113 compile failures, back from 60). Thirteen rows pinned
+(`TestStrictAnyOperandReMatches`), value and error code alike.
+
 **Cost.** One session-day against the three to six estimated. The full
 langspec package: 13 min on four cores alongside the other runs;
 `make cover-gate-compiler` passes; `cd compiler/go && go test ./...`

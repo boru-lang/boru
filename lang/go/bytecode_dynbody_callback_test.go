@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -94,6 +95,72 @@ func TestDynamicCallbackStillRefusesWithoutTheFlag(t *testing.T) {
 		}
 		if _, ierr := b.RunInterp(tc.src); ierr != nil {
 			t.Errorf("%s: the interpreter must still answer: %v", tc.label, ierr)
+		}
+	}
+}
+
+// TestStrictAnyOperandReMatches is the negative the S1a review asked for
+// (a Codex P1 on #474): a collection that reaches a higher-order word through
+// a STRICT Any carrier — a fn's declared `Any` result, not a gradual
+// widening — is as unknown at run time as a gradual one, so the dyn-body
+// seat must poly re-match rather than bake the checker's pick. Baked, the
+// (Reach, List) arm ran over a runtime Integer and answered `[[]]` where
+// the interpreter raises signature_error; re-matched, no arm matches and
+// the compiled lane raises (or defers to) the interpreter's own verdict.
+// Every row compiles; the two lanes must agree on the value and the error
+// code — a runtime defer that re-runs the program on the interpreter is
+// parity, so the compiled flag is not asserted.
+func TestStrictAnyOperandReMatches(t *testing.T) {
+	for _, tc := range []struct{ label, src, wantCode string }{
+		{"a Reach body over a strict-Any Integer",
+			`def get fn [[][Any][1]] end each $.x (get)`, "signature_error"},
+		{"a Reach body over a strict-Any Map",
+			`def get fn [[][Any][{a:1}]] end each $.x (get)`, "signature_error"},
+		{"a Reach body over a strict-Any List (the only arm that matches)",
+			`def get fn [[][Any][[{x:1} {x:2}]]] end each $.x (get)`, ""},
+		{"a code body over a strict-Any Integer",
+			`def get fn [[][Any][1]] end each [add 1] (get)`, "signature_error"},
+		{"a code body over a strict-Any String",
+			`def get fn [[][Any]['s']] end each [add 1] (get)`, "signature_error"},
+		{"a code body over a strict-Any List",
+			`def get fn [[][Any][[1 2]]] end each [add 1] (get)`, ""},
+		{"a code body over a strict-Any Map (the token form sees the value)",
+			`def get fn [[][Any][{a:1 b:2}]] end each [add 1] (get)`, ""},
+		{"a lambda over a strict-Any Integer",
+			`def get fn [[][Any][1]] end each ([x:Integer] => [x add 1]) (get)`, "signature_error"},
+		{"a lambda over a strict-Any Map",
+			`def get fn [[][Any][{a:1}]] end each ([x:Integer] => [x add 1]) (get)`, "signature_error"},
+		{"fold over a strict-Any Integer",
+			`def get fn [[][Any][1]] end fold [add] (get) 0`, "signature_error"},
+		{"scan over a strict-Any Integer",
+			`def get fn [[][Any][1]] end scan [add] (get)`, "signature_error"},
+		{"filter over a strict-Any Integer",
+			`def get fn [[][Any][1]] end filter [gt 0] (get)`, "filter_error"},
+		{"do over a strict-Any Integer",
+			`def get fn [[][Any][1]] end do (get)`, "signature_error"},
+	} {
+		a, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prog, reason, _, cerr := a.CompileCheck(tc.src)
+		if cerr != nil || prog == nil {
+			t.Errorf("%s: must compile, refused %q / %v\n  %s", tc.label, reason, cerr, tc.src)
+			continue
+		}
+		b, _ := New()
+		gotC, _, errC := b.RunCompiled(tc.src)
+		c, _ := New()
+		gotI, errI := c.RunInterp(tc.src)
+		if codeOf(errC) != codeOf(errI) || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+			t.Errorf("%s: compiled/interp disagree\n  compiled %v / [%s] %v\n  interp   %v / [%s] %v\n  %s",
+				tc.label, gotC, codeOf(errC), errC, gotI, codeOf(errI), errI, tc.src)
+		}
+		if tc.wantCode == "" && errI != nil {
+			t.Errorf("%s: the interpreter must run it: %v", tc.label, errI)
+		}
+		if tc.wantCode != "" && codeOf(errI) != tc.wantCode {
+			t.Errorf("%s: interpreter code [%s], want [%s]", tc.label, codeOf(errI), tc.wantCode)
 		}
 	}
 }

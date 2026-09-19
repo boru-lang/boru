@@ -95,6 +95,7 @@ keep the two in sync in the same commit.
 | [NUR160](#nur160) | The apply of a FACTORY-built fn value does not fire on the compiled lane when a value sits below it on the stack: `7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply` is `[7 6]` interpreted and `[7 5 fn (Integer)]` compiled, while the clean-stack `def mk … end 5 (mk) apply` compiles with parity | the generated sweep, the prefix-stack call form of `apply` × factory |
 | [NUR161](#nur161) | An `afn` whose BODY is a fn value read from a container returns the value on both lanes — `def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5` is `fn (Integer)` — but with a value below on the stack the compiled lane APPLIES it to that value: `7 … f 5` is `[7 fn (Integer)]` interpreted and `[8]` compiled | the generated sweep, the prefix-stack call form of `afn` × container |
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
+| [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
 | [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
 | [NUR163](#nur163) | A module member read IN PLACE is not the fn its local rebind is: `mini M.dbl 'ab'` and `emit M.up {a:1}` (and their parenthesised forms) are rejected by the words' signature-prefix validation — `mini_bad_signature`, `emit_bad_signature` — while `def g M.dbl/v end mini g 'ab'` answers `abab` and `def g (M.up) end emit g {a:1}` answers `UP`; `inspect (M.up)` reports a Function literal with no signatures where `inspect up` reports the defined fn and its signatures | the generated sweep, the module-export seeds of `emit`, `mini` and `parse` |
 | [NUR153](#nur153) | RESOLVED 2026-09-18 (the tape rule everywhere). One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
@@ -7014,6 +7015,54 @@ crash is what this record is for.
 **Where it belongs:** the recorder (which entry is emitted without a
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
+
+## NUR165 — a token body over a declared-Any collection committed one arm and met an Integer {#nur165}
+
+**Status:** RESOLVED 2026-09-19 (the S1a review, PR #474).
+**Found:** a Codex review of #474 — the Reach twin `def get fn [[][Any][1]]
+end each $.x (get)` answered `[[]]` compiled where the interpreter raises
+`signature_error` — and the sibling shapes probed from it.
+
+**Rule:** a dispatch the check pass cannot prove is a runtime re-match.
+An operand the pass knows only as `Any` (a fn's declared `Any` result)
+may be anything at run time; no arm the checker picks from it is a
+proof, whichever arm count the other operands leave.
+
+**Divergence.** Two recorder seats trusted such a pick:
+
+```
+def get fn [[][Any][1]] end each [add 1] (get)
+  interp:    signature_error — cannot call `each`: no signature matches
+  compiled:  each_error — each: expected a concrete map     (main, pre-existing)
+def get fn [[][Any][1]] end fold [add] (get) 0
+  compiled:  fold_error — fold: expected a concrete map     (main, pre-existing)
+def get fn [[][Any][1]] end each $.x (get)
+  compiled:  [[]]                                            (S1a, silent)
+```
+
+The token-body shapes took the cross-collection shortcut
+(`CallableSpec.CrossCollectionTokenShape`, `tryRecordClosure`): the
+committed (List, Map) closure relies on the handler delegating to list
+or map iteration by the runtime value's type — robust to the SIBLING
+collection, not to an Integer. The Reach shape reached S1a's dyn-body
+seat, whose re-match fired only when two arms were reachable; with a
+Reach body only (Reach, List) is, so the pick was baked and the handler
+iterated an Integer as an empty list.
+
+**Fix.** `tryRecordDynBody` re-matches whenever an Any carrier — strict
+or gradual — is among the operands, whatever the count (the VM's poly
+re-match raises, or defers to, the interpreter's own no-signature
+verdict). The token-body shapes keep the shortcut — routing a
+CompileDynBody word to the dyn-body seat instead was measured and
+rejected: the seat arms DynEnv mode program-wide, and fifty-three
+module-cli.tsv rows importing a module whose fn defs a computed value
+refused with it — and the committed arm's guard (`requireConcreteMap`)
+raises the dispatcher's own `signature_error` (`core.NoMatchDetail`) for
+a concrete runtime value that is neither collection: the handler's
+robustness contract, extended from the sibling collection to no
+collection at all. Pinned in `lang/go/bytecode_dynbody_callback_test.go`
+(`TestStrictAnyOperandReMatches`): thirteen rows, every one compiling,
+the two lanes agreeing on value and error code.
 
 ## NUR164 — a callback mismatch inside a native handler was a plain Go error, which the compiled lane read as its own bug {#nur164}
 

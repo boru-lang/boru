@@ -751,9 +751,18 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// have the gradual operand in ANY slot — a lambda over a collection the
 	// check pass could not type — and then the sig it committed is a guess,
 	// so the re-match covers every operand that leaves two overloads
-	// reachable. Fully-typed operands bake the sig.
+	// reachable. An ANY carrier — strict (a fn's declared `Any` result, a
+	// generalised Any param) or gradual — re-matches whatever the count: the
+	// runtime value may be anything, so even the one arm the other operands
+	// leave reachable is not a proof, and the VM's poly re-match raises (or
+	// defers to) the interpreter's own no-signature verdict when nothing
+	// matches. Baking the checker's pick for a strict Any collection ran
+	// `each $.x (get)` over a runtime Integer as the (Reach, List) arm —
+	// `[[]]` where the interpreter raises signature_error (a Codex review of
+	// #474). Fully-typed operands bake the sig.
 	call := emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}
-	if body.Dynamic || (check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2) {
+	if body.Dynamic || check.AnyAnyCarrier(args) ||
+		(check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2) {
 		call.sig = nil
 		call.poly = true
 	}

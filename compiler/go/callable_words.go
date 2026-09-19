@@ -292,9 +292,19 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// the map/list iteration by the value's concrete type), so the same closure
 	// drives either shape == the interpreter. A non-robust word (no flag) still
 	// refuses → sound interpreter fallback.
+	//
+	// The shortcut's robustness is the HANDLER's contract, and it extends to a
+	// runtime value that is neither collection: a fn's declared `Any` result
+	// that is an Integer at run time reaches the committed arm's handler, which
+	// raises the dispatcher's own signature_error for it (NUR165 — it used to
+	// raise each_error/fold_error, an error-code divergence pre-dating S1a).
+	// Routing such words to the dyn-body seat instead was measured and
+	// rejected: the seat arms DynEnv mode program-wide, and fifty-three corpus
+	// rows importing a module whose fn defs a computed value refused with it.
 	_, bodyIsLambda := body.Data.(core.FnDefInfo)
 	tokenShapeGeneric := spec.CrossCollectionTokenShape && core.IsConcrete(body) && !bodyIsLambda
-	if check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
+	if (check.AnyDynamicCarrier(args) || check.AnyAnyCarrier(args)) &&
+		check.DynamicReachableOverloadCount(r, word, args) >= 2 && !tokenShapeGeneric {
 		// A CompileDynBody word DECLINES instead: tryRecordDynBody records a
 		// POLY re-match over the word's own sigs — the runtime value picks
 		// the overload exactly as the interpreter's dispatch does.

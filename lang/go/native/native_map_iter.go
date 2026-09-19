@@ -1,6 +1,10 @@
 package native
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/boru-lang/boru/core/go"
+)
 
 // Map overloads for the higher-order words each / for-each / fold (and the
 // Function form of filter, in filter.go), plus the keys / vals projections.
@@ -152,7 +156,21 @@ func runQuotationBody(reg *Registry, tokens []Value, pushed []Value) (Value, boo
 }
 
 // requireConcreteMap unwraps a concrete Map arg or returns a clear error.
+//
+// A CONCRETE value that is neither a Map nor the List the sibling handler
+// takes (an Integer, a String) can only arrive on the compiled
+// committed-overload path (CallableSpec.CrossCollectionTokenShape): the
+// recorder committed this arm for a collection the check pass knew only as
+// `Any` — a fn's declared `Any` result — and the runtime value matches no
+// overload at all. The interpreter's dispatch raises signature_error for
+// it, so this guard does too, with the dispatcher's own detail (NUR165;
+// it used to raise each_error/fold_error/scan_error, an error-code
+// divergence). A NON-concrete value (a Map type literal, a carrier) keeps
+// the word's own error: the interpreter reaches that branch as well.
 func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
+	if IsConcrete(v) && !v.Parent.ConformsTo(TMap) && !v.Parent.ConformsTo(TList) {
+		return nil, reg.BoruError("signature_error", core.NoMatchDetail(word), word)
+	}
 	if !IsConcrete(v) || !v.Parent.ConformsTo(TMap) {
 		return nil, reg.BoruError(word+"_error", word+": expected a concrete map", word)
 	}
