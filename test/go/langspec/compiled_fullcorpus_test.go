@@ -241,10 +241,25 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 		disarm()
 		disarmBail()
 		for _, ev := range rowBails {
-			if wasCompiled {
-				localBailCensus.add(ev)
-			} else {
+			// Sorted by whether the bail SURFACED as the run's failure,
+			// not by wasCompiled. The two used to coincide: a bail the
+			// caller could not absorb re-ran the whole program, so the row
+			// came back wasCompiled=false. Nothing re-runs, so a bailed
+			// program comes back wasCompiled=TRUE with an error — it
+			// compiled, and then it died — and bucketing on the flag would
+			// file every whole-program bail as "locally resolved", which is
+			// the one thing it is not.
+			//
+			// "Surfaced" is the DEFECT class specifically, not any error:
+			// a row whose bail was resolved locally and which then failed
+			// for its own reasons (`5 $.name apply` raises the
+			// interpreter's signature_error) was still resolved locally,
+			// and so was one that raised the defer's prepared alt — that is
+			// the trap disposition working, not a bail escaping.
+			if compiledDefect(errC) {
 				bailCensus.add(ev)
+			} else {
+				localBailCensus.add(ev)
 			}
 		}
 		ai := newDifferentialInstance(t)

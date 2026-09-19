@@ -55,9 +55,11 @@ const engineEntryCeiling = 422 // the REGRESSION ceiling (lanes_test.go; end sta
 // deferCeiling is the maximum number of runtime bails (vmDefer activations)
 // the compiled corpus walk may produce. A bail is the VM meeting a runtime
 // surprise it has no compiled answer for — a dyn-scope miss, a poly no-match,
-// an Impl-identity drift, a dyn-frame count mismatch — and resolving it by
-// asking the caller to re-run the whole program on the interpreter. Monotone
-// DOWN only; 0 at Stage 9, when every site has a native answer
+// an Impl-identity drift, a dyn-frame count mismatch. It used to resolve by
+// asking the caller to re-run the whole program on the interpreter; since
+// 2026-09-19 nothing re-runs and it FAILS the program instead. Same event,
+// same count, worse consequence — which is the honest one. Monotone DOWN
+// only; 0 at Stage 9, when every site has a native answer
 // (design/FULL-COMPILATION.0.md section 6.10) and the mechanism deletes.
 //
 // vmDefer (eng/go/vm_defer.go) is the single chokepoint every reachable
@@ -68,14 +70,19 @@ const deferCeiling = 8 // the REGRESSION ceiling (lanes_test.go; end state 0): 8
 // deferLocalCeiling is the second, weaker kind of bail — and it exists because
 // a change made the difference measurable rather than theoretical.
 //
-// deferCeiling's own prose says what it counts: a bail "resolving it by asking
-// the caller to re-run the whole program on the interpreter". Measured, all
-// five of its bails do exactly that — the row comes back wasCompiled=false.
-// The lens units (core/go/reach_unit.go) produce one that does not: a lens
-// applied to a receiver its first segment cannot read reaches CALL_NATIVE_POLY
-// with no match, and ApplyReach — which has a complete fallback of its own —
-// catches the internal_error, runs the interpreted chain for that ONE
-// application, and the program finishes COMPILED (wasCompiled=true).
+// deferCeiling counts a bail that becomes the RUN's failure. The lens units
+// (core/go/reach_unit.go) produce one that does not: a lens applied to a
+// receiver its first segment cannot read reaches CALL_NATIVE_POLY with no
+// match, and ApplyReach — which has a complete fallback of its own — catches
+// the internal_error, runs the interpreted chain for that ONE application,
+// and the program finishes and ANSWERS.
+//
+// The discriminator used to be wasCompiled, because a bail the caller could
+// not absorb re-ran the whole program and came back wasCompiled=false. That
+// stopped being true on 2026-09-19: a bailed program now comes back
+// wasCompiled=TRUE with an error, so the walk sorts on whether the row
+// produced a RESULT. Same two kinds, same question — "did the program
+// survive it" — asked of something that still answers it.
 //
 // Those are not the same event, and one ratchet cannot hold both: counting
 // them together would either forbid a change that removed 16 rows of
@@ -85,7 +92,7 @@ const deferCeiling = 8 // the REGRESSION ceiling (lanes_test.go; end state 0): 8
 // kind ratchets separately from 1.
 //
 // A row that produced BOTH kinds attributes all of its bails to the STRICTER
-// census (wasCompiled is per row, not per bail) — the safe direction, and no
+// census (the verdict is per row, not per bail) — the safe direction, and no
 // corpus row does it today.
 //
 // Monotone DOWN, same as its sibling: 0 at Stage 9, when the poly no-match

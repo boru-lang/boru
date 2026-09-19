@@ -38,7 +38,7 @@ import (
 //
 // 2026-09-19: set when the interpreter fallbacks were removed. Not new bugs —
 // each row was already bailing and being answered by a silent re-run.
-const bailDefectCeiling = 0
+const bailDefectCeiling = 52
 
 var bailDefects = struct {
 	mu      sync.Mutex
