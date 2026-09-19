@@ -10627,89 +10627,91 @@ compile failures now 41 — provenance 16, dispatch recovery 2 (`rep`'s
 Function param at a recursive call, `sum2`'s Any collection inside a fn
 body), fn value reaches word 7, the apply shapes 16.
 
-## S1b — a fn value stored in a container (2026-09-19)
 
-The third increment, the first on `main` after #474 merged. A declaration,
-not a mechanism, and the cheapest row-per-effort of the three.
+## S1b — a fn value stored in a container: built, measured, REVERTED (2026-09-19)
 
-**What it is.** Seven of the fifty-three remaining compile failures refused
-"function value reaches set (Stage 3)" or the same at `push`. That refusal
-is `RecordCallOperands`' blanket guard: a fn VALUE at a word's operand slot
-is refused because the handler may put it back on the TAPE, which the VM
-has no tape for. `set` and `push` do not. They WRITE the operand into a
-container and never step it, so a fn-valued operand is inert to the
-recorder — and the recorder already has the declaration for exactly that,
-`CompileStoresFn`, carried today by the parselang / net / tui register
-words. `set` (all nineteen signatures), `push`, `unshift` and `append`
-declare it now. The rule is stated once, at `set`: a word that STORES what
-it is handed declares it; a word that INVOKES what it is handed keeps the
-refusal.
+The third increment of the day. It worked, it was measured, a review found
+two silent miscompiles it exposed, and it is reverted. What survives is the
+diagnosis, which is worth more than the six rows were.
 
-`CompileStoresFn` rather than a per-slot `FnInertArgs` because the stored
-value is invoked LATER, from the container, and the effect carries exactly
-that discipline: a pure fn literal rides as an inert const and gets its
-body stamped for the VM, while a capturing or sub-registry fn declines at
-`isInertConst` and keeps the interpreter fallback, so a stored fn never
-loses its real binding. Both halves are measured, not assumed.
+**What it was.** Seven of the fifty-three remaining compile failures
+refused "function value reaches set (Stage 3)", or the same at `push`.
+That refusal is `RecordCallOperands`' blanket guard: a fn VALUE at an
+operand slot is refused because the handler may put it back on the TAPE,
+which the VM has no tape for. `set` and `push` do not — they WRITE the
+operand into a container and never step it — so a fn-valued operand is
+inert to the recorder, and the recorder already has the declaration for
+exactly that case (`CompileStoresFn`, carried by the parselang / net / tui
+register words). All nineteen `set` signatures, both `push` signatures,
+`unshift` and `append`'s element form declared it; `unshift` and `append`
+came from probing the siblings, so the rule was complete rather than ad
+hoc. Stated once, at `set`: a word that STORES what it is handed declares
+it; a word that INVOKES what it is handed keeps the refusal.
 
-**Measured.**
+**What it measured.** Compile failures 53 → 47, compute gaps 49 → 42, and
+a seventh row (callbacks.tsv:L61) crossing into the reducible tier, which
+rose 3 → 4 — the same row, its refusal moving from a soundness-rooted
+bucket to a coverage-rooted one, not debt put back. The census, engine
+entries and sweep did not move: a row that compiles natively enters no
+seam. CI was green on all twenty checks.
 
-| gate | before | after |
-|---|---:|---:|
-| corpus compile failures | 53 | 47 |
-| interp-entry census rows | 78 | 78 |
-| engine entries | 422 | 422 |
-| compute gaps | 49 | 42 |
-| reducible (tier-2) rows | 3 | 4 |
-| the sweep: cells failing / islanded | 36 / 2 | 36 / 2 |
+**Why it is reverted.** A Codex review found two shapes that COMPILE and
+answer wrongly, with no fallback:
 
-The census, the engine entries and the sweep do not move at all: a row that
-now compiles natively enters no seam. Six of the seven rows compile with
-parity: callbacks.tsv:L62,
-fold-map-filter.tsv:L234 and :L235, module-composition.tsv:L99, and
-fn-locals-scope.tsv:L218 and :L219 — a fn read back out of a flex drives
-`fold` and `filter` natively, and one pushed onto a list is applied from
-it. The seventh, callbacks.tsv:L61, moves its refusal rather than losing
-it: `((reg.cb) 5)` is the paren-bounded apply, which is the apply-shape
-family S1b's lowering half still owes.
+```
+def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)
+  interp 42        compiled fn h
+… for [0 2] [def fns (push ([] => [i]) fns)] … each ([g:Function] => [(g)]) fns
+  interp [0 1]     compiled [fn g fn g]
+```
 
-**The seventh row, and the gate that caught it.** callbacks.tsv:L61 keeps
-its refusal, and moving it exposed something the filtered run could not
-see: the P7 partition's reducible (tier-2) gate rose 3 → 4 while compute
-gaps fell 49 → 42. That is ONE row crossing the line between two buckets,
-not debt put back. The row used to stop at "function value reaches set
-(Stage 3)", whose bucket rootCause()s as "soundness" and so counted as a
-compute gap; with that stop retired it reaches its paren-bounded apply,
-which falls to the default "coverage" root cause — and a coverage-rooted
-row whose source mentions a tier-2 word is bucketed under that word, here
-`flex`. The arithmetic is the proof rather than the claim: gaps −7,
-reducible +1, compile failures −6. It leaves tier 2 when the apply shapes
-compile.
+Neither is the declaration's own fault, and neither is reachable without
+it: on `main` the store refuses first and the whole program falls back to
+a correct answer. The declaration retires that refusal, and what it
+uncovers is NUR169 — a paren that nets exactly ONE value which is a
+function is auto-applied by the interpreter and silently not applied by
+the compiled lane, because `stepCloseParen`'s recorder switch has no
+`count == 1` case. A declaration that retires a refusal moves every row
+that used to stop there, and here one of the places they stop next
+produces a wrong answer instead of a later refusal.
 
-CI found it, not the local run: the per-file compile-failure ledger can be
-asserted over a subset (`BORU_SPEC_FILES`), and it was, but the partition
-gates are corpus-wide and a filtered walk only reports them. A declaration
-that RETIRES a refusal moves every row that used to stop there, so the
-whole corpus is the only instrument that sees where they stop next.
+**What was tried before reverting.** Making the one-value paren refuse.
+It fixes both witnesses, and then refuses far more: a dot access is itself
+expanded to a paren group whose single net value is a dynamic `Any`
+carrier, so `0 fold reg.f [1 2 3]` — one of the six rows the increment had
+just won — refused too. Telling a user-written apply paren from an
+internal expansion, or lowering the apply instead of refusing it, is
+design work rather than a patch. It belongs with the rest of S1b's
+lowering half, alongside NUR156, which is the same defect in a different
+spelling: an apply that does not fire.
 
-**Pinned.** `lang/go/bytecode_storefn_test.go`: nine rows across the four
-words — a flex, a map, a list, a module export, a loop body — agreeing on
-value, error code and error detail and taking the compiled lane; and two
-DECLINE rows, a capturing fn at a store slot, where `CompileCheck` must
-refuse and the interpreter must answer. The decline is the boundary the
-declaration must not cross, so it is pinned as a property, not a number.
+**What the next increment inherits.** The declaration is right and is
+worth re-landing the moment NUR169 is closed: the diff is four files, the
+rule is stated, and the measurement is above. What it needs first is the
+apply, not the store.
 
-**What this does not do.** It does not touch the fn value's own
-application: a stored value still meets the apply shapes on the way out.
-The largest family left is unrelated to fn values — a fn-local `def` inside
-a BRANCH arm, read after the branch, which refuses "body result of unknown
-provenance" (eight rows, plus the three operand-provenance rows over the
-same shape). The identical rebind inside a LOOP compiles today: the loop
-analysis gives the name a unit frame slot, stores at each rebind site
-(`RecordDefRebind`) and resolves every round's joined binding to that slot
-(`NoteLoopCarried`, `BeginLoopCarried`). The branch path has no analogue —
-`InstallJoinedDefs` pushes a joined value with no producing event — and the
-obstacle is timing: a loop registers the slot because it analyses its body
-in ROUNDS, while a branch arm is analysed once, so the arm's `def` records
-its store before any slot exists. That is the next increment's problem to
-solve.
+**A note on the instrument, which cost a cycle here.** The per-file
+compile-failure ledger can be asserted over a subset (`BORU_SPEC_FILES`),
+and it was, and it passed. The partition gates are corpus-wide and a
+filtered walk only REPORTS them, so the tier-2 crossing was invisible
+locally and CI found it. Neither instrument finds a silent miscompile in a
+shape the corpus does not contain, which is what the review found. For a
+change that RETIRES a refusal, the question to ask first is not "which
+rows now compile" but "where do the rows that used to stop here stop
+next", and the answer has to be read row by row, not as a count.
+
+**Still owed, unchanged by this increment.** The fn values the seam does
+not reach (the `[(mk 2)]` shape, the fn-util wrappers, the
+module-fnvalue-boundary islands), the Apply kernel's first branch,
+NUR154–156 and now NUR169, and the fn-value compile failures. The largest
+single family remains unrelated to fn values: a fn-local `def` inside a
+BRANCH arm, read after the branch, which refuses "body result of unknown
+provenance" (eight rows). The identical rebind inside a LOOP compiles
+today — the loop analysis gives the name a unit frame slot
+(`NoteLoopCarried` / `BeginLoopCarried`), stores at each rebind site
+(`RecordDefRebind`) and resolves every round's joined binding to that
+slot. The branch path has no analogue: `InstallJoinedDefs` pushes a joined
+value with no producing event. The obstacle is timing — a loop registers
+the slot because it analyses its body in ROUNDS, while a branch arm is
+analysed once, so the arm's `def` records its store before any slot
+exists.

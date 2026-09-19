@@ -102,15 +102,15 @@ every run's summary) — and a REGRESSION ceiling, the last merged value,
 which only falls and which the default lane asserts.
 `make gate-status` prints both for every gate, refreshes
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
-and appends the instant censuses. The values on 2026-09-19, head of the S1b-3
+and appends the instant censuses. The values on 2026-09-19, head of the S1b-2
 change (2026-09-17's values, head of PR #471, in the history column;
 increments 1–73, P0 and S0 are on `main`; S1a and S1b-1 on PR #474):
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 47 | 0 | 113 at the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 on 2026-09-19 (S1a: each/fold/scan/filter declare CompileDynBody); 60 → 53 the same day (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read — the collection seat and stepWordVal consult the fn-carrier side table, so the dispatch matches instead of refusing "unmatched dispatch recovered"); 53 → 47 the same day (S1b-3: set/push/unshift/append declare CompileStoresFn — a fn value STORED in a container is inert to the recorder, so a fn read back out of a flex drives fold and filter natively) |
+| compile failures | 53 | 0 | 113 at the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 on 2026-09-19 (S1a: each/fold/scan/filter declare CompileDynBody); 60 → 53 the same day (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read — the collection seat and stepWordVal consult the fn-carrier side table, so the dispatch matches instead of refusing "unmatched dispatch recovered") |
 | the generated sweep (S0): cells failing to compile / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned. 44 / 5 → 36 / 2 on 2026-09-19 (S1a); 149 cells pass, 2086 variants with 206 failing — the six new failures are variants of cells S1a released |
-| compute gaps | 42 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 at S1a; 56 → 49 at S1b-2, the seven newly-compiling rows; 49 → 42 at S1b-3 — six rows compile and a seventh (callbacks.tsv:L61) CROSSES into the reducible tier, which rose 3 → 4: the same row, its refusal moved from a soundness-rooted bucket to a coverage-rooted one, not debt put back |
+| compute gaps | 49 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 at S1a; 56 → 49 at S1b-2, the seven newly-compiling rows |
 | interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a (the fn-value callbacks now lower to a poly re-match) |
 | interp-entry census rows | 78 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed; 52 → 102 at S1a — the fifty-one rows the ambiguity gate released run compiled and enter the interpreter once through the RunResolved seam (the G-lane-first landing), measured row by row against `main`; 102 → 77 at S1b-1 — the fn-value seam made native, twenty-five fn-value callback rows leave, the token-body rows stay for S3; 77 → 78 at S1b-2, ONE row entering and none leaving (callbacks.tsv:L154, `FnUtil.compose`'s wrapper — a row that FAILED TO COMPILE before, so the walk reaches it for the first time; the other six rows the increment compiles enter nothing) |
 | engine entries / runtime defers | 422 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 at S1a, the same rows as the census (Engine.Run×489, RunResolved×179); 489 → 419 at S1b-1 (RunResolved×109); 419 → 422 at S1b-2, the three elements of that one newly-compiling wrapper row |
@@ -160,11 +160,12 @@ the end of each step of §5, not each increment.
 > signature before its unit runs, which is what S1a's release had left
 > unsound — compile failures 60 → 53, census 77 → 78 and engine entries
 > 419 → 422 on the single wrapper row that newly compiles; what S1b still
-> owes is in the handoff log's S1b entries; a THIRD increment lands the
-> cheapest row-per-effort of the three — `set`, `push`, `unshift` and
-> `append` declare CompileStoresFn, because a word that STORES what it is
-> handed never puts it back on the tape, so compile failures fall 53 → 47
-> and compute gaps 49 → 42 on a declaration rather than a mechanism; **S2 splits**, because only 35 of its 94
+> owes is in the handoff log's S1b entries; a THIRD increment was built,
+> measured and REVERTED the same day — `set`, `push`, `unshift` and
+> `append` declaring CompileStoresFn is worth six rows (53 → 47) and is
+> sound in itself, but it retires a refusal that was MASKING NUR169, a
+> paren netting one fn value that the interpreter applies and the compiled
+> lane silently does not; re-land it once that apply lowers; **S2 splits**, because only 35 of its 94
 > signatures are a sweep and the other 59 need a mechanism that depends on
 > S1b; and S2 is judged by `undeclaredHandlerCeiling`, never by the compile-
 > failure count. The binding gate is the full unfiltered corpus at about

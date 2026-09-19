@@ -65,11 +65,10 @@ var flexNatives = []NativeFunc{
 			},
 			// Any other value: append as a single element.
 			{
-				Args:          []*Type{TAny, TFlexList},
-				Impl:          Go(appendElemHandler),
-				Returns:       []*Type{TFlexList},
-				CompileEffect: CompileStoresFn,
-				ReturnsFn:     flexGrowReturns("append"), BarrierPos: -1,
+				Args:      []*Type{TAny, TFlexList},
+				Impl:      Go(appendElemHandler),
+				Returns:   []*Type{TFlexList},
+				ReturnsFn: flexGrowReturns("append"), BarrierPos: -1,
 			},
 			// WeakFlexList: append ONE element, classified per the weak
 			// value domain (scalar → strong, handle → weak, immutable
