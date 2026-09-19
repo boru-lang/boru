@@ -22,7 +22,7 @@ func langOpts() lang.Options { return lang.Options{} }
 
 func TestEvalPrintsResidual(t *testing.T) {
 	var out bytes.Buffer
-	if err := Eval(&out, "add 1 2", langOpts(), CompileOff); err != nil {
+	if err := Eval(&out, "add 1 2", langOpts()); err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
 	if got := strings.TrimSpace(out.String()); got != "3" {
@@ -32,7 +32,7 @@ func TestEvalPrintsResidual(t *testing.T) {
 
 func TestEvalErrorOnUndefinedWord(t *testing.T) {
 	var out bytes.Buffer
-	err := Eval(&out, "nope-not-a-word", langOpts(), CompileOff)
+	err := Eval(&out, "nope-not-a-word", langOpts())
 	if err == nil {
 		t.Fatal("expected an error for an undefined word")
 	}
@@ -41,13 +41,13 @@ func TestEvalErrorOnUndefinedWord(t *testing.T) {
 	}
 }
 
-func TestEvalForceCompileSurfacesRefusal(t *testing.T) {
-	// A program the bytecode emitter cannot lower must error under
-	// CompileForce (rather than silently falling back).
+func TestEvalSurfacesCompileFailure(t *testing.T) {
+	// A program the bytecode emitter cannot lower errors. There is no
+	// second engine to try.
 	var out bytes.Buffer
-	err := Eval(&out, "(size (for 5 [i]))", langOpts(), CompileForce)
+	err := Eval(&out, "(size (for 5 [i]))", langOpts())
 	if err == nil {
-		t.Fatal("expected force-compile to refuse an uncompilable program")
+		t.Fatal("expected an error for a program that does not compile")
 	}
 }
 
@@ -113,7 +113,6 @@ func TestPayloadRoundTrip(t *testing.T) {
 		Files:    map[string][]byte{"/x/y/lib.boru": []byte("export \"L\" {a:1}")},
 		Registry: "reg",
 		Seed:     99,
-		Compile:  CompileTry,
 	}
 	payload, err := EncodePayload(cfg)
 	if err != nil {
@@ -173,14 +172,14 @@ func TestDecodePayloadCorruptLength(t *testing.T) {
 // renderer when color is on, and stays byte-plain when off.
 func TestEvalColorErrorRendering(t *testing.T) {
 	var out bytes.Buffer
-	err := EvalColor(&out, "99 uppr", langOpts(), CompileOff, true)
+	err := EvalColor(&out, "99 uppr", langOpts(), true)
 	if err == nil || !strings.Contains(err.Error(), "\x1b[") {
 		t.Fatalf("color=true must render ANSI, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "error: ") {
 		t.Errorf("the error: prefix must survive the colored path: %v", err)
 	}
-	err = EvalColor(&out, "99 uppr", langOpts(), CompileOff, false)
+	err = EvalColor(&out, "99 uppr", langOpts(), false)
 	if err == nil || strings.Contains(err.Error(), "\x1b[") {
 		t.Fatalf("color=false must stay plain, got %v", err)
 	}
@@ -319,26 +318,27 @@ func TestMainExitSuppressesResidualAndRefusesRange(t *testing.T) {
 	}
 }
 
-// A BUILT BINARY says nothing about its own execution engine. `boru run` warns
-// when a whole-program compile refusal drops it onto the interpreter — that is
-// developer-facing performance advice, pinned by
-// run.TestExecuteCompileRefusalWarning — but the same line from a shipped tool
-// is noise in someone else's pipeline, and the user of the tool cannot act on
-// it. The refusing fixture is the same one the run-side test uses.
-func TestMainIsSilentAboutCompileRefusal(t *testing.T) {
-	const refuses = `def m {n: 3} def xs (for (m get "n") [1]) xs`
+// A built binary whose program does not compile FAILS, loudly, with the
+// compiler defect named — it used to run the program on the interpreter and
+// say nothing, deliberately, because a shipped tool warning about its own
+// engine on every invocation is noise in someone else's pipeline. The noise
+// argument only held while the run still produced an answer. It does not: the
+// binary cannot run the program at all, so the only honest thing it can do is
+// say why. `boru build` refuses to ship such a binary in the first place
+// (TestBuildRefusesUncompilableProgram); this is the backstop for a payload
+// built before that gate, or one whose program stopped compiling under a
+// newer runtime.
+func TestMainFailsLoudlyWhenTheProgramDoesNotCompile(t *testing.T) {
+	const doesNotCompile = `def m {n: 3} def xs (for (m get "n") [1]) xs`
 	var stdout, stderr bytes.Buffer
-	code := Main(Config{Source: refuses}, nil, nil, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("exit=%d, want 0 (stderr=%q)", code, stderr.String())
+	code := Main(Config{Source: doesNotCompile}, nil, nil, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("exit=0, want a failure (stdout=%q stderr=%q)", stdout.String(), stderr.String())
 	}
-	if strings.Contains(stderr.String(), "bytecode compilation FAILED") {
-		t.Errorf("a built binary warned about its own compile refusal: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "bytecode compilation FAILED") {
+		t.Errorf("stderr=%q, want the compile failure named", stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Errorf("stderr=%q, want empty — a working program writes nothing there", stderr.String())
-	}
-	if got := strings.TrimSpace(stdout.String()); got != "1 1 1" {
-		t.Errorf("stdout=%q, want the program's own result", got)
+	if got := strings.TrimSpace(stdout.String()); got != "" {
+		t.Errorf("stdout=%q, want nothing — the program never ran", got)
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/boru-lang/boru/cmd/go/internal/run"
 	lang "github.com/boru-lang/boru/lang/go"
 	"github.com/boru-lang/boru/lang/go/native"
 )
@@ -204,7 +203,7 @@ func TestRunCoverage(t *testing.T) {
 	// Run on the interpreter so the uncovered set is exact (no VM position
 	// folding): add2 is exercised, triple is not, so triple's body (row 5) is
 	// the uncovered line.
-	code, stdout, _ := runCmd("--coverage", "--coverage-dir", htmlDir, "--no-compile", f)
+	code, stdout, _ := runCmd("--coverage", "--coverage-dir", htmlDir, f)
 	if code != 0 {
 		t.Errorf("code = %d, want 0", code)
 	}
@@ -242,7 +241,7 @@ func TestRunCoverage(t *testing.T) {
 func TestRunCoverageMinFail(t *testing.T) {
 	dir := t.TempDir()
 	_, f := coverageFixture(t, dir) // 71.4% coverage
-	code, stdout, stderr := runCmd("--coverage-min", "90", "--no-compile", f)
+	code, stdout, stderr := runCmd("--coverage-min", "90", f)
 	if code != 1 {
 		t.Errorf("code = %d, want 1 (coverage below minimum)", code)
 	}
@@ -262,7 +261,7 @@ func TestRunCoverageMinFail(t *testing.T) {
 func TestRunCoverageMinPass(t *testing.T) {
 	dir := t.TempDir()
 	_, f := coverageFixture(t, dir) // 71.4% coverage
-	code, stdout, stderr := runCmd("--coverage-min", "50", "--no-compile", f)
+	code, stdout, stderr := runCmd("--coverage-min", "50", f)
 	if code != 0 {
 		t.Errorf("code = %d, want 0 (coverage meets minimum)", code)
 	}
@@ -304,17 +303,11 @@ func TestCoverageLine(t *testing.T) {
 
 func TestRunNoCompile(t *testing.T) {
 	f := write(t, filepath.Join(t.TempDir(), "n_test.boru"), passSuite)
-	if code, _, _ := runCmd("--no-compile", f); code != 0 {
+	if code, _, _ := runCmd(f); code != 0 {
 		t.Errorf("--no-compile code = %d, want 0", code)
 	}
 }
 
-func TestRunForceCompile(t *testing.T) {
-	f := write(t, filepath.Join(t.TempDir(), "fc_test.boru"), passSuite)
-	if code, _, _ := runCmd("--force-compile", f); code != 0 {
-		t.Errorf("--force-compile code = %d, want 0", code)
-	}
-}
 
 // discover: explicit files are added verbatim (even without the suffix) and
 // de-duplicated; a directory is walked for *_test.boru.
@@ -357,7 +350,7 @@ func TestDiscoverWalkError(t *testing.T) {
 // runFile surfaces a file-read error as an errored suite.
 func TestRunFileReadError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	p, f, errored := runFile(&stdout, &stderr, filepath.Join(t.TempDir(), "gone_test.boru"), lang.Options{}, defaultMode(), nil)
+	p, f, errored := runFile(&stdout, &stderr, filepath.Join(t.TempDir(), "gone_test.boru"), lang.Options{}, nil)
 	if !errored || p != 0 || f != 0 {
 		t.Errorf("runFile(missing) = (%d,%d,%v), want (0,0,true)", p, f, errored)
 	}
@@ -373,7 +366,7 @@ func TestRunFileInitError(t *testing.T) {
 	newBoru = func(...lang.Options) (*lang.Boru, error) { return nil, errors.New("init boom") }
 	f := write(t, filepath.Join(t.TempDir(), "i_test.boru"), passSuite)
 	var stdout, stderr bytes.Buffer
-	if _, _, errored := runFile(&stdout, &stderr, f, lang.Options{}, defaultMode(), nil); !errored {
+	if _, _, errored := runFile(&stdout, &stderr, f, lang.Options{}, nil); !errored {
 		t.Error("runFile should report an init error as errored")
 	}
 	if !strings.Contains(stderr.String(), "init") {
@@ -407,9 +400,6 @@ func TestExtractHelpers(t *testing.T) {
 	}
 }
 
-// defaultMode is CompileTry, the mode a no-flag invocation resolves to.
-func defaultMode() run.CompileMode { return run.CompileTry }
-
 // An IO.exit inside a suite ends THAT FILE, not the test run. The runner's
 // own status stays "did every case pass" — a suite that exits 0 half-way
 // has not passed the cases it never reached, so the file is reported as
@@ -427,7 +417,7 @@ func TestRunFileExitEndsTheFileNotTheRun(t *testing.T) {
 		"Test.test \"two\" [Assert.equal 1 1]\n"
 	f := write(t, filepath.Join(t.TempDir(), "x_test.boru"), src)
 	var stdout, stderr bytes.Buffer
-	passed, failed, errored := runFile(&stdout, &stderr, f, lang.Options{}, defaultMode(), nil)
+	passed, failed, errored := runFile(&stdout, &stderr, f, lang.Options{}, nil)
 	if !errored {
 		t.Error("a suite that exits mid-way must be reported as errored, not as a clean pass")
 	}

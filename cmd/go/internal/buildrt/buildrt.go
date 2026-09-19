@@ -32,27 +32,6 @@ import (
 	"github.com/boru-lang/boru/cmd/go/internal/termback"
 )
 
-// CompileMode selects which execution engine Eval/Main drives: the
-// best-effort bytecode compiler (silent fallback — the default), the
-// interpreter (--no-compile), or the bytecode compiler in FORCE mode
-// (error if uncompilable).
-// It mirrors the run subcommand's mode; run type-aliases this type so there is
-// a single source of truth that the generated binary can reference without
-// importing run.
-type CompileMode int
-
-const (
-	// CompileOff runs the interpreter (the `--no-compile` flag).
-	CompileOff CompileMode = iota
-	// CompileTry runs the bytecode compiler when the program is compilable and
-	// silently falls back to the interpreter otherwise — the default.
-	CompileTry
-	// CompileForce REQUIRES the bytecode path: an uncompilable program (or a VM
-	// soundness assertion) aborts with the refusal reason rather than falling
-	// back (the `--force-compile` flag).
-	CompileForce
-)
-
 // langNew is a test seam (design/TEST-SEAMS.10.md); tests swap it to
 // drive the init-error arms of Eval and Main — lang.New only fails on
 // registry construction errors that no Options value can provoke.
@@ -70,36 +49,38 @@ func registerTerminalBackend(a *lang.Boru) {
 // Eval runs source under Options o with the engine selected by mode, then
 // writes the residual stack (carriers joined by spaces) to w. This is the body
 // the run subcommand's EvalOptionsMode forwards to.
-func Eval(w io.Writer, source string, o lang.Options, mode CompileMode) error {
-	return EvalColor(w, source, o, mode, false)
+func Eval(w io.Writer, source string, o lang.Options) error {
+	return EvalColor(w, source, o, false)
 }
 
 // EvalColor is Eval with the color decision resolved by the caller
 // (lang.ResolveColor over the stream the error will be printed to):
 // a structured BoruError renders through the diagnostic renderer with
 // the ANSI palette; color=false keeps the byte-identical plain text.
-func EvalColor(w io.Writer, source string, o lang.Options, mode CompileMode, color bool) error {
-	return EvalReport(w, nil, nil, source, o, mode, color)
+func EvalColor(w io.Writer, source string, o lang.Options, color bool) error {
+	return EvalReport(w, nil, nil, source, o, color)
 }
 
-// EvalReport is Eval plus the -compile-report surface, a compilation-refusal
-// warning stream, and caller-resolved color. When report is non-nil, the
-// instance's detached-stamp attribution (lang.Boru.StampReport —
-// design/legacy/RUNTIME-STAMPING.0.ignore) is printed to it after the run, one line per
-// runtime-constructed callback with its outcome or refusal reason. When warn is
-// non-nil and the default compile-try mode falls back because the WHOLE program
-// refused to compile, a one-line warning naming the refusal reason is printed
-// to it — a refusal is a compile DEFECT, and the warning is what stops it going
-// unreported. color renders a
-// structured BoruError through the ANSI diagnostic renderer; color=false keeps
-// the byte-identical plain text.
-func EvalReport(w, report, warn io.Writer, source string, o lang.Options, mode CompileMode, color bool) error {
+// EvalReport is Eval plus the -compile-report surface and caller-resolved
+// color. When report is non-nil, the instance's detached-stamp attribution
+// (lang.Boru.StampReport — design/legacy/RUNTIME-STAMPING.0.ignore) is printed
+// to it after the run, one line per runtime-constructed callback with its
+// outcome or the reason its body did not compile. color renders a structured
+// BoruError through the ANSI diagnostic renderer; color=false keeps the
+// byte-identical plain text.
+//
+// warn is unused and kept for call-site compatibility: it carried the
+// warning that a program had not compiled and had been re-run on the
+// interpreter. There is no re-run to warn about — the run fails — so the
+// failure IS the report.
+func EvalReport(w, report, warn io.Writer, source string, o lang.Options, color bool) error {
 	a, err := langNew(o)
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}
 	registerTerminalBackend(a)
-	runErr := runAndPrint(w, warn, a, source, mode, color)
+	_ = warn
+	runErr := runAndPrint(w, a, source, color)
 	if report != nil {
 		PrintStampReport(report, a.StampReport())
 	}
@@ -107,11 +88,11 @@ func EvalReport(w, report, warn io.Writer, source string, o lang.Options, mode C
 }
 
 // PrintStampReport renders stamp attribution events one per line. An empty
-// report still prints a header line so `-compile-report` under -no-compile
-// (never armed, nil events) tells the user why it is empty.
+// report still prints a header line so `-compile-report` over a program with
+// no runtime-constructed callbacks tells the user why it is empty.
 func PrintStampReport(w io.Writer, events []lang.StampEvent) {
 	if len(events) == 0 {
-		fmt.Fprintln(w, "compile-report: no runtime-stamp attempts (interpreter mode, or no runtime-constructed callbacks)")
+		fmt.Fprintln(w, "compile-report: no runtime-stamp attempts (no runtime-constructed callbacks)")
 		return
 	}
 	for _, ev := range events {
@@ -128,9 +109,9 @@ func PrintStampReport(w io.Writer, events []lang.StampEvent) {
 		} else {
 			reason := ev.Reason
 			if reason == "" {
-				reason = "body refused the stored-fn compile"
+				reason = "the body did not compile as a stored fn"
 			}
-			fmt.Fprintf(w, "compile-report: refused %s%s — %s\n", name, where, reason)
+			fmt.Fprintf(w, "compile-report: did not compile %s%s — %s\n", name, where, reason)
 		}
 	}
 }
@@ -139,42 +120,12 @@ func PrintStampReport(w io.Writer, events []lang.StampEvent) {
 // that need to configure the instance first — e.g. seed an in-memory file
 // system for bundled imports — can do so before running) and prints the
 // residual stack exactly as the run subcommand does.
-func runAndPrint(w, warn io.Writer, a *lang.Boru, source string, mode CompileMode, color bool) error {
-	var result []any
-	var err error
-	switch mode {
-	case CompileForce:
-		result, err = a.RunCompiledStrict(source)
-	case CompileTry:
-		var reason string
-		result, _, reason, err = a.RunCompiledReason(source)
-		// Post-Stage-J a genuine refusal RETURNS an error instead of the
-		// library silently re-running (plan Phase 11, C2). Try-mode's
-		// contract is graceful degradation, so the CLI performs the
-		// fallback ITSELF — explicitly and visibly: warn once, naming the
-		// first offending construct, then interpret. The fallback moved
-		// from the library (hidden) to this caller (attributed). It is
-		// keyed on the compile_failed CODE, not the reason: under the
-		// one-release BORU_COMPILE_FALLBACK=1 hatch the library already ran
-		// the source (the reason is still reported for the warning), and a
-		// second run would double its effects. Detached fn-unit stamping
-		// stays armed across the fallback run (ArmRuntimeStamping) so
-		// stored callbacks still earn the VM path — the compiled mode's
-		// contract, exactly as the in-library armed fallback behaved.
-		if reason != "" && warn != nil {
-			fmt.Fprintf(warn, "warning: bytecode compilation FAILED — the program did not compile and was re-run on the interpreter. This is an error in need of fixing, not a performance note: %s\n", reason)
-		}
-		var refused *lang.BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_failed" {
-			disarm := a.ArmRuntimeStamping()
-			result, err = a.RunInterp(source)
-			disarm()
-		}
-	default:
-		// -no-compile: the interpreter EXPLICITLY (Stage J flips the public
-		// Run to the compiled path; this mode's contract is the tree-walker).
-		result, err = a.RunInterp(source)
-	}
+//
+// There is one engine. The program compiles and its bytecode runs, or it does
+// not compile and that is an error — printed like any other. The three modes
+// this used to switch on are gone with the fallback they existed to select.
+func runAndPrint(w io.Writer, a *lang.Boru, source string, color bool) error {
+	result, err := a.Run(source)
 	if err != nil {
 		// An `IO.exit` request passes through UNFLATTENED. Every other
 		// error is rendered here into a display string, which is fine for
@@ -226,8 +177,6 @@ type Config struct {
 	Registry string `json:"registry,omitempty"`
 	// Seed is the random seed baked in (lang.Options.Seed).
 	Seed int64 `json:"seed,omitempty"`
-	// Compile is the bytecode compile-mode baked in.
-	Compile CompileMode `json:"compile,omitempty"`
 	// OptionsBlob is the raw --options jsonic string baked in, parsed at run
 	// time exactly as the run subcommand parses --options.
 	OptionsBlob string `json:"optionsBlob,omitempty"`
@@ -376,15 +325,7 @@ func Main(cfg Config, args []string, _ io.Reader, stdout, stderr io.Writer) int 
 		}
 	}
 
-	// warn is nil DELIBERATELY: a built binary must not editorialise about its
-	// own execution engine. `boru run` warns when the whole program FAILED to
-	// compile and was re-run on the interpreter — that names a defect to whoever
-	// can fix it, and its test pins it — but a shipped tool writing
-	// "warning: bytecode compilation failed…" to stderr on every invocation is
-	// noise in someone else's pipeline, and the failures are easy to hit (two
-	// statement-form `if (cond) [body]` statements are enough). The user of a
-	// tool cannot act on it; the author, running `boru run`, can.
-	if err := runAndPrint(stdout, nil, a, cfg.Source, cfg.Compile, lang.ResolveColor(a.NativeRegistry(), stderr, "auto")); err != nil {
+	if err := runAndPrint(stdout, a, cfg.Source, lang.ResolveColor(a.NativeRegistry(), stderr, "auto")); err != nil {
 		if code, isExit := lang.ExitCode(err); isExit {
 			return code
 		}

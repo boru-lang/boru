@@ -37,7 +37,7 @@ func testCfg(t *testing.T) buildrt.Config {
 	t.Helper()
 	dir := t.TempDir()
 	src := write(t, dir, "p.boru", "add 1 2")
-	cfg, err := buildConfig(src, "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(src, "", 0, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestBuildConfigAbsError(t *testing.T) {
 	if err := os.Remove(gone); err != nil {
 		t.Skipf("cannot remove cwd on this platform: %v", err)
 	}
-	if _, err := buildConfig("rel.boru", "", 0, buildrt.CompileOff, "", nil); err == nil {
+	if _, err := buildConfig("rel.boru", "", 0, "", nil); err == nil {
 		t.Fatal("buildConfig with deleted cwd: want error, got nil")
 	}
 }
@@ -115,7 +115,7 @@ func TestCollectImportsCycleAndNestedError(t *testing.T) {
 	// a imports b, b imports a (cycle -> seen-skip arm).
 	a := write(t, dir, "a.boru", `import "./b.boru"`)
 	write(t, dir, "b.boru", `import "./a.boru"`)
-	cfg, err := buildConfig(a, "", 0, buildrt.CompileOff, "", nil)
+	cfg, err := buildConfig(a, "", 0, "", nil)
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestCollectImportsCycleAndNestedError(t *testing.T) {
 	// c imports d, d imports a missing file (recursive-error arm).
 	c := write(t, dir, "c.boru", `import "./d.boru"`)
 	write(t, dir, "d.boru", `import "./missing.boru"`)
-	if _, err := buildConfig(c, "", 0, buildrt.CompileOff, "", nil); err == nil {
+	if _, err := buildConfig(c, "", 0, "", nil); err == nil {
 		t.Fatal("nested missing import: want error, got nil")
 	}
 }

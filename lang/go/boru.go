@@ -1079,15 +1079,21 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// designed defer — is a compiler DEFECT, and compiledRunError says so
 		// rather than re-running the source to hide it.
 		//
-		// Either way the run FAILED, so it leaves the registry as it found
-		// it: the check pass's installs persist for a run that succeeds and
-		// are rolled back for one that does not, or a failed run leaks a
-		// half-installed binding into whatever the caller does next (a
-		// second run on the same instance meets its own `def` as a name
-		// clash). The old runtime-bail arm did this before re-running; it is
-		// the run's own obligation, not the fallback's.
-		a.registry.RestoreForCompile(snap)
-		a.registry.ResetStampLog()
+		// A DEFECT rolls the registry back to where the run found it. The
+		// old runtime-bail arm did this before re-running, and it is the
+		// run's own obligation rather than the fallback's: the program did
+		// not run, so it must not leave a half-installed binding behind for
+		// whatever the caller does next (a second run on the same instance
+		// meeting its own `def` as a name clash).
+		//
+		// The program's OWN error does not roll back. A raise part-way
+		// through a suite leaves the cases that already ran, exactly as the
+		// interpreter leaves them, and the runner reads that tally
+		// afterwards. Discarding it would lose work the program really did.
+		if isCompiledDefect(err) {
+			a.registry.RestoreForCompile(snap)
+			a.registry.ResetStampLog()
+		}
 		return nil, true, "", compiledRunError(a.registry, err)
 	}
 	return result, true, "", nil
@@ -1139,6 +1145,23 @@ func compileFailureReason(reason string) string {
 		return "program is not compilable"
 	}
 	return reason
+}
+
+// isCompiledDefect reports whether a compiled run's error is the COMPILER's
+// rather than the program's: an internal_error (a VM/lowering soundness
+// assertion, a recovered handler panic, a designed defer) or a foreign Go
+// error. A policy denial and every genuine boru runtime error are the
+// program's own verdict.
+func isCompiledDefect(err error) bool {
+	var pd core.PolicyDenied
+	if errors.As(err, &pd) {
+		return false
+	}
+	var ae *core.BoruError
+	if !errors.As(err, &ae) {
+		return true
+	}
+	return ae.Code == "internal_error"
 }
 
 // compiledRunError renders an error raised BY a compiled run. A genuine boru
