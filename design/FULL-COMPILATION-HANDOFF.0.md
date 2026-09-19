@@ -10626,3 +10626,90 @@ islands, the Apply kernel's first branch, NUR154–156, and the fn-value
 compile failures now 41 — provenance 16, dispatch recovery 2 (`rep`'s
 Function param at a recursive call, `sum2`'s Any collection inside a fn
 body), fn value reaches word 7, the apply shapes 16.
+
+## S1b — a fn value stored in a container (2026-09-19)
+
+The third increment, the first on `main` after #474 merged. A declaration,
+not a mechanism, and the cheapest row-per-effort of the three.
+
+**What it is.** Seven of the fifty-three remaining compile failures refused
+"function value reaches set (Stage 3)" or the same at `push`. That refusal
+is `RecordCallOperands`' blanket guard: a fn VALUE at a word's operand slot
+is refused because the handler may put it back on the TAPE, which the VM
+has no tape for. `set` and `push` do not. They WRITE the operand into a
+container and never step it, so a fn-valued operand is inert to the
+recorder — and the recorder already has the declaration for exactly that,
+`CompileStoresFn`, carried today by the parselang / net / tui register
+words. `set` (all nineteen signatures), `push`, `unshift` and `append`
+declare it now. The rule is stated once, at `set`: a word that STORES what
+it is handed declares it; a word that INVOKES what it is handed keeps the
+refusal.
+
+`CompileStoresFn` rather than a per-slot `FnInertArgs` because the stored
+value is invoked LATER, from the container, and the effect carries exactly
+that discipline: a pure fn literal rides as an inert const and gets its
+body stamped for the VM, while a capturing or sub-registry fn declines at
+`isInertConst` and keeps the interpreter fallback, so a stored fn never
+loses its real binding. Both halves are measured, not assumed.
+
+**Measured.**
+
+| gate | before | after |
+|---|---:|---:|
+| corpus compile failures | 53 | 47 |
+| interp-entry census rows | 78 | 78 |
+| engine entries | 422 | 422 |
+| compute gaps | 49 | 42 |
+| reducible (tier-2) rows | 3 | 4 |
+| the sweep: cells failing / islanded | 36 / 2 | 36 / 2 |
+
+The census, the engine entries and the sweep do not move at all: a row that
+now compiles natively enters no seam. Six of the seven rows compile with
+parity: callbacks.tsv:L62,
+fold-map-filter.tsv:L234 and :L235, module-composition.tsv:L99, and
+fn-locals-scope.tsv:L218 and :L219 — a fn read back out of a flex drives
+`fold` and `filter` natively, and one pushed onto a list is applied from
+it. The seventh, callbacks.tsv:L61, moves its refusal rather than losing
+it: `((reg.cb) 5)` is the paren-bounded apply, which is the apply-shape
+family S1b's lowering half still owes.
+
+**The seventh row, and the gate that caught it.** callbacks.tsv:L61 keeps
+its refusal, and moving it exposed something the filtered run could not
+see: the P7 partition's reducible (tier-2) gate rose 3 → 4 while compute
+gaps fell 49 → 42. That is ONE row crossing the line between two buckets,
+not debt put back. The row used to stop at "function value reaches set
+(Stage 3)", whose bucket rootCause()s as "soundness" and so counted as a
+compute gap; with that stop retired it reaches its paren-bounded apply,
+which falls to the default "coverage" root cause — and a coverage-rooted
+row whose source mentions a tier-2 word is bucketed under that word, here
+`flex`. The arithmetic is the proof rather than the claim: gaps −7,
+reducible +1, compile failures −6. It leaves tier 2 when the apply shapes
+compile.
+
+CI found it, not the local run: the per-file compile-failure ledger can be
+asserted over a subset (`BORU_SPEC_FILES`), and it was, but the partition
+gates are corpus-wide and a filtered walk only reports them. A declaration
+that RETIRES a refusal moves every row that used to stop there, so the
+whole corpus is the only instrument that sees where they stop next.
+
+**Pinned.** `lang/go/bytecode_storefn_test.go`: nine rows across the four
+words — a flex, a map, a list, a module export, a loop body — agreeing on
+value, error code and error detail and taking the compiled lane; and two
+DECLINE rows, a capturing fn at a store slot, where `CompileCheck` must
+refuse and the interpreter must answer. The decline is the boundary the
+declaration must not cross, so it is pinned as a property, not a number.
+
+**What this does not do.** It does not touch the fn value's own
+application: a stored value still meets the apply shapes on the way out.
+The largest family left is unrelated to fn values — a fn-local `def` inside
+a BRANCH arm, read after the branch, which refuses "body result of unknown
+provenance" (eight rows, plus the three operand-provenance rows over the
+same shape). The identical rebind inside a LOOP compiles today: the loop
+analysis gives the name a unit frame slot, stores at each rebind site
+(`RecordDefRebind`) and resolves every round's joined binding to that slot
+(`NoteLoopCarried`, `BeginLoopCarried`). The branch path has no analogue —
+`InstallJoinedDefs` pushes a joined value with no producing event — and the
+obstacle is timing: a loop registers the slot because it analyses its body
+in ROUNDS, while a branch arm is analysed once, so the arm's `def` records
+its store before any slot exists. That is the next increment's problem to
+solve.
