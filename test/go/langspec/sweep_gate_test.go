@@ -38,10 +38,10 @@ const sweepStatusFile = "SWEEP_STATUS.md"
 const (
 	sweepEmptyCeiling          = 0   // word × kind cells with no seed and no n/a probe — holes in the instrument
 	sweepInvalidCeiling        = 0   // seeds the interpreter rejects — a seed to fix, or an n/a to claim with a probe
-	sweepFailureCeiling        = 36  // valid seeds that FAIL to compile (33) or hard-error in CompileCheck (3) — every one a BUG. 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match
+	sweepFailureCeiling        = 31  // valid seeds that FAIL to compile or hard-error in CompileCheck — every one a BUG. 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match. 36 -> 31 on 2026-09-19 (the fallback removal): five seeds that used to be classified as failures now compile and RUN — the classifier read the try-mode fallback's error as a compile failure, and with one outcome it reads the real one
 	sweepIslandCeiling         = 2   // valid seeds that compile with an interpreter island: inner ×2. 5 -> 2 on 2026-09-19 (S1a): scan × lambda, named-fn and module-export lower to a poly re-match instead of an island
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 206 // call-form variants of passing seeds that fail to compile (refused, islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a): eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow refusal), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
+	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow refusal), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
 	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 
@@ -56,6 +56,12 @@ type sweepPin struct{ nur, detail string }
 // one that stops diverging is retired with its fix; a listed one that
 // diverges differently fails until the change is explained and re-pinned.
 var sweepKnownMiscompiles = map[string]sweepPin{
+	// Surfaced 2026-09-19 by the removal of the interpreter fallbacks: the
+	// whole-program re-run had been answering this row correctly, so the
+	// classifier never saw the divergence underneath.
+	`import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}`: {
+		"NUR170 — a container-read fn value at a word's operand slot arrives transposed with the Map beside it",
+		"error divergence: compiled [boru/signature_error]: cannot call `emitlang-auto` — no signature matches the arguments"},
 	// The first run of the sweep, 2026-09-18 — every one recorded in NUR.md.
 	`import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply`: {
 		"NUR156 — the apply of a module-export fn value does not fire on the compiled lane",
@@ -182,6 +188,19 @@ func TestGeneratedSweep(t *testing.T) {
 // with the divergence it shows.
 func sweepMiscompile(t testing.TB, where, src, detail string, seen map[string]bool) {
 	t.Helper()
+	// A compiled run that BAILED is not a divergence the sweep just found:
+	// it is the defect the interpreter re-run used to absorb, and it is
+	// counted in its own ledger (compiled_defect_test.go). The classifier
+	// hands us rendered text rather than the error, so the marker
+	// compiledRunError attaches is what identifies it.
+	if strings.Contains(detail, "this is a compiler defect") {
+		bailDefects.mu.Lock()
+		bailDefects.rows["sweep:"+src] = detail
+		bailDefects.reasons[sweepBailReason(detail)]++
+		bailDefects.mu.Unlock()
+		seen[src] = true
+		return
+	}
 	seen[src] = true
 	pin, known := sweepKnownMiscompiles[src]
 	switch {
@@ -192,6 +211,20 @@ func sweepMiscompile(t testing.TB, where, src, detail string, seen map[string]bo
 	default:
 		directionFailure(t, "%s: known miscompile (%s)", where, pin.nur)
 	}
+}
+
+// sweepBailReason pulls the VM's own message out of the rendered divergence
+// text, so the ledger groups sweep bails by site like every other row.
+func sweepBailReason(detail string) string {
+	i := strings.Index(detail, "bytecode: internal: ")
+	if i < 0 {
+		return "bail (site not named in the rendered detail)"
+	}
+	r := detail[i:]
+	if j := strings.Index(r, " (pc="); j >= 0 {
+		r = r[:j]
+	}
+	return r
 }
 
 // TestSweepMiscompilePinsTheDivergence pins sweepMiscompile's three arms:

@@ -150,13 +150,12 @@ func TestCompiledCombinationParity(t *testing.T) {
 	for _, src := range comboParity {
 		ac := newDifferentialInstance(t)
 		gotC, _, errC := ac.RunCompiled(src)
-		// Stage J: a whole-program refusal returns compile_failed instead
-		// of the library silently re-running. This harness's contract is
-		// parity-VIA-FALLBACK (the fixture comments name it), so it performs
-		// the explicit fallback itself — same instance, exactly the caller
-		// side of the new contract.
-		if errCode(errC) == "compile_failed" {
-			gotC, errC = ac.RunInterp(src)
+		// A program that does not compile, or compiles and then bails, has
+		// no compiled answer to hold beside the interpreter's. This harness
+		// used to perform the fallback itself so it had one; both classes
+		// are booked as the defects they are instead.
+		if errCode(errC) == "compile_failed" || compiledDefect(t, "combo:"+src, src, errC) {
+			continue
 		}
 		ai := newDifferentialInstance(t)
 		gotI, errI := ai.RunInterp(src)

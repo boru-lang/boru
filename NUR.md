@@ -7300,3 +7300,47 @@ local rebind, which is the spelling the language accepts.
 **Where it belongs:** the module member read (`dot` over a Module) and
 what it hands back for a fn export — the `FnDefInfo` the local rebind
 recovers, or the wrapper that hides it.
+
+## NUR170 — a container-read fn value at a word's operand slot arrives in the wrong position {#nur170}
+
+**Status:** Pending (recorded 2026-09-19).
+**Found:** the generated sweep's `emit/container` seed, on the change that
+removed the interpreter fallbacks. It is not a new defect — it was there
+before, and the whole-program fallback answered the program correctly so the
+sweep classifier never saw a divergence. Removing the fallback is what made it
+visible, which is the point of removing it.
+
+**The witness.** A fn value read out of a MAP and handed to a word that takes
+`(Any, Map)`:
+
+```
+import "boru:emitlang" end
+def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end
+emit m.up {a:1}
+
+  interpreted   UP
+  compiled      [boru/signature_error]: cannot call `emitlang-auto` —
+                no signature matches the arguments
+                  = note: the arguments were {a:1} (a Map) and fn (Any, Map) (a Function)
+```
+
+The note is the diagnosis: the compiled lane dispatches `emitlang-auto` with
+`{a:1}` where the FN belongs and the fn where the Map belongs. The two
+operands arrive transposed, so no signature matches and the dispatch raises
+where the interpreter runs the emitter.
+
+**Where it sits.** `m.up` is a dot access, which `expandReach` expands to a
+paren group whose single net value is a dynamic `Any` carrier — the same
+machinery NUR169 turns on. A carrier at an operand slot has no declared
+position of its own, and this row is the case where the slot it lands in is
+not the one the interpreter gives it.
+
+**Its family.** NUR154, NUR156, NUR159, NUR160, NUR161 and NUR169 are all the
+compiled lane treating a computed fn VALUE differently from the interpreter —
+applying one it should pass, passing one it should apply, or (here) seating
+one in the wrong slot. S1b is the increment that owes them a single answer at
+every seam, not six.
+
+**Pinned:** `sweepKnownMiscompiles`, keyed to this entry. A pinned divergence
+is debt on the record, never a decision: the pin exists so the sweep fails the
+day the WRONG ANSWER changes shape, not so the row can stay wrong.

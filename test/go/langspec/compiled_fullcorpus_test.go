@@ -164,6 +164,12 @@ func itoa(n int) string {
 // divergence is goroutine-safe.
 func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (refused, unledgered bool) {
 	t.Helper()
+	// A compiled run that BAILED is not a divergence: it is the defect the
+	// interpreter re-run used to absorb, and it is counted in its own
+	// ledger (compiled_defect_test.go) rather than read as a new miscompile.
+	if compiledDefect(t, key, input, errC) {
+		return false, false
+	}
 	// Error taxonomy parity: same presence AND same code.
 	if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
 		if !wasCompiled && cdC == "compile_failed" {
