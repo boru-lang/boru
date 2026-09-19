@@ -22,37 +22,16 @@ func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, a
 	if ref == nil || ref.Prog == nil {
 		return nil, nil, false
 	}
-	// The writer fence is armed around the attempt because a DETACHED
-	// callback fires after the enclosing compiled run disarmed its own
-	// fence: without the wrap, a callback that PRINTS and then bails
-	// would leave the ledger untouched and the interpreter retry would
-	// emit the output a second time. Nested invocations are already
-	// armed; the second wrap only double-counts, and the fence reads
-	// deltas, not magnitudes.
-	disarm := r.ArmEffectFence()
-	effectsAt := r.Effects.Count()
 	res, err, ran := invokeCompiledUnit(r, ref, args)
-	disarm()
 	if !ran {
 		return nil, nil, false
 	}
-	if !core.IsInternalErr(err) {
-		return res, err, true
-	}
-	// C1 effect fence (effects.go): the interpreter retry re-runs the
-	// whole body, so it is sound only while the failed unit emitted NO
-	// observable effect — a callback that wrote to the peer and THEN
-	// bailed must surface the internal_error rather than double its
-	// output.
-	if r.Effects.Count() != effectsAt {
-		return nil, err, true
-	}
-	// The swallowed internal error rides back WITH ran=false: it is the only
-	// thing that tells the caller its interpreter path is a designed defer's
-	// replay rather than an island (CompiledRuntime.InvokeCompiled's contract).
-	// The caller must not surface it — vmDefer already recorded the bail, and
-	// the interpreter is about to produce the canonical answer.
-	return nil, err, false
+	// A soundness bail inside the callback's unit used to ride back with
+	// ran=false so the caller retried the whole body on the interpreter,
+	// guarded by the effect fence so a callback that had written to the peer
+	// and THEN bailed did not write twice. Nothing retries now: the bail is a
+	// compiler defect and it surfaces, effect or no effect.
+	return res, err, true
 }
 
 // ClosureAsFnDef is the VALUE-path twin of closureAsWord (NUR124's payload

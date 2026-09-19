@@ -70,7 +70,10 @@ func TestEachBodyLocalValueDef(t *testing.T) {
 	for _, c := range sound {
 		t.Run("sound/"+c.name, func(t *testing.T) {
 			a, _ := New()
-			got, _, err := a.RunCompiled(c.src) // fallback allowed
+			got, _, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
 			if err != nil {
 				t.Fatalf("RunCompiled error: %v", err)
 			}

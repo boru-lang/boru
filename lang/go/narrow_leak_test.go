@@ -24,7 +24,11 @@ func TestNarrowingPushDoesNotLeakAcrossRuns(t *testing.T) {
 	// The binding state this test is about is what the RUN leaves behind, so
 	// it is driven on the reference engine: the program does not compile
 	// today, and that failure is booked as the defect it is.
-	gotC, cErr := a.Run(src)
+	probe, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotC, cErr := probe.Run(src)
 	noteCompileDefect(t, src, gotC, cErr)
 	if _, err := a.RunInterp(src); err != nil {
 		t.Fatal(err)

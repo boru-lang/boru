@@ -43,20 +43,22 @@ func TestRunCompiledReason(t *testing.T) {
 		}
 	})
 
-	// NEGATIVE — a statically-invalid program (a SeverityError check diagnostic:
-	// undefined word) reports NO reason. It fails in both engines, so its
-	// interpreter fallback is not a performance refusal worth warning about.
-	t.Run("check diagnostics report no reason", func(t *testing.T) {
+	// A program the check pass stops on reports the sentinel as its reason
+	// and fails. It used to report NO reason, because the compiler was about
+	// to re-run it on the interpreter and the reason existed only to warn
+	// about a slow path. There is no slow path: the compile failed, and the
+	// reason says where.
+	t.Run("a blocking diagnostic is the reason", func(t *testing.T) {
 		a, _ := New()
 		_, ran, reason, err := a.RunCompiledReason("no_such_word")
 		if ran {
-			t.Fatalf("a check-error program must fall back (ran=false), got ran=true")
+			t.Fatalf("a program that does not compile must not run compiled")
 		}
-		if reason != "" {
-			t.Fatalf("a statically-invalid program must report no refusal reason, got %q", reason)
+		if reason != "check diagnostics" {
+			t.Fatalf("reason = %q, want the check-diagnostics sentinel", reason)
 		}
-		if err == nil {
-			t.Fatalf("an undefined word must still error on the interpreter fallback")
+		if codeOf(err) != "compile_failed" {
+			t.Fatalf("err = %v, want compile_failed", err)
 		}
 	})
 

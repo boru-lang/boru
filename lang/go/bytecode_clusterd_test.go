@@ -26,7 +26,10 @@ func TestEachFoldGradualCollection(t *testing.T) {
 	for _, c := range gradual {
 		t.Run("gradual/"+c.name, func(t *testing.T) {
 			a, _ := New()
-			got, _, err := a.RunCompiled(c.src) // allows fallback
+			got, _, err := a.RunCompiled(c.src)
+			if noteCompileDefect(t, c.src, got, err) {
+				return
+			}
 			if err != nil {
 				t.Fatalf("RunCompiled error: %v", err)
 			}

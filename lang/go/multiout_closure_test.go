@@ -144,12 +144,9 @@ func TestEmptyBodyClosureParity(t *testing.T) {
 // cannot reach across the call boundary); the fallback owns it, and parity
 // holds.
 func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
 	src := `for 3 [ do [break] drop ]`
 	gotC, _, errC, gotI, errI := runBothEngines(t, src)
-	if fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI) {
-		t.Errorf("%q: engine divergence: compiled=%v/%v interp=%v/%v", src, gotC, errC, gotI, errI)
-	}
+	requireParity(t, src, gotC, errC, gotI, errI)
 }
 
 // TestDynBodyVariadicAndSpliceShapes — Phase E increment 2 pins:

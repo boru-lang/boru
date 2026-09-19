@@ -66,12 +66,15 @@ func TestRunCompiledStrict(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error from the blocking diagnostic, got nil")
 		}
-		// The blocking diagnostic IS the program's error now: a
-		// statically-invalid program fails the same way whatever runs it,
-		// so its own verdict is surfaced rather than a compile failure
-		// wrapped around a sentinel.
-		if codeOf(err) == "compile_failed" {
-			t.Errorf("a blocking diagnostic must surface as the program's own error, got %q", err.Error())
+		// The blocking diagnostic NAMES the compile failure rather than
+		// standing in as the program's verdict: the checker flags code the
+		// program never reaches, so claiming its finding as the answer
+		// would invent a failure where there is none.
+		if codeOf(err) != "compile_failed" {
+			t.Errorf("want compile_failed, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "the check pass stopped at [") {
+			t.Errorf("the failure must name the blocking diagnostic, got %q", err.Error())
 		}
 	})
 

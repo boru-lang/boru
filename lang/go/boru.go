@@ -965,14 +965,14 @@ func (a *Boru) RunCompiled(src string) ([]any, bool, error) {
 // compiler could not lower. It runs identically to RunCompiled — same
 // results, same flag, same error — and additionally reports:
 //
-//   - "" when the program ran, and when the failure is not the compiler's:
-//     a statically-invalid program (a parse or check error, or the ERROR
-//     diagnostic behind the "check diagnostics" sentinel), which fails the
-//     same way whatever runs it.
-//   - the first construct the emitter could not lower otherwise. That is a
-//     compiler DEFECT (design/COMPILABLE-SUBSET.md §1), and the reason is
-//     what names it — in the compile_failed error, and in whatever the
-//     caller shows a user.
+//   - "" when the program ran, and when it is MALFORMED — a parse or check
+//     error, which fails the same way whatever runs it and is the program's
+//     own failure, not the compiler's.
+//   - the first construct the emitter could not lower otherwise, or the
+//     "check diagnostics" sentinel when the check pass stopped it. Either
+//     way that is a compiler DEFECT (design/COMPILABLE-SUBSET.md §1), and
+//     the reason is what names it — in the compile_failed error, and in
+//     whatever the caller shows a user.
 func (a *Boru) RunCompiledReason(src string) ([]any, bool, string, error) {
 	vals, ran, reason, err := a.RunAutoValues(src)
 	if err != nil {
@@ -1037,28 +1037,28 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// there is no arm for the effect fence to protect and no hatch to
 		// restore one.
 		//
-		// A statically-INVALID program is the one case whose error is not the
-		// compiler's: it fails identically in both engines, so its own verdict
-		// is the truthful result and is surfaced as such — the check error, or
-		// the first ERROR-severity model-undermining diagnostic behind the
-		// "check diagnostics" sentinel. That is rendering the program's error,
-		// not falling back to another engine to find one.
+		// A PARSE or CHECK error is the one failure that is not the
+		// compiler's: the program is malformed, it fails identically
+		// whatever runs it, and the error is its own.
 		if err != nil {
 			return nil, false, "", err
 		}
-		for _, d := range res.Diagnostics {
-			if !d.RuntimeMirror && d.Severity == SeverityError {
-				return nil, false, "", diagnosticAsError(a.registry, d)
-			}
-		}
-		// Everything else is the compiler's defect, including a
-		// CaughtAtRuntime diagnostic (downgraded because a surrounding
-		// `do [...]` catches the failure, so the program is VALID and must
-		// run) and a pass that substituted a fn-carrier read. Both used to
-		// buy a quiet interpreter run; they now report the bug they are.
-		return nil, false, reason, a.registry.BoruError("compile_failed",
-			"bytecode compilation FAILED: "+compileFailureReason(reason)+
-				" — this is a compiler defect, not a policy: valid code must compile.", "")
+		// Everything else is a compile failure, and it is reported as one
+		// even when the check pass has a blocking diagnostic to show for it.
+		// The diagnostic is NOT surfaced as the program's verdict: the
+		// checker flags code the program never reaches — `def g fn [[]
+		// [Integer] [if (1 lte 0) [nosucharm] [2]]] g` raises undefined_word
+		// on an arm that never runs, and the program answers [2] — so
+		// claiming that finding as the program's error invents a failure
+		// where there is none. That is the worse defect, and the one this
+		// whole change exists to stop. The finding still travels, as the
+		// reason the compile failed, with its position and hints intact.
+		//
+		// A CaughtAtRuntime diagnostic is the same: downgraded because a
+		// surrounding `do [...]` catches the failure, so the program is
+		// VALID and must run. It bought a quiet interpreter run; it reports
+		// the bug it is now.
+		return nil, false, reason, compileFailedError(a.registry, reason, res)
 	}
 	// RunProgram rolls the check pass's runtime-visible installs back to the
 	// base the Program carries (ReplayBase) at the one safe between-phases
@@ -1093,22 +1093,31 @@ func (a *Boru) RunCompiledStrict(src string) ([]any, error) {
 	return out, err
 }
 
-// diagnosticAsError renders a blocking check diagnostic as the program's own
-// error. The whole payload travels — position, source fragment, notes and
-// suggestions — because this IS the error the user gets: an invalid program
-// fails the same way whatever runs it, and it used to be the interpreter
-// re-run that rendered it, with every hint intact. Dropping to a bare
-// code-and-detail here would make an invalid program's diagnostic worse than
-// it was, which is not a trade this change is entitled to make.
-func diagnosticAsError(r *native.Registry, d CheckDiagnostic) error {
+// compileFailedError builds the one error a program that does not compile
+// returns. When the compiler stopped on a blocking check diagnostic, that
+// finding is what names the failure, and its whole payload travels —
+// position, source fragment, notes and suggestions — so the user sees exactly
+// what the checker saw. What it does not do is claim the finding as the
+// program's own verdict: see the note at the call site.
+func compileFailedError(r *native.Registry, reason string, res CheckResult) error {
 	src := ""
 	if r != nil {
 		src = r.Source
 	}
-	ae := core.MakeBoruErrorAt(d.Code, d.Detail, d.Word, src, "", core.SrcPos{Row: d.Row, Col: d.Col, Src: d.Src})
-	ae.Notes = append(ae.Notes, d.Notes...)
-	ae.Suggestions = append(ae.Suggestions, d.Suggestions...)
-	return ae
+	const tail = " — this is a compiler defect, not a policy: valid code must compile."
+	for _, d := range res.Diagnostics {
+		if d.RuntimeMirror || d.Severity != SeverityError {
+			continue
+		}
+		ae := core.MakeBoruErrorAt("compile_failed",
+			"bytecode compilation FAILED: the check pass stopped at ["+d.Code+"] "+d.Detail+tail,
+			d.Word, src, "", core.SrcPos{Row: d.Row, Col: d.Col, Src: d.Src})
+		ae.Notes = append(ae.Notes, d.Notes...)
+		ae.Suggestions = append(ae.Suggestions, d.Suggestions...)
+		return ae
+	}
+	return core.MakeBoruError("compile_failed",
+		"bytecode compilation FAILED: "+compileFailureReason(reason)+tail, "", src, "")
 }
 
 // compileFailureReason renders the emitter's reason for a compile_failed

@@ -327,16 +327,11 @@ func runParallelBranch(reg *Registry, elem Value) parallelResult {
 			if ref == nil || ref.Prog == nil {
 				continue
 			}
-			effectsAt := reg.Effects.Count()
+			// A VM soundness bail used to re-run the branch's raw tokens on
+			// the interpreter, guarded by the effect fence so a branch that
+			// had already printed did not print twice. Nothing re-runs now:
+			// the bail is a compiler defect and the branch reports it.
 			result, runErr := eng.RunUnit(ref, reg, nil)
-			if core.IsInternalError(runErr) && reg.Effects.Count() == effectsAt {
-				// A VM soundness bail with NO observable effect: re-run the raw
-				// tokens on the interpreter, exactly as the branch would have run
-				// without the stamp (the C1 fence — see InvokeCallback).
-				if a, isBoru := fd.Signatures[i].Impl.(*core.BoruImpl); isBoru {
-					return interpretBranchBody(reg, a.Body)
-				}
-			}
 			return branchOutcome(result, runErr)
 		}
 	}
