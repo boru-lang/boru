@@ -33,9 +33,10 @@ func TestCompiledRunErrorClassifies(t *testing.T) {
 		err    error
 		defect bool
 	}{
-		{"a VM assertion is a defect", core.MakeBoruError("internal_error", "bytecode: internal: STORE_LOCAL stack underflow (pc=2)", "", "", ""), true},
-		{"a recovered panic is a defect", core.MakeBoruError("internal_error", "internal bytecode VM error: index out of range", "", "", ""), true},
+		{"a VM defer is a defect", vmDeferErr("bytecode: internal: STORE_LOCAL stack underflow (pc=2)"), true},
+		{"a recovered VM panic is a defect", vmDeferErr("internal bytecode VM error: index out of range"), true},
 		{"a handler's internal_error is the program's", core.MakeBoruError("internal_error", "convert: cannot convert Float to BigInteger", "", "", ""), false},
+		{"a user `raise internal_error` is the program's", core.MakeBoruError("internal_error", "boom", "", "", ""), false},
 		{"foreign (non-Boru) error is a defect", errors.New("some go error"), true},
 		{"type_error is the program's result", core.MakeBoruError("type_error", "bad", "", "", ""), false},
 		{"evaluation_limit is the program's result", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
@@ -44,7 +45,10 @@ func TestCompiledRunErrorClassifies(t *testing.T) {
 		{"policy denial is the program's verdict", core.PolicyDenied{Err: errors.New("word `IO.print` denied by policy")}, false},
 	}
 	for _, c := range cases {
-		got := compiledRunError(reg, c.err)
+		got, defect := compiledRunError(reg, c.err)
+		if defect != c.defect {
+			t.Errorf("%s: reported disposition %v, want %v", c.name, defect, c.defect)
+		}
 		var ae *core.BoruError
 		marked := errors.As(got, &ae) && len(ae.Notes) > 0 &&
 			strings.Contains(ae.Notes[len(ae.Notes)-1], note)
@@ -66,12 +70,26 @@ func TestCompiledRunErrorPrefersDeferAlt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ae := core.MakeBoruError("internal_error", "bytecode: internal: vm:poly-no-match (pc=5)", "", "", "")
+	ae := vmDeferErr("bytecode: internal: vm:poly-no-match (pc=5)")
 	ae.DeferAlt = core.MakeBoruError("signature_error", "no matching signature for `f`", "f", "", "")
-	got := compiledRunError(a.NativeRegistry(), ae)
+	got, defect := compiledRunError(a.NativeRegistry(), ae)
 	if got != ae.DeferAlt {
 		t.Fatalf("DeferAlt not surfaced: got %v", got)
 	}
+	// And it is NOT a defect disposition: the alt IS the program's own
+	// error, so the caller must not roll the registry back over it.
+	if defect {
+		t.Error("a surfaced DeferAlt was reported as a defect — the caller would discard the program's work")
+	}
+}
+
+// vmDeferErr builds an internal_error the way the VM does, with the VMDefer
+// marker set. The marker is the discriminator: the CODE alone cannot tell a
+// VM bail from a handler's choice or a user's `raise internal_error`.
+func vmDeferErr(detail string) *core.BoruError {
+	e := core.MakeBoruError("internal_error", detail, "", "", "")
+	e.VMDefer = true
+	return e
 }
 
 // Finding A — a genuine compiled-mode runtime error is surfaced WITHOUT a

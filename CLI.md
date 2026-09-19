@@ -693,7 +693,6 @@ Flags:
 | `-o <path>` | Output binary path. Default: source basename without `.boru` (`prog.boru` → `prog`). |
 | `--native` | Use the Go-toolchain path instead of the self-embedding launcher. |
 | `--keep` | (native) Retain the generated temp build directory and print its path. |
-| `--compile` / `--force-compile` | Bake the experimental bytecode compile-mode into the binary (see [Bytecode compilation](#bytecode-compilation)). `--force-compile` makes the produced binary abort on uncompilable input. |
 | `-r <registry>` | Registry path baked into the binary. |
 | `-s <seed>` | Random seed baked into the binary. |
 | `--options <jsonic>` | Engine [`--options`](#--options--engine-options-as-jsonic) baked in (validated at build time). |

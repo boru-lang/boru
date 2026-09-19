@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -214,18 +213,13 @@ func New(opts ...Options) (*Boru, error) {
 
 func init() {
 	// Vm.run's sub-engine runner (modules/vm.go CompiledSubRun): the module
-	// package cannot import lang, so the compiled-by-default entry point is
-	// injected here — the same contract as the public Run (explicit armed
-	// interpreter fallback on compile_failed).
+	// package cannot import lang, so the compiled entry point is injected
+	// here — the same one outcome as the public Run. It used to re-run the
+	// source on the interpreter for compile_failed, which made this a place
+	// a compile failure could still hide.
 	modules.CompiledSubRun = func(reg *native.Registry, src string) ([]native.Value, error) {
 		a := &Boru{registry: reg}
 		vals, _, _, err := a.RunAutoValues(src)
-		var refused *BoruError
-		if errors.As(err, &refused) && refused.Code == "compile_failed" {
-			disarm := a.ArmRuntimeStamping()
-			vals, err = a.RunInterpValues(src)
-			disarm()
-		}
 		return vals, err
 	}
 }
@@ -1104,11 +1098,18 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// through a suite leaves the cases that already ran, exactly as the
 		// interpreter leaves them, and the runner reads that tally
 		// afterwards. Discarding it would lose work the program really did.
-		if isCompiledDefect(err) {
+		//
+		// The decision is compiledRunError's FINAL disposition, not the raw
+		// error's class: a designed defer carrying a prepared alt surfaces
+		// as the program's own error, so it IS one, and rolling that back
+		// would discard the program's work over an error the user is meant
+		// to see.
+		out, defect := compiledRunError(a.registry, err)
+		if defect {
 			a.registry.RestoreForCompile(snap)
 			a.registry.ResetStampLog()
 		}
-		return nil, true, "", compiledRunError(a.registry, err)
+		return nil, true, "", out
 	}
 	return result, true, "", nil
 }
@@ -1137,12 +1138,18 @@ func checkErrorAsCompileFailure(r *native.Registry, err error) error {
 		return core.MakeBoruError("compile_failed",
 			"bytecode compilation FAILED: the check pass errored: "+err.Error()+tail, "", src, "")
 	}
-	cp := core.MakeBoruErrorAt("compile_failed",
-		"bytecode compilation FAILED: the check pass errored: ["+ae.Code+"] "+ae.Detail+tail,
-		"", src, ae.Hint, core.SrcPos{Row: ae.Row, Col: ae.Col, Src: ae.Src})
-	cp.Notes = append(cp.Notes, ae.Notes...)
-	cp.Suggestions = append(cp.Suggestions, ae.Suggestions...)
-	return cp
+	// COPY the original and replace only the code and the detail. Rebuilding
+	// it field by field dropped File, Spans and FullSource — and an error
+	// raised while checking an IMPORTED file carries that module's BaseFile
+	// and source (stampErrPos), so a rebuild rendered the module-relative
+	// row against the top-level registry's text and lost the declaration
+	// spans with it.
+	cp := *ae
+	cp.Code = "compile_failed"
+	cp.Detail = "bytecode compilation FAILED: the check pass errored: [" + ae.Code + "] " + ae.Detail + tail
+	cp.Notes = append([]string(nil), ae.Notes...)
+	cp.Suggestions = append([]core.DiagSuggestion(nil), ae.Suggestions...)
+	return &cp
 }
 
 // compileFailedError builds the one error a program that does not compile
@@ -1158,7 +1165,13 @@ func compileFailedError(r *native.Registry, reason string, res CheckResult) erro
 	}
 	const tail = " — this is a compiler defect, not a policy: valid code must compile."
 	for _, d := range res.Diagnostics {
-		if d.RuntimeMirror || d.Severity != SeverityError {
+		// The SAME predicate CompileCheck refused on. A CaughtAtRuntime
+		// finding is downgraded to SeverityInfo by AddDiagnostic (a
+		// surrounding `do [...]` traps it), and the compile gate still stops
+		// on it — so selecting on severity alone left exactly that class
+		// with the bare "check diagnostics" sentinel and no position, where
+		// checkDiagnosticsDetail used to name it.
+		if d.RuntimeMirror || (d.Severity != SeverityError && !d.CaughtAtRuntime) {
 			continue
 		}
 		ae := core.MakeBoruErrorAt("compile_failed",
@@ -1183,32 +1196,6 @@ func compileFailureReason(reason string) string {
 	return reason
 }
 
-// vmRaised reports whether an internal_error came from the VM itself rather
-// than from a handler running under it. These are the two texts the compiled
-// runtime builds its own internal errors with (eng/go/vm.go's vmErrAt, and
-// vm_foreign_unit.go's recovered panic).
-func vmRaised(detail string) bool {
-	return strings.HasPrefix(detail, "bytecode: internal: ") ||
-		strings.HasPrefix(detail, "internal bytecode VM error: ")
-}
-
-// isCompiledDefect reports whether a compiled run's error is the COMPILER's
-// rather than the program's: an internal_error (a VM/lowering soundness
-// assertion, a recovered handler panic, a designed defer) or a foreign Go
-// error. A policy denial and every genuine boru runtime error are the
-// program's own verdict.
-func isCompiledDefect(err error) bool {
-	var pd core.PolicyDenied
-	if errors.As(err, &pd) {
-		return false
-	}
-	var ae *core.BoruError
-	if !errors.As(err, &ae) {
-		return true
-	}
-	return ae.Code == "internal_error" && vmRaised(ae.Detail)
-}
-
 // compiledRunError renders an error raised BY a compiled run. A genuine boru
 // runtime error is the program's own result and passes through untouched. A
 // VM/lowering soundness assertion, a designed defer or a recovered panic is a
@@ -1216,44 +1203,49 @@ func isCompiledDefect(err error) bool {
 // the error carries a note saying what it is and asking for it to be
 // reported. A foreign Go error is the same class.
 //
-// The VM's own errors are identified by their TEXT, not by their code. A
-// native handler may raise internal_error for a failure that is entirely the
-// program's — `convert: cannot convert Float to BigInteger`, `def q: value 0
-// does not satisfy predicate type Positive` — and the interpreter raises the
-// identical error running the identical handler. Marking those as compiler
-// defects would book the compiler for a handler's choice of error code, and
-// would put fifty-odd corpus rows in a ledger that is supposed to name VM
-// bails. That the code is a poor one for a user-facing failure is a real
-// complaint, and it is the handler's, not this function's.
+// The VM's own errors are identified by BoruError.VMDefer (core.IsVMDefer),
+// the marker vmErrAt and both VM panic guards set. The CODE alone will not
+// do: a native handler may raise internal_error for a failure that is
+// entirely the program's — `convert: cannot convert Float to BigInteger`,
+// `def q: value 0 does not satisfy predicate type Positive` — and so may user
+// code, with a plain `raise internal_error "boom"`. The interpreter raises
+// the identical error in every one of those cases. Marking them as compiler
+// defects would book the compiler for a handler's choice of error code and
+// put fifty-odd corpus rows in a ledger meant to name VM bails.
+//
+// The second return is the DISPOSITION: true only when this call annotated a
+// defect. A defer that surfaced its prepared alt did not — the alt is the
+// program's own error — and the caller's rollback reads this rather than the
+// raw error's class.
 //
 // One case is not a defect report: a designed defer that PREPARED the
 // interpreter's own error for this exact moment (a no-match whose site proved
 // the dispatch fails either way) carries that raise in DeferAlt. Surfacing it
 // is raising the program's real failure at the point it happens — one of the
 // three legal dispositions for a defer site — not re-running to find one.
-func compiledRunError(r *native.Registry, err error) error {
+func compiledRunError(r *native.Registry, err error) (error, bool) {
 	const note = "this is a compiler defect: the program compiled and then failed inside the compiled runtime; please report it"
 	var pd core.PolicyDenied
 	if errors.As(err, &pd) {
 		// A word-policy denial from the VM dispatch gate IS the program's
 		// verdict — the checker raises the same error — not a defect.
-		return err
+		return err, false
 	}
 	var ae *core.BoruError
 	if !errors.As(err, &ae) {
 		wrapped := core.MakeBoruError("internal_error", err.Error(), "", "", "")
 		wrapped.Notes = append(wrapped.Notes, note)
-		return wrapped
+		return wrapped, true
 	}
-	if ae.Code != "internal_error" || !vmRaised(ae.Detail) {
-		return err
+	if !core.IsVMDefer(err) {
+		return err, false
 	}
 	if ae.DeferAlt != nil {
-		return ae.DeferAlt
+		return ae.DeferAlt, false
 	}
 	cp := *ae
 	cp.Notes = append(append([]string(nil), ae.Notes...), note)
-	return &cp
+	return &cp, true
 }
 
 // CheckResult is the outcome of a static type-check run.

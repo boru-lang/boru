@@ -162,6 +162,48 @@ func itoa(n int) string {
 // unledgered is a divergence knownDivergences does not carry. It runs on a
 // walk worker, so it takes testing.TB and touches no shared state —
 // divergence is goroutine-safe.
+// knownPositionLoss pins rows where the two lanes agree on the error in every
+// respect the taxonomy names — code, detail, notes, suggestions — and differ
+// only in that the compiled one carries no SOURCE POSITION.
+//
+// Its own map rather than knownDivergences, because it is its own kind of
+// finding. knownDivergences is checked by every gate that walks the corpus
+// and its entries must diverge on all of them; a position loss is visible
+// only where position PRESENCE is asserted, which is here. Filing one there
+// would fail the differential gate for not seeing a divergence it does not
+// look for.
+var knownPositionLoss = map[string]string{
+	"reach.tsv:L52": "NUR171 — the compiled no-match diagnostic is byte-identical and carries no source position: the recorder gives PolyNoMatchSpec no dispatch position and the debug table has none at that pc, so the raise has nothing to stamp (the interpreter's re-run used to supply it)",
+}
+
+var (
+	seenPositionLossMu sync.Mutex
+	seenPositionLossed = map[string]bool{}
+)
+
+func seenPositionLoss(key string) {
+	seenPositionLossMu.Lock()
+	seenPositionLossed[key] = true
+	seenPositionLossMu.Unlock()
+}
+
+// checkPositionLossRetired is knownPositionLoss's half of the ledger
+// contract: a pin that stopped diverging is retired with the change that
+// fixed it, never left to rot.
+func checkPositionLossRetired(t testing.TB) {
+	t.Helper()
+	if filteredCorpus() {
+		return
+	}
+	seenPositionLossMu.Lock()
+	defer seenPositionLossMu.Unlock()
+	for key, why := range knownPositionLoss {
+		if !seenPositionLossed[key] {
+			t.Errorf("knownPositionLoss entry %s no longer loses its position — retire it with the change that fixed it (was: %s)", key, why)
+		}
+	}
+}
+
 func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (refused, unledgered bool) {
 	t.Helper()
 	// A compiled run that BAILED is not a divergence: it is the defect the
@@ -195,8 +237,13 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 					wasCompiled, input, aeC.Detail, aeI.Detail))
 			}
 			if aeI.Row > 0 && aeC.Row == 0 {
-				return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
-					wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail))
+				if why, known := knownPositionLoss[key]; known {
+					seenPositionLoss(key)
+					directionFailure(t, "%s: known position loss (%s)", key, why)
+				} else {
+					return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  error position lost in compiled mode: interpreter at %d:%d, compiled has no position\n  detail=%q",
+						wasCompiled, input, aeI.Row, aeI.Col, aeC.Detail))
+				}
 			}
 			// Phase-7 rich-diagnostic parity: the compiled error must carry
 			// the SAME notes, suggestions, and secondary spans as the
@@ -286,6 +333,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
 	checkLedgerRetired(t, "compile-or-fallback")
+	checkPositionLossRetired(t)
 	assertBailDefectLedger(t)
 	if mismatches != 0 {
 		t.Errorf("%d compile-or-fallback divergences the ledger does not know — every program must compile to an identical result and error taxonomy", mismatches)

@@ -34,18 +34,17 @@ func mustRefuseWithParity(t *testing.T, src, want string) {
 	if !strings.Contains(reason, want) {
 		t.Errorf("%q: refusal reason = %q, want it to contain %q", src, reason, want)
 	}
-	// Stage J: RunCompiled returns the refusal as compile_failed (no
-	// silent re-run); the program stays fully serviceable via RunInterp.
+	// The compile failure is reported plainly and BOOKED, and the program
+	// stays fully serviceable on the reference engine. Booking must not
+	// short-circuit that second half: every source this helper takes fails
+	// to compile, so an early return here would make the interpreter
+	// assertion below dead code and let a real interpreter regression pass
+	// as long as the defect count held.
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
-	if noteCompileDefect(t, src, nil, errC) {
-		return
-	}
+	requireCompileDefect(t, src, nil, errC)
 	if compiled {
-		t.Errorf("%q: RunCompiled reported a compiled run; a refused program must not compile", src)
-	}
-	if codeOf(errC) != "compile_failed" {
-		t.Errorf("%q: RunCompiled err=[%s] %v, want compile_failed (Stage J)", src, codeOf(errC), errC)
+		t.Errorf("%q: RunCompiled reported a compiled run; a program that does not compile must not compile", src)
 	}
 	c, _ := New()
 	if _, errI := c.RunInterp(src); errI != nil && codeOf(errI) == "compile_failed" {

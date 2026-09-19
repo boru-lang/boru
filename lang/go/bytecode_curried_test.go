@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -54,11 +53,10 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 		}
 		b, _ := New()
 		_, _, errC := b.RunCompiled(src)
-		if noteCompileDefect(t, src, nil, errC) {
-			return
-		}
-		if !strings.Contains(fmt.Sprint(errC), "compile_failed") {
-			t.Errorf("three-level currying: err=%v, want compile_failed", errC)
+		// Booked, not returned: the interpreter answer below is this case's
+		// own claim, and the source never compiles.
+		if !noteCompileDefect(t, src, nil, errC) {
+			t.Errorf("three-level currying: err=%v, want a compile failure", errC)
 		}
 		c, _ := New()
 		if out, err := c.RunInterp(src); err != nil || fmt.Sprint(out) != "[6]" {

@@ -36,15 +36,16 @@ func TestGradualArgParamGuard(t *testing.T) {
 		t.Run("guarded/"+c.name, func(t *testing.T) {
 			a, _ := New()
 			gotC, _, errC := a.RunCompiled(c.src)
-			if noteCompileDefect(t, c.src, gotC, errC) {
-				return
-			}
-			// The miscompile was: compiled RETURNED a value. Now it must ERROR.
-			if errC == nil {
-				t.Fatalf("compiled must raise (param guard), not return %v", gotC)
-			}
-			if !strings.Contains(fmt.Sprint(errC), "no signature matches") {
-				t.Errorf("compiled error = %v, want a signature_error", errC)
+			// A booked defect skips the COMPILED assertions but never the
+			// interpreter oracle below.
+			if !noteCompileDefect(t, c.src, gotC, errC) {
+				// The miscompile was: compiled RETURNED a value. Now it must ERROR.
+				if errC == nil {
+					t.Fatalf("compiled must raise (param guard), not return %v", gotC)
+				}
+				if !strings.Contains(fmt.Sprint(errC), "no signature matches") {
+					t.Errorf("compiled error = %v, want a signature_error", errC)
+				}
 			}
 			// And the interpreter raises the SAME thing.
 			b, _ := New()
