@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-18**.
+Last updated: **2026-09-19**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -99,6 +99,121 @@ day and open until answered:
 2. Whether `boru check` agreeing with `boru run` (T4, the 279 rows where
    the checker reports an error the compiler compiles past) is inside
    "as a developer expects".
+
+## The interpreter fallbacks are gone (2026-09-19, PR #476 — OPEN)
+
+Read this first: it changes what every other number on this page means.
+
+The maintainer ruled: *"remove all interpreter fallbacks, flags, modes, etc.
+Failure to compile is a plain bug only."* That is the scaffolding
+[COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md) §1 has always called scaffolding,
+brought forward from its planned Stage-9 retirement. **The branch is
+`claude/determined-cori-j4kmlx`; PR #476 is open and CI was mid-run when this
+was written. Nothing below is merged.**
+
+**What went.** Ten mechanisms. The count is the finding — nobody had them in
+one list:
+
+1. the `"check diagnostics"` carve-out in `RunAutoValues`;
+2. the fn-carrier-read carve-out beside it;
+3. `BORU_COMPILE_FALLBACK=1`, the one-release hatch;
+4. the runtime-bail arm (roll back, re-run the whole source);
+5. `Run`'s own explicit fallback;
+6. the CLI's try mode and warning, with `CompileOff`/`CompileTry`/
+   `CompileForce`, `--compile`, `--no-compile`, `--force-compile` and their
+   three environment variables;
+7. the fn-value token seam's degrade;
+8. the detached-callback retry (`InvokeCompiled` → `CallBoru`);
+9. an `await` BRANCH's re-run of its raw tokens;
+10. the REPL's per-line re-run and the HTTP exec handler's per-request one.
+
+The C1 effect fence went with them: it counted output escaping the check pass
+so a re-run could be blocked before duplicating it, and there is no re-run to
+block.
+
+**What stayed, and why it is not an exception.** `Vm.run`'s sub-engine
+(`modules.CompiledSubRun`). It executes source constructed at RUNTIME, so
+there is no ahead-of-time program to compile — "compiling" it is
+parse+compile+run at run time, which IS the interpreter. That is tier 1 of
+`compiled_metafallback_test.go`'s partition, the one category the project has
+reasoned is genuinely irreducible. Removing it made a LANGUAGE WORD refuse
+programs the interpreter runs (two `canon` rows, caught by CI on the
+INTERPRETED spec gate). The compile there is an opportunity, not an
+obligation.
+
+Interpreter ISLANDS also stay, and the number is on the record because the
+removal was built and measured before being reverted: unit-test compile
+defects **284 → 292**, five pinned tests regressed on `error [...]` handlers
+and quoted `do` bodies. An island is a compiled program with a COUNTED,
+ratcheted interpreted span (`islandCeiling` 0 on the corpus), so removing it
+buys no honesty and costs a core control-flow family. Stage 9 deletes it,
+after those shapes lower natively — the order is the point.
+
+**The contract now.** One outcome. A program compiles and its bytecode runs,
+or it does not compile and that is an error naming the construct. Three
+refinements the corpus forced, each of which had been getting it wrong in the
+same direction — claiming the compiler's failure as the program's verdict:
+
+- a failed CHECK PASS is a compile failure, not the program's error (the pass
+  crashes on `each [if [gt 1] ['big'] ['small']] [1 2 3]`, which runs clean
+  interpreted). A PARSE error is still the program's own;
+- a blocking check DIAGNOSTIC names the compile failure rather than standing
+  in as the verdict — the checker flags code the program never reaches;
+- a handler's `internal_error` is the PROGRAM's. Only `core.IsVMDefer` marks
+  the compiler's.
+
+**Four ledgers carry the debt.** All ratchets on a bug count, never budgets:
+
+| ledger | counts | at |
+|---|---|---:|
+| `test/go/langspec/compile_failures.tsv` | corpus rows that do not compile, per spec file | 53 |
+| `lang/go/compile_defect_test.go` | unit-test programs: do not compile / compile then bail | 284 / 32 |
+| `lang/go/test/compile_defect_test.go` | language tests answered on the reference engine | 111 |
+| `test/go/langspec/compiled_defect_test.go` | corpus rows that compile and then bail | 52 |
+
+The last is new and was needed: a program that COMPILED and then abandoned the
+run used to be re-run, so the lanes agreed and five differential gates saw
+nothing. `compiledDefect` classifies; `bookCompiledDefect` counts, and only
+the corpus walk calls it, so the ceiling means one thing.
+
+**Two numbers that look like improvements and are not.** Sweep compile
+failures 36 → 31 and call-form failures 206 → 200: five seeds were classified
+as failures because the classifier read the try-mode fallback's error as a
+compile failure. They always compiled.
+
+**What it exposed, which is the point.** Four genuine miscompiles the fallback
+had been absorbing: `unresolvable type operand` after an `undef` (twice), a
+`STORE_LOCAL` stack underflow in a net-zero `do` body, and **NUR170** (a fn
+value read out of a Map and handed to a word taking `(Any, Map)` arrives
+TRANSPOSED). **NUR171** is the fifth and is position-only — the compiled
+no-match diagnostic is byte-identical and carries no source position, because
+neither the recorded `PolyNoMatchSpec` nor the debug table has one to stamp.
+It is pinned in `knownPositionLoss`, its own map: `knownDivergences` is
+checked by every corpus gate and its entries must diverge on all of them,
+while a position loss is visible only where position presence is asserted.
+
+**Still owed on this line.** `vmDefer`'s ~20 messages still say "deferring to
+the interpreter", false in every one now. Mechanical, and left only because
+each rides in gate pins that need re-reading against the new text rather than
+rewriting with it. Then the island machinery, at Stage 9 and in that order.
+
+**Three method lessons this increment paid for.** They are the reusable part:
+
+- **A fence is only as good as the arm it guards.** Removing the effect fence
+  before the seams it protected left three fences reading clear and re-running
+  unconditionally; the `await` test caught it printing `once` twice. An
+  unguarded arm looks exactly like a passing one.
+- **A booking that skips work is a fallback wearing a different hat.**
+  Teaching a parity helper to tolerate a compile failure stops it reporting a
+  compile REGRESSION, which is why every tolerant branch books against a
+  ceiling; and injecting that booking as an early `return` in front of a
+  helper's interpreter oracle swallows the oracle — six helpers reported that
+  the ORACLE had moved when what had moved was the test.
+- **A flag's meaning can expire under a census.** The bail census sorted on
+  `wasCompiled`, which was equivalent to "did the program survive" only while
+  a bail re-ran the whole program. CI called the result a regression; sorting
+  on the defect class restored both ceilings EXACTLY (8 and 1), which is the
+  proof that only the bucketing had moved.
 
 ## Where the project is
 
