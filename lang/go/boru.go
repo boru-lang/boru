@@ -1037,11 +1037,24 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 		// there is no arm for the effect fence to protect and no hatch to
 		// restore one.
 		//
-		// A PARSE or CHECK error is the one failure that is not the
-		// compiler's: the program is malformed, it fails identically
-		// whatever runs it, and the error is its own.
-		if err != nil {
+		// A PARSE error is the one failure that is not the compiler's: the
+		// source is malformed, it fails identically whatever reads it, and
+		// the error is its own.
+		if err != nil && reason == "parse error" {
 			return nil, false, "", err
+		}
+		// A CHECK error is the check PASS failing on this program, and the
+		// checker may never be the reason a program does not compile
+		// (design/SESSION-HANDOVER.0.md). It is not the program's verdict:
+		// `each [if [gt 1] ['big'] ['small']] [1 2 3]` crashes the pass with
+		// an index-out-of-range and runs clean interpreted, and
+		// `def One (typeof (const 1)) end 1 is One` raises a type_error in
+		// check mode that the interpreter never reaches. Whether such a
+		// program is ALSO invalid is a question a failed pass cannot answer,
+		// so the honest report is the compile failure, carrying the pass's
+		// own message and position so nothing is lost.
+		if err != nil {
+			return nil, false, reason, checkErrorAsCompileFailure(a.registry, err)
 		}
 		// Everything else is a compile failure, and it is reported as one
 		// even when the check pass has a blocking diagnostic to show for it.
@@ -1107,6 +1120,28 @@ func (a *Boru) RunAutoValues(src string) ([]native.Value, bool, string, error) {
 func (a *Boru) RunCompiledStrict(src string) ([]any, error) {
 	out, _, err := a.RunCompiled(src)
 	return out, err
+}
+
+// checkErrorAsCompileFailure renders a failed check pass as the compile
+// failure it is, keeping the pass's message, position and hints: a user still
+// sees exactly what stopped it, and the code says who it belongs to.
+func checkErrorAsCompileFailure(r *native.Registry, err error) error {
+	src := ""
+	if r != nil {
+		src = r.Source
+	}
+	const tail = " — this is a compiler defect, not a policy: valid code must compile."
+	var ae *core.BoruError
+	if !errors.As(err, &ae) {
+		return core.MakeBoruError("compile_failed",
+			"bytecode compilation FAILED: the check pass errored: "+err.Error()+tail, "", src, "")
+	}
+	cp := core.MakeBoruErrorAt("compile_failed",
+		"bytecode compilation FAILED: the check pass errored: ["+ae.Code+"] "+ae.Detail+tail,
+		"", src, ae.Hint, core.SrcPos{Row: ae.Row, Col: ae.Col, Src: ae.Src})
+	cp.Notes = append(cp.Notes, ae.Notes...)
+	cp.Suggestions = append(cp.Suggestions, ae.Suggestions...)
+	return cp
 }
 
 // compileFailedError builds the one error a program that does not compile

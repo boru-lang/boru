@@ -2,7 +2,6 @@ package langspec
 
 import (
 	"errors"
-	"flag"
 	"os"
 	"sort"
 	"strconv"
@@ -48,24 +47,36 @@ var bailDefects = struct {
 }{rows: map[string]string{}, reasons: map[string]int{}}
 
 // compiledDefect reports whether errC is the compiled lane reporting a
-// COMPILER defect rather than the program's own result, and books it. The
-// marker is compiledRunError's note, which only the compiled runtime attaches
-// — an internal_error the PROGRAM raised carries no such note.
-func compiledDefect(t testing.TB, key, detail string, errC error) bool {
+// COMPILER defect rather than the program's own result. The marker is
+// compiledRunError's note, which only the compiled runtime attaches — an
+// internal_error the PROGRAM raised carries no such note.
+//
+// It only CLASSIFIES. Counting is bookCompiledDefect's job and has exactly
+// one caller, the corpus walk, so the ceiling means one thing: corpus rows.
+// Every other gate asks this question about rows the corpus walk has already
+// counted, and a second booking would inflate the number without naming a
+// second defect.
+func compiledDefect(errC error) bool {
 	var ae *core.BoruError
 	if !errors.As(errC, &ae) || ae.Code != "internal_error" {
 		return false
 	}
-	marked := false
 	for _, n := range ae.Notes {
 		if strings.Contains(n, "this is a compiler defect") {
-			marked = true
-			break
+			return true
 		}
 	}
-	if !marked {
+	return false
+}
+
+// bookCompiledDefect classifies and COUNTS. The corpus walk
+// (TestSpecCompiledOrFallback) is its only caller.
+func bookCompiledDefect(key, detail string, errC error) bool {
+	if !compiledDefect(errC) {
 		return false
 	}
+	var ae *core.BoruError
+	errors.As(errC, &ae)
 	bailDefects.mu.Lock()
 	defer bailDefects.mu.Unlock()
 	bailDefects.rows[key] = detail
@@ -82,26 +93,25 @@ func bailReasonOf(detail string) string {
 	return detail
 }
 
-// TestMain asserts the ledger after the package's walks have run. A FILTERED
-// run (-run, or BORU_SPEC_FILES over one family) walks a subset and would
-// undercount, so the assertion is made only on a whole-package walk — the
-// same rule the per-file compile-failure ledger applies.
-func TestMain(m *testing.M) {
-	code := m.Run()
-	if !filteredRun() {
-		os.Stderr.WriteString(bailDefectReport())
-		if code == 0 && len(bailDefects.rows) != bailDefectCeiling {
-			code = 1
-		}
+// assertBailDefectLedger is called by the corpus walk once it has finished.
+// A FILTERED walk (BORU_SPEC_FILES over one family) sees a subset and would
+// undercount, so it only REPORTS there — the same rule the per-file
+// compile-failure ledger applies to its corpus-wide sum.
+func assertBailDefectLedger(t testing.TB) {
+	t.Helper()
+	report := bailDefectReport()
+	if os.Getenv("BORU_SPEC_FILES") != "" {
+		t.Logf("%s  (a filtered walk: reported, not asserted)", report)
+		return
 	}
-	os.Exit(code)
-}
-
-func filteredRun() bool {
-	if f := flag.Lookup("test.run"); f != nil && f.Value.String() != "" {
-		return true
+	bailDefects.mu.Lock()
+	n := len(bailDefects.rows)
+	bailDefects.mu.Unlock()
+	if n != bailDefectCeiling {
+		t.Error(report)
+		return
 	}
-	return os.Getenv("BORU_SPEC_FILES") != ""
+	t.Log(report)
 }
 
 func bailDefectReport() string {

@@ -154,7 +154,7 @@ func TestCompiledCombinationParity(t *testing.T) {
 		// no compiled answer to hold beside the interpreter's. This harness
 		// used to perform the fallback itself so it had one; both classes
 		// are booked as the defects they are instead.
-		if errCode(errC) == "compile_failed" || compiledDefect(t, "combo:"+src, src, errC) {
+		if errCode(errC) == "compile_failed" || compiledDefect(errC) {
 			continue
 		}
 		ai := newDifferentialInstance(t)

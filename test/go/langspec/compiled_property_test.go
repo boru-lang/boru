@@ -1145,7 +1145,7 @@ func diverges(t testing.TB, src string) (compiled, bad bool) {
 	}
 	// A compiled BAIL is the defect the interpreter re-run used to absorb:
 	// booked, and not counted as a divergence the fuzzer just found.
-	if compiledDefect(t, "property:"+src, src, errC) {
+	if compiledDefect(errC) {
 		return true, false
 	}
 	ai := newDifferentialInstance(t)

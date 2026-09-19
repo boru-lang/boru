@@ -167,7 +167,7 @@ func TestRegionCollectOracle(t *testing.T) {
 		// A compiled BAIL is the defect the interpreter re-run used to
 		// absorb — counted in its own ledger, not reported here as though
 		// the oracle had found it.
-		if compiledDefect(t, r.Key(), input, errC) {
+		if compiledDefect(errC) {
 			return
 		}
 		if strings.Contains(errC.Error(), "internal_error") {

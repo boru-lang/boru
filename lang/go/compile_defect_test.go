@@ -48,7 +48,7 @@ const (
 	// Set 2026-09-19, the change that removed the interpreter fallbacks.
 	// These are not new bugs: every one of them was already there, answered
 	// by a silent re-run on the interpreter and counted by nothing.
-	compileDefectCeiling = 281
+	compileDefectCeiling = 284
 	bailDefectCeiling    = 32
 )
 

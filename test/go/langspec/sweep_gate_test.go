@@ -194,11 +194,10 @@ func sweepMiscompile(t testing.TB, where, src, detail string, seen map[string]bo
 	// hands us rendered text rather than the error, so the marker
 	// compiledRunError attaches is what identifies it.
 	if strings.Contains(detail, "this is a compiler defect") {
-		bailDefects.mu.Lock()
-		bailDefects.rows["sweep:"+src] = detail
-		bailDefects.reasons[sweepBailReason(detail)]++
-		bailDefects.mu.Unlock()
+		// Classified, not counted: the ceiling counts CORPUS rows, and a
+		// sweep seed is not one. The sweep's own gates carry its numbers.
 		seen[src] = true
+		directionFailure(t, "%s: the compiled run bails — %s", where, sweepBailReason(detail))
 		return
 	}
 	seen[src] = true

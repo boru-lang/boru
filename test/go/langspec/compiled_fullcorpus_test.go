@@ -167,7 +167,7 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 	// A compiled run that BAILED is not a divergence: it is the defect the
 	// interpreter re-run used to absorb, and it is counted in its own
 	// ledger (compiled_defect_test.go) rather than read as a new miscompile.
-	if compiledDefect(t, key, input, errC) {
+	if bookCompiledDefect(key, input, errC) {
 		return false, false
 	}
 	// Error taxonomy parity: same presence AND same code.
@@ -271,6 +271,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
 	checkLedgerRetired(t, "compile-or-fallback")
+	assertBailDefectLedger(t)
 	if mismatches != 0 {
 		t.Errorf("%d compile-or-fallback divergences the ledger does not know — every program must compile to an identical result and error taxonomy", mismatches)
 	}
