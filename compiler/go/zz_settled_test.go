@@ -602,8 +602,10 @@ func TestEngineRecorderAndTraceHooks(t *testing.T) {
 // seat was measured at 53 -> 181 corpus compile failures, because `def x m.y`
 // is the commonest shape in the language.
 func TestNUR173NoteReStepLandingGates(t *testing.T) {
-	// An inactive recorder notes nothing at all.
-	inactive := NewEmitState()
+	// An INACTIVE recorder notes nothing at all. (NewEmitState() is ACTIVE —
+	// Compilable and unsuspended — so the zero value is what this arm needs,
+	// the same fixture TestRecordSpliceDynDeclines uses.)
+	inactive := &EmitState{}
 	inactive.NoteReStepLanding(core.NewDynamicCarrier(core.TAny), core.SrcPos{})
 	if len(inactive.landingAfter) != 0 {
 		t.Errorf("an inactive recorder must note nothing, got %v", inactive.landingAfter)

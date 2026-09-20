@@ -147,3 +147,68 @@ func TestReStepLandingStaysData(t *testing.T) {
 		})
 	}
 }
+
+// TestReStepLandingIslandArm: a value the VM cannot take falls to the island,
+// which is the interpreter's own one-token re-step and therefore always the
+// right answer. It is the LAST rung precisely because an island is an
+// interpreter entry and the censuses count every one.
+//
+// A bare `Function` TYPE LITERAL is the honest fixture: IsAppliableFn admits
+// it by lattice tag, it carries no FnDefInfo to match or enter against, and
+// the island answers exactly as the interpreter does — stepLiteral pushes a
+// Function value with no payload rather than dispatching it.
+func TestReStepLandingIslandArm(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	lit := core.Value{Parent: core.TFunction}
+	if !core.IsAppliableFn(lit) {
+		t.Fatal("fixture is not appliable — the landing would leave it as data before the island")
+	}
+	if _, isFn := lit.Data.(core.FnDefInfo); isFn {
+		t.Fatal("fixture carries an FnDefInfo — it would take an earlier rung")
+	}
+	got, ent, err := vc.reStepLanding(r, []core.Value{lit}, seam7Dbg, 0)
+	if err != nil || ent != nil {
+		t.Fatalf("island landing: %v %v", ent, err)
+	}
+	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+		t.Errorf("island landing = %v, want the value the interpreter pushes", got)
+	}
+}
+
+// TestReStepLandingErrorArms: a raise from inside the applied member is the
+// member's own error and surfaces stamped at the landing, on every rung that
+// can run code. The interpreter raises the same at the same point, prior side
+// effects included.
+func TestReStepLandingErrorArms(t *testing.T) {
+	r := seam7Reg(t)
+
+	// The CLOSURE rung: a 0-param unit whose body raises.
+	p := landingProg()
+	p.Traps = []compiler.TrapSpec{{Code: "bad_input", Detail: "landing closure raised", Word: "boom"}}
+	p.Fns = []compiler.CompiledFn{{
+		Name: "raiser", NParams: 0, NLocals: 0, Returns: []*core.Type{core.TAny},
+		Code:  []compiler.Instr{{Op: compiler.OpTrap, Arg: 0}},
+		Debug: []core.SrcPos{{}},
+	}}
+	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
+	if _, _, err := vc.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0); err == nil {
+		t.Error("a raising closure member must surface its error, not a stack")
+	}
+
+	// The NATIVE rung: a handler that raises.
+	boom := core.FnDefInfo{
+		Anonymous: true,
+		Signatures: []core.Signature{{
+			BarrierPos: -1,
+			Returns:    []*core.Type{core.TInteger},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+				return nil, core.MakeBoruError("bad_input", "landing handler raised", "boom", "", "")
+			}),
+		}},
+	}
+	if _, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(boom)}, seam7Dbg, 0); err == nil {
+		t.Error("a raising member must surface its error at the landing")
+	}
+}
