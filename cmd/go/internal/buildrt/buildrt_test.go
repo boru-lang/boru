@@ -299,8 +299,8 @@ func TestMainExitCodeIsProcessStatus(t *testing.T) {
 }
 
 // The residual stack is not flushed on exit, and an out-of-range code is a
-// refusal (status 1) rather than a status.
-func TestMainExitSuppressesResidualAndRefusesRange(t *testing.T) {
+// compile failure (status 1) rather than a status.
+func TestMainExitSuppressesResidualAndRejectsRange(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Main(Config{Source: `import "boru:io"  42  IO.exit 0`}, nil, nil, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit status %d, want 0", code)
@@ -324,8 +324,8 @@ func TestMainExitSuppressesResidualAndRefusesRange(t *testing.T) {
 // engine on every invocation is noise in someone else's pipeline. The noise
 // argument only held while the run still produced an answer. It does not: the
 // binary cannot run the program at all, so the only honest thing it can do is
-// say why. `boru build` refuses to ship such a binary in the first place
-// (TestBuildRefusesUncompilableProgram); this is the backstop for a payload
+// say why. `boru build` declines to ship such a binary in the first place
+// (TestBuildFailsOnUncompilableProgram); this is the backstop for a payload
 // built before that gate, or one whose program stopped compiling under a
 // newer runtime.
 func TestMainFailsLoudlyWhenTheProgramDoesNotCompile(t *testing.T) {

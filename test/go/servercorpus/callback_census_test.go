@@ -5,7 +5,7 @@
 // runtime interpreter entries, a transcript identical to the interpreter's,
 // and race-clean. Nothing in the tree measured the first of those for a
 // server, so "does a callback-architected server compile completely?" had
-// no numeric answer — only the whole-program compile/refuse verdict, which
+// no numeric answer — only the whole-program compile/decline verdict, which
 // says nothing about what the per-connection handler does at runtime.
 //
 // This case measures it. A boru program starts a TCP echo server, connects
@@ -161,7 +161,7 @@ MiniRedis.cmd ep "GET k"
 // redisEntryCeiling is the unattributed-entry count for the protocol-server
 // case. Monotone DOWN only; 0 at Stage 9. Measured, not chosen.
 //
-// 51 today because the program does not compile AT ALL: it refuses on the
+// 51 today because the program does not compile AT ALL: it declines on the
 // check-diagnostics sentinel with `undefined_word: h2`
 // (design/examples/apps/mini-redis.boru:210).
 //
@@ -169,7 +169,7 @@ MiniRedis.cmd ep "GET k"
 // writing reductions: of its fourteen registered handlers, HDEL alone
 // reproduces — and HSET, the site the message NAMES, does not. Three faults
 // compose. (1) `boru check` does not analyse a service-handler body AT ALL:
-// a bare undefined word inside one is reported clean by check and refused by
+// a bare undefined word inside one is reported clean by check and declined by
 // the compiler, so a typo in a request handler ships. The compile pass must
 // read that body — it records it into a compiled callback unit — so every
 // divergence follows from that asymmetry. (2) A call the checker models as
@@ -180,9 +180,9 @@ MiniRedis.cmd ep "GET k"
 // about a different name, than its cause.
 //
 // This is frontier family E — the sentinel section 6.9 deletes at Stage 8 —
-// and it is the whole reason a realistic protocol server refuses while the
+// and it is the whole reason a realistic protocol server declines while the
 // plain echo server compiles to zero.
-// RETIRED 2026-09-19 with the interpreter fallbacks. The 51 was measured on
+// RETIRED 2026-09-19 with the compile failures. The 51 was measured on
 // the FALLBACK run — the program never compiled, the library re-ran it whole
 // on the interpreter, and this counted the entries that re-run made. There is
 // no such run, so there is no such number, and keeping it would be counting

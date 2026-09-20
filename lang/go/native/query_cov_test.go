@@ -142,7 +142,7 @@ func TestBuilderConstructors(t *testing.T) {
 }
 
 // covFakeMat is a Materializer that is not a QueryBuilder — unwrapQB
-// must refuse it.
+// must decline it.
 type covFakeMat struct{}
 
 func (covFakeMat) Materialize() (TableData, error) { return TableData{}, nil }
@@ -159,13 +159,13 @@ func TestWrapUnwrapAndToQueryBuilder(t *testing.T) {
 		t.Fatalf("unwrapQB(wrapQB) = (%+v,%v)", got, ok)
 	}
 
-	// A Materializer that is not a QueryBuilder is refused.
+	// A Materializer that is not a QueryBuilder is declined.
 	if _, ok := unwrapQB(Value{Parent: TList, Data: MaterializerPayload{M: covFakeMat{}}}); ok {
 		t.Error("unwrapQB accepted a non-QueryBuilder materializer")
 	}
 	// The legacy ExtensionPayload wrapping still unwraps.
 	if _, ok := unwrapQB(Value{Parent: TList, Data: ExtensionPayload{Body: qb}}); !ok {
-		t.Error("unwrapQB refused the legacy ExtensionPayload form")
+		t.Error("unwrapQB declined the legacy ExtensionPayload form")
 	}
 
 	// toQueryBuilder: wrapped query, bare table, and a rejection.
@@ -1090,7 +1090,7 @@ func TestQueryScalarAndOrderResiduals(t *testing.T) {
 		t.Error("float IN scalar: expected error, got nil")
 	}
 
-	// A subquery column with a cell valueToSQL rejects is refused.
+	// A subquery column with a cell valueToSQL rejects is declined.
 	if _, err := parseColumnSpec(NewList([]Value{NewList([]Value{
 		{Parent: TList, Data: covOneRowTable(NewFloat(1.5))}, NewAtom("a"),
 	})})); err == nil {

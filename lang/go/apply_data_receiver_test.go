@@ -23,7 +23,7 @@ import (
 // consumed as a window ARGUMENT (`(x (n f/v apply) apply)`, the numeral's
 // `n`, which the interpreter DISPATCHES over `f/v`) lowered as data and the
 // csucc rows compiled to `f` applied to `n`. The accounting now runs under
-// a tail apply too, and those rows refuse.
+// a tail apply too, and those rows decline.
 
 const adrChurch = `def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end `
 
@@ -89,13 +89,13 @@ func TestApplyDataReceiverIslanded(t *testing.T) {
 	}
 }
 
-// TestApplyDataReceiverSoundRefusals pins the neighbours that still REFUSE,
+// TestApplyDataReceiverSoundCompileFailures pins the neighbours that still DECLINE,
 // with the interpreter's own answer.
-func TestApplyDataReceiverSoundRefusals(t *testing.T) {
+func TestApplyDataReceiverSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// the numeral's BARE read `n` beneath the paren-bounded apply: a word
 		// dispatch (n over f/v) the window would lower as data — the
-		// accounting under the tail apply refuses (compiled to `[fn n(Function) 2]`
+		// accounting under the tail apply declines (compiled to `[fn n(Function) 2]`
 		// before the accounting ran there)
 		{adrNum + `def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint c3/v)`, "unknown provenance", "[3]"},
 		{adrNum + `def s n:Function => [f:Function => [x:Any => [(n f/v apply)]]] end (s czero/v)`, "unknown provenance", "[fn (Function)]"},
@@ -112,11 +112,11 @@ func TestApplyDataReceiverSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {

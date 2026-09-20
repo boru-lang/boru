@@ -38,7 +38,7 @@ func TestW8QueryIdealListToAnyError(t *testing.T) {
 // TestW8FormatValueFallbacks drives the AsList / AsMap fallback arms of
 // formatTableValue (report.go:130 AsList-error, 143 row AsMap-nil) and
 // formatListValue (report.go:213 AsList-error) via extension-backed values
-// whose payloads the list/map accessors refuse.
+// whose payloads the list/map accessors decline.
 func TestW8FormatValueFallbacks(t *testing.T) {
 	// A TList value whose payload AsList cannot read (not a table either).
 	extList := core.NewExtension(native.TList, "w8-not-a-list")
@@ -51,7 +51,7 @@ func TestW8FormatValueFallbacks(t *testing.T) {
 	if s := formatListValue(extList); s == "" {
 		t.Error("formatListValue(ext-list) should fall back to a printed form")
 	}
-	// 143: a plain list whose first row is a TMap-typed value AsMap refuses.
+	// 143: a plain list whose first row is a TMap-typed value AsMap declines.
 	rowExt := core.NewExtension(native.TMap, "w8-not-a-map")
 	if s := formatTableValue(native.NewList([]native.Value{rowExt})); s == "" {
 		t.Error("formatTableValue(list of ext-map row) should fall back")

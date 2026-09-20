@@ -14,7 +14,7 @@ import (
 //   - installDef declines to install the non-concrete Function carrier in Defs,
 //     so RecordDynBind now records its ID (rootComputedBindIDs) as an enclosing
 //     binding; the fn body's read then rescues to a runtime dyn-scope read
-//     instead of an unreachable enclosing-producer operand (which refused
+//     instead of an unreachable enclosing-producer operand (which declined
 //     "branch reads enclosing computation").
 //   - the read uses OpLookupDynScopeData (Signature.FnDataArgs on
 //     parselang-fn-dispatch arg0), the DATA-position twin that PUSHES the parser

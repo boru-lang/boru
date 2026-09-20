@@ -33,7 +33,7 @@ func s7bFn(sigs ...native.FnSig) native.Value {
 	return native.NewFunction(native.FnDefInfo{Name: "s7bfn", Signatures: sigs})
 }
 
-// TestS7B_TypeBodyArgErrors drives the typeBodyArg / AsConcreteAtom refusal
+// TestS7B_TypeBodyArgErrors drives the typeBodyArg / AsConcreteAtom compile failure
 // arms of the binary and unary type words, in BOTH dispatch orders so each
 // arg position's guard fires.
 func TestS7B_TypeBodyArgErrors(t *testing.T) {

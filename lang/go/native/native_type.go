@@ -159,7 +159,7 @@ var typeNatives = []NativeFunc{
 			// slot (position 0) is deliberately NOT inert: a concrete Function
 			// there is a PREDICATE the handler INVOKES via RunPredicate
 			// (`5 is Positive`), so whole-sig CompileReadsFn would miscompile —
-			// the positional map keeps that slot on the refusal path (pinned by
+			// the positional map keeps that slot on the compile failure path (pinned by
 			// TestFnValueIntrospectionLowers' invoke negative).
 			FnInertArgs: map[int]bool{1: true},
 		}},
@@ -325,7 +325,7 @@ var typeNatives = []NativeFunc{
 				Impl:     Go(convert2Handler),
 				// See the Ideal sig above: a VALUE of arg0's type, not the
 				// literal. The wrapper additionally flags the one TYPE-decidable
-				// refusal: a Float source into a Big target always raises.
+				// compile failure: a Float source into a Big target always raises.
 				ReturnsFn: convertScalarReturns, BarrierPos: -1,
 			},
 			// NUR053 — the truthiness DOMAIN. `if` and `make Boolean` accept
@@ -685,7 +685,7 @@ func typeofHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 // asTargetType resolves `as`'s TYPE operand (sig position 0) to its
 // canonical lattice node. Only a bare nominal type literal qualifies —
 // ascription redirects DISPATCH along the nominal lattice, so structural
-// bodies (records, predicates, disjuncts) and plain values refuse with
+// bodies (records, predicates, disjuncts) and plain values decline with
 // as_error rather than silently ascribing something dispatch cannot walk.
 func asTargetType(r *Registry, t Value) (*Type, error) {
 	if !core.IsTypeLiteral(t) {
@@ -705,7 +705,7 @@ func asTargetType(r *Registry, t Value) (*Type, error) {
 // tree lattice) — the runtime step re-runs this validation over the
 // concrete value.
 func asValidate(r *Registry, target *Type, v Value) error {
-	refuse := func() error {
+	decline := func() error {
 		name := target.Leaf()
 		own := "nothing"
 		if v.Parent != nil {
@@ -717,7 +717,7 @@ func asValidate(r *Registry, target *Type, v Value) error {
 			"as", "ascribe an ancestor of the value's own type; to construct a subtype use def x:"+name+" instead")
 	}
 	if core.IsTypeLiteral(v) || v.Parent == nil {
-		return refuse()
+		return decline()
 	}
 	if v.Dynamic {
 		// Tree lattice: two nodes overlap iff one is an ancestor of the
@@ -725,10 +725,10 @@ func asValidate(r *Registry, target *Type, v Value) error {
 		if v.Parent.ConformsTo(target) || target.ConformsTo(v.Parent) {
 			return nil
 		}
-		return refuse()
+		return decline()
 	}
 	if !v.Parent.ConformsTo(target) {
-		return refuse()
+		return decline()
 	}
 	return nil
 }
@@ -943,7 +943,7 @@ func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 			// its stricter answer by sending a concrete candidate through
 			// the Unify + value-identity path below, where a swap
 			// admission (the unified result being the alternative's bare
-			// node, not the value) is refused: `42 is (P tor String)` is
+			// node, not the value) is declined: `42 is (P tor String)` is
 			// false while `42 g` dispatches.
 			if !core.IsDisjunctTypeNode(b) || !IsConcrete(a) {
 				return []Value{NewBoolean(true)}, nil
@@ -1252,7 +1252,7 @@ func convertOptsPattern() Value {
 	baseOpts := NewOrderedMap()
 	baseOpts.Set("base", NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TNone)}))
 	baseOpts.Set("truthy", NewDisjunct([]Value{NewTypeLiteral(TBoolean), NewTypeLiteral(TNone)}))
-	// accuracy enables (and disambiguates) the otherwise-refused
+	// accuracy enables (and disambiguates) the otherwise-declined
 	// Float → BigDecimal conversion — see floatToBigDecimal.
 	baseOpts.Set("accuracy", NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TNone)}))
 	// places is the companion to accuracy:"round" — the number of
@@ -1286,7 +1286,7 @@ var convertBoolOptsKinds = map[string]*Type{
 // of the two Boolean rows the sorter puts first, a valid call computes
 // the same answer.
 func convertBoolOptsHandler(args []Value, named map[string]Value, body []Value, r *Registry) ([]Value, error) {
-	// Arity guard FIRST, and it refuses rather than delegating: the
+	// Arity guard FIRST, and it declines rather than delegating: the
 	// no-signature recovery can assume a sig with a short arg window, and
 	// convert3Handler indexes args[2] unconditionally — so delegating a
 	// short window would panic, which this codebase does not permit
@@ -1479,7 +1479,7 @@ func convertTo(src Value, targetType *Type, base string) (Value, error) {
 }
 
 // convertScalarReturns wraps the fresh-instance result model for the
-// [Scalar Scalar] convert overload with its one TYPE-decidable refusal:
+// [Scalar Scalar] convert overload with its one TYPE-decidable compile failure:
 // a Float source into a Big target ALWAYS raises (convertToBigInteger /
 // convertToBigDecimal reject exactly by source type — no value can pass),
 // so a source the checker has PROVEN Float (strict, non-dynamic) is
@@ -1507,7 +1507,7 @@ func convertScalarReturns(args []Value, r *Registry) []Value {
 // convertToBigInteger converts a scalar source to BigInteger. Exact
 // sources (Integer, BigInteger) and the truncated integer part of a
 // BigDecimal are accepted; a String is parsed exactly (base-aware). A
-// Float is REFUSED — a binary Float is inexact, so silently absorbing it
+// Float is DECLINED — a binary Float is inexact, so silently absorbing it
 // into an arbitrary-precision exact type would re-introduce the very
 // rounding error the Big types exist to avoid (convert to Integer first
 // if a truncating projection is really wanted).
@@ -1551,7 +1551,7 @@ func convertToBigInteger(src Value, base string) (Value, error) {
 
 // convertToBigDecimal converts a scalar source to BigDecimal. Integer and
 // BigInteger widen exactly; BigDecimal is returned as-is; a String is
-// parsed exactly via apd. A Float is REFUSED for the same reason as
+// parsed exactly via apd. A Float is DECLINED for the same reason as
 // convertToBigInteger (the float is already rounded — WAT Exhibit L).
 func convertToBigDecimal(src Value, base string) (Value, error) {
 	if base != "" {
@@ -1605,7 +1605,7 @@ func bigDecimalToBigIntTrunc(src Value) (*big.Int, error) {
 }
 
 // floatToBigDecimal performs the opt-in Float → BigDecimal conversion
-// that convertToBigDecimal refuses by default. A binary Float is inexact,
+// that convertToBigDecimal declines by default. A binary Float is inexact,
 // so there is no single honest BigDecimal for it; the `accuracy` option
 // forces the caller to state which reading they want:
 //
@@ -1618,7 +1618,7 @@ func bigDecimalToBigIntTrunc(src Value) (*big.Int, error) {
 //     required; e.g. 3.14159 with places 2 becomes 0d3.14).
 //
 // A non-finite Float (NaN / ±Inf) has no decimal expansion and is
-// refused. This is reached only from the 3-arg convert with an accuracy
+// declined. This is reached only from the 3-arg convert with an accuracy
 // option present — without it, Float → BigDecimal stays a hard error.
 //
 // `places` is carried as an int64 so an out-of-range request is caught
@@ -1780,7 +1780,7 @@ func convert3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	}
 
 	// `accuracy` is the explicit opt-in that lets a Float become a
-	// BigDecimal (convertToBigDecimal refuses it by default because a
+	// BigDecimal (convertToBigDecimal declines it by default because a
 	// binary Float is inexact). It applies only to a Float → BigDecimal
 	// conversion; for any other source/target it is inert, exactly like
 	// truthy on a non-Boolean target.

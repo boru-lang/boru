@@ -8,7 +8,7 @@ import (
 
 // OpDispatchRematch (plan Phase 3): a statically-failed dispatch whose window
 // held CARRIER operands compiles to a terminal runtime rematch instead of
-// refusing the whole program. The six graduated knownRefusals rows (the
+// declining the whole program. The six graduated knownCompileFailures rows (the
 // apply.tsv pair + four generics rows) re-match the live values at run time
 // and raise the shared rich diagnostic BYTE-IDENTICAL to the interpreter's
 // sigError. The corpus differential covers Detail equality; this pin compares
@@ -103,7 +103,7 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 // tuple is the window's leading slice by ID and stamps its length as
 // DispatchSpec.NWritten; the compiled rematch re-runs the match over the
 // FULL window and renders over window[:NWritten] — byte-identical to the
-// interpreter, running COMPILED (formerly a whole-program refusal).
+// interpreter, running COMPILED (formerly a whole-program compile failure).
 func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 	const src = `def Flag (refine Boolean)  def f fn [[x:Flag] [Boolean] [def add fn [[a:Flag b:Flag] [Boolean] [a or b]] add x x]]  def v:Flag true  (f v) add none none`
 	a, err := New()
@@ -138,7 +138,7 @@ func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 	}
 }
 
-// TestDispatchRematchVariadicIfGraduated — the LAST corpus refusal's
+// TestDispatchRematchVariadicIfGraduated — the LAST corpus compile failure's
 // graduation pin (both polarities): the branch merge seats the 1-vs-2
 // arm-dependent residual (captureInertArmResidual + the variadic merge), and
 // the terminal rematch seats its const operand under the live region top

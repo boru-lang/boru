@@ -175,10 +175,10 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// depth growth) cannot revert it, and compiled resolution bakes
 				// the conditional shadow. The interpreter keeps the outer fn
 				// when the branch is not taken (or the loop runs zero times), so
-				// the two diverge. Refuse — MarkUncompilable is a no-op off the
+				// the two diverge. Decline — MarkUncompilable is a no-op off the
 				// compile pass, so plain check and the interpreter are unaffected
 				// and the program runs correctly — silently, which is why this
-				// refusal has to stay on the books as a defect. An UNCONDITIONAL
+				// failure has to stay on the books as a defect. An UNCONDITIONAL
 				// redefinition (top level or inside `do`) has no such divergence
 				// and keeps compiling: CondBodyDepth is 0 there.
 				//
@@ -191,8 +191,8 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				// the compiled program keeps the outer closure's bake (`g (p 3)`
 				// answered 10 for the interpreter's 12 — the thirty-first
 				// increment). A capture-free literal takes the compiled twin and
-				// agrees; the closure's payload has no twin, so it refuses.
-				refusal := ""
+				// agrees; the closure's payload has no twin, so it declines.
+				failure := ""
 				if r.analysisInSpecArm() && len(fnDef.Captured) == 0 && NoteSpecFnDef(r, name, dropped, body, body.Pos()) {
 					// The seventieth increment: a CAPTURE-FREE replace inside
 					// a branch arm the model cannot decide is SPECULATIVE —
@@ -201,11 +201,11 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					// it cannot place (a loop or each body around the arm, a
 					// fn body, a signature with no declaration site), and a
 					// capturing closure's value is not a const the placement
-					// can bake: those keep the refusal below.
+					// can bake: those keep the failure below.
 				} else if r.analysisInCondBody() {
-					refusal = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
+					failure = "fn '" + name + "' redefined inside a conditional body (branch/loop) shadows an outer overload"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) > 0 {
-					refusal = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
+					failure = "fn '" + name + "' redefined inside a fn body by a capturing fn value replaces an outer overload past the call"
 				} else if r.Check.FnBodyDepth > 0 && len(fnDef.Captured) == 0 && specFnJoin(r, name) && specFamilyAtFnBaseline(r, name) {
 					// NUR149: a CAPTURE-FREE redefinition inside a fn body of a
 					// SPECULATIVE-FAMILY name (a fn defined in a branch arm the
@@ -213,7 +213,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					// increment) whose standing binding existed at the enclosing
 					// fn's BASELINE — i.e., a MODULE-scope family. A capture-free
 					// replace normally takes the compiled BindDefReplace twin and
-					// agrees, so it is not refused above; but the family's
+					// agrees, so it is not declined above; but the family's
 					// dispatches ROUTE with a live lead (the routed op resolves
 					// the word in the running registry), and this in-place
 					// replace of a MODULE family is the family-L leak — the
@@ -223,16 +223,16 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 					// nothing. The live lead then resolves the arm's binding
 					// (whose unit no call site compiled) or an unbound name,
 					// diverging from the interpreter. No compiled twin reproduces
-					// a shadow the interpreter does not tear down, so refuse. That
+					// a shadow the interpreter does not tear down, so decline. That
 					// keeps a wrong answer out and leaves the shape uncompiled —
 					// an open defect, owed the model that reproduces the shadow.
 					// An IN-FUNCTION family (created inside this fn, above the
 					// baseline) is popped by RET and has no such divergence, so it
-					// is NOT refused (the baseline gate; Codex P2 on #469).
-					refusal = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
+					// is NOT declined (the baseline gate; Codex P2 on #469).
+					failure = "fn '" + name + "' redefined inside a fn body replaces a module-scope speculative-family overload whose dispatch resolves live (the shadow the interpreter keeps past the call has no compiled twin)"
 				}
-				if refusal != "" {
-					r.analysisRecorder().MarkUncompilable(refusal)
+				if failure != "" {
+					r.analysisRecorder().MarkUncompilable(failure)
 				}
 				r.Defs.Set(name, filtered)
 				replaced = true
@@ -247,7 +247,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			// A FRESH capture-free def inside a branch arm the model cannot
 			// decide is speculative too (bound at run time only if the arm
 			// runs); declined, it keeps the join's model — the recorder
-			// refuses where that model is known wrong.
+			// declines where that model is known wrong.
 			NoteSpecFnDef(r, name, Value{}, body, body.Pos())
 		}
 		if !shadow {
@@ -255,7 +255,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			// is a drop-then-push: the net depth is unchanged, so a twin that
 			// replays it as a plain push lands one level too deep and a later
 			// `undef` exposes the wrong binding — the hazard §6.5 names and the
-			// one family L's refusal exists for. Recorded as its own kind so
+			// one family L's failure exists for. Recorded as its own kind so
 			// the twin can reproduce the replace rather than infer it.
 			kind := BindDef
 			if replaced {
@@ -908,7 +908,7 @@ func CoerceBoolean(v Value) bool {
 		b, _ := AsBoolean(v)
 		return b
 	case ValueType(v).ConformsTo(TNumber):
-		// AsNumber REFUSES the arbitrary-precision leaves rather than
+		// AsNumber DECLINES the arbitrary-precision leaves rather than
 		// projecting them (value.go: "use AsFloatApprox for a lossy
 		// float64"), so its error must not be dropped here — the
 		// accompanying zero would read as a real magnitude and make
@@ -1469,7 +1469,7 @@ func ExpandOptionalSigs(name string, sigs []FnSig) []FnSig {
 
 // bigNumIsZero reports whether an arbitrary-precision numeric leaf is
 // exactly zero. Split out of CoerceBoolean so the truthiness test never
-// routes a Big value through the float64 channel: AsNumber refuses them
+// routes a Big value through the float64 channel: AsNumber declines them
 // outright, and AsFloatApprox would flatten a sufficiently small
 // BigDecimal to 0.0. A value whose accessor fails is not provably zero,
 // so it stays truthy — the same direction the non-Big arm takes for an

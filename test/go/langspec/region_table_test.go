@@ -204,7 +204,7 @@ func TestRegionTableWellFormed(t *testing.T) {
 	// The claim is a PREFIX of the span, never the other way round: a region
 	// runs to the next hard delimiter while a dispatch claims what it took
 	// forward. If these were equal the model would have collapsed into
-	// "the region IS the claim", which is the reading NFwd exists to refuse.
+	// "the region IS the claim", which is the reading NFwd exists to decline.
 	if tl.claimedSlots >= tl.spanSlots {
 		t.Errorf("claimed %d of %d span slots — the claim can never cover the whole corpus span",
 			tl.claimedSlots, tl.spanSlots)

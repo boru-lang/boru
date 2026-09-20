@@ -8,7 +8,7 @@ import (
 
 // A fn unit whose value-def promotion is planned BEFORE a later dispatch arms
 // DynEnv left its dyn-bound COMPUTED defs on the single-consume sim stack, and
-// Finalize then lowered the unit widened and refused "dynamic-scope def `x` of
+// Finalize then lowered the unit widened and declined "dynamic-scope def `x` of
 // unpromoted computed value" — the blocker across the voxgig bloom-filter
 // unit/smoke suites, where `Bloom.make`'s make-bloom (`def k-val (derive-k …)`)
 // is compiled at its call site and a later `Bloom.params` `do {n:[bf.n] …}`
@@ -64,7 +64,7 @@ a`, `[16]`},
 		// arms EACH net one value: planBranchPromotion seats the branch merge to a
 		// unit frame local and the late OpBindDynScope re-pushes it, byte-identical
 		// to the interpreter. (Contrast the VARIADIC source in the negatives below,
-		// whose empty arm nets 0 at runtime and genuinely must refuse.)
+		// whose empty arm nets 0 at runtime and genuinely must decline.)
 		{"branch-valued dyn-bind source, both arms single-value, seated late",
 			`def Box class { n:Integer p:Float }
 def g fn [[x:Integer] [Integer] [x mul 3]]
@@ -78,7 +78,7 @@ def params fn [[b:Box] [Map] [ do {n: [b.n], p: [b.p]} ]]
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -102,16 +102,16 @@ def params fn [[b:Box] [Map] [ do {n: [b.n], p: [b.p]} ]]
 	}
 
 	// A dyn-bound source the late-arming promotion CANNOT seat is left untouched
-	// and refuses at lowerDynBind, a sound interpreter fallback (never a wrong
-	// store). RunCompiledStrict must surface the refusal, and the interpreter
+	// and declines at lowerDynBind, a compile failure (never a wrong
+	// store). RunCompiledStrict must surface the compile failure, and the interpreter
 	// must still produce the value.
 	negatives := []struct{ name, src, want string }{
 		// A VARIADIC-returning source (`maybe = if … [x] []`) has static nout==1
 		// but leaves 0 values at runtime for the empty arm. Promoting it emitted
 		// a lone STORE_LOCAL that underflowed the VM (compile != interpret — the
-		// `mk -1` crash Codex flagged on boru-lang/boru#261). It must refuse and
+		// `mk -1` crash Codex flagged on boru-lang/boru#261). It must decline and
 		// fall back; the value-producing call still matches the interpreter.
-		{"variadic-returning dyn-bind source refuses, interp runs",
+		{"variadic-returning dyn-bind source declines, interp runs",
 			`def Box class { n:Integer p:Float }
 def maybe fn [[x:Integer] [] [ if (x gt 0) [ x ] [ ] ]]
 def mk fn [[x:Integer] [Box] [ def v (maybe x) make Box {n: v p: 0.5} ]]
@@ -120,10 +120,10 @@ def params fn [[b:Box] [Map] [ do {n: [b.n], p: [b.p]} ]]
 (a params)`, `[{n:5 p:0.5}]`},
 	}
 	for _, c := range negatives {
-		t.Run("refuses/"+c.name, func(t *testing.T) {
+		t.Run("declines/"+c.name, func(t *testing.T) {
 			a, _ := New()
 			if _, err := a.RunCompiledStrict(c.src); err == nil {
-				t.Errorf("%s: expected a force-compile refusal, but it compiled", c.name)
+				t.Errorf("%s: expected a force-compile failure, but it compiled", c.name)
 			}
 			b, _ := New()
 			want, werr := b.RunInterp(c.src)

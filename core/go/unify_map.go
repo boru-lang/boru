@@ -40,7 +40,7 @@ func unifyMapFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry)
 	// IS a plain map, which the family rule below accepts — so the
 	// carrier passes a bare Map constraint exactly as its runtime value
 	// would. Only the check-mode carrier takes this arm; a record type
-	// BODY as a value keeps the nominal refusal.
+	// BODY as a value keeps the nominal compile failure.
 	aLit := sa == ShapeTypeLiteral && denotedType(a).Equal(TMap)
 	bLit := sb == ShapeTypeLiteral && denotedType(b).Equal(TMap)
 	if aLit {
@@ -284,7 +284,7 @@ func unifyRecordTypes(a, b RecordTypeInfo, r *Registry) (Value, *UnifyError) {
 // the same admission with the child constraint checked against every schema
 // field type (the runtime admits an instance iff every stored value meets the
 // child; a field type that cannot meet it makes every instance fail).
-// handled=false (fall through to the nominal refusal) for a non-carrier
+// handled=false (fall through to the nominal compile failure) for a non-carrier
 // record side or an unreadable map; a record type BODY as a value keeps
 // Record-only-unifies-with-Record. r is the enclosing chain's
 // registry, handed to every field / key unify.
@@ -321,7 +321,7 @@ func unifyRecordSchemaCarrierVsMap(a Value, sa ValueShape, b Value, sb ValueShap
 	// value whose payload is not a readable MapPayload (an ExtensionPayload
 	// under a TMap parent, a Go-API-built MapPayload{M: nil} — AsMap boxes
 	// that nil *OrderedMap in a non-nil ReadMap, so an interface-nil guard
-	// misses it) declines to the nominal refusal instead of dereferencing.
+	// misses it) declines to the nominal compile failure instead of dereferencing.
 	pm, pok := m.Data.(MapPayload)
 	if !pok || pm.M == nil {
 		return Value{}, false, nil

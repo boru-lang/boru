@@ -108,7 +108,7 @@ func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitO
 			break
 		}
 		// A word slot is already finished, and finishing it AGAIN from the
-		// operand is the frozen-class mistake this model exists to refuse:
+		// operand is the frozen-class mistake this model exists to decline:
 		// the operand is the binding the word had during the pass, and the
 		// whole point of SlotWordRef is that the next execution may find a
 		// different one (region_desc.go's `k` pair).
@@ -175,7 +175,7 @@ func (es *EmitState) fillOffer(off pendingRegion, args []core.Value, ops []EmitO
 // defensive. core.NewValueRaw stamps an id only for a payload-less value or
 // one minted inside the check pass, so a value built outside a pass carries
 // "" — and two of those would compare EQUAL, which is the coincidental match
-// this function exists to refuse, in its worst form: it would extend the
+// this function exists to decline, in its worst form: it would extend the
 // claim over a slot the dispatch never took. Tape tokens do carry ids today
 // (the parser stamps them, measured), so the guard costs nothing; what it
 // buys is that the failure mode is an UNDER-claim, which defers, rather than

@@ -438,10 +438,10 @@ func TestClassifyFrontierKnownInputs(t *testing.T) {
 		// A function word that strands a parked forward under the strict
 		// forward barrier → check stage (`not` cannot feed off `dup`).
 		{"0 not dup", classCheck, "check", false},
-		// Checks clean but the compiler refuses it (an off-corpus shape — a
+		// Checks clean but the compiler declines it (an off-corpus shape — a
 		// `def` consuming a variadic loop region with a DYNAMIC count; the
 		// S5 split needs the static region size, so this stays the stable
-		// refusing fixture now that the statically-counted sibling
+		// declining fixture now that the statically-counted sibling
 		// graduated 2026-07-17 via the S5 first-value split).
 		{`def m {n: 3} def xs (for (m get "n") [1]) xs`, classCompile, "consumes loop results", false},
 		// Checks clean AND compiles, yet errors at run.
@@ -469,7 +469,7 @@ func TestFreshDivergence(t *testing.T) {
 	if note, real := freshDivergence("0 1 add"); real {
 		t.Errorf("freshDivergence(%q) reported a divergence: %q", "0 1 add", note)
 	}
-	// A program the compiler refuses in isolation can never be a
+	// A program the compiler declines in isolation can never be a
 	// compiler bug.
 	if note, real := freshDivergence("0 not dup"); real {
 		t.Errorf("freshDivergence(%q) reported a divergence: %q", "0 not dup", note)
@@ -831,7 +831,7 @@ func checkExtendLayer(t *testing.T, dir, passing, pass1 string, passSet, pass1Se
 // handcrafted full-matrix file in which each row fails a DIFFERENT gate,
 // asserting only the three-way-clean row survives: error rows are never
 // passing, a runtime failure fails gate 1 (interpret), a checker error
-// fails gate 2 (check), and a compiler refusal fails gate 3 (compile).
+// fails gate 2 (check), and a compiler compile failure fails gate 3 (compile).
 // maxLen=0 exercises the unwindowed whole-matrix path.
 func TestExtractPassingSkipsNonQualifyingRows(t *testing.T) {
 	in := writeTempSpec(t, "mini-matrix.tsv", strings.Join([]string{
@@ -840,7 +840,7 @@ func TestExtractPassingSkipsNonQualifyingRows(t *testing.T) {
 		"dup\tERROR:signature_error\t1-elem rejected", // error row: never passing
 		"0 true not lt\tbogus\t4-elem → 1 value(s)",   // errors at run (incomparable)
 		"[None] get 0\t[None]\t3-elem → 1 value(s)",   // runs clean, but the checker errors
-		"def One (typeof (const 1)) end 1 is One\ttrue\tchecks & runs clean, but the compiler refuses (whole-program fallback)", // checks clean, but the compiler refuses
+		"def One (typeof (const 1)) end 1 is One\ttrue\tchecks \u0026 runs clean, but the compiler fails on it", // checks clean, but the compiler declines
 	}, "\n")+"\n")
 	out := filepath.Join(t.TempDir(), "mini-passing.tsv")
 

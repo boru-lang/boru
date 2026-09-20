@@ -59,7 +59,7 @@ import "boru:net" def l (Net.listen {tcp: 0}) def code (do [ Net.accept l {withi
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.send-bytes (Net.recv-until c (convert Bytes "\n") {within: 5000}) c ])) def a (Net.addr l) def s (Net.connect-raw {tcp: (join "" ["127.0.0.1:" (convert String a.port)])}) Net.send-bytes (convert Bytes "ping\n") s; def r (convert String (Net.recv-bytes s 4 {within: 5000})) Net.close s; Net.close l; r	'ping'	serve-raw accept-loop + connect-raw dial + recv-until framing round-trip
 # peer / shutdown / recv deadline: a silent peer raises `timeout`
 import "boru:net" def l (Net.listen {tcp: 0}) def a (Net.addr l) def s (Net.connect-raw {tcp: (join "" ["127.0.0.1:" (convert String a.port)])}) def p (Net.peer s) Net.shutdown s "write"; def code (do [ Net.recv s 1 {within: 60} ] error [ dot code ]) Net.close s; Net.close l; (p.port gt 0) and (code eq timeout/q)	true	Net.peer reports the remote; Net.shutdown half-closes; Net.recv honours {within}
-# negative — malformed options are refused loudly
+# negative — malformed options are declined loudly
 import "boru:net" Net.listen {}	ERROR:net_error	listen needs a tcp: (or unix:) option
 import "boru:net" Net.listen {tcp: -1}	ERROR:net_error	listen rejects an out-of-range port
 import "boru:net" Net.connect-raw {tcp: 99}	ERROR:net_error	connect-raw wants a "host:port" String
@@ -73,9 +73,9 @@ import "boru:net" def svc (service {}) add {} ([r:Map state:Any] => [ r.line ]) 
 # negative — a wire protocol is never implicit
 import "boru:net" def svc (service {}) Net.listen {tcp: 0} svc	ERROR:codec	listen over a service requires an explicit codec
 import "boru:net" Net.connect {tcp: "127.0.0.1:1"}	ERROR:codec	connect requires an explicit codec
-import "boru:net" Net.connect {tcp: "127.0.0.1:1" codec: 5}	ERROR:codec: must be a {decode encode} map	a non-map codec is refused before the socket is dialled
-import "boru:net" Net.connect {tcp: "127.0.0.1:1" codec: {decode: 5}}	ERROR:codec must carry decode: and encode:	a codec missing a direction is refused before the socket is dialled
-import "boru:net" Net.connect {tcp: 99 codec: 5}	ERROR:codec: must be a {decode encode} map	the codec refusal precedes the address one — connectHandler's order
+import "boru:net" Net.connect {tcp: "127.0.0.1:1" codec: 5}	ERROR:codec: must be a {decode encode} map	a non-map codec is declined before the socket is dialled
+import "boru:net" Net.connect {tcp: "127.0.0.1:1" codec: {decode: 5}}	ERROR:codec must carry decode: and encode:	a codec missing a direction is declined before the socket is dialled
+import "boru:net" Net.connect {tcp: 99 codec: 5}	ERROR:codec: must be a {decode encode} map	the codec compile failure precedes the address one — connectHandler's order
 
 # --- Fetch accessor word extensions: import transplants these onto the
 # importer's bare dot/get/dotr/getr/has so a Response reads directly.
@@ -85,7 +85,7 @@ import "boru:net" Net.connect {tcp: 99 codec: 5}	ERROR:codec: must be a {decode 
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (r.status) Net.close l; v	204	a Response answers .field directly — no convert Map step
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (r.nope) Net.close l; v	None	a missing Response field reads none (lenient, like a Map)
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (do [r!.nope] error [dot code]) Net.close l; v	key_error/q	the strict twin raises where the lenient read returns none
-import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (r has "status") Net.close l; v	true	has reports a present Response field (String key: a /q operand refuses to compile — a pre-existing limit, not specific to this overload)
+import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (r has "status") Net.close l; v	true	has reports a present Response field (String key: a /q operand fails to compile — a pre-existing limit, not specific to this overload)
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv-until c (convert Bytes "\r\n\r\n") {within: 5000}; Net.send-bytes (convert Bytes "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n") c ])) def a (Net.addr l) def r (Net.fetch (join "" ["http://127.0.0.1:" (convert String a.port)])) def v (convert Map r) Net.close l; v.status	204	the convert Map route still works — it was the only one before the accessors
 import "boru:net" Net.dot	fn [[:String :Fetch][Any][] [:Atom :Fetch][Any][]]	Net.dot is exported as a Fetch-only accessor overload
 import "boru:net" Net.get	fn [[:String :Fetch][Any][] [:Atom :Fetch][Any][]]	Net.get likewise
@@ -106,6 +106,6 @@ import "boru:net" Net.listen {tcp: 0  tls: {identity: nobody/q}}	ERROR:no client
 import "boru:net" Net.listen {tcp: 0  tls: {identity: srv/q  verify: false}}	ERROR:verify: is not available here	verify: is a dial option — a server verifies no server chain
 import "boru:net" Net.listen {tcp: 0  tls: {identity: srv/q  ca: "x"}}	ERROR:ca: is not available here	a server names its client roots with require-client:
 import "boru:net" Net.listen {tcp: 0  tls: {identity: srv/q  sni: "x"}}	ERROR:sni: is not available here	sni: is what a client sends, not what a server reads
-import "boru:net" Net.listen {tcp: 0  tls: {identity: srv/q  nope: 1}}	ERROR:unknown option "nope"	an unknown listen tls: key is refused, never ignored
+import "boru:net" Net.listen {tcp: 0  tls: {identity: srv/q  nope: 1}}	ERROR:unknown option "nope"	an unknown listen tls: key is declined, never ignored
 import "boru:net" Net.connect-raw {tcp: "127.0.0.1:1"  tls: {require-client: "x"}}	ERROR:require-client: is not available here	require-client: is a listen option
 import "boru:net" def l (Net.serve-raw {tcp: 0} ([c:Any] => [ Net.recv c 1 {within: 5000} ])) def a (Net.addr l) def s (Net.connect-raw {tcp: (join "" ["127.0.0.1:" (convert String a.port)])}) def v (Net.peer-cert s) Net.close s; Net.close l; v	none	peer-cert on a plain socket is None — no TLS means no proven peer

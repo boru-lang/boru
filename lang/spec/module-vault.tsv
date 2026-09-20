@@ -78,8 +78,8 @@ import "boru:vault"  Vault.prune-index {folder: "/v"}	ERROR:no vault backend reg
 #     contract; positives for these shapes live in vault_test.go)
 import "boru:vault"  Vault.add {}	ERROR:alias: required	add requires an alias
 import "boru:vault"  Vault.add {alias: "a"}	ERROR:value: required	add requires a value
-import "boru:vault"  Vault.add {alias: "a" value: ""}	ERROR:value: must be a non-empty String	an empty secret value is refused
-import "boru:vault"  Vault.add {alias: "a" value: 5}	ERROR:value: must be a non-empty String	a non-String secret value is refused
+import "boru:vault"  Vault.add {alias: "a" value: ""}	ERROR:value: must be a non-empty String	an empty secret value is declined
+import "boru:vault"  Vault.add {alias: "a" value: 5}	ERROR:value: must be a non-empty String	a non-String secret value is declined
 import "boru:vault"  Vault.rotate {alias: "a"}	ERROR:value: required	rotate requires the new value
 import "boru:vault"  Vault.rename {from: "a"}	ERROR:to: required	rename requires both ends
 import "boru:vault"  Vault.grant {}	ERROR:alias: required	grant requires an alias

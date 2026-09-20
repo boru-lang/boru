@@ -12,7 +12,7 @@ import (
 // shared registry, never stepped at the VM pointer, so the key list bakes as a
 // const (isInertConstMember admits a ParenExpr riding inside a never-evaluated
 // compound) + CALL_NATIVE. The NEGATIVE half: a body whose computed segment is
-// NOT inert (drags in a carrier) keeps the conservative refusal — covered by the
+// NOT inert (drags in a carrier) keeps the conservative compile failure — covered by the
 // const-bake gate; here we pin the positive shapes and parity.
 func TestReachComputedSegmentLowers(t *testing.T) {
 	cases := []struct {
@@ -81,7 +81,7 @@ func TestTimeUtilBodyNotEager(t *testing.T) {
 // TestTimeUtilQuotedBodyLowers — the TimeUtil timeout/interval/cancel rows with a
 // computed code body bake natively (the inner LIST sig's NoEvalArgs keeps the
 // body raw; noEvalBodiesInert bakes it; hasUncoveredQuoteArg stops the QuoteArgs
-// refusal from double-declining a position already covered by NoEvalArgs).
+// compile failure from double-declining a position already covered by NoEvalArgs).
 func TestTimeUtilQuotedBodyLowers(t *testing.T) {
 	cases := []struct {
 		src  string

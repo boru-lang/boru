@@ -12,7 +12,7 @@ package lang
 // backstop (CompileDynBody) then COMPILES the dispatch — the program's
 // DynEnv args bracket makes the runtime sub-run's `args` read identical
 // to the interpreter's. Non-CompileDynBody words (each) keep the
-// refusal with fallback parity. Fn-UNIT args projection (args.N folding
+// compile failure with fallback parity. Fn-UNIT args projection (args.N folding
 // to PUSH_LOCAL N) is untouched.
 
 import (
@@ -44,7 +44,7 @@ func argsBothEngines(t *testing.T, src string) (interp, compiled string, wasComp
 // interpreter's per-call push provides — [7], byte-identical. (The
 // original miscompile const-baked the closure analysis frame's [].)
 func TestArgsInDoBodyCompilesWithParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	src := `def g fn [[n:Integer] [Any] [do [args]]]  g 7`
 	a, err := New()
 	if err != nil {
@@ -65,7 +65,7 @@ func TestArgsInDoBodyCompilesWithParity(t *testing.T) {
 	// declares CompileDynBody too, so an each body reading the enclosing
 	// fn's args takes the same backstop: the body's runtime sub-run reads
 	// `args` under the DynEnv bracket and answers 7 per element —
-	// byte-identical to the interpreter. (Before S1a the shape REFUSED —
+	// byte-identical to the interpreter. (Before S1a the shape DECLINED —
 	// its closure input never satisfied the args projection — and fell
 	// back with parity.)
 	srcEach := "def g fn [[n:Integer] [List] [[10 20] each [drop args.0]]]  g 7"

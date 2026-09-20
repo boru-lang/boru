@@ -97,7 +97,7 @@ var fnValueSeamRows = []fnValueSeamRow{
 	// every callback seam matches it against its own signature the way the
 	// interpreter matches the value — the token seam top down, the map arm
 	// over the KeyVal, filter over its entry — instead of running the unit
-	// blind over whatever the handler pushed. Every row here was a refusal
+	// blind over whatever the handler pushed. Every row here was a compile failure
 	// on `main` ("function-valued operand at <word>"), released by S1a and
 	// miscomputed on the S1a/S1b-1 head; measured on the interpreter.
 	{"a capturing closure that matches no element stays data", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) ['a' 2]`, false},

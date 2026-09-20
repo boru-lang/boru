@@ -9,16 +9,16 @@ package lang
 //
 //   - the unit MEMO was binding-insensitive, so one unit baked at one program
 //     point served every later call site whatever the bindings were there
-//     (the frozen-read class, previously REFUSED; now re-recorded per site);
+//     (the frozen-read class, previously DECLINED; now re-recorded per site);
 //   - a leaking body's compile RE-RUN began from the state its analysis run
 //     LEAKED, so every read before the body's own rebind baked the rebound
 //     value (`do [ k  def k 9  k ]` → `9 9` against `5 9`).
 //
-// The rows are parity rows: the compiled lane must COMPILE (a refusal here is
+// The rows are parity rows: the compiled lane must COMPILE (a compile failure here is
 // the fix regressing to the old hammer) and agree with the interpreter. The
 // second test pins the shapes the fix deliberately leaves to the interpreter,
-// each with the reason it refuses under, so a silent graduation or a drift of
-// the refusal the interpreter absorbs is visible.
+// each with the reason it declines under, so a silent graduation or a drift of
+// the compile failure is visible.
 
 import (
 	"strings"
@@ -42,18 +42,18 @@ func TestAnalysisOrderShapesCompileWithParity(t *testing.T) {
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  def g fn [[] [Integer] [do [ f  def k 9  f ] add]]  g`, "22 for 18"},
 		// --- the caller-frame shadowing class (one unit, two frames) ---
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  def g fn [[] [Integer] [def k 9  f]]  g  f`, "11 11 for 11 7"},
-		// --- the frozen-read class, previously refused to the interpreter ---
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k 9  f`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k fn [[] [Integer] [9]]  f`, "refused (a kind change)"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k 9  f  def k 11  f`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [ f  def k 9 ]`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  for 2 [ f  def k 9 ]`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f  def k 9 ]  f  def k 12  f`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f ]  def k 9  do [ f ]`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [ f ]  def k 9  f`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f ]  do [ def k 9 ]  do [ f ]`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  if true [ f  def k 9  f ] [0]`, "refused"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  if true [ f  def k 9  f ] []`, "refused"},
+		// --- the frozen-read class, previously declined to the interpreter ---
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k 9  f`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k fn [[] [Integer] [9]]  f`, "declined (a kind change)"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  def k 9  f  def k 11  f`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [ f  def k 9 ]`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  for 2 [ f  def k 9 ]`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f  def k 9 ]  f  def k 12  f`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f ]  def k 9  do [ f ]`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [ f ]  def k 9  f`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  do [ f ]  do [ def k 9 ]  do [ f ]`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  if true [ f  def k 9  f ] [0]`, "declined"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  if true [ f  def k 9  f ] []`, "declined"},
 		// The type twin in a `do`, and the minted-type body the re-run must
 		// re-define over its surviving lattice part.
 		{`def x 3  do [ def P (refine Integer)  def y:P 5  y is P ]  y is P`, "compiled (the control the type carry-over keeps)"},
@@ -62,7 +62,7 @@ func TestAnalysisOrderShapesCompileWithParity(t *testing.T) {
 		{`def k 5  def f fn [[] [Integer Integer] [k  def k 9  k]]  f`, "5 9 (already right; the control)"},
 		// The stored-ref and container spellings of a fn value: their rebind
 		// safety is the per-ref poisoning, untouched by this increment.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  def h f/v  h/v apply  def k 9  h/v apply`, "refused"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  def h f/v  h/v apply  def k 9  h/v apply`, "declined"},
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  def m {g: f/v}  (m.g)  def k 9  (m.g)`, "7 11 (control)"},
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  [f/v] each [apply]  def k 9  [f/v] each [apply]`, "[7] [11] (control)"},
 	}
@@ -84,12 +84,12 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 	// The fallback rows run under the one-release silent-fallback hatch so
 	// the compiled entry point answers through the interpreter instead of
 	// surfacing compile_failed (the same contract
-	// TestModuleReadRebindRefusesAndMatches pins).
+	// TestModuleReadRebindCompilesWithParity pins).
 	rows := []struct{ src, reason string }{
 		// The residual-order hazard: a re-pushable residual read (a live
 		// lookup, a loop-carried slot) that precedes a rebind of the same
 		// name in the same body is re-pushed AFTER the rebind. Measured
-		// before this refusal: `9 9` for `5 9` on the first two.
+		// before this compile failure: `9 9` for `5 9` on the first two.
 		{`def k (1 add 4)  def f fn [[] [Integer Integer] [k  def k 9  k]]  f`,
 			"fn f: residual read of `k` precedes its rebind in the same body (Stage 4b)"},
 		{`def k 5  for 2 [ k  def k 9 ]`,
@@ -108,7 +108,7 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 		// iteration-varying, its residual re-push would trail the resident
 		// install, so the closure declines. Since S1a (2026-09-19, each
 		// declares CompileDynBody) the decline no longer lands on the word's
-		// Stage-2 refusal but on the dyn-body seat's twin-regime gate: the
+		// Stage-2 compile failure but on the dyn-body seat's twin-regime gate: the
 		// body's bind transition has no stream placement in a multi-run body.
 		// Measured before: `[9 9]` for `[5 9]`, `[6 7]` for `[5 6]`.
 		{`def k 5  [1 2] each [ k  def k 9 ]`, "twin regime: a bind transition has no stream placement"},
@@ -131,7 +131,7 @@ func TestAnalysisOrderSoundFallbacks(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {

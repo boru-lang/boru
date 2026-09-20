@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// OpCallUserPoly pins (voxgig zero-refusals Stage 2): a gradual-Any arg to a
-// MULTI-overload user fn used to refuse at compile ("ambiguous dispatch, no
+// OpCallUserPoly pins (voxgig zero-compile failures Stage 2): a gradual-Any arg to a
+// MULTI-overload user fn used to decline at compile ("ambiguous dispatch, no
 // poly re-match"). Now every same-arity overload's body compiles to its own
 // unit and the VM re-runs the interpreter's MatchSignature at entry to pick
 // the arm — the sound user-fn mirror of OpCallNativePoly. These pins are
@@ -36,13 +36,13 @@ func userPolyCompiles(t *testing.T, src string) {
 	userPolySound(t, src)
 	a, _ := New()
 	if _, reason, _, err := a.CompileCheck(src); err != nil || reason != "" {
-		t.Fatalf("expected the shape to force-compile, got refusal: %v / %q\n  src: %s", err, reason, src)
+		t.Fatalf("expected the shape to force-compile, got compile failure: %v / %q\n  src: %s", err, reason, src)
 	}
 }
 
 // The 2-overload fn with a laundered (gradual-Any) arg: the runtime value is
 // an Integer, so the re-match must pick the Integer arm — the interpreted
-// result — and the shape must force-compile (no refusal).
+// result — and the shape must force-compile (no compile failure).
 func TestUserPolyIntegerArmCompiles(t *testing.T) {
 	userPolyCompiles(t, `def g fn [[a:Integer] [String] ["i"] [a:String] [String] ["s"]]
 def m (flex {k:5})
@@ -61,7 +61,7 @@ def x (m get "k")
 }
 
 // No-match: a List matches neither arm — BOTH surfaces must raise (the VM's
-// no-match defers to the interpreter through the whole-program fallback,
+// no-match bails, and the compiled run reports it,
 // which raises the canonical signature_error).
 func TestUserPolyNoMatchErrorAgreement(t *testing.T) {
 	userPolySound(t, `def g fn [[a:Integer] [String] ["i"] [a:String] [String] ["s"]]
@@ -113,7 +113,7 @@ def r2 (g x)
 }
 
 // A BODY-LOCAL multi-overload fn is popped before the VM runs, so the poly
-// path refuses it (the runtime Lookup could never resolve the word) and the
+// path declines it (the runtime Lookup could never resolve the word) and the
 // interpreter keeps owning the shape — result parity via fallback.
 func TestUserPolyBodyLocalFnStaysSound(t *testing.T) {
 	userPolySound(t, `def myout fn [[c:Integer] [String] [

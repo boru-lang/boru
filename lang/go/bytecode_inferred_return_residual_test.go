@@ -7,7 +7,7 @@ import (
 
 // Regression for the P1 soundness bug Codex flagged on PR #208: an
 // INFERRED-return user fn (declared `[]`) whose body leaves a residual of
-// UNKNOWN PROVENANCE must stay uncompilable (refuse → interpreter fallback), NOT
+// UNKNOWN PROVENANCE must stay uncompilable (decline → compile failure), NOT
 // silently RET zero values. A short-lived residual-drop (b70bb884's #4) made
 // such a unit succeed with an empty stack where the interpreter raised — e.g. a
 // deferred map expression that reads a param after its scope is gone. The

@@ -1090,7 +1090,7 @@ func CmpHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 // Unlike cmp, it compares ANY two values via the unified lattice order
 // (the same order sort and the collection words use), returning -1 / 0
 // / 1. Use it when you deliberately want cross-type ordering that cmp
-// refuses (e.g. `1 tcmp "a"`).
+// declines (e.g. `1 tcmp "a"`).
 func TcmpHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
 	cmp, err := CompareValues(args[1], args[0])
 	if err != nil {

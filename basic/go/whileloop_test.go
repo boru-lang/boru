@@ -6,16 +6,16 @@ import (
 )
 
 // TestRunWhileLoopTypeLiteralGuards — both operands must be concrete
-// lists; type literals are refused loudly.
+// lists; type literals are declined loudly.
 func TestRunWhileLoopTypeLiteralGuards(t *testing.T) {
 	r := newTestRegistry(t)
 	lit := NewTypeLiteral(TList)
 	body := NewList([]Value{NewInteger(1)})
 	if _, err := RunWhileLoop(r, lit, body); err == nil || !strings.Contains(err.Error(), "condition must be a concrete list") {
-		t.Fatalf("type-literal condition must refuse, got %v", err)
+		t.Fatalf("type-literal condition must decline, got %v", err)
 	}
 	if _, err := RunWhileLoop(r, body, lit); err == nil || !strings.Contains(err.Error(), "body must be a concrete list") {
-		t.Fatalf("type-literal body must refuse, got %v", err)
+		t.Fatalf("type-literal body must decline, got %v", err)
 	}
 }
 

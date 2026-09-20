@@ -37,9 +37,9 @@ func TestParenBoundedApplyFeedsCall(t *testing.T) {
 	}, "110")
 }
 
-func TestParenLeadingDynamicRefuses(t *testing.T) {
+func TestParenLeadingDynamicFailsToCompile(t *testing.T) {
 	// `((cany) 3)` — a leading DYNAMIC value before args inside a paren
-	// is the unsound reorder shape: check refuses; interpreter runs.
+	// is the unsound reorder shape: check declines; interpreter runs.
 	runTolerant(t, registerDynWords, func() []core.Value {
 		return []core.Value{
 			core.NewOpenParen(),

@@ -116,4 +116,4 @@ func TestS7EvalInterpStringNonTemplate(t *testing.T) {
 	}
 }
 
-// --- EvalXmlInterp check-mode refusal --------------------------------------
+// --- EvalXmlInterp check-mode compile failure --------------------------------------

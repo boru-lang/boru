@@ -10,8 +10,8 @@ import (
 
 // The Phase 2 entry-point pin (plan p2 case): an exec request runs
 // COMPILED-BY-DEFAULT — no unattributed interpreter entry fires for a
-// compilable program — and a refused program still returns the
-// interpreter's exact result (the refusal the interpreter absorbs, never an error).
+// compilable program — and a declined program still returns the
+// interpreter's exact result (a compile failure).
 func TestExecRunsCompiled(t *testing.T) {
 	var entries []string
 	prev := langNew
@@ -41,11 +41,12 @@ func TestExecRunsCompiled(t *testing.T) {
 		t.Errorf("unattributed interpreter entries on a compiled exec request: %v", entries)
 	}
 
-	// A refused program falls back to the interpreter's result.
+	// A loop program on the compiled path: `for 3 [1 2]` lowers natively, so
+	// the six residual values come off the VM, not a second engine.
 	entries = nil
 	var ref execResponse
 	post(t, srv, "/v1/exec", map[string]any{"code": "for 3 [1 2]"}, &ref)
 	if ref.Error != "" || len(ref.Stack) != 6 {
-		t.Fatalf("refused exec must return the interpreter result: %+v", ref)
+		t.Fatalf("compiled exec must return the loop residual: %+v", ref)
 	}
 }

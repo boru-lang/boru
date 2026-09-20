@@ -263,13 +263,13 @@ func TestMakeResource(t *testing.T) {
 		t.Fatal("resource instance has no fields")
 	}
 
-	// Negative: unknown field refused.
+	// Negative: unknown field declined.
 	bad := NewOrderedMap()
 	bad.Set("nope", NewInteger(1))
 	if _, err := MakeResource(rt, bad, r); err == nil {
 		t.Error("unknown resource field accepted")
 	}
-	// Negative: type mismatch refused.
+	// Negative: type mismatch declined.
 	wrong := NewOrderedMap()
 	wrong.Set("id", NewString("x"))
 	if _, err := MakeResource(rt, wrong, r); err == nil {
@@ -330,7 +330,7 @@ func TestMakeFieldValue(t *testing.T) {
 	if got, _ := AsInteger(v); got != 4 {
 		t.Errorf("got %v, want 4", v)
 	}
-	// Negative: mismatch refused.
+	// Negative: mismatch declined.
 	if _, err := MakeFieldValue(NewString("s"), NewTypeLiteral(TInteger)); err == nil {
 		t.Error("string accepted against Integer constraint")
 	}
@@ -701,7 +701,7 @@ func TestParseFnReturns(t *testing.T) {
 		t.Errorf("a bare type-literal return needs no pattern, got %v", pats)
 	}
 	// A non-list return spec routes through ResolveSigType; an unknown
-	// type word must be refused rather than silently degrading.
+	// type word must be declined rather than silently degrading.
 	if _, _, err := ParseFnReturns(r, NewList([]Value{NewWord("noSuchTypeZz")})); err == nil {
 		t.Error("unknown return type word accepted")
 	}

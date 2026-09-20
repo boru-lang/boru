@@ -201,7 +201,7 @@ func TestIOEnvPolicyDeniesAll(t *testing.T) {
 
 // `env: {install: false}` UNINSTALLS the scope. That is stronger than
 // denying it: the capability slot is cleared, so there is nothing
-// installed to refuse. (The shipped compute/gen profiles do this, but
+// installed to decline. (The shipped compute/gen profiles do this, but
 // they also forbid importing boru:io, so the arm is exercised through an
 // inline profile that uninstalls env and nothing else.)
 func TestIOEnvPolicyUninstalls(t *testing.T) {
@@ -257,7 +257,7 @@ func TestOSEnvOpsMatchesProcess(t *testing.T) {
 // that renders help wrapped to `IO.env "COLUMNS"`, or that logs the argv it
 // was handed, read an EMPTY environment and an empty vector while its
 // importer read the real ones. A capability the host DID install must not
-// disappear one import deep — that is a wrong answer, not a refusal, and it
+// disappear one import deep — that is a wrong answer, not a compile failure, and it
 // is exactly the shape boru:cli depends on.
 func TestEnvAndArgsReachModuleBodies(t *testing.T) {
 	a := newEnvBoru(t, lang.Options{Env: envFake(), ScriptArgs: []string{"alpha", "beta"}})

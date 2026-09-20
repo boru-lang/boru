@@ -83,7 +83,7 @@ func TestInstantiateSchemaArityErrors(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "arity_mismatch") {
 		t.Errorf("missing arg: err = %v, want arity_mismatch", err)
 	}
-	// A schema with no minted node refuses.
+	// A schema with no minted node declines.
 	if _, err := InstantiateSchema(r, &TypeSchemaInfo{}, nil); err == nil {
 		t.Error("un-minted schema instantiated")
 	}
@@ -297,7 +297,7 @@ func TestInstallWordExtensionMergeAndDispatch(t *testing.T) {
 	}
 }
 
-func TestInstallWordExtensionRefusals(t *testing.T) {
+func TestInstallWordExtensionCompileFailures(t *testing.T) {
 	r := covRegistry(t, nil)
 	ext := FnDefInfo{Name: "def", Signatures: []Signature{{
 		Args:    []*Type{TString},
@@ -313,7 +313,7 @@ func TestInstallWordExtensionRefusals(t *testing.T) {
 		t.Error("extension of unknown word accepted")
 	}
 	// An attempt to claim a locked kernel tuple dies at ADMISSION now
-	// (R1): the all-kernel tuple has no owned anchor, so the refusal is
+	// (R1): the all-kernel tuple has no owned anchor, so the compile failure is
 	// extend_owner — the replacement can no longer even be attempted.
 	// (The locked_signature arm remains reachable for non-builtin
 	// locked-bearing words — see TestMergeExtensionSigsLockedCollision.)
@@ -329,7 +329,7 @@ func TestInstallWordExtensionRefusals(t *testing.T) {
 	}
 }
 
-// TestMergeExtensionSigsLockedCollision pins the R2 replacement-refusal
+// TestMergeExtensionSigsLockedCollision pins the R2 replacement-compile failure
 // arm directly: a tuple equal to a LOCKED signature can never replace
 // it, whatever the anchor situation.
 func TestMergeExtensionSigsLockedCollision(t *testing.T) {
@@ -387,7 +387,7 @@ func TestNewWordExtensionAndTransplant(t *testing.T) {
 	}
 
 	// The ownership rule holds: a tuple with no author-owned nominal
-	// anchor refuses to transplant (TBoolean is kernel-owned, the
+	// anchor declines to transplant (TBoolean is kernel-owned, the
 	// author is the program).
 	allBuiltin := NewWordExtension(OwnerProgram, "cadd", []Signature{{
 		Args: []*Type{TBoolean, TBoolean},
@@ -412,7 +412,7 @@ func TestNewWordExtensionAndTransplant(t *testing.T) {
 		t.Error("idempotent transplant grew the signature list")
 	}
 
-	// Sealed word refuses transplant too.
+	// Sealed word declines transplant too.
 	sealedExt := NewWordExtension(OwnerProgram, "make", nil)
 	if err := TransplantExtension(r, sealedExt, "cov:module", ""); err == nil {
 		t.Error("transplant onto sealed word accepted")
@@ -429,7 +429,7 @@ func TestNewWordExtensionKernelAuthor(t *testing.T) {
 	// The kernel-author path: a kernel-shipped host module may author
 	// sigs anchored on KERNEL-owned types (boru:io's Pathon list/remove)
 	// by declaring OwnerKernel as the extension's author — which the
-	// program-authored path refuses (TestNewWordExtensionAndTransplant).
+	// program-authored path declines (TestNewWordExtensionAndTransplant).
 	r := covRegistry(t, nil)
 
 	anchored := NewWordExtension(OwnerKernel, "cadd", []Signature{{
@@ -451,7 +451,7 @@ func TestNewWordExtensionKernelAuthor(t *testing.T) {
 	// Transplant succeeds: the [Boolean Boolean] tuple anchors on the
 	// kernel-owned Boolean and the author IS the kernel.
 	if err := TransplantExtension(r, anchored, "cov:firstparty", ""); err != nil {
-		t.Fatalf("anchored transplant refused: %v", err)
+		t.Fatalf("anchored transplant declined: %v", err)
 	}
 	out, err := NewTop(r).Run([]Value{NewWord("cadd"), NewBoolean(true), NewBoolean(true)})
 	if err != nil {

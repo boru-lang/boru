@@ -4,7 +4,7 @@ package core
 // `def b:Type {map}` means exactly `def b (make Type map)`, but the
 // typed-def handler constructs the instance directly instead of
 // dispatching the make WORD — so under a recording pass the instance
-// would carry no provenance and a downstream `b typeof` would refuse.
+// would carry no provenance and a downstream `b typeof` would decline.
 // This file records the make event that construction skips.
 //
 // Core, not check: the recorder is core's EmitRecorder interface, the
@@ -16,7 +16,7 @@ package core
 // exactly `def b (make Type map)`, but the typed-def handler builds the
 // instance by calling MakeObject directly, bypassing the make WORD dispatch —
 // so the instance never gets the make event that gives an explicit make its
-// provenance, and a downstream `b typeof` then refuses with an operand the
+// provenance, and a downstream `b typeof` then declines with an operand the
 // lowerer cannot resolve.
 //
 // In active emit mode this records make over [typeArg, body] (both inert

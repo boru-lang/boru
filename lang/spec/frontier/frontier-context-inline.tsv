@@ -1,10 +1,10 @@
 # Context reads inside inline-lowered bodies (NUR054): the interpreter gives
 # an auto-evaluated list / case clause / interp or xml hole its own context
 # layer (a sub-engine push), and the compiled stream lowers the body inline
-# with no layer to hand out — so a `context` read inside one REFUSES
+# with no layer to hand out — so a `context` read inside one DOES NOT COMPILE
 # compilation and the program runs on the interpreter. This row (moved from
 # flex.tsv, where its point is flex gradual typing, not context scoping)
 # keeps the green semantics on record. Graduation criterion: an emitted
 # context-frame opcode pair bracketing inline-lowered regions, at which point
 # the read compiles and this row leaves the ledger.
-context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1	3	a gradual bound stored in a container is still gradual when read back — a strict rebuild refuses every typed use
+context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1	3	a gradual bound stored in a container is still gradual when read back — a strict rebuild declines every typed use

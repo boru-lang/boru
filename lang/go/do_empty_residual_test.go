@@ -45,7 +45,7 @@ import (
 //  2. Model it empty everywhere. Same, plus it breaks the raise-then-read
 //     idiom: `do [raise "x"] dot code` leaves `dot` no receiver, and the
 //     program compiles and raises signature_error instead of falling back.
-//  3. MarkUncompilable on the shape. Refuses the whole `do […] error […]`
+//  3. MarkUncompilable on the shape. Declines the whole `do […] error […]`
 //     family — ten tests that pin those compile paths by name.
 //  4. SetCatchVariadic — the mechanism built for exactly a runtime-variable
 //     count. The latch IS consumed (verified by instrumenting

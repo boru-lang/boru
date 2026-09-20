@@ -317,7 +317,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 			// The range is 0..125, the shell convention: 126/127 mean
 			// "found but not executable" / "not found", and 128+n means
 			// "killed by signal n". A program that returns one of those is
-			// lying about how it died, so they are refused at the call.
+			// lying about how it died, so they are declined at the call.
 			Name: "exit",
 			Signatures: []Signature{{
 				Args:      []*Type{TInteger},
@@ -364,7 +364,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 		},
 		{
 			// move renames/moves src to dst (both Pathon), returning dst.
-			// {overwrite:false} refuses an existing destination.
+			// {overwrite:false} declines an existing destination.
 			Name: "move",
 			Signatures: []Signature{
 				{Args: []*Type{TPathon, TPathon, TMap}, Impl: Go(moveOptsHandler), Returns: []*Type{TPathon}, BarrierPos: -1},
@@ -546,7 +546,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 // verbs rather than a separate IO.list / IO.remove.
 //
 // These anchor on Pathon, a KERNEL builtin type. The module-scope safety rule
-// (requireUserTypedSigs) normally refuses a core-word extension whose tuple has
+// (requireUserTypedSigs) normally declines a core-word extension whose tuple has
 // no user-minted type; NewWordExtensionAnchored waives it because boru:io ships
 // and versions WITH the kernel (see eng/go/word_extend.go). The core `list` /
 // `remove` sigs match only Map/ResourceEntity/List, disjoint from Pathon, so
@@ -621,7 +621,7 @@ func envAllHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 // exitHandler raises the reserved exit control error. It never returns a
 // value: the whole point is that execution stops here and the driver
 // decides what the status means.
-// validateExitCode is exitHandler's PURE prefix: the two refusals
+// validateExitCode is exitHandler's PURE prefix: the two compile failures
 // decidable from the code VALUE alone. Split out so the check-mode
 // mirror can run exactly this and nothing else — the handler's tail
 // raises the boru/exit CONTROL error, which is how `exit` works and
@@ -661,7 +661,7 @@ func openModeMirror(result *Type) ReturnsFunc {
 	// [Pathon, Map], and doOpenWord rejects an unknown mode from the map
 	// alone, before it touches the path. Gating position 0 declined a
 	// computed path with a literal {mode:'bogus'} for no reason (PR #348
-	// review). The gate still refuses any DYNAMIC operand, so an
+	// review). The gate still declines any DYNAMIC operand, so an
 	// optimistically-matched target cannot pull this model onto a call
 	// the runtime dispatches elsewhere.
 	return MirrorReturns("open", DeepConcreteOptionsAt(1),

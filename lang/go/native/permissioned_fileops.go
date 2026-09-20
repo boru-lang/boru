@@ -18,7 +18,7 @@ import (
 //  2. Consults the fileops scope rule for the op with the path arg.
 //  3. Delegates to the inner FileOps on allow.
 //
-// Returns the *policy.Denied error verbatim on refusal so callers
+// Returns the *policy.Denied error verbatim on compile failure so callers
 // can pattern-match on Code.
 type permissionedFileOps struct {
 	inner  capabilities.FileOps

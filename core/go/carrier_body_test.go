@@ -6,7 +6,7 @@ package core
 // The four RunCarrierBody* entries differ only in whether the body's defs
 // roll back (a conditional arm) or leak (`do`), and whether the run raises
 // CondBodyDepth (a condition fragment runs unconditionally exactly once,
-// so it does not). The refusal arms are pinned separately in
+// so it does not). The decline arms are pinned separately in
 // carrier_body_gate_test.go; what is proved here is the RUN.
 
 import "testing"
@@ -154,7 +154,7 @@ func TestRunCarrierBodyEmptyList(t *testing.T) {
 	r := bodyProbeReg(t)
 	defer r.Check.Begin()()
 	// An empty (but concrete) list runs to an empty residual rather than
-	// taking either refusal arm.
+	// taking either decline arm.
 	if stk := RunCarrierBody(r, NewList(nil)); len(stk) != 0 {
 		t.Errorf("empty body residual = %v, want empty", stk)
 	}

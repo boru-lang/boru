@@ -104,13 +104,13 @@ func deepConcrete(v Value, depth int) bool {
 // the checked node IS the runtime operand. DeepConcrete rejects one
 // (IsConcrete needs a payload), and rejecting it nested inside a literal
 // throws away a decidable case — `{value: None}` is as statically known
-// as `{value: 5}`, and a validator that demands a String refuses both at
+// as `{value: 5}`, and a validator that demands a String declines both at
 // run time.
 //
 // Use DeepKnown where the model routes on the interior of a literal a
 // call site WRITES OUT; use DeepConcrete where the model needs a real
 // payload to read (a string to parse, bytes to encode). Carriers and
-// dynamic values are refused at every level either way — those are the
+// dynamic values are declined at every level either way — those are the
 // shapes whose runtime value analysis does NOT hold.
 func DeepKnown(v Value) bool {
 	return deepKnown(v, 0)

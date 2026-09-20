@@ -9,7 +9,7 @@ import (
 
 // TestCoerceBooleanBigLeaves pins NUR055's fix: the arbitrary-precision
 // leaves are truthy by VALUE, not uniformly false. CoerceBoolean's Number
-// arm used to read AsNumber's refusal-zero as a real magnitude, so every
+// arm used to read AsNumber's compile failure-zero as a real magnitude, so every
 // BigInteger and BigDecimal coerced to false while `0d1 eq 1` was true.
 func TestCoerceBooleanBigLeaves(t *testing.T) {
 	bigInt := func(s string) Value {

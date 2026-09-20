@@ -41,7 +41,7 @@ func udRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 
 // TestUncalledDispatchTrapRaisesByteIdentically — the two ledger rows
 // (`FnUtil.flip 5`, `FnUtil.curry 5`) and the shape behind them. Each used
-// to refuse the WHOLE program with the generic "check diagnostics"; each now
+// to decline the WHOLE program with the generic "check diagnostics"; each now
 // compiles to a trap that raises the interpreter's own rich error — caret,
 // span and `/v` hint included.
 func TestUncalledDispatchTrapRaisesByteIdentically(t *testing.T) {
@@ -57,7 +57,7 @@ func TestUncalledDispatchTrapRaisesByteIdentically(t *testing.T) {
 		t.Run(tc.src, func(t *testing.T) {
 			ran, agree, cerr := udRun(t, tc.src)
 			if !ran {
-				t.Fatalf("the definite uncalled dispatch must compile to a trap, not refuse: %v", cerr)
+				t.Fatalf("the definite uncalled dispatch must compile to a trap, not decline: %v", cerr)
 			}
 			if cerr == nil {
 				t.Fatal("the dispatch must still raise")
@@ -102,7 +102,7 @@ func TestUncalledDispatchTrapEmitsTheTerminalTrap(t *testing.T) {
 // TestUncalledDispatchTrapDeclinesInexactOperands — the negatives, and the
 // reason the screen is narrow. Each row's failed match examined something
 // the check pass does not hold exactly, so the trap declines and the
-// whole-program refusal stands; both lanes still agree, through the
+// whole-program compile failure stands; both lanes still agree, through the
 // interpreter.
 func TestUncalledDispatchTrapDeclinesInexactOperands(t *testing.T) {
 	for _, src := range []string{
@@ -121,10 +121,10 @@ func TestUncalledDispatchTrapDeclinesInexactOperands(t *testing.T) {
 				t.Fatal(cerr)
 			}
 			if prog != nil {
-				t.Fatalf("an inexact operand must keep the refusal; it compiled:\n%s", prog.Disassemble())
+				t.Fatalf("an inexact operand must keep the compile failure; it compiled:\n%s", prog.Disassemble())
 			}
 			if reason != "check diagnostics" {
-				t.Errorf("refusal reason drifted: %q", reason)
+				t.Errorf("compile failure reason drifted: %q", reason)
 			}
 			ran, _, _ := udRun(t, src)
 			if ran {

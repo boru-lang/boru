@@ -54,7 +54,7 @@ func TestRecordDynBindNameGate(t *testing.T) {
 }
 
 // The two region-split gates share RecordDynBind's name premise through the
-// same predicate, and refuse an empty or capitalised name outright before
+// same predicate, and decline an empty or capitalised name outright before
 // consulting it — pinned directly, with the producer/event setup each split
 // needs to reach its gate. The nil receiver answers "records nothing".
 func TestRegionSplitNameGates(t *testing.T) {

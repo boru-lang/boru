@@ -105,7 +105,7 @@ func startWithPauseGate(in io.Reader, out io.Writer, registryPath string, paused
 
 	// One *Boru per session over the persistent registry: each line runs
 	// COMPILED-BY-DEFAULT (RunAutoValues — the same CompileTry semantics as
-	// `boru run`), and a refused line re-runs on the interpreter —
+	// `boru run`), and a declined line re-runs on the interpreter —
 	// containment for a compile failure, never a fallback the design
 	// leans on. Check-pass def/import effects persist across lines on the
 	// compiled path by SnapshotForCompile's keep-on-compile contract;

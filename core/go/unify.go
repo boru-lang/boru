@@ -76,7 +76,7 @@ func UnifyR(a, b Value, r *Registry) (Value, bool) {
 // chain's r. The old ambient stack armed those re-entries by accident,
 // from whichever UnifyExplainR happened to be in flight on ANY
 // goroutine, so `[1 2] is Wrap` could admit inside a predicate body a
-// call `(chk [1 2])` refused at top level. lang's
+// call `(chk [1 2])` declined at top level. lang's
 // TestPredicateBodyDispatchIsUnarmedLikeTopLevel pins the consistent
 // rule on both engines.
 func UnifyExplainR(a, b Value, r *Registry) (Value, *UnifyError) {
@@ -162,7 +162,7 @@ func MarkPredicateFn(v Value) Value {
 // arity-keyed exception, which ADR-016 forbids outright: it is why the same
 // fn body means a callable function under a lowercase name and a membership
 // test under a capitalised one, and why `def K fn [[a:Any b:Any]…]` binds a
-// type nothing can inhabit instead of being refused. `fnpred` is the
+// type nothing can inhabit instead of being declined. `fnpred` is the
 // replacement (IsDeclaredPredicateFn); this stays only until the corpus has
 // migrated, and is not to be extended.
 func isPredicateFnValue(v Value) bool {
@@ -522,11 +522,11 @@ func init() {
 // constraint (MakeFieldValueR's ConformsTo arm) — the unifier was the
 // one boundary that read `Any` as "anything except none", which split
 // a record's declared-`Any` field between construction (admitted) and
-// every pattern walk (refused). The intersection is the none side (the
+// every pattern walk (declined). The intersection is the none side (the
 // narrower). Stated here, not in the Any fold, because None outranks
 // Any in the fold order; Never and Absent keep their self-only rule —
 // in particular the `?:T` optional-key machinery depends on
-// `Unify(Any, Absent)` refusing (an `Any` field is required, not
+// `Unify(Any, Absent)` declining (an `Any` field is required, not
 // optional).
 func foldNoneRoot(ruling, other Value, _ *Registry) (Value, *UnifyError) {
 	if Shape(other) == ShapeAny {

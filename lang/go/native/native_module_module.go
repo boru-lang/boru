@@ -183,7 +183,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// sub-registry has no CapPolicy, and HostPolicy(modReg) returns nil —
 	// which every gate that resolves the policy itself reads as
 	// allow-everything. The result was a bypass by relocation: a gated
-	// call refused at top level was permitted one file deeper, defeating
+	// call declined at top level was permitted one file deeper, defeating
 	// the shipped `sandbox` / `read-only` / `compute` profiles and an
 	// explicit `--deny`.
 	//
@@ -194,12 +194,12 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// HostPolicy(r) at dispatch — `modules.import` and the network words
 	// among them — which is why moving an `import "boru:net"` into a file
 	// module let its fetch through while a file write in the same body
-	// stayed refused.
+	// stayed declined.
 	//
 	// Set AFTER the SetHostX inheritance above, deliberately: those hooks
 	// auto-wrap with HostPolicy(r) when one is present, so installing the
 	// policy first would wrap the parent's already-permissioned backend a
-	// second time. One wrap, one decision, one refusal message.
+	// second time. One wrap, one decision, one compile failure message.
 	SetHostPolicy(modReg, HostPolicy(parent))
 	modReg.ParseFunc = parent.ParseFunc
 	modReg.BaseDir = parent.BaseDir
@@ -245,9 +245,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	//     still resolve — a write-then-read-back body sees its own bytes.
 	//   - output — io.Discard in place of the writers copied above, so a
 	//     body that prints at load draws nothing during check. Discarding
-	//     rather than counting is also what keeps the compiled effect fence
-	//     (eng effects.go) honest in the safe direction: nothing escaped, so
-	//     nothing should block a later interpreter fallback.
+	//     rather than counting is also what keeps the effect ledger
+	//     (core effects.go) honest: nothing escaped during check, so nothing
+	//     is counted.
 	//
 	// Input is NOT substituted, and that is the rule not an omission: the
 	// mode models WRITES. Reads stay real so no body that loads today can
@@ -384,7 +384,7 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// pointer, so the in-place stamp reaches both. The module-export apply
 	// seam (execFnDefSig) then runs a stamped fn on the VM from any caller.
 	// StampFnValueInPlace declines silently per fn (policy off, capturing,
-	// refusing body), leaving that fn interpreting exactly as before. The
+	// declining body), leaving that fn interpreting exactly as before. The
 	// stamps happen after the whole body ran so cross-fn deps resolve, and
 	// their dep snapshots freeze against the completed module scope.
 	if modReg.RuntimeStampingEnabled() {

@@ -137,9 +137,9 @@ import "boru:string-util" StringUtil deq StringUtil	true	…and so is every othe
 # ── Function values: eq is identity, deq is content (NUR031) ─────────
 # GRADUATED 2026-08-27 (Stage 3) out of
 # lang/spec/frontier/frontier-nur031-fn-eq.tsv. These rows were always
-# green on the interpreter and compile-REFUSED on a pre-existing rule
+# green on the interpreter and compile-FAILED on a pre-existing rule
 # with nothing to do with equality: any fn value reaching a non-inert
-# word was refused outright. eq / neq / deq / canon only ever READ a fn
+# word was declined outright. eq / neq / deq / canon only ever READ a fn
 # value — identity is a token minted once per authored function and
 # copied by value, content is canon — so they now declare CompileReadsFn
 # and the value rides as an ordinary const operand.

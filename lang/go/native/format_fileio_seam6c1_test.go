@@ -45,11 +45,11 @@ func TestJsonicFormatDecodeConversionError(t *testing.T) {
 func TestDecodeDelimitedConfigureError(t *testing.T) {
 	old := csvConfigure
 	csvConfigure = func(*jsonic.Jsonic, map[string]any) error {
-		return errors.New("plugin refused")
+		return errors.New("plugin declined")
 	}
 	t.Cleanup(func() { csvConfigure = old })
 	if _, err := decodeDelimited("a,b\n1,2", ","); err == nil ||
-		!strings.Contains(err.Error(), "plugin refused") {
+		!strings.Contains(err.Error(), "plugin declined") {
 		t.Fatalf("expected configure error, got %v", err)
 	}
 }
@@ -108,7 +108,7 @@ func TestDelimitedCellValueArms(t *testing.T) {
 }
 
 func TestRegisterFormatGuardArms(t *testing.T) {
-	// Empty name refused.
+	// Empty name declined.
 	r := seam5Reg(t)
 	if err := RegisterFormat(r, "", &TextFormat{}); err == nil ||
 		!strings.Contains(err.Error(), "name must not be empty") {

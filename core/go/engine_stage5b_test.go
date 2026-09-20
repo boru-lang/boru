@@ -333,7 +333,7 @@ func TestS5BStackMatchDefiniteTrapMirrors(t *testing.T) {
 	// The forty-ninth increment's arm: on a COMPILING pass, over operands the
 	// runtime match examines unchanged, the failed named-fn dispatch bakes the
 	// interpreter's own error into a terminal trap and the diagnostic becomes a
-	// RuntimeMirror — the pipeline compiles past it instead of refusing.
+	// RuntimeMirror — the pipeline compiles past it instead of declining.
 	//
 	// The twin below is the same program on a PLAIN check pass, where there is
 	// no trap to be exact about and the finding stays model-undermining.
@@ -825,8 +825,8 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	}
 }
 
-func TestS5BCloseParenLeadingDynamicRefused(t *testing.T) {
-	// Without member-read provenance the leading-dynamic window refuses
+func TestS5BCloseParenLeadingDynamicFailedToCompile(t *testing.T) {
+	// Without member-read provenance the leading-dynamic window declines
 	// (line 7142).
 	r := covRegistry(t, nil)
 	es := newS5BEmit()
@@ -857,7 +857,7 @@ func TestS5BParenLeadFnApplyIdxArity(t *testing.T) {
 }
 
 // TestS5BParenLeadFnApplyIdxGradualArgDeclines pins the classifier's
-// ARGUMENT gate — the one that keeps the Church-chain family refused
+// ARGUMENT gate — the one that keeps the Church-chain family declined
 // (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.8). Dropping either clause
 // compiles `def app f:Function => [x:Any => [(f x)]]` and its whole
 // family, which LOOKS like a graduation and is a miscompile waiting on a
@@ -1117,7 +1117,7 @@ func TestS5BMatchSignatureBooleanLiterals(t *testing.T) {
 }
 
 func TestS5BMatchSignatureTypeNameRejected(t *testing.T) {
-	// A bare type-name word is refused at a concrete-payload slot
+	// A bare type-name word is declined at a concrete-payload slot
 	// (line 8153).
 	r := covRegistry(t, nil)
 	e := NewTop(r)

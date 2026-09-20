@@ -132,7 +132,7 @@ func TestS6b1RegisterTypeLeafDup(t *testing.T) {
 		t.Fatalf("root registration: %v", err)
 	}
 	// Same leaf name under the root: the leaf index entry must be
-	// blanked so short-name expansion refuses to guess.
+	// blanked so short-name expansion declines to guess.
 	if _, err := dt.RegisterType("S6b1Ldup/S6b1Ldup", 91002, "plugin:test", nil); err != nil {
 		t.Fatalf("child registration: %v", err)
 	}

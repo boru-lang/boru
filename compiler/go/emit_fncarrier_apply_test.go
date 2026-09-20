@@ -7,17 +7,17 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// TestResolveDynamicApplyReadSubstitutedLeadRefuses pins the Stage 1
+// TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile pins the Stage 1
 // leading-apply guard: a READ-substituted fn-carrier lead (a def-read of a
 // name bound to a computed fn — defReads carries its ID) with no
-// statically-known closure shape refuses, because the interpreter
+// statically-known closure shape declines, because the interpreter
 // word-dispatches such a read while OpCallDynamic's island runs
 // anonymous-VALUE semantics — for a named Go-impl fn value the two diverge
 // (`def k (FnUtil.const 7)  (k 99)`: 7 interpreted, 99 from the island).
 // The same lead WITHOUT the def-read tag (an event-provenance apply, the
 // `((FnUtil.const 7) 99)` spelling) keeps today's lowering — the island
 // mirrors the interpreter's value semantics exactly there.
-func TestResolveDynamicApplyReadSubstitutedLeadRefuses(t *testing.T) {
+func TestResolveDynamicApplyReadSubstitutedLeadFailsToCompile(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, p: &Program{}}
 	lead := core.NewCarrier(core.TFunction)
@@ -29,7 +29,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadRefuses(t *testing.T) {
 	es.defReads = map[string]string{lead.ID: "k"}
 	_, op, reason = es.resolveDynamicApply(lw, residual)
 	if op != 0 || !strings.Contains(reason, "def-bound computed fn apply") {
-		t.Fatalf("a read-substituted lead with unknown closure shape must refuse: op=%v reason=%q", op, reason)
+		t.Fatalf("a read-substituted lead with unknown closure shape must decline: op=%v reason=%q", op, reason)
 	}
 }
 
@@ -38,7 +38,7 @@ func TestResolveDynamicApplyReadSubstitutedLeadRefuses(t *testing.T) {
 // poisons the window (the interpreter word-dispatches that read before the
 // word ever collects — `def q (if c [fn-arm] [fn-arm])  add 1 (q 5)`
 // re-matched add over [1, fn, 5] and raised where the interpreter computes
-// 7), so the record declines and the caller's refusal stands.
+// 7), so the record declines and the caller's compile failure stands.
 func TestRecordDispatchRematchDeclinesReadSubstitutedCarrier(t *testing.T) {
 	es := NewEmitState()
 	carrier := core.NewCarrier(core.TFunction)
@@ -115,10 +115,10 @@ func TestRecordDynApplyNameArms(t *testing.T) {
 	_ = bound
 }
 
-// TestRecordDynApplyEventLeadKeepQ pins the §9c event-lead gate's refusal
+// TestRecordDynApplyEventLeadKeepQ pins the §9c event-lead gate's compile failure
 // arm: an event-provenance fn CARRIER with neither a compiled-factory
 // producer nor a concrete single-sig arity proof marks the program
-// uncompilable (the quote-state refusal). The PROVEN path — a
+// uncompilable (the quote-state compile failure). The PROVEN path — a
 // producer-arity match recording the KeepQ apply — is pinned end-to-end by
 // frontier-hof-audit.tsv §9c's `(2 (mk 4))` row, and the quoted runtime
 // arm by the eng-side TestCallDynTrailKeepQQuotedStaysData.
@@ -132,10 +132,10 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es.producedBy[carrier.ID] = producer{seq: 0}
 	out := core.NewCarrier(core.TInteger)
 	if _, ok := es.RecordDynApply([]core.Value{core.NewInteger(5)}, carrier, out, core.SrcPos{}); ok {
-		t.Fatal("an unprovable event-provenance carrier lead must refuse")
+		t.Fatal("an unprovable event-provenance carrier lead must decline")
 	}
 	if es.Compilable || es.Reason == "" {
-		t.Errorf("the refusal must mark the program (compilable=%v reason=%q)", es.Compilable, es.Reason)
+		t.Errorf("the compile failure must mark the program (compilable=%v reason=%q)", es.Compilable, es.Reason)
 	}
 
 	// The concrete single-sig arity proof: a capture-bearing (unbakeable)
@@ -144,12 +144,12 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	// Dynamic exempts the operand resolver's type-body screen, as a real
 	// event out is.
 	//
-	// A WIDER window used to refuse here. It no longer does, and the change
+	// A WIDER window used to decline here. It no longer does, and the change
 	// is measured rather than relaxed: the interpreter UNDER-APPLIES —
 	// `(1 2 (mk 4))` with a 1-arg adder nets [1, 6], the deeper 1 surviving
 	// — so the faithful lowering consumes the top `arity` values and leaves
 	// the rest, which is what the returned `consumed` tells the collapse
-	// site to remove. The NARROWER window is the shape that still refuses,
+	// site to remove. The NARROWER window is the shape that still declines,
 	// asserted below.
 	mkFn := func() core.Value {
 		v := core.NewFunction(core.FnDefInfo{Anonymous: true,
@@ -178,7 +178,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es3.producedBy[fn3.ID] = producer{seq: 0}
 	consumed, ok := es3.RecordDynApply([]core.Value{core.NewInteger(1), core.NewInteger(2)}, fn3, core.NewCarrier(core.TInteger), core.SrcPos{})
 	if !ok {
-		t.Fatalf("a wider window must UNDER-APPLY, not refuse (reason %q)", es3.Reason)
+		t.Fatalf("a wider window must UNDER-APPLY, not decline (reason %q)", es3.Reason)
 	}
 	if consumed != 1 {
 		t.Errorf("consumed = %d, want 1 — the deeper window value must survive", consumed)
@@ -188,7 +188,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	}
 
 	// NARROWER window: the interpreter leaves the fn UNAPPLIED in the
-	// residual and nothing here models that, so it refuses — and the refusal
+	// residual and nothing here models that, so it declines — and the compile failure
 	// must MARK, not merely decline. A bare decline lets the collapse site's
 	// RegisterTrailingApply fallback lower the window anyway and answer a
 	// silent wrong value (measured: `(5 (mk2 10))` answered 15 against the
@@ -203,7 +203,7 @@ func TestRecordDynApplyEventLeadKeepQ(t *testing.T) {
 	es4.frames[0] = append(es4.frames[0], EmitEvent{kind: evCall})
 	es4.producedBy[two.ID] = producer{seq: 0}
 	if _, ok := es4.RecordDynApply([]core.Value{core.NewInteger(5)}, two, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
-		t.Fatal("a window NARROWER than the callee's arity must refuse")
+		t.Fatal("a window NARROWER than the callee's arity must decline")
 	}
 	if es4.Compilable {
 		t.Error("the narrower window must MARK the program uncompilable, not silently decline")

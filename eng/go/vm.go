@@ -175,7 +175,7 @@ type vmContext struct {
 // tapeCoupled reports whether any result value is a tape-coupled token
 // (Word/Mark/Move/Forward/OpenParen/Splice) — a value the interpreter would
 // re-STEP on the tape rather than treat as data. No compiled-reachable handler
-// should produce one (the emitter refuses fn-invoking / code-splicing words),
+// should produce one (the emitter declines fn-invoking / code-splicing words),
 // so every dispatch site that funnels handler/island results back onto the
 // operand stack screens for them and fails loudly instead of pushing a token
 // as data. The single definition keeps the four call sites in lockstep.
@@ -232,7 +232,7 @@ func (vc *vmContext) islandRun(reg *core.Registry, tokens []core.Value) ([]core.
 // screenResults rejects handler / island results that carry a tape-coupled
 // token (Word/Mark/Move/Forward/OpenParen/Splice) — a value the interpreter
 // would re-STEP rather than treat as data. No compiled-reachable handler should
-// produce one (the emitter refuses fn-invoking / code-splicing words); reaching
+// produce one (the emitter declines fn-invoking / code-splicing words); reaching
 // here is a compiler bug, so it fails loudly with the call site's label instead
 // of pushing a token as data. Returns nil when the results are clean.
 func (vc *vmContext) screenResults(results []core.Value, label string, debug []core.SrcPos, pc int) error {
@@ -437,7 +437,7 @@ func runVMEntry(p *compiler.Program, r *core.Registry, stepLimit int, enter func
 	// Last-resort panic guard, mirroring the interpreter's top-level recover
 	// (engine.go Run): a bug in a compiled-reachable handler or in the VM loop
 	// must surface as a clean internal_error BoruError — which RunCompiled then
-	// resolves by falling back to the interpreter — never as a goroutine stack
+	// reports as a compiler defect — never as a goroutine stack
 	// trace. Errors returned normally are untouched.
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -592,7 +592,7 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 // The check is on the VALUES, at invoke time, and that is the whole point:
 // the unit's RET cannot do it, because a shared closure unit has no single
 // contract and giving it one needs a per-fn memo key — which alone makes a
-// shared unit recompile and refuse on operand provenance, islanding CONFORMING
+// shared unit recompile and decline on operand provenance, islanding CONFORMING
 // callbacks (measured: TestListFoldCallbackOrderPin). Checking produced values
 // needs no static provenance, so nothing stops compiling.
 //
@@ -721,7 +721,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// (PolyNoMatchSpec — the check pass proved, at the failed-dispatch
 		// state it recovered from, that the diagnostic is rebuildable from the
 		// window), raise the byte-identical signature_error right here (plan
-		// 3c). Otherwise route through the whole-program fallback
+		// 3c). Otherwise bail: the compiled run cannot take it
 		// (internal_error → RunCompiled re-runs the interpreter), which raises
 		// the canonical error — sound because the interpreter takes the SAME
 		// MatchSignature first-match and so reaches the same no-match.
@@ -731,7 +731,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 			}
 		}
 		return nil, vmDeferAlt(r, curDebug, pc, "vm:poly-no-match",
-			"CALL_NATIVE_POLY no match for "+pr.Word+"; deferring to interpreter for the canonical signature_error",
+			"CALL_NATIVE_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error",
 			bestEffortNoMatch(r, fn, pr.Word, window, curDebug, pc))
 	}
 	// Per-export module policy gate (NUR045): a module poly word's
@@ -754,7 +754,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// auto-applied here: the recorder owns that landing. Every annotated
 	// method-shape read either models the interpreter's instant auto-fire as an
 	// explicit arity-0 OpCallDynMethod right after this poly (the shaped-method
-	// landing model) or REFUSES compilation (tryShapedMethodDispatch's
+	// landing model) or DECLINES compilation (tryShapedMethodDispatch's
 	// guard-owned decline), so the poly's job is exactly its recorded claim —
 	// return the member value. A runtime auto-apply here would double-fire
 	// against the following CALL_DYN_METHOD (span-finish underflow,
@@ -769,7 +769,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// which is a defect owed a fix.
 	if len(results) != pr.NOut {
 		return nil, vmDefer(r, curDebug, pc, "vm:poly-nout-drift", fmt.Sprintf(
-			"poly dispatch %s: result count %d differs from the recorded claim %d; deferring to the interpreter",
+			"poly dispatch %s: result count %d differs from the recorded claim %d; the compiled runtime cannot execute it",
 			pr.Word, len(results), pr.NOut))
 	}
 	if err := vc.screenResults(results, "poly result at "+pr.Word, curDebug, pc); err != nil {
@@ -787,7 +787,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 // values — the SAME first-match the interpreter's dispatch takes. Returns the
 // matched arm's compiled unit and the args in sig order (position 0 = top of
 // stack, exactly the window OpCallUser binds). A no-match defers to the
-// interpreter through the whole-program fallback, which raises the canonical
+// interpreter, which raises the canonical
 // signature_error — sound because the interpreter takes the same first-match
 // and so reaches the same no-match (mirroring callPoly's no-match path).
 func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value, curDebug []core.SrcPos, pc int) (int, []core.Value, error) {
@@ -802,7 +802,7 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 	var units []int
 	var fd *core.FnDefInfo
 	if len(pr.Sigs) > 0 {
-		// STORED mode (REFUSAL-CLOSURE.0 §6b): a body-local fn's binding is
+		// STORED mode (COMPILE FAILURE-CLOSURE.0 §6b): a body-local fn's binding is
 		// popped before the VM runs, so the dispatch table was frozen at
 		// record time (see UserPolyRef.Sigs — the freeze's faithfulness
 		// gates live there). No live Lookup, no index/Impl drift guard: the
@@ -823,7 +823,7 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 	} else {
 		fd = dispatchRegistry(pr.Reg, vc.r).Lookup(pr.Word)
 		if fd == nil {
-			return 0, nil, vmDefer(vc.r, curDebug, pc, "vm:user-poly-unresolved", "CALL_USER_POLY unresolved fn "+pr.Word+"; deferring to interpreter")
+			return 0, nil, vmDefer(vc.r, curDebug, pc, "vm:user-poly-unresolved", "CALL_USER_POLY unresolved fn "+pr.Word+"; the compiled runtime cannot execute it")
 		}
 		subset = make([]core.Signature, 0, len(pr.SigIdx))
 		units = make([]int, 0, len(pr.SigIdx))
@@ -832,7 +832,7 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 				si < 0 || si >= len(fd.Signatures) ||
 				fd.Signatures[si].Impl != pr.Impls[k] ||
 				fd.Signatures[si].TotalArgs() != n {
-				return 0, nil, vmDefer(vc.r, curDebug, pc, "vm:user-poly-drift", "CALL_USER_POLY signature drift at "+pr.Word+"; deferring to interpreter")
+				return 0, nil, vmDefer(vc.r, curDebug, pc, "vm:user-poly-drift", "CALL_USER_POLY signature drift at "+pr.Word+"; the compiled runtime cannot execute it")
 			}
 			u := pr.Units[k]
 			if u < 0 || u >= len(vc.p.Fns) || vc.p.Fns[u].NParams != n {
@@ -874,7 +874,7 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 			}
 		}
 		return 0, nil, vmDeferAlt(vc.r, curDebug, pc, "vm:user-poly-no-match",
-			"CALL_USER_POLY no match for "+pr.Word+"; deferring to interpreter for the canonical signature_error", alt)
+			"CALL_USER_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error", alt)
 	}
 	for j := range subset {
 		if mr.Sig == &subset[j] {
@@ -1285,7 +1285,7 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		// looked at the top two values), raised at the apply word's
 		// position, which this op carries.
 		if fnVal.Parent != nil && fnVal.Parent.Equal(core.TReach) {
-			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-top", "apply over a lens value: deferred to the interpreter")
+			return nil, nil, vmDefer(r, curDebug, pc, "dyn-apply-top", "apply over a lens value; the compiled runtime cannot execute it")
 		}
 		written := []core.Value{fnVal}
 		if n > 0 {
@@ -1424,7 +1424,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// with a DIFFERENT stack shape, which this program cannot express —
 		// defer wholesale.
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
-			": value is not an appliable function at run time; deferring to the interpreter")
+			": value is not an appliable function at run time; the compiled runtime cannot execute it")
 	}
 	if fnDef, ok := fnVal.Data.(core.FnDefInfo); ok && vmNativeApplicable(vc.r, fnDef) {
 		if results, done, err := vc.tryNativeFnApply(fnVal, args); done {
@@ -1727,7 +1727,7 @@ func vmNativeApplicable(r *core.Registry, fd core.FnDefInfo) bool {
 	// by NAME through the live registry, and such a value's Name is a label
 	// that may coincide with a registered word (`const`, the singleton-type
 	// maker), which is how `((FnUtil.const 7) 99)` compiled to 99 for the
-	// interpreter's 7. The def-read spelling's refusal blamed the island for
+	// interpreter's 7. The def-read spelling's compile failure blamed the island for
 	// that answer; the island in fact applies the value exactly as the
 	// interpreter does. tryNativeFnApply keys on the same predicate.
 	if core.IsSelfContainedGoFnDef(fd) {
@@ -1846,7 +1846,7 @@ func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, stac
 		return nil, vmErrAt(curDebug, pc, "FALLBACK underflow at "+fb.Desc)
 	}
 	if fb.NIn > 1 {
-		// The lowerer threads only 0 or 1 input into an island (lower.go refuses
+		// The lowerer threads only 0 or 1 input into an island (lower.go declines
 		// >1): a multi-input island would preload the threaded values bottom→top,
 		// the OPPOSITE of the interpreter's top-down collection (the same
 		// inversion that bounds OpCallDynamicTrailing to arity 1). Assert it so a
@@ -2347,7 +2347,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				if core.IsWord(el) || core.IsParenExpr(el) || core.IsReach(el) || core.IsInterpString(el) || core.IsSplice(el) ||
 					core.IsForward(el) || core.IsOpenParen(el) || core.IsCloseParen(el) || core.IsAppliableFn(el) {
 					return nil, vmDefer(vc.r, curDebug, pc, "vm:splice-active-payload",
-						"splice of a code-bearing payload; deferring to the interpreter")
+						"splice of a code-bearing payload; the compiled runtime cannot execute it")
 				}
 			}
 			stack = append(stack, elems...)
@@ -2580,7 +2580,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			// Belt-and-braces: a handler that returns tape tokens (to
 			// be re-stepped by the engine) must never have been
-			// compiled — the emitter refuses fn-invoking and
+			// compiled — the emitter declines fn-invoking and
 			// code-splicing words. Fail loudly, never push tokens as
 			// data.
 			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
@@ -2897,14 +2897,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				if p.SpecUndefNames[name] || p.LiveReadNames[name] {
 					return nil, stampAt(core.UndefinedWordDiag(curReg, curReg.Source, name, debugPosAt(curDebug, pc)), curDebug, pc, curReg)
 				}
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; the compiled runtime cannot execute it")
 			}
 			switch v.Data.(type) {
 			case core.FnDefInfo, *core.ClassTypeInfo:
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-dispatching", "dynamic-scope read of a dispatching binding `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-dispatching", "dynamic-scope read of a dispatching binding `"+name+"`; the compiled runtime cannot execute it")
 			}
 			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-active-token", "dynamic-scope read of an active token `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-active-token", "dynamic-scope read of an active token `"+name+"`; the compiled runtime cannot execute it")
 			}
 			stack = append(stack, v)
 		case compiler.OpLookupDynScopeData:
@@ -2921,13 +2921,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			v, ok := curReg.Defs.Top(name)
 			if !ok {
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-miss", "dynamic-scope data read miss for `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-miss", "dynamic-scope data read miss for `"+name+"`; the compiled runtime cannot execute it")
 			}
 			if _, isClass := v.Data.(*core.ClassTypeInfo); isClass {
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-class", "dynamic-scope data read of a class binding `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-class", "dynamic-scope data read of a class binding `"+name+"`; the compiled runtime cannot execute it")
 			}
 			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
-				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-active-token", "dynamic-scope data read of an active token `"+name+"`; deferring to the interpreter")
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-data-active-token", "dynamic-scope data read of an active token `"+name+"`; the compiled runtime cannot execute it")
 			}
 			stack = append(stack, v)
 		case compiler.OpRet:
@@ -3386,7 +3386,7 @@ func checkReturnContract(r *core.Registry, fn *compiler.CompiledFn, stack []core
 		}
 		if produced != len(rets) {
 			return stack, vmDefer(r, nil, 0, "vm:dyn-frame-replay", fmt.Sprintf(
-				"dynamic frame replay %s: result count %d differs from the declared %d; deferring to the interpreter",
+				"dynamic frame replay %s: result count %d differs from the declared %d; the compiled runtime cannot execute it",
 				fn.Name, produced, len(rets)))
 		}
 		return stack, nil

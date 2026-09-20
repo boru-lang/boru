@@ -18,7 +18,7 @@ import (
 //
 // Codes the KERNEL owns are not repeated here even where a lang site raises
 // them (`type_error`, `undefined_word`, `index_out_of_range`, and nine more).
-// Re-registering one is refused as a double-owned code, deliberately: a lang
+// Re-registering one is declined as a double-owned code, deliberately: a lang
 // site raising `type_error` is raising the kernel's error, not defining its
 // own, and two layers each claiming a code is the drift the enumeration
 // exists to catch.

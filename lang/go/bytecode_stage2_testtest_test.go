@@ -2,10 +2,10 @@ package lang
 
 import "testing"
 
-// Stage-2 test-test pins (voxgig zero-refusals plan): the boru:test imperative
+// Stage-2 test-test pins (voxgig zero-compile failures plan): the boru:test imperative
 // harness — `[ body… ] "name" Test.test end` — already declares its closure
 // shape (CallableSpec on test-test, lang/go/modules/test.go) and re-enters the
-// VM through InvokeBody, but every corpus body still refused as "code-body
+// VM through InvokeBody, but every corpus body still declined as "code-body
 // word test-test (Stage 2)". The masked inner leaf: an assertion arg of
 // DYNAMIC modality (a user-poly / declared-Any fn result) reaching a module
 // native referenced by `/v` in an export map (`equal: assert-equal/v`).
@@ -13,7 +13,7 @@ import "testing"
 // execFnDefLiteral's wrapper branch deliberately skips it — and the final
 // pure-stack dispatch built its MatchResult WITHOUT Reg. tryRecordPoly then
 // resolved matchReg to the MAIN registry, where `assert-equal` is not a
-// builtin, declined, and RecordCall refused "dynamic input at assert-equal".
+// builtin, declined, and RecordCall declined "dynamic input at assert-equal".
 //
 // The fix (engine.go execFnDefLiteral, pure-stack tail): a foreign-registry
 // FnDef ref sets match.Reg = fnDef.Registry, exactly like the trivial-
@@ -24,7 +24,7 @@ import "testing"
 //
 // The differential corpus is blind to these off-corpus shapes, so pin them
 // (the memory-noted RunCompiledStrict discipline): compile+parity for the
-// newly-compiling shapes, sound-fallback for a body that must still refuse.
+// newly-compiling shapes, sound-fallback for a body that must still decline.
 
 // The mechanism in isolation, no test body: a dynamic (declared-Any user-fn)
 // result feeding the module-native ref `Assert.equal` at module scope must
@@ -78,10 +78,10 @@ Test.fail-count end`)
 
 // NEGATIVE: a body hitting the dot-METHOD leaf (`rig.int 1 6` — method
 // dispatch on a Map whose members are fn values, the prop-spec gen-body
-// blocker) must still refuse and refuse and be interpreted — identical results,
+// blocker) must still decline and decline and be interpreted — identical results,
 // fail-count included.
 func TestTestBodyDotMethodStaysSound(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	stage1aSound(t, `import "boru:test" end
 def mkrig fn [[] [Map] [ {int: ([a:Integer b:Integer] => [a b add])} ]]
 def rig (mkrig)

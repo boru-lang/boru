@@ -6,7 +6,7 @@ package core
 // read's value as a PUSH_CONST, its type identity as a PUSH_TYPE, or a call
 // target as a CALL_USER (core.FrozenBake). Each bake is frozen for the life of
 // the unit while the interpreter re-resolves the name per call, so any later
-// change to that binding must reach the recorder: `NotifyNameRebound` refuses
+// change to that binding must reach the recorder: `NotifyNameRebound` declines
 // the program, and the interpreter answers it correctly instead.
 //
 // WHY THIS FILE EXISTS. Until 2026-09-04 the notification was called from the
@@ -30,16 +30,16 @@ package core
 // WHY NOT LOWER. `DefTable.Push` and friends were the obvious floor and are
 // the wrong one: they carry frame bindings, guard narrowings, generic
 // parameter installs and carrier joins as well as user rebinds. A narrowing
-// push at module scope (`if (k is Integer) […]`) would then refuse every
+// push at module scope (`if (k is Integer) […]`) would then decline every
 // program with a frozen `k`. The semantic binding operation — install a def,
 // uninstall a def, install a type, uninstall a type, uninstall signatures —
 // is the level at which "the user rebound this name" is actually true.
 //
 // WHY NOT ON THE TWIN NOTE. `NoteBindTransition` is already seated at exactly
 // these sites and looks like a free ride, but its population is NARROWER than
-// this one's in two directions that both lose refusals. It suppresses on
+// this one's in two directions that both lose compile failures. It suppresses on
 // `RolledBackBodyDepth > 0`, which would drop the `if`-arm rebind the latch
-// refuses today; and `UninstallFnSigs` notes only when a removal actually
+// declines today; and `UninstallFnSigs` notes only when a removal actually
 // COMMITS, so a sig-undef whose every match is locked would stop notifying.
 // The two answer different questions — "what must the VM replay" versus "what
 // might have gone stale in the bytecode" — and the second is deliberately the

@@ -129,7 +129,7 @@ func TestFetchUsesInstalledTransport(t *testing.T) {
 	}
 }
 
-// Negative: an HTTPOps that refuses fails the fetch with a transport
+// Negative: an HTTPOps that declines fails the fetch with a transport
 // error, and — because the transport is resolved BEFORE the C1 effect
 // fence — the attempt is provably unsent and stays off the ledger.
 func TestFetchTransportErrorIsUnsent(t *testing.T) {
@@ -161,7 +161,7 @@ func TestFetchTransportErrorIsUnsent(t *testing.T) {
 		t.Errorf("error code = %q, want \"transport\"", ae.Code)
 	}
 	if after := r.Effects.Count(); after != before {
-		t.Errorf("effects %d → %d: a refused transport sent nothing", before, after)
+		t.Errorf("effects %d → %d: a declined transport sent nothing", before, after)
 	}
 }
 

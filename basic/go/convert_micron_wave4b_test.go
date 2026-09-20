@@ -333,20 +333,20 @@ func TestMicronTypePredicates(t *testing.T) {
 }
 
 func TestMicronConstructNegatives(t *testing.T) {
-	// Refining a leaf is refused.
+	// Refining a leaf is declined.
 	if _, err := micronConstruct(NewTypeLiteral(TEmailon), mapOf("x", NewTypeLiteral(TString)), nil); err == nil {
 		t.Error("leaf refinement accepted")
 	}
-	// Refining an existing user type body is refused, naming the kind.
+	// Refining an existing user type body is declined, naming the kind.
 	body, _ := micronConstruct(NewTypeLiteral(TMicron), mapOf("t", NewTypeLiteral(TString)), nil)
 	if _, err := micronConstruct(body[0], mapOf("u", NewTypeLiteral(TString)), nil); err == nil {
 		t.Error("type-body refinement accepted")
 	}
-	// A non-map argument is refused.
+	// A non-map argument is declined.
 	if _, err := micronConstruct(NewTypeLiteral(TMicron), NewInteger(1), nil); err == nil {
 		t.Error("non-map field spec accepted")
 	}
-	// A field that is neither a type nor a concrete default is refused.
+	// A field that is neither a type nor a concrete default is declined.
 	if _, err := micronConstruct(NewTypeLiteral(TMicron), mapOf("f", NewCarrier(TString)), nil); err == nil {
 		t.Error("carrier field accepted")
 	}
@@ -425,7 +425,7 @@ func TestInstallMicronTypeAndMake(t *testing.T) {
 
 func TestMicronInstantiateKinds(t *testing.T) {
 	r := newTestRegistry(t)
-	// The abstract root refuses.
+	// The abstract root declines.
 	if _, err := micronInstantiate(NewTypeLiteral(TMicron), NewString("x"), r); err == nil {
 		t.Error("abstract Micron make accepted")
 	}

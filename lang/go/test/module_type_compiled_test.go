@@ -7,7 +7,7 @@ package test
 // VM's OpPushType resolution (r.Types.LookupByID) relies on. Without
 // the adoption every force-compiled program using such a literal
 // aborts with "unresolvable type operand" — pinned here because the
-// TSV differential runner falls back to the interpreter on refusal and
+// TSV differential runner does not compile on compile failure and
 // would mask the regression.
 
 import (

@@ -230,7 +230,7 @@ func moduleNSGetReturns(args []Value) ([]Value, bool) {
 // for a MISSING concrete key it records a TERMINAL not_found trap
 // (top-level only): getr raises not_found at runtime for a missing
 // export, so the compiled program raises the byte-identical error here
-// via OpTrap instead of refusing downstream on the unmaterialisable Any
+// via OpTrap instead of declining downstream on the unmaterialisable Any
 // residual. RecordTrap truncates the program to the trap, dropping the
 // residual. A nested occurrence declines the trap (off the top frame)
 // and keeps the lenient Any fallback. ok=false for a non-namespace
@@ -247,7 +247,7 @@ func moduleNSGetrReturns(args []Value, r *Registry) ([]Value, bool) {
 		// A module's export map is sealed at import (boru-level; runtime
 		// growers are ledger-modelled), so a concrete-key miss is ALSO a
 		// check diagnostic (the strict-read contract, same text). A
-		// RuntimeMirror: the refusal loop skips it, so the trap below
+		// RuntimeMirror: the compile failure loop skips it, so the trap below
 		// keeps compiling (TestModuleExportGetrNotFoundTrapCompiles pins
 		// it).
 		if r.Check.IsActive() {

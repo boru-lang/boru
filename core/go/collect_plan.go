@@ -73,7 +73,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	// overload finally SELECTED forward-collects instead — leaving that
 	// carrier on the stack — the static split diverges from the runtime one
 	// (a concrete value would have matched the more-specific overload and
-	// been grabbed). noteSplit flags it so the compiler refuses; dispatch
+	// been grabbed). noteSplit flags it so the compiler declines; dispatch
 	// itself is unchanged. See CheckState.AmbiguousGradualSplit.
 	// Only ever read under checkActive (the scan's gradual-Any arm), so the
 	// runtime hot path never asks; hoisted here so the per-candidate loop

@@ -13,21 +13,19 @@ import (
 // carrier, and the check-time construction the compiler would intern as
 // a constant carries that carrier where the live value belongs (an
 // Integer carrier as the input pattern instead of 5) — baking it made
-// `d 5` refuse dispatch in the compiled engine while the interpreter,
+// `d 5` decline dispatch in the compiled engine while the interpreter,
 // re-constructing with the live value, matched. fnTripleHandler and
-// afnHandler now mark such constructions uncompilable so the program
-// falls back to the interpreter, and a carrier PATTERN on a signature
+// afnHandler now mark such constructions uncompilable, and a carrier PATTERN on a signature
 // is never enforced at match time (patternsOk / MatchSignature /
 // MatchFnSig skip it) so the CHECK pass has no false positive either.
 // This test pins compiled == interpreted for the operand shapes. The
 // cases live here rather than in lang/spec because these constructions
 // are deliberately interpreter-only and the spec corpus enforces
-// refusalCeiling = 0 (every spec value row must compile).
+// failureCeiling = 0 (every spec value row must compile).
 func TestFnConstructionCompiledParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// A construction the compiler cannot lower is a compile failure, booked
+	// against refDefectCeiling by bookRefDefect below; the interpreted answer
+	// is asserted either way, so the fix has a target.
 	cases := []struct {
 		src  string
 		want string // the (shared) result both engines must produce
@@ -110,8 +108,8 @@ func TestFnComputedPatternStillEnforced(t *testing.T) {
 // fn-triple.tsv §2b, which is where a spec row belongs. The identity half
 // lives here instead, for the reason that file's header gives for computed
 // operands: `deq (canon a/v) (canon b/v)` passes a function VALUE to a
-// word, which the compiler refuses (Stage 3, soundness), and the spec
-// corpus holds refusalCeiling = 0.
+// word, which the compiler declines (Stage 3, soundness), and the spec
+// corpus holds failureCeiling = 0.
 //
 // `boru fmt` collapses only the last of the six (NUR088), which is what
 // makes the rule worth stating in a guide at all.

@@ -12,18 +12,18 @@ import (
 // against the check pass's surviving state. Two halves, pinned here from
 // both directions:
 //
-//   - typed defs REFUSE at the bake decision (bodyHasReplayHazard) and ride
-//     the sound interpreter fallback — parity, never a type-conflict Error;
+//   - typed defs DECLINE at the bake decision (bodyHasReplayHazard) and ride
+//     the compile failure — parity, never a type-conflict Error;
 //   - imports compile NATIVELY as closure units (the check-time install is
 //     the only install) once ensureExportsBound re-binds a real ModuleExport
 //     — parity, never mini/parse_unknown_lang.
-func TestReplayHazardTypedDefRefusesWithParity(t *testing.T) {
+func TestReplayHazardTypedDefDoesNotCompileWithParity(t *testing.T) {
 	// GRADUATED 2026-07-14 (do-def leak fidelity): the typed-def do bodies
 	// COMPILE now — the check pass keeps do-body defs (RunCarrierBodyKeepDefs,
 	// matching the runtime leak), so the closure re-analysis shadow-rebinds
 	// instead of tripping the parts conflict, and the body lowers to a
 	// closure unit whose runtime def is registry-visible. The pin's contract
-	// moves from "must refuse" to "must compile and run byte-identical" —
+	// moves from "must decline" to "must compile and run byte-identical" —
 	// including the leak-semantics edges: the repeated fn-scoped install
 	// (the interpreter's own parts conflict, reproduced via fallback), the
 	// post-do redefinition, and undef-after-do.
@@ -38,7 +38,7 @@ func TestReplayHazardTypedDefRefusesWithParity(t *testing.T) {
 			t.Fatalf("%q: check error %v", src, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%q: refused (%q) — the leak-fidelity compile must lower this body", src, reason)
+			t.Fatalf("%q: declined (%q) — the leak-fidelity compile must lower this body", src, reason)
 		}
 		b, _ := New()
 		gotC, compiled, errC := b.RunCompiled(src)
@@ -109,7 +109,7 @@ func TestReplayHazardImportBodyCompilesNative(t *testing.T) {
 }
 
 // Value defs inside baked bodies were never hazardous and must KEEP
-// compiling (the negative proving the refusal is not blanket).
+// compiling (the negative proving the compile failure is not blanket).
 func TestReplayHazardValueDefStillCompiles(t *testing.T) {
 	src := `do [def b 5 b add 1]`
 	a, _ := New()

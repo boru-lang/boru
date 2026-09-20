@@ -10,7 +10,7 @@ import (
 // applies a function VALUE rather than calling a word: an inline lambda
 // (`([n:Integer] => [n add 1]) 5`), or a fn read out of a container or a
 // parameter and applied. The engine records these with an empty Call
-// name, which is what this refusal keys on.
+// name, which is what this compile failure keys on.
 //
 // The op vocabulary cannot express them. `Call{Name, Arity}` re-invokes
 // BY NAME and does not consume a receiver, while an application consumes
@@ -18,7 +18,7 @@ import (
 // carries a name, replaying it as a Call would strand that value and
 // produce it twice. It needs an apply-style Op; see NUR077.
 //
-// Refusing is the point. The alternative — what this replaced — is a
+// Declining is the point. The alternative — what this replaced — is a
 // form that silently replays to a different answer than the program it
 // was recorded from, which is how the PBT shrinker came to report
 // counterexamples its own generator cannot produce.
@@ -126,7 +126,7 @@ func Replayable(form *StackForm) error {
 // final stack as running `src` directly (modulo PRNG state for
 // non-deterministic programs).
 //
-// A form the recorder could not capture faithfully is REFUSED here
+// A form the recorder could not capture faithfully is DECLINED here
 // rather than replayed to a wrong answer; see Replayable.
 func Eval(reg *core.Registry, form *StackForm) ([]core.Value, error) {
 	if err := Replayable(form); err != nil {

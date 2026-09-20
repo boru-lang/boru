@@ -140,7 +140,7 @@ func TestBindingBodySingleton(t *testing.T) {
 	if got, _ := AsInteger(u.Body()); got != 1 {
 		t.Errorf("Body() must recover the declared singleton, got %v", u.Body())
 	}
-	// Membership: the inhabitant passes, everything else refuses.
+	// Membership: the inhabitant passes, everything else declines.
 	if !NewInteger(1).Is(node) {
 		t.Error("1 must inhabit One")
 	}
@@ -152,7 +152,7 @@ func TestBindingBodySingleton(t *testing.T) {
 		t.Error("the Integer literal is not an inhabitant of One")
 	}
 	// Carrier over-approximation: dynamic, tagged-at-node, and
-	// body-family carriers stay admissible; a foreign family refuses.
+	// body-family carriers stay admissible; a foreign family declines.
 	if !NewDynamicCarrier(TAny).Is(node) {
 		t.Error("a dynamic carrier must stay admissible")
 	}
@@ -163,7 +163,7 @@ func TestBindingBodySingleton(t *testing.T) {
 		t.Error("a base-family carrier must stay admissible")
 	}
 	if NewCarrier(TString).Is(node) {
-		t.Error("a foreign-family carrier must refuse")
+		t.Error("a foreign-family carrier must decline")
 	}
 }
 

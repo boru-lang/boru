@@ -19,7 +19,7 @@ import (
 // order (the F1 miscompile, pinned by
 // TestStoredHandlerMidProgramRebindCompilesAndMatches below). The revised
 // discipline: a module-scope rebind of a name an already-created stored ref
-// BAKED refuses the whole program — interpreter fallback, correct values —
+// BAKED makes the whole program fail to compile —
 // exactly like the frozen-module-read hammer. Since the seventy-first
 // increment the unit bakes less: a module-scope value it reads bare is
 // seated live (OpLookupDynScope), a word slot routes, and a fn with
@@ -28,7 +28,7 @@ import (
 // (no declaration site for the routed op to locate a unit by) keeps the
 // latch.
 func TestCompiledStoredHandlerFreezeRedefine(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	cases := []struct {
 		name, src, want string
 		compiles        bool
@@ -71,7 +71,7 @@ call {} svc`, "[11]", true},
 				t.Fatalf("compiled=%v, want %v (reason %q)", prog != nil, c.compiles, reason)
 			}
 			if !c.compiles && !strings.Contains(reason, "rebound after a stored handler") {
-				t.Errorf("refusal reason = %q, want the stored-handler rebind hammer", reason)
+				t.Errorf("compile failure reason = %q, want the stored-handler rebind hammer", reason)
 			}
 			gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
 			if noteCompileDefect(t, c.src, gotC, errC) {
@@ -101,7 +101,7 @@ call {} svc`, "[11]", true},
 // point-in-program binding. Under the pre-revision per-ref poisoning this
 // program compiled and printed the pass-final value for every call
 // (12 12 12); the interpreter's documented call-time-binding semantics give
-// 6, then 105, then 12. The latch refused it until the seventy-first
+// 6, then 105, then 12. The latch declined it until the seventy-first
 // increment; now the handler's `bonus add 5` routes its slot live, the
 // program compiles, and the twin regime replays each `def bonus` in
 // program order at VM time. The compiled RUN still falls back to the
@@ -114,7 +114,7 @@ call {} svc`, "[11]", true},
 // exactly; the bail is that seat's to retire, and this pin flips knowingly
 // when it does.
 func TestStoredHandlerMidProgramRebindCompilesAndMatches(t *testing.T) {
-	// Legacy refusal+fallback-parity contract (see note above).
+	// Legacy compile failure+fallback-parity contract (see note above).
 	src := `def bonus 1
 def svc (service {})
 add {op:"go"} ([req:Map state:Any] => [bonus add 5]) svc
@@ -129,7 +129,7 @@ call {op:"go"} svc`
 		t.Fatalf("CompileCheck error: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("a mid-program rebind of a dep the handler reads live compiles; refused: %q", reason)
+		t.Fatalf("a mid-program rebind of a dep the handler reads live compiles; declined: %q", reason)
 	}
 	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	// The second `call` bails at the poly native seat (vm:poly-no-match). It
@@ -174,7 +174,7 @@ call {} svc`
 		t.Fatalf("CompileCheck error: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("must compile, refused: %q", reason)
+		t.Fatalf("must compile, declined: %q", reason)
 	}
 	if got := prog.StoredRefCount(); got != 1 {
 		t.Fatalf("StoredRefCount = %d, want 1", got)

@@ -225,7 +225,7 @@ func TestSpecialWordResultsArgsFrameProjection(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 
 	// Top level: the args stack is empty, so `args` falls through to the
-	// normal path (RecordCall's refusal in a compile; nothing here).
+	// normal path (RecordCall's compile failure in a compile; nothing here).
 	if out, ok := specialWordResults(r, "args", nil, pos); ok || out != nil {
 		t.Fatalf("empty args stack must fall through, got (%v, %v)", out, ok)
 	}
@@ -316,14 +316,14 @@ func TestSpecialWordResultsMacroexpandRunawayTrap(t *testing.T) {
 	// A macro that expands to (a call to) itself runs into the depth
 	// guard's macroexpand_error — the interpreter raises exactly this at
 	// run time, so the checker records the byte-identical terminal trap
-	// and still falls through to refuse the dispatch.
+	// and still falls through to decline the dispatch.
 	covCDMacro(r, "rmacq", []core.Value{core.NewList([]core.Value{core.NewWord("rmacq")})})
 	em := &covCDEmit{EmitRecorder: core.TheInactiveEmit}
 	r.Check.Emit = em
 	form := core.NewList([]core.Value{core.NewWord("rmacq")})
 	out, ok := specialWordResults(r, "macroexpand", []core.Value{form}, core.SrcPos{Row: 1, Col: 1})
 	if ok || out != nil {
-		t.Fatalf("runaway macro must fall through to refuse, got (%v, %v)", out, ok)
+		t.Fatalf("runaway macro must fall through to decline, got (%v, %v)", out, ok)
 	}
 	if len(em.traps) != 1 || em.traps[0] != "macroexpand_error@macroexpand" {
 		t.Errorf("recorded traps = %v, want the one macroexpand_error trap", em.traps)
@@ -334,7 +334,7 @@ func TestSpecialWordResultsMacroexpandOtherErrorFallsThrough(t *testing.T) {
 	r := newTestRegistry(t)
 	// A macro whose template produces no value fails with macro_error —
 	// NOT a runtime error to reproduce, so no trap is recorded and the
-	// dispatch falls through to refuse.
+	// dispatch falls through to decline.
 	covCDMacro(r, "emacq", nil)
 	em := &covCDEmit{EmitRecorder: core.TheInactiveEmit}
 	r.Check.Emit = em

@@ -40,8 +40,8 @@ typeof (fnsig [[Integer] [String]])	FunctionSignature	1-triple spec list
 typeof (fnsig [[Integer Integer] [Integer]])	FunctionSignature	2-parameter input needs the spec-list form
 typeof (fnsig [[] [Integer]])	FunctionSignature	zero-parameter shape
 typeof (fnsig [[Integer] [String] [String] [Integer]])	FunctionSignature	an overload set is one list of pairs
-fnsig [[Integer]]	ERROR:fnsig_invalid_spec	an odd-length spec list is refused
-fnsig []	ERROR:fnsig_invalid_spec	an empty spec list is refused
+fnsig [[Integer]]	ERROR:fnsig_invalid_spec	an odd-length spec list is declined
+fnsig []	ERROR:fnsig_invalid_spec	an empty spec list is declined
 #
 # §3  a named fn-shape type ADMITS a function whose shape satisfies it
 def T fnsig Integer String  def f fn x:Integer String [convert String x]  def h fn g:T String [(g 5)]  h f/v	'5'	the declared shape admits a matching function
@@ -53,8 +53,8 @@ def T (fnsig [[Integer Integer] [Integer]])  def f fn [[a:Integer b:Integer][Int
 #     parameter cannot do: it admits every function and defers the
 #     failure to run time.
 def T fnsig Integer String  def f fn x:String Integer [size x]  def h fn g:T String [(g 5)]  h f/v	ERROR:signature_error	String->Integer does not satisfy Integer->String
-def T fnsig Integer String  def f fn [[a:Integer b:Integer][String][convert String a]]  def h fn g:T String [(g 5)]  h f/v	ERROR:signature_error	arity mismatch is refused
-def T fnsig Integer String  def h fn g:T String [(g 5)]  h 42	ERROR:signature_error	a non-function is refused
+def T fnsig Integer String  def f fn [[a:Integer b:Integer][String][convert String a]]  def h fn g:T String [(g 5)]  h f/v	ERROR:signature_error	arity mismatch is declined
+def T fnsig Integer String  def h fn g:T String [(g 5)]  h 42	ERROR:signature_error	a non-function is declined
 #
 # §5  variance — parameters contravariant, returns covariant. A
 #     function that accepts MORE and returns LESS is substitutable;
@@ -64,5 +64,5 @@ def T fnsig Number Integer  def f fn x:Integer Number [1]  def h fn g:T Integer 
 #
 # §6  `is` and dispatch agree — one structural rule, two call sites
 def T fnsig Integer String  def f fn x:Integer String [convert String x]  f/v is T	true	`is` admits the same function dispatch admits
-def T fnsig Integer String  def f fn x:String Integer [size x]  f/v is T	false	…and refuses the same one dispatch refuses
+def T fnsig Integer String  def f fn x:String Integer [size x]  f/v is T	false	…and declines the same one dispatch declines
 def T fnsig Integer String  5 is T	false	a non-function is not an inhabitant of an fn shape

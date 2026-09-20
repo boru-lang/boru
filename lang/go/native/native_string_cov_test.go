@@ -868,7 +868,7 @@ func TestStrOptsRejectUnknownKeys(t *testing.T) {
 
 // The positive half: a key the word DOES honour is accepted, and so is the
 // no-options call. Without these the rejection above could be satisfied by
-// refusing everything.
+// declining everything.
 func TestStrOptsAcceptKnownKeys(t *testing.T) {
 	reg, err := DefaultRegistry()
 	if err != nil {

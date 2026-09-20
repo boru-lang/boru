@@ -244,7 +244,7 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 			val = NewCarrier(TAny)
 			// A miss against a PROVEN (concrete) source is a guaranteed
 			// runtime unpack_error — flag it (a RuntimeMirror: the trap
-			// below compiles the identical error, and the refusal loop
+			// below compiles the identical error, and the compile failure loop
 			// skips mirrors — TestEmitTrap pins the trap still compiling).
 			// An abstract source's stub miss proves nothing; a nested /
 			// fn-body unpack is conditionally reached and stays lenient
@@ -256,8 +256,8 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 			// Lenient binding either way, but the interpreter errors at
 			// runtime. Record a TERMINAL trap so a bytecode compile raises
 			// the byte-identical unpack_error here (the same detail as the
-			// non-check branch below) instead of refusing; if the trap can't
-			// be recorded (a nested unpack), keep the blanket-refusal flag so
+			// non-check branch below) instead of declining; if the trap can't
+			// be recorded (a nested unpack), keep the blanket-compile failure flag so
 			// the program falls back.
 			if !r.Check.Recorder().RecordTrap("unpack_error",
 				"unpack: key "+srcKey+" not found in source", "unpack", "", pos) {

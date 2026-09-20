@@ -180,8 +180,8 @@ func TestCodeEffectInterpreterUnchanged(t *testing.T) {
 //   - a `do` whose computed body the emitter can concrete-fold (a
 //     literal index into a concrete table — tryFoldStaticIndex) keeps
 //     compiling NATIVELY with runtime parity;
-//   - every other do-over-carrier REFUSES to lower (whole-program
-//     interpreter fallback) rather than islanding or mis-lowering.
+//   - every other do-over-carrier DECLINES to lower (whole-program
+//     compile failure) rather than islanding or mis-lowering.
 func TestCodeEffectCompileDiscipline(t *testing.T) {
 	// Foldable: compiles natively (no FALLBACK island) and matches the
 	// interpreter.
@@ -209,9 +209,9 @@ func TestCodeEffectCompileDiscipline(t *testing.T) {
 			src, compiled, gotC, errC, gotI, errI)
 	}
 
-	// Non-foldable carrier bodies: the compile pass REFUSES (prog nil,
+	// Non-foldable carrier bodies: the compile pass DECLINES (prog nil,
 	// named reason) and the program still runs correctly on the
-	// interpreter fallback.
+	// compile failure.
 	// The dyn-body backstop (CompileDynBody, the always-compile goal) now
 	// COMPILES a computed body whose operand types strictly as a List: the
 	// CALL_NATIVE's runtime sub-run over the concrete tokens IS the

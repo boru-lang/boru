@@ -8,7 +8,7 @@ import (
 
 // Off-corpus regressions for loop-in-fn-body lowering — a SIDE-EFFECT `for` loop
 // (body nets 0 per iteration) inside a fn/closure body. Before this feature such
-// a loop refused ("body leaves extra values" / "result is a variadic loop
+// a loop declined ("body leaves extra values" / "result is a variadic loop
 // value") because RecordLoop unconditionally marked every loop's result variadic
 // and only the program residual could absorb a variadic. A 0-output loop in fact
 // leaves ZERO runtime values, so it is a zeroOut event the unit drops and RETs
@@ -78,7 +78,7 @@ func TestLoopInFnBody_Nested(t *testing.T) {
 // interpreter's `def` forward-collection over the empty loop grabs the next token
 // (`def x (for n [print 0]) n` → `def x n`, so the body nets 0 and the fn raises
 // "expected 1 return value, got 0"); the compiled 0-value loop cannot replicate
-// that, so the lowering refuses and falls back. Pinned: compile == interpret
+// that, so the lowering declines and falls back. Pinned: compile == interpret
 // (both raise the identical error). A regression that compiled this would diverge
 // (compiled returns n, interpret errors) — invisible to the differential.
 func TestLoopInFnBody_ConsumedResultStaysSound(t *testing.T) {
@@ -95,7 +95,7 @@ func TestLoopInFnBody_ConsumedResultStaysSound(t *testing.T) {
 
 // A VALUE-producing loop (body nets one value per iteration) inside a fn body is
 // genuinely variadic and is not covered by the side-effect lowering — it must
-// stay sound (refuse → fall back, or whatever the engines agree on). Pinned so a
+// stay sound (decline → fall back, or whatever the engines agree on). Pinned so a
 // future change to the variadic path keeps compile == interpret.
 func TestLoopInFnBody_ValueProducingStaysSound(t *testing.T) {
 	const src = `def collect fn [[n:Integer] [List] [ for n [ 7 ] ]]

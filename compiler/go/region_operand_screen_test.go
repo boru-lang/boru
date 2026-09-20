@@ -125,7 +125,7 @@ func TestRegionReadsTheStackByEventKind(t *testing.T) {
 // stack" rather than reading a payload the kind does not carry. A break
 // event is the convenient witness — its `call` payload is the zero value,
 // which is exactly the empty-ops answer the old default gave every unnamed
-// kind. Adding a region producer must cost a refusal, never a wrong answer.
+// kind. Adding a region producer must cost a compile failure, never a wrong answer.
 func TestRegionReadsTheStackUnnamedKindIsUnscreened(t *testing.T) {
 	for _, kind := range []int{evBreak, evContinue, evTrap, evStore, evDynBind, evBindTwin} {
 		if !regionReadsTheStack(&EmitEvent{kind: kind}) {

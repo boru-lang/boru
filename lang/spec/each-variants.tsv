@@ -13,7 +13,7 @@
 # `boru do <input> end canon` — the same canon rendering the spec runner
 # compares against.
 #
-# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, as OPEN DEFECTS.
+# ROWS THAT FAIL TO COMPILE TO COMPILE ARE RECORDED DELIBERATELY, as OPEN DEFECTS.
 # They are collected in §18 and each note carries the exact reason
 # `BORU_FORCE_COMPILE=1` printed. They are not mistakes and must not be
 # deleted to make a ceiling green: they are the gap between the corpus and
@@ -186,25 +186,25 @@ def xs [10 20 30] end def acc (flex []) end for-each ([i:Integer] => [acc push (
 # ---------------------------------------------------------------------
 # §18  REFUSALS — verified on the interpreter, REJECTED by the compiler.
 #      Every row below is a real-code shape. They are recorded here
-#      DELIBERATELY as open defects: the note carries the refusal
+#      DELIBERATELY as open defects: the note carries the compile failure
 #      reason force-compile printed.
 #
 # callback-not-a-literal: the callback arrives through a value, not written at the call site
-def m {f: ([x:Integer] => [x mul 3])} end each (m.f) [1 2]	[3 6]	a callback stored in a MAP FIELD — the commonest real-code callback shape [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
-def m {f: (fn [[x:Integer][Integer][x mul 3]])} end each (m.f) [1 2]	[3 6]	…the same with a named fn literal in the field [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
-def handler ([x:Integer] => [x add 1]) end def hs {h: handler/v} end each (hs.h) [1 2]	[2 3]	…and with the lambda bound first, then stored [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
-def tbl {d:([a:Integer] => [mul 2 a])} end def k 'd' end each (tbl get k) [1 2]	[2 4]	callback chosen by a DYNAMIC KEY [REFUSES: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
-def apply-all fn [[f:Function xs:List][List][each f/v xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	the callback arrives as a fn PARAMETER [REFUSES: function-valued operand at each (Stage 3)]
-def apply-all fn [[f:Function xs:List][List][each f xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	…same, spelled without /v [REFUSES: function-valued operand at each (Stage 3)]
-def mk fn [[n:Integer][Function][([x:Integer] => [x mul n])]] end each (mk 3) [1 2]	[3 6]	a callback built by a FACTORY fn [REFUSES: function-valued operand at each (Stage 3)]
-def make-scaler fn [[k:Integer][Function][([x:Integer] => [x mul k])]] end each (make-scaler 5) [1 2]	[5 10]	…the scaler-factory spelling [REFUSES: function-valued operand at each (Stage 3)]
-def dispatch fn [[name:String][Function][if (name eq 'dbl') [([x:Integer] => [x mul 2])] [([x:Integer] => [x add 1])]]] end each (dispatch 'dbl') [1 2]	[2 4]	a callback selected by a BRANCH inside a factory [REFUSES: function-valued operand at each (Stage 3)]
-def compose fn [[f:Function g:Function][Function][([x:Integer] => [g (f x)])]] end each (compose ([a:Integer] => [a add 1]) ([b:Integer] => [b mul 10])) [1 2]	[20 30]	a COMPOSED callback [REFUSES: function-valued operand at each (Stage 3)]
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f/v [1 2 3]	[11 12 13]	a computed closure bound, then driven through /v [REFUSES: unmatched dispatch recovered at each]
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [(f 1)] [1 2 3]	[2 2 2]	a code body that CALLS a computed closure (the body ignores the element) [REFUSES: code-body word each (Stage 2)]
-def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]	[fn [[x:Integer][Any][word(x) word(mul) 2]] fn [[x:Integer][Any][word(x) word(mul) 2]]]	a code body whose only token is a stored fn — the interpreter leaves the fn value itself [REFUSES: fn each$body: result above a literal (Stage 3)]
-import module [export "M" {dbl: (fn [[x:Integer][Integer][x mul 2]])}] end each [M.dbl] [1 2]	[2 4]	a module export inside a CODE BODY (the lambda spelling in §11 compiles) [REFUSES: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it]
-each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in a code body — force-compile CRASHES with an internal engine error [REFUSES: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1]
+def m {f: ([x:Integer] => [x mul 3])} end each (m.f) [1 2]	[3 6]	a callback stored in a MAP FIELD — the commonest real-code callback shape [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def m {f: (fn [[x:Integer][Integer][x mul 3]])} end each (m.f) [1 2]	[3 6]	…the same with a named fn literal in the field [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def handler ([x:Integer] => [x add 1]) end def hs {h: handler/v} end each (hs.h) [1 2]	[2 3]	…and with the lambda bound first, then stored [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def tbl {d:([a:Integer] => [mul 2 a])} end def k 'd' end each (tbl get k) [1 2]	[2 4]	callback chosen by a DYNAMIC KEY [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
+def apply-all fn [[f:Function xs:List][List][each f/v xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	the callback arrives as a fn PARAMETER [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def apply-all fn [[f:Function xs:List][List][each f xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	…same, spelled without /v [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def mk fn [[n:Integer][Function][([x:Integer] => [x mul n])]] end each (mk 3) [1 2]	[3 6]	a callback built by a FACTORY fn [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def make-scaler fn [[k:Integer][Function][([x:Integer] => [x mul k])]] end each (make-scaler 5) [1 2]	[5 10]	…the scaler-factory spelling [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def dispatch fn [[name:String][Function][if (name eq 'dbl') [([x:Integer] => [x mul 2])] [([x:Integer] => [x add 1])]]] end each (dispatch 'dbl') [1 2]	[2 4]	a callback selected by a BRANCH inside a factory [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def compose fn [[f:Function g:Function][Function][([x:Integer] => [g (f x)])]] end each (compose ([a:Integer] => [a add 1]) ([b:Integer] => [b mul 10])) [1 2]	[20 30]	a COMPOSED callback [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f/v [1 2 3]	[11 12 13]	a computed closure bound, then driven through /v [DOES NOT COMPILE: unmatched dispatch recovered at each]
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [(f 1)] [1 2 3]	[2 2 2]	a code body that CALLS a computed closure (the body ignores the element) [DOES NOT COMPILE: code-body word each (Stage 2)]
+def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]	[fn [[x:Integer][Any][word(x) word(mul) 2]] fn [[x:Integer][Any][word(x) word(mul) 2]]]	a code body whose only token is a stored fn — the interpreter leaves the fn value itself [DOES NOT COMPILE: fn each$body: result above a literal (Stage 3)]
+import module [export "M" {dbl: (fn [[x:Integer][Integer][x mul 2]])}] end each [M.dbl] [1 2]	[2 4]	a module export inside a CODE BODY (the lambda spelling in §11 compiles) [DOES NOT COMPILE: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it]
+each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in a code body — force-compile CRASHES with an internal engine error [DOES NOT COMPILE: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1]
 #
 # ---------------------------------------------------------------------
 # §19  MISCOMPILES — the row COMPILES, but the compiled answer is NOT the

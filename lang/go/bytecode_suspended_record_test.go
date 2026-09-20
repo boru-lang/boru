@@ -18,7 +18,7 @@ import (
 // suspended analysis recorded the consumed `[q]` list into the OUTER unit's
 // frame — an OpLookupDynScope `q` with no coherent OpBindDynScope. At runtime it
 // missed (vm:dyn-scope-miss) and, under Test.test's per-case error trap, surfaced
-// as a spurious FAIL instead of the clean whole-program fallback.
+// as a spurious FAIL instead of the clean compile failure.
 const suspendedRecordProg = `import "boru:test"
 module [
   import "boru:string-util"

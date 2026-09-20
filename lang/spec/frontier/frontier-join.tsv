@@ -1,5 +1,5 @@
 # L-JOIN — recursive branch-join accumulator operand provenance (plan Phase 4;
-# design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore). GRADUATED 2026-07-14: the refusal was the
+# design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore). GRADUATED 2026-07-14: the compile failure was the
 # check-mode disjunct distribution recording per-alternative combo copies; the
 # row compiles natively now and lives in lang/spec/bytecode-migrated.tsv (the
 # family is pinned in lang/go/bytecode_ljoin_test.go).

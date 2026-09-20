@@ -63,7 +63,7 @@ func TestRegistryDebugTraceHook(t *testing.T) {
 
 // TestDebugParentChain pins hook resolution through the module-registry
 // link: a child registry with no hook of its own resolves the parent's
-// LIVE hook — set, suppressed, or cleared — and a self-link is refused.
+// LIVE hook — set, suppressed, or cleared — and a self-link is declined.
 func TestDebugParentChain(t *testing.T) {
 	parent := poolTestRegistry(t)
 	child := poolTestRegistry(t)
@@ -100,7 +100,7 @@ func TestDebugParentChain(t *testing.T) {
 	}
 	parent.SetDebugTrace(nil)
 
-	// A self-link is refused, so resolution always terminates.
+	// A self-link is declined, so resolution always terminates.
 	solo := poolTestRegistry(t)
 	solo.SetDebugParent(solo)
 	if got := solo.effectiveDebugTrace(); got != nil {

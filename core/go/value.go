@@ -347,7 +347,7 @@ type FnSig struct {
 	// invoke a fn. The one holder today is `is` (Stage M2d): its VALUE slot
 	// only reads the operand's lattice tag (`(+re/…/) is (MiniLang.Re)`),
 	// while a Function in its TYPE slot is a predicate the handler INVOKES
-	// (`5 is Positive` — RunPredicate) and must keep refusing. Read by
+	// (`5 is Positive` — RunPredicate) and must keep declining. Read by
 	// recordCallOperands alongside CompileReadsFn/CompileStoresFn.
 	FnInertArgs map[int]bool
 	// FnDataArgs marks per-position slots where a fn-value operand resolved via
@@ -427,7 +427,7 @@ type FnSig struct {
 	// user/module overload, so a user's own `def add fn [[a:Kindon
 	// b:Kindon] …]` wins by specificity. Unlike an ordinary unlocked def it
 	// lives on the native FnDefInfo (so `undef` of the builtin still
-	// refuses) and is SKIPPED by the export transplant (so it never rides
+	// declines) and is SKIPPED by the export transplant (so it never rides
 	// a module's word extension into an importer, where its builtin-only
 	// tuple would trip the module-scope user-type rule).
 	CoreDefault bool
@@ -474,7 +474,7 @@ const (
 	// `raise bad_input …`) or a quoted code body held as data (`timeout 1000
 	// [body]`) — so the word bakes as a plain CALL_NATIVE once each quoted operand
 	// resolves to an inert const: the VM runs the SAME handler over the SAME baked
-	// value as the interpreter. It is the opt-in for the QuoteArgs refusal, the
+	// value as the interpreter. It is the opt-in for the QuoteArgs compile failure, the
 	// declared analogue of the get/getr/set exemption. Do NOT set it on a
 	// dispatch-manipulating meta word (usurp / force-arity / valof) whose quoted
 	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
@@ -490,7 +490,7 @@ const (
 	// would. A CARRIER-delivered key therefore stays compilable — `set (k) v m`
 	// inside a fn whose `k` is an `Atom/q` param, which is how an open-words
 	// override delegates to the base overload (lang/spec/as.tsv:52-54). Requiring
-	// inertness here cost exactly those rows and put three refusals back on the
+	// inertness here cost exactly those rows and put three compile failures back on the
 	// regression ceiling, which is how the distinction was found.
 	//
 	// This is the declared form of what used to be a by-name test for `set`/`del`
@@ -526,8 +526,8 @@ const (
 	// even when the body is a DYNAMIC value (a map get, `p get "gen"`) whose tokens
 	// are not statically inert -- the VM evaluates the operand to the same List value
 	// and hands it to the same handler. The flag exempts ONLY the inert-scoped
-	// disjunct of the code-body refusal; a word that declares a body-executing
-	// CallableSpec still refuses.
+	// disjunct of the code-body compile failure; a word that declares a body-executing
+	// CallableSpec still declines.
 	CompileRunsBodyIsolated
 
 	// CompileScalarFold marks a PURE value-level word (the comparison family:
@@ -579,7 +579,7 @@ const (
 	// tokens to a 0-param unit and hands the word a synthetic fn-value carrier
 	// (raw Body tokens + a CompiledFnRef), so the word runs the compiled unit via
 	// RunUnit on its fork instead of a fresh interpreter sub-engine. A body that
-	// refuses to compile rides as the plain inert const list and the word runs it
+	// fails to compile rides as the plain inert const list and the word runs it
 	// on the interpreter, unchanged.
 	CompileStoresBody
 	// CompileStoresBodyList marks a word that stores a NoEvalArgs LIST OF
@@ -587,7 +587,7 @@ const (
 	// parallels. The recorder compiles each list element to its own 0-param
 	// unit (compileStoredBody) and rebuilds the list with synthetic fn-value
 	// carriers in place of the elements that compiled, so the word runs each
-	// branch via RunUnit on its fork. An element that refuses to compile
+	// branch via RunUnit on its fork. An element that fails to compile
 	// rides as its plain list and that branch interprets — per-element and
 	// sound.
 	CompileStoresBodyList
@@ -597,7 +597,7 @@ const (
 	// MatchFnSig, which both need a real FnDefInfo). A CAPTURING handler at
 	// such a slot cannot stamp (captures) and would otherwise fall through to
 	// a bare OpPushClosure ClosurePayload the native rejects ("got Function")
-	// — a divergence. The recorder refuses it so the interpreter owns the
+	// — a divergence. The recorder declines it so the interpreter owns the
 	// shape; a non-strict store-fn word (a Patrun `add`, which invokes a
 	// stored closure fine) is unaffected. Non-capturing handlers stamp
 	// either way.
@@ -606,7 +606,7 @@ const (
 
 // CompileDefault is an ordinary word: no compile-relevant capability. A
 // fn-valued operand reaching it means the handler invokes the fn on the tape,
-// which the VM cannot honour, so the recorder refuses (Stage 3).
+// which the VM cannot honour, so the recorder declines (Stage 3).
 const CompileDefault CompileEffect = 0
 
 // Has reports whether the effect set includes flag f.
@@ -652,9 +652,9 @@ type CallableSpec struct {
 	// scan raise `<word>_error "body produced no result"` from their InvokeBody
 	// loop (invokeBodyTop / the list eachHandler return the empty residual and
 	// the handler raises). For such a word a 0-net body is NOT a compile
-	// refusal: the body compiles as a count-AGNOSTIC closure (declared nil
+	// compile failure: the body compiles as a count-AGNOSTIC closure (declared nil
 	// returns, like a side-effect body) so the handler raises the byte-identical
-	// error at run time, instead of refusing the closure and islanding to let
+	// error at run time, instead of declining the closure and islanding to let
 	// the interpreter raise. The handler arbitrates the residual uniformly —
 	// it takes the LAST value and errors on none — so a 1- or N-value body is
 	// handled identically to before; only the unenforced count differs.
@@ -680,7 +680,7 @@ type CallableSpec struct {
 	// the runtime re-runs such a body per element while the ledger noted
 	// ONE generalized transition with carrier-valued captures — a single
 	// replay would be wrong in count and in value, so their twins must
-	// stay unplaced (refusing the regime program) until they are
+	// stay unplaced (declining the regime program) until they are
 	// arm-resident. Verified against the handler: DoListHandler drives
 	// InvokeBody once and returns the whole residual.
 	BodyOnceKeepsDefs bool
@@ -689,7 +689,7 @@ type CallableSpec struct {
 	// runtime leaks one install per element per body def site, stacked in
 	// element order with the per-element runtime value (measured:
 	// `[10 20] each [var [[r] def x r x]]` leaves x = [20, 10] top-down;
-	// the parity oracle's refused rows pin the full population). The twin
+	// the parity oracle's declined rows pin the full population). The twin
 	// regime's compiler reads it as the ARM-RESIDENCY license: a bind
 	// twin noted during this word's suspended body analysis may be
 	// satisfied by a resident install op INSIDE the compiled
@@ -721,7 +721,7 @@ type CallableSpec struct {
 	// handler is RUNTIME-ROBUST (it delegates to the sibling collection's iteration
 	// when the value's concrete type is the other one), so the SAME closure drives
 	// either shape == the interpreter, which dispatches the overload by the runtime
-	// type. Without this flag a gradual collection refuses (the ambiguous-overload
+	// type. Without this flag a gradual collection declines (the ambiguous-overload
 	// MarkUncompilable below). Set ONLY on words whose every List/Map token overload
 	// is ClosureInValue AND whose handlers cross-delegate (each/fold/scan). A LAMBDA
 	// body never reaches this — it matches only the single TFunction overload, so
@@ -736,7 +736,7 @@ type CallableSpec struct {
 	// two body shapes (both netting ONE runtime value): a 1-value residual,
 	// and a 2-value residual whose bottom IS the input (param local 0).
 	// The closure compiles count-agnostic (declared nil) and
-	// stripResidualShapeOK screens everything else back to the refusal.
+	// stripResidualShapeOK screens everything else back to the compile failure.
 	StripsUnconsumedInput bool
 	// LambdaSharesTokenShape marks a word that presents a LAMBDA callback the
 	// SAME per-invocation inputs as a token-quotation body — Inputs(args) is the
@@ -1676,7 +1676,7 @@ type Value struct {
 	// OPEN-WORDS.1.md §9): an ancestor type that signature MATCHING treats
 	// as the value's tag while the value itself — payload, real Parent,
 	// rendering, equality — is untouched. Upcast-only (the `as` word
-	// refuses a non-ancestor), match-time-only: every arg-delivery boundary
+	// declines a non-ancestor), match-time-only: every arg-delivery boundary
 	// (execMatch, fn-param binding, the VM call/bind/make ops) strips it,
 	// so the ascription selects exactly one dispatch and never leaks into
 	// handlers, bindings, containers, or results. Behind a pointer so the
@@ -2177,7 +2177,7 @@ func BeginIDMintScope() func() {
 //
 // The ID is elided for concrete values minted outside any check/compile
 // pass — see checkPassDepth above. Emit-side consumers treat an empty ID
-// as "no identity" (skip, refuse, or dynamic-scope rescue — never a map
+// as "no identity" (skip, decline, or dynamic-scope rescue — never a map
 // key), so a runtime-minted value flowing into a LATER pass degrades to
 // a conservative compile fallback rather than a miscompile.
 func NewValueRaw(t *Type, data Payload) Value {

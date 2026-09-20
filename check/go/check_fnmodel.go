@@ -78,7 +78,7 @@ func recordSchemaCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 // read through a constructor fn (`(mk) get "name"`) narrows exactly as
 // `(make R {…}) get "name"` does. GRADUAL, never strict, for the same reason
 // the param twin is: the runtime return check enforces the declared shape, so
-// the schema claim only narrows reads; a strict shaped carrier could refuse
+// the schema claim only narrows reads; a strict shaped carrier could decline
 // dispatches today's bare Map carrier admits. Returns (zero,false) for a
 // non-Map declared type, a patternless return, and non-record patterns
 // (Options → OptionsTypeInfo, typed maps → ChildTypeInfo — both keep their
@@ -120,7 +120,7 @@ func returnPatternAt(pats []*core.Value, i int) *core.Value {
 //     surfaces the residual's schema instead of the shapeless declared
 //     carrier — the record twin of BuildFnBodyReturnsFn's concrete-closure
 //     rule, and NUR068's reach for constructors that CANNOT carry the
-//     record annotation (NUR069: an Any field refuses none at the
+//     record annotation (NUR069: an Any field declines none at the
 //     pattern-unify boundaries while make admits it, so the annotation
 //     would be a false runtime contract). Sound: the residual is the
 //     checker's own model of the body and lies within the declared Map.
@@ -313,7 +313,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 
 // stackHasFnValue reports whether any residual value is a Function —
 // the shape whose static count can over-report (an unapplied fn-value call
-// the interpreter applies at runtime; see emit.go's cluster-E refusal).
+// the interpreter applies at runtime; see emit.go's cluster-E compile failure).
 func stackHasFnValue(stk []core.Value) bool {
 	for _, v := range stk {
 		if v.Parent != nil && v.Parent.ConformsTo(core.TFunction) {

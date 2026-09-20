@@ -127,7 +127,7 @@ func TestProcessReceiveUnknownTypeInPatternRaises(t *testing.T) {
 }
 
 func TestProcessSendMutableIsNotSendable(t *testing.T) {
-	// `context` is a Store — stateful containers are refused at the
+	// `context` is a Store — stateful containers are declined at the
 	// process boundary (PROCESSES.0.md §6).
 	_, err := runNativeSteps(t, nil, []string{
 		`send {payload: context} (self)`,

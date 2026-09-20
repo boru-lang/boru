@@ -75,7 +75,7 @@ func TestForZeroNetBodyChecksClean(t *testing.T) {
 // COMPILED (byte-identical to the interpreter). The computed-start/step forms
 // correctly decline and fall back. This pins the compile/interpret parity.
 func TestComputedRangeLoopCompilesAndMatches(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	type wc struct {
 		src         string
 		wantCompile bool
@@ -86,7 +86,7 @@ func TestComputedRangeLoopCompilesAndMatches(t *testing.T) {
 		{`def f fn [[n:Integer] [Any] [ for [2 n] [ 5 drop ] 0 ]] f 5`, true},
 		// GRADUATED 2026-07-17: a computed range START/STEP that resolves to
 		// a frame LOCAL now lowers (computedRangeBounds passes the bounds
-		// as-is; RecordLoop admits const + local operands, refusing events).
+		// as-is; RecordLoop admits const + local operands, declining events).
 		{`def f fn [[a:Integer b:Integer] [Any] [ for [a b] [ 5 drop ] 0 ]] f 1 4`, true},
 		{`def f fn [[n:Integer s:Integer] [Any] [ for [0 n s] [ 5 drop ] 0 ]] f 6 2`, true},
 	}

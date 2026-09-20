@@ -15,11 +15,11 @@ import (
 // dispatched by name routes with a live lead — the op resolves the lead in
 // the registry at the call and runs the live signature's own unit. So a
 // rebind of the dep between the store and the call, which the latch
-// refused as a whole-program hammer, compiles and answers the interpreter's
-// call-time binding. What still refuses: a LAMBDA helper as the original
+// declined as a whole-program hammer, compiles and answers the interpreter's
+// call-time binding. What still declines: a LAMBDA helper as the original
 // (no declaration site to locate a unit by — the latch's own text), and a
 // rebind of a live lead TO a lambda or a data value (the routed op could
-// not run it — refused through the undef site).
+// not run it — declined through the undef site).
 func TestStoredHandlerReadsLiveBinding(t *testing.T) {
 	const named = "def helper fn [[x:Integer][Integer][x add 1]] end def svc (service {}) add {} ([r:Map state:Any] => [helper 5]) svc "
 	compiled := []struct{ src, want string }{
@@ -71,18 +71,18 @@ func TestStoredHandlerReadsLiveBinding(t *testing.T) {
 			t.Errorf("%q: got %s, want %s", c.src, got, c.want)
 		}
 	}
-	refused := []struct{ src, reason string }{
+	declined := []struct{ src, reason string }{
 		{"def helper ([x:Integer] => [x add 1]) def svc (service {}) add {} ([r:Map state:Any] => [helper 5]) svc def helper ([x:Integer] => [x add 2]) call {} svc", "rebound after a stored handler captured it as a dep"},
 		{named + "def helper ([x:Integer] => [x add 2]) call {} svc", "module binding helper rebound to a value with no declared signature after a stored handler dispatched it live"},
 		{named + "def helper 9 call {} svc", "module binding helper rebound to a value with no declared signature after a stored handler dispatched it live"},
 		// Review of #467: a name read BOTH ways — the lead routed, its value
 		// baked by `/v` — is the latch's still; a live READ rebound to a fn,
 		// which the lookup op would defer on past the handler's print where
-		// the interpreter dispatches it, refuses.
+		// the interpreter dispatches it, declines.
 		{"def helper fn [[x:Integer][Integer][x add 1]] end def svc (service {}) add {} ([r:Map state:Any] => [helper 5 drop def h helper/v 5 h/v apply]) svc def helper fn [[x:Integer][Integer][x add 2]] end call {} svc", "rebound after a stored handler captured it as a dep"},
 		{"def k 6 def svc (service {}) add {} ([r:Map state:Any] => [print \"x\" k]) svc undef k def k fn [[][Integer][11]] end call {} svc", "module binding k rebound to a dispatching value after a stored handler read it live"},
 	}
-	for _, c := range refused {
+	for _, c := range declined {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -92,7 +92,7 @@ func TestStoredHandlerReadsLiveBinding(t *testing.T) {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
 		if prog != nil || !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: want the refusal %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
+			t.Errorf("%q: want the compile failure %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)

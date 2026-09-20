@@ -123,7 +123,7 @@ var valofNatives = []NativeFunc{
 				// operand as an FnDefInfo (UsurpFunction's payload assertion),
 				// so a compiled closure — a ClosurePayload the assertion
 				// rejects with illegal_ref where the interpreter wraps it — is
-				// the CompileFnHandlerStrict shape and must refuse, never
+				// the CompileFnHandlerStrict shape and must decline, never
 				// lower. Under analysis the concrete value form folds at check
 				// time (the wrapper is a pure function of the fn's shape, and
 				// the VM dispatches it through UnwrapModifierChain with no
@@ -414,7 +414,7 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // against the RESULT rather than against the Function. An earlier revision
 // applied at the handler and had to declare the shape uncompilable to stay
 // honest; re-stepping models it exactly instead, so there is nothing left
-// to refuse.
+// to decline.
 func applyReturns(args []Value, r *Registry) []Value {
 	out := ReturnsIdentity(0)(args, r)
 	if len(out) == 1 {
@@ -535,13 +535,13 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // non-fn value raises the identical illegal_ref. Only the VALUE-form
 // ([Function]-sig) sites record: the by-name Atom forms resolve a registry
 // binding the compiled program does not maintain, so they stay unrecorded
-// (downstream provenance refuses and the program falls back, the status quo).
+// (downstream provenance declines and the program falls back, the status quo).
 // RecordPolyCall declining (an unresolvable operand, inactive recorder) leaves
-// the recorder untouched — the residual then refuses, never miscompiles.
+// the recorder untouched — the residual then declines, never miscompiles.
 //
 // The poly record is the ONE seat of these words the recorder's declaration
 // check (RecordCallOperands' CompileFnHandlerStrict arm) never sees — the
-// value-form sigs run in check mode, so RecordCall refuses them before the
+// value-form sigs run in check mode, so RecordCall declines them before the
 // operand walk, and RecordPolyCall reads no declaration. So the declaration
 // is honoured HERE, by the word's own check-mode half: a TYPED Function
 // carrier (a user fn's declared Function result the check pass could not
@@ -550,8 +550,8 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // ClosurePayload and the native's FnDefInfo validation raises illegal_ref
 // where the interpreter wraps the real closure (measured 2026-09-18: `def r
 // (usurp (mk 100))  r 10 3` answered illegal_ref against the interpreter's
-// 93). The residual then refuses — the strict slot's contract; a capture-free
-// returned fn refuses with it (the carrier cannot tell them apart), which is
+// 93). The residual then declines — the strict slot's contract; a capture-free
+// returned fn declines with it (the carrier cannot tell them apart), which is
 // the sound side. Two gradual carriers keep their poly record: the DYNAMIC
 // Function carrier a sibling modifier's own gradual wrap produced (a
 // composed chain `usurp (forward-args (m.s))`, path-modifier.tsv:52-55 —
@@ -578,7 +578,7 @@ func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 
 // strictFnSlotWord reports whether any signature of word declares
 // CompileFnHandlerStrict — the native validates its fn operand as an
-// FnDefInfo, so a compiled closure at the slot must refuse rather than lower
+// FnDefInfo, so a compiled closure at the slot must decline rather than lower
 // (the declaration recordGradualWrap honours at the poly seat).
 func strictFnSlotWord(reg *Registry, word string) bool {
 	fd := reg.Lookup(word)

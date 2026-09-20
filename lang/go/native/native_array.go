@@ -364,7 +364,7 @@ var allArrayNatives = []NativeFunc{
 		//     because each's handler cross-delegates to the Map one at run
 		//     time. forEachHandler does not — it reads args[1] as a list —
 		//     so a gradual collection must keep the ambiguous-overload
-		//     refusal rather than commit to a handler that would raise.
+		//     compile failure rather than commit to a handler that would raise.
 		//   - BodyMultiRunKeepsDefs: verified at the handler, which drives
 		//     InvokeBody once per element on the shared registry with no def
 		//     cleanup — the same seam and the same leak eachHandler has.
@@ -551,14 +551,14 @@ var allArrayNatives = []NativeFunc{
 		// answer for a shape the call's own arguments decide.
 		// No BodyMultiRunKeepsDefs, deliberately: eachrankHandler does drive
 		// InvokeBody per cell with the same leak its siblings have, but the
-		// word refuses EARLIER as a Stage-2 code-body word, so the flag would
+		// word declines EARLIER as a Stage-2 code-body word, so the flag would
 		// never fire and nothing could measure it. Flag it when eachrank
 		// itself graduates — an unmeasurable graduation is not one.
 		// eachrank alone still carries the structural ReturnsPreserveListAt,
 		// which never analyses its body — the hazard NUR115 named and foldaxis
 		// discharged (foldaxisReturnsFn): a body the check pass never runs
 		// records no bind twins, so the twin regime cannot see its defs. Safe
-		// here ONLY because the early refusal sends the whole program to the
+		// here ONLY because the early compile failure sends the whole program to the
 		// interpreter, the sound direction; the day eachrank graduates, an
 		// analysing ReturnsFn comes first (with its parity-oracle rows), the
 		// flag second.
@@ -590,7 +590,7 @@ var allArrayNatives = []NativeFunc{
 		// reduces every lane through doFold) and MEASURED by the parity
 		// oracle's foldaxis rows: both axes, the elem-valued install order, the
 		// one-element lanes that run the body ZERO times, the empty rank-2
-		// list, and the read-after / nested-multi-run refusals.
+		// list, and the read-after / nested-multi-run compile failures.
 		//
 		// The flag alone was NOT enough, and that is the lesson NUR115 recorded
 		// (resolved 2026-09-02): a body the check pass never RUNS records no
@@ -598,7 +598,7 @@ var allArrayNatives = []NativeFunc{
 		// that exist. The structural ReturnsPreserveListAt this word used to
 		// carry never called analyseHigherOrderBodyVals, so a def in a foldaxis
 		// body installed twice on the interpreter and NOT AT ALL compiled —
-		// silently, because nothing refused. foldaxisReturnsFn analyses the
+		// silently, because nothing declined. foldaxisReturnsFn analyses the
 		// body (fold's accumulator fixed point one rank down), which is what
 		// makes the twins visible — and is the test for any new body word: if
 		// its ReturnsFn does not analyse the body, the twin machinery cannot
@@ -1327,7 +1327,7 @@ func indicesHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // (`def S (refine String)`) renders with its quotes, so keying on the
 // render would reintroduce a spelling the content never had.
 //
-// Two costs are deliberate, and the refusal below is what makes them
+// Two costs are deliberate, and the compile failure below is what makes them
 // visible rather than surprising:
 //
 //   - the 1-arg form loses generality — `group [1 2 3]` now needs a
@@ -1729,10 +1729,10 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	// A higher-order body (each/fold/scan/outer/inner/…) is CONDITIONALLY
 	// reached — the collection may be empty, so the body runs zero times.
 	// Raise CondBodyDepth (as the branch/loop bodies do) so an in-place fn
-	// redefinition that clobbers an enclosing overload here refuses to compile
+	// redefinition that clobbers an enclosing overload here fails to compile
 	// (installDef): compiled resolution would bake the body's shadow while the
 	// interpreter keeps the outer fn on an empty collection. Balanced around
-	// the body run; Suspend (above) stops recording but still lets the refusal
+	// the body run; Suspend (above) stops recording but still lets the compile failure
 	// latch the program's compilability.
 	r.Check.CondBodyDepth++
 	// The body is a speculative region (zero iterations possible): an
@@ -1957,7 +1957,7 @@ func rank2ElemCarrier(data Value) Value {
 // A statically-EMPTY rank-2 list runs no lane and so no body — the handler
 // answers `[]` — so, as scan does, the body is NOT analysed over it:
 // analysing it would flag operand-starved words (`foldaxis 0 [add add] []`)
-// that can never run, refusing at check a program both engines answer `[]`
+// that can never run, declining at check a program both engines answer `[]`
 // (found in review, 2026-09-02). The bare List carrier is the sound answer.
 func foldaxisReturnsFn(args []Value, r *Registry) []Value {
 	if n, ok := StaticListLen(args[2]); ok && n == 0 {

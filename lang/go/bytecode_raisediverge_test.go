@@ -13,15 +13,15 @@ import (
 // recognise a CompileDiverges word (raise) as a diverging arm, exactly as the
 // shallow fragDiverges already does. Without that, such a fn is flagged
 // variadic-returning and every site that consumes its result as a fixed-arity
-// operand refuses ("consumes loop results"), forcing a whole-program fallback.
+// operand does not lower ("consumes loop results"), so the program does not compile.
 // This is the decision client's `apply-op` shape (an op-dispatch if-chain whose
 // default branch raises, then `Assert.equal`/`print` consumes the Boolean).
 //
 // The negative half pins that a GENUINE 0-or-1 variadic — both arms reach the
-// merge with mismatched counts (`if c [n] []`) — still refuses fixed-arity
+// merge with mismatched counts (`if c [n] []`) — still declines fixed-arity
 // consumption and falls back, so the relaxation is scoped to diverging arms.
 func TestEmitRaiseArmDivergence(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// Positive: raise-terminated if-chain, result consumed as a fixed arg.
 	compiles := []struct{ src, want string }{
 		// Two String results (the non-raising arms) concatenated by `add`.
@@ -33,7 +33,7 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 		a, _ := New()
 		prog, _, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (raise arm diverges, result is fixed-arity), but refused", c.src)
+			t.Errorf("%q: must compile (raise arm diverges, result is fixed-arity), but declined", c.src)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
@@ -52,13 +52,13 @@ func TestEmitRaiseArmDivergence(t *testing.T) {
 	}
 
 	// Negative: a genuine variadic (both arms reach the merge, counts differ)
-	// consumed as a fixed arg must still refuse and fall back to the interpreter.
+	// consumed as a fixed arg must still fail to lower, so the program does not compile.
 	variadic := `def maybe fn [[n:Integer] [Integer] [if (n gt 0) [n] []]] end (maybe 5) (maybe 3) add`
 	a, _ := New()
 	if prog, _, _, _ := a.CompileCheck(variadic); prog != nil {
-		t.Errorf("%q: a genuine 0-or-1 variadic consumed as a fixed arg must refuse, but compiled:\n%s", variadic, prog.Disassemble())
+		t.Errorf("%q: a genuine 0-or-1 variadic consumed as a fixed arg must decline, but compiled:\n%s", variadic, prog.Disassemble())
 	}
-	// It must still RUN correctly via the interpreter fallback.
+	// It must still RUN correctly via the compile failure.
 	ar, _ := New()
 	gotC, _, errC := ar.RunCompiled(variadic)
 	if noteCompileDefect(t, variadic, gotC, errC) {

@@ -29,7 +29,7 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 	}
 	if mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: -1}); mr != nil && mr.Sig != nil && !mr.Sig.Fallback {
 		return vmDefer(r, curDebug, pc, "vm:rematch-matched",
-			"DISPATCH_REMATCH at "+ds.Word+" matched at run time where the static model failed; deferring to the interpreter")
+			"DISPATCH_REMATCH at "+ds.Word+" matched at run time where the static model failed; the compiled runtime cannot execute it")
 	}
 	// The diagnostic renders over the RENDER BOUND (window[off:off+n]) — the
 	// written tuple sigError's forward-else-stack derivation yields, proven a

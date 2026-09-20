@@ -2,17 +2,17 @@
 // independent of the interpreter at runtime", phase P0). The runtime-
 // independence work drives every supported program to compile to bytecode
 // that runs entirely in the VM, so that BOTH interpreter dependencies — the
-// OpFallback island and the whole-program fallback — can be deleted.
+// OpFallback island — can be deleted.
 //
 // This test is the objective measure of that goal. It runs EVERY spec value
-// row through CompileCheck and counts the rows that REFUSE (no Program, no
-// check error), bucketed by a normalised refusal reason. The total refusal
+// row through CompileCheck and counts the rows that DECLINE (no Program, no
+// check error), bucketed by a normalised compile failure reason. The total compile failure
 // count is a downward ratchet: it must never rise above the recorded ceiling,
-// and each phase (P2..P6) lowers the ceiling as a refusal category is
+// and each phase (P2..P6) lowers the ceiling as a compile failure category is
 // eliminated. P7 (delete the fallback) is gated on this reaching ZERO.
 //
 // Rows that error during the check pass itself (parse errors, type-error
-// rows) are NOT refusals — the program is statically invalid in both engines
+// rows) are NOT compile failures — the program is statically invalid in both engines
 // — and are reported separately, not counted against the ceiling.
 package langspec
 
@@ -35,7 +35,7 @@ import (
 // it, and it must reach 0 before the OpFallback machinery can be deleted (P7).
 const islandCeiling = 0 // STAYS 0. See islandGate below: islanding is not a thing that gets a budget.
 
-// normaliseReason buckets a refusal reason into a stable category by
+// normaliseReason buckets a compile failure reason into a stable category by
 // stripping the row-specific tail (word names, counts), so the histogram is
 // comparable across rows.
 func normaliseReason(reason string) string {
@@ -95,12 +95,12 @@ func normaliseReason(reason string) string {
 	}
 }
 
-// rootCause maps a normalised refusal bucket to its underlying axis, the second
+// rootCause maps a normalised compile failure bucket to its underlying axis, the second
 // dimension of the ratchet (review §6 meta-improvement). It tells a future
 // session WHICH kind of investment clears a bucket:
 //
 //   - correct-error: the row is KNOWN to error; it should compile an error
-//     program (OpTrap / a RET count check), never refuse. Must stay 0 — this is
+//     program (OpTrap / a RET count check), never decline. Must stay 0 — this is
 //     the proof of the Trap/Raise work.
 //   - soundness:     compiling would (or might) diverge from the interpreter —
 //     dynamic/opaque values, the fn-value-call boundary, lost provenance. Needs
@@ -162,7 +162,7 @@ const correctErrorCeiling = 1
 func TestCompiledCoverage(t *testing.T) {
 	t.Parallel()
 	c := gatherCensus(t)
-	rows, compiled, checkErr, refused, islanded := c.rows, c.compiled, c.checkErr, c.refused, c.islanded
+	rows, compiled, checkErr, declined, islanded := c.rows, c.compiled, c.checkErr, c.declined, c.islanded
 	buckets := c.refusalBuckets
 
 	// Histogram, most-frequent first.
@@ -182,12 +182,12 @@ func TestCompiledCoverage(t *testing.T) {
 	})
 
 	t.Logf("compiled coverage: %d rows — %d compiled (%d islanded), %d check-errors, %d FAILED to compile",
-		rows, compiled, islanded, checkErr, refused)
+		rows, compiled, islanded, checkErr, declined)
 	for _, h := range hist {
 		t.Logf("  failure %4d  %s  [%s]", h.n, h.reason, rootCause(h.reason))
 	}
 
-	// Second axis: bucket the refusals by ROOT CAUSE so a future session can see
+	// Second axis: bucket the compile failures by ROOT CAUSE so a future session can see
 	// which kind of investment moves the number (soundness vs lowering vs a
 	// missing opcode vs a known-error path). The correct-error axis is the proof
 	// of the Trap/Raise work — those rows now compile an error program, so it
@@ -204,7 +204,7 @@ func TestCompiledCoverage(t *testing.T) {
 
 	// P7 ENDGAME (design/legacy/P7-ENDGAME.10.ignore): the frontier is GATED at the
 	// documented-tier floor. Every one of the rows the ledger counts is owned
-	// by a named tier with a written rationale; a NEW refusal (a regression,
+	// by a named tier with a written rationale; a NEW compile failure (a regression,
 	// or an unclassified corpus row) must trip CI and force a conscious
 	// classification, never drift in silently. The gate moves DOWN as tiers
 	// close; it moves UP only with a new named tier documented in the endgame
@@ -225,11 +225,11 @@ func TestCompiledCoverage(t *testing.T) {
 	// compiled loop (escapedFlow). Every tier has since CLOSED: the last
 	// "unmatched dispatch recovered" soundness rows graduated to terminal
 	// runtime rematches (OpDispatchRematch and the render-bound variants) on
-	// 2026-07-15 — the per-row history lives in compiled_refusals_test.go,
-	// whose knownRefusals map is EMPTY and whose header states the standing
+	// 2026-07-15 — the per-row history lives in compiled_failures_test.go,
+	// whose knownCompileFailures map is EMPTY and whose header states the standing
 	// rule: an entry added there must carry a soundness proof, and the goal
 	// is for the map to stay empty. The main corpus therefore compiles with
-	// ZERO refusals; rows the compiler cannot yet model live in the frontier
+	// ZERO compile failures; rows the compiler cannot yet model live in the frontier
 	// ledger (frontier_spec_test.go), outside this ratchet, each with a
 	// stated graduation criterion.
 	const islandGate = 0 // STAYS 0 — maintainer direction 2026-09-17: "there should be no islanding at all". An island is a region of a COMPILED program that still runs on the interpreter, so it is an uncompiled region inside something we call compiled — the fallback in miniature. It is never ledgered and never raised. The expanded corpus exposes 15 today; they are defects to remove, and this gate stays red until they are.
@@ -247,10 +247,10 @@ func TestCompiledCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkCompileFailureLedger(t, ledger, c.byFile, c.refusedRows, filteredCorpus())
-	gate(t, "compile failures", refused, 0, ledgerTotal(ledger), false,
+	gate(t, "compile failures", declined, 0, ledgerTotal(ledger), false,
 		"corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv")
 	gate(t, "interpreter islands", islanded, islandGate, islandCeilingLive, false,
 		"compiled programs with an OpFallback span — an uncompiled region inside something called compiled")
 	t.Logf("compile failures=%d (ledger total %d), islanded=%d (gate %d); historical island floor %d",
-		refused, ledgerTotal(ledger), islanded, islandGate, islandCeiling)
+		declined, ledgerTotal(ledger), islanded, islandGate, islandCeiling)
 }

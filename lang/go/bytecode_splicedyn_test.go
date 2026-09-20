@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// REFUSAL-CLOSURE §9.2b (landed 2026-07-17) — a splice marker re-stepped
+// COMPILE FAILURE-CLOSURE §9.2b (landed 2026-07-17) — a splice marker re-stepped
 // over a COMPUTED payload compiles to OpSpliceDyn: a DATA payload spreads
 // its values verbatim at run time (spliceExpand — the interpreter's own
 // marker semantics), and a CODE-BEARING or fn-valued payload DEFERS to the
 // interpreter (the re-step dispatches against the live stack, which only
 // the interpreter owns) — byte-identical either way. The spread's count is
 // runtime-variable, so the event is variadic: only the program residual
-// absorbs it, and fixed-arity consumers keep the standard refusals.
+// absorbs it, and fixed-arity consumers keep the standard compile failures.
 func TestSpliceDynComputedPayloadCompiles(t *testing.T) {
 	// The §9.2 fixture: a computed list payload spreads.
 	mustCompileWithParity(t, `def xs (range 1 3) def d word xs d`, "[1 2]")
@@ -50,11 +50,11 @@ func TestSpliceDynComputedPayloadCompiles(t *testing.T) {
 	// instant it is stepped standalone) and graduates with it.
 	mustCompileWithParity(t, `def mk fn [[] [List] [[7 8]]]  def xs (mk)  word xs`, "[7 8]")
 
-	// A RE-READ of the payload def after the spread keeps the refusal:
+	// A RE-READ of the payload def after the spread keeps the compile failure:
 	// the splice reassigns the payload's provenance to the spread event, so
 	// the trailing `xs` would resolve to the variadic spread instead of the
 	// original list (PR #279 review: compiled [1 2 2] vs interp [1 2 [1 2]]).
-	mustRefuseWithParity(t, `def xs (range 1 3) def d word xs d xs`,
+	mustFailToCompileWithParity(t, `def xs (range 1 3) def d word xs d xs`,
 		"splice payload re-read after the spread")
 	_ = strings.Contains
 }

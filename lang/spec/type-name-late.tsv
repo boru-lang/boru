@@ -16,7 +16,7 @@
 # parser snapshot froze — so `Bytes` here exercises exactly the path
 # every type name takes once the parser is name-blind.
 def b:Bytes (convert Bytes 'hi') b	Bytes<68 69>	typed def names a late-registered builtin (was: def_error "type annotation must be a type value")
-def x:Bytes 'abc'	ERROR:does not unify	wrong value still refused — with the proper unify error, not the resolver miss
+def x:Bytes 'abc'	ERROR:does not unify	wrong value still declined — with the proper unify error, not the resolver miss
 def x:NoSuchType 42	ERROR:type annotation	an unknown annotation name is still a resolver miss
 inspect Bytes	{name:'Bytes' type:'Type' struct:'Bytes' kind:literal}	inspect reaches the builtin arm through the captured Atom (was kind:unknown)
 inspect Date	{name:'Date' type:'Type' struct:'Date' kind:literal}	same for the Time family
@@ -35,9 +35,9 @@ def Foo (refine Integer) def x:Foo 7 {a:x} is {:Foo}	true	typed-MAP child resolv
 def Foo (refine Integer) {a:7} is {:Foo}	false	…and stays nominal
 #
 # §3 — typed defs whose ANNOTATION is a user-typed container.
-def Foo (refine Integer) def x:Foo 4 def xs:[:Foo] [x x] xs	[4 4]	container annotation with a user-typed child binds (was: refused every value)
+def Foo (refine Integer) def x:Foo 4 def xs:[:Foo] [x x] xs	[4 4]	container annotation with a user-typed child binds (was: declined every value)
 def Foo (refine Integer) def xs:[:Foo] [1 2] xs	[1 2]	the typed def CONSTRUCTS: untagged members reparent per element, mirroring `def x:Foo 42` (the Unify-swap literal never binds)
 def Foo (refine Integer) def xs:[:Foo] [1 2] typeof (xs get 0)	Foo	…and the elements carry the minted tag
 def Foo (refine Integer) def m:{:Foo} {a:1} m	{a:1}	typed-map annotation constructs the same way
-def Foo (refine Integer) def xs:[:Foo] [1 'a']	ERROR:does not unify	a non-member element still refuses the whole binding
+def Foo (refine Integer) def xs:[:Foo] [1 'a']	ERROR:does not unify	a non-member element still declines the whole binding
 def xs:[:Bogus] [1 2]	ERROR:does not unify	an unknown child name matches nothing

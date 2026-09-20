@@ -304,7 +304,7 @@ func TestStackFormEquivalence_UserFunctions(t *testing.T) {
 }
 
 // TestStackFormRefusesFunctionValueApplication pins the NEGATIVE half: a
-// program the recorder cannot capture faithfully must be REFUSED, never
+// program the recorder cannot capture faithfully must be DECLINED, never
 // replayed to a different answer than it was recorded from.
 //
 // Applying a function VALUE — an inline lambda, or a fn read out of a
@@ -343,13 +343,13 @@ func TestStackFormRefusesFunctionValueApplication(t *testing.T) {
 					src, err, stackform.Pretty(form))
 			}
 			if _, err := stackform.Eval(stackformReg(t), form); !errors.Is(err, stackform.ErrUnnamedApply) {
-				t.Errorf("%q: Eval = %v, want it to refuse rather than replay", src, err)
+				t.Errorf("%q: Eval = %v, want it to decline rather than replay", src, err)
 			}
 		})
 	}
 
 	// POSITIVE control: an ordinary named call in the same suite must stay
-	// replayable, so the refusal cannot silently widen to everything.
+	// replayable, so the compile failure cannot silently widen to everything.
 	r := stackformReg(t)
 	tokens, err := parser.Parse(`def inc fn [[n:Integer] [Integer] [n add 1]] inc 5`)
 	if err != nil {

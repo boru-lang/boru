@@ -34,7 +34,7 @@ func TestServeInitError(t *testing.T) {
 func TestServeListenError(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // keep the discovery file out of the real tmp
 	var stdout, stderr bytes.Buffer
-	// A non-loopback bind without --allow-public is refused before listening.
+	// A non-loopback bind without --allow-public is declined before listening.
 	code := runServe([]string{"--bind", "203.0.113.1:0"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -73,7 +73,7 @@ func TestWriteDiscoveryTempCreateError(t *testing.T) {
 }
 
 // The rename fails: the destination is a DIRECTORY, so renaming a plain file
-// over it is refused. The temp must be cleaned up rather than left behind.
+// over it is declined. The temp must be cleaned up rather than left behind.
 func TestWriteDiscoveryPublishError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "boru-debug.json")

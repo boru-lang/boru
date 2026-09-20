@@ -283,13 +283,13 @@ import "boru:minilang"  (+re/[a-z]+/) is (MiniLang.Gex)	false	…and NOT a sibli
 import "boru:minilang"  (+gex/a*/) is (MiniLang.Gex)	true	each filter kind has its own
 import "boru:minilang"  (+re/[a-z]+/) is Function	true	the partial is still a plain Function to every existing check
 import "boru:minilang"  def p (+re/[a-z]+/)  p/v is (MiniLang.Re)	true	a def-bound partial keeps its kind tag through the binding
-import "boru:minilang"  def p (+re/[a-z]+/)  p/v is (MiniLang.Jq)	false	…and still refuses the wrong kind
+import "boru:minilang"  def p (+re/[a-z]+/)  p/v is (MiniLang.Jq)	false	…and still declines the wrong kind
 import "boru:minilang"  +jp/$.a/ is (MiniLang.Jp)	true	a stored JSONPath query has its named type
 import "boru:minilang"  +xp|//book/title| is (MiniLang.Xp)	true	an XPath partial too (| delimiter: the path contains /)
 import "boru:minilang"  ([x:Any] => [x])/v is (MiniLang.Re)	false	an ordinary lambda is a Function but NOT a re partial
 import "boru:minilang"  def Rex (MiniLang.Re)  (+re/[a-z]+/) is Rex	true	the exported type literal works as a def'd name too
 import "boru:minilang"  def take-re fn [[m:(MiniLang.Re) s:String] [String] [s]]  take-re (+re/[a-z]+/) "AbcD"	'AbcD'	the point: a typed fn param that requires specifically a regexp matcher (calling the partial inside the body is pinned in lang/go/test TestMiniPartialTypedParam — the checker's fn-value-call frontier)
-import "boru:minilang"  def take-re fn [[m:(MiniLang.Re) s:String] [String] [s]]  take-re (+gex/a*/) "AbcD"	ERROR:signature_error	a gex partial is refused by the m:(MiniLang.Re) slot
+import "boru:minilang"  def take-re fn [[m:(MiniLang.Re) s:String] [String] [s]]  take-re (+gex/a*/) "AbcD"	ERROR:signature_error	a gex partial is declined by the m:(MiniLang.Re) slot
 import "boru:minilang"  def cnt (fn [[src:String opts:Map subject:String] [Integer] [1]])  def c (mini cnt 'a')  c/v is (MiniLang.Re)	false	a fn-value partial carries no kind tag — never a builtin kind's member type
 import "boru:minilang"  MiniLang.Gen	None	a missing export reads as None — the export map is fixed post-build
 #

@@ -411,7 +411,7 @@ func TestInstallDefArms(t *testing.T) {
 
 // TestInstallDefFnArms drives installDef's Function-body arms: sig
 // installation via a fn value, the shadow (frame-binding) variant, the
-// overlap-removal on redefinition, the conditional-body refusal, and
+// overlap-removal on redefinition, the conditional-body compile failure, and
 // the non-FnDefInfo carrier no-op.
 func TestInstallDefFnArms(t *testing.T) {
 	r := specfixProbeRegistry(t)

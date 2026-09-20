@@ -1339,7 +1339,7 @@ program that ends at the `error`.
 statically concrete do-result bakes into the island span, and a baked arg
 beyond the signature's `BarrierPos` (1 for `error`) is rejected
 (`eng/go/carrier.go:1878-1879`), so the island declines and
-`recordCallRefusal` marks the program uncompilable. Both shapes are
+`recordCallCompileFailure` marks the program uncompilable. Both shapes are
 defects — this one refuses to compile, the error-fired one miscompiles —
 and the only difference is that this one announces itself.
 
@@ -1398,7 +1398,7 @@ original analysis and that bear directly on whether (2) should follow:
 
 ```go
 // test/go/langspec/compiled_coverage_test.go
-const refusalCeiling = 0   // "Never raise it."
+const failureCeiling = 0   // "Never raise it."
 const islandCeiling  = 0
 ```
 
@@ -1406,7 +1406,7 @@ Every spec row compiles, and **no compiled program in the corpus embeds an
 interpreter island at all**. Both must stay at zero before the fallback
 and `OpFallback` machinery can be deleted (plan P7). At first read this
 looks like an argument against (1) — it adds a refusal category, and
-`refusalCeiling` says never raise it. Three things bound what (1) costs;
+`failureCeiling` says never raise it. Three things bound what (1) costs;
 none of them makes the refusal acceptable:
 
 - Neither ceiling moved. They count **spec rows**, and no row exercises a
@@ -1419,12 +1419,12 @@ none of them makes the refusal acceptable:
   "would convert a clean refusal into a NEW interpreter island (a
   regression on islandCeiling)". **This code prefers a refusal to a new
   island** — a choice between two open defects, not an endorsement of
-  either; `refusalCeiling = 0` and `islandCeiling = 0` are the standard
-  both are measured against, and (1) owes `refusalCeiling` a return to zero.
+  either; `failureCeiling = 0` and `islandCeiling = 0` are the standard
+  both are measured against, and (1) owes `failureCeiling` a return to zero.
 
 The consequence for the test gap is that defect C's repro **cannot become
 a spec row** — with (1) in place it refuses and would breach
-`refusalCeiling`; without it, it miscompiles. Neither is a state to leave
+`failureCeiling`; without it, it miscompiles. Neither is a state to leave
 it in, and that is why the regression lives in Go tests for now. It is
 also the reason the gap existed: a shape that cannot be expressed in the
 corpus is invisible to the corpus-driven gates.

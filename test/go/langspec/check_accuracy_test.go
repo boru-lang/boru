@@ -41,7 +41,7 @@ import (
 // wrongly errors on. A ratchet held at zero: any rise is a checker regression.
 // The historical rationale that used to live here inline moved to
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "False positives").
-const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter refuse the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
+const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter decline the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
 
 // unflaggedPins is the PER-SPEC-FILE count of `ERROR:` rows the checker leaves
 // silent — overwhelmingly runtime-only / value-dependent errors (malformed
@@ -111,7 +111,7 @@ var unflaggedPins = map[string]int{
 	// argument is the runtime's (both lanes raise it; the interpreter's own
 	// word dispatch under the binding name).
 	"fn-value.tsv": 1,
-	// as.tsv: the weak-payload guard row is a RUNTIME-only refusal by
+	// as.tsv: the weak-payload guard row is a RUNTIME-only compile failure by
 	// design — the ascribed dispatch statically commits the base FlexMap
 	// overload (sound: the interpreter takes the same widened match), and
 	// the base handler's own payload-kind check (`set: expected a FlexMap,
@@ -137,7 +137,7 @@ var unflaggedPins = map[string]int{
 	//
 	// 6 -> 11: NUR127 declared the five enumerated option domains that had
 	// none (style, tgt, quote, form, norm), so a mistyped VALUE for those
-	// keys is refused instead of silently taking a switch's default arm.
+	// keys is declined instead of silently taking a switch's default arm.
 	// The five new rows are the same shape as the three above and unflagged
 	// for the same reason — the key set and its domains live in the handler,
 	// not in the Map's type — so this is corpus growth, not lost checker
@@ -173,7 +173,7 @@ var unflaggedPins = map[string]int{
 	// is never proven. delStoreReturnsFn widens the deleted key to dynamic
 	// Any rather than recording it absent, because the shape model is
 	// join-only monotone: "definitely gone" is a narrowing claim a later
-	// set on another path would falsify. The five `del` REFUSAL rows in
+	// set on another path would falsify. The five `del` COMPILE FAILURE rows in
 	// the same batch (Class, Micron, List, FlexList, WeakFlexList) ARE all
 	// flagged by their guaranteed-error mirrors.
 	"flex.tsv":            10,
@@ -185,7 +185,7 @@ var unflaggedPins = map[string]int{
 	"macro.tsv":           1,
 	"micron.tsv":          0,
 	// module-array.tsv: 0 → 6, all six from NUR030's fix. `group`'s keys
-	// are Strings only, and the refusal is a RUNTIME check on each key's
+	// are Strings only, and the compile failure is a RUNTIME check on each key's
 	// type — it cannot be static, because the signature is `[TList]` /
 	// `[TList TList]` and a List's ELEMENT types are not part of it. A
 	// list whose elements are statically Integer is still a well-typed
@@ -196,7 +196,7 @@ var unflaggedPins = map[string]int{
 	"module-debug.tsv":    3,
 	"module-emitlang.tsv": 8,
 	"module-fmt.tsv":      3,
-	// module-fn.tsv: the two `FnUtil.curry` refusal rows. Both are the
+	// module-fn.tsv: the two `FnUtil.curry` compile failure rows. Both are the
 	// native's own RUNTIME shape checks over the operand it received — a
 	// multi-overload function, and a unary one — and the checker sees a
 	// well-typed Function argument at a Function slot with nothing to prove
@@ -206,11 +206,11 @@ var unflaggedPins = map[string]int{
 	// Stage 3 fn-operand wall in front of them lifted; they were unflagged
 	// there for the same reason.)
 	"module-fn.tsv": 2,
-	// 34 → 35: C2's read-line refuses an OUTPUT stream at runtime — stdout is
+	// 34 → 35: C2's read-line declines an OUTPUT stream at runtime — stdout is
 	// a perfectly good StreamKind, so the shape checks out statically and only
 	// the handler knows it is the wrong direction. Its two sibling negatives
 	// (a String where a stream is required, an Integer where a stream is
-	// required) ARE shape refusals, so the checker flags them and they do not
+	// required) ARE shape compile failures, so the checker flags them and they do not
 	// move this count. That split is the rule: shape is static, value and
 	// direction are not.
 	//
@@ -296,10 +296,10 @@ var unflaggedPins = map[string]int{
 	// unbound-name ERROR rows the old spellings carried — nothing in
 	// the file is left for the static pass to miss.
 	"valof.tsv": 0,
-	// The weak set/append refusals and typed weak writes are check-
+	// The weak set/append compile failures and typed weak writes are check-
 	// mirrored (weakValueMirror + d2CheckWrite, native_storage.go). The
 	// residue is make's own errors — source-family mismatch and a
-	// refused CONSTRUCTION entry (no make mirror) — plus an
+	// declined CONSTRUCTION entry (no make mirror) — plus an
 	// out-of-bounds index the static length tracker cannot see.
 	"weak-flex.tsv": 4,
 }

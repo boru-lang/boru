@@ -2,23 +2,23 @@ package lang
 
 import "testing"
 
-// Stage-2 property-test pins (voxgig zero-refusals plan): the boru:test
+// Stage-2 property-test pins (voxgig zero-compile failures plan): the boru:test
 // PROPERTY surface — `Test.prop NAME [gen] [property]` builds a PropertySpec as
 // DATA, and `Test.run-property` dispatches the Go driver `Test.check-prop`.
-// Every `_prop_spec` corpus file refused at `code-body word each (Stage 2)`,
+// Every `_prop_spec` corpus file declined at `code-body word each (Stage 2)`,
 // whose masked inner leaf was `Test.check-prop` itself.
 //
-// The refusal chain and the fix:
+// The compile failure chain and the fix:
 //   1. `Test.check-prop` is a NoEvalArgs code-body word whose generator/property
 //      bodies arrive DYNAMIC on the declarative surface (`p get "gen"` /
-//      `p get "property"` inside run-property). The NoEvalArgs code-body refusal
+//      `p get "property"` inside run-property). The NoEvalArgs code-body compile failure
 //      fires because a dynamic body is not an inert const. BUT runCheckProp runs
 //      BOTH bodies through parent.CallBoru in fresh ISOLATED frames against the
 //      module-captured registry — the SAME Go handler under interpreter and VM,
 //      binding only each body's own params (gen: `r`; property: one unnamed).
 //      Name resolution inside a body never touches a compiled frame local, so a
 //      plain CALL_NATIVE bake is sound. Declared via the new CompileEffect flag
-//      CompileRunsBodyIsolated on test-check-prop; the code-body refusal exempts
+//      CompileRunsBodyIsolated on test-check-prop; the code-body compile failure exempts
 //      the inert-scoped disjunct for such a word.
 //   2. With the bodies routed, the six operands (name/gen/property/runs/seed/
 //      max-shrinks) are still DYNAMIC — record-field reads over run-property's

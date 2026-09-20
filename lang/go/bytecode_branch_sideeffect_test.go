@@ -10,7 +10,7 @@ import (
 // side-effect call's result BELOW its single trailing result. A 0-return swap helper
 // applied in an `each`-driven `if` arm — `[ arr i j swap-at end 0 ]` — leaves a value
 // on the sim stack the fragment analysis already netted out (residualN==1, the trailing
-// `0`), so the arm refused "branch leaves extra values". The lowerer now DROPS the
+// `0`), so the arm declined "branch leaves extra values". The lowerer now DROPS the
 // ignored side-effect results (they already ran). This is the pancake/tim sort-chain
 // leaf; reproduced here as an inline module (the swap helper is module-private, like the
 // real sort lib). compile == interpret MUST hold — compiles natively, RunCompiledStrict
@@ -41,7 +41,7 @@ func TestBranchArmSideEffectLeftover(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)

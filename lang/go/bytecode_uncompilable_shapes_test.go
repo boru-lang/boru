@@ -4,12 +4,12 @@ import "testing"
 
 // Pins for the historical `uncompilable.boru` trio (authored against
 // 407feda, where `boru --force-compile` aborted on each): three shapes
-// that interpreted green while the strict compiler refused.
+// that interpreted green while the strict compiler declined.
 // All three compile natively today; these pins keep them compiling.
-// The refusal MESSAGES each shape used to produce still guard genuinely
-// unsound siblings (e.g. the single-literal-body provenance refusal,
+// The compile failure MESSAGES each shape used to produce still guard genuinely
+// unsound siblings (e.g. the single-literal-body provenance compile failure,
 // pinned in lang/go/test/stamp_residual_map_test.go and the langspec
-// knownRefusals ratchet) — the classes narrowed, they did not vanish.
+// knownCompileFailures ratchet) — the classes narrowed, they did not vanish.
 func TestUncompilableShapesNowCompile(t *testing.T) {
 	// A. `do {…}` over a dynamically-typed value (a class instance's
 	// field reads) — was "unannotated or opaque word do".

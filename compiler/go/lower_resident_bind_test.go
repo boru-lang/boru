@@ -9,11 +9,11 @@ import (
 
 // lowerResidentBind's value-operand arms, driven directly (the corpus
 // exercises the promoted and literal arms; these pin the SIM-TOP arm and
-// the refusal): a computed source sitting on the sim top is PEEKED when it
+// the compile failure): a computed source sitting on the sim top is PEEKED when it
 // is live (its downstream readers still consume it) and POPPED when it is
 // dead (kept only for this bind — the install consumes it, the
 // interpreter's own def semantics); a computed source neither on the sim
-// top nor promoted refuses the whole program rather than installing a
+// top nor promoted declines the whole program rather than installing a
 // wrong value.
 func TestLowerResidentBindSimTopArms(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 4}
@@ -27,7 +27,7 @@ func TestLowerResidentBindSimTopArms(t *testing.T) {
 	// Live sim-top source: peeked, the sim slot stays.
 	lw, cf := newLW([]vmSlot{{seq: 7, idx: 0}}, map[int]bool{})
 	if reason := lw.lowerResidentBind(&emitDynBind{name: "x", srcSeq: 7, residentTwin: 0, pos: pos}); reason != "" {
-		t.Fatalf("live sim-top bind refused: %s", reason)
+		t.Fatalf("live sim-top bind declined: %s", reason)
 	}
 	if len(lw.p.ResidentBinds) != 1 || lw.p.ResidentBinds[0].Pop || len(lw.vm) != 1 || len(cf.Code) != 1 || cf.Code[0].Op != OpBindResident {
 		t.Fatalf("live source must be peeked in place: binds=%+v vm=%v code=%v", lw.p.ResidentBinds, lw.vm, cf.Code)
@@ -36,16 +36,16 @@ func TestLowerResidentBindSimTopArms(t *testing.T) {
 	// Dead sim-top source: popped, the sim slot goes with it.
 	lw, _ = newLW([]vmSlot{{seq: 7, idx: 0}}, map[int]bool{7: true})
 	if reason := lw.lowerResidentBind(&emitDynBind{name: "x", srcSeq: 7, residentTwin: 0, pos: pos}); reason != "" {
-		t.Fatalf("dead sim-top bind refused: %s", reason)
+		t.Fatalf("dead sim-top bind declined: %s", reason)
 	}
 	if len(lw.p.ResidentBinds) != 1 || !lw.p.ResidentBinds[0].Pop || len(lw.vm) != 0 {
 		t.Fatalf("dead source must be consumed: binds=%+v vm=%v", lw.p.ResidentBinds, lw.vm)
 	}
 
-	// Neither on the sim top nor promoted: refuses.
+	// Neither on the sim top nor promoted: declines.
 	lw, _ = newLW(nil, map[int]bool{})
 	if reason := lw.lowerResidentBind(&emitDynBind{name: "x", srcSeq: 9, residentTwin: 0, pos: pos}); !strings.Contains(reason, "unpromoted computed value") {
-		t.Fatalf("unpromoted computed source must refuse, got %q", reason)
+		t.Fatalf("unpromoted computed source must decline, got %q", reason)
 	}
 }
 

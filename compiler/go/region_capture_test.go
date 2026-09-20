@@ -146,12 +146,12 @@ func TestAllWordRegionValidatesUnlowered(t *testing.T) {
 }
 
 // The negative control for the rule above: a wordRef that acquired an index
-// is refused. Without this the Idx==0 requirement is a comment, and whatever
+// is declined. Without this the Idx==0 requirement is a comment, and whatever
 // read the index would be addressing a table this source never meant.
 func TestValidateRejectsIndexedWordRef(t *testing.T) {
 	d := &RegionDesc{Lead: LeadWord, Word: "f", Pos: core.SrcPos{Row: 1, Col: 1},
 		Slots: []SlotDesc{{Source: SlotWordRef, Idx: 3, Token: core.NewWord("x")}}}
 	if err := d.Validate(0, 0, 0); err == nil {
-		t.Error("a wordRef carrying an index must be refused")
+		t.Error("a wordRef carrying an index must be declined")
 	}
 }

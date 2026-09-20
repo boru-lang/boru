@@ -25,7 +25,7 @@ import (
 // (the historical "no permissions configured" default).
 //
 // Errors are returned in *policy.Denied shape when the policy
-// refuses; URL-parse failures are returned as ordinary errors so
+// declines; URL-parse failures are returned as ordinary errors so
 // callers can distinguish "bad URL" from "policy denied".
 func checkFetchPolicy(r *Registry, urlStr string) error {
 	if r == nil {
@@ -120,7 +120,7 @@ const defaultFetchTimeout = 30 * time.Second
 // natives.go. Handlers cover [string], [map], and [string, map] forms.
 //
 // All entry points consult the registry's policy before issuing the
-// outbound request (or refuse if the network capability is
+// outbound request (or decline if the network capability is
 // uninstalled). The check sequence is:
 //  1. global.network hard cap
 //  2. network capability install gate
@@ -248,7 +248,7 @@ func (ft FetchModuleTypes) doFetch(reqOM ReadMap, r *Registry) ([]Value, error) 
 	}
 
 	// TLS options (§4.3 of the TLS plan). Parsed and policy-gated
-	// before the effect fence — a denied `verify: false` must not send.
+	// before the effect is noted — a denied `verify: false` must not send.
 	var tlsProfile capabilities.TLSProfile
 	if tv, ok := reqOM.Get("tls"); ok {
 		tlsProfile, err = ParseTLSOpts(r, tv, "fetch")
@@ -279,7 +279,7 @@ func (ft FetchModuleTypes) doFetch(reqOM ReadMap, r *Registry) ([]Value, error) 
 			"fetch: tls: "+err.Error(), "fetch")
 	}
 
-	// Execute request. C1 effect fence (eng effects.go): once Do runs, the
+	// Execute request. effect ledger (core effects.go): once Do runs, the
 	// request may have reached the peer even when it returns an error (sent,
 	// response lost), so the effect is noted on the attempt — everything
 	// before this point (policy denial, a malformed request) provably sent

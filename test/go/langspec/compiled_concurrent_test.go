@@ -3,7 +3,7 @@
 // compiled mode"). The concurrent words — await (parallel bodies),
 // timeout, interval, cancel — fork an isolated registry per branch
 // (ForkConcurrent). In compiled (v1) mode their bodies run as
-// interpreter fallbacks, so this exercises the fork machinery from the
+// compile failures, so this exercises the fork machinery from the
 // RunCompiled path. Run under `go test -race`: the bodies execute on
 // separate goroutines over forked registries, and the result must match
 // the interpreter with no data race.

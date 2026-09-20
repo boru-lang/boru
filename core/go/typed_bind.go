@@ -70,7 +70,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 		}
 		// Mirrors defTypedHandler's Unify tail for a DepScalar constraint: the
 		// self-contained predicate (unifyDepScalar / depScalarCheck, no registry)
-		// admits or refuses the runtime value; the binding is Unify's result (the
+		// admits or declines the runtime value; the binding is Unify's result (the
 		// value with its base tag — DepScalar subsets never reparent).
 		unified, ok := Unify(v, *spec.Cons)
 		if !ok {

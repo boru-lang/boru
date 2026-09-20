@@ -7,7 +7,7 @@ import (
 )
 
 // diverging_arm_lowering_test.go is the whole-program half of the fifty-first
-// increment: the last `while` frontier row, and the two facts its refusal
+// increment: the last `while` frontier row, and the two facts its compile failure
 // conflated.
 //
 // FACT ONE — "nets no value" is not "diverges". The gate's message said
@@ -20,7 +20,7 @@ import (
 // spelling `if c [t] (expr)` evaluates the arm last, so it is on top; an arm
 // filled from the VALUE STACK by the argument-order rule was there first, and
 // the condition — a forward token evaluated at the dispatch — is above it.
-// The lowering owed no swap in that layout and refused instead.
+// The lowering owed no swap in that layout and declined instead.
 
 // daRun runs a source on both lanes.
 func daRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr error) {
@@ -43,8 +43,8 @@ func daRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr er
 }
 
 // TestDivergingArmUnderAComputedPrefixCompiles — the ledger row, its `for`
-// twin (which the ledger claimed refused too), and the shapes either fact
-// alone would still have refused.
+// twin (which the ledger claimed declined too), and the shapes either fact
+// alone would still have declined.
 func TestDivergingArmUnderAComputedPrefixCompiles(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		// THE ledger row: frontier-while.tsv's last entry.
@@ -54,7 +54,7 @@ func TestDivergingArmUnderAComputedPrefixCompiles(t *testing.T) {
 		{`for 3 [ (7 add 2) if (i eq 2) [continue] end i ]`, "[9 0 9 1]"},
 		{`for 3 [ (7 add 2) if (i eq 2) [break] end i ]`, "[9 0 9 1]"},
 		// FACT TWO alone: a stack-supplied arm whose non-eager arm DOES net a
-		// value was refused only by the layout, and compiles now too.
+		// value was declined only by the layout, and compiles now too.
 		{`for 3 [ (7 add 2) if (i eq 2) [3] end i ]`, "[9 0 9 1 3 2]"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
@@ -114,11 +114,11 @@ func TestDivergingArmRaisesAndReturnsIdentically(t *testing.T) {
 	}
 }
 
-// TestZeroNettingArmKeepsItsRefusal — the negative that carries the whole
+// TestZeroNettingArmKeepsItsCompileFailure — the negative that carries the whole
 // argument. An EMPTY arm nets nothing and does NOT diverge, so it arrives at
 // the merge with nothing to contribute and the single slot cannot describe
-// it. It keeps its refusal, under the message that now says what it means.
-func TestZeroNettingArmKeepsItsRefusal(t *testing.T) {
+// it. It keeps its compile failure, under the message that now says what it means.
+func TestZeroNettingArmKeepsItsCompileFailure(t *testing.T) {
 	const src = `for 3 [ (7 add 2) if (i eq 2) [] end i ]`
 	a, err := New()
 	if err != nil {
@@ -129,14 +129,14 @@ func TestZeroNettingArmKeepsItsRefusal(t *testing.T) {
 		t.Fatal(cerr)
 	}
 	if prog != nil {
-		t.Fatalf("a 0-netting non-diverging arm must keep the refusal:\n%s", prog.Disassemble())
+		t.Fatalf("a 0-netting non-diverging arm must keep the compile failure:\n%s", prog.Disassemble())
 	}
 	if reason != "if: computed-branch non-eager arm nets no value (Stage 2)" {
-		t.Fatalf("refusal reason drifted: %q", reason)
+		t.Fatalf("compile failure reason drifted: %q", reason)
 	}
 	ran, _, gotI, _, _ := daRun(t, src)
 	if ran {
-		t.Error("the refused program must not run compiled")
+		t.Error("the declined program must not run compiled")
 	}
 	if gotI != "[9 0 9 1 2]" {
 		t.Fatalf("the interpreter ORACLE moved: %s", gotI)

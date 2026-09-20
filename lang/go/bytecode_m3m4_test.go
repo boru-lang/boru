@@ -55,7 +55,7 @@ func TestParseFnDispatchCompiles(t *testing.T) {
 			t.Fatalf("%s: check error %v", c.name, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%s: refused: %s", c.name, reason)
+			t.Fatalf("%s: declined: %s", c.name, reason)
 		}
 		if dis := prog.Disassemble(); strings.Contains(dis, "FALLBACK") || strings.Contains(dis, "TRAP") {
 			t.Errorf("%s: expected a native program (no island, no trap):\n%s", c.name, dis)
@@ -165,7 +165,7 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 			t.Fatalf("%s: check error %v", c.name, cerr)
 		}
 		if prog == nil {
-			t.Fatalf("%s: refused: %s", c.name, reason)
+			t.Fatalf("%s: declined: %s", c.name, reason)
 		}
 		if dis := prog.Disassemble(); strings.Contains(dis, "FALLBACK") {
 			t.Errorf("%s: expected a native program:\n%s", c.name, dis)
@@ -205,7 +205,7 @@ func TestMiniLangAbsenceFoldCompiles(t *testing.T) {
 // to a terminal OpTrap with the interpreter's byte-identical taxonomy —
 // code, detail, and a position wherever the interpreter carries one.
 func TestUnmatchedDispatchTrapCarrierDisjoint(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	cases := []struct{ name, src string }{
 		// apply.tsv:37 — the former "carrier operand declines" negative:
 		// inc's Integer result is disjoint from apply's Function slot, and
@@ -237,7 +237,7 @@ func TestUnmatchedDispatchTrapCarrierDisjoint(t *testing.T) {
 	for _, c := range cases {
 		// A carrier no-match reaches the compiled path in one of two ways:
 		// a runtime-re-matching poly call (tryRecordPoly), or — where that
-		// declines — a whole-program fallback (the no-match trap DECLINES a
+		// declines — a compile failure (the no-match trap DECLINES a
 		// carrier window, since a carrier is not concrete at compile time so
 		// a baked diagnostic could not match the interpreter's runtime one;
 		// this supersedes the former M4 carrier-disjointness trap). EITHER
@@ -284,7 +284,7 @@ func diagNotesEqual(a, b *core.BoruError) bool {
 // TestTrapKeepsPriorCallEffects pins that a carrier no-match with prior
 // effects (inc's body prints before apply raises) keeps them in order: the
 // program compiles to a runtime rematch (OpDispatchRematch — formerly a
-// whole-program refusal, before that an M4 carrier trap), inc's unit runs
+// whole-program compile failure, before that an M4 carrier trap), inc's unit runs
 // natively and PRINTS, then the rematch raises the identical
 // signature_error — the same effects and abort point as the interpreter,
 // with no fallback re-run to duplicate the print.

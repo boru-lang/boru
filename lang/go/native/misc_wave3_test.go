@@ -360,7 +360,7 @@ func TestW3RefApply(t *testing.T) {
 	w3MiscWant(t, `def z fn [[][Integer][42]]  z/v apply`, `42`)
 	w3MiscErr(t, `valof no-such-w3`, "not bound")
 	// `valof` is TOTAL over binding kinds: a non-fn binding is the identity,
-	// not a rejection. Only an unbound name refuses (the row above).
+	// not a rejection. Only an unbound name declines (the row above).
 	w3MiscWant(t, `def x 5  valof x`, `5`)
 	// apply rejections (direct calls).
 	if _, err := applyHandler([]Value{NewInteger(5)}, nil, nil, nil); err == nil ||
@@ -379,7 +379,7 @@ func TestW3RefApply(t *testing.T) {
 
 func TestW3ApplyRebindReach(t *testing.T) {
 	// Stack form — apply is stack-only in BOTH overloads (NUR098's fix);
-	// the forward spellings are pinned as refusals in lang/spec/apply.tsv §5.
+	// the forward spellings are pinned as compile failures in lang/spec/apply.tsv §5.
 	w3MiscWant(t, `def p {name:'ada'}  p $.name apply`, `'ada'`)
 	w3MiscWant(t, `def p {name:'ada'}  typeof (rebind $.name p)`, `Reach`)
 	w3MiscWant(t, `getpath $.a.b {a:{b:7}}`, `7`)

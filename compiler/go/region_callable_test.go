@@ -73,7 +73,7 @@ func TestSingleSlotRegionRejectsACallableCarrier(t *testing.T) {
 // TestStoredBodyIsEmptyReadsTheZeroTokenList — the one declined body shape
 // whose residual is still KNOWN. Without it an empty branch would read as
 // "residual unknown, so possibly callable" and `await {mode:'first'} [[]]`
-// would refuse for a reason that is not true of it.
+// would decline for a reason that is not true of it.
 func TestStoredBodyIsEmptyReadsTheZeroTokenList(t *testing.T) {
 	if !storedBodyIsEmpty(core.NewList([]core.Value{})) {
 		t.Error("a zero-token list is an empty body")

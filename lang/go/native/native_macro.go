@@ -441,7 +441,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			// For the COMPILE pass the interpreter raises mini_unknown_lang here
 			// at runtime, so record a TERMINAL trap (top-level only) — the
 			// compiled program then raises the byte-identical error instead of
-			// refusing on the dynamic carrier downstream. A nested call declines
+			// declining on the dynamic carrier downstream. A nested call declines
 			// the trap and keeps the lenient fallback.
 			r.Check.Recorder().RecordTrap("mini_unknown_lang",
 				fmt.Sprintf("mini: no mini-language %q is registered", kind), "mini",
@@ -475,7 +475,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	// pure expansion machinery over the source text (the §13 contract —
 	// hooks memoize, deterministic over src+opts), so its spliced tokens
 	// record exactly as the interpreter splices them. A compile pass that
-	// cannot mirror the hook faithfully (non-concrete src/opts) REFUSES
+	// cannot mirror the hook faithfully (non-concrete src/opts) DECLINES
 	// instead of baking the transducer — no wrong answer, but no compile
 	// either, so the shape stays an open defect.
 	// `mini` has no expansion cache, so the hook re-runs whenever the call
@@ -484,24 +484,24 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	if !r.Check.IsActive() || r.Check.Compiling {
 		goHook, hasGo := miniGoHook(r, kind)
 		if hasGo && r.Check.IsActive() {
-			refuse := func(why string) {
+			decline := func(why string) {
 				if es := r.Check.Recorder(); es.Active() {
 					es.MarkUncompilable("mini " + kind + ": " + why)
 				}
 			}
-			// A TRANSDUCER-FAITHFUL kind (re) does not refuse a non-concrete
+			// A TRANSDUCER-FAITHFUL kind (re) does not decline a non-concrete
 			// src/opts: its hook and the standard transducer call share the same
 			// runtime (miniCompiledPattern + reMatchResult), so a dynamic-src
 			// invocation records the standard `lang_<kind>` call below and runs
 			// identically. Only a kind whose hook bakes a src-specific plan (the
-			// test `bf` uppercaser) refuses, since baking the transducer instead
+			// test `bf` uppercaser) declines, since baking the transducer instead
 			// would drop the hook's semantics.
 			if !miniHookFaithful(r, kind) {
 				switch {
 				case func() bool { _, serr := args[1].AsConcreteString(); return serr != nil }():
-					refuse("compile hook needs a concrete src at compile time")
+					decline("compile hook needs a concrete src at compile time")
 				case !IsConcrete(opts):
-					refuse("compile hook needs concrete opts at compile time")
+					decline("compile hook needs concrete opts at compile time")
 				}
 			}
 		}
@@ -510,7 +510,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 				var hookToks []Value
 				var herr error
 				if r.Check.IsActive() && !IsConcrete(opts) {
-					// Refused above; keep the standard call for analysis.
+					// Declined above; keep the standard call for analysis.
 					hookToks = nil
 				} else {
 					hookToks, herr = goHook(src, opts, r)
@@ -836,7 +836,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 		}
 		// A fn-family value whose payload is not an FnDefInfo — defensive: the
 		// sig matcher never delivers one from surface syntax (a bare `Function`
-		// type literal is parented at Type and refuses every parse sig), so
+		// type literal is parented at Type and declines every parse sig), so
 		// only a crafted or corrupted function value lands here.
 		return nil, r.BoruErrorHint("parse_error",
 			"parse: the parser is not a usable function value", "parse",
@@ -851,7 +851,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	// COMPILE pass, NON-CONCRETE source (a fn-body parse over a `src:String`
 	// param carrier — every voxgig-boru/template lexer): the direct expansion
 	// `<fn> <source> <opts> end` dispatches the parser WORD, whose result is a
-	// dynamic Any, so the compiler refuses "unannotated or opaque word <fn>".
+	// dynamic Any, so the compiler declines "unannotated or opaque word <fn>".
 	// Route it through the SAME parselang-fn-dispatch CALL_NATIVE the
 	// non-concrete-PARSER form uses: parseFnDispatchHandler replays the
 	// identical tail in a sub-engine, so the compiled program is byte-identical
@@ -985,7 +985,7 @@ func InstallParseLangFnDispatch(r *Registry, sig *Signature) {
 // opts) with a dynamic(Any) result registered as the event's output. The fn
 // OPERAND's provenance is its own producing event — the recorded call that
 // computed it — so the parse result reaches downstream consumers with
-// provenance instead of refusing "residual value of unknown provenance".
+// provenance instead of declining "residual value of unknown provenance".
 // Declines (pure check, suspended analysis, no boru:parselang import) leave
 // the caller on the unrecorded dynamic degrade.
 func recordParseLangFnDispatch(r *Registry, fn Value, args []Value) (Value, bool) {

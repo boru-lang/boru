@@ -150,11 +150,11 @@ func TestRecordPolyCallGuard(t *testing.T) {
 	}
 }
 
-func TestFnCompileRefusesIdentitylessCapture(t *testing.T) {
+func TestFnCompileDoesNotLowerIdentitylessCapture(t *testing.T) {
 	// A closure whose capture snapshot is a runtime mint (no ID) cannot
 	// be compiled: capture slots are positional, so skipping one would
-	// misalign every later capture. The unit must refuse (conservative
-	// interpreter fallback), never collapse slots.
+	// misalign every later capture. The unit must decline (conservative
+	// compile failure), never collapse slots.
 	c := &core.CheckState{}
 	defer c.BeginCompilePass()()
 	es, ok := c.Emit.(*EmitState)

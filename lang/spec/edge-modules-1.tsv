@@ -74,7 +74,7 @@ import [Foo Foo] module [export "Foo" {a:1}] Foo.a	1	renaming to the same name i
 import [Foo Bar] module [export "Foo" {a:1}] Bar.$module.exports 0 get eq "Foo"	true	the shared descriptor keeps the DECLARED export names
 import [Nope Bar] module [export "Foo" {a:1}]	ERROR:export "Nope" not found	renaming a missing export is loud
 import [Foo Bar Baz] module [export "Foo" {a:1}]	ERROR:rename list must have exactly 2 elements	a flat rename list is strictly from-to
-import [] module [export "Foo" {a:1}]	ERROR:empty rename list	an empty rename list is refused, not a silent no-op
+import [] module [export "Foo" {a:1}]	ERROR:empty rename list	an empty rename list is declined, not a silent no-op
 #
 # §8  module scope vs importer scope
 def x 5 import module [def x 7 export "M" {x: x}] x	5	the importer's binding is untouched by a module-body def

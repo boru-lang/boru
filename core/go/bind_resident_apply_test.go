@@ -52,7 +52,7 @@ func TestApplyResidentBind(t *testing.T) {
 // captured body, so N elements leave N independently retirable levels — the
 // interpreter's shape, and the one a replay of the captured entry gets
 // wrong (one shared node, so the first undef retires the level below it).
-// A nil registry is a no-op; an installer refusal comes back rather than
+// A nil registry is a no-op; an installer compile failure comes back rather than
 // being swallowed.
 func TestApplyResidentTypeBind(t *testing.T) {
 	if err := ApplyResidentTypeBind(nil, "Tz", DefEntry{}); err != nil {
@@ -86,13 +86,13 @@ func TestApplyResidentTypeBind(t *testing.T) {
 		t.Fatalf("after one undef the remaining node is unresolvable (%+v) — the arm shared one node", rest)
 	}
 
-	// An installer refusal propagates: the arms BELOW validateTypeName still
+	// An installer compile failure propagates: the arms BELOW validateTypeName still
 	// police the body's own rules, and a refine prefab that is not in the
 	// lattice cannot be renamed and bound.
 	prefab := r.Types.MintRefinePrefab(TInteger)
 	lost := DefEntry{Body: NewTypeLiteral(prefab)}
 	r.Types.Retire(prefab)
 	if err := ApplyResidentTypeBind(r, "Tlost", lost); err == nil {
-		t.Fatal("a body the installer refuses must return its error, not install nothing silently")
+		t.Fatal("a body the installer declines must return its error, not install nothing silently")
 	}
 }

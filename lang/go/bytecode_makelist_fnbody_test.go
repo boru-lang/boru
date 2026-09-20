@@ -9,7 +9,7 @@ import (
 // TestComputedListInFnBody pins the fix for the difficulty-5 make/list provenance
 // leaf (VOXGIG-COMPILE-COMPLETION-PLAN.0.md §1.3): a COMPUTED list literal CONSUMED
 // as an argument inside a fn body (`flex [i 99]`, `f [j (g x)]`) now lowers to
-// OpMakeList instead of refusing — the interpreter auto-evaluates the consumed arg
+// OpMakeList instead of declining — the interpreter auto-evaluates the consumed arg
 // against the live def stack, so its element locals/params resolve exactly as
 // OpMakeList re-pushes them per call.
 //
@@ -33,7 +33,7 @@ func TestComputedListInFnBody(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -58,7 +58,7 @@ func TestComputedListInFnBody(t *testing.T) {
 	// and a stateful generator (must re-run per element, never freeze one roll).
 	sound := []struct{ name, src string }{
 		// A fn RETURNING `[y y]` raises undefined_word; compiled must ALSO error
-		// (refuse → fallback raises the same), never bake [6,6].
+		// (decline → fallback raises the same), never bake [6,6].
 		{"residual bare-word list must not bake", `def f fn [[x:Integer][List][ def y (x add 1) [y y] ]] def r (f 5) (r size)`},
 		// A stateful generator list element re-runs per element; freezing one roll
 		// would diverge — must stay a fallback.

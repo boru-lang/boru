@@ -181,7 +181,7 @@ func handleExec(registry string, pol policy.Policy, w http.ResponseWriter, r *ht
 	// One outcome: the posted expression compiles and runs, or the response
 	// carries the compile failure. This used to re-run a failed compile on
 	// the interpreter, and the argument for it — that a policy-gated
-	// registry always refused, so a policy-bound server needed the
+	// registry always declined, so a policy-bound server needed the
 	// interpreter because that was where the word gate lived — stopped being
 	// true when policy-gated registries started compiling (2026-07-15: every
 	// named VM dispatch consults the same WordChecker the interpreter's

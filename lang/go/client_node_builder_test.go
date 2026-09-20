@@ -88,7 +88,7 @@ func TestVariadicIfStaysPrecise(t *testing.T) {
 		t.Fatalf("check error: %v", cerr)
 	}
 	if prog == nil {
-		t.Fatalf("expected native compile, refused: %s", reason)
+		t.Fatalf("expected native compile, declined: %s", reason)
 	}
 }
 

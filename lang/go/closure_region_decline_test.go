@@ -18,9 +18,9 @@ import (
 //
 // Measured on this row: the probe's do$body residual is [CONST CONST REGION],
 // the real one [EVENT:0 EVENT:1 REGION]. Admitting on the probe alone
-// recorded a closure whose unit then had no seating, and the LOWERING refuses
+// recorded a closure whose unit then had no seating, and the LOWERING declines
 // with no fall-through — so a row that compiled through the dyn-body strategy
-// became a hard refusal. The variation lane caught it
+// became a hard compile failure. The variation lane caught it
 // (TestVariationDifferential, transform `for-body`), which is exactly what
 // that lane is for: the SEED is a corpus row and the VARIANT is not.
 //
@@ -62,10 +62,10 @@ func TestWholeResidualRegionDeclinesOnTheRealUnit(t *testing.T) {
 // decline and worth its own row, because from either end the shape reads like
 // one the arm should take.
 //
-// What the pin is FOR is the answer, not the refusal: a declined probe falls
+// What the pin is FOR is the answer, not the compile failure: a declined probe falls
 // to the dyn-body strategy, which compiles, so a widening that wrongly
 // admitted either of these would show up here as a lane disagreement rather
-// than as a refusal.
+// than as a compile failure.
 func TestRegionSuffixDeclinesKeepTheirAnswer(t *testing.T) {
 	for _, src := range []string{
 		`do [for 3 [1] (1 add 2)]`,

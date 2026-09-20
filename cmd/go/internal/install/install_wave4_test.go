@@ -138,7 +138,7 @@ func TestW4InstallZipSlipRejected(t *testing.T) {
 		t.Fatalf("Run = %d, want 1", code)
 	}
 	if !strings.Contains(errOut.String(), "unsafe path") {
-		t.Errorf("stderr = %q, want unsafe-path refusal", errOut.String())
+		t.Errorf("stderr = %q, want unsafe-path compile failure", errOut.String())
 	}
 }
 

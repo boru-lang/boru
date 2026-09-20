@@ -12,8 +12,8 @@ import (
 // natively / runs on the VM / zero runtime bails); the LEDGER pins that the
 // case fails today and HOW (the failure-mode substring). The runner is green
 // while the frontier is red, and it enforces the test-first contract
-// continuously, generalizing knownRefusals' stale-entry ratchet
-// (test/go/langspec/compiled_refusals_test.go):
+// continuously, generalizing knownCompileFailures' stale-entry ratchet
+// (test/go/langspec/compiled_failures_test.go):
 //
 //   - a ledgered case that PASSES fails the runner ("graduate": the phase
 //     landed — delete the ledger row; the case stays forever as a green pin);

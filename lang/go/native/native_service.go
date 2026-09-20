@@ -244,7 +244,7 @@ func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	// InvokeCallback runs it on the VM: a handler added from an interpreted
 	// context (a module fn's body — the real apps) is otherwise invisible to
 	// every compile pass. StampFnValue declines silently (policy off,
-	// already stamped, capturing, refusing body) returning the input
+	// already stamped, capturing, declining body) returning the input
 	// unchanged, so behaviour is byte-identical on every decline; the stamp
 	// runs BEFORE the lock (it forks the registry, no service state).
 	handler, _ := compiler.StampFnValue(r, args[1])

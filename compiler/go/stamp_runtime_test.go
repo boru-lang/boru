@@ -67,7 +67,7 @@ func (allowAllChecker) CheckWord(string) error { return nil }
 // policy-gated registry STAMPS exactly like a policy-free one — the VM's
 // per-dispatch gate (vmContext.gateWord) now enforces the word rules when
 // the unit runs, raising the interpreter's identical denial — so the
-// pre-lift stamp refusal is retired. The pin: gated and open registries
+// pre-lift stamp compile failure is retired. The pin: gated and open registries
 // produce the SAME stamp outcome for the same fd, and no policy-flavoured
 // reason is ever recorded.
 func TestStampDetachedFnWordPolicyGate(t *testing.T) {
@@ -89,7 +89,7 @@ func TestStampDetachedFnWordPolicyGate(t *testing.T) {
 	}
 	for _, ev := range gated.StampEvents() {
 		if strings.Contains(ev.Reason, "policy") {
-			t.Fatalf("no policy-flavoured stamp refusal may remain post-lift: %+v", ev)
+			t.Fatalf("no policy-flavoured stamp compile failure may remain post-lift: %+v", ev)
 		}
 	}
 }
@@ -291,7 +291,7 @@ func TestStampFnValueInPlace(t *testing.T) {
 }
 
 // The stamp-attribution collector (stamp_report.go): armed attempts record
-// (stamped and refusal-with-reason), shape noise does not, forks and
+// (stamped and compile failure-with-reason), shape noise does not, forks and
 // InheritRuntimeStamping share one log, and unarmed registries report nil.
 func TestStampReportCollector(t *testing.T) {
 	r := stampReg(t)
@@ -314,7 +314,7 @@ func TestStampReportCollector(t *testing.T) {
 	if _, ok := StampDetachedFn(r, captured, core.SrcPos{Row: 2, Col: 1}); !ok {
 		t.Fatalf("capturing fn must stamp (§7a): %+v", r.StampEvents())
 	}
-	// A body the unit compile REFUSES (the context-dependent `args`, which
+	// A body the unit compile DECLINES (the context-dependent `args`, which
 	// reads the interpreter's per-call args stack) records its reason.
 	argsy := BoruBodyFd(core.NewWord("args"))
 	argsy.Name = "argsy"
@@ -329,7 +329,7 @@ func TestStampReportCollector(t *testing.T) {
 
 	events := r.StampEvents()
 	if len(events) != 3 {
-		t.Fatalf("got %d events, want 3 (stamped + capture stamped + args refusal): %v", len(events), events)
+		t.Fatalf("got %d events, want 3 (stamped + capture stamped + args compile failure): %v", len(events), events)
 	}
 	if !events[0].Stamped || events[0].Reason != "" {
 		t.Fatalf("first event must be the successful stamp: %+v", events[0])
@@ -339,7 +339,7 @@ func TestStampReportCollector(t *testing.T) {
 	}
 	if events[2].Stamped || events[2].Name != "argsy" ||
 		events[2].Pos.Row != 3 || events[2].Reason == "" {
-		t.Fatalf("third event must be argsy's refusal: %+v", events[2])
+		t.Fatalf("third event must be argsy's compile failure: %+v", events[2])
 	}
 
 	// Forks and module-style inheritance feed the SAME log.

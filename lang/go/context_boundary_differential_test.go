@@ -39,23 +39,23 @@ import (
 // to a nested-`if` chain, `otherwise`'s list argument, list
 // auto-evaluation, an interp-string hole — has no call to wrap, so it
 // cannot be bracketed at all: instead, a context write through a handle
-// read inside one REFUSES compilation (NUR054, the refusal rule (a defect the runtime absorbs))
+// read inside one DECLINES compilation (NUR054, the compile failure rule (a defect the runtime absorbs))
 // and the whole program runs on the interpreter, whose scoping is
 // canonical. Those rows therefore agree the way the ungrouped map-slot row
 // below agrees — both sides of the comparison are the interpreter — and if
 // the emitter ever learns to lower them with a real context-frame opcode
 // pair, they start exercising two engines instead of one.
 //
-// The refusal fires AT THE MINT — a `context` read inside the inline
-// region refuses, because the region's layer has no compiled twin and every
+// The compile failure fires AT THE MINT — a `context` read inside the inline
+// region declines, because the region's layer has no compiled twin and every
 // consumption that can tell it from the ambient layer (a write, an alias, an
 // identity probe, a render, a baked container element) would diverge. A
 // store handle bound OUTSIDE the region (`def s (context)` … `s set` in a
 // case arm) is an in-place layer write that persists identically on both
 // engines, and it KEEPS COMPILING — the compile-status rows in
-// TestNur054InlineCtxRefusal pin both directions.
+// TestNur054InlineCtxCompileFailure pin both directions.
 //
-// If an agreeing row starts diverging, the frame (or the refusal) has
+// If an agreeing row starts diverging, the frame (or the compile failure) has
 // regressed.
 func TestContextBoundaryDifferential(t *testing.T) {
 	cases := []struct {
@@ -109,18 +109,18 @@ g
 context has y/q`},
 		// An `if` CODE-BODY condition is NoEval (handler-run, not list
 		// auto-evaluation), so it is outside the NUR054 inline regions and
-		// keeps compiling (TestNur054InlineCtxRefusal pins that); this row
+		// keeps compiling (TestNur054InlineCtxCompileFailure pins that); this row
 		// pins that the engines also AGREE on where its write lands.
 		{name: "if code-body condition", src: `if [ context set y 1 true ] [ 5 ] [ 6 ]
 context has y/q`},
 
 		// ---- INLINED bodies: not bracketable by any seam — covered by the
-		// NUR054 refusal instead. Each of these programs REFUSES compilation
+		// NUR054 compile failure instead. Each of these programs DECLINES compilation
 		// (`context` read inside the inline region hands out the region's own
 		// layer; a set/del through that handle would land one scope too
 		// shallow compiled), so both sides of the comparison are the
-		// interpreter and the rows agree trivially. The refusal reason is
-		// pinned by TestNur054InlineCtxRefusal.
+		// interpreter and the rows agree trivially. The compile failure reason is
+		// pinned by TestNur054InlineCtxCompileFailure.
 		{name: "case clause body", src: `case 1 [ 1 [ context set y 1 5 ] 2 [ 6 ] ]
 context has y/q`},
 		{name: "otherwise list argument", src: `false otherwise [ context set y 1 5 ]
@@ -140,7 +140,7 @@ context has y/q`},
 case 1 [ 1 [ context del y 5 ] 2 [ 6 ] ]
 context has y/q`},
 		// The 2026-08-14 Codex review round's three confirmed escapes, closed
-		// by moving the refusal to the MINT (`context` read in-region): a
+		// by moving the compile failure to the MINT (`context` read in-region): a
 		// re-IDed alias a write-site rule could not chase, an xml child hole
 		// the region brackets had missed, and an identity probe through an
 		// escaped handle.
@@ -191,7 +191,7 @@ context has y/q`},
 context has y/q`},
 		// The ungrouped twin — and read it carefully, because it agrees
 		// TRIVIALLY rather than by the same mechanism. The form does not
-		// compile at all (the refusal above), so the program falls back to the
+		// compile at all (the compile failure above), so the program falls back to the
 		// interpreter and both sides of the comparison ARE the interpreter.
 		// Kept as its own row so that if the emitter ever learns to lower it,
 		// this row starts exercising two real engines instead of one.
@@ -208,8 +208,8 @@ context has y/q`},
 	// budget — so the count is pinned, and enlarging it has to be a
 	// deliberate, reviewable edit to this number with a reason.
 	//
-	// This may only go DOWN — and it reached 0 when the NUR054 refusal
-	// landed: an inline-lowered form the compiler cannot bracket now refuses
+	// This may only go DOWN — and it reached 0 when the NUR054 compile failure
+	// landed: an inline-lowered form the compiler cannot bracket now declines
 	// compilation instead of answering differently, so no recorded
 	// divergence remains. A new entry here means a fresh contract breach.
 	const openDivergenceBudget = 0
@@ -222,8 +222,8 @@ context has y/q`},
 	if open > openDivergenceBudget {
 		t.Errorf("interpreter/compiler context-boundary divergences: %d, budget %d.\n"+
 			"A NEW divergence was added. The contract (design/COMPILABLE-SUBSET.md) is "+
-			"that a form the compiler cannot lower faithfully must be REFUSED, not "+
-			"answered differently; the refusal is contained, not fixed. If this row is genuinely "+
+			"that a form the compiler cannot lower faithfully must be DECLINED, not "+
+			"answered differently; the compile failure is contained, not fixed. If this row is genuinely "+
 			"unavoidable for now, raise the budget deliberately and say why in NUR054.",
 			open, openDivergenceBudget)
 	}
@@ -244,7 +244,7 @@ context has y/q`},
 			interp, iErr := b.RunInterp(c.src)
 			// A program that does not compile has no compiled answer to
 			// compare: the row books a compile defect instead of an
-			// agreement the interpreter fallback used to manufacture.
+			// agreement the compile failure used to manufacture.
 			if lang.NoteCompileDefect(t, c.src, compiled, cErr) {
 				return
 			}

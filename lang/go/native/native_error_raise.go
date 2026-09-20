@@ -94,7 +94,7 @@ var errorNatives = []NativeFunc{
 // (`if (n eq 0) [raise "zero"]`) live in nested bodies and stay silent.
 // The diagnostic is a RuntimeMirror (via CheckAddUniqueDiagnostic): the
 // compile pass models raise as a diverging terminal (CompileDiverges) and
-// the refusal loop skips mirrors, so the row still compiles and raises
+// the compile failure loop skips mirrors, so the row still compiles and raises
 // identically. The residual model is unchanged: raise produces no value.
 func raiseReturns(args []Value, r *Registry) []Value {
 	if atUncaughtTopLevel(r) && len(args) > 0 {
@@ -188,7 +188,7 @@ func errorFieldReturns(args []Value, r *Registry) []Value {
 		// Compile pass: reproduce the prior Returns:[TAny] EXACTLY — a declared
 		// Any return is a DYNAMIC Any carrier (declaredReturnCarriers marks it so),
 		// not a strict one; a strict Any would fail the downstream error dispatch
-		// and refuse native compilation (compiled-coverage refusal gate).
+		// and decline native compilation (compiled-coverage compile failure gate).
 		return dyn
 	}
 	if len(args) < 1 || !IsConcrete(args[0]) {

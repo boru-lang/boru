@@ -373,9 +373,9 @@ print (M.tty)`); err != nil {
 }
 
 // COMPILED mode must hand the probe the same endpoint the interpreter does.
-// It did not: compiled entry points arm the effect fence (Registry.ArmEffectFence
-// — the ledger that decides whether an interpreter fallback is still safe),
-// which wraps Output/ErrOutput, and the wrapper was not peelable. So
+// It did not: compiled entry points used to arm the C1 effect fence, which
+// wrapped Output/ErrOutput so a print counted against the interpreter re-run,
+// and the wrapper was not peelable. So
 // `IO.is-tty (IO.stdout)` answered FALSE on a real terminal in the DEFAULT
 // execution mode while the interpreter answered true — the colour decision
 // inverted by an instrument that is supposed to be invisible.

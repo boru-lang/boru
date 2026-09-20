@@ -74,7 +74,7 @@ func renderCompiledStatus(c *census, failureCeiling int) string {
 	b.WriteString("| outcome | rows |\n| --- | ---: |\n")
 	b.WriteString(fmt.Sprintf("| compiled natively (fallback-free) | %d |\n", native))
 	b.WriteString(fmt.Sprintf("| compiled with an interpreter island | %d |\n", c.islanded))
-	b.WriteString(fmt.Sprintf("| refused (whole-program fallback) | %d |\n", c.refused))
+	b.WriteString(fmt.Sprintf("| does not compile | %d |\n", c.declined))
 	b.WriteString(fmt.Sprintf("| static check-error (invalid in both engines) | %d |\n", c.checkErr))
 	if compilable > 0 {
 		b.WriteString(fmt.Sprintf("\n**%d / %d** compilable rows produce a Program (%d%% — %d of those fully native).\n\n",
@@ -82,17 +82,17 @@ func renderCompiledStatus(c *census, failureCeiling int) string {
 	}
 
 	b.WriteString("## Ceilings (downward ratchets toward runtime independence)\n\n")
-	b.WriteString("The compiler is interpreter-independent once refusals and islands both reach 0 and only tier 1 falls back. Each ceiling never rises.\n\n")
+	b.WriteString("The compiler is interpreter-independent once compile failures and islands both reach 0 and only tier 1 falls back. Each ceiling never rises.\n\n")
 	b.WriteString("| ratchet | current | ceiling | finish line |\n| --- | ---: | ---: | --- |\n")
-	b.WriteString(fmt.Sprintf("| refusals (whole-program fallback) | %d | %d | → 0 |\n", c.refused, failureCeiling))
+	b.WriteString(fmt.Sprintf("| compile failures | %d | %d | → 0 |\n", c.declined, failureCeiling))
 	b.WriteString(fmt.Sprintf("| interpreter islands (OpFallback) | %d | %d | → 0 |\n", c.islanded, islandCeiling))
 	b.WriteString(fmt.Sprintf("| tier 1 interpreter-only | %d | %d | capped (permanent) |\n", c.interp, interpreterOnlyCeiling))
 	b.WriteString(fmt.Sprintf("| tier 2 reducible | %d | %d | → 0 |\n", c.reducible, reducibleCeiling))
-	b.WriteString(fmt.Sprintf("| compute frontier | %d | %d | → 0 |\n\n", c.computeGap, computeRefusalCeiling))
+	b.WriteString(fmt.Sprintf("| compute frontier | %d | %d | → 0 |\n\n", c.computeGap, computeGapCeiling))
 
-	b.WriteString("## Refusals by reason\n\n")
-	if c.refused == 0 {
-		b.WriteString("_No refusals._\n\n")
+	b.WriteString("## Compile failures by reason\n\n")
+	if c.declined == 0 {
+		b.WriteString("_No compile failures._\n\n")
 	} else {
 		byCause := map[string]int{}
 		b.WriteString("| count | bucket | root cause |\n| ---: | --- | --- |\n")
@@ -100,7 +100,7 @@ func renderCompiledStatus(c *census, failureCeiling int) string {
 			b.WriteString(fmt.Sprintf("| %d | %s | %s |\n", c.refusalBuckets[r], r, rootCause(r)))
 			byCause[rootCause(r)] += c.refusalBuckets[r]
 		}
-		b.WriteString("\n| root cause | refusals |\n| --- | ---: |\n")
+		b.WriteString("\n| root cause | compile failures |\n| --- | ---: |\n")
 		for _, cause := range []string{"correct-error", "soundness", "scheduling", "opcode", "coverage"} {
 			b.WriteString(fmt.Sprintf("| %s | %d |\n", cause, byCause[cause]))
 		}
@@ -108,8 +108,8 @@ func renderCompiledStatus(c *census, failureCeiling int) string {
 	}
 
 	b.WriteString("## Re-scoped P7 partition\n\n")
-	b.WriteString(fmt.Sprintf("Over the %d not-fully-native rows (refused or islanded): **%d** interpreter-only (tier 1, permanent), **%d** reducible (tier 2, TODO), **%d** allowlisted error rows, **%d** compute-frontier gaps.\n\n",
-		c.refused+c.islanded, c.interp, c.reducible, c.errorRows, c.computeGap))
+	b.WriteString(fmt.Sprintf("Over the %d not-fully-native rows (declined or islanded): **%d** interpreter-only (tier 1, permanent), **%d** reducible (tier 2, TODO), **%d** allowlisted error rows, **%d** compute-frontier gaps.\n\n",
+		c.declined+c.islanded, c.interp, c.reducible, c.errorRows, c.computeGap))
 
 	writeHist(&b, "### tier 1 — interpreter-only (permanent home of the island)", "word", c.tier1By)
 	writeHist(&b, "### tier 2 — reducible, not yet compiled", "word", c.tier2By)

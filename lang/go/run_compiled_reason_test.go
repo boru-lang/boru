@@ -6,11 +6,11 @@ import (
 )
 
 // TestRunCompiledReason pins the third return of RunCompiledReason: the
-// whole-program compilation-refusal reason the CLI surfaces as a warning. A
-// reason is reported ONLY for a genuine refusal (a valid program the compiler
+// whole-program compilation-compile failure reason the CLI surfaces as a warning. A
+// reason is reported ONLY for a genuine compile failure (a valid program the compiler
 // cannot lower — a defect — which is then silently re-run on the interpreter);
 // it is EMPTY for a compiled run and for a statically-invalid program (which
-// fails in both engines and so is not a refusal at all).
+// fails in both engines and so is not a compile failure at all).
 func TestRunCompiledReason(t *testing.T) {
 	// POSITIVE — a compiled program reports ran=true and no reason.
 	t.Run("compiled", func(t *testing.T) {
@@ -21,14 +21,14 @@ func TestRunCompiledReason(t *testing.T) {
 		}
 	})
 
-	// POSITIVE — a genuine whole-program refusal reports ran=false and names
-	// the first offending construct. Every CORPUS refusal has graduated, so
+	// POSITIVE — a genuine whole-program compile failure reports ran=false and names
+	// the first offending construct. Every CORPUS compile failure has graduated, so
 	// the pin rides an off-corpus shape: a `def` consuming a variadic loop
 	// region with a DYNAMIC count (the S5 split needs the static region
-	// size; a runtime-only count keeps the refusal) — it falls back to the
+	// size; a runtime-only count keeps the compile failure) — it falls back to the
 	// interpreter, which runs it fine. (The statically-counted fixture
 	// graduated 2026-07-17 — the S5 first-value split compiles it.)
-	t.Run("refusal names the offender", func(t *testing.T) {
+	t.Run("compile failure names the offender", func(t *testing.T) {
 		const src = `def m {n: 3} def xs (for (m get "n") [1]) xs`
 		a, _ := New()
 		_, ran, reason, err := a.RunCompiledReason(src)
@@ -36,10 +36,10 @@ func TestRunCompiledReason(t *testing.T) {
 			t.Fatalf("expected no compiled run (ran=false), got ran=true")
 		}
 		if !strings.Contains(reason, "def `xs` consumes loop results") {
-			t.Fatalf("refusal reason %q does not name the offending construct", reason)
+			t.Fatalf("compile failure reason %q does not name the offending construct", reason)
 		}
 		if codeOf(err) != "compile_failed" {
-			t.Fatalf("Stage J: refusal must return compile_failed, got [%s] %v", codeOf(err), err)
+			t.Fatalf("Stage J: compile failure must return compile_failed, got [%s] %v", codeOf(err), err)
 		}
 	})
 

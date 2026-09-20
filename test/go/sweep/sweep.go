@@ -182,7 +182,7 @@ func (c Cell) Status() Status {
 		return Invalid
 	case vary.CheckReject:
 		return CheckReject
-	case vary.Refused:
+	case vary.Declined:
 		return Failed
 	case vary.Islanded:
 		return Islanded

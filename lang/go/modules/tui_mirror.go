@@ -12,7 +12,7 @@ import (
 // byte-identical code and detail the run raises.
 //
 // Why these words and not the rest of the surface: a Tier-1 word takes a
-// Terminal handle, which only `open` can mint, so its refusals are
+// Terminal handle, which only `open` can mint, so its compile failures are
 // backend-state, not argument shape. `open` / `run` / `serve` take maps
 // the call site writes literally, and every check below is a pure
 // function of those maps.
@@ -22,7 +22,7 @@ import (
 // both of which gate on `open` as their first statement.
 //
 // The policy gate is consulted but never reported: when the policy denies
-// the word the run raises the refusal and never reaches the validation,
+// the word the run raises the compile failure and never reaches the validation,
 // so claiming a usage defect there would name the wrong error. Declining
 // keeps the mirror firing exactly where the run does.
 //

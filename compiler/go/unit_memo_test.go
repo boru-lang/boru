@@ -340,7 +340,7 @@ func TestResidualReadHazardIsFragmentKeyed(t *testing.T) {
 	es.noteFragRead("k")
 	es.noteBindHazard("k")
 	if got := es.residualReadHazard(v, dyn, nil); !strings.Contains(got, "residual read of `k` precedes its rebind") {
-		t.Errorf("root read-before-bind must refuse, got %q", got)
+		t.Errorf("root read-before-bind must decline, got %q", got)
 	}
 
 	// An enclosing fragment U that read k, a nested fragment N that binds it:
@@ -463,13 +463,13 @@ func TestForkForProbeCarriesTheHazardTables(t *testing.T) {
 	}
 }
 
-// residualStands is the ONE refusal site the four residual settlements share
+// residualStands is the ONE compile failure site the four residual settlements share
 // (a fn unit's finish, a branch arm, both loop arms): an unresolved residual
-// refuses as "<what> of unknown provenance" under the caller's prefix, a
+// declines as "<what> of unknown provenance" under the caller's prefix, a
 // resolved one under the residual-order hazard, and a safe one stands. The
-// refusal-site census counts call sites, so the arms are pinned here rather
+// compile failure-site census counts call sites, so the arms are pinned here rather
 // than through four separate end-to-end shapes.
-func TestResidualStandsIsTheSharedRefusalSite(t *testing.T) {
+func TestResidualStandsIsTheSharedCompileFailureSite(t *testing.T) {
 	var nilES *EmitState
 	if nilES.residualStands("fn f: ", core.Value{}, EmitOperand{}, true, nil, "body result") {
 		t.Error("a nil recorder settles nothing")
@@ -484,7 +484,7 @@ func TestResidualStandsIsTheSharedRefusalSite(t *testing.T) {
 	}
 	if es.residualStands("if: then-branch ", v, EmitOperand{}, false, nil, "result") || es.Compilable ||
 		es.Reason != "if: then-branch result of unknown provenance" {
-		t.Errorf("an unresolved residual must refuse under the caller's prefix; got compilable=%v reason=%q", es.Compilable, es.Reason)
+		t.Errorf("an unresolved residual must decline under the caller's prefix; got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
 
 	es = NewEmitState()
@@ -493,7 +493,7 @@ func TestResidualStandsIsTheSharedRefusalSite(t *testing.T) {
 	es.bindHazard = map[readKey]bool{{"k", 0}: true}
 	if es.residualStands("for: ", v, dynScopeOperand(0), true, nil, "body result") || es.Compilable ||
 		!strings.Contains(es.Reason, "for: residual read of `k` precedes its rebind") {
-		t.Errorf("a hazardous residual must refuse under the hazard's reason; got compilable=%v reason=%q", es.Compilable, es.Reason)
+		t.Errorf("a hazardous residual must decline under the hazard's reason; got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
 }
 

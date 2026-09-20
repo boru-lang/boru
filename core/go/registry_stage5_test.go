@@ -100,7 +100,7 @@ func TestRegisterErrorArms(t *testing.T) {
 	if e := r2.Err(); e == nil {
 		t.Fatal("invalid native name must error")
 	}
-	// RegisterCoreDefault refuses a name Register never installed.
+	// RegisterCoreDefault declines a name Register never installed.
 	r2.RegisterCoreDefault("stage5-never-registered", Signature{})
 	if r2.Lookup("stage5-never-registered") != nil {
 		t.Fatal("RegisterCoreDefault on a non-builtin must install nothing")

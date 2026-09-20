@@ -29,12 +29,12 @@ func TestFnShapeMultiReturnLaneParity(t *testing.T) {
 		name string
 		src  string
 		want string
-		// tolerateRefusal marks a row whose compiled lane REFUSES
+		// tolerateCompileFailure marks a row whose compiled lane DECLINES
 		// since the BROAD park (NUR073 clause 3): the paren-apply idiom the
 		// original pin rode was removed, and the BROAD spellings of this
 		// shape sit behind the def-bound-computed-fn compile frontier. The
 		// interpreter half of the pin still holds; graduation re-tightens it.
-		tolerateRefusal bool
+		tolerateCompileFailure bool
 	}{
 		{
 			name: "class member leading apply",
@@ -52,8 +52,8 @@ c.op 10`,
 			src: `def T fnsig [[Integer] [Integer Integer]]
 def mk fn [[i:Integer] [T] [fn [[x:Integer] [Integer Integer] [x x]]]]
 for 2 [7 (mk 1) apply]`,
-			want:            "[7 7 7 7]",
-			tolerateRefusal: true,
+			want:                   "[7 7 7 7]",
+			tolerateCompileFailure: true,
 		},
 	}
 
@@ -69,16 +69,16 @@ for 2 [7 (mk 1) apply]`,
 
 			compiled, ran, reason, err := mustNew(t).RunAutoValues(tc.src)
 			if err != nil {
-				if tc.tolerateRefusal && strings.Contains(err.Error(), "compile_failed") {
-					t.Skipf("compiled lane refused (%v)", err)
+				if tc.tolerateCompileFailure && strings.Contains(err.Error(), "compile_failed") {
+					t.Skipf("compiled lane declined (%v)", err)
 				}
 				t.Fatalf("compiled: %v", err)
 			}
 			if !ran {
-				if tc.tolerateRefusal {
-					t.Skipf("compiled lane refused (%q)", reason)
+				if tc.tolerateCompileFailure {
+					t.Skipf("compiled lane declined (%q)", reason)
 				}
-				t.Fatalf("compiled lane refused (%q) — this shape compiled when the pin was written; a refusal here is a silent loss of coverage, not a pass", reason)
+				t.Fatalf("compiled lane declined (%q) — this shape compiled when the pin was written; a compile failure here is a silent loss of coverage, not a pass", reason)
 			}
 			if got := fmt.Sprint(compiled); got != tc.want {
 				t.Fatalf("compiled = %s, want %s (interpreted gave %s)", got, tc.want, fmt.Sprint(interp))

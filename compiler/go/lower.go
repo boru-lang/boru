@@ -17,9 +17,9 @@ import (
 
 // maxLowerDepth bounds the lowerFragment recursion over nested branch / loop
 // bodies. It sits above the parser's maxParseNestingDepth so a program the
-// parser accepted is never spuriously refused here; the margin only guards an
-// event tree assembled outside the parser. Exceeding it returns a refusal
-// reason (Finalize then falls back to the interpreter), never a crash.
+// parser accepted is never spuriously declined here; the margin only guards an
+// event tree assembled outside the parser. Exceeding it returns a compile failure
+// reason (Finalize then does not compile), never a crash.
 const maxLowerDepth = 12000
 
 // lowerLoop lowers a counted/range for:
@@ -62,7 +62,7 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	// at its pre-loop value (the "loop may run zero times" join). An
 	// event-sourced init pops off the sim top (reverse production order —
 	// orderedCarried; a promoted producer was already rewritten to a local
-	// operand); any other layout refuses, a sound interpreter fallback.
+	// operand); any other layout declines, a compile failure.
 	for _, c := range orderedCarried(lp.carried) {
 		if c.init.kind == opEvent {
 			if lw.variadic[c.init.idx] {
@@ -160,8 +160,8 @@ func orderedCarried(carried []carriedInit) []carriedInit {
 // only when that arm is taken, skipped by break/continue exactly as the
 // interpreter skips the def. An event source must sit on the sim top (the
 // def site immediately follows the producing dispatch; a promoted producer
-// was rewritten to a local operand); any other layout refuses — a sound
-// interpreter fallback, never a wrong store.
+// was rewritten to a local operand); any other layout declines — a sound
+// compile failure, never a wrong store.
 // lowerResidentBind emits an ARM-RESIDENT twin's install at its def site
 // inside a per-invocation unit (§6.5's each-body recovery — the event was
 // stamped by AdoptResidentTwins): the op executes once per element with
@@ -171,8 +171,8 @@ func orderedCarried(carried []carriedInit) []carriedInit {
 // sim-top producer is PEEKED in place (its downstream readers are
 // untouched — the interpreter's def consumes nothing the compiled model
 // still needs), a promoted local or param re-pushes a copy the op pops,
-// and an inert literal bakes unpooled. Any other provenance refuses the
-// whole program — the sound interpreter fallback, never a wrong install.
+// and an inert literal bakes unpooled. Any other provenance declines the
+// whole program — the compile failure, never a wrong install.
 func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 	if d.undef || d.typeInstall {
 		// The two operand-less halves: the TEARDOWN pops the name's live
@@ -419,7 +419,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// event, not here — it is re-pushable only through a promoted frame
 			// local (planValueDefLocals / the unit's promoted map). Without the
 			// promotion there is no way to duplicate it for the registry install;
-			// refuse (sound interpreter fallback).
+			// decline (compile failure).
 			slot, ok := lw.promoted[d.srcSeq]
 			if !ok {
 				return "dynamic-scope def `" + d.name + "` of unpromoted computed value"
@@ -434,7 +434,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// carrier; RememberOriginal holds the materialised instance, and
 			// resolveOperand recovers it as a const/local — the same slot the
 			// binding's reads resolve to, so the written-back value IS the
-			// instance the program uses). Anything else refuses.
+			// instance the program uses). Anything else declines.
 			if core.IsInertConst(d.val) {
 				src = ConstOperand(lw.es.internUnpooled(d.val))
 			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal) {
@@ -631,7 +631,7 @@ type lowerer struct {
 	// The parser already caps source nesting (maxParseNestingDepth), so a program
 	// that reached the lowerer is shallow enough; this is defense-in-depth for an
 	// event tree built by any path other than the parser. Exceeding maxLowerDepth
-	// REFUSES compilation (a clean fallback to the interpreter), never crashes.
+	// DECLINES compilation (a clean fallback to the interpreter), never crashes.
 	depth int
 	// fragMulti is set by lowerFragment when the just-lowered arm left MORE than
 	// one runtime value (a multi-value branch arm). lowerArms reads it right after
@@ -641,8 +641,8 @@ type lowerer struct {
 	// isFnUnit marks a lowerer driving a USER FN body unit (not the main
 	// program). A break/continue with no enclosing loop in such a unit is a
 	// cross-frame flow signal — it targets the caller's loop — so it lowers to
-	// OpFlowBreak/OpFlowContinue rather than refusing. At the main unit the same
-	// shape stays a refusal (a top-level break outside any loop).
+	// OpFlowBreak/OpFlowContinue rather than declining. At the main unit the same
+	// shape stays a compile failure (a top-level break outside any loop).
 	isFnUnit bool
 	// numLocals is the current unit's frame-local count, seeded from the unit's
 	// recorded locals and bumped by allocLocal for spill temps (spillSeat). The
@@ -696,7 +696,7 @@ func (lw *lowerer) allocLocal() int {
 // sig order (deepest first, so sig position 0 lands on top) — an event from its
 // temp local (PUSH_LOCAL), an inert operand via pushOperand. This seats any
 // shape without a 3-deep stack rotate. It declines (returning failMsg, the
-// caller's original refusal wording) only when a top slot is NOT one of the
+// caller's original compile failure wording) only when a top slot is NOT one of the
 // call's event operands — a non-operand value is interleaved, which a local
 // spill cannot reach (STORE_LOCAL pops the top). Promotion is sound: a local
 // re-pushes the exact value in any order.
@@ -861,7 +861,7 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 // values the interpreter would splice back onto the tape and step. A point
 // serves only at the unit's root with the event's results on top (a
 // promoted result lives in a slot; a variadic one has no static count).
-// A fn-TYPED note no point serves REFUSES: the pass is certain the runtime
+// A fn-TYPED note no point serves DECLINES: the pass is certain the runtime
 // value is a fn the interpreter dispatches here, and the unit would keep it
 // as data. A gradual note (the value is a fn only sometimes) with no point
 // keeps the optimistic model it always had.
@@ -1033,7 +1033,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 				// way the value crosses via the frame, not the sim, so it does not trip
 				// the floor. Without this a handler with nested `if` arms reading an
 				// enclosing value-def (mini-redis LRANGE: `def start …; if (start gte …)
-				// [ … slice start … ]`) refused to compile.
+				// [ … slice start … ]`) failed to compile.
 				if _, prom := lw.promoted[op.idx]; prom {
 					return
 				}
@@ -1089,7 +1089,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 		// re-push from the slot (RewritePromotedRefs rewrote them to local operands).
 		// lowerBranch left exactly one merge slot on top; STORE+pop it. If the merge is
 		// not a clean single value on top (a variadic / diverged branch the plan-time
-		// branchSingleValue gate could not foresee), REFUSE — sound interpreter
+		// branchSingleValue gate could not foresee), DECLINE — sound interpreter
 		// fallback, never a wrong store.
 		if ev.kind == evBranch {
 			if slot, ok := lw.promoted[ev.seq]; ok {
@@ -1334,7 +1334,7 @@ func forEachFragmentOperand(ev *EmitEvent, fn func(EmitOperand)) {
 	// cross-floor reference too when it names an ENCLOSING-scope producer —
 	// the `def kid (user-call …); if c [other] [kid]` arm, whose fragment has
 	// NO events of its own, so the frag.events walk below never sees the
-	// reference and the producer is left unpromoted (the arm then refuses
+	// reference and the producer is left unpromoted (the arm then declines
 	// "branch leaves extra values", out=opEvent vm=0). Visit the outs here so
 	// planValueDefLocals counts them as fragment refs; a fragment-INTERNAL out
 	// stays unpromoted regardless via the fragResult && fragInternal gate.
@@ -1397,7 +1397,7 @@ func RewritePromotedRefs(ev *EmitEvent, promoted map[int]int) {
 		promoteOperand(&ev.br.cond, promoted)
 		// A computed-arm value (`if c (expr) e` / `if c [t] (expr)`) is an
 		// enclosing-scope reference too; rewrite it in lockstep with
-		// forEachOperand counting it. (A promoted computed arm then refuses at
+		// forEachOperand counting it. (A promoted computed arm then declines at
 		// lowerBranch's stack-layout check and falls back — sound, never a wrong
 		// result.)
 		promoteOperand(&ev.br.thenVal, promoted)
@@ -1431,7 +1431,7 @@ func RewritePromotedRefs(ev *EmitEvent, promoted map[int]int) {
 // value-def promotion decision can run over a def-chain inside an `if` arm or
 // `for` body, not just the top level. Without this such a chain's computed
 // producers sit interleaved on the closed fragment's simulated stack and a later
-// binary op refuses "operands of <op> not adjacent on top". (Ref-counting via
+// binary op declines "operands of <op> not adjacent on top". (Ref-counting via
 // forEachFragmentOperand and rewriting via RewritePromotedRefs already recurse
 // into fragments; only the promotion decision did not.)
 func collectPromotableEvents(events []EmitEvent) ([]*EmitEvent, map[int]bool, map[int]bool) {
@@ -1622,7 +1622,7 @@ func fragmentResultSeqs(allEvents []*EmitEvent) map[int]bool {
 // fragment. The last exception is the todo-api PUT shape `def t2 {…}; (todos set
 // (id) t2) drop; t2`: t2 is both the `set` argument and the arm result, so the
 // operand use pops its single sim slot and nothing is left to seat as the result
-// (the arm refused "branch leaves extra values", out=opEvent vm=0). Such a
+// (the arm declined "branch leaves extra values", out=opEvent vm=0). Such a
 // value-def is promoted to a frame local instead (stored once, re-pushed per use;
 // the arm re-resolves its out to the local). refs counts operand uses only, never
 // the result designation, so a pure arm result (refs==0) still stays on the sim.
@@ -1727,7 +1727,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	// DynEnv: every dyn-bound def's COMPUTED source event must be promoted —
 	// lowerDynBind re-pushes the value from its slot for the OpBindDynScope
 	// install (an unpromoted computed value has no re-pushable home and
-	// refused "unpromoted computed value" — the `def xs [add 1 2]` OpMakeList
+	// declined "unpromoted computed value" — the `def xs [add 1 2]` OpMakeList
 	// shape). Collected up front; joins every promote trigger below.
 	// Merged into forceOrder: a dyn-bound source needs exactly the forced
 	// promotion forceOrder describes (store once, re-push per use), so one
@@ -1763,8 +1763,8 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	//
 	// A VARIADIC-returning producer is EXCLUDED from both: at runtime it may leave
 	// 0 values (an empty if-arm, `maybe = if … [x] []`), so a STORE_LOCAL would
-	// UNDERFLOW the VM — it must stay on the stack and refuse at layout if
-	// unseatable, a sound interpreter fallback (the mk -1 crash, boru-lang/boru#261).
+	// UNDERFLOW the VM — it must stay on the stack and decline at layout if
+	// unseatable, a compile failure (the mk -1 crash, boru-lang/boru#261).
 	// `buried` is taken from the operand scans only, before the residual `extra`
 	// refs fold in below, so a RESIDUAL-only producer (a `def r (loop …) r`
 	// bind-then-return tail) is never buried and its tail call survives
@@ -1785,7 +1785,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	// value-defs computed by its recursive calls (voxgig-boru/template's
 	// compile-hb-seq binds `head` and `tail` from recursive calls and reads both
 	// inside a deeper arm) seats those defs as frame locals and compiles, where it
-	// previously refused "branch reads enclosing computation". Validated by the
+	// previously declined "branch reads enclosing computation". Validated by the
 	// langspec census and the voxgig-boru --compile==interpret differential (all 7
 	// libraries compile with zero divergences).
 	storeSrc := collectStoreSourceSeqs(events)
@@ -1799,7 +1799,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	// over an empty producer GRABS THE NEXT TOKEN, which the compiled 0-value loop
 	// does not replicate (off-corpus divergence: `def x (for n [print 0]) n` → interp
 	// errors "got 0", compiled returns n). A 0-value CALL consumed the same way DOES
-	// agree (both error), so the loop is the outlier — refuse and fall back to the
+	// agree (both error), so the loop is the outlier — decline and fall back to the
 	// interpreter, scoping loop-in-fn-body lowering to genuinely discarded loops.
 	for i := range events {
 		seq := events[i].seq
@@ -1888,7 +1888,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		// own fragment sim (lowerFragment resets lw.vm per fragment), so it MUST be
 		// promoted to a frame local — the arm then re-pushes the slot (lowerFragment
 		// re-resolves its captured opEvent `out` to the local). Without this the arm
-		// refused "branch leaves extra values" (out=opEvent, len(lw.vm)==0).
+		// declined "branch leaves extra values" (out=opEvent, len(lw.vm)==0).
 		// A cross-NESTED-fragment reference (crossFragRef) is exempt: the
 		// producer lives in one fragment and a DIFFERENT fragment's arm/out
 		// consumes it — lowerFragment resets the sim per fragment, so the only
@@ -1912,7 +1912,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		// promoted to a frame local: its result stores once and re-pushes per
 		// reference. (Without evCallUser, a user-call result above a literal in the
 		// residual — `1 add2 2 3` → [1, 5] — could not be seated in order and
-		// refused "call result above a literal".)
+		// declined "call result above a literal".)
 		var nout int
 		isUser := false
 		switch ev.kind {
@@ -1952,7 +1952,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		// this a multi-referenced user-call value-def (`def m-val (derive-m …)`
 		// read by both derive-k AND make-bits in Bloom.make) was left loose on the
 		// stack, and a later call could not seat its operand on top — the
-		// `fn arg result is not on top` refusal across the bloom/stats unit suites.
+		// `fn arg result is not on top` compile failure across the bloom/stats unit suites.
 		// The remaining triggers (valueDef alone / fragRef / dead-result drop) stay
 		// NATIVE-only: a SINGLE-use user call may feed a harness/accumulation the
 		// residual ref count does not capture (Test.run-spec), where storing-once
@@ -1963,7 +1963,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		// slot, so it must not be left loose on the sim (the radix list-max leaf).
 		// A NAMED user-call value-def read from INSIDE a branch/loop fragment
 		// (fragRef && !fragInternal) also promotes: the arm's own sim cannot reach
-		// the parent stack, so without a slot the arm refuses "branch leaves extra
+		// the parent stack, so without a slot the arm declines "branch leaves extra
 		// values" (out=opEvent, vm=0 — the trie-insert `def kid (nd ch find-kid);
 		// … if … [kid]` shape recompiled under the unit-spec cascade). Storing a
 		// named def once and re-pushing per reference IS the interpreter's
@@ -2057,7 +2057,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 // layoutMsgs holds the call-site-specific diagnostic wording for
 // layoutOperands, so the shared engine can stay word/fn-agnostic while
 // preserving each caller's exact reason strings.
-// Each field is the refusal wording for one shape the spill fallback could not
+// Each field is the compile failure wording for one shape the spill fallback could not
 // seat (a non-operand value interleaved on top of the simulated stack); when the
 // spill succeeds — the common case — no message is used.
 type layoutMsgs struct {
@@ -2081,7 +2081,7 @@ func (lw *lowerer) swapTop2(pos core.SrcPos) {
 // user-fn calls (lowerUserCall) — they differ only in the diagnostic
 // wording (msg) and the terminal call instruction each emits afterward.
 // On success the len(ops) operands occupy the top slots in sig order and
-// the caller pops them with its CALL_*; a non-empty return is the refusal.
+// the caller pops them with its CALL_*; a non-empty return is the compile failure.
 func (lw *lowerer) layoutOperands(ops []EmitOperand, pos core.SrcPos, msg layoutMsgs) string {
 	n := len(ops)
 	results := []int{}
@@ -2100,10 +2100,10 @@ func (lw *lowerer) layoutOperands(ops []EmitOperand, pos core.SrcPos, msg layout
 	// case-1 (ri==0/n-1) and case-2 already-in-layout paths to any N: a computed
 	// list `[gensym gensym gensym]` or a call over N computed args
 	// (`is-between (a) (b) (c)`) leaves its results adjacent and in order, which
-	// the old 3+-results default refused outright. Soundness: it only ACCEPTS a
+	// the old 3+-results default declined outright. Soundness: it only ACCEPTS a
 	// layout already correct (slotIs verifies each slot), so it can never seat an
 	// operand wrongly; a non-matching layout falls through to the switch (and its
-	// existing refusals) unchanged.
+	// existing compile failures) unchanged.
 	if n > 0 && len(results) == n && len(lw.vm) >= n {
 		allInPlace := true
 		for i := 0; i < n; i++ {
@@ -2202,7 +2202,7 @@ func (lw *lowerer) layoutOperands(ops []EmitOperand, pos core.SrcPos, msg layout
 	return ""
 }
 
-// seatMsgs carries a seatResults caller's exact refusal wording, so the shared
+// seatMsgs carries a seatResults caller's exact compile failure wording, so the shared
 // seat primitive stays caller-agnostic while preserving each site's reasons.
 type seatMsgs struct {
 	variadic     string // an event operand is a variadic loop result (when rejected)
@@ -2216,9 +2216,9 @@ type seatMsgs struct {
 // left there by its own event — and inert operands (const / local / type) are
 // pushed as a trailing tail above the last event result. It is the shared core
 // of the program-residual reconciliation (Finalize) and the fn-unit RET
-// reconciliation (reconcileResults). rejectVariadic refuses a variadic (loop)
+// reconciliation (reconcileResults). rejectVariadic declines a variadic (loop)
 // event result: a fn body may not return one (Stage 3), though the program
-// residual may absorb it. msgs supplies the caller's refusal wording.
+// residual may absorb it. msgs supplies the caller's compile failure wording.
 func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicTail bool, msgs seatMsgs, pos core.SrcPos) string {
 	vi := 0
 	var tail []EmitOperand
@@ -2232,7 +2232,7 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 				// nothing but INERT operands above it (eventRunThenInert).
 				//
 				// The second is the one that needs stating, because it reads
-				// like the shape the message refuses. It is not: a run of
+				// like the shape the message declines. It is not: a run of
 				// runtime-variable length seats IN PLACE as long as nothing
 				// above it has to be indexed past it, and an inert operand is
 				// pushed AFTER the run rather than indexed — so it lands on top
@@ -2264,7 +2264,7 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 }
 
 // seatProgramResidual lays out the PROGRAM's residual as the final stack and
-// returns the refusal, if any. Two layouts, tried in order: the region-prefix
+// returns the compile failure, if any. Two layouts, tried in order: the region-prefix
 // seating, which closes a residual shaped [inert…, REGION] through the mark
 // the plan opened; then the ordinary in-order seating, which owns every other
 // shape and whose wording is the honest one for anything the first declines.
@@ -2310,7 +2310,7 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos
 // result (`0 pick`), one that DROPS a computed value, and one that seats an
 // inert value BENEATH a call result.
 //
-// It declines — leaving the emitted code untouched, so the caller's refusal
+// It declines — leaving the emitted code untouched, so the caller's compile failure
 // stands — for a residual that may carry a CALLABLE (the caller's screen,
 // regionValsMayBeCallable) and for three shapes a spill cannot honour.
 //
@@ -2322,7 +2322,7 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos
 // re-push here is a DATA push, so a rebuilt residual holding a closure
 // would answer `[5 fn fn]` where the interpreter applies it and answers
 // `[45]` (`def mk … 5 (mk 3) 0 pick`), and `[fn 5]` for its `1 roll` twin's
-// `[15]`. Declining keeps the pre-existing refusal and the interpreter's
+// `[15]`. Declining keeps the pre-existing compile failure and the interpreter's
 // answer. The screen is deliberately WIDE — a Dynamic residual entry counts
 // as possibly-callable, because the model does not bound it — which is the
 // same trade NUR129 records for the region consumers.
@@ -2395,7 +2395,7 @@ func (lw *lowerer) simHolds(op EmitOperand) bool {
 // Returns false — leaving the emitted code untouched — whenever the plan is
 // not armed (every ordinary program) or the post-lowering stack is not the
 // bare region the plan expected. The caller then takes the ordinary seating,
-// whose refusal ("call result above a literal") is the honest one for a shape
+// whose compile failure ("call result above a literal") is the honest one for a shape
 // this could not close; the unused OpStackMark is emitted into a program that
 // never runs.
 func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
@@ -2440,7 +2440,7 @@ func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
 // fragment floor / under DynEnv promotes to a frame local: a single sim copy
 // is consumed by the first use (bucket's `bcount set bi ((bcount get bi) add
 // 1)`). Gated to a SINGLE-value merge so the store seats exactly one value —
-// a multi-value / variadic merge is refused at the store hook.
+// a multi-value / variadic merge is declined at the store hook.
 func (es *EmitState) planBranchPromotion(ev *EmitEvent, unit *emitUnit, refs map[int]int, buried, fragRef, fragInternal, forceOrder map[int]bool, promoted map[int]int, dead map[int]bool) (map[int]int, map[int]bool) {
 	// A forceOrder branch source is NEVER dead: its binding is a real
 	// runtime consumer (a dyn-bound name's OpBindDynScope re-push, or an
@@ -2575,7 +2575,7 @@ func singleOutputCall(ev *EmitEvent) bool {
 // program to DynEnv). At plan time es.dynEnv was still false, so
 // planValueDefLocals' `(es.dynEnv && valueDef)` trigger did not fire and the
 // source was left on the single-consume sim stack; Finalize then lowers the
-// unit widened and lowerDynBind refuses "unpromoted computed value". This
+// unit widened and lowerDynBind declines "unpromoted computed value". This
 // applies exactly that trigger, deferred, over rec.frag's recorded events
 // (recursing arms/bodies via collectPromotableEvents). It is a no-op unless
 // es.dynEnv is set, so a program that never becomes DynEnv is byte-for-byte
@@ -2583,7 +2583,7 @@ func singleOutputCall(ev *EmitEvent) bool {
 // (they are in rec.promoted) so it is idempotent. A source that is not a
 // single-output call — a fragment RESULT that must stay on its sim, a
 // makeMap/branch/loop value, a multi-output OR variadic-returning producer —
-// is left untouched for lowerDynBind to refuse, a sound interpreter fallback
+// is left untouched for lowerDynBind to decline, a compile failure
 // (never a wrong store).
 func (es *EmitState) promoteLateDynBind(rec *fnUnitRec) {
 	if rec == nil || rec.frag == nil || !(es.dynEnv || rec.deoptEnv) {
@@ -2612,7 +2612,7 @@ func (es *EmitState) promoteLateDynBind(rec *fnUnitRec) {
 		// count, not a runtime guarantee: a `def v (maybe x)` over `maybe = if …
 		// [x] []` leaves 0 values when the empty arm runs. Promoting it emits a
 		// lone OpStoreLocal that underflows the VM stack (compile != interpret).
-		// Leave it for lowerDynBind to refuse — a sound interpreter fallback.
+		// Leave it for lowerDynBind to decline — a compile failure.
 		if fragResult[seq] || es.eventInfo[seq].variadicResult || !singleOutputCall(bySeq[seq]) {
 			continue
 		}
@@ -2666,18 +2666,18 @@ func eventRunThenInert(ops []EmitOperand, idx int) bool {
 }
 
 // reconcileResults arranges a unit's N result operands (bottom→top) as the
-// final stack, ready for a RET. who prefixes the refusal reason ("fn name").
+// final stack, ready for a RET. who prefixes the compile failure reason ("fn name").
 // This is the fn-unit caller of the shared seatResults primitive — it rejects a
 // variadic loop result (a fn body may not return one in Stage 3), the one way it
 // differs from Finalize's program-residual reconciliation.
 //
 // On a decline it takes the same REBUILD fallback the program residual has
-// (seatResidualRebuild): seatResults emits nothing when it refuses, so the
+// (seatResidualRebuild): seatResults emits nothing when it declines, so the
 // rebuild starts from the stack it saw. Not having it here was the whole of
-// several refusals — `do [def b true  do [1 (if b [] [9 9])]]` refuses "fn
+// several compile failures — `do [def b true  do [1 (if b [] [9 9])]]` declines "fn
 // do$body: result above a literal (Stage 3)", and adding one more literal
 // makes the do-body closure decline instead, which loses the outer body's
-// def twin and refuses at the placement gate. The two screens the caller
+// def twin and declines at the placement gate. The two screens the caller
 // supplies are what makes a body unit different from the program residual:
 //
 //   - vals is the residual's VALUES for the CALLABLE screen, which a rebuild
@@ -2826,7 +2826,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		}
 		lw.emit(op, c.dynApply, c.pos)
 	} else if c.dynMixed {
-		// Forward-drift window (REFUSAL-CLOSURE §1): the layout placed
+		// Forward-drift window (COMPILE FAILURE-CLOSURE §1): the layout placed
 		// [leading residual(s), dynamic value, word const, forward literal];
 		// the VM islands the window verbatim — the word token dispatches in
 		// the island with the interpreter's own forward collection over the
@@ -2890,12 +2890,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// leaves 0-or-MORE values where this event carries ONE recorded slot.
 	// Take the LOOP region's representation — mark the slot lw.variadic, so
 	// every rule a value-producing loop's region already obeys applies here
-	// verbatim: layoutOperands refuses it as a call/list operand, seatResults
+	// verbatim: layoutOperands declines it as a call/list operand, seatResults
 	// admits it only in a variadic-absorbing LAST position (the program
-	// residual, a no-contract RET), and the store/bind hooks refuse it. The
+	// residual, a no-contract RET), and the store/bind hooks decline it. The
 	// two dispositions BELOW both need a static count — a promotion stores
 	// exactly nout values, a dead-result drop pops exactly one — so neither
-	// can serve a run whose size is a runtime value; refuse instead, the
+	// can serve a run whose size is a runtime value; decline instead, the
 	// earliest true diagnosis, and the interpreter owns the program.
 	if lw.es != nil && (lw.es.eventInfo[ev.seq].variadicRegion || lw.regionPrefixSeq == ev.seq) {
 		if _, prom := lw.promoted[ev.seq]; prom {
@@ -2933,7 +2933,7 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// #280 review, whether latched (L-DO) or dyn-body-marked), and a
 		// splice-dyn spread's count is payload-sized. lw.variadic covers
 		// only LOOP regions, so the record-side mark must gate here;
-		// refusing at the promotion is the earliest true diagnosis, so the
+		// declining at the promotion is the earliest true diagnosis, so the
 		// frontier pins that used to surface later-stage reasons re-pinned
 		// to this one. A SINGLE-out variadic (`def ok (do b error [drop
 		// false])` — the dyn-env stored-handler shape) keeps its promotion:
@@ -2984,7 +2984,7 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 // Returns false — leaving the emitted code untouched — whenever the plan is
 // not armed for this event (every ordinary call), the region is not the sim's
 // top, or the list result is a DEAD binding the ordinary lowering drops. The
-// caller then takes the ordinary lowering, whose layoutOperands refusal
+// caller then takes the ordinary lowering, whose layoutOperands compile failure
 // ("consumes loop results") is the honest one.
 //
 // A PROMOTED result is handled here rather than declined: the collect leaves
@@ -3053,7 +3053,7 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 		// a single leading fn VALUE on the sim; push the trailing static args and
 		// apply via OpCallDynamic, netting one applied value (RecordLoop's
 		// setLoopBodyApply seated this — see EmitFragment.applyArgs). A residual
-		// that is not the sole leading fn refuses (a more complex shape than the
+		// that is not the sole leading fn declines (a more complex shape than the
 		// leading-fn-carrier case this lowers).
 		if fragDiverges(frag) {
 			lw.vm = parent
@@ -3110,7 +3110,7 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 		// on the sim — the single-operand arm model recorded only the top operand,
 		// so inert consts/locals below it (`[1 2 3]`) were not captured and cannot
 		// be reconstructed; require the full residualN event slots with the top
-		// matching out, else refuse (a too-short sim is an inert-tail arm; a
+		// matching out, else decline (a too-short sim is an inert-tail arm; a
 		// too-long one is the lowering-artifact a single-value expression leaves —
 		// `[({a:(get…)} get a)]`). Only a branch arm may carry it (allowVariadic);
 		// a loop body / condition needs a single value. lowerArms marks the merge
@@ -3165,7 +3165,7 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 			// swap returns the array, discarded by the trailing literal `0`). They already
 			// RAN (lowerEvents emitted them); DROP their results so the arm nets exactly
 			// its single result. Only an allowVariadic branch ARM trims this way — a loop
-			// body / condition with leftovers is a genuine over-count and still refuses.
+			// body / condition with leftovers is a genuine over-count and still declines.
 			if !allowVariadic {
 				return "branch leaves extra values (Stage 2 lowers single-result branches)"
 			}
@@ -3265,8 +3265,8 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// call's args — ops[0] (examined first, sig position 0) ends on TOP
 		// (layoutOperands' contract, the callPoly window layout), event
 		// results consumed from where they lie, consts pushed. A layout the
-		// scheduler cannot seat refuses the trap, and the caller's whole-program
-		// refusal stands — the program is then silently interpreted, which hides
+		// scheduler cannot seat declines the trap, and the caller's whole-program
+		// compile failure stands — the program is then silently interpreted, which hides
 		// the failure rather than fixing it.
 		if reason := lw.layoutOperands(ev.trap.rematchOps, ev.trap.pos, layoutMsgs{
 			loopResults:  "rematch operands include a variadic loop result",
@@ -3390,8 +3390,8 @@ func (lw *lowerer) lowerUserCallResult(ev *EmitEvent, uc *emitUserCall) string {
 		// A VARIADIC-RETURNING callee leaves a runtime-variable count: push ONE
 		// variadic sim slot (like a loop result) instead of uc.nout fixed slots.
 		// Only a variadic-absorbing position (the program residual, a no-contract
-		// RET, a parent branch merge) may consume it — layoutOperands refuses it as
-		// a fixed-arity operand, the soundness gate that keeps `m 3 add 1` a refusal.
+		// RET, a parent branch merge) may consume it — layoutOperands declines it as
+		// a fixed-arity operand, the soundness gate that keeps `m 3 add 1` a compile failure.
 		lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
 		lw.variadic[ev.seq] = true
 		lw.note()
@@ -3535,7 +3535,7 @@ func (lw *lowerer) lowerFallback(ev *EmitEvent) string {
 // operands are pushed-then-consumed, net 0) and pushes its nout results. A
 // fragment containing a branch / loop / fallback / trap is not straight-line —
 // return false (conservatively NOT a tail position; bailing only forgoes the
-// O(1)-frame optimisation, never correctness). Used by markTailCalls to refuse
+// O(1)-frame optimisation, never correctness). Used by markTailCalls to decline
 // tail-marking a call that has values left BELOW it (a multi-value arm).
 func fragSingleResidual(frag *EmitFragment) bool {
 	depth := 0

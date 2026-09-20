@@ -2,7 +2,7 @@
 # (design/legacy/checker-compiler-completeness-review.0.ignore §2.1, found 2026-08-02 as
 # a live miscompile: the whole-frame replay's flat window lost the source's
 # paren structure, so `f (g x)` compiled the RET count error where the
-# interpreter applies both fns; noteDynFrameReplay then refused the >1-
+# interpreter applies both fns; noteDynFrameReplay then declined the >1-
 # applicable window soundly). GRADUATED 2026-08-03 in three coordinated
 # steps — see checker-compiler-completeness-review.0.md §9.6b/§9.8:
 #   1. the Stage-G single-arg increment: a leading one-arg fn-carrier apply
@@ -16,10 +16,10 @@
 #   3. the replayIsBodyTail windowReadsID widening (a dyn-bind of a value
 #      the window READS is not a reorderable event) armed the def-split
 #      body tail, so the stage spelling compiles natively too.
-# Remaining edge (no ledger entry needed — the rows compile or refuse in
+# Remaining edge (no ledger entry needed — the rows compile or decline in
 # the §9.1 "unapplied fn-value" class pinned in
 # lang/go/bytecode_chained_apply_test.go): a CHAINED MULTI-ARG apply
-# `f (g x y)` keeps refusing — beyond one argument the leading and trailing
+# `f (g x y)` keeps declining — beyond one argument the leading and trailing
 # spellings' collection orders diverge, so the inner group never collapses.
 # The row below is the unledgered CONTROL: it must keep compiling natively.
 def sel1 fn [[f:Function g:Function x:Integer] [Integer] [f x]] sel1 ([a:Integer] => [a mul 2]) ([b:Integer] => [b add 3]) 4	8	control: two Function params, ONE applicable in the window — keeps compiling natively

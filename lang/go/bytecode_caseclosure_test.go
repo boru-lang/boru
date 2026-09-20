@@ -31,7 +31,7 @@ func TestCaseInClosure(t *testing.T) {
 		a, _ := New()
 		prog, reason, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (case-in-closure), but refused: %q", c.src, reason)
+			t.Errorf("%q: must compile (case-in-closure), but declined: %q", c.src, reason)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {

@@ -1,18 +1,18 @@
-// The refusal-site census — how much refusal machinery is left.
+// The compile failure-site census — how much compile failure machinery is left.
 //
-// design/FULL-COMPILATION.0.md section 9 asks for a census of the refusal
-// surface, ratcheting down to an end state where refusal is not reachable
+// design/FULL-COMPILATION.0.md section 9 asks for a census of the compile failure
+// surface, ratcheting down to an end state where compile failure is not reachable
 // at all. This counts the RECORDER layer: every MarkUncompilable call site
 // in production code. That layer is the one Stage 9 names explicitly, and
 // it is the one a source scan can count exactly — a call site is a
-// syntactic fact, where a refusal REASON often is not (a majority of the
+// syntactic fact, where a compile failure REASON often is not (a majority of the
 // reason strings are built at run time from a word name, so the distinct
 // reason count is a property of execution, not of the source).
 //
 // The other two layers are measured elsewhere and deliberately not
 // duplicated here: the lowerer/Finalize declines and the CompileCheck
-// latches surface as refusal REASONS in the corpus census
-// (compiled_census_test.go's refusalBuckets, over rows actually refused)
+// latches surface as compile failure REASONS in the corpus census
+// (compiled_census_test.go's refusalBuckets, over rows actually declined)
 // and as pinned rows in the frontier ledger. This census is the static
 // half — it counts machinery that exists, not machinery that fired, so it
 // keeps falling even while the corpus census sits at zero.
@@ -28,10 +28,10 @@ import (
 
 // refusalSiteCeiling is the number of MarkUncompilable call sites in
 // production Go. Monotone DOWN only; 0 at Stage 9, when the recorder's
-// terminal arm emits a generic lowering instead of latching a refusal.
-// Never raise it: a new refusal site is new debt, and the design's whole
+// terminal arm emits a generic lowering instead of latching a compile failure.
+// Never raise it: a new compile failure site is new debt, and the design's whole
 // claim is that the count only falls.
-const refusalSiteCeiling = 92 // 96 (2026-08-25, Stage-1 baseline) -> 93 (2026-09-04, Stage 4b: the residual-order hazard shares the residual-provenance arm at its four sites) -> 92 (2026-09-10, NUR067: await's winner-takes-all residual is RECORDED as a runtime-variadic region instead of refusing the program) -> 93 the SAME DAY, and the round trip is the honest number: recording the region exposed that a region cannot carry a CALLABLE (only the interpreter re-steps one), so the wholesale refusal came back as a narrow one at the same arity. A representation that removes a refusal and then owes a smaller one nets zero here, and the census is right to say so -> 92 (2026-09-14, the disposition census: the live count had been 92 since the NUR067 round trip's narrow refusal landed on an existing line, and a ceiling one above the live value lets a site-and-row pair land unnoticed; refusal_disposition_census_test.go pins the same 92 in both directions) -> 0 (Stage 9)
+const refusalSiteCeiling = 92 // 96 (2026-08-25, Stage-1 baseline) -> 93 (2026-09-04, Stage 4b: the residual-order hazard shares the residual-provenance arm at its four sites) -> 92 (2026-09-10, NUR067: await's winner-takes-all residual is RECORDED as a runtime-variadic region instead of declining the program) -> 93 the SAME DAY, and the round trip is the honest number: recording the region exposed that a region cannot carry a CALLABLE (only the interpreter re-steps one), so the wholesale compile failure came back as a narrow one at the same arity. A representation that removes a compile failure and then owes a smaller one nets zero here, and the census is right to say so -> 92 (2026-09-14, the disposition census: the live count had been 92 since the NUR067 round trip's narrow compile failure landed on an existing line, and a ceiling one above the live value lets a site-and-row pair land unnoticed; refusal_disposition_census_test.go pins the same 92 in both directions) -> 0 (Stage 9)
 
 // refusalSites counts MarkUncompilable call sites per module, skipping test
 // files (their sites are fixtures and helpers, not compiler machinery) and
@@ -51,7 +51,7 @@ func refusalSites(t *testing.T) (map[string]int, int) {
 			// WORKTREES an isolated agent runs in — each a full copy of this
 			// repo. Walking one counts every MarkUncompilable site again, per
 			// worktree: measured, three of them turned a true census of 93
-			// into 372 and failed this gate on work that added no refusal at
+			// into 372 and failed this gate on work that added no compile failure at
 			// all. The directory is gitignored; the walk is over the
 			// filesystem, so it has to skip it explicitly.
 			case ".git", ".claude", "node_modules", "vendor", "bin":
@@ -100,7 +100,7 @@ func moduleOf(root, path string) string {
 	return parts[0]
 }
 
-func TestRefusalSiteCensus(t *testing.T) {
+func TestCompileFailureSiteCensus(t *testing.T) {
 	t.Parallel()
 	byModule, total := refusalSites(t)
 
@@ -118,10 +118,10 @@ func TestRefusalSiteCensus(t *testing.T) {
 	for i, m := range mods {
 		parts[i] = m + "×" + itoa(byModule[m])
 	}
-	t.Logf("refusal-site census: %d MarkUncompilable sites (%s)", total, strings.Join(parts, ", "))
+	t.Logf("compile failure-site census: %d MarkUncompilable sites (%s)", total, strings.Join(parts, ", "))
 
 	if total > refusalSiteCeiling {
-		t.Errorf("refusal-site census %d exceeds ceiling %d — a new refusal was added; the count only falls: %s",
+		t.Errorf("compile failure-site census %d exceeds ceiling %d — a new compile failure was added; the count only falls: %s",
 			total, refusalSiteCeiling, strings.Join(parts, ", "))
 	}
 }

@@ -379,12 +379,12 @@ func TestTypedFlexNodeRoundTrip(t *testing.T) {
 	}
 }
 
-// --- Compile pass: a {:T} flex def refuses (falls back to the interpreter) ---
+// --- Compile pass: a {:T} flex def declines (does not compile) ---
 
 func TestTypedFlexDefUncompilable(t *testing.T) {
 	// A {:T} constraint over a NON-concrete (flex) body validates + tags at
 	// runtime only → the compile pass marks the program uncompilable, so it
-	// falls back to the interpreter (which enforces).
+	// does not compile (which enforces).
 	r, err := DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)

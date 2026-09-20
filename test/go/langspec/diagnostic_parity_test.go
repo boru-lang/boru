@@ -9,7 +9,7 @@
 // intends to do with the verdict.
 //
 // It is not currently true. NUR103 records a program that `boru check`
-// reports clean and the compile pass refuses with `undefined_word` — a
+// reports clean and the compile pass declines with `undefined_word` — a
 // divergence a user cannot diagnose, because the tool they would reach for
 // says their program is fine. Nothing measured how widespread that is,
 // because both passes were only ever compared against the RUNTIME, never
@@ -59,7 +59,7 @@ import (
 // the program compiles. That is the documented no_signature suppression,
 // the class already carrying 41 rows, and it is invisible to the user:
 // both lanes surface the identical error through the CLI pre-flight, and
-// both refuse the call. A ratchet that only ever falls would forbid adding
+// both decline the call. A ratchet that only ever falls would forbid adding
 // ERROR rows to the corpus, which is the wrong incentive; what it must
 // forbid is a divergence nobody accounted for. This one is accounted for.
 //
@@ -89,7 +89,7 @@ import (
 // nothing silently. The whole point of the row is that it now RAISES where it
 // used to answer 'str'. Its sibling, the conforming `okr` row, is clean on
 // both passes.
-const diagnosticParityCeiling = 351 // the REGRESSION ceiling (lanes_test.go; end state 0): 351 on 2026-09-19, S1b-2 (a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read: the collection seat and stepWordVal consult the fn-carrier side table, so `each f/v xs` over a factory's result dispatches instead of refusing "unmatched dispatch recovered") — the seven rows it compiles are callbacks.tsv:L82/L154, each-variants.tsv:L203, fold-map-filter.tsv:L73/L227/L229 and module-composition.tsv:L95 — each stops diverging because both passes now type it the same way. Before: 358 on 2026-09-17 — the corpus expansion added 38 diverging rows in the shapes this ledger already carries in bulk (unused_def and fn_body_error on the armed pass; unreachable_branch and no_signature on the plain one), named by BORU_LOG_PARITY_ROWS=1. History: 320 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 321 (+1 twenty-seventh-increment row, the graduated apply-over-a-gradual-lead negative twin, diverging: the plain check flags its runtime no-match at the call over the concrete rule map, the compiled unit's carrier analysis does not repeat it — the "lost under compilation" class) -> 317 (the unreachable_branch attribution fix: a constant-condition dead branch is a claim about the CODE, so it is no longer emitted from a body analysis SPECIALISED to one call shape — CheckState.CallShapeDepth. Four corpus rows stop diverging because they stop being flagged at all, each proven a false positive by execution: bytecode-migrated.tsv:84, generics-fn.tsv:48, and recursion.tsv:78/:79, whose "dead" arms are the base cases `MR.fac 10 1` and `MR.aev 9` actually return through. The ratchet only falls, and this is the fall) -> 0 (Stage 8) -> 320 (2026-09-10, the forty-sixth and fiftieth increments' corpus rows: THREE more rows diverge and the checker's behaviour is unchanged — each falls into a shape this ledger already carries in bulk. apply.tsv:L64 `p apply $.name` and :L65 `[10 20 30] apply $.1` (the forty-sixth increment's graduated negatives) report `plain=no_signature/apply armed=` — the documented no_signature suppression on the compiling pass, which L37/L38 of the same file already carry; control.tsv:L144 `while [true] [ (7 add 2) if true [break] [5] end ] end 'x'` (the fiftieth increment's break-trims-the-round witness) reports `plain=unreachable_branch/if armed=` for its CONSTANT condition, the single largest shape here at 86 rows and one every constant-condition row in control.tsv §1/§6 already contributes. Named rather than counted because a ratchet that moves without naming what moved it stops being evidence)
+const diagnosticParityCeiling = 351 // the REGRESSION ceiling (lanes_test.go; end state 0): 351 on 2026-09-19, S1b-2 (a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read: the collection seat and stepWordVal consult the fn-carrier side table, so `each f/v xs` over a factory's result dispatches instead of declining "unmatched dispatch recovered") — the seven rows it compiles are callbacks.tsv:L82/L154, each-variants.tsv:L203, fold-map-filter.tsv:L73/L227/L229 and module-composition.tsv:L95 — each stops diverging because both passes now type it the same way. Before: 358 on 2026-09-17 — the corpus expansion added 38 diverging rows in the shapes this ledger already carries in bulk (unused_def and fn_body_error on the armed pass; unreachable_branch and no_signature on the plain one), named by BORU_LOG_PARITY_ROWS=1. History: 320 // 318 (2026-08-26, Stage-1 baseline) -> 317 (NUR103 record-field fix) -> 318 (+3 NUR104 spec rows, one diverging) -> 319 (+2 Stage-4 forward-barrier rows, one diverging) -> 320 (+2 fn-value §12 rows, one diverging) -> 321 (+1 twenty-seventh-increment row, the graduated apply-over-a-gradual-lead negative twin, diverging: the plain check flags its runtime no-match at the call over the concrete rule map, the compiled unit's carrier analysis does not repeat it — the "lost under compilation" class) -> 317 (the unreachable_branch attribution fix: a constant-condition dead branch is a claim about the CODE, so it is no longer emitted from a body analysis SPECIALISED to one call shape — CheckState.CallShapeDepth. Four corpus rows stop diverging because they stop being flagged at all, each proven a false positive by execution: bytecode-migrated.tsv:84, generics-fn.tsv:48, and recursion.tsv:78/:79, whose "dead" arms are the base cases `MR.fac 10 1` and `MR.aev 9` actually return through. The ratchet only falls, and this is the fall) -> 0 (Stage 8) -> 320 (2026-09-10, the forty-sixth and fiftieth increments' corpus rows: THREE more rows diverge and the checker's behaviour is unchanged — each falls into a shape this ledger already carries in bulk. apply.tsv:L64 `p apply $.name` and :L65 `[10 20 30] apply $.1` (the forty-sixth increment's graduated negatives) report `plain=no_signature/apply armed=` — the documented no_signature suppression on the compiling pass, which L37/L38 of the same file already carry; control.tsv:L144 `while [true] [ (7 add 2) if true [break] [5] end ] end 'x'` (the fiftieth increment's break-trims-the-round witness) reports `plain=unreachable_branch/if armed=` for its CONSTANT condition, the single largest shape here at 86 rows and one every constant-condition row in control.tsv §1/§6 already contributes. Named rather than counted because a ratchet that moves without naming what moved it stops being evidence)
 
 // armedOnlyCeiling is the sharpest of the three classes: rows the plain
 // check calls clean and the compile-armed pass finds fault with. It is the
@@ -97,8 +97,8 @@ const diagnosticParityCeiling = 351 // the REGRESSION ceiling (lanes_test.go; en
 // reports the program fine — NUR103's shape. Monotone DOWN only.
 //
 // The other two classes are less severe and tracked in the log rather than
-// gated: 41 rows where the armed pass drops a diagnostic but REFUSES, so
-// the finding still reaches the user through the refusal reason (the
+// gated: 41 rows where the armed pass drops a diagnostic but DECLINES, so
+// the finding still reaches the user through the compile failure reason (the
 // documented no_signature suppression), and 272 where a check finding
 // vanishes and the program compiles anyway — the checker being stricter
 // than the compiler, which is a false-positive surface rather than a
@@ -110,7 +110,7 @@ const diagnosticParityCeiling = 351 // the REGRESSION ceiling (lanes_test.go; en
 // and the step loop no longer dispatches a word-typed CARRIER as a nameless
 // token. NUR103 has the full trace; its `h2` half is a different defect and
 // is not among these four.
-const armedOnlyCeiling = 11 // the REGRESSION ceiling (lanes_test.go; end state 0): 11 on 2026-09-19, S1b-2 (a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read: the collection seat and stepWordVal consult the fn-carrier side table, so `each f/v xs` over a factory's result dispatches instead of refusing "unmatched dispatch recovered") — the seven rows it compiles are callbacks.tsv:L82/L154, each-variants.tsv:L203, fold-map-filter.tsv:L73/L227/L229 and module-composition.tsv:L95. Five of the seven were armed-only rows — `boru check` called them clean while compiling refused — and they are exactly the five the diagnostic-surface ledger named under its now-graduated `unused_def` class (diag_surface_test.go): the dispatch refused before the read could credit its def. Before: 16 on 2026-09-17 — the corpus expansion added 12 armed-only rows (fn-locals-scope ×7, fold-map-filter ×2, callbacks, each-variants, module-composition, generics-fn, edge-quote-1, case ×2 — the test names each); checker debt the new idioms exposed. History: 4 // 5 (2026-08-26) -> 4 (NUR103 record-field fix) -> 0 (Stage 8)
+const armedOnlyCeiling = 11 // the REGRESSION ceiling (lanes_test.go; end state 0): 11 on 2026-09-19, S1b-2 (a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read: the collection seat and stepWordVal consult the fn-carrier side table, so `each f/v xs` over a factory's result dispatches instead of declining "unmatched dispatch recovered") — the seven rows it compiles are callbacks.tsv:L82/L154, each-variants.tsv:L203, fold-map-filter.tsv:L73/L227/L229 and module-composition.tsv:L95. Five of the seven were armed-only rows — `boru check` called them clean while compiling declined — and they are exactly the five the diagnostic-surface ledger named under its now-graduated `unused_def` class (diag_surface_test.go): the dispatch declined before the read could credit its def. Before: 16 on 2026-09-17 — the corpus expansion added 12 armed-only rows (fn-locals-scope ×7, fold-map-filter ×2, callbacks, each-variants, module-composition, generics-fn, edge-quote-1, case ×2 — the test names each); checker debt the new idioms exposed. History: 4 // 5 (2026-08-26) -> 4 (NUR103 record-field fix) -> 0 (Stage 8)
 
 // diagKey renders a diagnostic's identity for set comparison: the code and
 // the word it is about. Detail text is deliberately excluded — it embeds
@@ -162,7 +162,7 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
 	var rows, diverged, infoDiverged int
-	var armedOnly, carriedByRefusal, lostUnderCompile int
+	var armedOnly, carriedByCompileFailure, lostUnderCompile int
 	var armedOnlyRows []string
 	byShape := map[string]int{}
 	var examples []string
@@ -186,7 +186,7 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 		if cerr != nil {
 			return
 		}
-		refused := prog == nil
+		declined := prog == nil
 
 		infoDiffers := strings.Join(infoSet(plain.Diagnostics), ",") != strings.Join(infoSet(armed.Diagnostics), ",")
 		p, c := diagSet(plain.Diagnostics), diagSet(armed.Diagnostics)
@@ -203,20 +203,20 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 		diverged++
 		// Classify by what the USER sees, which is the property that
 		// matters. A finding the armed pass drops is not lost if that
-		// pass REFUSED — the refusal reason carries it, which is
+		// pass DECLINED — the compile failure reason carries it, which is
 		// exactly why no_signature is suppressed while compiling
 		// (check/go/check_recovery.go: emitting it there would mask the
 		// specific reason as the generic sentinel). What is serious is a
 		// finding only ONE lane surfaces at all.
 		switch {
 		case len(c) > len(p):
-			armedOnly++ // the NUR103 class: clean to `boru check`, refused by the compiler
+			armedOnly++ // the NUR103 class: clean to `boru check`, declined by the compiler
 			// Few enough to name. Listing them is the difference between
 			// a ratchet and a worklist.
 			armedOnlyRows = append(armedOnlyRows,
 				r.Key()+"  "+strings.Join(c, "|")+"  "+firstNRunes(input, 70))
-		case refused:
-			carriedByRefusal++ // dropped as a diagnostic, still reported as a refusal
+		case declined:
+			carriedByCompileFailure++ // dropped as a diagnostic, still reported as a compile failure
 		default:
 			lostUnderCompile++ // `boru check` errors that vanish AND the program compiles
 		}
@@ -241,8 +241,8 @@ func TestDiagnosticParityAcrossPasses(t *testing.T) {
 	sort.Strings(armedOnlyRows) // the worklist reads the same whichever worker saw a row first
 
 	t.Logf("diagnostic parity: %d rows, %d diverged on FINDINGS, %d on info-only advisories", rows, diverged, infoDiverged)
-	t.Logf("  by user impact: %d armed-only (clean to check, refused compiling — the NUR103 class), %d carried by the refusal reason instead, %d lost under compilation (check errors that vanish while the program compiles)",
-		armedOnly, carriedByRefusal, lostUnderCompile)
+	t.Logf("  by user impact: %d armed-only (clean to check, declined compiling — the NUR103 class), %d carried by the compile failure reason instead, %d lost under compilation (check errors that vanish while the program compiles)",
+		armedOnly, carriedByCompileFailure, lostUnderCompile)
 	for _, ex := range examples {
 		t.Logf("  e.g. %s", ex)
 	}

@@ -15,7 +15,7 @@ import (
 // re-step, which parks the closure over the value it cannot bind exactly
 // as the interpreter's applyHandler does. No compiling program reaches this
 // arm today (the check engine's own re-step matches the closure's arity
-// before it records the apply, and a closure of another arity refuses at
+// before it records the apply, and a closure of another arity declines at
 // the record site), so the arm is pinned here at the seam.
 func TestCallDynApplyClosureArity(t *testing.T) {
 	r := seam7Reg(t)

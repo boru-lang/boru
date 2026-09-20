@@ -114,7 +114,7 @@ func TestStepWordValCarrierSubstitutes(t *testing.T) {
 // lookup (Engine.DefTop, the plan walk's and the candidate scan's word
 // resolution) reads the side table under an analysis pass, so a forward
 // slot claims a computed fn's carrier where it used to see a bare word
-// (`each f/v [1 2 3]` over `def f (mk 10)` refused "unmatched dispatch
+// (`each f/v [1 2 3]` over `def f (mk 10)` declined "unmatched dispatch
 // recovered at each"). A Defs binding wins; outside analysis the table is
 // never consulted.
 func TestDefTopResolvesCarrierUnderAnalysis(t *testing.T) {
@@ -248,15 +248,15 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	}
 }
 
-// TestInstallDefRefusesCapturingRedefinitionInFnBody pins installDef's
+// TestInstallDefDoesNotLowerCapturingRedefinitionInFnBody pins installDef's
 // fn-body arm (the thirty-first increment): a CAPTURING fn value — a
 // factory's returned closure — redefining an outer overloading def from
 // inside a fn body outlives the call on the interpreter (the drop-then-push
 // leaves the frame's def depth unchanged, so DefCleanup pops nothing) where
-// the compiled program keeps the outer bake, so the install refuses at the
+// the compiled program keeps the outer bake, so the install declines at the
 // conditional-redefinition site. A capture-free literal in a fn body and a
-// capturing value at the top level are not refused.
-func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
+// capturing value at the top level are not declined.
+func TestInstallDefDoesNotLowerCapturingRedefinitionInFnBody(t *testing.T) {
 	r := compileCheckRegistry(t)
 	es := newS5BEmit()
 	r.Check.Emit = es
@@ -267,34 +267,34 @@ func TestInstallDefRefusesCapturingRedefinitionInFnBody(t *testing.T) {
 	r.Check.FnBodyDepth = 1
 	installDef(r, "p", capturing, false)
 	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body by a capturing fn value") {
-		t.Errorf("a capturing redefinition inside a fn body refuses: %v", es.uncompilable)
+		t.Errorf("a capturing redefinition inside a fn body declines: %v", es.uncompilable)
 	}
 	es.uncompilable = nil
 	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
 	r.Check.FnBodyDepth = 0
 	installDef(r, "p", capturing, false)
 	if len(es.uncompilable) != 0 {
-		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not refused: %v", es.uncompilable)
+		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not declined: %v", es.uncompilable)
 	}
 }
 
-// TestInstallDefRefusesSpecFamilyRedefinitionInFnBody pins installDef's
+// TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody pins installDef's
 // fn-body arm for NUR149 (the seventy-third increment): a CAPTURE-FREE
 // redefinition inside a fn body of a SPECULATIVE-FAMILY name (a fn a branch
 // arm the model could not decide defined — SpecFnNames, the seventieth
 // increment) is the family-L leak. The drop-then-push leaves the frame's def
 // depth unchanged, so the interpreter keeps the shadow past the call while the
 // compiled def lowers to nothing and the family's live-lead dispatch resolves
-// the wrong binding; no compiled twin reproduces it, so it refuses. The same
+// the wrong binding; no compiled twin reproduces it, so it declines. The same
 // capture-free redefinition of a NON-family name takes the compiled replace
-// twin and is not refused.
-func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
+// twin and is not declined.
+func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
 	lit := func() Value { return NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}) }
 
 	// A MODULE-scope speculative family (p installed, then the fn baseline
 	// snapshotted so p sits AT the baseline) redefined capture-free inside a
-	// fn body is the family-L leak — refused.
+	// fn body is the family-L leak — declined.
 	r := compileCheckRegistry(t)
 	es := newS5BEmit()
 	r.Check.Emit = es
@@ -304,11 +304,11 @@ func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	r.Check.FnBodyDepth = 1
 	installDef(r, "p", lit(), false)
 	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a module-scope speculative-family overload") {
-		t.Errorf("a module-scope spec-family redefinition inside a fn body refuses: %v", es.uncompilable)
+		t.Errorf("a module-scope spec-family redefinition inside a fn body declines: %v", es.uncompilable)
 	}
 
 	// An IN-FUNCTION family (p created INSIDE the fn, above the baseline) is
-	// torn down by RET — NOT the leak, so NOT refused (the baseline gate,
+	// torn down by RET — NOT the leak, so NOT declined (the baseline gate,
 	// Codex P2 on #469).
 	r2 := compileCheckRegistry(t)
 	es2 := newS5BEmit()
@@ -319,10 +319,10 @@ func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	installDef(r2, "p", lit(), false) // created in-fn
 	installDef(r2, "p", lit(), false) // redefined in-fn
 	if len(es2.uncompilable) != 0 {
-		t.Errorf("an in-function spec family is not refused (the baseline gate): %v", es2.uncompilable)
+		t.Errorf("an in-function spec family is not declined (the baseline gate): %v", es2.uncompilable)
 	}
 
-	// Not a speculative family: the compiled replace twin agrees, so no refusal.
+	// Not a speculative family: the compiled replace twin agrees, so no compile failure.
 	r3 := compileCheckRegistry(t)
 	es3 := newS5BEmit()
 	r3.Check.Emit = es3
@@ -331,7 +331,7 @@ func TestInstallDefRefusesSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	r3.Check.FnBodyDepth = 1
 	installDef(r3, "p", lit(), false)
 	if len(es3.uncompilable) != 0 {
-		t.Errorf("a non-family capture-free redefinition in a fn body is not refused: %v", es3.uncompilable)
+		t.Errorf("a non-family capture-free redefinition in a fn body is not declined: %v", es3.uncompilable)
 	}
 
 	// specFamilyAtFnBaseline: false with no enclosing baseline, true when the

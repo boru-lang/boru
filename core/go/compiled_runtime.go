@@ -8,9 +8,8 @@ package core
 // the interpreter path; the VM piece installs the real runtime at init.
 type CompiledRuntime interface {
 	// InvokeCompiled attempts the stamped-unit fast path for a matched
-	// signature (ref freshness, JIT re-stamp, the effect fence, and the
-	// internal-error fallback classification are the runtime's own
-	// business). ran=false → the caller owns the interpreter path.
+	// signature (ref freshness, JIT re-stamp and the internal-error
+	// classification are the runtime's own business). ran=false → the caller owns the interpreter path.
 	//
 	// On ran=false the error is NOT the callee's answer — it is a report
 	// about the attempt, and it distinguishes the two declines the caller

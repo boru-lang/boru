@@ -28,7 +28,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteLiveRead(nil, "x", SrcPos{})
 	e.FnBodyGuard()()
 
-	// --- refusal + site accounting.
+	// --- compile failure + site accounting.
 	e.MarkUncompilable("reason")
 	e.SetCatchVariadic(true)
 	if e.Sites() != nil {

@@ -115,7 +115,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// raises CondBodyDepth: unlike `do` (keep=true, which leaks its defs
 	// unconditionally), its bindings are conditional, so an in-place fn
 	// redefinition that clobbers an enclosing overload there is unsound to
-	// compile (installDef consults CondBodyDepth to refuse it). Condition/
+	// compile (installDef consults CondBodyDepth to decline it). Condition/
 	// scrutinee fragments (condFrag — RunCarrierCondBody) are exempt: they
 	// run unconditionally exactly once before the branch decision, so a
 	// redefinition there is not path-dependent.

@@ -25,18 +25,18 @@
 # here is a guess; candidates the interpreter would not run cleanly were
 # discarded rather than repaired into something that passes.
 #
-# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN
-# DEFECTS. Each such row's description begins `REFUSES:` and ends with
+# ROWS THAT FAIL TO COMPILE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN
+# DEFECTS. Each such row's description begins `DOES NOT COMPILE:` and ends with
 # the exact reason `BORU_FORCE_COMPILE=1 boru do …` printed. They are
 # not mistakes and must not be deleted to keep a ceiling green: a
-# compile refusal is WHOLE-PROGRAM and latches on the FIRST unsupported
+# compile compile failure is WHOLE-PROGRAM and latches on the FIRST unsupported
 # construct, which is precisely why the compiler scores ~96% on a corpus
 # of 40-character one-liners and ~65% on real files whose median size is
-# 10,472 characters. The refusal texts below are the ledger of what is
+# 10,472 characters. The compile failure texts below are the ledger of what is
 # left to build.
 #
-# THE LEDGER. 100 rows: 80 compile, 20 refuse, 0 diverge. Six of the
-# twenty refusals are ERROR:-column rows (§5, §12) where the check pass
+# THE LEDGER. 100 rows: 80 compile, 20 decline, 0 diverge. Six of the
+# twenty compile failures are ERROR:-column rows (§5, §12) where the check pass
 # is simply agreeing with the interpreter that the program is bad —
 # those are NOT gaps. The other FOURTEEN are rows with a real value
 # that the compiler will not build, grouped by the exact reason it
@@ -45,7 +45,7 @@
 #   6 ×  fn f: body result of unknown provenance
 #          — §6: a `def` inside an `if` branch whose name is read after
 #            the branch closes. One-sided or two-sided, pre-bound or not,
-#            nested or flat: every spelling refuses. This is the single
+#            nested or flat: every spelling declines. This is the single
 #            biggest gap this family found, and it is the commonest
 #            statement in real boru.
 #   2 ×  operand of unknown provenance or not statically materialisable at <word>
@@ -69,7 +69,7 @@
 #          — §6: a body-local fn that RETURNS a closure out of a branch.
 #
 # NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
-# a refusalCeiling. The refusing rows below are NEW EVIDENCE, not
+# a failureCeiling. The declining rows below are NEW EVIDENCE, not
 # regressions — the ceiling must be re-based against them.
 #
 # TWO COMPILED/INTERPRETED DIVERGENCES were found while writing this
@@ -156,7 +156,7 @@ import module [def dbl fn [[n:Integer] [Integer] [n mul 2]] export "MM" {dbl: db
 import module [def dbl fn [[n:Integer] [Integer] [n mul 2]] export "MM" {dbl: dbl/v}] end def f fn [[x:Integer] [Integer] [MM.dbl x]]  f 4	8	…the namespaced call is unaffected by any such local
 import "boru:string-util" end def f fn [[s:String] [String] [def up fn [[v:String] [String] [StringUtil.upper v]] up s]]  f 'ab'	'AB'	a body-local fn WRAPPING a namespaced module word
 import module [def k 5 end export "MM" {k: k}] end def f fn [[] [Integer] [def MM 9 end MM]]  f	ERROR:name clash	a body-local may NOT shadow an imported module's NAMESPACE
-import "boru:math-util" end def f fn [[x:Integer] [Integer] [def MathUtil 3 end x mul MathUtil]]  f 5	ERROR:name clash	…the same refusal for a boru: module namespace
+import "boru:math-util" end def f fn [[x:Integer] [Integer] [def MathUtil 3 end x mul MathUtil]]  f 5	ERROR:name clash	…the same compile failure for a boru: module namespace
 #
 # §6  CONDITIONAL defs inside a branch — the single biggest compiled gap
 def f fn [[n:Integer] [Integer] [if (n gt 0) [def r 1 end r add 10] [def r 2 end r add 20]]]  f 3	11	a branch-local def CONSUMED inside the same branch — provenance stays inside
@@ -164,15 +164,15 @@ def f fn [[b:Boolean] [Integer] [if b [def r 1 end r mul 10] [def r 2 end r mul 
 def f fn [[] [Integer] [def a 1 end if (a gt 0) [def b 2 end def c (b mul 3) end c] [0]]]  f	6	two defs inside one branch, the second computed from the first
 def f fn [[] [Integer] [def a 1 end def r (if true [def b 2 end b] [0]) end r add a]]  f	3	a branch-local def escaping as the `if` EXPRESSION's value
 def f fn [[n:Integer] [Integer] [if (n gt 0) [def s 'pos' end s size] [def s 'neg' end s size]]]  f 1	3	a String branch-local measured inside the branch
-def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	REFUSES: a def in EACH branch, read AFTER the if — force-compile: fn f: body result of unknown provenance
-def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	REFUSES: …even with the name pre-bound before the branch — same reason
-def f fn [[] [Integer] [def x 1 end if true [def x 9] [] end x]]  f	9	REFUSES: a ONE-sided conditional redefinition — same reason
-def f fn [[] [Integer] [def a 1 end if true [def a 2 end] [] end a]]  f	2	REFUSES: …and with an explicit `end` closing the branch body
-def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f true	1	REFUSES: NESTED conditional defs read after the outer if — same reason
-def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 3	11	REFUSES: the conditionally-def'd local feeding an operator — force-compile: operand of unknown provenance or not statically materialisable at add
-def f fn [[] [Integer] [def a 1 end if true [def a 2] [] end a mul 10]]  f	20	REFUSES: …the one-sided spelling of the same operand refusal, at mul
-def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8	2	REFUSES: a local helper plus a conditional REBIND of a local — the combined real-code shape
-def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	REFUSES: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
+def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: a def in EACH branch, read AFTER the if — force-compile: fn f: body result of unknown provenance
+def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: …even with the name pre-bound before the branch — same reason
+def f fn [[] [Integer] [def x 1 end if true [def x 9] [] end x]]  f	9	DOES NOT COMPILE: a ONE-sided conditional redefinition — same reason
+def f fn [[] [Integer] [def a 1 end if true [def a 2 end] [] end a]]  f	2	DOES NOT COMPILE: …and with an explicit `end` closing the branch body
+def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f true	1	DOES NOT COMPILE: NESTED conditional defs read after the outer if — same reason
+def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 3	11	DOES NOT COMPILE: the conditionally-def'd local feeding an operator — force-compile: operand of unknown provenance or not statically materialisable at add
+def f fn [[] [Integer] [def a 1 end if true [def a 2] [] end a mul 10]]  f	20	DOES NOT COMPILE: …the one-sided spelling of the same operand compile failure, at mul
+def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8	2	DOES NOT COMPILE: a local helper plus a conditional REBIND of a local — the combined real-code shape
+def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	DOES NOT COMPILE: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
 #
 # §7  DYNAMIC-SCOPE reads — a callee sees the CALLER frame's bindings
 def f fn [[] [Integer] [def a 5 end g add 1]] def g fn [[] [Integer] [a mul 2]]  f	11	a module-level callee reads the CALLER's body-local (dynamic scope, no capture)
@@ -205,7 +205,7 @@ def f fn [[] [Integer] [def x 1 end while [x lt 5] [def x (x mul 2)] end x]]  f	
 def f fn [[] [Integer] [def x 1 end def n 0 end while [x lt 5] [def x (x mul 2) end def n (n add 1)] end n]]  f	3	two locals advanced together in one while body
 def f fn [[] [Integer] [def i 0 end def t 0 end while [i lt 4] [def t (t add i) end def i (i add 1)] end t]]  f	6	the hand-rolled index loop — condition, accumulator and counter all locals
 def f fn [[] [Integer] [def tot 0 end for [1 4] [def tot (tot add i) end] end def avg (tot div 3) end avg]]  f	2	a local computed from a loop-accumulated local after the loop
-def f fn [[xs:List] [List] [def n 0 end each ([x:Integer] => [def n (n add 1) end x mul n]) xs]]  f [1 2 3]	[1 2 3]	REFUSES: …the each spelling; the check pass cannot see the enclosing local at all
+def f fn [[xs:List] [List] [def n 0 end each ([x:Integer] => [def n (n add 1) end x mul n]) xs]]  f [1 2 3]	[1 2 3]	DOES NOT COMPILE: …the each spelling; the check pass cannot see the enclosing local at all
 def f fn [[] [Integer] [def acc (flex []) end def collect fn [[x:Integer] [] [acc push x end]] for-each collect/v [1 2 3] end size acc]]  f	3	a local FLEX list mutated through a local fn driven by for-each (the pointer-backed idiom that DOES work)
 def f fn [[] [Integer] [def m (flex {n:0}) end for-each ([x:Integer] => [m set 'n' x]) [1 2 3] end m.n]]  f	3	…the flex MAP twin, written back per element
 #
@@ -215,13 +215,13 @@ def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def gv g/v en
 def f fn [[] [Integer] [def ops {inc: ([n:Integer] => [n add 1]) dec: ([n:Integer] => [n sub 1])} end def op (ops.inc) end 41 op/v apply]]  f	42	a local DISPATCH TABLE of lambdas, one picked into a local and applied
 def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def m {h: g/v} end 41 (m.h)/v apply]]  f	42	a body-local fn parked in a local map and called back
 def f fn [[cb:Function] [Integer] [def base2 5 end base2 cb/v apply]]  f ([x:Integer] => [x mul 2])	10	a Function PARAM applied to a body-local
-def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def lst (push g/v []) end 41 (lst.0)/v apply]]  f	42	REFUSES: a body-local fn pushed into a local LIST — force-compile: function value reaches push (Stage 3)
-def f fn [[] [Integer] [def fns [] end for [0 2] [def fns (push ([] => [i]) fns)] end size fns]]  f	2	REFUSES: a loop building a local list of closures — same Stage 3 refusal
+def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def lst (push g/v []) end 41 (lst.0)/v apply]]  f	42	DOES NOT COMPILE: a body-local fn pushed into a local LIST — force-compile: function value reaches push (Stage 3)
+def f fn [[] [Integer] [def fns [] end for [0 2] [def fns (push ([] => [i]) fns)] end size fns]]  f	2	DOES NOT COMPILE: a loop building a local list of closures — same Stage 3 compile failure
 def f fn [[] [Integer] [def mk fn [[] [Function] [def n 0 end ([] => [n add 1])]] def c (mk) end (c) add (c)]]  f	2	a local factory's closure is a SNAPSHOT, so two calls agree
 #
-# §11 a body-local that is a TYPE — both spellings refuse
-def f fn [[] [Integer] [def Pt class {x:Integer} end def p (make Pt {x:7}) end p.x]]  f	7	REFUSES: a CLASS defined as a body-local — force-compile: check diagnostics: [fn_body_error] … type: name part "Pt" conflicts with an existing type name
-def f fn [[] [Integer] [def Small fnsig [[Integer] [Integer]] end 1]]  f	1	REFUSES: an fnsig defined as a body-local — same fn_body_error, name part "Small"
+# §11 a body-local that is a TYPE — both spellings decline
+def f fn [[] [Integer] [def Pt class {x:Integer} end def p (make Pt {x:7}) end p.x]]  f	7	DOES NOT COMPILE: a CLASS defined as a body-local — force-compile: check diagnostics: [fn_body_error] … type: name part "Pt" conflicts with an existing type name
+def f fn [[] [Integer] [def Small fnsig [[Integer] [Integer]] end 1]]  f	1	DOES NOT COMPILE: an fnsig defined as a body-local — same fn_body_error, name part "Small"
 #
 # §12 TEARDOWN — a body-local does not outlive its frame
 def f fn [[] [Integer] [def a 1 end 0]]  f end a	ERROR:undefined_word	a body-local does not escape its frame

@@ -279,7 +279,7 @@ func TestSpliceAndDispatchMod(t *testing.T) {
 		t.Errorf("AsDispatchMod = %+v, %v", got, ok)
 	}
 	if _, ok := core.AsDispatchMod(core.NewInteger(1)); ok {
-		t.Error("AsDispatchMod(1) should refuse")
+		t.Error("AsDispatchMod(1) should decline")
 	}
 }
 

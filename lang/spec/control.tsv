@@ -31,7 +31,7 @@ def b true  do [1 2 (if b [] [9 9])]	1 2	a variadic multi-out body (arm counts d
 # already counted; three more would raise it."
 #
 # That reasoning was right and it expired: the shape no longer takes the
-# backstop. The whole-residual multi-out exactness screen used to refuse a
+# backstop. The whole-residual multi-out exactness screen used to decline a
 # body whose residual holds a runtime-variable region, so the dispatch fell to
 # the dyn-body strategy — which compiles the PROGRAM while the interpreter
 # runs the BODY, the entry the census counts. The screen now admits the two
@@ -71,14 +71,14 @@ do [for 3 [1] 7]	1 1 1 7	a loop inside a do body, with an inert value ABOVE the 
 # for; a fixed value ABOVE the run is simply PUSHED AFTER it and lands on top
 # of however many values the run really left. Nothing has to know the length.
 #
-# The refusal message said otherwise — "result is a variadic loop value" — and
+# The compile failure message said otherwise — "result is a variadic loop value" — and
 # a pin in lang/go/multiout_closure_test.go held the fn form as a permanent
-# refusal with the reason written out: "the RET cannot seat a runtime-variable
+# compile failure with the reason written out: "the RET cannot seat a runtime-variable
 # count with a fixed value above it". Above it is exactly where it can go. The
 # two shapes had been sharing one sentence since the forty-seventh increment.
 do [for 3 [1] 7 8]	1 1 1 7 8	two inert values above the run: one more push, not a new question
 def b true  do [(if b [] [9 9]) 1 2]	1 2	a BRANCH region with an inert suffix — the mirror of the prefix rows above
-def f fn [[] [] [for 3 [1] 7]]  f	1 1 1 7	a no-contract fn RETs the run and its suffix together (it refused until this increment)
+def f fn [[] [] [for 3 [1] 7]]  f	1 1 1 7	a no-contract fn RETs the run and its suffix together (it declined until this increment)
 def i 0  def ops [quote [1 add 2]]  do (ops get (i add 0))	3	a gradual List-vs-Map operand poly re-matches at run time
 def f fn [[y:Integer] [Any] [do [args]]]  f 7	[7]	an args-reading body compiles under the DynEnv args bracket
 #
@@ -149,7 +149,7 @@ def n 5 if (n eq 0) [99] def sq fn [[x:Integer] [Integer] [mul x x]] sq 5	25	fal
 # below is the fifth (the forty-second increment, 2026-09-10): a
 # statically-empty condition can never produce a value, so the compiled
 # program raises the interpreter's own error through a terminal trap
-# instead of refusing.
+# instead of declining.
 while [false] ['x'] end 'done'	'done'	a falsy condition runs the body zero times
 while [true] [break] end 'ended'	'ended'	break ends the loop with the values collected so far
 while ['ok'] [break] end 'truthy'	'truthy'	the condition is a truthiness read, not Boolean-only
@@ -166,7 +166,7 @@ def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'	'z'	
 while [] [1]	ERROR:while: condition produced no value	an empty condition region has no tokens, so the first round nets nothing and raises
 # The SIXTH and last frontier-while row (the fifty-first increment,
 # 2026-09-10), and the file lang/spec/frontier/frontier-while.tsv with it.
-# Its refusal was never the loop's: the body's `if ((c get 'n') eq 2)
+# Its compile failure was never the loop's: the body's `if ((c get 'n') eq 2)
 # [continue]` is an if whose ELSE arm came off the value stack, and the
 # computed-arm lowering conflated two things — "nets no value" and
 # "diverges" — and knew only one of the two stack layouts. A diverging arm

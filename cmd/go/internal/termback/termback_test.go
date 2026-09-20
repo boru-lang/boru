@@ -21,7 +21,7 @@ type failWriter struct{ after int }
 
 func (f *failWriter) Write(p []byte) (int, error) {
 	if f.after <= 0 {
-		return 0, errors.New("write refused")
+		return 0, errors.New("write declined")
 	}
 	f.after--
 	return len(p), nil
@@ -434,7 +434,7 @@ func TestSingleOwnerLatch(t *testing.T) {
 	// a failed open never leaves the latch held
 	failRaw := fresh()
 	oldRaw := makeRaw
-	makeRaw = func(int) (*term.State, error) { return nil, errors.New("raw refused") }
+	makeRaw = func(int) (*term.State, error) { return nil, errors.New("raw declined") }
 	if _, err := failRaw.Open(tuikit.OpenOpts{}); err == nil {
 		t.Fatal("raw failure accepted")
 	}

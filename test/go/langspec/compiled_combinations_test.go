@@ -43,7 +43,7 @@ var comboParity = []string{
 	`for 5 [if (gt i 2) [mul i 10] [i]]`,
 	`for 6 [if (eq i 3) [break] [i]]`,
 	`for 6 [if (eq i 3) [continue] [i]]`,
-	`add 100 (for 4 [add i 1])`, // loop residual consumed? (refuses -> fallback, parity holds)
+	`add 100 (for 4 [add i 1])`, // loop residual consumed? (declines -> fallback, parity holds)
 
 	// --- user fns: simple / recursive / tail / mutual / closure / generic ---
 	`def db fn [[n:Integer] [Integer] [n mul 2]] db 21`,
@@ -103,7 +103,7 @@ var comboParity = []string{
 	`def xs [10 20 30] xs get 2`,
 	`(flex [1 2 3]) is FlexList`, // typed query on a dynamic result via poly
 	// dynamic-INPUT poly: a builtin native over a dynamic operand re-matches
-	// its signature at run time (plan P3/P4 widening) instead of refusing.
+	// its signature at run time (plan P3/P4 widening) instead of declining.
 	`add (do [add 1 2]) 10`,
 	`mul 2 (do [mul 2 3])`,
 	`size (do [iota 5])`,
@@ -194,7 +194,7 @@ func pathOf(t testing.TB, src string) string {
 
 // TestCompiledCombinationPath pins the compilation DECISION for
 // representative shapes, so a regression that silently changes the path
-// (e.g. islanding a concrete dispatch, or refusing a shape that used to
+// (e.g. islanding a concrete dispatch, or declining a shape that used to
 // compile) is caught even when the result stays correct.
 func TestCompiledCombinationPath(t *testing.T) {
 	t.Parallel()

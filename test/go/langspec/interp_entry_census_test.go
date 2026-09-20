@@ -140,7 +140,7 @@ import (
 //	    this program and hosting it nested would reintroduce the body
 //	    bracket the file exists to avoid); one ALSO declines correctly at
 //	    MatchFnSig (a 1-param fn with 0 args); and two carry no ref at all
-//	    because storedSigEligible refuses a flow-sentinel body (`break` /
+//	    because storedSigEligible declines a flow-sentinel body (`break` /
 //	    `continue`). Read a cluster's rows before costing its fix.
 //	 4  SERVER / MOUNT CALLBACKS (a live socket, a fileops map)    InvokeCallback:callboru
 //	    module-repl 3, module-io 1
@@ -282,7 +282,7 @@ import (
 //	  interpreted  [boru/type_error] bad: return value 1: expected Integer, …
 //	  compiled     'str'
 //
-// A silent wrong answer on main, not a refusal — found by asking what the
+// A silent wrong answer on main, not a compile failure — found by asking what the
 // entry would skip, not by a failing test. The fix is that the entry CARRIES
 // the applied value's contract (dynEnter.retFn, applyRetContract) and the
 // frame's RET applies it; lang/spec/fn-value.tsv §12 pins both halves. The
@@ -346,7 +346,7 @@ import (
 // for the count.
 //
 // The prefix is the frame-bottom unnamed-param re-push; the token region is
-// what the interpreter's pointer would step. The window refused any prefix at
+// what the interpreter's pointer would step. The window declined any prefix at
 // all because a BARRIER'd callee stack-collects from it as well as
 // forward-collecting the tokens, so a frame push would bind a different arg set.
 // That is true of a barrier'd callee and only of one: an all-forward callee
@@ -664,7 +664,7 @@ import (
 // walks list and map consts, and neither of these is a list or a map:
 //
 //   - A MODIFIER WRAPPER is a container of exactly one fn. `usurp` rebuilds the
-//     value with a GO handler on every own sig, so storedSigEligible refuses
+//     value with a GO handler on every own sig, so storedSigEligible declines
 //     them all and the walk stamps nothing; the boru body is one level down,
 //     behind FnDefInfo.Wraps. `def sub2 fn […]  def ops {rev: (usurp sub2)}`
 //     disassembled to `fns=0` — the map const folded the wrapper in and NOTHING
@@ -709,7 +709,7 @@ import (
 //
 // 32 -> 29 (2026-09-11, the fifty-seventh increment): a whole-residual
 // dispatch (`do`) takes a body whose residual is COUNT-AGNOSTIC — [inert…,
-// REGION], or one region event's whole run — instead of refusing it to the
+// REGION], or one region event's whole run — instead of declining it to the
 // dyn-body strategy. The three rows are the variadic-branch bodies in
 // control.tsv (`def b true  do [1 2 (if b [] [9 9])]` and its siblings): they
 // compiled before and they compile now, but the body ran on the interpreter
@@ -724,19 +724,19 @@ import (
 // 29 -> 28 (2026-09-11, the fifty-ninth increment): the same dispatch takes
 // the MIRROR of the shape above — a region run FIRST, with nothing but INERT
 // operands above it. `do [for 3 [1] 7]` is the row (control.tsv), and it had
-// been reading as the same refusal as `do [7 for 3 [1]]` for as long as one
+// been reading as the same compile failure as `do [7 for 3 [1]]` for as long as one
 // sentence described both.
 //
 // The two halves are not symmetric and the cheap one was the one being
-// refused. A fixed value BENEATH a runtime-variable run must be SEATED under
+// declined. A fixed value BENEATH a runtime-variable run must be SEATED under
 // it, which is what OpSeatBelowMark and the mark plan cost; a fixed value
 // ABOVE the run is PUSHED after it and lands on top of however many values
 // the run really left, so nothing has to know the length. What the screen
 // needed was one predicate widened from "the run reaches the END" to "no
 // EVENT above the run" (eventRunThenInert) — no new op, no new plan.
 //
-// It also graduated a refusal the census cannot see: a NO-CONTRACT fn whose
-// body leaves the same shape (`def f fn [[] [] [for 3 [1] 7]]  f`) refused
+// It also graduated a compile failure the census cannot see: a NO-CONTRACT fn whose
+// body leaves the same shape (`def f fn [[] [] [for 3 [1] 7]]  f`) declined
 // outright, and the pin that held it wrote the wrong reason out in full.
 //
 // 28 -> 27 (2026-09-16, the seventy-first increment): a stored handler's
@@ -753,7 +753,7 @@ import (
 // the CallBoru seam to evaluate its residual in the live frame — the sweep
 // happens after the frame teardown instead, so two each-variants rows stop
 // entering.
-const interpEntryRowCeiling = 78 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 78 on 2026-09-19 — S1b's SECOND increment (a computed fn value resolves at a forward slot). Measured row by row against the S1b-1 head (77): ONE row entered and none left — callbacks.tsv:L154, `import "boru:fn-util" … def h (FnUtil.compose inc/v dbl/v) end each h/v [1 2 3]`, which FAILED TO COMPILE before and now compiles, its fn-util wrapper body still stepped per element (Engine.Run, RunResolved). The other six rows the increment compiles enter nothing at all. A compile failure becoming a compiled row with one attributed seam is the S1a trade in miniature; the wrapper is on S1b's owed list. 77 was: 77 on 2026-09-19 — S1b's first increment, the fn-VALUE seam made native (eng/go/vm_fnvalue_seam.go + the lazy detached stamp, compiler.LazyStampFnSig): a fn value handed to a higher-order word's list arm runs its unit on the VM — stamped at first application, memoised on the value — instead of being stepped on a pooled sub-engine, and a value reaching InvokeCallbackFn (the map arm, filter, walk) stamps lazily and takes the VM path it already had. Measured row by row against the S1a head (102): twenty-five rows left, none entered — fold-map-filter.tsv ×11 (L75, L210, L212–L214, L216–L217, L221, L223–L224, L228), each-variants.tsv ×7 (L193–L198, L201), callbacks.tsv ×6 (L57–L58, L104, L126–L128), module-composition.tsv ×1 (L101) — every one a fn-value callback S1a had released onto the RunResolved seam. What remains, by family: the 21 code-bodies.tsv rows and their kin are TOKEN bodies read at run time (a quoted list from a flex, a fn result, a List param — S3's runtime compilation, not a fn value); callbacks.tsv ×12 and fold-map-filter.tsv ×9 are fn values the seam does not yet reach (a fn result applied inside a token body `[(mk 2)]`, fn-util wrappers, the fn-value islands); module-test.tsv ×5 the boru:test quotation bodies; the rest the round trips and repl rows. Before: 102 on 2026-09-19 — S1a of design/FULL-COMPILATION-REPLAN.0.md, the gradual-Any overload commitment: each/fold/scan/filter declare CompileDynBody, so the corpus rows that REFUSED at the ambiguous-overload gate now compile — as a dyn-body CALL_NATIVE whose handler runs the callback through the RunResolved seam. That is the G-lane-first landing the re-plan names: the rows run compiled and enter the interpreter once each (Engine.Run 1, RunResolved 1 — 76 of the 102 rows are RunResolved entries); S1b retires them by lowering the re-matched overload's body natively. Measured, not inferred: BORU_LOG_CENSUS_ROWS=1 on origin/main (52 rows) against this tree (102) — fifty-one rows entered and one left. Entered, by file: fold-map-filter.tsv ×17 (L75, L86, L89, L210, L212–L214, L216–L217, L221, L223–L224, L228, L239–L242 — class-field and map-field callbacks, fn values in lists, Function params, a fn-local step), code-bodies.tsv ×14 (L122–L124, L138–L140, L143–L145, L150–L151, L153–L154, L156 — quoted code bodies read from a flex, a fn result, a branch, a List or Map param), callbacks.tsv ×10 (L57–L58, L83–L84, L126–L128, L155–L156, L158), each-variants.tsv ×8 (L193–L198, L201, L204), module-composition.tsv ×2 (L94, L101). Left: fold-map-filter.tsv L168 (its fold now compiles natively). 52 was: 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away. History: 54 (2026-09-17, the corpus expansion) -> 52 (2026-09-18, NUR153 closed: one residual rule at every seam. A stored `=>` value applied through a native seam used to have its residual evaluated in the live frame, which is a CallBoru entry the census counts; ResidualEvalsInFrame gives the tape rule everywhere and CallBoruNamed sweeps the deferred residual after teardown, so two callback rows stop re-entering. The rows are each-variants.tsv callback shapes; BORU_LOG_CENSUS_ROWS=1 names them) -> 0 (Stage 9)
+const interpEntryRowCeiling = 78 // the REGRESSION ceiling (lanes_test.go; end state 0; fails in BOTH directions): 78 on 2026-09-19 — S1b's SECOND increment (a computed fn value resolves at a forward slot). Measured row by row against the S1b-1 head (77): ONE row entered and none left — callbacks.tsv:L154, `import "boru:fn-util" … def h (FnUtil.compose inc/v dbl/v) end each h/v [1 2 3]`, which FAILED TO COMPILE before and now compiles, its fn-util wrapper body still stepped per element (Engine.Run, RunResolved). The other six rows the increment compiles enter nothing at all. A compile failure becoming a compiled row with one attributed seam is the S1a trade in miniature; the wrapper is on S1b's owed list. 77 was: 77 on 2026-09-19 — S1b's first increment, the fn-VALUE seam made native (eng/go/vm_fnvalue_seam.go + the lazy detached stamp, compiler.LazyStampFnSig): a fn value handed to a higher-order word's list arm runs its unit on the VM — stamped at first application, memoised on the value — instead of being stepped on a pooled sub-engine, and a value reaching InvokeCallbackFn (the map arm, filter, walk) stamps lazily and takes the VM path it already had. Measured row by row against the S1a head (102): twenty-five rows left, none entered — fold-map-filter.tsv ×11 (L75, L210, L212–L214, L216–L217, L221, L223–L224, L228), each-variants.tsv ×7 (L193–L198, L201), callbacks.tsv ×6 (L57–L58, L104, L126–L128), module-composition.tsv ×1 (L101) — every one a fn-value callback S1a had released onto the RunResolved seam. What remains, by family: the 21 code-bodies.tsv rows and their kin are TOKEN bodies read at run time (a quoted list from a flex, a fn result, a List param — S3's runtime compilation, not a fn value); callbacks.tsv ×12 and fold-map-filter.tsv ×9 are fn values the seam does not yet reach (a fn result applied inside a token body `[(mk 2)]`, fn-util wrappers, the fn-value islands); module-test.tsv ×5 the boru:test quotation bodies; the rest the round trips and repl rows. Before: 102 on 2026-09-19 — S1a of design/FULL-COMPILATION-REPLAN.0.md, the gradual-Any overload commitment: each/fold/scan/filter declare CompileDynBody, so the corpus rows that DECLINED at the ambiguous-overload gate now compile — as a dyn-body CALL_NATIVE whose handler runs the callback through the RunResolved seam. That is the G-lane-first landing the re-plan names: the rows run compiled and enter the interpreter once each (Engine.Run 1, RunResolved 1 — 76 of the 102 rows are RunResolved entries); S1b retires them by lowering the re-matched overload's body natively. Measured, not inferred: BORU_LOG_CENSUS_ROWS=1 on origin/main (52 rows) against this tree (102) — fifty-one rows entered and one left. Entered, by file: fold-map-filter.tsv ×17 (L75, L86, L89, L210, L212–L214, L216–L217, L221, L223–L224, L228, L239–L242 — class-field and map-field callbacks, fn values in lists, Function params, a fn-local step), code-bodies.tsv ×14 (L122–L124, L138–L140, L143–L145, L150–L151, L153–L154, L156 — quoted code bodies read from a flex, a fn result, a branch, a List or Map param), callbacks.tsv ×10 (L57–L58, L83–L84, L126–L128, L155–L156, L158), each-variants.tsv ×8 (L193–L198, L201, L204), module-composition.tsv ×2 (L94, L101). Left: fold-map-filter.tsv L168 (its fold now compiles natively). 52 was: 54 on 2026-09-17 — 27 before the corpus expansion, which added 27 rows in three clusters: fn-value callbacks (callbacks.tsv ×8, fold-map-filter ×4, each-variants ×3, module-composition ×2 — vm:island), raw-token code bodies (code-bodies.tsv ×7 — RunResolved) and the boru:test quotation bodies (module-test.tsv ×5 — CallBoru); the full row list is one BORU_LOG_CENSUS_ROWS=1 run away. History: 54 (2026-09-17, the corpus expansion) -> 52 (2026-09-18, NUR153 closed: one residual rule at every seam. A stored `=>` value applied through a native seam used to have its residual evaluated in the live frame, which is a CallBoru entry the census counts; ResidualEvalsInFrame gives the tape rule everywhere and CallBoruNamed sweeps the deferred residual after teardown, so two callback rows stop re-entering. The rows are each-variants.tsv callback shapes; BORU_LOG_CENSUS_ROWS=1 names them) -> 0 (Stage 9)
 
 func TestInterpEntryCensus(t *testing.T) {
 	t.Parallel()
@@ -787,7 +787,7 @@ func TestInterpEntryCensus(t *testing.T) {
 		mu.Unlock()
 		n, seen, ok := runWithEntryHook(t, r.Input)
 		if !ok {
-			return // refused or check-error: the interpreter owns it by design
+			return // declined or check-error: the interpreter owns it by design
 		}
 		// BORU_LOG_CENSUS_ROWS=1 names every dirty row and the seams it
 		// entered through. The file × seam table above ranks CLUSTERS,
@@ -851,7 +851,7 @@ func TestInterpEntryCensus(t *testing.T) {
 
 // runWithEntryHook runs one row compiled with the interpreter-entry hook armed
 // and returns the unattributed entry count. ok is false when the row did not
-// run compiled at all — a refusal or a static check error, where the
+// run compiled at all — a compile failure or a static check error, where the
 // interpreter owning the program is the designed behaviour and not an island.
 func runWithEntryHook(t testing.TB, src string) (int, map[string]int, bool) {
 	t.Helper()

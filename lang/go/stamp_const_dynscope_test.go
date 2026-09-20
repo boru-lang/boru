@@ -10,7 +10,7 @@ import (
 // compiles a fn value baked as a const so an apply of it runs on the VM
 // instead of islanding. Because it analyses the body against the LIVE emit
 // state, it can perturb the ENCLOSING program — and a stamp that makes the
-// enclosing program refuse is strictly worse than no stamp at all, since the
+// enclosing program decline is strictly worse than no stamp at all, since the
 // island it replaces is the behaviour the differential already validates.
 //
 // dynScopeNames is the channel that showed this. A stamped body whose free
@@ -18,7 +18,7 @@ import (
 // Finalize then installs an OpBindDynScope twin in every BINDING unit, so the
 // enclosing program's own `def` of that name must lower a dynamic bind it may
 // have no promoted value for. Measured on this exact source, which went from
-// compiling to refusing "dynamic-scope def `files` of unpromoted computed
+// compiling to declining "dynamic-scope def `files` of unpromoted computed
 // value" the moment mount handlers started stamping.
 //
 // The rule: snapshot the map, and DECLINE a stamp that added to it (a live
@@ -68,13 +68,13 @@ func stampDynScopeCase(t *testing.T, src string, wantDecline bool) {
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		t.Fatalf("the enclosing program must still compile; refused with %q", reason)
+		t.Fatalf("the enclosing program must still compile; declined with %q", reason)
 	}
 
 	// The decline is the mechanism under test, not an incidental outcome: at
 	// least one handler must have been offered to the stamp and turned down.
 	// (Were it silently stamping, the assertion above would pass for the wrong
-	// reason and the refusal would return the next time the body changed.)
+	// reason and the compile failure would return the next time the body changed.)
 	declined := false
 	for _, ev := range a.StampReport() {
 		if !ev.Stamped {

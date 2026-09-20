@@ -107,7 +107,7 @@ func randWithSeedReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	instance, err := buildRandExportsForState(newRandState(0))
 	if err != nil {
 		// Fall back to the bare Map carrier on the (registration-time
-		// impossible) build error; the row simply refuses as before.
+		// impossible) build error; the row simply declines as before.
 		return []native.Value{native.NewCarrier(native.TMap)}
 	}
 	return []native.Value{native.NewMap(instance)}

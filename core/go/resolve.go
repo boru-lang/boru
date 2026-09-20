@@ -6,7 +6,7 @@ package core
 //
 //  1. the registry's binding store (`TopTypeBody` — user types and
 //     dynamic bindings; disjoint from the builtin arm because
-//     InstallType refuses minting over an existing type name), then
+//     InstallType declines minting over an existing type name), then
 //  2. the LIVE builtin name table plus the slash-path resolver
 //     (ResolveBuiltinTypeName below).
 //

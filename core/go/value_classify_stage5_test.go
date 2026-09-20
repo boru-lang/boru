@@ -11,7 +11,7 @@ import "testing"
 
 // c5BakeBehavior is a minimal TypeBehavior that also implements the
 // ConstBakeable capability, so the ExtensionPayload arm of IsInertConst
-// can find (or be refused) a bake verdict on the parent chain.
+// can find (or be declined) a bake verdict on the parent chain.
 type c5BakeBehavior struct{ allow bool }
 
 func (c5BakeBehavior) Match(v Value, t *Type) bool { return false }
@@ -90,11 +90,11 @@ func TestS5CInertConstExtensionCapability(t *testing.T) {
 	}
 	no := Value{Parent: newC5BakeType(false), Data: ExtensionPayload{Body: 1}}
 	if IsInertConst(no) {
-		t.Error("ConstBakeable(false) extension must refuse")
+		t.Error("ConstBakeable(false) extension must decline")
 	}
 	nocap := Value{Parent: TAny, Data: ExtensionPayload{Body: 1}}
 	if IsInertConst(nocap) {
-		t.Error("an extension with no ConstBakeable in its chain must refuse")
+		t.Error("an extension with no ConstBakeable in its chain must decline")
 	}
 }
 
@@ -139,7 +139,7 @@ func TestS5CInertConstDescriptorArms(t *testing.T) {
 func TestS5CInertConstFnDefArms(t *testing.T) {
 	captured := NewFunction(FnDefInfo{Captured: []CapturedBinding{{Name: "x", Value: NewInteger(1)}}})
 	if IsInertConst(captured) {
-		t.Error("a capturing fn value must refuse")
+		t.Error("a capturing fn value must decline")
 	}
 	pure := NewFunction(FnDefInfo{})
 	if !IsInertConst(pure) {
@@ -151,7 +151,7 @@ func TestS5CInertConstFnDefArms(t *testing.T) {
 	}
 	macro := NewFunction(FnDefInfo{Registry: &Registry{}, Macro: true})
 	if IsInertConst(macro) {
-		t.Error("a macro must refuse")
+		t.Error("a macro must decline")
 	}
 }
 
@@ -164,7 +164,7 @@ func TestS5CInertConstMapAndQuotedParen(t *testing.T) {
 	bad := NewOrderedMap()
 	bad.Set("c", NewCarrier(TInteger))
 	if IsInertConst(NewMap(bad)) {
-		t.Error("a carrier-bearing map must refuse")
+		t.Error("a carrier-bearing map must decline")
 	}
 	quoted := NewParenExpr([]Value{NewWord("add"), NewInteger(1)})
 	quoted.Quoted = true
@@ -173,7 +173,7 @@ func TestS5CInertConstMapAndQuotedParen(t *testing.T) {
 	}
 	unquoted := NewParenExpr([]Value{NewInteger(1)})
 	if IsInertConst(unquoted) {
-		t.Error("an unquoted paren is re-stepped and must refuse")
+		t.Error("an unquoted paren is re-stepped and must decline")
 	}
 }
 
@@ -269,13 +269,13 @@ func TestS5CInertReachAndConstMembers(t *testing.T) {
 		t.Error("a fn value with a home rides as a const member too")
 	}
 	if IsInertConstMember(NewFunction(FnDefInfo{Captured: []CapturedBinding{{Name: "x", Value: NewInteger(1)}}})) {
-		t.Error("a capturing fn value must refuse as a member")
+		t.Error("a capturing fn value must decline as a member")
 	}
 	if !IsInertConstMember(NewParenExpr([]Value{NewWord("w"), NewInteger(1)})) {
 		t.Error("an inert deferred paren rides as a const member")
 	}
 	if IsInertConstMember(NewParenExpr([]Value{NewCarrier(TInteger)})) {
-		t.Error("a carrier-bearing paren must refuse as a member")
+		t.Error("a carrier-bearing paren must decline as a member")
 	}
 }
 
@@ -330,7 +330,7 @@ func TestTypeIsFnShapeAndFnShapeCarrier(t *testing.T) {
 }
 
 // IsSteplessValue is an ALLOWLIST, and its test has to be one too: each admitted
-// payload proved individually, and the refusals proved for the three ways a
+// payload proved individually, and the compile failures proved for the three ways a
 // value stops being placed — a Word (a kind the switch does not name), an
 // Eval-marked list the loop evaluates, and a bare type node with no payload at
 // all. A denylist reading of this predicate is what would make a later token
@@ -370,9 +370,9 @@ func TestIsSteplessValue(t *testing.T) {
 	}
 
 	// A CARRIER is the case that needs the IsConcrete half specifically, and it
-	// needs both shapes. A scalar carrier has nil Data, so it is refused by the
+	// needs both shapes. A scalar carrier has nil Data, so it is declined by the
 	// switch like a bare node; a carrier that DOES hold an admitted payload
-	// reaches the matched arm and must still be refused there — it stands for a
+	// reaches the matched arm and must still be declined there — it stands for a
 	// value the analysis has not seen, which is the opposite of one the loop can
 	// place.
 	if IsSteplessValue(NewCarrier(TInteger)) {
@@ -381,7 +381,7 @@ func TestIsSteplessValue(t *testing.T) {
 	payloadCarrier := NewInteger(1)
 	payloadCarrier.Carrier = true
 	if IsSteplessValue(payloadCarrier) {
-		t.Error("a carrier over an admitted payload is still a carrier — IsConcrete is what refuses it")
+		t.Error("a carrier over an admitted payload is still a carrier — IsConcrete is what declines it")
 	}
 }
 

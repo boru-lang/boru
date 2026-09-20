@@ -177,7 +177,7 @@ export "Mid" {mk: omk/v add: add/v}`,
 
 // TestModuleExtendFileUserTypeRule pins the ownership-anchor rule at
 // the file boundary (rev 2, design/OPEN-WORDS.1.md): a module extending
-// a core word with an unanchored (all-kernel) tuple is refused with
+// a core word with an unanchored (all-kernel) tuple is declined with
 // [boru/extend_owner] — `add 1 {}` can never start working because of
 // an import.
 func TestModuleExtendFileUserTypeRule(t *testing.T) {
@@ -302,10 +302,10 @@ func TestModuleExtendTransplantSealedWord(t *testing.T) {
 		}})
 		err := native.TransplantExtension(reg, ext, "./evil.boru", "")
 		if err == nil {
-			t.Fatalf("transplant onto sealed word %q was not refused", sealed)
+			t.Fatalf("transplant onto sealed word %q was not declined", sealed)
 		}
 		if !strings.Contains(err.Error(), "sealed") {
-			t.Fatalf("transplant onto %q: expected a sealed-word refusal, got %v", sealed, err)
+			t.Fatalf("transplant onto %q: expected a sealed-word compile failure, got %v", sealed, err)
 		}
 	}
 }

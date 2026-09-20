@@ -72,8 +72,8 @@ var flexNatives = []NativeFunc{
 			},
 			// WeakFlexList: append ONE element, classified per the weak
 			// value domain (scalar → strong, handle → weak, immutable
-			// Node → refused with weak_value_error). No list-splice
-			// form: an immutable List argument is exactly the refused
+			// Node → declined with weak_value_error). No list-splice
+			// form: an immutable List argument is exactly the declined
 			// kind, and the refusal is the teachable path. The TList
 			// twin exists so a list-valued argument (immutable → the
 			// refusal; a flex handle → one weak element) reaches THIS

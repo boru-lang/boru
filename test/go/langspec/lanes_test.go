@@ -21,7 +21,7 @@
 //
 //   - BORU_DIRECTION_GATES=1 arms the DIRECTION lane. Every ratchet in this
 //     package has two numbers: the END STATE the programme is heading for
-//     (design/FULL-COMPILATION.0.md §9: islands 0, refusals 0, interpreter
+//     (design/FULL-COMPILATION.0.md §9: islands 0, compile failures 0, interpreter
 //     entries 0, divergences 0 …) and the REGRESSION CEILING, the live value
 //     at the last merge, which only falls. The regression lane — the default,
 //     what `make test` and the per-PR CI run — fails when a value RISES above

@@ -60,7 +60,7 @@ var modules = map[string]func(parent *native.Registry) (native.ModuleDesc, error
 //
 // Consults the policy installed on parent (if any). The modules
 // scope must allow the "import" op with the resolved module ID; if
-// the policy has modules.install=false, all imports are refused with
+// the policy has modules.install=false, all imports are declined with
 // modules_disabled.
 func Resolve(name string, parent *native.Registry) (native.ModuleDesc, error) {
 	moduleID := "boru:" + name

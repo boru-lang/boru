@@ -5,11 +5,11 @@ import "testing"
 // bytecode_chained_apply_test.go pins the chained-forward-apply family
 // (design/legacy/checker-compiler-completeness-review.0.ignore §2.1). History: until
 // 2026-08-02 the forward spelling `f (g x)` of two chained Function-param
-// applications slipped past the pending-apply refusal net — noteDynFrameReplay
+// applications slipped past the pending-apply compile failure net — noteDynFrameReplay
 // armed the whole-frame replay on a window holding TWO applicable values, the
 // flat re-push lost the inner group's collapse, and the compiled program
 // raised the RET count error where the interpreter applies both fns. The
-// replay was then narrowed to single-applicable windows (refusal), and
+// replay was then narrowed to single-applicable windows (compile failure), and
 // on 2026-08-03 the Stage-G single-arg increment GRADUATED the family: a
 // leading Function-typed carrier applied to one argument (`(g x)`, g a param)
 // records the same RecordDynApply event the trailing spelling `(x g)` does —
@@ -58,7 +58,7 @@ func fnValueM2NativeErrParity(t *testing.T, name, src, wantCode string) {
 	t.Helper()
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("%s: want a native compile, got refusal %q / err %v", name, reason, cerr)
+		t.Fatalf("%s: want a native compile, got compile failure %q / err %v", name, reason, cerr)
 	}
 	_, compiled, errC := mustNew(t).RunCompiled(src)
 	_, errI := mustNew(t).RunInterp(src)
@@ -99,18 +99,18 @@ func TestLeadApplyArityMismatchParity(t *testing.T) {
 		lead+`(fn [[x:Integer] [Integer Integer] [x x]]) 14`, "type_error")
 }
 
-// TestMultiArgChainedApplyRefuses pins the DELIBERATE edge of the Stage-G
+// TestMultiArgChainedApplyFailsToCompile pins the DELIBERATE edge of the Stage-G
 // increment: the paren-collapse records only a SINGLE-argument leading apply
 // (`(g x)` — the one arity where leading and trailing collection converge), so
-// a CHAINED apply over a multi-arg inner group keeps refusing: `(g x y)` never
+// a CHAINED apply over a multi-arg inner group keeps declining: `(g x y)` never
 // collapses to an event, the outer window holds two applicable values, and
 // noteDynFrameReplay declines. (The BARE multi-arg body tail `(g x y)` is a
 // different shape — the single-applicable whole-frame replay owns it; pinned
-// native above.) Sound whole-program refusal with interpreter parity.
-func TestMultiArgChainedApplyRefuses(t *testing.T) {
-	// Legacy refusal+fallback-parity contract, like TestApplyOverParamFnCompiles.
+// native above.) a compile failure; the interpreted answer is asserted alongside.
+func TestMultiArgChainedApplyFailsToCompile(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract, like TestApplyOverParamFnCompiles.
 
-	fnValueM2Refusal(t, "chained apply over a two-arg inner group f (g x y)",
+	fnValueM2CompileFailure(t, "chained apply over a two-arg inner group f (g x y)",
 		`def c2 fn [[f:Function g:Function x:Integer y:Integer] [Integer] [f (g x y)]] c2 ([n:Integer] => [n mul 2]) ([[a:Integer b:Integer] [Integer] [a sub b]] fn) 10 3`,
 		"unapplied fn-value in body residual")
 }
@@ -120,14 +120,14 @@ func TestMultiArgChainedApplyRefuses(t *testing.T) {
 // dyn-BIND of a value the window itself reads may be skipped by the
 // event-order proof. An EFFECTFUL event between the apply and the tail, or
 // a bind of an UNRELATED value, still declines — the RET-time replay would
-// otherwise reorder the tail apply against it. Both refuse with
+// otherwise reorder the tail apply against it. Both decline with
 // interpreter-parity fallback.
 func TestTailProofNegatives(t *testing.T) {
 
-	fnValueM2Refusal(t, "an effect event between the def-split and the tail",
+	fnValueM2CompileFailure(t, "an effect event between the def-split and the tail",
 		`def ld fn [[g:Function x:Integer] [Integer] [def r (g x) print "mid" g r]] ld ([n:Integer] => [n mul 2]) 14`,
 		"unapplied fn-value in body residual")
-	fnValueM2Refusal(t, "a later bind of an UNRELATED value",
+	fnValueM2CompileFailure(t, "a later bind of an UNRELATED value",
 		`def ld fn [[g:Function x:Integer] [Integer] [g x def q 9 g q]] ld ([n:Integer] => [n mul 2]) 14`,
 		"unapplied fn-value in body residual")
 }

@@ -92,7 +92,7 @@ func TestVaultUsageMirrorArms(t *testing.T) {
 		t.Fatalf("a dynamic operand must not be flagged, got %+v", r4.Check.Diagnostics)
 	}
 
-	// Gate decline 3 — the wrong arity. Dispatch owns that refusal, and
+	// Gate decline 3 — the wrong arity. Dispatch owns that compile failure, and
 	// vaultCollectParams would index out of range on a short slice.
 	r5 := vaultMirrorRegistry(t)
 	rf(nil, r5)
@@ -111,7 +111,7 @@ func TestVaultUsageMirrorArms(t *testing.T) {
 	}
 
 	// A bare type node inside the bag is DECIDED, not unknown: `None` is
-	// as statically known as a String, and the run refuses it the same way.
+	// as statically known as a String, and the run declines it the same way.
 	r7 := vaultMirrorRegistry(t)
 	withNone := native.NewOrderedMap()
 	withNone.Set("alias", native.NewString("a"))
@@ -140,7 +140,7 @@ func TestArgsMatchDeclared(t *testing.T) {
 }
 
 func TestVaultUsageMirrorDeclinesUnderPolicy(t *testing.T) {
-	// When the policy denies the op the runtime raises the refusal and
+	// When the policy denies the op the runtime raises the compile failure and
 	// never reaches the usage validation, so reporting a usage defect
 	// here would name the wrong error. The mirror declines instead.
 	pol, err := policy.Load("sandbox")
@@ -214,7 +214,7 @@ func TestVaultIdentityMirrorArms(t *testing.T) {
 	}
 
 	// The non-String arm of the validator: a concrete Integer reaches
-	// AsConcreteString's refusal rather than the empty-string test.
+	// AsConcreteString's compile failure rather than the empty-string test.
 	// (Dispatch rejects it first in a program; the validator must still
 	// answer for it, since the mirror runs before dispatch decides.)
 	r4 := vaultMirrorRegistry(t)

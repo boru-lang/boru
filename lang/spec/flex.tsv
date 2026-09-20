@@ -250,13 +250,13 @@ def iv (flex [1]) typeof (unshift iv []).0	List	plain-list unshift snapshots too
 #   FlexMap / WeakFlexMap  in place, returns the node (aliases observe)
 #   FlexXml / WeakFlexXml  removes an ATTRIBUTE, the slot set writes
 #   Store                  copy-on-write, via a tombstone layer
-#   Class                  refused — a declared field is sealed
-#   Micron                 refused — immutable, like set's form
-#   List / FlexList /      refused — index removal SHIFTS the tail, so
+#   Class                  declined — a declared field is sealed
+#   Micron                 declined — immutable, like set's form
+#   List / FlexList /      declined — index removal SHIFTS the tail, so
 #     WeakFlexList         it is not set's inverse; pop / shift /
 #                          ArrayUtil.remove-at do that
 #
-# The refusals are registered signatures, not sig-absence, so each
+# The compile failures are registered signatures, not sig-absence, so each
 # raises its own message instead of an opaque dispatch failure. A
 # missing key is a no-op wherever removal is supported. Keys are
 # strings or atoms; computed keys via parens.
@@ -282,7 +282,7 @@ del 0 {a:1}	ERROR:signature	an integer key is not a map key
 
 # --- WeakFlexMap: in place, like FlexMap (the weak payload needs its own
 # --- handler, not because deletion differs but because AsMutableMap
-# --- refuses the payload by design)
+# --- declines the payload by design)
 def w (make WeakFlexMap {a:1 b:2}) (w del "a")	(make WeakFlexMap {b:2})	WeakFlexMap del removes the key in place
 def w (make WeakFlexMap {a:1 b:2}) ((w del "a") eq w)	true	…and returns the receiver node
 def w (make WeakFlexMap {a:1}) ((w del "zz") eq w)	true	missing key: no-op
@@ -300,19 +300,19 @@ context set 'k' 7 end context del 'k' end context has 'k'	false	Store del remove
 context set 'k' 7 end context del 'k' end context get 'k'	ERROR:unknown key	…and the strict reader misses, as for a key never set
 context del 'zz' end context has 'zz'	false	deleting an unbound key is a no-op
 context set 'k' 1 end context del 'k' end context set 'k' 2 end context get 'k'	2	a set after a del re-binds in the same layer
-context set 'k' 1 end context del 'k' end context set 'k' 2 end (context get 'k') add 1	3	…and the re-bound value is USABLE: del's forget-marker must be gradual, not strict Any, or every typed use of the key refuses
+context set 'k' 1 end context del 'k' end context set 'k' 2 end (context get 'k') add 1	3	…and the re-bound value is USABLE: del's forget-marker must be gradual, not strict Any, or every typed use of the key declines
 # The container twin of the row above — `def l [(context get 'k')] (l get 0)
 # add 1` — moved to the frontier ledger (frontier-context-inline.tsv): a
 # `context` read inside an auto-evaluated list is an inline-lowered region
-# with no compiled context layer, so it refuses compilation (NUR054).
+# with no compiled context layer, so it declines compilation (NUR054).
 # The layer-local half — a tombstone hides an INHERITED key without touching
 # the layer that owns it — needs a scope-pushing word, and every one of those
-# is a code-body word the compiler refuses, so it cannot live in this corpus.
+# is a code-body word the compiler declines, so it cannot live in this corpus.
 # eng/go/store_tombstone_test.go covers it directly.
 
-# --- refusals: each names its own reason rather than failing opaquely
+# --- compile failures: each names its own reason rather than failing opaquely
 def P (class {n:Integer}) def p (make P {n:1}) (p del "n")	ERROR:sealed	a declared class field cannot be removed
-(make Pathon "/x") del "kind"	ERROR:immutable	Micron del mirrors set's immutability refusal
+(make Pathon "/x") del "kind"	ERROR:immutable	Micron del mirrors set's immutability compile failure
 [1 2] del 0	ERROR:cannot remove an element	index removal shifts the tail — not set's inverse
 (flex [1 2]) del 0	ERROR:cannot remove an element	same for a FlexList
 (make WeakFlexList [1 2]) del 0	ERROR:cannot remove an element	…and a WeakFlexList

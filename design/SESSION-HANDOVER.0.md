@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-19**.
+Last updated: **2026-09-20**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -56,9 +56,12 @@ bug, or defect. The counters are RATCHETS ON A BUG COUNT, never budgets
 zero, and lowering one by deleting a corpus row rather than by compiling
 it is the one move that is never allowed. The maintainer has had to
 correct this twice; the 2026-09-18 sweep (PR #471 §11) fixed the gate
-names, the user-facing message and the `compile_failed` error code, and
-**248 distinct "refus" identifier forms remain in the Go tree** as a
-separate mechanical sweep. Do not add more.
+names, the user-facing message and the `compile_failed` error code, and the
+2026-09-20 sweep finished the tree: **260 distinct "refus" identifier forms
+→ 65, 4380 occurrences → 665**, every survivor an ENTITLED refusal (policy
+denials, vault and proxy security, weak containers, option validation, exit
+ranges, capability gates, `await` isolation, signature matching), where the
+word is the right one. Do not add more in the compilation sense.
 - "Valid" is decided by the interpreter. The checker may never be the
   reason a program fails to compile, so the whole-program "check
   diagnostics" sentinel goes (Stage 8's T1 half is inside done).
@@ -100,16 +103,16 @@ day and open until answered:
    the checker reports an error the compiler compiles past) is inside
    "as a developer expects".
 
-## The interpreter fallbacks are gone (2026-09-19, PR #476 — OPEN)
+## The interpreter fallbacks are gone (2026-09-19, PR #476 — MERGED)
 
 Read this first: it changes what every other number on this page means.
 
 The maintainer ruled: *"remove all interpreter fallbacks, flags, modes, etc.
 Failure to compile is a plain bug only."* That is the scaffolding
 [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md) §1 has always called scaffolding,
-brought forward from its planned Stage-9 retirement. **The branch is
-`claude/determined-cori-j4kmlx`; PR #476 is open and CI was mid-run when this
-was written. Nothing below is merged.**
+brought forward from its planned Stage-9 retirement. **PR #476 MERGED
+2026-09-19 (`ba64e11` on `main`).** The vocabulary and dead-machinery sweep it
+left owing landed on 2026-09-20 — see "The sweep that finished it" below.
 
 **What went.** Ten mechanisms. The count is the finding — nobody had them in
 one list:
@@ -203,10 +206,89 @@ only where presentation is asserted — which is the compile-or-fallback gate
 alone. Both ledgers carry the same retirement half: a pin that stops drifting
 on a full walk fails the gate.
 
-**Still owed on this line.** `vmDefer`'s ~20 messages still say "deferring to
-the interpreter", false in every one now. Mechanical, and left only because
-each rides in gate pins that need re-reading against the new text rather than
-rewriting with it. Then the island machinery, at Stage 9 and in that order.
+## The sweep that finished it (2026-09-20)
+
+What PR #476 left owing was TEXT and DEAD MACHINERY, not behaviour, and both
+are now gone. Nothing in this section changes a gate value.
+
+- **The `vmDefer` messages.** All 28 occurrences across `vm.go`,
+  `vm_generic.go` and `vm_rematch.go` said "deferring to the interpreter"
+  (or "to interpreter", or "deferred to"), false in every one. They say what the site actually does now — *the compiled
+  runtime cannot execute it* — and the one gate pin that asserted the old text
+  (`eng/go/compile_pipeline_cov_test.go`) was RE-READ rather than rewritten:
+  its stated reason ("the interpreter re-runs and owns the canonical error")
+  was false, exactly one test reaches it (`TestFnReturnCountDivergenceParity`,
+  a `vm:poly-nout-drift` on `cvar2`), and it is now a ceiling of ONE pinned to
+  that site's own text, with the real fix named — a `DeferAlt` at the site.
+- **The C1 effect fence was DEAD MACHINERY, not merely a stale comment.**
+  `ArmEffectFence` had zero non-test callers and nothing read the count: the
+  arms went in #476 and the writer-wrapping half stayed, wrapping writers for
+  nobody. The writer half and its three tests are deleted. `EffectLedger` /
+  `NoteEffect` survive, re-documented as the observability seam they became —
+  security-relevant tests read the count to prove a denied request never
+  reached the network. `TestCheckPassIsEffectFree` was re-instrumented on the
+  OUTPUT BUFFER, which is strictly stronger than the counter it replaced.
+- **~200 stale comments.** Every "whole-program fallback", "sound interpreter
+  fallback" and "falls back to the interpreter" that named removed machinery.
+  The per-callback path (`InvokeCallback` with no stamped unit → `CallBoru`)
+  and interpreter ISLANDS are still live, so those comments were kept — an
+  explicit exclusion list, not a blanket sweep.
+- **The `refus*` vocabulary: 260 distinct identifier forms → 65, 4380
+  occurrences → 665.** Every survivor is an ENTITLED refusal, where the word is
+  correct: policy denials, vault and proxy security, weak containers, option
+  validation, exit ranges, capability gates, help renders, `await` isolation,
+  signature matching. 131 test names, 26 identifiers and 6 files renamed;
+  `refusalCeiling` (a gate that no longer exists) became `failureCeiling`;
+  the corpus TSVs' 133 `REFUSES:` descriptions became `DOES NOT COMPILE:`.
+  Verb forms became *declines* (a code path declining to lower is a fact, not
+  a claim of entitlement); nouns became *compile failure*.
+- **The dead `BORU_COMPILE_FALLBACK` references**, including two live
+  `t.Setenv` calls on a variable nothing reads.
+
+**The method lesson this sweep paid for.** A blanket regex over a vocabulary
+is a *refactor of claims*, and it breaks them two ways. It rewrote history
+(past-tense narrative describing the OLD behaviour became false), and it
+mislabelled: "the `group` word refuses non-string keys" is an entitled
+decision, and renaming it a compile failure asserts something untrue — worse
+than the word it replaced. Both needed a hand-built exclusion list. It also
+hit 40 CODE identifiers (a local named `refusal` became `compile failure`,
+with a space), which the compiler caught at once — the cheap half.
+
+**Still owed on this line.** The island machinery, at Stage 9, after the
+shapes it covers lower natively — the order is the point.
+
+**A blocker this sweep uncovered: the knowledge graph cannot be rebuilt.**
+`make -C kg graph` dies at `pc=8` with `DISPATCH_GENERIC at ev: the walk needs
+an evaluation this host cannot perform` — the generic lane's EVALUATING HOST,
+which [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) §2 names as
+one of the three unbuilt cores. Verified A/B against a clean worktree at
+`ba64e11`: **identical failure on unmodified `main`**, so it is pre-existing,
+not this sweep's. `make -C kg verify` still PASSES on an untouched tree, which
+is why nobody has hit it: it only bites when a cited document changes, and
+then there is no way to make it green again.
+
+This is the fallback removal's first real cost, and it is the intended one
+made visible: a boru program that hits a compiler defect can no longer be run
+at all, and the KG generator is such a program. The CLI has no interpreter
+flag by design.
+
+**The workaround, until the evaluating host lands.** Run the generator on the
+REFERENCE ENGINE from a throwaway Go test — `lang.New()` then
+`a.RunInterp(string(src))` with the working directory set to `kg/` — and
+delete the test afterwards. Two traps, both paid for here: put the harness in
+an EXISTING package (a new package changes the go-tree digest the graph
+hashes, so the graph you just built is stale the moment you delete it), and
+regenerate AFTER every document edit is final.
+
+**The gate is OFF as of 2026-09-20 (maintainer's call).** Gating documentation
+edits on a generator that cannot run blocks every doc change in the repo, so
+`kg-verify` is deactivated in `scripts/ci-steps.sh` and the matching
+commit-gate lane in `scripts/commit-gate.sh`. Both carry the reason and the
+one-line re-activation; `make -C kg verify` and `graph` are untouched and
+still run by hand. RE-ACTIVATE THEM WITH THE EVALUATING HOST — the gate is
+worth having back, and the graph it guards is the fastest orientation in the
+repo. CLAUDE.md and AGENTS.md say the same so a fresh session is not misled
+into thinking a doc change owes a rebuild it cannot perform.
 
 **Three method lessons this increment paid for.** They are the reusable part:
 

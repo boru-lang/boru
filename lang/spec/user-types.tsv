@@ -328,7 +328,7 @@ def Foo Integer  42 is Foo	true	alias membership
 def Foo Integer  def f fn x:Foo Any [1]  f 42	1	…and the alias param DISPATCHES (NUR093 retired)
 def One 1  1 is One	true	singleton membership
 def One 1  def f fn x:One Any [7]  f 1	7	…and the singleton param dispatches (NUR093 retired)
-def One 1  def f fn x:One Any [7]  f 2	ERROR:signature_error	…while a non-member of the singleton is refused
+def One 1  def f fn x:One Any [7]  f 2	ERROR:signature_error	…while a non-member of the singleton is declined
 # NUR094: `typeof` of a user-named type is ONE Parent hop, uniformly.
 def P refine Integer  typeof P	Integer	typeof of a named type is one Parent hop (NUR094 retired)
 def M (Integer tor none)  typeof M	Disjunct	…uniformly for a disjunct

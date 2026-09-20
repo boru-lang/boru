@@ -97,7 +97,7 @@ func run(outPath string, errw io.Writer) error {
 				continue
 			}
 			// One encoding for both paths (help.EncodeExampleResult):
-			// a refusal renders `error [boru/<code>]`, an empty stack
+			// an erroring example renders `error [boru/<code>]`, an empty stack
 			// renders `(no value)`, and anything not documentable —
 			// an uncoded failure, `undefined_word` from this
 			// import-less registry, or a run-specific identity — is

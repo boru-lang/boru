@@ -20,8 +20,8 @@
 # interpreter-only (the compiled unit would bake the check-time carrier
 # where the live value belongs); those cases are pinned in
 # lang/go/test/fn_triple_compiled_test.go rather than here so the spec
-# corpus's compiled-coverage refusal ratchet (compiled_coverage_test.go,
-# ground to its refusalCeiling=0 floor) stays untouched.
+# corpus's compiled-coverage compile failure ratchet (compiled_coverage_test.go,
+# ground to its failureCeiling=0 floor) stays untouched.
 #
 # ─────────────────────────────────────────────────────────────────────
 # §1  basics — named / unnamed params, output abbreviation
@@ -59,8 +59,8 @@ def s fn [[x:Integer] [Integer] [mul 2 x]]  s 21	42	4 pairs — the fully canoni
 # lang/go/test/fn_triple_compiled_test.go — see
 # TestFnSignatureSpellingsAreOneValue. It cannot live here: the assertion
 # `deq (canon a/v) (canon b/v)` passes a function VALUE to a word, which
-# the compiler refuses (Stage 3, soundness), and this corpus holds
-# refusalCeiling = 0. Same split this file's header describes for
+# the compiler declines (Stage 3, soundness), and this corpus holds
+# failureCeiling = 0. Same split this file's header describes for
 # computed operands.
 #
 # §3  literal value patterns as the input
@@ -74,9 +74,9 @@ def f fn List [Integer] [size]	ERROR:signature_error	a bare List type literal in
 # slot is a bare type: `fn List Any [1]` binds nothing and exits 0) is
 # recorded in NUR.md with its transcripts rather than pinned here. A row
 # for it displaced a seed from the variation sample and emptied an
-# unrelated varyRefusalLedger bucket — see NUR092.
+# unrelated varyCompileFailureLedger bucket — see NUR092.
 def z fn 0 [Integer] 1  z 0	ERROR:signature_error	a non-list body does not fill the List-typed body slot
-def f fn x:Integer [Integer]  def g 5  g	ERROR:signature_error	a truncated triple fails loudly — the List body slot refuses the following statement's values
+def f fn x:Integer [Integer]  def g 5  g	ERROR:signature_error	a truncated triple fails loudly — the List body slot declines the following statement's values
 def bad fn x:Integer [String] [x]  bad 5	ERROR:type_error	declared output type is enforced on return
 def dbl fn x:Integer [Integer] [x mul 2]  dbl 'a'	ERROR:signature_error	declared input type is enforced at the call
 #
@@ -132,7 +132,7 @@ def f fn [[Integer] [(Integer tor String)] [true]]  f 1	ERROR:type_error	the unn
 # spec-list form always did — for every declaration kind in NUR090's table.
 def P refine Integer  def x:P 5  def f fn P Any [1]  f x	1	refine newtype param, bare triple form
 def M (Integer tor none)  def f fn M Any [1]  f 5	1	disjunct param, bare triple form
-def M (Integer tor none)  def f fn M Any [1]  f 'x'	ERROR:signature_error	…and a non-member is refused naming M
+def M (Integer tor none)  def f fn M Any [1]  f 'x'	ERROR:signature_error	…and a non-member is declined naming M
 def C class {a:Integer}  def f fn C Any [2]  f (make C {a:1})	2	class param, bare triple form
 def T fnsig Integer String  def f fn T Any [3]  f (fn [[x:Integer] [String] ['s']])	3	fn-shape param, bare triple form
 def R {x:Integer}  def f fn R Any [4]  f {x:1}	4	record-shape param, bare triple form — the NAME is kept and dispatch admits

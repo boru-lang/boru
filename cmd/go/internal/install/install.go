@@ -118,7 +118,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// paths, and (on Windows) drive/volume-relative names — a more
 		// robust guard than a "contains .." substring test.
 		if !filepath.IsLocal(f.Name) {
-			fmt.Fprintf(stderr, "error: refusing unsafe path in archive: %q\n", f.Name)
+			fmt.Fprintf(stderr, "error: declining unsafe path in archive: %q\n", f.Name)
 			return 1
 		}
 		destPath := filepath.Join(destDir, f.Name)

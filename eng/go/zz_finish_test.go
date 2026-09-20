@@ -27,7 +27,7 @@ func TestW8NamedFnValueCompileMode(t *testing.T) {
 func TestCompiledNamedFnValueCall(t *testing.T) {
 	// A named body-bearing fn value CALLED while the emitter is active
 	// routes through check.SpliceFnValueCheckResult. If the program compiles it
-	// must agree with the interpreter; a refusal is also sound.
+	// must agree with the interpreter; a compile failure is also sound.
 	tokens := func() []core.Value {
 		fnv := namedFnVal("vdbl",
 			[]core.FnParam{{Name: "x", Type: core.TInteger}},
@@ -47,7 +47,7 @@ func TestCompiledNamedFnValueCall(t *testing.T) {
 	rc := covRegistry(t, nil)
 	prog, reason := compileTokens(t, rc, tokens())
 	if prog == nil {
-		t.Logf("compile refused (%s) — interpreter owns the case", reason)
+		t.Logf("compile declined (%s) — interpreter owns the case", reason)
 		return
 	}
 	cOut, cErr := RunProgram(prog, rc)
@@ -81,7 +81,7 @@ func TestCompiledAnonFnValueCall(t *testing.T) {
 	rc := covRegistry(t, nil)
 	prog, reason := compileTokens(t, rc, tokens())
 	if prog == nil {
-		t.Logf("compile refused (%s) — interpreter owns the case", reason)
+		t.Logf("compile declined (%s) — interpreter owns the case", reason)
 		return
 	}
 	cOut, cErr := RunProgram(prog, rc)
@@ -108,7 +108,7 @@ func TestCompiledComputedListArg(t *testing.T) {
 
 func TestCompiledInterpString(t *testing.T) {
 	// An interp string whose hole is a const expression folds; one with a
-	// dispatch records OpInterp (or refuses) — parity either way.
+	// dispatch records OpInterp (or declines) — parity either way.
 	got := runDifferential(t, nil, func() []core.Value {
 		return []core.Value{core.NewInterpString([]core.InterpPart{
 			{Lit: "v="},
@@ -483,7 +483,7 @@ func TestInvokeCallbackBusyRegistryFallsBack(t *testing.T) {
 		t.Fatalf("InvokeCallback should have fallen back to CallBoru, got err: %v", err)
 	}
 	if n, _ := out[0].AsConcreteInteger(); n != 7 {
-		t.Fatalf("result = %v, want 7 from the interpreter fallback", out[0])
+		t.Fatalf("result = %v, want 7 from the CallBoru fallback", out[0])
 	}
 }
 
@@ -529,7 +529,7 @@ func TestUserPolyNoMatchAltCoverageScreen(t *testing.T) {
 
 // A registry already driving a compiled run rejects a second, overlapping run:
 // RunUnit shares runProgram's vmRunning CAS guard, so a concurrent callback on
-// the SAME registry (rather than a ForkConcurrent clone) is refused rather than
+// the SAME registry (rather than a ForkConcurrent clone) is declined rather than
 // racing the shared invoker/scopes.
 func TestRunUnitRejectsConcurrentRun(t *testing.T) {
 	r := runUnitReg(t)
@@ -587,11 +587,11 @@ func TestPolyNoMatchRaiseBuildsDiagnostic(t *testing.T) {
 	}
 }
 
-// RunProgram must refuse to start a compiled run while an INTERPRETER run is
+// RunProgram must decline to start a compiled run while an INTERPRETER run is
 // already in flight on the same registry — the cross-engine race the vmRunning
 // CAS alone cannot see (it only guards compiled-vs-compiled). The interpRunDepth
 // counter Engine.Run maintains is what makes this detectable. Paired
-// positive/negative: refused while a run is active, allowed once it ends.
+// positive/negative: declined while a run is active, allowed once it ends.
 func TestRunProgramRejectsConcurrentInterpreterRun(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -599,7 +599,7 @@ func TestRunProgramRejectsConcurrentInterpreterRun(t *testing.T) {
 	}
 	p := &compiler.Program{} // empty program: runs off the end, returns an empty residual
 
-	// NEGATIVE — an interpreter run is in flight (depth > 0): refuse with a
+	// NEGATIVE — an interpreter run is in flight (depth > 0): decline with a
 	// concurrency_error, and the vmRunning flag must be released on that return
 	// (so the positive case below can still acquire it).
 	r.EnterInterpRun()
@@ -616,9 +616,9 @@ func TestRunProgramRejectsConcurrentInterpreterRun(t *testing.T) {
 	r.ExitInterpRun()
 
 	// POSITIVE — no interpreter run in flight: the compiled run proceeds (so the
-	// negative case is not vacuously "always refuses").
+	// negative case is not vacuously "always declines").
 	if _, err := RunProgram(p, r); err != nil {
-		t.Fatalf("RunProgram refused on an idle registry: %v", err)
+		t.Fatalf("RunProgram declined on an idle registry: %v", err)
 	}
 }
 

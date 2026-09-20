@@ -95,3 +95,17 @@ update [kg/project/boru-project.jsonic](kg/project/boru-project.jsonic)
 and rebuild the committed bundle with `make -C kg graph` (see
 [kg/README.md](kg/README.md)); `make -C kg check test` verifies the
 pipeline itself.
+
+> **The kg gate is DEACTIVATED (2026-09-20) and `make -C kg graph` does
+> not currently run.** It dies at `pc=8` with `DISPATCH_GENERIC at ev` —
+> the generic lane's evaluating host, one of the three unbuilt cores
+> ([design/FULL-COMPILATION-REVIEW.0.md](design/FULL-COMPILATION-REVIEW.0.md)
+> §2), verified identical on a clean worktree at `ba64e11`. The
+> `kg-verify` step in `scripts/ci-steps.sh` and the matching commit-gate
+> lane are off until it lands; both carry the re-activation instruction.
+> So a doc change is NOT blocked on the graph today. If you need the
+> graph rebuilt meanwhile, run the generator on the REFERENCE ENGINE
+> (`a.RunInterp` over `kg/main.boru`, working directory `kg/`) from a
+> throwaway test in an EXISTING package — a new package changes the
+> go-tree digest the graph hashes, so the graph goes stale the moment you
+> delete it.

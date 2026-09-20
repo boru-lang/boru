@@ -201,7 +201,7 @@ func TestWt5MakeHandlerUnavailableIdeal(t *testing.T) {
 	})
 	if _, err := MakeHandler([]Value{NewTypeLiteral(mark), NewInteger(1)}, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not available in this registry") {
-		t.Fatalf("a disabled claiming kind must refuse, got %v", err)
+		t.Fatalf("a disabled claiming kind must decline, got %v", err)
 	}
 }
 

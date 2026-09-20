@@ -23,7 +23,7 @@ import (
 // (`(w p/v)` renders under w's param, as installDef renames whatever it
 // binds).
 //
-// Found on the way, pre-existing and now a refusal: a fn body's def of
+// Found on the way, pre-existing and now a compile failure: a fn body's def of
 // a capturing fn value over an outer overloading def outlives the call on
 // the interpreter (the drop-then-push leaves the frame's def depth
 // unchanged, so DefCleanup pops nothing) where the compiled program kept the
@@ -74,9 +74,9 @@ func TestValReadAliasParity(t *testing.T) {
 	}
 }
 
-// TestValReadAliasSoundRefusals pins the neighbours that still REFUSE, the
+// TestValReadAliasSoundCompileFailures pins the neighbours that still DECLINE, the
 // nested replacing def among them with the interpreter's own answer.
-func TestValReadAliasSoundRefusals(t *testing.T) {
+func TestValReadAliasSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// nothing beneath the read: the interpreter parks the value
 		{vraK + `def p (kk 7) end p/v apply`, "never dispatched", "[fn p(Integer)]"},
@@ -88,7 +88,7 @@ func TestValReadAliasSoundRefusals(t *testing.T) {
 		{vraK + `def p (kk 7) end def g fn [[][Integer][3 p/v apply]] end g`, "unreachable at a call site", "[10]"},
 		// a conditional rebind
 		{vraK + `def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "redefined inside a conditional body", "[fn p(Integer)]"},
-		// the pre-existing miscompile, now refused: a fn body's def of a
+		// the pre-existing miscompile, now declined: a fn body's def of a
 		// capturing fn value over an outer overloading def outlives the call
 		{vraK + `def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)`, "redefined inside a fn body", "[1 12]"},
 		{vraK + `def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1 p/v apply]] end g 3 p/v apply`, "redefined inside a fn body", "[10 12]"},
@@ -103,11 +103,11 @@ func TestValReadAliasSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {

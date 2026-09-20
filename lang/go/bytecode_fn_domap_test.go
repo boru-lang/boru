@@ -9,13 +9,13 @@ import (
 // Pins for the fn-internal `do {…}` computed-map body (decision.boru's
 // evaluator idiom — `{ok:false error:…}` result maps): the dyn-do body
 // residual is runtime-counted, which used to mark the whole fn
-// VARIADIC-returning, so any fixed-arity consumer of its call refused
+// VARIADIC-returning, so any fixed-arity consumer of its call declined
 // "consumes loop results". A DECLARED return tuple now overrides the
 // marking — the VM RET enforces the declared count at runtime exactly
 // where the interpreter raises — so the call seats the declared shape.
 func TestFnDoMapBodyCompiles(t *testing.T) {
 	// The call result feeds a FIXED-ARITY consumer (`get`) — the shape
-	// that used to refuse (a program-residual consumer absorbs variadics
+	// that used to decline (a program-residual consumer absorbs variadics
 	// and never tripped it).
 	mustCompileWithParity(t, `
 def make-point fn [[x:Integer y:Integer] [Map] [
@@ -42,7 +42,7 @@ func TestFnDoMapCountMismatchParity(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("expected a native compile, refused: reason=%q err=%v", reason, cerr)
+		t.Fatalf("expected a native compile, declined: reason=%q err=%v", reason, cerr)
 	}
 	b, _ := New()
 	_, compiled, errC := b.RunCompiled(src)
@@ -68,12 +68,12 @@ func TestFnDoMapCountMismatchParity(t *testing.T) {
 // (the assembled map), so it must NOT be marked a variadic loop result. Before
 // the fix, a do-map in a BRANCH ARM (`if c [do {a:1}] [do {b:2}]`) propagated a
 // spurious variadic mark up through the branch merge to the enclosing fn, so any
-// fixed-arity consumer of the fn's result refused "consumes loop results" — even
+// fixed-arity consumer of the fn's result declined "consumes loop results" — even
 // though the VM runs the branch correctly. The decision library's eval-table-*
 // helpers (`if … [do {ok:false error:"no-match"}] …`) are exactly this shape.
 func TestDoMapValueEvalInBranchArm(t *testing.T) {
 	// A do-map arm result consumed by a FIXED-ARITY word (get) — the shape
-	// that used to refuse.
+	// that used to decline.
 	mustCompileWithParity(t,
 		`def pickmap fn [[c:Boolean] [Map] [if c [do {a:1}] [do {b:2}]]] ((pickmap true) get "a")`, "[1]")
 	// One do-arm, one literal-map arm.
@@ -89,7 +89,7 @@ func TestDoMapValueEvalInBranchArm(t *testing.T) {
 // TestDoMapValueEvalNoDynEnv pins that a value-eval `do {map}` does NOT arm the
 // program-wide DynEnv mirror (its handler runs no dynamic-name-resolving code
 // body). Before the fix, arming DynEnv forced every unrelated `def` in the
-// program to a registry-visible OpBindDynScope twin, refusing a sibling fn whose
+// program to a registry-visible OpBindDynScope twin, declining a sibling fn whose
 // binding has no compiled home (`def found None` → "dynamic-scope def `found` of
 // unknown provenance") — the decision eval-tree/find-node shape.
 func TestDoMapValueEvalNoDynEnv(t *testing.T) {

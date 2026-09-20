@@ -36,7 +36,7 @@ func zcaRegistry(t *testing.T) *core.Registry {
 // zcaEmit is an EmitRecorder stub over the inactive recorder: an
 // activity switch plus probes for the loop-capture protocol
 // (AnalyseLoopBody), the zero-out residual filter, and the
-// uncompilable refusal RunFnBodyOnce issues on a body error.
+// uncompilable compile failure RunFnBodyOnce issues on a body error.
 type zcaEmit struct {
 	core.EmitRecorder
 	active      bool
@@ -413,18 +413,18 @@ func TestZcaBodyFreeForFallback(t *testing.T) {
 	if !BodyFreeForFallback(r, free) {
 		t.Error("a body of registered / literal words must be island-free")
 	}
-	// A flow-control sentinel refuses: the VM cannot propagate it across
+	// A flow-control sentinel declines: the VM cannot propagate it across
 	// the island boundary.
 	for _, w := range []string{"break", "continue", "return"} {
 		if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord(w)})) {
-			t.Errorf("a body holding %q must refuse the island", w)
+			t.Errorf("a body holding %q must decline the island", w)
 		}
 	}
 	// Context-dependent words (args / __pa) read the interpreter's
-	// per-call args stack the VM does not maintain: refuse.
+	// per-call args stack the VM does not maintain: decline.
 	for _, w := range []string{"args", "__pa"} {
 		if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord(w)})) {
-			t.Errorf("a body holding %q must refuse the island", w)
+			t.Errorf("a body holding %q must decline the island", w)
 		}
 	}
 	// After one unresolvable word flips the verdict, later words take the
@@ -899,7 +899,7 @@ func TestZcaRunFnBodyOnceBodyError(t *testing.T) {
 		t.Error("the body error must surface as a fn_body_error diagnostic")
 	}
 	// Under an armed recording the unit would close EMPTY and silently
-	// diverge — the program is refused instead.
+	// diverge — the program is declined instead.
 	if len(es.uncomp) == 0 {
 		t.Fatal("an armed erroring body must mark the program uncompilable")
 	}

@@ -10,7 +10,7 @@ import (
 // RecordSpeculativeFnDef's arms (the seventieth increment): marks the
 // family and hands the def site its placed install — the next RecordDynBind
 // of the name stamps its event (specFn; replace for an overlapping
-// redefinition) — and refuses through the undef site where it cannot place:
+// redefinition) — and declines through the undef site where it cannot place:
 // a suspended recording, an arm-resident bracket, an armed loop, a fn body.
 func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	pos := core.SrcPos{Row: 2, Col: 4}
@@ -56,21 +56,21 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if fnSigsDeclared(lambda) || fnSigsDeclared(core.NewInteger(1)) || fnSigsDeclared(core.NewFunction(core.FnDefInfo{Name: "n", Signatures: []core.Signature{{}}})) || !fnSigsDeclared(fnv) {
 		t.Fatal("only a boru signature with a declaration site is declared")
 	}
-	// Declined: a FRESH def refuses (the join's model is the bug), a
-	// REPLACE keeps installDef's own refusal — for a suspended recording, an
+	// Declined: a FRESH def declines (the join's model is the bug), a
+	// REPLACE keeps installDef's own compile failure — for a suspended recording, an
 	// arm-resident bracket, an armed loop, a fn body's replace, a lambda as
 	// the placed value or as the outer; a closure body compile declines
 	// silently either way.
-	refuses := func(t *testing.T, es *EmitState, what string) {
+	declines := func(t *testing.T, es *EmitState, what string) {
 		t.Helper()
 		if es.Compilable || !strings.Contains(es.Reason, "fn `f` defined inside a conditional body where the compiled program cannot place the install") {
-			t.Fatalf("%s refuses: %v %q", what, es.Compilable, es.Reason)
+			t.Fatalf("%s declines: %v %q", what, es.Compilable, es.Reason)
 		}
 	}
 	declined := func(t *testing.T, es *EmitState, what string) {
 		t.Helper()
 		if !es.Compilable || es.specFnNames["f"] || es.pendingSpecFn != nil {
-			t.Fatalf("%s declines without refusing: %v %q", what, es.Compilable, es.Reason)
+			t.Fatalf("%s declines without declining: %v %q", what, es.Compilable, es.Reason)
 		}
 	}
 	es2 := NewEmitState()
@@ -80,7 +80,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if placed {
 		t.Fatal("a suspended recording places nothing")
 	}
-	refuses(t, es2, "a suspended recording's fresh def")
+	declines(t, es2, "a suspended recording's fresh def")
 	es3 := NewEmitState()
 	es3.armResidentDepth = 1
 	if es3.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) {
@@ -92,7 +92,7 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	if es4.RecordSpeculativeFnDef(nil, "f", core.Value{}, fnv, pos) {
 		t.Fatal("an armed loop places nothing")
 	}
-	refuses(t, es4, "an armed loop's fresh def")
+	declines(t, es4, "an armed loop's fresh def")
 	es5 := NewEmitState()
 	es5.reg, _ = core.NewRegistry()
 	es5.reg.Check.FnBodyDepth = 1
@@ -101,13 +101,13 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	}
 	es5.pendingSpecFn = nil
 	if es5.RecordSpeculativeFnDef(nil, "f", fnv, fnv, pos) || !es5.Compilable {
-		t.Fatalf("a fn body's replace declines without refusing: %q", es5.Reason)
+		t.Fatalf("a fn body's replace declines without declining: %q", es5.Reason)
 	}
 	esL := NewEmitState()
 	if esL.RecordSpeculativeFnDef(nil, "f", core.Value{}, lambda, pos) {
 		t.Fatal("a conditional lambda def places nothing")
 	}
-	refuses(t, esL, "a conditional lambda def")
+	declines(t, esL, "a conditional lambda def")
 	esL2 := NewEmitState()
 	if esL2.RecordSpeculativeFnDef(nil, "f", lambda, fnv, pos) {
 		t.Fatal("a lambda-valued outer places nothing")
@@ -133,21 +133,21 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	es6 := NewEmitState()
 	es6.refuseUndef("f", specFnUnrouted)
 	if es6.Compilable || !strings.Contains(es6.Reason, "dispatch of the conditionally-defined fn `f` cannot route") {
-		t.Fatalf("the unrouted refusal: %q", es6.Reason)
+		t.Fatalf("the unrouted compile failure: %q", es6.Reason)
 	}
 	es7 := NewEmitState()
 	es7.refuseUndef("f", specFnValueRead)
 	if es7.Compilable || !strings.Contains(es7.Reason, "value read of the conditionally-defined fn `f`") {
-		t.Fatalf("the value-read refusal: %q", es7.Reason)
+		t.Fatalf("the value-read compile failure: %q", es7.Reason)
 	}
 }
 
-// The one dispatch of a speculative fn family RecordUserCall still refuses
+// The one dispatch of a speculative fn family RecordUserCall still declines
 // after an undrivable window takes the slot-less descriptor: a callee with
 // captures (the captures ride as trailing CALL_USER operands the routed op
 // has no plumbing for) — driven over a real capture as
 // TestRecordUserCallDeclinesCapturesAndLocalLeads drives its decline.
-func TestRecordUserCallRefusesCapturedSpecCallee(t *testing.T) {
+func TestRecordUserCallDoesNotLowerCapturedSpecCallee(t *testing.T) {
 	es, reg, done := beginRegionPass(t)
 	defer done()
 	caps := []core.CapturedBinding{{Name: "c", Value: core.NewInteger(3)}}
@@ -163,31 +163,31 @@ func TestRecordUserCallRefusesCapturedSpecCallee(t *testing.T) {
 	es.specFnNames = map[string]bool{"f": true}
 	es.RecordUserCall(unit, "f", []core.Value{kv, b}, nil, core.SrcPos{Row: 1, Col: 3}, pos)
 	if es.Compilable || !strings.Contains(es.Reason, "dispatch of the conditionally-defined fn `f` cannot route") {
-		t.Fatalf("a captured speculative callee refuses: %v %q", es.Compilable, es.Reason)
+		t.Fatalf("a captured speculative callee declines: %v %q", es.Compilable, es.Reason)
 	}
 }
 
-// The seats a speculative fn family refuses at: a `/v` read (NoteValRead),
+// The seats a speculative fn family declines at: a `/v` read (NoteValRead),
 // the user-poly record, the rematch record; and Finalize hands the names
 // to the Program.
-func TestSpecFnRefusingSeatsAndFinalize(t *testing.T) {
+func TestSpecFnFailingToCompileSeatsAndFinalize(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 	es := NewEmitState()
 	es.specFnNames = map[string]bool{"f": true}
 	es.NoteValRead("id", "f")
 	if es.Compilable || !strings.Contains(es.Reason, "value read of the conditionally-defined fn `f`") {
-		t.Fatalf("a /v read refuses: %q", es.Reason)
+		t.Fatalf("a /v read declines: %q", es.Reason)
 	}
 	es2 := NewEmitState()
 	es2.specFnNames = map[string]bool{"f": true}
 	es2.RecordUserPolyCall("f", nil, nil, nil, nil, nil, []core.Value{core.NewInteger(1)}, nil, pos, "f", pos)
 	if es2.Compilable || !strings.Contains(es2.Reason, "dispatch of the conditionally-defined fn `f` cannot route") {
-		t.Fatalf("the user-poly seat refuses: %q", es2.Reason)
+		t.Fatalf("the user-poly seat declines: %q", es2.Reason)
 	}
 	es3 := NewEmitState()
 	es3.specFnNames = map[string]bool{"f": true}
 	if es3.RecordDispatchRematchValues("f", []core.Value{core.NewInteger(1)}, 0, 1, pos) || es3.Compilable {
-		t.Fatalf("the rematch seat refuses: %q", es3.Reason)
+		t.Fatalf("the rematch seat declines: %q", es3.Reason)
 	}
 	es4 := NewEmitState()
 	es4.specFnNames = map[string]bool{"f": true}

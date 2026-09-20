@@ -7,20 +7,20 @@ import (
 )
 
 // TestEachBodyLocalValueDef pins voxgig leaf L0: an each/closure body that binds
-// its OWN local via a value-def (`def j …`) used to refuse force-compile. The
+// its OWN local via a value-def (`def j …`) used to decline force-compile. The
 // cause: an analysis sub-engine run of the body left `j` bound in the registry
 // ABOVE the enclosing-fn baseline, so ComputeCaptures wrongly grabbed `j` as a
 // capture; its resolveOperand then failed (j is not an enclosing binding), the
-// closure declined, and the each fell back to the interpreter. The fix excludes
+// closure declined, and the each did not compile. The fix excludes
 // names a body `def`s for ITSELF (collectBodyLocalDefs) from capture — they are
 // the closure's frame-locals, promoted by the body compile, not captures.
 //
 // Discriminator: `each [def j 5 j]` (const) always compiled; `each [def j (5 add
-// 1) j]` (computed) refused — the computed value's extra def-depth pushed `j`
+// 1) j]` (computed) declined — the computed value's extra def-depth pushed `j`
 // above the baseline. Both must compile now, and a body that captures a GENUINE
 // enclosing binding (`cur`) alongside its own local (`j`) must capture only cur.
 func TestEachBodyLocalValueDef(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// Cases that MUST compile natively (RunCompiledStrict) — no island fallback.
 	strict := []struct{ name, src, want string }{
 		{"computed body-local in each", `def g fn [[][Integer][def _ ([1] each [def j (5 add 1) j]) 5]] (g)`, "[5]"},
@@ -36,7 +36,7 @@ func TestEachBodyLocalValueDef(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile, refused: %q", reason)
+				t.Fatalf("must compile, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)

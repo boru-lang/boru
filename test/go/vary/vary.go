@@ -12,7 +12,7 @@
 // the oracle, so an ill-formed variant is discarded (InterpReject) and a
 // well-formed one gets the full native-compile + byte-parity verdict. A
 // variant that DIVERGES is a miscompile (the highest-value find); a variant
-// that REFUSES in a new reason bucket is a new frontier class.
+// that DECLINES in a new reason bucket is a new frontier class.
 //
 // Consumers: the specgen `-vary` CLI mode (full-breadth triage sweeps) and
 // test/go/langspec's TestVariationDifferential (the standing CI gate, modest
@@ -184,9 +184,9 @@ const (
 	// CheckReject: the interpreter runs it but CompileCheck hard-errors (a
 	// parse/check-run failure) or the harness could not be built.
 	CheckReject
-	// Refused: CompileCheck returned no Program (Detail = the reason), or
+	// Declined: CompileCheck returned no Program (Detail = the reason), or
 	// RunCompiled declined at runtime (Detail prefixed "runtime bail:").
-	Refused
+	Declined
 	// Islanded: it compiled, but the Program embeds an OpFallback span.
 	Islanded
 	// Diverged: it compiled and ran, and the result differs from the
@@ -222,8 +222,8 @@ func (o Outcome) String() string {
 		return "interp-reject"
 	case CheckReject:
 		return "check-reject"
-	case Refused:
-		return "refused"
+	case Declined:
+		return "declined"
 	case Islanded:
 		return "islanded"
 	case Diverged:
@@ -293,7 +293,7 @@ func classify(src string) (res Result) {
 		return Result{CheckReject, reason + ": " + cerr.Error()}
 	}
 	if prog == nil {
-		return Result{Refused, reason}
+		return Result{Declined, reason}
 	}
 	phase = "disassemble"
 	if strings.Contains(disasm(prog), "FALLBACK") {
@@ -309,7 +309,7 @@ func classify(src string) (res Result) {
 	phase = "run"
 	gotC, wasC, errC := runCompiled(ar, src)
 	if !wasC {
-		return Result{Refused, fmt.Sprintf("runtime bail: did not run compiled (err=%v)", errC)}
+		return Result{Declined, fmt.Sprintf("runtime bail: did not run compiled (err=%v)", errC)}
 	}
 	if fmt.Sprint(errC) != fmt.Sprint(errI) {
 		return Result{Diverged, fmt.Sprintf("error divergence: compiled %v vs interp %v", errC, errI)}
@@ -328,7 +328,7 @@ func (discard) Write(p []byte) (int, error) { return len(p), nil }
 // Variant is one classified (seed × transform) program. The base seed's own
 // classification appears with Transform == "seed"; transform variants are
 // generated only for seeds whose base classification is Pass — variations of
-// an already-refused row would only re-observe the base refusal, which the
+// an already-declined row would only re-observe the base compile failure, which the
 // corpus ratchets already own.
 type Variant struct {
 	Seed      Seed

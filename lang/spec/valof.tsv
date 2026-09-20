@@ -18,7 +18,7 @@
 # the call, and for any other binding it is the identity. There is no
 # function-only gate — that totality is the point, because it is what
 # lets ONE spelling read a slot whose kind is not known statically
-# (NUR085, resolved by this rule). The only refusal left is an UNBOUND
+# (NUR085, resolved by this rule). The only compile failure left is an UNBOUND
 # name, which has no value to take: [boru/undefined_word].
 #
 # ─────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ valof context apply typeof	Store	apply on a NATIVE 0-arg fn keeps its Go handler
 context set x/q 1 end def f fn [[][Integer][context set x/q 2 end 42]]  f/v apply context get x/q	42 2	an applied 0-arg body mutates the CALLER's context — apply dispatches inline, not in a sub-engine
 [([] => [42])]	[fn [[][Any][42]]]	a lambda inside a list is held, never fired in place
 #
-# §6  Negatives — the ONLY refusal is a name with nothing bound to it.
+# §6  Negatives — the ONLY compile failure is a name with nothing bound to it.
 #     There is no function-only gate: on a non-fn binding both surfaces
 #     are the identity, which §9 pins in full.
 def x 5  x/v	5	/v on a non-fn binding is the value itself
@@ -107,7 +107,7 @@ def inc fn [[n:Integer][Integer][n add 1]]  def h fn [[f:Function][Any][f/v]]  t
 #
 # ─────────────────────────────────────────────────────────────────────
 # §9  valof is TOTAL — every binding kind, not just functions (NUR085)
-#     The negative twin is §10: an unbound name still refuses.
+#     The negative twin is §10: an unbound name still declines.
 def answer 42  answer/v	42	/v on an Integer binding is the value itself
 def answer 42  valof answer	42	valof on an Integer binding, likewise
 def greet 'hi'  greet/v	'hi'	/v on a String binding
@@ -119,7 +119,7 @@ def answer 42  add 1 (answer/v)	43	and it composes as an ordinary value
 #
 # §9b the polymorphic read: ONE body spelling serves both kinds. This is
 #     the shape that had no spelling before — `[t]` calls a fn-bound
-#     param and `[t/v]` used to refuse a non-fn one.
+#     param and `[t/v]` used to decline a non-fn one.
 def idf t:Any => [t/v]  (idf 5)	5	a param holding an Integer
 def idf t:Any => [t/v]  (idf 'x')	'x'	the same body, a String
 def idf t:Any => [t/v]  def g (idf (z:Integer => [add 1 z]))  (g 5)	6	the same body, a Function — returned uncalled, then applied
@@ -127,7 +127,7 @@ def idf t:Any => [t/v]  typeof (idf (z:Integer => [z]))	Function	and it is the F
 #
 # §10  negatives — totality over KINDS is not totality over everything
 def answer 42  nope/v	ERROR:undefined_word	an unbound name has no value to take
-def answer 42  valof nope	ERROR:undefined_word	the word form refuses identically
+def answer 42  valof nope	ERROR:undefined_word	the word form declines identically
 add/vq	ERROR:invalid word modifier	q still cannot combine with v
 add/vv	ERROR:invalid word modifier	repeated v is still rejected
 #

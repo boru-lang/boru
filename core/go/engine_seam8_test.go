@@ -201,7 +201,7 @@ func TestW8MatchSignatureForwardRefWordTypeGate(t *testing.T) {
 	if sig == nil || positions[0] != 1 {
 		t.Errorf("a /v word should claim the forward Function slot; sig=%v pos=%v", sig, positions)
 	}
-	// Negative pair: a String slot refuses the reference datum — the /v
+	// Negative pair: a String slot declines the reference datum — the /v
 	// word stays a barrier and the sig goes unmatched.
 	e2 := NewTop(r)
 	e2.Tape = NewTape([]Value{NewInteger(0), NewWordRef("w8refnat")}, StackHeadroom)
@@ -1240,7 +1240,7 @@ func TestW8ConstFoldNonDeterministicDeclines(t *testing.T) {
 	}
 
 	// With an armed eval slot (the check piece's configuration), the two
-	// runs yield 1 then 2 → ConstFoldAgrees refuses and the fold declines
+	// runs yield 1 then 2 → ConstFoldAgrees declines and the fold declines
 	// through the disagreement arm rather than the eval-declined arm.
 	prev := CheckBraid.ConcreteEvalOnce
 	defer func() { CheckBraid.ConcreteEvalOnce = prev }()

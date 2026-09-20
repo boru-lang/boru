@@ -5,10 +5,10 @@ import "testing"
 // The runtime→compile differential for the mode-gated ID elision: values
 // minted during plain runtime execution carry no compile identity, so a
 // LATER compile pass that meets them must degrade conservatively
-// (refusal / dynamic-scope read → interpreter fallback) and never
+// (compile failure / dynamic-scope read → compile failure) and never
 // miscompile. The sharpest shape is a closure whose capture snapshot is a
 // runtime mint — capture slots are positional, so an identity-less
-// capture must refuse the unit rather than collapse slots.
+// capture must decline the unit rather than collapse slots.
 func TestRuntimeMintedCaptureCompileDifferential(t *testing.T) {
 	a, err := New()
 	if err != nil {
@@ -41,10 +41,10 @@ def addboth (mk 3 4)`); err != nil {
 			t.Fatalf("compiled=%v result %v, want [17]", compiled, out)
 		}
 	} else if reason == "" {
-		t.Fatal("refused with no reason")
+		t.Fatal("declined with no reason")
 	}
 
-	// The interpreter fallback path must produce the right answer.
+	// The compile failure path must produce the right answer.
 	out, err := a.RunInterp(`addboth 10`)
 	if err != nil {
 		t.Fatalf("interpreted call: %v", err)

@@ -278,7 +278,7 @@ func TestW3ConvertBigInteger(t *testing.T) {
 	// BigDecimal truncates toward zero.
 	w3TypeWant(t, `convert BigInteger (convert BigDecimal "7.9")`, `0d7`)
 	w3TypeWant(t, `convert BigInteger (convert BigDecimal "-7.9")`, `-0d7`)
-	// A Float is refused (inexact).
+	// A Float is declined (inexact).
 	w3TypeErr(t, `convert BigInteger 1.5`, "Float")
 	w3TypeErr(t, `convert BigInteger "zz"`, "cannot convert")
 }

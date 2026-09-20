@@ -4,7 +4,7 @@ package core
 // INTERPRETER-PYTHON-PARITY.10.md Phase B / F2): runtime concrete mints
 // carry no ID, any live check/compile pass (or an explicit mint scope)
 // re-arms minting process-wide, and the emit layer treats an empty ID as
-// "no identity" — skip / refuse / rescue, never a map key.
+// "no identity" — skip / decline / rescue, never a map key.
 
 import "testing"
 

@@ -44,7 +44,7 @@ func lftRun(t *testing.T, src string) (ran bool, gotC, gotI string, cerr, ierr e
 
 // TestLoopFlowSignalTrimsTheRound — a value the round already produced does
 // not survive the round's own break/continue. Every row needs a COMPUTED
-// prefix: the const twin (`for 3 [ 9 if … ]`) refuses at "branch leaves
+// prefix: the const twin (`for 3 [ 9 if … ]`) declines at "branch leaves
 // extra values", which is why the corpus never carried a witness.
 func TestLoopFlowSignalTrimsTheRound(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{

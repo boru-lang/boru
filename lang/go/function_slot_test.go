@@ -9,8 +9,8 @@ import (
 // PRODUCED handed to a slot DECLARED `Function` — a user fn's `p:Function`
 // param, which the interpreter's frame binding installs as data — is the
 // call's argument, not a stranded apply, so argIsProducedClosure's
-// word-agnostic hold no longer refuses it (`cif (cnot ctrue/v)`); an `Any`
-// slot keeps the refusal (`typeof (h 5)` is the paren that failed to
+// word-agnostic hold no longer declines it (`cif (cnot ctrue/v)`); an `Any`
+// slot keeps the compile failure (`typeof (h 5)` is the paren that failed to
 // collapse), and so does apply's own Function slot over a fn-typed carrier.
 //
 // Lifting the hold exposed a latent collision in the fn-analysis memo key:
@@ -56,8 +56,8 @@ func TestFunctionSlotParity(t *testing.T) {
 	}
 }
 
-// TestFunctionSlotSoundRefusals pins the neighbours that still REFUSE.
-func TestFunctionSlotSoundRefusals(t *testing.T) {
+// TestFunctionSlotSoundCompileFailures pins the neighbours that still DECLINE.
+func TestFunctionSlotSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason string }{
 		// (the Any-slot row, `typeof (h 5)`, graduated with the thirty-sixth
 		// increment — closure_read_model_test.go)
@@ -74,11 +74,11 @@ func TestFunctionSlotSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 	}
 }

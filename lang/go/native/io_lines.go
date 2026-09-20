@@ -291,10 +291,10 @@ func readLineHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 // names: the shared stdin reader for the stdin stream handle, or the handle's
 // own buffer for a File.
 //
-// An OUTPUT stream is refused rather than answered with none. `IO.read-line
+// An OUTPUT stream is declined rather than answered with none. `IO.read-line
 // (IO.stdout)` is a mistake in the program, not a stream that happens to be
 // finished, and reporting it as EOF would hide the bug behind a loop that
-// exits immediately — the same reasoning as doRead's output-stream refusal.
+// exits immediately — the same reasoning as doRead's output-stream compile failure.
 func lineReaderFor(v Value, r *Registry) (lineSource, error) {
 	if fh, ok := asFileHandle(v); ok {
 		return fh, nil

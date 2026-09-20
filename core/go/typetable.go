@@ -774,7 +774,7 @@ var builtinDecls = []builtinDecl{
 	{Path: "Node/Map/FlexMap", FixedID: 78, Rank: 30_220_000_000},
 	// Node/Map/FlexMap/WeakFlexMap — the weak-valued FlexMap child.
 	// Scalars store strongly, mutable handles weakly, immutable Nodes
-	// are refused (Python's weakref rule). design/FLEX-ATTRS.1.md §4.
+	// are declined (Python's weakref rule). design/FLEX-ATTRS.1.md §4.
 	{Path: "Node/Map/FlexMap/WeakFlexMap", FixedID: 123, Rank: 30_221_000_000},
 	// Node/Map/KeyVal — the map-iteration entry value (keyval.go).
 	// Kernel-declared since the ADR-012 stage-2 move from lang. The

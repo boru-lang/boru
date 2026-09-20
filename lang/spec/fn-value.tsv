@@ -113,7 +113,7 @@ import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  
 #     the pre-existing check-vs-run class §5 already notes); the
 #     twin-call VALUE rows live in
 #     lang/spec/frontier/frontier-nur038-seal.tsv — semantically green,
-#     compile-refused on the pre-existing residual-ordering limitation
+#     compile-declined on the pre-existing residual-ordering limitation
 #     ("dynamic value precedes residual args"). The EXPLICIT-PAREN row of
 #     that set GRADUATED here 2026-08-27 (Stage 3): each paren applies and
 #     nets one value, and the residual layout no longer reads two placed
@@ -134,33 +134,33 @@ import module [def p fn [[x:Any] [Any] [x]] export "M" {p: p/v}] end M.p 5 M.p 7
 def f fn [[x:Any] [Any] [x]] end def h fn [[y:Any] [Any] [y]] end def m {p: f/v} end m.p 5 h 7	5 7	value call then bare-word call (the word barrier, unchanged)
 def f fn [[x:Any] [Any] [x]] end def m {p: f/v} end m.p 5 end m.p 7	5 7	explicit `end` as the seal (unchanged)
 #
-# §7  fn-local fns as higher-order body words REFUSE compilation (NUR037).
+# §7  fn-local fns as higher-order body words FAIL TO COMPILE compilation (NUR037).
 #     A fn bound by `def … fn` INSIDE another fn and then NAMED as a
 #     code-body word (`for-each [step] xs`) resolves per run through the
 #     def stack, which a compiled program never populates — the enclosing
 #     body's def is compiled away — so every record-time admission that
 #     baked the NAME (the island span, the CALL_NATIVE const-bake, the
 #     closure probe) turned a working program into undefined_word in the
-#     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now refuses
+#     DEFAULT mode only. bodyRefsFnLocalFn (eng/go/carrier.go) now declines
 #     the whole program at compile admission, and it is then silently
 #     re-run on the interpreter (design/COMPILABLE-SUBSET.md §5) — an open
-#     defect, not a sanctioned outcome. The refusing
+#     defect, not a sanctioned outcome. The declining
 #     shapes are pinned in lang/go/test/nur037_fnlocal_test.go — a spec
-#     value row must compile (refusalCeiling 0). The rows here pin the
-#     twins the refusal must NEVER over-match, holding both engines to
+#     value row must compile (failureCeiling 0). The rows here pin the
+#     twins the compile failure must NEVER over-match, holding both engines to
 #     them through the differential gate: module-scope callbacks (the
 #     utils house-rule shape) and a fn-local VALUE read (the closure
 #     path's lexical capture).
 def stp fn [[e:Integer] [Integer] [e add 1]] end each [stp] [1 2]	[2 3]	a module-scope fn named as an each body word keeps compiling
 def acc (flex {}) end def stp fn [[e:String] [Any] [acc set (e) true]] end for-each [stp] ['x' 'y'] end acc	(flex {x:true y:true})	a module-scope fn as a for-each body word keeps compiling
-def g fn [[xs:List] [Any] [def n 10 each [n add] xs]] end g [1 2]	[11 12]	a fn-local VALUE def read by the body is a lexical capture, not a refusal
+def g fn [[xs:List] [Any] [def n 10 each [n add] xs]] end g [1 2]	[11 12]	a fn-local VALUE def read by the body is a lexical capture, not a compile failure
 #
 # §8  chained forward application of Function params — the compose family.
 #     `f (g x)` inside a fn body applies the inner param fn at the paren
 #     and the outer param fn over its result — the canonical HOF chain.
 #     A live MISCOMPILE until 2026-08-02 (the whole-frame replay's flat
 #     window lost the paren structure and compiled the RET count error),
-#     then a refusal; GRADUATED 2026-08-03 by the Stage-G single-arg
+#     then a compile failure; GRADUATED 2026-08-03 by the Stage-G single-arg
 #     increment: the leading one-arg apply `(g x)` records the same
 #     RecordDynApply event as the trailing spelling `(x g)` (the two
 #     collections converge at one argument), so the inner group collapses
@@ -171,12 +171,12 @@ def compose fn [[f:Function g:Function x:Integer] [Integer] [f (g x)]] compose (
 def twice fn [[f:Function x:Integer] [Integer] [f (f x)]] twice ([n:Integer] => [n add 1]) 5	7	self-composition — the same fn value read twice, applied at two depths
 def stage fn [[f:Function x:Integer] [Integer] [def r (f x) f r]] stage ([n:Integer] => [n add 1]) 5	7	the def-split idiom: the apply seats in a def, the tail applies over the bound name (replayIsBodyTail's windowReadsID arm)
 def tds fn [[g:Function x:Integer] [Integer] [def r (x g) g r]] tds ([n:Integer] => [n add 1]) 5	7	the trailing-spelling def-split twin — same seating through the trailing RecordDynApply event
-def chain fn [[a:Function b:Function s:Integer][Integer][def r1 (a s) def r2 (b r1) r2]] chain ([n:Integer] => [n add 1]) ([n:Integer] => [n mul 10]) 4	50	CHAINED def-split (NUR087, fixed 2026-08-24): the second def calls through a Function param with the FIRST def's dynamic binding as its argument. The collapse used to require a non-dynamic argument, so this window stalled the pending def and every later read of r2 raised a false undefined_word — refusing a program both engines run
+def chain fn [[a:Function b:Function s:Integer][Integer][def r1 (a s) def r2 (b r1) r2]] chain ([n:Integer] => [n add 1]) ([n:Integer] => [n mul 10]) 4	50	CHAINED def-split (NUR087, fixed 2026-08-24): the second def calls through a Function param with the FIRST def's dynamic binding as its argument. The collapse used to require a non-dynamic argument, so this window stalled the pending def and every later read of r2 raised a false undefined_word — declining a program both engines run
 #
 # §9  gradual-Any into a multi-overload user fn with DIFFERING arm returns.
 #     The checker cannot statically commit an arm, and until 2026-08-03 one
 #     recorded output type would lie for the unselected arm, so the shape
-#     refused ("ambiguous dispatch, no poly re-match"). The §8.2(3)
+#     declined ("ambiguous dispatch, no poly re-match"). The §8.2(3)
 #     return-join graduation records the JOIN of the arms' returns (a
 #     dynamic carrier at the arms' common ancestor) and the VM's
 #     OpCallUserPoly re-match selects the concrete arm — whichever arm
@@ -206,7 +206,7 @@ def f fn x:Integer [Integer] [x add 1] def a (f/v) (canon (a/v)) eq (canon (f/v)
 #     or a single-signature concrete callee — so a factory whose branches
 #     return different arities, or an overloaded callee, never reaches the
 #     trim. The narrower window (fewer args than the arity) is the
-#     opposite shape and still refuses: the interpreter leaves the fn
+#     opposite shape and still declines: the interpreter leaves the fn
 #     UNAPPLIED, which nothing here models.
 def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (1 2 (mk 4))	1 6	a 1-arg closure under a 2-wide window: the adder takes the top value, the deeper 1 survives
 def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (1 2 3 (mk 4))	1 2 7	…and two deeper values survive, in order
@@ -223,7 +223,7 @@ def mk2 fn [[n:Integer] [Function] [([a:Integer b:Integer] => [a add b add n])]]
 #     Until the Apply kernel carried the applied value's contract into the
 #     frame it enters, the first row below answered 'str' compiled and raised
 #     interpreted — a silent wrong answer, which is the class this project
-#     ranks strictly above a refusal. The violation is only visible at RUN
+#     ranks strictly above a compile failure. The violation is only visible at RUN
 #     time (the body returns its `n:Any` param), so no static pass can stand
 #     in for the runtime contract.
 def bad fn [[n:Any][Integer][n]] end def mk fn [[][Function][bad/v]] end ((mk) 'str')	ERROR:type_error	an applied fn value's declared return TYPE is enforced on both engines
@@ -245,7 +245,7 @@ def cbad fn [[n:Integer][Boolean][n]] end [1 2] each cbad/v	ERROR:type_error	a c
 def cokr fn [[n:Integer][Boolean][n gt 0]] end [1 2] each cokr/v	[true true]	…and a conforming callback passes through unchanged
 def clit fn [[n:Integer][Boolean][1]] end [1 2] each clit/v	ERROR:type_error	…and a callback whose body is a bare LITERAL is held to it too — no application to strand an operand, no param read to surface a stand-in, so the concrete residual IS the return
 def cstr fn [[n:Integer][Boolean]['s']] end [1 2] each cstr/v	ERROR:type_error	a literal body of any leaf type, not just the Integer one that surfaced it
-def cfit fn [[n:Integer][Integer][1]] end [1 2] each cfit/v	[1 1]	…and a CONFORMING literal body is not rejected, so the arm above is not just a blanket refusal of literal bodies
+def cfit fn [[n:Integer][Integer][1]] end [1 2] each cfit/v	[1 1]	…and a CONFORMING literal body is not rejected, so the arm above is not just a blanket compile failure of literal bodies
 def flitp fn [[1] [1] [dup drop]] end 99	99	a literal PARAM pattern widens to its parent for the generalised body analysis, so the residual must NOT be measured against a literal RETURN pattern — `flitp 1` is 1 on both engines, and checking it against `1` reported a mismatch that does not exist
 # §7  a bare read of a Function-typed PARAM is a CALL (NUR123; ruled 2026-08-15,
 #     ADR-016: a bare name is a call, `/v` asks for the value, arity never

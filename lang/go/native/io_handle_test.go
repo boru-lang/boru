@@ -196,10 +196,10 @@ func TestExclusiveWriteWord(t *testing.T) {
 	if b, _ := mem.ReadFile("e.txt"); string(b) != "fresh" {
 		t.Errorf("exclusive create = %q", b)
 	}
-	// Exclusive on an existing path refuses.
+	// Exclusive on an existing path declines.
 	if err := runBoruError(t, r, []Value{NewWord("write"), pathV("e.txt"), NewString("x"),
 		wrapMap(func(om *OrderedMap) { om.Set("exclusive", NewBoolean(true)) })}); err == nil {
-		t.Error("exclusive over an existing file should refuse")
+		t.Error("exclusive over an existing file should decline")
 	}
 	// Exclusive cannot combine with append.
 	if err := runBoruError(t, r, []Value{NewWord("write"), pathV("e2.txt"), NewString("x"),
@@ -207,7 +207,7 @@ func TestExclusiveWriteWord(t *testing.T) {
 			om.Set("exclusive", NewBoolean(true))
 			om.Set("mode", NewString("append"))
 		})}); err == nil {
-		t.Error("exclusive+append should refuse")
+		t.Error("exclusive+append should decline")
 	}
 	// Exclusive cannot combine with a positioned {offset} (binary path).
 	if err := runBoruError(t, r, []Value{NewWord("write"), pathV("e3.bin"), NewBytesValue([]byte{1}),
@@ -215,7 +215,7 @@ func TestExclusiveWriteWord(t *testing.T) {
 			om.Set("exclusive", NewBoolean(true))
 			om.Set("offset", NewInteger(0))
 		})}); err == nil {
-		t.Error("exclusive+offset should refuse")
+		t.Error("exclusive+offset should decline")
 	}
 }
 
@@ -346,7 +346,7 @@ func TestMountOpenArms(t *testing.T) {
 	if _, err := ops.Open("here.txt", capabilities.OpenOpts{Write: true, Create: true, Exclusive: true}); err == nil {
 		t.Error("mount exclusive over existing should error")
 	}
-	// A read-only handle refuses writes; a write-only handle refuses reads.
+	// A read-only handle declines writes; a write-only handle declines reads.
 	rh, _ := ops.Open("here.txt", capabilities.OpenOpts{Read: true})
 	if _, err := rh.Write([]byte("x")); err == nil {
 		t.Error("write on a read-only mount handle")
@@ -498,7 +498,7 @@ func TestReadHandleVariants(t *testing.T) {
 	if _, err := doSeekWord([]Value{f, NewString("x")}, r); err == nil {
 		t.Error("seek with a non-integer should error")
 	}
-	// flush of a CLOSED handle errors (Sync refuses).
+	// flush of a CLOSED handle errors (Sync declines).
 	runBoru(t, r, []Value{NewWord("close"), f})
 	if _, err := doFlushWord([]Value{f}, r); err == nil {
 		t.Error("flush of a closed handle should error")
@@ -623,10 +623,10 @@ func TestMountHandleInternals(t *testing.T) {
 	if err := wh.Sync(); err == nil {
 		t.Error("flush over a write-less mount should error")
 	}
-	// A positioned WriteAt on an append handle is refused, like os.File.
+	// A positioned WriteAt on an append handle is declined, like os.File.
 	apnd, _ := rw.Open("f", capabilities.OpenOpts{Write: true, Append: true})
 	if _, err := apnd.WriteAt([]byte("x"), 0); err == nil {
-		t.Error("WriteAt on an append mount handle should refuse")
+		t.Error("WriteAt on an append mount handle should decline")
 	}
 	_ = apnd.Close()
 }

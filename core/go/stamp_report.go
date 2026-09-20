@@ -3,7 +3,7 @@ package core
 import "sync"
 
 // Stamp attribution (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5). Runtime stamping
-// is silent by design — a refusal must never change behaviour — which
+// is silent by design — a compile failure must never change behaviour — which
 // historically made "did this callback compile?" unobservable from outside a
 // Go test (the gap that let a stale "the handlers compile" claim survive in
 // the design notes). When stamping is armed, every detached-stamp ATTEMPT
@@ -16,7 +16,7 @@ import "sync"
 
 // StampEvent is one detached-stamp attempt: the fn's name (empty for an
 // anonymous handler lambda — Pos then locates its construction site), the
-// outcome, and the refusal reason when the compile declined.
+// outcome, and the compile failure reason when the compile declined.
 type StampEvent struct {
 	Name    string
 	Pos     SrcPos

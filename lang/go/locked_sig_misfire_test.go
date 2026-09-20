@@ -6,7 +6,7 @@ import (
 )
 
 // hasLockedSigMisfire reports whether the compile pass emitted the spurious
-// `locked_signature` refusal — the bug both fixes below target.
+// `locked_signature` compile failure — the bug both fixes below target.
 func hasLockedSigMisfire(res CheckResult) bool {
 	for _, d := range res.Diagnostics {
 		if d.Severity == "error" && strings.Contains(d.Detail, "locked_signature") {
@@ -21,7 +21,7 @@ func hasLockedSigMisfire(res CheckResult) bool {
 // module socket-word dispatch over it resolves optimistically — the connection
 // value IS a Socket at runtime. The echo handler with `[sock:Any]` therefore
 // compiles its body to a VM unit exactly as the `[sock:Socket]` form does, with
-// no `locked_signature` refusal. Before the fix the strict-`Any` carrier failed
+// no `locked_signature` compile failure. Before the fix the strict-`Any` carrier failed
 // the Socket slot, left `Net.recv-until` as a FailedDispatch partial, and
 // (inside the `for` loop) misfired the open-words merge.
 func TestAnyHandlerParamCompilesLikeSocket(t *testing.T) {
@@ -41,10 +41,10 @@ def ln (Net.serve-raw {tcp: 0} (fn [[sock:` + ty + `] [Any] ` + body + `]))`
 			t.Fatalf("[%s] compile error: %v", ty, err)
 		}
 		if hasLockedSigMisfire(res) {
-			t.Fatalf("[%s] spurious locked_signature refusal", ty)
+			t.Fatalf("[%s] spurious locked_signature compile failure", ty)
 		}
 		if prog == nil {
-			t.Fatalf("[%s] whole-program compilation refused (reason=%q)", ty, reason)
+			t.Fatalf("[%s] whole-program compilation declined (reason=%q)", ty, reason)
 		}
 		if firstStampedHandler(prog) == nil {
 			t.Fatalf("[%s] handler body did not compile to a VM unit", ty)
@@ -58,7 +58,7 @@ def ln (Net.serve-raw {tcp: 0} (fn [[sock:` + ty + `] [Any] ` + body + `]))`
 // FailedDispatch Function value that `def` consumes. Re-analysed inside a `for`
 // loop it must NOT be misread as a locked-signature word extension: a failed
 // dispatch left as data is never a deliberate `def <word> fn […]`, so
-// defWordExtension falls through to a plain value binding rather than refusing
+// defWordExtension falls through to a plain value binding rather than declining
 // with `locked_signature`. (The program still declines to compile for the real
 // reason — the dispatch didn't resolve — but never with the spurious merge
 // error.)

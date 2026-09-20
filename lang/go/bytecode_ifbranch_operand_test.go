@@ -7,7 +7,7 @@ import (
 
 // A Map-typed enclosing local, merely READ (narrowed-through-use) by a
 // user-fn call inside BOTH `if` arms, then read AGAIN by a user-fn call
-// after the join, used to refuse "fn call operand of unknown provenance"
+// after the join, used to decline "fn call operand of unknown provenance"
 // — even with identical arms. Root cause: the arms narrow the binding
 // identity-preserving (narrowDynamicUses keeps the value's ID), but
 // InstallJoinedDefs re-pushed the name as a fresh-ID JoinCarriers result,
@@ -81,7 +81,7 @@ render {mode: "x", tabs: {a: 1}}`, "[2]"},
 				t.Fatalf("CompileCheck: %v", err)
 			}
 			if prog == nil {
-				t.Fatalf("refused (%q) — the if-branch narrow-preservation regressed", reason)
+				t.Fatalf("declined (%q) — the if-branch narrow-preservation regressed", reason)
 			}
 
 			b, err := New()
@@ -122,7 +122,7 @@ render {mode: "x", tabs: {a: 1}}`, "[2]"},
 // A GENUINE reassignment inside an arm (a real `def` of a DIFFERENT value,
 // not a narrow) gives the arms DIFFERING IDs, so joinBranchDef keeps the
 // fresh-ID JoinCarriers merge — the shared-ID shortcut must NOT fire here.
-// The shape may REFUSE (the merged binding read after the branch
+// The shape may DECLINE (the merged binding read after the branch
 // is its own known gap), but it must never MISCOMPILE: whenever it does
 // compile, the VM result equals the interpreter's. This pins that the
 // narrow-preservation did not weaken the genuine-merge path into a
@@ -156,7 +156,7 @@ render {mode: "x", n: 7}`
 		t.Fatalf("CompileCheck: %v", err)
 	}
 	if prog == nil {
-		return // a refusal (its own separate gap) — not a miscompile
+		return // a compile failure (its own separate gap) — not a miscompile
 	}
 	b, err := New()
 	if err != nil {

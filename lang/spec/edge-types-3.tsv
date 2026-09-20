@@ -32,7 +32,7 @@ def Box gen [T] class {v:T} end def b:(Box of [Integer]) {v:1} b is (Box of [Num
 def Box gen [T] class {v:T} end def b:(Box of [Number]) {v:1} b is (Box of [Integer])	false	…and the wider instance is not the narrower one — no contravariance either
 def Box gen [T] class {v:T} end def b:(Box of [Integer]) {v:1} b is Box	true	the bare schema name means "any instantiation"
 def Box gen [T] class {v:T} end 5 is Box	false	…but still rejects non-members
-def Box gen [T] class {v:T} def f fn [[x:(Box of [Number])] [Integer] [1]] end f (make (Box of [Integer]) {v:1})	ERROR:signature	param dispatch is invariant too: a Box<Integer> is refused at a Box<Number> slot
+def Box gen [T] class {v:T} def f fn [[x:(Box of [Number])] [Integer] [1]] end f (make (Box of [Integer]) {v:1})	ERROR:signature	param dispatch is invariant too: a Box<Integer> is declined at a Box<Number> slot
 def Box gen [T] class {v:T} def f fn [[x:(Box of [Integer])] [Integer] [x dot v]] end f (make (Box of [Integer]) {v:7})	7	…while the exact instantiation dispatches
 
 
@@ -53,9 +53,9 @@ def P (refine Integer) def H gen [(T extends P)] class {x:T} end (make (H of [P]
 def P (refine Integer) def H gen [(T extends P)] class {x:T} end H of [String]	ERROR:constraint_violation	…and rejects a foreign family
 # generic FN bounds run at dispatch
 def f gen [(T extends (Integer gt 0))] fn [[x:T] [T] [x]] f 5	5	a generic fn's predicate bound admits a satisfying argument
-def f gen [(T extends (Integer gt 0))] fn [[x:T] [T] [x]] f 'hi'	ERROR:signature	…and refuses dispatch on a foreign family
+def f gen [(T extends (Integer gt 0))] fn [[x:T] [T] [x]] f 'hi'	ERROR:signature	…and declines dispatch on a foreign family
 def f gen [(T extends Number)] fn [[x:T] [T] [x]] f 2.5	2.5	a lattice bound admits any Number leaf
-def f gen [(T extends Number)] fn [[x:T] [T] [x]] f 'hi'	ERROR:signature	…and refuses a non-Number
+def f gen [(T extends Number)] fn [[x:T] [T] [x]] f 'hi'	ERROR:signature	…and declines a non-Number
 
 
 # ====================================================================
@@ -100,7 +100,7 @@ def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) is P
 def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) dot x	1	…and inherits the root default flat
 def P class {x:1} def P2 refine P {y:2} def P3 refine P2 {z:3} (make P3 {}) set w 1	ERROR:sealed_field	sealing covers the whole three-level field set
 def P class {x:1} def P2 refine P {y:2} def g fn [[p:P] [Integer] [p.x]] g (make P2 {})	1	a subclass instance dispatches at a parent-class param
-# (dropped) subclass-predicate mismatch dispatch recovery refuses (an open defect the interpreter absorbs); out of corpus for gate purity
+# (dropped) subclass-predicate mismatch dispatch recovery declines (an open defect the interpreter absorbs); out of corpus for gate purity
 # a child cannot redeclare a parent field with a CONFLICTING default/type
 def P class {x:1} def P2 refine P {x:5} 1	ERROR:cannot expand parent type	a different same-name default conflicts with the parent contract
 def P class {x:1} def P2 refine P {x:'hi'} 1	ERROR:cannot expand parent type	…and so does a foreign-family redeclaration
@@ -125,5 +125,5 @@ def Box gen [T] class {v:T} def BoxI (Box of [Integer]) def BoxS (Box of [String
 # ====================================================================
 def Box gen [T] class {v:T} def P (refine Integer) end def b:(Box of [P]) {v:(make P 1)} b typeof	Box of [P]	a newtype argument names the instantiation
 def Box gen [T] class {v:T} def P (refine Integer) end (make (Box of [P]) {v:(make P 7)}) dot v	7	a tagged value constructs the field
-def Box gen [T] class {v:T} def P (refine Integer) end make (Box of [P]) {v:'x'}	ERROR:expected P	a foreign family is refused at the substituted newtype field
+def Box gen [T] class {v:T} def P (refine Integer) end make (Box of [P]) {v:'x'}	ERROR:expected P	a foreign family is declined at the substituted newtype field
 def Box gen [T] class {v:T} def P (refine Integer) end def b (make (Box of [Integer]) {v:1}) b is (Box of [P])	false	Box<Integer> is not Box<P> — invariance is nominal all the way down

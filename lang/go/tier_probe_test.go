@@ -21,10 +21,10 @@ import (
 //     is T1's critical path and deliberately NOT exercised here).
 //
 // PROBE RESULT (2026-07): the shape does NOT yet compile — the emitter
-// refuses with "fn call operand of unknown provenance" (an fn-call
+// declines with "fn call operand of unknown provenance" (an fn-call
 // operand must trace to a producing event or a local slot; a
 // pre-installed dynamic binding has neither). This test PINS that
-// refusal as the current seam behavior: T1's first task is to give the
+// compile failure as the current seam behavior: T1's first task is to give the
 // tier's synthetic-call entry a real operand provenance, at which point
 // this pin flips into the positive compile+run+differential assertion
 // (kept below in comments as the target shape).
@@ -51,6 +51,6 @@ func TestTierFeasibilityProbe(t *testing.T) {
 			"(see design/INTERPRETER-TIERED-EXECUTION.0.md T1)")
 	}
 	if reason != "fn call operand of unknown provenance" {
-		t.Fatalf("refusal reason drifted: %q — update the pin (and the tier design's task list)", reason)
+		t.Fatalf("compile failure reason drifted: %q — update the pin (and the tier design's task list)", reason)
 	}
 }

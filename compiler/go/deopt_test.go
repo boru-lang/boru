@@ -107,7 +107,7 @@ func TestPlanDeoptsDeclines(t *testing.T) {
 		t.Errorf("a def with no re-pushable source declines the unit's points: %+v", rec.deopts)
 	}
 	// A def the island reads of a FN value (`def w fn […]  … w`): no
-	// const or local re-pushes it, so the unit would refuse at its bind —
+	// const or local re-pushes it, so the unit would decline at its bind —
 	// the points decline; a def of an inert literal binds.
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
 		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},

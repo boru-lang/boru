@@ -37,21 +37,21 @@ func TestFnValueZeroArg(t *testing.T) {
 	}
 	// A DIRECT-literal mixed overload set (a real 0-arg among arg-taking
 	// sigs, no synthetic Fallback): the recorded events model the fire,
-	// so the read-guard does not refuse it.
+	// so the read-guard does not decline it.
 	if FnValueZeroArg(fnVal(Signature{Args: []*Type{TInteger}}, Signature{})) {
-		t.Fatal("a direct-literal mixed overload set compiles — no refusal")
+		t.Fatal("a direct-literal mixed overload set compiles — no compile failure")
 	}
 	// The PARKED spelling of the same mixed set (the aggregate view,
 	// recognisable by its synthetic Fallback sig): the landing is
-	// unmodelled, so the guard must refuse — the representation gap the
+	// unmodelled, so the guard must decline — the representation gap the
 	// predicate's doc records.
 	if !FnValueZeroArg(fnVal(Signature{Args: []*Type{TInteger}}, Signature{}, Signature{Fallback: true})) {
-		t.Fatal("a parked mixed overload set must refuse until the landing model covers it")
+		t.Fatal("a parked mixed overload set must decline until the landing model covers it")
 	}
 	// A parked ARG-taking fn (no real 0-arg overload, just the synthetic
-	// Fallback): lands as data in both engines — no refusal.
+	// Fallback): lands as data in both engines — no compile failure.
 	if FnValueZeroArg(fnVal(Signature{Args: []*Type{TInteger}}, Signature{Fallback: true})) {
-		t.Fatal("a parked args-only fn lands as data — no refusal")
+		t.Fatal("a parked args-only fn lands as data — no compile failure")
 	}
 	if FnValueZeroArg(NewInteger(1)) {
 		t.Fatal("non-fn value is not a 0-param fn")
@@ -60,9 +60,9 @@ func TestFnValueZeroArg(t *testing.T) {
 
 // --- producerWord / producerReturnedClosureArity ------------------------
 
-// --- make-list / make-map / interp / closure refusals -------------------
+// --- make-list / make-map / interp / closure compile failures -------------------
 
-// --- recordCallRefusal classifier arms ----------------------------------
+// --- recordCallCompileFailure classifier arms ----------------------------------
 
 // --- recordCallOperands fn-inert const bake -----------------------------
 
@@ -85,7 +85,7 @@ func TestTypeBodyConstOKChildType(t *testing.T) {
 	// Child not const-safe → false.
 	bad := Value{Data: ChildTypeInfo{Child: NewCarrier(TInteger)}}
 	if typeBodyConstOK(bad) {
-		t.Fatal("carrier child should refuse")
+		t.Fatal("carrier child should decline")
 	}
 	// Child ok, but an entry value is not const-safe → false.
 	badEntry := Value{Data: ChildTypeInfo{
@@ -93,7 +93,7 @@ func TestTypeBodyConstOKChildType(t *testing.T) {
 		Entries: []ChildEntry{{Key: "k", Value: NewCarrier(TInteger)}},
 	}}
 	if typeBodyConstOK(badEntry) {
-		t.Fatal("carrier entry should refuse")
+		t.Fatal("carrier entry should decline")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestIsInertConstPayloadArms(t *testing.T) {
 	attr.Set("x", NewCarrier(TInteger))
 	xml := Value{Parent: TAny, Data: XmlElementPayload{Tag: "a", Attr: attr}}
 	if IsInertConst(xml) {
-		t.Fatal("carrier attribute should refuse")
+		t.Fatal("carrier attribute should decline")
 	}
 }
 
@@ -120,16 +120,16 @@ func TestFnSigConstOK(t *testing.T) {
 	pat := NewCarrier(TInteger)
 	info := FnUndefInfo{Sigs: []FnSigSpec{{Params: []FnParam{{Pattern: &pat}}}}}
 	if fnSigConstOK(info) {
-		t.Fatal("a carrier param pattern should refuse")
+		t.Fatal("a carrier param pattern should decline")
 	}
 }
 
 func TestSurfaceConstOK(t *testing.T) {
 	if surfaceConstOK(nil) {
-		t.Fatal("nil surface should refuse")
+		t.Fatal("nil surface should decline")
 	}
 	if surfaceConstOK(&SurfaceInfo{Type: nil}) {
-		t.Fatal("no canonical node should refuse")
+		t.Fatal("no canonical node should decline")
 	}
 	if !surfaceConstOK(&SurfaceInfo{Type: TInteger}) {
 		t.Fatal("a surface with no required ops should be const-ok")
@@ -138,24 +138,24 @@ func TestSurfaceConstOK(t *testing.T) {
 
 func TestSchemaConstOK(t *testing.T) {
 	if schemaConstOK(nil) {
-		t.Fatal("nil schema should refuse")
+		t.Fatal("nil schema should decline")
 	}
 	if schemaConstOK(&TypeSchemaInfo{Type: nil}) {
-		t.Fatal("no canonical node should refuse")
+		t.Fatal("no canonical node should decline")
 	}
-	// A body Word that names no parameter → isParam false, refuses.
+	// A body Word that names no parameter → isParam false, declines.
 	if schemaConstOK(&TypeSchemaInfo{Type: TInteger, Body: NewWord("nope")}) {
-		t.Fatal("a non-param body word should refuse")
+		t.Fatal("a non-param body word should decline")
 	}
 	// param bound not const-safe → false.
 	if schemaConstOK(&TypeSchemaInfo{Type: TInteger, Body: NewInteger(1),
 		Params: []GenParam{{HasBound: true, Bound: NewCarrier(TInteger)}}}) {
-		t.Fatal("carrier bound should refuse")
+		t.Fatal("carrier bound should decline")
 	}
 	// param default not const-safe → false.
 	if schemaConstOK(&TypeSchemaInfo{Type: TInteger, Body: NewInteger(1),
 		Params: []GenParam{{HasDefault: true, Default: NewCarrier(TInteger)}}}) {
-		t.Fatal("carrier default should refuse")
+		t.Fatal("carrier default should decline")
 	}
 }
 
@@ -163,13 +163,13 @@ func TestIsInertQuotedParen(t *testing.T) {
 	// Quoted but not actually a paren-expr payload → AsParenExpr errors.
 	bad := Value{Parent: TParenExpr, Data: IntPayload{N: 1}, Quoted: true}
 	if isInertQuotedParen(bad) {
-		t.Fatal("a non-paren payload should refuse")
+		t.Fatal("a non-paren payload should decline")
 	}
-	// Quoted paren with a carrier token → refuses.
+	// Quoted paren with a carrier token → declines.
 	p := NewParenExpr([]Value{NewCarrier(TInteger)})
 	p.Quoted = true
 	if isInertQuotedParen(p) {
-		t.Fatal("a carrier token should refuse")
+		t.Fatal("a carrier token should decline")
 	}
 }
 
@@ -181,7 +181,7 @@ func TestIsInertReach(t *testing.T) {
 	// A reach with a computed segment → false.
 	r := NewReach(ReachInfo{Segments: []ReachSeg{{Computed: true}}})
 	if isInertReach(r) {
-		t.Fatal("a computed segment should refuse")
+		t.Fatal("a computed segment should decline")
 	}
 }
 
@@ -192,12 +192,12 @@ func TestInertReachMemberSeam7(t *testing.T) {
 	}
 	// IsReach by parent but the payload is not ReachInfo → AsReach errors.
 	if inertReachMember(Value{Parent: TReach, Data: IntPayload{N: 1}}) {
-		t.Fatal("a non-reach payload should refuse")
+		t.Fatal("a non-reach payload should decline")
 	}
-	// A reach whose receiver token is a carrier → refuses.
+	// A reach whose receiver token is a carrier → declines.
 	r := NewReach(ReachInfo{Receiver: []Value{NewCarrier(TInteger)}})
 	if inertReachMember(r) {
-		t.Fatal("a carrier receiver should refuse")
+		t.Fatal("a carrier receiver should decline")
 	}
 }
 
@@ -216,7 +216,7 @@ func TestTypeBodyConstOKElements(t *testing.T) {
 	// Child ok, but an Elements entry is a carrier → allInert fails.
 	v := Value{Data: ChildTypeInfo{Child: NewInteger(1), Elements: []Value{NewCarrier(TInteger)}}}
 	if typeBodyConstOK(v) {
-		t.Fatal("a carrier element should refuse")
+		t.Fatal("a carrier element should decline")
 	}
 }
 
@@ -228,13 +228,13 @@ func TestTypeBodyConstOKElements(t *testing.T) {
 
 // --- interpMemberInter interp-string error arm --------------------------
 
-// --- tryReturnedClosure early refusals ----------------------------------
+// --- tryReturnedClosure early compile failures ----------------------------------
 
 // --- tryReturnedClosure body-compile path -------------------------------
 
 // --- StartFnCompile finish residual paths -------------------------------
 
-// --- quoted-operand refusal ---------------------------------------------
+// --- quoted-operand compile failure ---------------------------------------------
 
 // --- Finalize residual arms ---------------------------------------------
 

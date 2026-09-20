@@ -121,7 +121,7 @@ func TestCompleteRegionClaimsNothingWhenTheStackFilledIt(t *testing.T) {
 
 // A WORD slot is finished at capture and must STAY finished. Sourcing it from
 // the operand would freeze the binding the word had during the pass, which is
-// the miscompile the descriptor model exists to refuse: the same token is a
+// the miscompile the descriptor model exists to decline: the same token is a
 // value slot or a collection barrier depending on what it is bound to NOW.
 func TestCompleteRegionKeepsAWordSlotLive(t *testing.T) {
 	es, reg, done := beginRegionPass(t)
@@ -325,7 +325,7 @@ func TestCompletedRegionLivesOnItsEventOnly(t *testing.T) {
 //
 // Built deliberately outside the pass, because inside one every value has an
 // id and the hazard is invisible — which is exactly why it needed pinning.
-func TestSlotIsOperandRefusesIdlessValues(t *testing.T) {
+func TestSlotIsOperandDoesNotLowerIdlessValues(t *testing.T) {
 	es := NewEmitState()
 	a, b := core.NewInteger(1), core.NewInteger(2)
 	if a.ID != "" || b.ID != "" {

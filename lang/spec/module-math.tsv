@@ -24,7 +24,7 @@ import "boru:math-util"  MathUtil.floor -3	-3	Integer floor is identity (negativ
 import "boru:math-util"  MathUtil.round 7	7	Integer round is identity
 import "boru:math-util"  MathUtil.round-even 8	8	Integer round-even is identity
 import "boru:math-util"  MathUtil.trunc 9	9	Integer trunc is identity
-import "boru:math-util"  MathUtil.ceil "x"	ERROR:uncalled_function	a non-Number still refuses (negative twin)
+import "boru:math-util"  MathUtil.ceil "x"	ERROR:uncalled_function	a non-Number still declines (negative twin)
 #
 # §3  roots / logs (Float results)
 import "boru:math-util"  MathUtil.sqrt 16.0	4.0	square root

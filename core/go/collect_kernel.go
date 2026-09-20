@@ -269,7 +269,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 
 		// A sugar marker expands HERE — once per dispatch, before
 		// matchSignature's per-candidate scans (which must never mutate
-		// the tape per sig). A marker the expansion helper refuses is a
+		// the tape per sig). A marker the expansion helper declines is a
 		// boundary; a selected-head expansion failure is the user's
 		// syntax error, surfaced now.
 		if IsSugar(tok) {
@@ -463,7 +463,7 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// it. With a heterogeneous-arity overload — e.g. a 3-arg `add` —
 		// `(g) add (g) add (g)` evaluated the third group before the first add
 		// ran; the recorded events then put both later operands on the
-		// simulated stack and the operand layout refused "not adjacent on
+		// simulated stack and the operand layout declined "not adjacent on
 		// top". Stop so each dispatch pre-evaluates only the groups IT
 		// collects, in source order. Lookup mirrors commitBarrierForward's own
 		// function-word test. The capturesForwardToken guard preserves a word
@@ -608,12 +608,12 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				// interpreter does, so the static analysis stays advisory
 				// rather than emitting a spurious no_signature. NOT in
 				// compile mode: there the dispatch must remain UNMATCHED so
-				// the emitter refuses (force-compile) instead of baking a
+				// the emitter declines (force-compile) instead of baking a
 				// wrong direct call — preserving compile==interpret.
 				// A TYPE binding denotes its lattice node (the Stage 2
 				// flip — deftable.Top), so the same plan-time guard the
 				// builtin-name arm below carries applies here: a type
-				// literal is refused at a concrete-payload slot, so the
+				// literal is declined at a concrete-payload slot, so the
 				// plan never claims what the commit re-match would
 				// reject.
 				if IsBareTypeNode(top) {
@@ -685,7 +685,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				lit := NewTypeLiteral(tn)
 				if SigArgMatches(sig, fwd, lit) {
 					// Same admission a future LITERAL token gets
-					// (the block below): a type literal is refused
+					// (the block below): a type literal is declined
 					// at a concrete-payload slot, so the plan never
 					// claims what the commit re-match would reject.
 					isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
@@ -735,7 +735,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// carrier) — is not an atom, so it must not fill the /q slot via
 		// the Any-conforms-to-everything rule: that would pick quote's
 		// word-capture sig ([TAtom], QuoteArgs) over its value sig ([TAny],
-		// ReturnsIdentity), refuse to compile, and (since the /q handler is
+		// ReturnsIdentity), fail to compile, and (since the /q handler is
 		// quoteWordHandler) never run the value path. A genuine Atom
 		// carrier (e.g. `set (quote name) v`) DOES conform and still
 		// matches. Inert at runtime (operands are concrete there). Mirrors

@@ -3,7 +3,7 @@ package check
 // The check-mode recovery and advisory surface of the step loop —
 // dispatch-failure modeling (surface shapes, assumed signatures,
 // fallback positions), check-result splicing, mixed-form advisories,
-// stranded-operand refusals, and the check-state sharing brackets.
+// stranded-operand compile failures, and the check-state sharing brackets.
 // Extracted from engine.go in Stage 0c of the four-piece split
 // (design/legacy/ENG-FOUR-PIECE.0.ignore): this file is the CHECK piece's half of
 // the interpreter's dispatch machinery and moves behind seam S1
@@ -68,12 +68,12 @@ func drainUndefinedAtoms(e *core.Engine) {
 //     registry Defs for the whole run, so OpLookupDynScope resolves it byte-
 //     identically to the interpreter. A BODY-LOCAL flex is a frame local, not a
 //     registry binding, so dyn-scoping it would miss — it keeps its local-slot
-//     lowering (or a refusal, itself a defect), left untagged.
+//     lowering (or a compile failure, itself a defect), left untagged.
 //   - a MODULE-FAMILY value bound at module scope — an `import`-bound namespace
 //     (`IO`, `StringUtil`) or a Module descriptor (`def m StringUtil.$module`):
 //     the same shape as the mutable reference, read as a VALUE (`IO deq IO`, a
 //     residual, an `eq` operand). A namespace is a pointer-shared map the
-//     const gate deliberately refuses (fn exports; ConstBakeable is closed to
+//     const gate deliberately declines (fn exports; ConstBakeable is closed to
 //     module instances), and its identity IS the binding's — so the read
 //     lowers to the same live lookup, which is also what honours a re-import.
 //
@@ -187,11 +187,11 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 	}
 }
 
-// RefuseForwardStackDrift refuses (compile mode only) a dispatch whose
+// RefuseForwardStackDrift declines (compile mode only) a dispatch whose
 // check-mode operand match would DIVERGE from the interpreter's runtime
 // forward collection — the reified-error / island residual accounting of
 // design/EDGE-SPEC-FINDINGS.0.md §1. Preconditions (checked by the caller):
-// the dispatch matched ALL-STACK (fwdCount==0). It refuses when ALL of:
+// the dispatch matched ALL-STACK (fwdCount==0). It declines when ALL of:
 //
 //   - the recorder is active (a real compile pass — never plain check / run);
 //   - the sig is forward-eligible (BarrierPos != 0, not a full-stack word), so
@@ -214,7 +214,7 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 //     all-stack), so those are excluded.
 //
 // Without the top-is-dynamic and trailing-token gates a genuine all-stack
-// dynamic dispatch (`get key dyn`, `dyn 5 add`) would be refused although it
+// dynamic dispatch (`get key dyn`, `dyn 5 add`) would be declined although it
 // compiles faithfully, so both gates are load-bearing.
 func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) {
 	es := e.Registry.Check.Recorder()
@@ -229,7 +229,7 @@ func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []in
 	// the check-mode all-stack match is an ANALYSIS-ORDER artifact — the recorded
 	// branch event still binds the correct operands (cond=ok, the two arm bodies)
 	// and the trailing `0` is a separate statement, so compiled == interpreter.
-	// Firing here is a false positive that refuses a faithfully-compilable `if`.
+	// Firing here is a false positive that declines a faithfully-compilable `if`.
 	if len(sig.NoEvalArgs) > 0 {
 		return
 	}
@@ -261,7 +261,7 @@ func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []in
 	}
 }
 
-// refuseStrandedMemberFn refuses (compile mode only) a dispatch that consumes a
+// refuseStrandedMemberFn declines (compile mode only) a dispatch that consumes a
 // stack operand while a parked FUNCTION VALUE sits directly beneath it — the
 // mid-expression member-fn-apply divergence of design/EDGE-SPEC-FINDINGS.0.md
 // §2. The interpreter auto-applies a surfaced member fn (`m.double`) to the
@@ -306,7 +306,7 @@ func refuseStrandedMemberFn(e *core.Engine, positions []int) {
 		// marks it as a fn-valued member surfaced by a get-family read. A bare
 		// Function value here (a `c/v` param ref, a factory closure) is a
 		// DIFFERENT boundary (M2a `apply`, the residual leading/trailing apply) with
-		// its own handling — do NOT claim it, or those refuse with the wrong reason.
+		// its own handling — do NOT claim it, or those decline with the wrong reason.
 		if es.MemberFnRead(v.ID) {
 			es.MarkUncompilable("member fn value auto-applies mid-expression (fn-value-call boundary, Stage 3)")
 		}
@@ -451,7 +451,7 @@ func spliceAnonCheckResult(e *core.Engine, valIdx, nArgs int, sig *core.FnSig, a
 // anonymous lambda (spliceAnonCheckResult, analysis-only), a called fn value
 // previously fell through to execFnDefSig, whose inline body splice leaks the
 // per-call `__pa` (Args/FnBaseline pop) token into the TOP-LEVEL residual —
-// refused by the emitter as "context-dependent word __pa". Routing through
+// declined by the emitter as "context-dependent word __pa". Routing through
 // BuildFnBodyReturnsFn ARMS the body analysis via StartFnCompile, so the body
 // (with its `__pa` tail) is captured INSIDE its own CALL_USER unit and the
 // call site records a CALL_USER — identical to the named-fn path. See
@@ -463,7 +463,7 @@ func SpliceFnValueCheckResult(e *core.Engine, valIdx, nArgs int, fnDef core.FnDe
 	if len(result) == 0 && len(sig.Returns) > 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		// A declared-return fn that produced no carrier (the body unit
 		// declined to compile) degrades to one carrier per declared return so
-		// downstream provenance refuses and the program falls back faithfully.
+		// downstream provenance declines and the program falls back faithfully.
 		result = make([]core.Value, len(sig.Returns))
 		for i, t := range sig.Returns { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 			result[i] = core.NewCarrier(t)
@@ -616,7 +616,7 @@ func noteSpeculativeBarrierCommit(e *core.Engine, fwd core.ForwardInfo) {
 // nothing and every later read of `r2` raised a false `undefined_word`.
 // That is the shape the audit's parser-combinator library is built from
 // (`def r1 (a s)` then `def r2 (b (r1.rest))`), and it made plain
-// `boru run` refuse a program both engines run correctly. A dynamic
+// `boru run` decline a program both engines run correctly. A dynamic
 // argument makes the RESULT no less knowable than a static one — the
 // window collapses to dynamic(Any) either way — so the restriction bought
 // no soundness. `IsFnValueResidual` still excludes a trailing fn VALUE
@@ -917,7 +917,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// recorder assembles a per-run OpMakeMap): the recovery otherwise
 		// hands the RAW source map to the poly record, which either baked a
 		// live word member as a frozen const (the repl-eval `{line: src}`
-		// request map) or refuses. Errors leave the raw operand — the
+		// request map) or declines. Errors leave the raw operand — the
 		// assumed-sig model stays as before.
 		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
 			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
@@ -936,7 +936,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// would be wrong for the paths that DO dispatch.
 	if out, ok := disjunctPartitionReturns(e.Registry, w.Name, args, pos); ok {
 		// A strict-disjunct straddle is a runtime-dispatch case, not an
-		// inherent refusal: when the word is a safe poly candidate (core
+		// inherent compile failure: when the word is a safe poly candidate (core
 		// builtin, single result, no meta/fn-value/code-body sig), record
 		// OpCallNativePoly so the VM re-matches the one concrete alternative
 		// at run time — e.g. `(3 and "x") add 1` → `'x1'`, mirroring the
@@ -945,14 +945,14 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// fill the leading positions in source order, then the stack args
 		// fill the rest top-down (the deepest-last ascending run reversed).
 		// Feeding the raw tape order here was the prior `[1x]`-vs-`[x1]`
-		// operand-order divergence. Only refuse when poly isn't safe.
+		// operand-order divergence. Only decline when poly isn't safe.
 		if sw := core.SigOrderArgs(args, nStack); dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, out, pos, true, nil, false, noMatchProbe.Spec(fn, sw)) {
 			spliceCheckResults(e, positions, out)
 			return nil
 		}
 		// A single-overload user fn over a disjunct-typed operand recovers here
 		// (e.g. the boru:test framework's run-cases inside test-describe's body);
-		// record a guarded CALL_USER instead of refusing (it splices its own
+		// record a guarded CALL_USER instead of declining (it splices its own
 		// returns). Reached from the eng harness since the partitioned-dispatch
 		// recording landed (carrier_ljoin_test.go drives the recovery arm).
 		if e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
@@ -965,8 +965,8 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// return bakes to OpCallUserPoly, and the VM re-matches the concrete
 		// alternative at run time — the same §6b machinery the gradual-Any
 		// clusterC path uses, here reached through the disjunct partition
-		// (REFUSAL-CLOSURE §9.4 union-return poly). tryCompileUserPolyArms
-		// declines (keeping the refusal) for divergent-return or
+		// (COMPILE FAILURE-CLOSURE §9.4 union-return poly). tryCompileUserPolyArms
+		// declines (keeping the compile failure) for divergent-return or
 		// non-plain-param arm sets.
 		if es := e.Registry.Check.Recorder(); es.Active() {
 			sw := core.SigOrderArgs(args, nStack)
@@ -995,12 +995,12 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// (`(cases _i get) get "in"`) — matchSignature could not commit to an
 	// overload, but at run time the value is concrete and the SAME first-match
 	// the interpreter takes dispatches it. For a SAFE pure core builtin, record
-	// a runtime-re-matching OpCallNativePoly instead of refusing: tryRecordPoly's
+	// a runtime-re-matching OpCallNativePoly instead of declining: tryRecordPoly's
 	// gates keep meta / fn-value / mutating (set) / code-body / multi-result
 	// words out, so only words whose runtime re-match is faithful poly. Results
 	// are computed with recording suspended so the program records ONLY the poly
 	// call, never a duplicate CALL_NATIVE for the same dispatch. Concrete (non-
-	// Any) operands that reach here are a genuine type error and still refuse.
+	// Any) operands that reach here are a genuine type error and still decline.
 	es := e.Registry.Check.Recorder()
 	if es.Active() && (AnyAnyCarrier(args) || anyDisjunctCarrier(args)) {
 		resume := es.Suspend()
@@ -1030,7 +1030,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// runtime arg that misses the sole sig raises exactly as the interpreter does.
 		// This is what unblocks the boru:test framework (run-cases) and the trie/
 		// decision walkers (find-kid / mk-tnode / lex-mustache). A MULTI-overload fn
-		// stays refused below (Cluster C): one baked overload would raise where the
+		// stays declined below (Cluster C): one baked overload would raise where the
 		// interpreter runtime-dispatches a sibling.
 		if e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
 			return nil
@@ -1046,7 +1046,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			spliceCheckResults(e, positions, results)
 			return nil
 		}
-		// On a REAL compile pass (Compiling) the MarkUncompilable already refuses
+		// On a REAL compile pass (Compiling) the MarkUncompilable already declines
 		// and Finalize surfaces THIS reason, so an error-severity no_signature
 		// diagnostic here would only mask it as the generic "check diagnostics"
 		// (boru.go:297). On a plain check pass this branch is still reachable —
@@ -1072,7 +1072,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// inspect its residual — NOT compiled. Its real compile decision happens on
 	// the non-suspended recording pass (or it is subsumed by the enclosing poly's
 	// runtime re-match). MarkUncompilable here PREMATURELY latches the whole
-	// program refusal: the trie find-kid `(nd "kids" get) get (ch)` shape refuses
+	// program compile failure: the trie find-kid `(nd "kids" get) get (ch)` shape declines
 	// because the inner get's result-type probe analyses the outer get against a
 	// transient String-carrier alternative. Skip the latch (and its diagnostic)
 	// under suspend; still splice the analysis result so the enclosing probe
@@ -1081,21 +1081,21 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// A STATICALLY-DEFINITE unmatched dispatch — every value the failed
 		// match examined is identical at run time — compiles to a terminal
 		// OpTrap raising the interpreter's byte-identical error instead of
-		// refusing the whole program (the error-row doctrine: a spec ERROR row
+		// declining the whole program (the error-row doctrine: a spec ERROR row
 		// yields a Program that raises the same taxonomy at the same point).
 		// Ineligible shapes (a carrier operand whose runtime tag could match, a
-		// nested frame/unit, a plain check pass) keep the blanket refusal.
+		// nested frame/unit, a plain check pass) keep the blanket compile failure.
 		if !e.TryRecordUnmatchedDispatchTrap(w, fn, pos) {
 			// The trap DECLINED: the mismatch is not statically definite — a
 			// carrier operand's runtime tag could still match. An IMPRECISE
 			// carrier (a scalar tag a multi-branch narrowing settled on, the
 			// mini-redis `join " " reply` where reply IS a list at run time) is a
 			// checker stand-in, not a concrete value, so recover via the runtime-
-			// re-matching poly instead of refusing — the DEFINITE mismatches (a
+			// re-matching poly instead of declining — the DEFINITE mismatches (a
 			// disjoint Box<String> vs Box<Integer> param) already trapped above,
 			// so only genuinely could-match carriers reach here. tryRecordPoly /
 			// the single-overload user-fn recovery decline (leaving es untouched)
-			// for anything their own gates reject, and the refusal below stands.
+			// for anything their own gates reject, and the compile failure below stands.
 			// ONLY the native-poly recovery (OpCallNativePoly), never the
 			// single-overload USER-fn recovery: a user fn's guarded CALL_USER
 			// enforces the param's NOMINAL type at entry, not a value-sensitive
@@ -1103,7 +1103,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			// so a nominally-typed but predicate-failing arg would run the body
 			// compiled where the interpreter raises. tryRecordPoly re-runs the
 			// native's own matchSignature over the concrete runtime value (the
-			// redis `join` re-match), which is faithful; a user fn stays refused
+			// redis `join` re-match), which is faithful; a user fn stays declined
 			// and falls back.
 			recovered := false
 			if es.Active() && anyImpreciseCarrier(args) {
@@ -1411,7 +1411,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// `valof`, an inline literal — because a user paren places one exactly as
 	// it places a carrier, and the residual layout needs the record to know
 	// that nothing will re-step it (`(inc/v) 7` is `fn inc(Integer) 7`, and
-	// refusing it was reading the absence of a record as evidence). It reaches
+	// declining it was reading the absence of a record as evidence). It reaches
 	// only the LAYOUT reader: the two apply arms gate on Carrier and Dynamic
 	// respectively, so neither sees a concrete value. Only when NONE of the
 	// three holds does the original member-read gate decide, and a member read

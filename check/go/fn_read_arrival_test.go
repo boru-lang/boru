@@ -12,7 +12,7 @@ import (
 // whose arity its producing word claimed (`def k (FnUtil.const 7)  (k 99)`)
 // is modelled where the interpreter dispatches it — at the read, over the
 // wrapper's whole arity of evaluation-fixed tokens inside the statement —
-// as one guarded OpCallDynMethod, and every other window REFUSES rather
+// as one guarded OpCallDynMethod, and every other window DECLINES rather
 // than declining to the residual classifier.
 
 // fraFix arms a pass with the recorder double, mints the fn-typed carrier the
@@ -60,7 +60,7 @@ func TestShapedFnReadArrivalSuccess(t *testing.T) {
 		t.Error("the token past the arity stays on the tape (`(k 1 2)` is `7 2`)")
 	}
 	if len(rec.reasons) != 0 {
-		t.Errorf("a consumed window refuses nothing, got %v", rec.reasons)
+		t.Errorf("a consumed window declines nothing, got %v", rec.reasons)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestShapedFnReadArrivalZeroArity(t *testing.T) {
 	}
 }
 
-func TestShapedFnReadArrivalRefusals(t *testing.T) {
+func TestShapedFnReadArrivalCompileFailures(t *testing.T) {
 	cases := []struct {
 		name   string
 		arity  int
@@ -109,16 +109,16 @@ func TestShapedFnReadArrivalRefusals(t *testing.T) {
 				t.Error("the model must not consume this window")
 			}
 			if e.Tape.Len() != len(tape) {
-				t.Error("a refused read must leave the tape untouched")
+				t.Error("a declined read must leave the tape untouched")
 			}
 			if len(rec.reasons) != 1 || !strings.Contains(rec.reasons[0], c.reason) || !strings.Contains(rec.reasons[0], "`k`") {
-				t.Errorf("refusal = %v, want one naming `k` with %q", rec.reasons, c.reason)
+				t.Errorf("compile failure = %v, want one naming `k` with %q", rec.reasons, c.reason)
 			}
 		})
 	}
 }
 
-// Shapes that are not the model's decline SILENTLY — no refusal, nothing
+// Shapes that are not the model's decline SILENTLY — no compile failure, nothing
 // recorded — and the sibling member model declines them too.
 func TestShapedFnReadArrivalDeclines(t *testing.T) {
 	r, rec, carrier, done := fraFix(t, 1)

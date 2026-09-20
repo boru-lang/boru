@@ -259,7 +259,7 @@ func TestTuiServeConfigAndPolicyArms(t *testing.T) {
 	}
 
 	// sandbox denies the network scope (checked first) — a direct
-	// handler call, since sandbox refuses the module import itself
+	// handler call, since sandbox declines the module import itself
 	pol, err := policy.Load("sandbox")
 	if err != nil {
 		t.Fatal(err)
@@ -378,7 +378,7 @@ func TestTuiWirePaintHub(t *testing.T) {
 		close(lines)
 	}()
 	if _, ok := hub.admit(server); !ok {
-		t.Fatal("first admit refused")
+		t.Fatal("first admit declined")
 	}
 	reg, rErr := native.DefaultRegistry()
 	if rErr != nil {
@@ -431,7 +431,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	c1, s1 := net.Pipe()
 	defer c1.Close()
 	if _, ok := hub.admit(s1); !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 	reg, rErr := native.DefaultRegistry()
 	if rErr != nil {
@@ -446,7 +446,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	c2, s2 := net.Pipe()
 	defer c2.Close()
 	if _, ok := hub2.admit(s2); !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 	paint2 := tuiWirePaint(reg, hub2)
 	if err := paint2(wireTextTree("z"), 4, 2); err != nil {
@@ -470,7 +470,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	}()
 	id3, ok := hub2.admit(s3)
 	if !ok {
-		t.Fatal("late joiner refused")
+		t.Fatal("late joiner declined")
 	}
 	hub2.promote(id3)
 	if got := <-lines3; !strings.Contains(got, "\"text\":\"back\"") {
@@ -486,7 +486,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	c5t, s5t := net.Pipe()
 	defer c5t.Close()
 	if _, ok := hub5.admit(s5t); !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 	hub5.setTitle("stuck")
 	if hub5.broadcastFrame([]byte(`1`)) {
@@ -500,7 +500,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	defer c4.Close()
 	id4, ok := hub3.admit(s4)
 	if !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 	hub3.drop(id4)
 	select {
@@ -523,7 +523,7 @@ func TestTuiWirePaintViewerLoss(t *testing.T) {
 	defer c5.Close()
 	id5, ok := hub4.admit(s5)
 	if !ok {
-		t.Fatal("admit refused")
+		t.Fatal("admit declined")
 	}
 	hub4.evict(id5)
 	select {
@@ -663,7 +663,7 @@ func TestTuiServeBadViewRaisesServerSide(t *testing.T) {
 			t.Fatalf("serve error = %v, want bad_widget", sErr)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("serve did not refuse the bad view")
+		t.Fatal("serve did not decline the bad view")
 	}
 	// the viewer's last line is the graceful goodbye, not a dead socket
 	if msg := c.recv(t); msg["tag"] != "quit" {
@@ -697,7 +697,7 @@ func TestTuiHandshakeDirect(t *testing.T) {
 	_ = server.Close()
 
 	// the accept reply failing to land evicts silently — driven through
-	// the ENGINE path by a scripted listener whose conn refuses writes
+	// the ENGINE path by a scripted listener whose conn declines writes
 	oldListen := tuiListen
 	t.Cleanup(func() { tuiListen = oldListen })
 	hello, _ := json.Marshal(map[string]any{"tag": "attach", "token": "x", "proto": 1})
@@ -730,7 +730,7 @@ func (l *scriptedListener) Accept() (net.Conn, error) {
 func (l *scriptedListener) Close() error   { return nil }
 func (l *scriptedListener) Addr() net.Addr { return &net.TCPAddr{} }
 
-// scriptedConn delivers fixed input and refuses every write.
+// scriptedConn delivers fixed input and declines every write.
 type scriptedConn struct {
 	in  []byte
 	off int
@@ -744,7 +744,7 @@ func (c *scriptedConn) Read(b []byte) (int, error) {
 	c.off += n
 	return n, nil
 }
-func (c *scriptedConn) Write([]byte) (int, error)        { return 0, errors.New("write refused") }
+func (c *scriptedConn) Write([]byte) (int, error)        { return 0, errors.New("write declined") }
 func (c *scriptedConn) Close() error                     { return nil }
 func (c *scriptedConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
 func (c *scriptedConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }

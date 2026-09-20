@@ -224,7 +224,7 @@ func logRegisterNative(lsr *LogSinkRegistry) NativeFunc {
 			// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore); a CAPTURING fn is no
 			// const, so it compiles as a closure unit and arrives as a closure
 			// operand the stored-sink invocation runs through the compiled
-			// runtime (the twenty-sixth increment; it refused before that).
+			// runtime (the twenty-sixth increment; it declined before that).
 			CompileEffect: CompileStoresFn,
 			Impl: Go(func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 				name, err := args[1].AsConcreteAtom()

@@ -51,7 +51,7 @@ func TestServiceCoverNewServiceValueFlexFallback(t *testing.T) {
 	r := seam5Reg(t)
 
 	// A RecordTypeInfo value has Parent=TMap yet no map payload, so
-	// FlexDeepCopy refuses it and NewServiceValue falls back to the
+	// FlexDeepCopy declines it and NewServiceValue falls back to the
 	// plain (non-flex) map state.
 	rec := Value{Parent: TMap, Data: RecordTypeInfo{Fields: NewOrderedMap()}}
 	om := NewOrderedMap()
@@ -286,7 +286,7 @@ func TestServiceCoverSendPropagatesDispatchError(t *testing.T) {
 func TestServiceCoverDispatchSubjectCoercionError(t *testing.T) {
 	r := seam5Reg(t)
 	svc := NewServiceValue(nil)
-	// A non-concrete request cannot be routed: coerceSubject refuses it.
+	// A non-concrete request cannot be routed: coerceSubject declines it.
 	if _, err := DispatchServiceValue(r, svc, NewCarrier(TMap)); err == nil {
 		t.Fatal("dispatch with a non-concrete request must error")
 	}
@@ -350,7 +350,7 @@ func TestServiceCoverRunHandlerChainGuards(t *testing.T) {
 		t.Fatalf("empty chain must yield None, got %v / %v", out, err)
 	}
 
-	// A non-function chain entry is refused (defense-in-depth: add/wrap
+	// A non-function chain entry is declined (defense-in-depth: add/wrap
 	// validate handlers, but the chain runner must not trust them).
 	if _, err := runHandlerChain(r, state, req, []Value{NewInteger(1)}); err == nil ||
 		!strings.Contains(err.Error(), "handler is not a function") {

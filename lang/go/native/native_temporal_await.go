@@ -32,13 +32,13 @@ type parallelResult struct {
 // on `OrderedMap.Set`, an unsynchronised map assign plus a slice append,
 // which is undefined behaviour and not merely a surprise.
 //
-// The rule is `send`'s — refuse a mutable container at a concurrency
+// The rule is `send`'s — decline a mutable container at a concurrency
 // boundary — but the PREDICATE has to be its own, and the reason is worth
 // stating because it is easy to get wrong by reaching for the obvious
 // reuse. `send` asks "can this be COPIED across?" and deep-copies what it
-// admits (CloneValue at the boundary), so it only refuses containers a
+// admits (CloneValue at the boundary), so it only declines containers a
 // copy cannot preserve. `await` asks "can this be SHARED across?" and
-// copies nothing, so it must refuse anything mutated in place — a
+// copies nothing, so it must decline anything mutated in place — a
 // strictly broader set.
 //
 // Concretely, sendableViolation misses FlexMap: a FlexMap is
@@ -60,12 +60,12 @@ type parallelResult struct {
 //
 // The fn-local hole this used to have is CLOSED. Compiled, `def w ([] =>
 // [m set a 1])` inside a fn body puts `w` in a frame slot, so the walk
-// dead-ended at `w`; the check then refused the harmless shapes (`[m]`,
+// dead-ended at `w`; the check then declined the harmless shapes (`[m]`,
 // `[m get a]`) and permitted the mutating one — a real data race under
-// `-race`, on the default path. All four shapes now refuse in both
-// engines, pinned by TestAwaitRefusesFnLocalLambdaInBothEngines, with
+// `-race`, on the default path. All four shapes now decline in both
+// engines, pinned by TestAwaitDoesNotLowerFnLocalLambdaInBothEngines, with
 // TestAwaitOpaqueRefIsNotRefusedWithoutAMutable holding the other side so
-// the fallback cannot grow into refusing map keys and branch-locals.
+// the fallback cannot grow into declining map keys and branch-locals.
 func sharedMutableKind(v Value) string {
 	if v.Parent == nil {
 		return ""
@@ -133,13 +133,13 @@ func branchTokens(elem Value) []Value {
 // The one exception is a bare LITERAL. `true` / `false` / `none` arrive
 // as Words and never resolve, but they are values, not bindings — a
 // branch body of `[true]` reaches nothing. Without this case an
-// `await [[true] [false]]` with any FlexMap in scope would be refused
+// `await [[true] [false]]` with any FlexMap in scope would be declined
 // outright.
 //
 // Registered words and type names deliberately have no case here. Both
 // were tried, and both are unreachable from this call site: every
 // registered word also carries a `r.Defs` binding (and `undef` of a
-// builtin is refused as `reserved_word`), while a kernel type name is
+// builtin is declined as `reserved_word`), while a kernel type name is
 // converted by the parser into a type literal and never arrives as a
 // Word at all. Measured across the whole Go test corpus, every name
 // reaching this function misses both lookups. A guard that cannot fire
@@ -258,7 +258,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 	// theoretical one.
 	//
 	// It is deliberately conditional on something mutable existing. An
-	// unconditional "opaque reference => refuse" would reject the two
+	// unconditional "opaque reference => decline" would reject the two
 	// shapes the docs promote — `[m set a 1]` over an IMMUTABLE map (the
 	// key `a` walks as a bare Word) and `[def a (make FlexMap {}) a set k
 	// 1]` (branch-local, private by construction) — because a map key and
@@ -267,7 +267,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 	//
 	// The residual imprecision is stated rather than hidden: a mutable
 	// container in scope that the opaque reference could not actually have
-	// reached is refused anyway. That is the conservative direction, and
+	// reached is declined anyway. That is the conservative direction, and
 	// it is the direction this boundary already chose over cloning.
 	if opaque != "" {
 		if name, bad := scopeSharedMutable(r); name != "" {
@@ -286,7 +286,7 @@ func branchSharingViolation(r *Registry, elems []Value) (string, string) {
 // reads of the parent state are therefore race-free.
 //
 // It also enforces the branch boundary: a reachable mutable container is
-// REFUSED rather than shared or silently copied. Refusing is what makes
+// DECLINED rather than shared or silently copied. Declining is what makes
 // the documented guarantee ("writes to mutable objects inside one branch
 // do not bleed into the others") true and checkable, and it is the answer
 // `send` already gives at the process boundary. Deep-copying instead
@@ -553,7 +553,7 @@ func awaitParallelsEmpty(parallels Value) bool {
 // the validator reads the parallels list too, for the empty short-circuit.
 // Position 1 is checked SHALLOW on purpose — the validator asks it for
 // Len() alone, and the elements are unevaluated code bodies that deep
-// concreteness would refuse for no reason.
+// concreteness would decline for no reason.
 func awaitModeGate(args []Value) bool {
 	return len(args) == 2 && DeepConcreteOptionsAt(0)(args) && IsConcrete(args[1])
 }
@@ -646,7 +646,7 @@ func awaitDefaultReturns(args []Value, r *Registry) []Value {
 // code bodies run on isolated forks, so the winning residual's types
 // genuinely cannot be bounded here — see the SpreadPayload contract note.
 //
-// The COMPILE pass used to refuse the whole program here, because the
+// The COMPILE pass used to decline the whole program here, because the
 // runtime count can EXCEED any modeled seat and the emitter's only variadic
 // device was the L-DO catch mark, which covers just the SHRINKING direction
 // (`do`'s N no-raise vs 1 caught). A 1-seat event that delivers three values
@@ -658,7 +658,7 @@ func awaitDefaultReturns(args []Value, r *Registry) []Value {
 // dispatch's residual (compiler's callVariadicRegion) and records the event
 // as a runtime-variadic REGION — one simulated slot for the whole run, the
 // representation a value-producing LOOP already uses, marked lw.variadic at
-// lowering. So the growing direction has a home, and what refuses is each
+// lowering. So the growing direction has a home, and what declines is each
 // position that genuinely needs a static count: a call/list operand, a frame
 // promotion, the dead-result drop. There is nothing pass-specific left to
 // say here, which is why this function no longer takes a branch.
@@ -685,11 +685,11 @@ func awaitVariadicResult(r *Registry) []Value {
 //
 // The `all` union is DYNAMIC, and the reason is worth stating because the
 // strict form was tried first and is wrong. A strict disjunct DISTRIBUTES
-// over dispatch: every alternative must dispatch or the call is refused, so
+// over dispatch: every alternative must dispatch or the call is declined, so
 // `(await […]) get 0` — a program that runs fine — collects two
 // partial_dispatch warnings and a hard no_signature. That is a false
 // positive bought with precision nobody asked for. The dynamic form matches
-// optimistically (no refusal) while still naming both arms, so a downstream
+// optimistically (no compile failure) while still naming both arms, so a downstream
 // Error accessor dispatches its Error overload instead of no_signature-ing
 // on a bare List. It is `do`'s scalar-tor-Error shape, for `do`'s reason.
 //

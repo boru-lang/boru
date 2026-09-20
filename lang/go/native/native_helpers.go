@@ -217,7 +217,7 @@ func returnsDivMod(detail string) ReturnsFunc {
 }
 
 // checkBigFloatMix flags the arithmetic tower's one TYPE-decidable
-// refusal on the top-level straight line: a Big leaf mixed with a binary
+// rejection on the top-level straight line: a Big leaf mixed with a binary
 // Float always raises (numericBinaryHandler → bigFloatMixError — exactness
 // is never silently lost), and the leaves are fixed by the operands'
 // STRICT static types, so no value can save the call. Emits the

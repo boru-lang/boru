@@ -68,7 +68,7 @@ func TestFnUnitDynFrameApplyCompiles(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%q: refused: %q err=%v", c.src, reason, cerr)
+			t.Fatalf("%q: declined: %q err=%v", c.src, reason, cerr)
 		}
 		if !strings.Contains(prog.Disassemble(), "CALL_DYN_FRAME") {
 			t.Errorf("%q: compiled without the whole-frame replay:\n%s", c.src, prog.Disassemble())
@@ -128,7 +128,7 @@ func TestFnUnitLoopApplyFlowCrossesIsland(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%q: refused: %q err=%v", c.src, reason, cerr)
+			t.Fatalf("%q: declined: %q err=%v", c.src, reason, cerr)
 		}
 		if !strings.Contains(prog.Disassemble(), "CALL_DYNAMIC") {
 			t.Errorf("%q: compiled without the per-iteration apply:\n%s", c.src, prog.Disassemble())
@@ -170,11 +170,11 @@ func TestFnUnitDynFrameBreakWithoutLoopDefers(t *testing.T) {
 // gated to bodies where the apply is the LAST statement (replayIsBodyTail).
 // Pins both sides of that contract:
 //   - an effectful CALLEE fires exactly once, with identical output;
-//   - a body with an effectful statement AFTER the apply refuses (compiling
+//   - a body with an effectful statement AFTER the apply declines (compiling
 //     it would run the print before the callee's output — the observed
 //     inversion this gate closes), falling back with identical output.
 func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	runOut := func(src string, compiled bool) (out []any, printed string, took bool, err error) {
 		a, e := New()
 		if e != nil {
@@ -203,17 +203,17 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 	}
 
 	// A statement AFTER the apply: the replay would reorder its effect ahead
-	// of the callee's — must refuse and fall back with identical output.
+	// of the callee's — must decline and fall back with identical output.
 	after := `import module [def useanon fn [[Function Integer] [Integer] [(args.0 args.1) print "after" drop]] export "L" {useanon: useanon/v, pk: (fn [[x:Integer] [Integer] [print "callee" x]])}] end L.useanon L.pk 14`
 	a, _ := New()
 	if prog, reason, _, _ := a.CompileCheck(after); prog != nil {
-		t.Errorf("a post-apply statement must refuse the replay (reason=%q):\n%s", reason, prog.Disassemble())
+		t.Errorf("a post-apply statement must decline the replay (reason=%q):\n%s", reason, prog.Disassemble())
 	}
 	gotC, printedC, _, errC = runOut(after, true)
 	gotI, printedI, _, errI = runOut(after, false)
 	if noteCompileDefect(t, after, gotC, errC) {
 		// No compiled answer to compare, and nothing printed on that lane:
-		// the replay the post-apply statement refuses is booked as a defect.
+		// the replay the post-apply statement declines is booked as a defect.
 		if printedC != "" {
 			t.Errorf("a program that does not compile printed %q", printedC)
 		}
@@ -223,7 +223,7 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 }
 
 // A multi-overload fn DEF'D INSIDE an enclosing fn body, called over a
-// gradual (Dynamic) arg — GRADUATED 2026-07-16 (REFUSAL-CLOSURE.0 §6b): the
+// gradual (Dynamic) arg — GRADUATED 2026-07-16 (COMPILE FAILURE-CLOSURE.0 §6b): the
 // body-local binding is popped before the VM runs, so instead of a live name
 // Lookup the plan FREEZES the dispatch table at record time
 // (UserPolyRef.Sigs) and the VM's runtime re-match runs over the stored
@@ -233,7 +233,7 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 // defers to the interpreter's canonical signature_error; and the one shape
 // whose live table CAN drift from the freeze — a callee whose own body
 // rebinds the same name (the dynamic-scope in-place overlap-replace, which
-// survives the callee's teardown) — keeps a refusal via the FnBinders
+// survives the callee's teardown) — keeps a compile failure via the FnBinders
 // gate.
 func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	src := `def wrapfn fn [[m:Map] [Integer] [def helper fn [[a:Integer] [Integer] [a mul 2] [b:String] [Integer] [7]] helper (m get k/q)]] wrapfn {k:3}`
@@ -243,7 +243,7 @@ func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("§6b: expected a stored-sig poly compile, refused: reason=%q err=%v", reason, cerr)
+		t.Fatalf("§6b: expected a stored-sig poly compile, declined: reason=%q err=%v", reason, cerr)
 	}
 	if !strings.Contains(prog.Disassemble(), "CALL_USER_POLY") {
 		t.Errorf("expected a CALL_USER_POLY lowering:\n%s", prog.Disassemble())
@@ -286,7 +286,7 @@ func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	// NEGATIVE (the freeze's soundness fence): another fn whose body rebinds
 	// the same local name can mutate the live table between the def and the
 	// call — the in-place overlap-replace survives its teardown, so the
-	// frozen table would diverge. The FnBinders gate keeps the refusal and
+	// frozen table would diverge. The FnBinders gate keeps the compile failure and
 	// the interpreter owns it (parity via fallback).
 	mutator := `def h fn [[x:Integer][Integer][ def g fn [[a:Integer][Integer][a add 100] [a:String][Integer][88]] x ]]
 def f2 fn [[m:Any] [Integer] [
@@ -296,7 +296,7 @@ def f2 fn [[m:Any] [Integer] [
 ]]
 f2 (flex {k:41})`
 	if prog, reason, _, _ := mustNew(t).CompileCheck(mutator); prog != nil {
-		t.Errorf("the dynamic-scope mutator shape must keep its refusal (reason=%q):\n%s", reason, prog.Disassemble())
+		t.Errorf("the dynamic-scope mutator shape must keep its compile failure (reason=%q):\n%s", reason, prog.Disassemble())
 	}
 	_, compiled, errC, gotI, errI = runBothEngines(t, mutator)
 	if compiled {
@@ -328,7 +328,7 @@ func TestUserPolyFramePreservesCallerDynBinds(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("refused: %q err=%v", reason, cerr)
+		t.Fatalf("declined: %q err=%v", reason, cerr)
 	}
 	dis := prog.Disassemble()
 	for _, op := range []string{"CALL_USER_POLY", "BIND_DYN_SCOPE", "LOOKUP_DYN_SCOPE"} {
@@ -354,7 +354,7 @@ func TestModulePrivateTypeResolvesInUnitRegistry(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
-		t.Fatalf("refused: %q err=%v", reason, cerr)
+		t.Fatalf("declined: %q err=%v", reason, cerr)
 	}
 	if !strings.Contains(prog.Disassemble(), "PUSH_TYPE") {
 		t.Fatalf("no PUSH_TYPE — the shape no longer exercises the module-type operand:\n%s", prog.Disassemble())

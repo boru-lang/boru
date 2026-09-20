@@ -9,7 +9,7 @@ import (
 // TestModuleTableTypeFold: a module-exported Table TYPE reached through
 // dot-access (`Test.TestSet`) now const-folds like any other structural type
 // body. Previously only a BARE type node (`Test.TestCase`, Data==nil) folded;
-// a Table type carries a TableTypeInfo payload, so the get refused "operand of
+// a Table type carries a TableTypeInfo payload, so the get declined "operand of
 // unknown provenance ... at get" and the whole statement fell back. With Table
 // admitted to the const-bakeable structural-type-body family, the get bakes the
 // immutable type and the downstream make/is/istype compile natively.
@@ -30,7 +30,7 @@ func TestModuleTableTypeFold(t *testing.T) {
 		a, _ := New()
 		prog, reason, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (module Table-type fold), but refused: %q", c.src, reason)
+			t.Errorf("%q: must compile (module Table-type fold), but declined: %q", c.src, reason)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {

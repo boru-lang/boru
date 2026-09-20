@@ -9,7 +9,7 @@ import (
 // The arm-resident TYPE twin's element-independence screen, driven
 // directly. The corpus and the cross-request parity oracle exercise the
 // admitted shape end to end; these arms pin each half of the decision in
-// isolation, and — because every decline REFUSES a program the interpreter
+// isolation, and — because every decline DECLINES a program the interpreter
 // runs — the negatives matter as much as the positives.
 func TestTypeInstallElementIndependence(t *testing.T) {
 	at := func(v core.Value, row, col int) core.Value {

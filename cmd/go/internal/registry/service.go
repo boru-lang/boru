@@ -139,7 +139,7 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // Pause swaps the live handler for a 503 responder; the listener
 // stays bound so existing clients see clear errors instead of
-// connection refused.
+// connection declined.
 func (s *Server) Pause(ctx context.Context) error {
 	s.paused.Store(true)
 	s.state.Store(int32(service.StatePaused))

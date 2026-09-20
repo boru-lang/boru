@@ -3,15 +3,15 @@ package native
 import "testing"
 
 // Unit tests for `await`'s branch-boundary check (native_temporal_await.go).
-// The end-to-end refusals live in lang/go/await_branch_isolation_test.go;
+// The end-to-end compile failures live in lang/go/await_branch_isolation_test.go;
 // these pin the two predicates directly, because the interesting arms are
 // container kinds that are awkward to construct from boru source and easy
 // to get silently wrong.
 //
 // Why a type-tag switch and not `send`'s payload-keyed sendableViolation:
 // the two words ask different questions. `send` asks "can this be COPIED
-// across?" and deep-copies what it admits, so it refuses only what a copy
-// cannot preserve. `await` copies nothing and must refuse anything mutated
+// across?" and deep-copies what it admits, so it declines only what a copy
+// cannot preserve. `await` copies nothing and must decline anything mutated
 // IN PLACE. A FlexMap is the case that separates them — it is
 // MapPayload{*OrderedMap} with a TFlexMap tag, payload-identical to an
 // immutable Map, so a payload switch reads it as a plain map.
@@ -44,7 +44,7 @@ func TestSharedMutableKindClassifiesEveryContainer(t *testing.T) {
 		})
 	}
 
-	// NEGATIVE, and the half that matters most: over-refusing breaks
+	// NEGATIVE, and the half that matters most: over-declining breaks
 	// working programs. An immutable Map/List returns a copy from `set`,
 	// so it was never the hazard.
 	immutable := []struct {
@@ -62,7 +62,7 @@ func TestSharedMutableKindClassifiesEveryContainer(t *testing.T) {
 	for _, c := range immutable {
 		t.Run("immutable/"+c.name, func(t *testing.T) {
 			if got := sharedMutableKind(c.v); got != "" {
-				t.Errorf("sharedMutableKind = %q, want \"\" — refusing this would "+
+				t.Errorf("sharedMutableKind = %q, want \"\" — declining this would "+
 					"break programs that share it legitimately", got)
 			}
 		})
@@ -78,7 +78,7 @@ func TestSharedMutableKindClassifiesEveryContainer(t *testing.T) {
 // TestSharedMutableKindFindsNestedContainers pins the recursion. A
 // container is just as shared when it is reached through an immutable
 // wrapper, so the walk descends plain List and Map payloads — and the
-// refusal then names the enclosing binding, which is the one the author
+// compile failure then names the enclosing binding, which is the one the author
 // has to change.
 func TestSharedMutableKindFindsNestedContainers(t *testing.T) {
 	inner := NewOrderedMap()

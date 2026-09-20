@@ -14,7 +14,7 @@ import (
 // loop or while body, a fn body), which the check pass keeps in its model
 // (the wrapped-undef leniency: a region that never runs must raise
 // nothing) — is PLACED and its reads are LIVE, where the sixty-seventh
-// increment refused it. The model generalises the binding's value in place
+// increment declined it. The model generalises the binding's value in place
 // (core.GeneraliseSpecUndef), the recorder seats the pop at its site
 // (OpUndefDynScope), every later read of the name is a live lookup whose
 // miss raises the interpreter's undefined_word at the read token
@@ -133,7 +133,7 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 			t.Errorf("%q: compiled=%v/%v, want %s", c.src, gotC, errC, c.want)
 		}
 	}
-	// What still refuses, each through the undef site, and answers as the
+	// What still declines, each through the undef site, and answers as the
 	// interpreter does under the hatch: a recording the placement cannot
 	// seat (an each body's first run, a `do` inside a loop, the never-running
 	// error handler the leniency exists for), a binding the model declines
@@ -144,8 +144,8 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	// of the name inside the region that undefs it. A FORWARD-slot read of
 	// the popped name routes since the sixty-ninth increment (the compiled
 	// rows above); one whose dispatch cannot route — a region the op cannot
-	// drive, here a paren group in the window — still refuses.
-	refused := []struct{ src, reason string }{
+	// drive, here a paren group in the window — still declines.
+	declined := []struct{ src, reason string }{
 		{`def k 5 end [1 2] each [undef k] k`, "undef of the enclosing binding `k`"},
 		{`def k 5 end def f fn [[][Integer][k add 2]] end for 2 [ f  do [undef k] ]`, "undef of the enclosing binding `k`"},
 		{`def x 1 end do [7] error [undef x 9] x`, "undef of the enclosing binding `x`"},
@@ -176,23 +176,23 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		// the loop's carried name declines is unrouted.
 		{`def k 5 end def f fn [[x:Any][Any][x get k [9]]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
 		{`def k 5 end def f fn [[x:Any][Any][for 2 [def j 1 end x get j drop x get k]]] end if true [undef k] [] f {k:1}`, "forward-slot read of `k` after a placed undef"},
-		// A `/v` read takes no tag hook: the rescue refuses it rather than seat
+		// A `/v` read takes no tag hook: the rescue declines it rather than seat
 		// it late.
 		{`def k 5 end if true [undef k] [] add k k/v`, "read of `k` after a placed undef the placement did not seat"},
 	}
 	// A dispatch the static match cannot commit — a multi-arm user fn over a
 	// generalised Any or disjunct binding, or beside one — never reaches the
-	// generic seat: the rematch trap's operand layout refuses it (the read's
+	// generic seat: the rematch trap's operand layout declines it (the read's
 	// identity is its event's, not the binding's the window resolves), and
 	// the recovery's arm plan declines a plain carrier (review of #465). Both
 	// are upstream of the undef site, and the hatch answers as the
 	// interpreter does.
-	refused = append(refused, []struct{ src, reason string }{
+	declined = append(declined, []struct{ src, reason string }{
 		{`def c false end def id fn [[x:Any][Any][x]] end def k (id 5) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
 		{`def c false end def m {e: true} end def k (if (m "e" get) [7] ["s"]) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
 		{`def c false end def m {e: true} end def v (if (m "e" get) [7] ["s"]) end def k 5 end def g2 fn [[a:Integer x:Integer][Integer][a] [a:Integer x:String][Integer][a add 1]] end if c [undef k] [] g2 k v`, "unmatched dispatch recovered at g2"},
 	}...)
-	for _, c := range refused {
+	for _, c := range declined {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -202,7 +202,7 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
 		if prog != nil || !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: want the refusal %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
+			t.Errorf("%q: want the compile failure %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)

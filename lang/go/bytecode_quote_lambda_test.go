@@ -13,14 +13,14 @@ import (
 // as an APPLYING callback over a COMPUTED collection (`each [[k:Atom] =>
 // […]] (keys m)` → compiled signature_error, interpreted `[fn (Atom)]`).
 // The screen (lambdaHookCompatible's quote arm + the closure-unit
-// quoteParamCarrierBind guard) declines the compile; the shapes refuse with
-// faithful interpreter fallback — or compile with byte-identical outcomes.
+// quoteParamCarrierBind guard) declines the compile; the shapes decline with
+// compile failure — or compile with byte-identical outcomes.
 func TestQuoteLambdaCallbackParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract, like TestApplyOverParamFnCompiles.
+	// Legacy compile failure+fallback-parity contract, like TestApplyOverParamFnCompiles.
 
 	// Since S1a (2026-09-19, design/FULL-COMPILATION-REPLAN.0.md) each and
 	// fold declare CompileDynBody: the code-body-over-a-computed-collection
-	// shape no longer refuses — it lowers to a poly re-match over the word's
+	// shape no longer declines — it lowers to a poly re-match over the word's
 	// own overloads, and the Atom-typed lambda stays DATA in both engines,
 	// exactly as the quote-polarity screen requires.
 	fnValueM2Native(t, "each: Atom-lambda over computed keys stays data",
@@ -32,7 +32,7 @@ func TestQuoteLambdaCallbackParity(t *testing.T) {
 
 	// filter's convention delivers a {key,value} pair, so the Atom lambda
 	// never matches in either engine: the body COMPILES and both engines
-	// raise the identical filter_error — error parity, no refusal.
+	// raise the identical filter_error — error parity, no compile failure.
 	{
 		src := `filter [[k:Atom] => [true]] (keys {a:1})`
 		a, _ := New()

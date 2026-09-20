@@ -266,7 +266,7 @@ func TestReturnsDynUnion(t *testing.T) {
 	}
 	v := out[0]
 	if !v.Dynamic {
-		t.Error("a declared union result must stay DYNAMIC — a strict union refuses gradual call sites")
+		t.Error("a declared union result must stay DYNAMIC — a strict union declines gradual call sites")
 	}
 	if !core.IsDisjunct(v) {
 		t.Errorf("the bound must be the alternative set, got %s", v.Parent.Leaf())

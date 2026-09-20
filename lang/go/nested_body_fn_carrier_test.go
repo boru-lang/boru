@@ -103,17 +103,17 @@ func TestNestedBodyFnCarrierPlainCheckClean(t *testing.T) {
 	}
 }
 
-// TestNestedBodyFnCarrierSoundRefusals pins the neighbours that REFUSE: a
+// TestNestedBodyFnCarrierSoundCompileFailures pins the neighbours that DECLINE: a
 // CONCRETE produced closure (a lambda factory's) read inside a code body
 // keeps the gate — without it `do [(h 1)]` compiled and raised the
 // captured param as undefined where the interpreter answers 8.
-func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
+func TestNestedBodyFnCarrierSoundCompileFailures(t *testing.T) {
 	const kk = `def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end `
 	rows := []struct{ src, reason, interp string }{
 		{`def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `do [(p 1)]`, "code body reads a def-bound compiled closure", "[8]"},
 		{kk + `if true [(p 1)] [0]`, "code body reads a def-bound compiled closure", "[8]"},
-		// A carrier-bound read the OTHER gates still refuse. (The each twin
+		// A carrier-bound read the OTHER gates still decline. (The each twin
 		// `[1 2] each [(f 1)]` compiled at S1a and moved to the parity rows.)
 		{nbfMk + `if true [(f 2) (f 3)] [0]`, "then-branch result of unknown provenance", "[3 4]"},
 	}
@@ -127,11 +127,11 @@ func TestNestedBodyFnCarrierSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		got, ierr := a.RunInterp(c.src)
 		if ierr != nil || fmt.Sprint(got) != c.interp {

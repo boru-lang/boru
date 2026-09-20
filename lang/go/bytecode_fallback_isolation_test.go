@@ -10,7 +10,7 @@ import (
 // mirror of the interpreter's ReturnCheck (__RC). A conforming body
 // compiles and runs; a non-conforming one must produce the SAME
 // type_error the interpreter raises — whether the VM raises it directly
-// (return-type mismatch) or the program refuses to compile and the
+// (return-type mismatch) or the program fails to compile and the
 // interpreter raises it on the fallback path (return-count mismatch).
 func TestCompiledReturnCheck(t *testing.T) {
 	// Positive: a conforming fn compiles and returns its value.
@@ -64,22 +64,22 @@ func TestCompiledReturnCheck(t *testing.T) {
 
 // RunCompiled compiles the program in check mode, which executes its
 // RunInCheckMode words (def/import/type, the Test harness) for real.
-// When the program is uncompilable the interpreter fallback re-runs the
-// whole source, so the check-pass side effects MUST be rolled back first
-// — otherwise a type re-mint, fn re-registration, or re-import diverges
-// from a clean interpreter run. These pin that isolation
+// When the program does not compile those side effects MUST be rolled back,
+// so the failed attempt leaves the registry exactly as it found it — a type
+// re-mint, fn re-registration or re-import left behind would leak into the
+// next use of the instance. These pin that isolation
 // (SnapshotForCompile / RestoreForCompile).
 func TestRunCompiledFallbackIsolation(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// Each row is UNCOMPILABLE (so it takes the fallback path) and
 	// side-effecting (so a double-execution would corrupt the result).
 	// RunCompiled must equal a clean interpreter Run.
 	cases := []string{
 		// EVERY row here pairs a rollback-sensitive SIDE EFFECT with a tail
-		// that still refuses, and the tail is the perishable half: it has been
+		// that still declines, and the tail is the perishable half: it has been
 		// re-chosen FOUR times as the subset widened. It was the predicate-fn
 		// `is` until 2026-08-28, on the reasoning that "the VM cannot re-step a
-		// fn body" — which was never why that row refused (a predicate node
+		// fn body" — which was never why that row declined (a predicate node
 		// rides as data; §6.3), and it compiles now that predicate bodies run
 		// on the VM. Then it was the forward-lens `apply` no-match
 		// (`[10 20 30] apply $.1`), which the forty-sixth increment graduated:
@@ -100,22 +100,22 @@ func TestRunCompiledFallbackIsolation(t *testing.T) {
 		// bakes (make freshens it per instance) AND a mutation of the flex field
 		// (`p.x push 1`) now compiles too (the class field's declared List type
 		// rides strict through gradual contagion — cross-module element typing),
-		// so the class-mint + `undef C` needs the refusing tail to keep the
+		// so the class-mint + `undef C` needs the declining tail to keep the
 		// whole row on the fallback path: the undef-C side effect must still be
-		// rolled back before the whole-program interpreter fallback re-runs.
+		// rolled back on the compile-failure path.
 		`def C class {x:(flex [])} def p (make C {}) undef C end (p.x push 1) ($.1 [10 20 30] apply)`,
 		// fn registration under a capitalised name — a re-register clashes.
 		`def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] $.1 [10 20 30] apply`,
 		// native-module import whose namespace metadata a re-import degrades.
 		// The module-SYNTHETIC reads (`typeof MathUtil`, `MathUtil.$name`,
 		// `MathUtil.$module.name`) now const-fold and compile, so this pairs the
-		// import with the refusing tail: the import side effect must still be
-		// rolled back before the whole-program fallback re-runs.
+		// import with the declining tail: the import side effect must still be
+		// rolled back on the compile-failure path.
 		`import "boru:math-util" $.1 [10 20 30] apply`,
 		// boru:test import isolation: Test.test / Test.describe cases (closure
 		// path) AND the property words prop/check-prop/skip (their inert bodies
 		// bake as consts — the dot-access reach inside now an inert member) all
-		// compile, so this pairs the import with the refusing tail to exercise
+		// compile, so this pairs the import with the declining tail to exercise
 		// the import rollback.
 		`import "boru:test" $.1 [10 20 30] apply`,
 	}
@@ -176,7 +176,7 @@ func TestRunCompiledFallbackIsolation(t *testing.T) {
 
 // Compiled mode must not swallow a trace: the `trace` word (IO.trace)
 // renders the interpreter's step-by-step execution, which the bytecode
-// VM has no equivalent for. It refuses to compile ("unannotated or
+// VM has no equivalent for. It fails to compile ("unannotated or
 // opaque word trace"), so a traced program whole-program-falls-back to
 // the interpreter and the trace renders — exactly the plan's "compiled
 // mode disables itself under trace" contract, realised via fallback.
@@ -265,14 +265,14 @@ func TestCompiledIslandErrorRendering(t *testing.T) {
 // `args` (and `__pa`) read the interpreter's per-call args stack, which
 // the bytecode VM's CALL_USER frame does not maintain — it binds params
 // to frame locals. A compiled fn body that reads `args` would fail at run
-// time with "args: not inside a function", so the emitter refuses it and
+// time with "args: not inside a function", so the emitter declines it and
 // the program falls back. Pinned because it is a latent soundness gap no
 // spec row currently triggers (a future change that let `args` compile
 // would silently break it).
 func TestCompiledArgsWordFallsBack(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// Bare `args` (the WHOLE per-call list) still falls back: the args
-	// projection has no foldable consumer, so it refuses at its use site and
+	// projection has no foldable consumer, so it declines at its use site and
 	// the interpreter owns it. (Compiling it would need a build-list-from-locals
 	// lowering — a separate, reducible follow-on.) `args.N` is different — it
 	// folds to a frame local — and is covered by TestArgsAccessorCompilesNative.

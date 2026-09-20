@@ -52,9 +52,9 @@ func TestClosureReadModelParity(t *testing.T) {
 	}
 }
 
-// TestClosureReadModelSoundRefusals pins the neighbours that REFUSE, with
+// TestClosureReadModelSoundCompileFailures pins the neighbours that DECLINE, with
 // the interpreter's own answer.
-func TestClosureReadModelSoundRefusals(t *testing.T) {
+func TestClosureReadModelSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// the token past the arity stays inside the paren with the result
 		{crmMk + `(h 5 9)`, "bounded by a paren", "[12 9]"},
@@ -69,11 +69,11 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {
@@ -101,7 +101,7 @@ func TestClosureReadModelSoundRefusals(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, "the statement ends short of the wrapper's arity") {
-			t.Errorf("%q: refused %q", src, reason)
+			t.Errorf("%q: declined %q", src, reason)
 		}
 		d, err := New()
 		if err != nil {

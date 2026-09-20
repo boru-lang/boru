@@ -12,7 +12,7 @@ package lang
 // whole-frame replay over the residual with the binding names, and the VM
 // re-steps a fn-valued read as the WORD through the interpreter's own
 // dispatch (CompiledFn.DynFrameWords). A fn-typed read the replay cannot
-// seat refuses; a gradual one keeps the slot push it always had.
+// seat declines; a gradual one keeps the slot push it always had.
 
 import (
 	"fmt"
@@ -88,11 +88,11 @@ func TestWordReadDispatchParity(t *testing.T) {
 	}
 }
 
-// TestWordReadDispatchRefuses pins the reads the replay cannot seat: a
+// TestWordReadDispatchFailsToCompile pins the reads the replay cannot seat: a
 // container member, a branch residual, a stack-collected argument, a read
-// mixed with a `/v` read of the same binding — each a refusal the interpreter absorbs that
+// mixed with a `/v` read of the same binding — each a compile failure that
 // answers the interpreter's value.
-func TestWordReadDispatchRefuses(t *testing.T) {
+func TestWordReadDispatchFailsToCompile(t *testing.T) {
 	rows := []struct{ src, reason string }{
 		{wrF + `[[g]]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{wrF + `[{a: g}]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
@@ -103,7 +103,7 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 		{wrF + `[g typeof]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		// a GRADUAL param bound to a fn at the call: the pass re-runs the
 		// body under the argument's RUNTIME type (a Function carrier), so
-		// the strict accounting applies — these refuse, they never diverged
+		// the strict accounting applies — these decline, they never diverged
 		// (the map-literal spelling's CHECK pass is the NUR125 pin below).
 		{`def h fn [[k:Any][Any][{a: k}]]  h ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{`def h fn [[k:Any][Any][{a: (k)}]]  h ([] => [42])`, "consumed where the interpreter dispatches it"},
@@ -124,7 +124,7 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
@@ -140,9 +140,9 @@ func TestWordReadDispatchRefuses(t *testing.T) {
 // whose DispatchHandler is nil. execMatch now raises internal_error on a
 // nil runner (ADR-005: an error, never a panic), the fold declines on it,
 // and the literal records normally: the check pass is clean, and both lanes
-// answer the interpreter's value (the compiled lane through the refusal
+// answer the interpreter's value (the compiled lane through the compile failure
 // pinned above). Boru.Check is the entry point that reached the fold;
-// CompileCheck never did, so the refusal rows alone could not pin it.
+// CompileCheck never did, so the compile failure rows alone could not pin it.
 func TestGradualFnParamMapLiteralCheckIsClean(t *testing.T) {
 	for _, src := range []string{
 		`def h fn [[k:Any][Any][{a: k}]]  h ([] => [42])`,
@@ -220,7 +220,7 @@ func TestBodyLocalWordReadParity(t *testing.T) {
 		}
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
-	// the top-level spelling has no frame to seat in: the Stage-3 refusal
+	// the top-level spelling has no frame to seat in: the Stage-3 compile failure
 	// it always had, and the interpreter's answer
 	a, err := New()
 	if err != nil {
@@ -229,7 +229,7 @@ func TestBodyLocalWordReadParity(t *testing.T) {
 	src := `def m {f: ([] => [42])}  def j (m get "f")  j`
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog != nil || !strings.Contains(reason, "fn value read from a container auto-dispatches") {
-		t.Errorf("%q: want the Stage-3 container refusal, got prog=%v reason=%q err=%v", src, prog != nil, reason, cerr)
+		t.Errorf("%q: want the Stage-3 container compile failure, got prog=%v reason=%q err=%v", src, prog != nil, reason, cerr)
 	}
 	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	requireParity(t, src, gotC, errC, gotI, errI)
@@ -415,7 +415,7 @@ func TestDoBodyCaptureResidualPlainFn(t *testing.T) {
 }
 
 // The lambda-body deopt's own boundaries, each measured. Both rows once
-// refused and now compile with parity; the refusal each one pinned was a
+// declined and now compile with parity; the compile failure each one pinned was a
 // measured gap, not a rule, and the pin moved to parity the increment the gap
 // closed. The `if` arm row is the one shape still DIVERGING (pinned as the
 // interpreter's answer via the fallback lane, not as parity on a compiled
@@ -423,7 +423,7 @@ func TestDoBodyCaptureResidualPlainFn(t *testing.T) {
 // its slot push, exactly as it did before this increment.
 func TestLambdaValueBodyDeoptCompiles(t *testing.T) {
 	const hf = `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any]`
-	// The single-container row refused "body result of unknown provenance"
+	// The single-container row declined "body result of unknown provenance"
 	// while compileClosureBody analysed every fn-value body as anonymous: a
 	// `fn`-word factory result evaluates its residual container IN-FRAME
 	// (core's EvalResidual rule is `!anonymous || BodyEvalsResidual`), so
@@ -439,7 +439,7 @@ func TestLambdaValueBodyDeoptCompiles(t *testing.T) {
 			t.Errorf("%q = %v, want [{a:42}]", src, gotC)
 		}
 	}
-	// The two-factory row refused "fn value precedes residual args" until the
+	// The two-factory row declined "fn value precedes residual args" until the
 	// thirty-sixth increment: the def of a produced closure claims its
 	// shape, so each read models its own dispatch and the row compiles.
 	src := hf + `[j]] )]]  def q (h {f: ([] => [42])})  def r (h {f: 5})  (q 7) (r 1)`

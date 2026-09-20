@@ -30,14 +30,14 @@ func TestCatchFrame(t *testing.T) {
 		// the error reaches `error [handler]` as a dynamic value, but its closure
 		// input is a FIXED TError carrier independent of that value, so the handler
 		// runs faithfully — RecordClosureCall resolves the dynamic input as a stack
-		// operand rather than refusing it outright.
+		// operand rather than declining it outright.
 		{`do [{x:1} !. y] error [dot code]`, "[not_found]"},
 	}
 	for _, c := range pos {
 		a, _ := New()
 		prog, reason, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (catch frame), but refused: %q", c.src, reason)
+			t.Errorf("%q: must compile (catch frame), but declined: %q", c.src, reason)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
@@ -58,10 +58,10 @@ func TestCatchFrame(t *testing.T) {
 	// NEGATIVE — shapes that DON'T take the closure path must still fall back
 	// faithfully (parity), never miscompile:
 	//   - an IGNORE-the-error handler (`["fallback"]`) leaves error+result (nets
-	//     2 ≠ BodyOut 1), so the closure refuses and the CompileFallbackBody
+	//     2 ≠ BodyOut 1), so the closure declines and the CompileFallbackBody
 	//     island owns it (the strip runs there).
 	//   - a `get code case [value-clauses]` handler has a COMPUTED scrutinee the
-	//     fn-unit value-def-locals promotion cannot seat yet, so `error` refuses
+	//     fn-unit value-def-locals promotion cannot seat yet, so `error` declines
 	//     and the whole statement falls back.
 	neg := []struct{ src, want string }{
 		{`do [21 mul 2] error ["fallback"]`, "[42]"},

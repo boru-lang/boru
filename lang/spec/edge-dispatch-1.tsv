@@ -69,9 +69,9 @@ typeof (1 add 0d2)	BigInteger	…pinned via typeof
 typeof (0d1.5 add 1)	BigDecimal	…pinned via typeof
 0d2 add 0d1.5	0d3.5	BigInteger + BigDecimal → BigDecimal (widest exact leaf)
 0d2 add 1.5	ERROR:cannot mix	Float + BigInteger is a type_error, not a silent binary-float demotion
-1.5 add 0d2	ERROR:cannot mix	slot-symmetric refusal
-0d1.5 add 2.5	ERROR:cannot mix	Float + BigDecimal refuses identically
-add 1.5 0d2	ERROR:cannot mix	pure forward form refuses too
+1.5 add 0d2	ERROR:cannot mix	slot-symmetric compile failure
+0d1.5 add 2.5	ERROR:cannot mix	Float + BigDecimal declines identically
+add 1.5 0d2	ERROR:cannot mix	pure forward form declines too
 add 0d2 "x"	'x0d2'	but a String partner still concats a BigInteger — its 0d literal form is spliced in
 #
 # §5  concat is add-only — the other math words have no String overload

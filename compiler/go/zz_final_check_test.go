@@ -22,43 +22,43 @@ func TestStartFnCompileEmptyParamNames(t *testing.T) {
 	_ = unit
 }
 
-func TestRecordBranchRefusals(t *testing.T) {
-	// condFrag present but empty stack → refuse.
+func TestRecordBranchCompileFailures(t *testing.T) {
+	// condFrag present but empty stack → decline.
 	es := NewEmitState()
 	es.RecordBranch(core.BranchRecord{CondFrag: &EmitFragment{}, CondStk: nil})
 	if es.Compilable {
-		t.Fatal("empty condition body should refuse")
+		t.Fatal("empty condition body should decline")
 	}
 	// condFrag result unresolvable.
 	es = NewEmitState()
 	es.RecordBranch(core.BranchRecord{CondFrag: &EmitFragment{}, CondStk: []core.Value{carrierVal(core.TInteger)}})
 	if es.Compilable {
-		t.Fatal("unresolvable condition result should refuse")
+		t.Fatal("unresolvable condition result should decline")
 	}
 	// default cond unresolvable.
 	es = NewEmitState()
 	es.RecordBranch(core.BranchRecord{Cond: carrierVal(core.TInteger)})
 	if es.Compilable {
-		t.Fatal("unresolvable condition should refuse")
+		t.Fatal("unresolvable condition should decline")
 	}
 	// const-cond with an uncaptured then arm.
 	es = NewEmitState()
 	tru := true
 	es.RecordBranch(core.BranchRecord{ConstCond: &tru, Then: nil})
 	if es.Compilable {
-		t.Fatal("uncaptured taken arm should refuse")
+		t.Fatal("uncaptured taken arm should decline")
 	}
 	// then VALUE unresolvable (else-form).
 	es = NewEmitState()
 	es.RecordBranch(core.BranchRecord{Cond: core.NewInteger(1), HasElse: true, ThenValue: ptrVal(carrierVal(core.TInteger))})
 	if es.Compilable {
-		t.Fatal("unresolvable then value should refuse")
+		t.Fatal("unresolvable then value should decline")
 	}
 	// else VALUE unresolvable.
 	es = NewEmitState()
 	es.RecordBranch(core.BranchRecord{Cond: core.NewInteger(1), HasElse: true, ThenValue: ptrVal(core.NewInteger(2)), ElsValue: ptrVal(carrierVal(core.TInteger))})
 	if es.Compilable {
-		t.Fatal("unresolvable else value should refuse")
+		t.Fatal("unresolvable else value should decline")
 	}
 }
 
@@ -72,14 +72,14 @@ func TestNoteMemberFnReadGuards(t *testing.T) {
 	}
 }
 
-func TestRecordInterpRefusals(t *testing.T) {
+func TestRecordInterpCompileFailures(t *testing.T) {
 	es := NewEmitState()
 	if es.RecordInterp(nil, nil, core.NewInteger(0), core.SrcPos{}) {
 		t.Fatal("no holes should decline")
 	}
 }
 
-func TestRecordClosureCallRefusals(t *testing.T) {
+func TestRecordClosureCallCompileFailures(t *testing.T) {
 	es := NewEmitState()
 	// nil sig → declines.
 	if es.RecordClosureCall("w", nil, nil, 0, 0, nil, nil, nil, nil, false, core.SrcPos{}) {
@@ -127,10 +127,10 @@ func TestDynInputsProven(t *testing.T) {
 		t.Fatal("non-conforming dynamic operand should not be proven")
 	}
 	// a genuinely-WIDENED gradual operand (dynamic Any) is exactly the
-	// unproven case the guard defends — refused even on a conforming sig.
+	// unproven case the guard defends — declined even on a conforming sig.
 	sigAny := &core.Signature{CompileEffect: core.CompileRunsBodyIsolated, Args: []*core.Type{core.TAny}}
 	if es.DynInputsProven(sigAny, []core.Value{core.NewDynamicCarrier(core.TAny)}) {
-		t.Fatal("a widened dynamic(Any) operand must refuse the proof")
+		t.Fatal("a widened dynamic(Any) operand must decline the proof")
 	}
 }
 

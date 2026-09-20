@@ -60,12 +60,12 @@ func TestDynamicCallbackPolyReMatches(t *testing.T) {
 	}
 }
 
-// TestDynamicCallbackStillRefusesWithoutTheFlag is the negative: a word that
-// does NOT declare CompileDynBody keeps the ambiguous-overload refusal for the
+// TestDynamicCallbackStillDoesNotLowerWithoutTheFlag is the negative: a word that
+// does NOT declare CompileDynBody keeps the ambiguous-overload compile failure for the
 // same shapes, and the message names the gap. for-each is the case in point
 // (its handler reads the collection as a list, and it nets no result, which
-// the dyn-body seat also requires) and walk keeps its own code-body refusal.
-func TestDynamicCallbackStillRefusesWithoutTheFlag(t *testing.T) {
+// the dyn-body seat also requires) and walk keeps its own code-body compile failure.
+func TestDynamicCallbackStillDoesNotLowerWithoutTheFlag(t *testing.T) {
 	for _, tc := range []struct{ label, src, want string }{
 		{"for-each with a map-field callback",
 			`def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc`,
@@ -145,7 +145,7 @@ func TestStrictAnyOperandReMatches(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(tc.src)
 		if cerr != nil || prog == nil {
-			t.Errorf("%s: must compile, refused %q / %v\n  %s", tc.label, reason, cerr, tc.src)
+			t.Errorf("%s: must compile, declined %q / %v\n  %s", tc.label, reason, cerr, tc.src)
 			continue
 		}
 		b, _ := New()

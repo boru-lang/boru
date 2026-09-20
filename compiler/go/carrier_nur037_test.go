@@ -6,9 +6,9 @@ package compiler
 // span, the CALL_NATIVE const-bake, and the closure probe all baked the
 // NAME against the check-time registry, which the VM's runtime registry
 // never binds. bodyRefsFnLocalFn detects the shape at the
-// recordDispatchOutcome seam and refuses the whole program ("slow, not
+// recordDispatchOutcome seam and declines the whole program ("slow, not
 // wrong"). These tests pin the predicate's scope rule — fn-local
-// FUNCTION bindings only — and the refusal wiring, positive and
+// FUNCTION bindings only — and the compile failure wiring, positive and
 // negative per the repo's test discipline.
 
 import (

@@ -377,7 +377,7 @@ type StampEvent = core.StampEvent
 // StampReport returns the detached-stamp attribution recorded on this
 // instance's registry (design/legacy/RUNTIME-STAMPING.0.ignore Phase 5): one event per
 // stamp ATTEMPT — runtime-constructed codec fns, service handlers, and
-// module fns — with the refusal reason when the compile declined. Nil when
+// module fns — with the compile failure reason when the compile declined. Nil when
 // runtime stamping was never armed (a plain Run / -no-compile execution).
 func (a *Boru) StampReport() []core.StampEvent {
 	return a.registry.StampEvents()
@@ -427,7 +427,7 @@ func (a *Boru) ArmRegionOracleHook(fn func(RegionOracleEvent)) func() {
 // sites — by arming around the fallback run. The returned func restores the
 // prior state (a no-op when the registry was already armed), so nesting is
 // safe. A policy-gated registry stays sound under arming: StampDetachedFn
-// itself refuses when a word policy is installed, exactly like CompileCheck.
+// itself declines when a word policy is installed, exactly like CompileCheck.
 func (a *Boru) ArmRuntimeStamping() func() {
 	if a.registry.RuntimeStampingEnabled() {
 		return func() {}
@@ -451,7 +451,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// raising the identical permission error, so the 2026-07-13 bypass (a
 	// "deny add" policy interpreted `1 add 2` to permission-denied but ran
 	// it compiled to 3) is closed at the dispatch layer instead of by
-	// refusing compilation. The check pass stays ungated, mirroring
+	// declining compilation. The check pass stays ungated, mirroring
 	// policyGateWord's check-mode skip. Pinned by
 	// policy_compiled_gate_test.go's compiled-vs-interpreted parity sweep.
 	values, err := parser.Parse(src)
@@ -488,7 +488,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 		return nil, "check error", res, runErr
 	}
 	for _, d := range res.Diagnostics {
-		// Refuse only on MODEL-UNDERMINING findings (undefined_word,
+		// Decline only on MODEL-UNDERMINING findings (undefined_word,
 		// no_signature, … — dispatch did not resolve, so the recording is
 		// a guess). A RuntimeMirror error is a validation finding whose
 		// model is exact — the program compiles and raises the identical
@@ -506,7 +506,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// strict error at runtime (an orphan `gen [...]`, an `unpack` of a
 	// missing key). The compiled stream IS the check pass, so it would
 	// silently succeed where the interpreter errors. Such a word flags
-	// the suppression; refuse to compile and let the interpreter raise
+	// the suppression; fail to compile and let the interpreter raise
 	// the real error on the fallback path.
 	if a.registry.Check.SuppressedRuntimeError {
 		return nil, "check-mode suppressed a runtime error (uncompilable)", res, nil
@@ -516,7 +516,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// Disjunct(Integer,Boolean) result makes `not` forward-collect in
 	// check mode but stack-grab the concrete Boolean at runtime) cannot be
 	// faithfully compiled — the static split diverges from the runtime
-	// one. Refuse and fall back to the interpreter.
+	// one, so the program does not compile.
 	if a.registry.Check.AmbiguousGradualSplit {
 		return nil, "forward/stack split depends on a gradual operand (uncompilable)", res, nil
 	}
@@ -524,7 +524,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// holds the emitted program. compiler/go's init unconditionally installs
 	// NewEmitStateHook to mint one, and lang links compiler transitively
 	// through eng, so a non-EmitState recorder here means a host reassigned
-	// the exported core hook. Refuse to compile rather than assert — a
+	// the exported core hook. Decline to compile rather than assert — a
 	// failed assertion would panic, which ADR-005 forbids.
 	es, isReal := a.registry.Check.Recorder().(*compiler.EmitState)
 	if !isReal { //covergate:allow compiler's init always installs the *EmitState hook that eng links in, so only a host-swapped core.NewEmitStateHook reaches this belt (§compiler)
@@ -1187,7 +1187,7 @@ func compileFailedError(r *native.Registry, reason string, res CheckResult) erro
 	}
 	const tail = " — this is a compiler defect, not a policy: valid code must compile."
 	for _, d := range res.Diagnostics {
-		// The SAME predicate CompileCheck refused on. A CaughtAtRuntime
+		// The SAME predicate CompileCheck declined on. A CaughtAtRuntime
 		// finding is downgraded to SeverityInfo by AddDiagnostic (a
 		// surrounding `do [...]` traps it), and the compile gate still stops
 		// on it — so selecting on severity alone left exactly that class
@@ -1292,11 +1292,11 @@ type CheckResult struct {
 	SiteCounts map[string]int `json:"site_counts,omitempty"`
 	// FnCarrierReadSubstituted marks a compile pass that resolved a read
 	// of a name def-bound to a computed fn through the fn-carrier side
-	// table (Stage 1). A REFUSAL from such a pass is the transitional
-	// class that refused behind the silent check-diagnostics sentinel
-	// before Stage 1 — RunCompiled keeps that silent interpreter fallback
+	// table (Stage 1). A COMPILE FAILURE from such a pass is the transitional
+	// class that declined behind the silent check-diagnostics sentinel
+	// before Stage 1 — RunCompiled keeps that silent interpreter re-run
 	// for it, and the census suites classify it with the sentinel rather
-	// than as a hard refusal. Populated only by CompileCheck.
+	// than as a hard compile failure. Populated only by CompileCheck.
 	FnCarrierReadSubstituted bool `json:"fn_carrier_read_substituted,omitempty"`
 	// BindLedger is the RUNTIME-VISIBLE binding transitions the check pass
 	// performed, in source order — the population the bind twins

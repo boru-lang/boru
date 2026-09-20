@@ -1,6 +1,6 @@
 package compiler
 
-// The quoted-operand compilation refusal used to be lifted for `set`/`del`
+// The quoted-operand compilation compile failure used to be lifted for `set`/`del`
 // by setDelKernelSig (NUR057), a binding-identity key that admitted two
 // classes under those two names: a LOCKED Go registration, and a
 // BORU-BODIED open-words extension. Both are gone. `set`/`del`'s sixteen
@@ -33,8 +33,8 @@ package compiler
 // An override's delegation to the base overload passes the key through a
 // carrier (`set (k) v (m as FlexMap)` with `k` an `Atom/q` param), and
 // lang/spec/as.tsv:52-54 are exactly that shape. Declaring CompileQuoteInert
-// — whose admission requires IsInertConst — refused those three rows and put
-// the compile-refusal ceiling back from 113 to 116. CompileQuoteKey exists to
+// — whose admission requires IsInertConst — declined those three rows and put
+// the compile-compile-failure ceiling back from 113 to 116. CompileQuoteKey exists to
 // name that difference: a KEY the handler reads needs no const bake, where a
 // LITERAL the handler consumes does.
 //
@@ -214,13 +214,13 @@ func TestQuotedKeySigArms(t *testing.T) {
 
 	// THE POINT. A carrier-delivered key — an `Atom/q` param passed through a
 	// paren, which is how an open-words override delegates to the base
-	// overload — is admitted here and REFUSED by the inert-const predicate.
+	// overload — is admitted here and DECLINED by the inert-const predicate.
 	// If these two ever agree, lang/spec/as.tsv:52-54 are about to regress.
 	carrierKey := []core.Value{core.NewDynamicCarrier(core.TAtom), core.NewInteger(1), core.NewMap(nil)}
 	if !quotedKeySig(key) {
 		t.Error("the key gate must not consult the operand at all")
 	}
 	if quoteOperandInertOK(r, "zz-key", key, carrierKey) {
-		t.Error("the inert-const predicate is expected to refuse a carrier key — if it now accepts one, this test's premise changed")
+		t.Error("the inert-const predicate is expected to decline a carrier key — if it now accepts one, this test's premise changed")
 	}
 }

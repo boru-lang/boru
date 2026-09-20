@@ -18,7 +18,7 @@ import (
 // dispatches inside it with `3` forward and `7` from the stack.
 func TestInsideForwardSelectionEnforcesPatterns(t *testing.T) {
 	// Negative: 3 fails the literal-0 pattern → the patterned sig is
-	// skipped and p (which has no other sig) refuses to dispatch.
+	// skipped and p (which has no other sig) declines to dispatch.
 	a, err := lang.New()
 	if err != nil {
 		t.Fatalf("lang.New: %v", err)

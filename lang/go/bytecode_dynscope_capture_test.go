@@ -8,7 +8,7 @@ import "testing"
 // OpBindDynScope twin. A `def t (fixture)` inside a code body — where `fixture`
 // is an under-annotated module-scope value CAPTURED into the body — used to bind
 // from `fixture`'s foreign top-level producing event (still live while the inline
-// body compiles) instead of the body's own capture slot, refusing "dynamic-scope
+// body compiles) instead of the body's own capture slot, declining "dynamic-scope
 // def `t` of unpromoted computed value" (the promotion has no local event to
 // promote). RecordDynBind now mirrors resolveOperand's capID override and binds
 // from the capture slot, so the body compiles and is byte-identical to the

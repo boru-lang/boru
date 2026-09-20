@@ -8,7 +8,7 @@
 # identity so the poly event survives to the record elision. The differing-
 # return rows moved to lang/spec/fn-value.tsv §9; native + negative pins in
 # lang/go/bytecode_poly_join_test.go (arms with differing return COUNTS
-# keep the refusal — the call site bakes a fixed nout). The survey's §3c
+# keep the compile failure — the call site bakes a fixed nout). The survey's §3c
 # quoted-slot variant graduated earlier and rides below as the
 # keeps-compiling control.
 def id fn [[x:Any] [Any] [x]] def g fn [[a:Atom] [String] ['atom'] [a:Integer] [String] ['int']] g (id 5)	'int'	control: an Atom (/q) slot among the arms no longer bars the poly re-match — compiles natively

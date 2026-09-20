@@ -79,13 +79,13 @@ func TestLowerDynBindArms(t *testing.T) {
 	lw, cf := newLW(es, map[int]int{7: 3})
 	ev := EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "dsl", srcSeq: 7, residentTwin: -1}}
 	if reason := lw.lowerDynBind(&ev); reason != "" {
-		t.Fatalf("promoted bind refused: %s", reason)
+		t.Fatalf("promoted bind declined: %s", reason)
 	}
 	if len(cf.Code) != 2 || cf.Code[0].Op != OpPushLocal || cf.Code[0].Arg != 3 || cf.Code[1].Op != OpBindDynScope {
 		t.Errorf("promoted bind code = %v, want PUSH_LOCAL 3 + BIND_DYN_SCOPE", cf.Code)
 	}
 
-	// Unpromoted computed value: refuses.
+	// Unpromoted computed value: declines.
 	lw, _ = newLW(es, map[int]int{})
 	ev = EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "dsl", srcSeq: 9, residentTwin: -1}}
 	if reason := lw.lowerDynBind(&ev); !strings.Contains(reason, "unpromoted computed value") {
@@ -96,13 +96,13 @@ func TestLowerDynBindArms(t *testing.T) {
 	lw, cf = newLW(es, nil)
 	ev = EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "dsl", srcSeq: -1, val: core.NewInteger(5), residentTwin: -1}}
 	if reason := lw.lowerDynBind(&ev); reason != "" {
-		t.Fatalf("literal bind refused: %s", reason)
+		t.Fatalf("literal bind declined: %s", reason)
 	}
 	if len(cf.Code) != 2 || cf.Code[0].Op != OpPushConst || cf.Code[1].Op != OpBindDynScope {
 		t.Errorf("literal bind code = %v, want PUSH_CONST + BIND_DYN_SCOPE", cf.Code)
 	}
 
-	// A non-inert (tape-coupled) value refuses.
+	// A non-inert (tape-coupled) value declines.
 	lw, _ = newLW(es, nil)
 	ev = EmitEvent{kind: evDynBind, dyn: &emitDynBind{name: "dsl", srcSeq: -1, val: core.NewWord("live"), residentTwin: -1}}
 	if reason := lw.lowerDynBind(&ev); !strings.Contains(reason, "unknown provenance") {
@@ -120,7 +120,7 @@ func TestLowerDynBindArms(t *testing.T) {
 // The active-token MAP const gate: inside a compiled fn frame a map operand
 // bearing a word (autoEvalMap re-evaluates it per dispatch against the LIVE
 // frame) must not bake — it routes to the dyn-scope rescue and, with no read
-// provenance, refuses. Lists stay bakeable (code-as-data), and module scope
+// provenance, declines. Lists stay bakeable (code-as-data), and module scope
 // keeps the map bake.
 func TestActiveTokenMapConstGate(t *testing.T) {
 	r := seam7Reg(t)
@@ -193,6 +193,6 @@ func TestDynScopeRescueElidedIDByName(t *testing.T) {
 	w.ID = ""
 	w.SetDynFrom("other")
 	if _, ok := es.dynScopeRescue(w); ok {
-		t.Fatal("a name outside the snapshot, with no fn binder, is refused as before")
+		t.Fatal("a name outside the snapshot, with no fn binder, is declined as before")
 	}
 }

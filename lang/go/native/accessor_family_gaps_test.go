@@ -10,7 +10,7 @@ import (
 // are pinned language-level in lang/spec/accessor.tsv, xml.tsv and
 // module-instance.tsv; these cover the defensive arms a spec row cannot
 // reach (a type literal never dispatches into the handler — the sig
-// match refuses first — so the wrong-payload arms need direct calls,
+// match declines first — so the wrong-payload arms need direct calls,
 // the same pattern as the array-word handler tests).
 
 func gapsTestReg(t *testing.T) *Registry {

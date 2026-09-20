@@ -12,8 +12,8 @@ import (
 // with the fn VALUE on top. The closure's top-taking handler (each/fold/scan) was
 // trimming to that top and mapping every element to the UNAPPLIED comp —
 // `[1 2] each [(x x comp)]` interpreted to [0 0] but COMPILED to [fn, fn]. The fix
-// refuses such a closure body (sound interpreter fallback) — mirroring the fn-body
-// unapplied-fn-value refusal and resolveDynamicApply's main-residual refusals — so
+// declines such a closure body (compile failure) — mirroring the fn-body
+// unapplied-fn-value compile failure and resolveDynamicApply's main-residual compile failures — so
 // compile == interpret holds. A SOLE inert fn-reference body still compiles (it maps
 // every element to the reference, which is a concrete const, not an unapplied apply).
 func TestClosureBodyUnappliedFnValueSound(t *testing.T) {
@@ -64,7 +64,7 @@ func TestClosureBodyUnappliedFnValueSound(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)
@@ -85,7 +85,7 @@ func TestClosureBodyUnappliedFnValueSound(t *testing.T) {
 	}
 
 	// A SOLE inert fn-reference body (mapping every element to the reference) is a
-	// concrete const, NOT an unapplied apply — it must NOT be over-refused into a
+	// concrete const, NOT an unapplied apply — it must NOT be over-declined into a
 	// wrong result; compile == interpret (fallback allowed).
 	t.Run("sound/sole inert fn-ref body", func(t *testing.T) {
 		src := `[1 2] each [cmp/v]`
@@ -133,7 +133,7 @@ func TestTrailingApplyQuoteDiscipline(t *testing.T) {
 	// so its runtime quote state is unknowable at CHECK time: a QUOTED
 	// return stays inert in the interpreter while an UNQUOTED return
 	// auto-applies. CALL_DYN_TRAIL_KEEPQ decides that at RUN time and was
-	// always the right op; what the refusal was really missing is the
+	// always the right op; what the compile failure was really missing is the
 	// callee's ARITY, without which KeepQ would consume the whole window.
 	// A factory returning one anonymous lambda now yields it (the eleventh
 	// increment reads it off the baked const's own signature), so both
@@ -150,14 +150,14 @@ func TestTrailingApplyQuoteDiscipline(t *testing.T) {
 		`def mk fn [[][Function][fn [[a:Integer][Integer][a add 1]]]] (1 2 (mk))`,
 		"[1 3]")
 	// More params than the window has values: the interpreter leaves the fn
-	// UNAPPLIED, and nothing here models that — the refusal stands.
-	mustRefuseWithParity(t,
+	// UNAPPLIED, and nothing here models that — the compile failure stands.
+	mustFailToCompileWithParity(t,
 		`def mk fn [[][Function][fn [[a:Integer z:Integer y:Integer][Integer][a add z]]]] (1 2 (mk))`,
 		"trailing fn-value apply with fewer args than the callee's arity")
 	// A factory whose ARMS return different lambdas has no ONE provable
-	// shape, so the arity stays unknown and the standing refusal holds —
+	// shape, so the arity stays unknown and the standing compile failure holds —
 	// the row that keeps this graduation honest.
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def choose fn [[c:Boolean][Function][if c [quote (fn [[a:Integer z:Integer][Integer][a add z]])] [fn [[a:Integer z:Integer][Integer][a mul z]]]]] (1 2 (choose false))`,
 		"trailing fn-value apply over a call result (runtime quote state unknown)")
 }

@@ -15,7 +15,7 @@ import (
 // vault_tui.boru parsed once, run as a module body). The app's live
 // behaviour is driven end-to-end by lang/go/test/app_vault_tui_test.go.
 
-// A parent with no parser configured is refused before any work.
+// A parent with no parser configured is declined before any work.
 func TestBuildVaultTuiModuleRequiresParser(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {

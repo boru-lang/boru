@@ -53,7 +53,7 @@ func ApplyResidentBind(r *Registry, name string, undef bool, v Value) {
 // so the front door rejects the replay on the check pass's own leftovers.
 // That doc states the measurement.
 //
-// An error can only mean a captured body the installer itself refuses, which
+// An error can only mean a captured body the installer itself declines, which
 // the check pass's run of the same body did not; it is returned rather than
 // swallowed so the VM raises instead of installing nothing.
 func ApplyResidentTypeBind(r *Registry, name string, entry DefEntry) error {

@@ -6,11 +6,11 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// TestIOSurfaceCompilesNoRefusal is the focused companion to the corpus-wide
-// TestRefusalsAreFailures gate: it pins that the boru:io Pathon-only redesign —
+// TestIOSurfaceCompilesNoCompileFailure is the focused companion to the corpus-wide
+// TestCompileFailuresAreBugs gate: it pins that the boru:io Pathon-only redesign —
 // the bare `list`/`remove` word extensions (a Pathon overload grafted onto the
 // core words at import) and every namespaced IO word — never regresses into a
-// WHOLE-PROGRAM compile refusal (a nil Program with no check error), which
+// WHOLE-PROGRAM compile failure (a nil Program with no check error), which
 // would silently strand the row on the interpreter (design/COMPILABLE-SUBSET.md).
 //
 // The corpus census only sees the exact module-io.tsv rows; this test exercises
@@ -18,14 +18,14 @@ import (
 // option forms, the bare extension after the in-memory-FS context toggle (the
 // dynamic-value-then-extension shape whose static dispatch does not resolve and
 // so leans on the runtime rematch), and each IO word in isolation. If a future
-// dispatch change made any of these refuse, the runtime rematch that currently
+// dispatch change made any of these decline, the runtime rematch that currently
 // keeps them native would have silently broken.
-func TestIOSurfaceCompilesNoRefusal(t *testing.T) {
+func TestIOSurfaceCompilesNoCompileFailure(t *testing.T) {
 	t.Parallel()
 	// Each program is valid and must lower to a non-nil Program. The mem-FS
 	// toggle rows exercise the bare extension sitting after a dynamic value on
 	// the stack — the case the checker cannot statically resolve, which must
-	// still COMPILE (to a runtime rematch), not refuse.
+	// still COMPILE (to a runtime rematch), not decline.
 	compileOK := []string{
 		// bare `list` extension (core word gains a Pathon overload on import)
 		`import "boru:io"  list (make Pathon "d")`,
@@ -39,7 +39,7 @@ func TestIOSurfaceCompilesNoRefusal(t *testing.T) {
 		`import "boru:io"  remove (make Pathon "f") {recursive:true}`,
 		`import "boru:io"  remove (make Pathon "f") {force:true}`,
 		`import "boru:io"  context dot __sys dot fs set mem true  remove (make Pathon "mem://g") {force:true}`,
-		// P1 option forms: glob filter, overwrite refusal, text encodings
+		// P1 option forms: glob filter, overwrite compile failure, text encodings
 		`import "boru:io"  list (make Pathon "d") {match:"*.txt"}`,
 		`import "boru:io"  list (make Pathon "d") {recursive:true match:"**.txt"}`,
 		`import "boru:io"  IO.copy (make Pathon "a") (make Pathon "b") {overwrite:false}`,
@@ -106,33 +106,33 @@ func TestIOSurfaceCompilesNoRefusal(t *testing.T) {
 			continue
 		}
 		if prog == nil {
-			t.Errorf("%q: bytecode compiler REFUSED (reason %q) — the io redesign must lower this to a native Program, not strand it on the interpreter", src, reason)
+			t.Errorf("%q: bytecode compiler DECLINED (reason %q) — the io redesign must lower this to a native Program, not strand it on the interpreter", src, reason)
 		}
 	}
 
 	// Negative pairing (test discipline): a REJECTED io call — a String file
-	// target (Pathon-only refuses it) or the bare Pathon overload used without
+	// target (Pathon-only declines it) or the bare Pathon overload used without
 	// `import "boru:io"` — must still never become a SILENT whole-program
-	// refusal. Rejection is allowed to land either statically (a check
+	// compile failure. Rejection is allowed to land either statically (a check
 	// diagnostic) or as a native compile-to-runtime-rematch that raises when
-	// run; both keep the program off the refusal list. The one forbidden state
+	// run; both keep the program off the compile failure list. The one forbidden state
 	// is a nil Program with no diagnostic and an empty reason — the exact
-	// silent refusal design/COMPILABLE-SUBSET.md rules out.
-	notRefused := []string{
+	// silent compile failure design/COMPILABLE-SUBSET.md rules out.
+	didCompile := []string{
 		`import "boru:io"  IO.read "data.csv"`,      // String path, not a Pathon
 		`import "boru:io"  IO.write "out.txt" "hi"`, // String path, not a Pathon
 		`list (make Pathon "d")`,                    // bare Pathon overload absent without import
 		`remove (make Pathon "f")`,                  // same for remove
 	}
-	for _, src := range notRefused {
+	for _, src := range didCompile {
 		a, err := lang.New()
 		if err != nil {
 			t.Fatal(err)
 		}
 		prog, reason, _, cerr := a.CompileCheck(src)
-		silentRefusal := prog == nil && cerr == nil && reason != "check diagnostics"
-		if silentRefusal {
-			t.Errorf("%q: bytecode compiler SILENTLY REFUSED (reason %q) — a rejected io call must check-error or compile to a runtime rematch, never strand the whole program on the interpreter", src, reason)
+		silentCompileFailure := prog == nil && cerr == nil && reason != "check diagnostics"
+		if silentCompileFailure {
+			t.Errorf("%q: bytecode compiler SILENTLY DECLINED (reason %q) — a rejected io call must check-error or compile to a runtime rematch, never strand the whole program on the interpreter", src, reason)
 		}
 	}
 }

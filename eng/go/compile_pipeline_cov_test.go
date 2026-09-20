@@ -391,22 +391,22 @@ func TestCompiledUserFnFeedsNative(t *testing.T) {
 	}
 }
 
-// --- refusal / error paths ------------------------------------------------
+// --- compile failure / error paths ------------------------------------------------
 
-func TestCompileRefusesUnknownWord(t *testing.T) {
+func TestCompileFailsOnUnknownWord(t *testing.T) {
 	r := covRegistry(t, nil)
 	prog, reason := compileTokens(t, r, []core.Value{core.NewWord("no_such_word_xyz")})
 	if prog != nil {
 		t.Fatal("unknown word compiled to a program")
 	}
 	if reason == "" {
-		t.Fatal("no refusal reason for unknown word")
+		t.Fatal("no compile failure reason for unknown word")
 	}
 }
 
 // runErrParity asserts a program errors on BOTH engines with the same
 // error substring (the checker lowers an unresolvable dispatch to a
-// runtime trap rather than refusing outright, so the compiled program
+// runtime trap rather than declining outright, so the compiled program
 // must reproduce the interpreter's error).
 func runErrParity(t *testing.T, extra func(*core.Registry), tokens func() []core.Value, wantSub string) {
 	t.Helper()
@@ -421,21 +421,35 @@ func runErrParity(t *testing.T, extra func(*core.Registry), tokens func() []core
 	rc := covRegistry(t, extra)
 	prog, reason := compileTokens(t, rc, tokens())
 	if prog == nil {
-		// Refusing to compile is also sound — the interpreter owns the error.
-		t.Logf("compile refused (%s); interpreter owns the error", reason)
+		// Declining to compile is also sound — the interpreter owns the error.
+		t.Logf("compile declined (%s); interpreter owns the error", reason)
 		return
 	}
 	_, cErr := RunProgram(prog, rc)
 	if cErr == nil {
 		t.Fatal("compiled run unexpectedly succeeded where the interpreter errors")
 	}
+	// The ONE compiled-lane bail this parity helper tolerates, and it is a
+	// DEFECT rather than a sound outcome: `vm:poly-nout-drift`, a poly whose
+	// re-matched overload returns a different result count than the recorded
+	// claim. It used to be sound — the bail re-ran the whole source and the
+	// interpreter owned the canonical error — and with the re-run gone the
+	// lanes genuinely diverge: the compiled run surfaces a VM internal_error
+	// where the interpreter raises the program's own return-count error. The
+	// fix is a DeferAlt at that site (the "trap that raises the interpreter's
+	// own error at the same moment" disposition, design/SESSION-HANDOVER.0.md);
+	// until it lands this is a ceiling of ONE.
+	//
+	// Matched on the POLY site's own opening words. "result count … differs
+	// from the recorded claim" alone is not that site: vm_generic.go's
+	// `vm:generic-nout-drift` says the same of the live handler, and vmDefer
+	// records the site only through the bail hook — it is not in the returned
+	// error — so the looser predicate would absorb a generic-dispatch
+	// divergence as this known one.
 	if strings.Contains(cErr.Error(), "internal_error") &&
-		strings.Contains(cErr.Error(), "deferring to the interpreter") {
-		// A runtime shape-claim deferral (a poly whose re-matched overload
-		// returns a different result count than the recorded claim) is also
-		// sound — under RunCompiled the interpreter re-runs and owns the
-		// canonical error, asserted on the interpreted run above.
-		t.Logf("compiled run defers (%v); interpreter owns the error", cErr)
+		strings.Contains(cErr.Error(), "poly dispatch") &&
+		strings.Contains(cErr.Error(), "differs from the recorded claim") {
+		t.Logf("known compiler defect (vm:poly-nout-drift): %v", cErr)
 		return
 	}
 	if !strings.Contains(cErr.Error(), wantSub) {

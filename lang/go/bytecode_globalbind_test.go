@@ -17,7 +17,7 @@ import (
 // compiled, then reads the binding in request 2 on the SAME instance.
 
 // runCompiledRequest runs src as one compiled-by-default request and fails
-// the test on refusal or error — the pins below need the COMPILED path (a
+// the test on compile failure or error — the pins below need the COMPILED path (a
 // fallback would bind via the interpreter and prove nothing).
 func runCompiledRequest(t *testing.T, a *Boru, src string) {
 	t.Helper()
@@ -161,11 +161,11 @@ func TestGlobalBindEnvelope(t *testing.T) {
 		t.Errorf("fn-body def must not persist cross-request, got err=%v", err)
 	}
 
-	// GRADUATED (REFUSAL-CLOSURE S5, 2026-07-17): a def of a STATICALLY-
+	// GRADUATED (COMPILE FAILURE-CLOSURE S5, 2026-07-17): a def of a STATICALLY-
 	// COUNTED variadic loop collect binds the region's first value via the
 	// splice-at-depth OpBindGlobal and spills the rest — compiled parity
-	// with the interpreter. A DYNAMIC count keeps the refusal (the split
-	// needs the static region size) — the zzRefusingRow fixture.
+	// with the interpreter. A DYNAMIC count keeps the compile failure (the split
+	// needs the static region size) — the zzFailingRow fixture.
 	b := mustNew(t)
 	gotC, compiledB, err := b.RunCompiled(`def xs (for 3 [1]) xs`)
 	if noteCompileDefect(t, `def xs (for 3 [1]) xs`, gotC, err) {

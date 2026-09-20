@@ -175,7 +175,7 @@ def f fn [[n:Integer][Integer][if (n eq 0) [raise "z"] mul n 2]] f 0	ERROR:z	…
 # (The guard-polarity variant of the swallow — `def n 0 if (n eq 0)
 # [99] range 2 4` → [2] — runs correctly but is NOT pinned here: its
 # forward/stack split rides a gradual operand, which the bytecode
-# emitter refuses, and a spec value row must compile or island. The
+# emitter declines, and a spec value row must compile or island. The
 # direct-stack rows above pin the same claim shape.)
 def n 0 if (n eq 0) [99] range/2 2 4	99 [2 3]	after a guard, the /2 arity pin keeps the committed 99 out of range's optional slot
 def n 0 if (n eq 0) [99] (range 2 4)	99	a paren after a guard is an ARRIVAL: [2 3] fills the else and a true guard discards it

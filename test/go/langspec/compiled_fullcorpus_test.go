@@ -3,7 +3,7 @@
 // suite must pass in compiled mode"). Where the span-level differential
 // gate (compiled_differential_test.go) checks ONLY the rows the emitter
 // accepts, this gate runs EVERY row through RunCompiled — which compiles
-// what it can and SILENTLY falls back to the interpreter for the rest —
+// what it can and SILENTLY does not compile for the rest —
 // and asserts FULL parity with the interpreter: identical values, AND
 // identical error taxonomy (presence + code). This is the plan's ground
 // rule: "identical results, identical error taxonomy, or the stage
@@ -158,7 +158,7 @@ func itoa(n int) string {
 
 // fallbackVerdict compares one row's compiled-or-fallback run with the
 // interpreter's: error taxonomy first, then error content, then values.
-// refused is a compile_failed the compile gate owns (not a divergence);
+// declined is a compile_failed the compile gate owns (not a divergence);
 // unledgered is a divergence knownDivergences does not carry. It runs on a
 // walk worker, so it takes testing.TB and touches no shared state —
 // divergence is goroutine-safe.
@@ -226,7 +226,7 @@ var knownDiagDrift = &pinLedger{name: "knownDiagDrift", pins: map[string]string{
 	"reach.tsv:L52": "NUR172 — the two lanes describe different argument windows at a poly no-match: CALL_NATIVE_POLY holds both the key atom and the receiver, so the compiled notes report a type mismatch on argument 2, while the interpreter never bound the forward atom and reports an arity failure over one argument",
 }}
 
-func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (refused, unledgered bool) {
+func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (declined, unledgered bool) {
 	t.Helper()
 	// A compiled run that BAILED is not a divergence: it is the defect the
 	// interpreter re-run used to absorb, and it is counted in its own
@@ -237,7 +237,7 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 	// Error taxonomy parity: same presence AND same code.
 	if cdC, cdI := errCode(errC), errCode(errI); cdC != cdI {
 		if !wasCompiled && cdC == "compile_failed" {
-			// A REFUSAL, not a divergence: the compile gate in
+			// A COMPILE FAILURE, not a divergence: the compile gate in
 			// TestCompiledCoverage owns it (every one an open defect).
 			return true, false
 		}
@@ -337,7 +337,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 		ai := newDifferentialInstance(t)
 		gotI, errI := ai.RunInterp(input)
 
-		refused, unledgered := fallbackVerdict(t, r.Key(), input, wasCompiled, gotC, errC, gotI, errI)
+		declined, unledgered := fallbackVerdict(t, r.Key(), input, wasCompiled, gotC, errC, gotI, errI)
 
 		mu.Lock()
 		defer mu.Unlock()
@@ -345,7 +345,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 		if wasCompiled {
 			compiledPath++
 		}
-		if refused {
+		if declined {
 			refusedRows++
 		}
 		if unledgered {
@@ -353,7 +353,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 		}
 	})
 
-	t.Logf("compile-or-fallback: %d rows, %d compiled, %d refused (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, refusedRows, mismatches)
+	t.Logf("compile-or-fallback: %d rows, %d compiled, %d declined (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, refusedRows, mismatches)
 	entryCensus.assertCeiling(t)
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)

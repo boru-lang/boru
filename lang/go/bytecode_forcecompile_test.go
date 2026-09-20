@@ -24,7 +24,7 @@ func TestRunCompiledStrict(t *testing.T) {
 		}
 	})
 
-	t.Run("uncompilable program errors with the refusal reason", func(t *testing.T) {
+	t.Run("uncompilable program errors with the compile failure reason", func(t *testing.T) {
 		a, _ := New()
 		_, err := a.RunCompiledStrict("(size (for 5 [i]))")
 		if err == nil {
@@ -35,18 +35,18 @@ func TestRunCompiledStrict(t *testing.T) {
 		}
 	})
 
-	t.Run("a genuine runtime error surfaces (not a refusal)", func(t *testing.T) {
+	t.Run("a genuine runtime error surfaces (not a compile failure)", func(t *testing.T) {
 		a, _ := New()
 		_, err := a.RunCompiledStrict("def x (10 sub 10) (100 div x)")
 		if err == nil {
 			t.Fatal("expected a division-by-zero error, got nil")
 		}
 		if strings.Contains(err.Error(), "force-compile") {
-			t.Errorf("a runtime error must not be reported as a compile refusal: %q", err.Error())
+			t.Errorf("a runtime error must not be reported as a compile failure: %q", err.Error())
 		}
 	})
 
-	t.Run("check-diagnostics refusal names the blocking diagnostic", func(t *testing.T) {
+	t.Run("check-diagnostics compile failure names the blocking diagnostic", func(t *testing.T) {
 		// The bare "check diagnostics" sentinel names nothing — and its
 		// blocking diagnostic can be COMPILE-PASS-ONLY (`boru check` prints
 		// zero diagnostics for this program, which runs clean interpreted).
@@ -59,7 +59,7 @@ func TestRunCompiledStrict(t *testing.T) {
 		// still carries (diag_surface_test.go). The previous fixture was
 		// the Stage 1 `/v` hold, which S1b-2 lifted: a `/v` read of a name
 		// def-bound to a computed fn now resolves the fn-carrier side table,
-		// so that program refuses for a reason of its own and names no
+		// so that program declines for a reason of its own and names no
 		// diagnostic.
 		a, _ := New()
 		_, err := a.RunCompiledStrict(`case zed/q [zed "matched" "other"]`)
@@ -89,7 +89,7 @@ func TestRunCompiledStrict(t *testing.T) {
 		}
 	})
 
-	t.Run("side effects roll back on a refusal", func(t *testing.T) {
+	t.Run("side effects roll back on a compile failure", func(t *testing.T) {
 		// An uncompilable program that ALSO binds a name must not leak that
 		// binding into the registry: the run is rolled back to the state it
 		// found, exactly as it was on the old fallback path.
@@ -100,7 +100,7 @@ func TestRunCompiledStrict(t *testing.T) {
 		// `leaked` must be gone: a follow-up interpreter run that references it
 		// errors as an undefined word rather than resolving to 42.
 		if out, err := a.RunInterp("leaked"); err == nil {
-			t.Errorf("binding leaked across a force-compile refusal: got %v", out)
+			t.Errorf("binding leaked across a force-compile failure: got %v", out)
 		}
 	})
 }

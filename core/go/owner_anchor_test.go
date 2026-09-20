@@ -40,7 +40,7 @@ func TestOwnerStamps(t *testing.T) {
 	}
 }
 
-// TestRegisterTypeRequiresOwner pins the empty-owner refusal on the
+// TestRegisterTypeRequiresOwner pins the empty-owner compile failure on the
 // unified registration path.
 func TestRegisterTypeRequiresOwner(t *testing.T) {
 	tt := NewDynamicTypeTable()
@@ -193,7 +193,7 @@ func TestSigAnchorHelpers(t *testing.T) {
 // TestRequireOwnedAnchorModuleCarveout pins the transplant re-export
 // arm: a sig anchored on a FOREIGN module's type passes only when
 // allowModuleAnchors is set (source-clone transplants), and stays
-// refused on the strict def-time path.
+// declined on the strict def-time path.
 func TestRequireOwnedAnchorModuleCarveout(t *testing.T) {
 	r, err := NewRegistry()
 	if err != nil {
@@ -204,7 +204,7 @@ func TestRequireOwnedAnchorModuleCarveout(t *testing.T) {
 	innerT := tt.MintType("InnerAnchor", TMap)
 	sigs := []Signature{{Args: []*Type{innerT}}}
 	if err := requireOwnedAnchor(r, "w", "import", sigs, "module#outer", true); err != nil {
-		t.Errorf("re-export carveout refused a module-minted anchor: %v", err)
+		t.Errorf("re-export carveout declined a module-minted anchor: %v", err)
 	}
 	if err := requireOwnedAnchor(r, "w", "def", sigs, "module#outer", false); err == nil {
 		t.Error("strict path accepted a foreign module anchor")
@@ -213,13 +213,13 @@ func TestRequireOwnedAnchorModuleCarveout(t *testing.T) {
 
 // TestFlexLiteralUnifiesCarrier pins the flex-retag gap fix: a
 // check-mode carrier tagged at (or under) the flex type satisfies the
-// flex literal; foreign carriers still refuse.
+// flex literal; foreign carriers still decline.
 func TestFlexLiteralUnifiesCarrier(t *testing.T) {
 	if _, ok := Unify(NewCarrier(TFlexMap), NewTypeLiteral(TFlexMap)); !ok {
-		t.Error("FlexMap carrier refused by its own literal")
+		t.Error("FlexMap carrier declined by its own literal")
 	}
 	if _, ok := Unify(NewCarrier(TWeakFlexMap), NewTypeLiteral(TFlexMap)); !ok {
-		t.Error("subtype carrier refused by the parent flex literal")
+		t.Error("subtype carrier declined by the parent flex literal")
 	}
 	if _, ok := Unify(NewCarrier(TInteger), NewTypeLiteral(TFlexMap)); ok {
 		t.Error("foreign carrier accepted by the flex literal")

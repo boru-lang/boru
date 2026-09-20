@@ -7,7 +7,7 @@
 # resolution then statically bakes the conditional shadow, while the
 # interpreter keeps the outer fn when the branch is NOT taken (or the loop runs
 # zero times) — `if false [def g …] g 1` returned the shadow's value compiled
-# but the ORIGINAL interpreted. The fix refuses to compile the redefinition
+# but the ORIGINAL interpreted. The fix fails to compile the redefinition
 # (CondBodyDepth-gated, eng/go/core_helpers.go), so the interpreter owns the
 # shape with full parity. Full graduation = a runtime dispatch that respects
 # the conditional binding compiles these rows, at which point the entries in
@@ -22,7 +22,7 @@ def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [
 # stays bound after the call, where the analysis restores its snapshot and
 # the compiled program kept the outer closure's bake — `g (p 3)` answered
 # `1 10` compiled for the interpreter's `1 12`, on the default lane, before
-# the refusal (installDef's same site, FnBodyDepth-gated on a capturing
+# the compile failure (installDef's same site, FnBodyDepth-gated on a capturing
 # value: a capture-free literal takes the compiled bind twin and agrees).
 # Full graduation = a runtime binding for the closure's payload that the
 # outer read sees after the call.

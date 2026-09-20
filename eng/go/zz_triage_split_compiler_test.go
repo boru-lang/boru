@@ -41,7 +41,7 @@ func TestCompiledUserPolyListParamQuoted(t *testing.T) {
 	rc := covRegistry(t, registerUserPolyList)
 	prog, reason := compileTokens(t, rc, tokens())
 	if prog == nil {
-		t.Logf("compile refused (%s)", reason)
+		t.Logf("compile declined (%s)", reason)
 		return
 	}
 	cOut, cErr := RunProgram(prog, rc)

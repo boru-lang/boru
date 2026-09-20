@@ -349,7 +349,7 @@ var Natives = []NativeFunc{
 		// (LambdaSharesTokenShape). The optional ASCEND slot (position 3) is
 		// guarded recorder-side (extraNoEvalHookSlotsOK): only a
 		// provably-empty flex reference rides as a value operand; every other
-		// ascend shape keeps today's refusal/bake behaviour.
+		// ascend shape keeps today's compile failure/bake behaviour.
 		Callable: &CallableSpec{BodyPos: 2, BodyOut: 0, LambdaSharesTokenShape: true, Inputs: func(_ []Value) []Value {
 			return []Value{walkHookArgCarrier()}
 		}},
@@ -628,7 +628,7 @@ func doFolder(p PathonInfo, parents bool, reg *Registry) ([]Value, error) {
 	ops := EffectiveFileOps(reg)
 	pathStr := p.String()
 
-	// C1 effect fence: directory creation mutates the filesystem — noted on
+	// effect ledger: directory creation mutates the filesystem — noted on
 	// the attempt, since MkdirAll can create some parents before failing.
 	reg.NoteEffect()
 	if parents {

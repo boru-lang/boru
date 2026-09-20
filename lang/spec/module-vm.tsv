@@ -48,8 +48,8 @@ import "boru:vm" (Vm.check "1 add 2  def unused 99").warnings	1	non-fatal findin
 #     when it does not, sites = the dispatch-site census. Refusal is data,
 #     not an error.
 import "boru:vm" (Vm.compile "1 add 2").ok	true	a straight-line program compiles
-import "boru:vm" (Vm.compile "1 add 2").reason	''	…with no refusal reason
+import "boru:vm" (Vm.compile "1 add 2").reason	''	…with no compile failure reason
 import "boru:vm" ((Vm.compile "1 add 2").sites).mono	1	the dispatch-site census reports one mono call
-import "boru:vm" (Vm.compile "(size (for 5 [i]))").ok	false	a loop-result consumer refuses
+import "boru:vm" (Vm.compile "(size (for 5 [i]))").ok	false	a loop-result consumer declines
 import "boru:vm" (Vm.compile "1 add (((").ok	false	malformed source does not compile
 import "boru:vm" (Vm.compile "1 add (((").reason	'parse error'	…and says why

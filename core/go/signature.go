@@ -381,9 +381,9 @@ func SigTypeMatches(v Value, t *Type) bool {
 		// Options map is expected. A Map-typed CARRIER also matches: it is
 		// check mode's stand-in for a value that IS a concrete map at run
 		// time, and the runtime rule above accepts that value — without
-		// this the check-mode dispatch refuses what the interpreter runs
+		// this the check-mode dispatch declines what the interpreter runs
 		// (the template `{…} render` → Options-arm → tpl-render-opts
-		// refusal). A bare Map type literal (Data==nil, not a carrier)
+		// compile failure). A bare Map type literal (Data==nil, not a carrier)
 		// stays excluded.
 		if v.Parent.ConformsTo(TMap) && (IsConcrete(v) || v.Carrier) {
 			return true
@@ -548,7 +548,7 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		// operand arrives as a NON-CONCRETE carrier (an Any/dynamic value, e.g.
 		// `quote (s get k)`); such a value is not a literal word, so it must not
 		// ride the Any-conforms-to-everything rule onto a /q overload — it would
-		// claim `quote`'s word-capture sig (TAtom, QuoteArgs) and then refuse to
+		// claim `quote`'s word-capture sig (TAtom, QuoteArgs) and then decline to
 		// compile, instead of falling to the value sig (TAny, ReturnsIdentity).
 		// At RUNTIME the operand is concrete (no carrier), so this is inert there
 		// and merely aligns check-mode sig selection with the runtime's (a
@@ -610,7 +610,7 @@ func sigSlotValue(sig *Signature, i int) Value {
 // rules, design/OPEN-WORDS.1.md §2-3), so an added signature can only
 // ever match calls carrying values of the author's own types, which
 // cannot predate the merge. `Locked` survives only as the
-// replacement-refusal flag (mergeExtensionSigs) — never as an ordering
+// replacement-compile failure flag (mergeExtensionSigs) — never as an ordering
 // input; the rev-1 locked-first key this replaces is documented in
 // design/OPEN-WORDS.0.md §2.3/§3.3.
 func CompareSignatures(a, b *Signature) int {

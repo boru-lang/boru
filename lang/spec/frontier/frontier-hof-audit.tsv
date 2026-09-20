@@ -7,16 +7,16 @@
 # re-checked only when someone re-ran the note. These rows make the §1
 # evidence a standing gate: the interpreter oracle re-checks every value on
 # every `make test`, and the compile ledger (frontier_spec_test.go) pins
-# which programs the compiler still refuses and why — mostly the audit's
+# which programs the compiler still declines and why — mostly the audit's
 # §5.8 "body result of unknown provenance" class over curried combinator
 # bodies; the parser rows (the def-split shape NUR087 recorded, its false
 # positive fixed 2026-08-24) and
 # the rows that def-bind a COMPUTED fn (`def fact (fgen fgen/v)`,
-# `def h (compose …)`) refuse one stage earlier, at check diagnostics.
+# `def h (compose …)`) decline one stage earlier, at check diagnostics.
 # NUR089 (the inline-lambda call site) is a CLI-check property of the B
-# row, noted in its description — the compile lane refuses that row in
+# row, noted in its description — the compile lane declines that row in
 # the provenance class before the check shape matters. Graduation per
-# row = the refusal clears → delete its ledger entry.
+# row = the compile failure clears → delete its ledger entry.
 #
 # The §1.4 divergences — Z, and the naive Y no strict language can run —
 # are NOT pinned: no budget bounds them (a 200 000-step CLI budget ran 30 s
@@ -42,7 +42,7 @@ def ctrue t:Any => [f:Any => [t/v]] end def cfalse t:Any => [f:Any => [f/v]] end
 #     def-split shape NUR087 recorded (a def bound by a call through a
 #     Function parameter, then another consuming it). NUR087's own false
 #     positive was FIXED 2026-08-24 — these rows check clean now — and the
-#     compile lane still refuses them for the reasons ledgered; the
+#     compile lane still declines them for the reasons ledgered; the
 #     interpreter is the oracle that the library WORKS.
 def pitem s:String => [ if (eq 0 (size s)) [ {ok:false rest:s val:None} ] [ {ok:true val:(slice 0 1 s) rest:(slice 1 (size s) s)} ] ] end def psat fn p:Function Function [ ( fn s:String Map [ def r (pitem s) if (r.ok) [ if (p (r.val)) [ r ] [ {ok:false rest:s val:None} ] ] [ r ] ] ) ] end def manyloop fn [[a:Function s:String acc:List][Map][ def r (a s) if (r.ok) [ (manyloop a/v (r.rest) (push (r.val) acc)) ] [ {ok:true val:acc rest:s} ] ]] end def pmany fn a:Function Function [ ( fn s:String Map [ def z [] (manyloop a/v s z) ] ) ] end def isdigit c:String => [ and (gte "0" c) (lte "9" c) ] end def digit (psat isdigit/v) end def digits (pmany digit/v) end (digits '123ab')	{ok:true val:(quote ['1' '2' '3']) rest:'ab'}	many(sat(digit)) consumes the digit prefix
 def pitem s:String => [ if (eq 0 (size s)) [ {ok:false rest:s val:None} ] [ {ok:true val:(slice 0 1 s) rest:(slice 1 (size s) s)} ] ] end def psat fn p:Function Function [ ( fn s:String Map [ def r (pitem s) if (r.ok) [ if (p (r.val)) [ r ] [ {ok:false rest:s val:None} ] ] [ r ] ] ) ] end def palt fn [[a:Function b:Function][Function][ ( fn s:String Map [ def r (a s) if (r.ok) [ r ] [ (b s) ] ] ) ]] end def ab (palt (psat (c:String => [eq 'a' c])) (psat (c:String => [eq 'b' c]))) end (ab 'bzz')	{ok:true val:'b' rest:'zz'}	alternation: the second branch matches
@@ -92,7 +92,7 @@ def mkap g:Function => [v:Integer => [(g v)]] end def a (mkap (z:Integer => [add
 #
 # §9c the event-lead trailing apply (2026-08-21): OpCallDynTrailKeepQ
 #     preserves an event-provenance fn's runtime quote state (no read
-#     substitution to mirror), retiring RecordDynApply's hard-refusal
+#     substitution to mirror), retiring RecordDynApply's hard-compile failure
 #     when the producer proves the closure arity.
 #
 #     THE WIDER-WINDOW ROW GRADUATED 2026-08-28 (Stage 3) into
@@ -106,7 +106,7 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #
 # §9d the GRADUAL inner parameter (2026-08-21): the same
 #     apply-the-capture factory as §9b/§9, but the inner lambda's
-#     parameter is Any rather than a concrete type. It REFUSED at the
+#     parameter is Any rather than a concrete type. It FAILED TO COMPILE at the
 #     closure count check (the residual [g, x] against one declared
 #     return) until 2026-09-07, when the twenty-sixth increment let a
 #     lambda VALUE unit take the fn path's residual replay, whose
@@ -123,8 +123,8 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #     ONE slot and leaked the unconsumed argument into the residual
 #     (`2 fn (Integer) 3` for the interpreter's `6`). A REGRESSION
 #     introduced by the Stage 1 read substitution: before it the
-#     read raised undefined_word and the program refused. Now the
-#     def site detects the dropped apply and refuses. Graduated
+#     read raised undefined_word and the program declined. Now the
+#     def site detects the dropped apply and declines. Graduated
 #     2026-09-08 (the thirty-sixth increment): the def of a produced
 #     closure claims its shape with the RESULT's shape, so `(f1 2)` is a
 #     shaped Function carrier and the chain compiles level by level
@@ -133,7 +133,7 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 # §9f code BODIES over def-bound computed fns (2026-08-21): three
 #     divergences found by a differential sweep, each a regression
 #     from this branch's own Stage 1 / Stage 2 admissions, each made
-#     a refusal. The `do [(f 2)]` row GRADUATED with the
+#     a compile failure. The `do [(f 2)]` row GRADUATED with the
 #     thirty-eighth increment (2026-09-09; lang/spec/bytecode-migrated.tsv):
 #     the fn-carrier substitution fires inside a nested body too and the
 #     read models as the dispatch it is. The concrete-closure row keeps
@@ -147,7 +147,7 @@ def mk fn a:Integer Function [(fn b:Integer Integer [add a b])] end (2 (mk 4))	6
 #     Graduation = the body compiling as a closure unit.
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [1 2 3] [(f 1)]	[3]	an each body reading a def-bound computed fn (compiled [3 3] once; compiles and agrees now, the each body islands)
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end do [(f 2)]	3	a do body reading a def-bound computed fn (compiled raised undefined_word: f; compiles and agrees since the thirty-eighth increment, through the dyn-body backstop)
-def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; refuses now)
+def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7 z])) end do [(h 1)]	8	a do body reading a def-bound COMPILED CLOSURE (compiled raised undefined_word: g; declines now)
 #
 # §9g a computed closure at a WORD's argument slot (2026-08-21):
 #     found by a 690-program generated differential sweep over the
@@ -156,7 +156,7 @@ def mkg g:Function => [v:Integer => [(g v)]] end def h (mkg (z:Integer => [add 7
 #     def-bound compiled closure; the compiled model could leave the
 #     paren uncollapsed, so an Any-typed slot swallowed the FUNCTION
 #     and stranded the argument behind it. Unmasked by 3d914ad (the
-#     Stage 2 admission): before it these programs refused outright.
+#     Stage 2 admission): before it these programs declined outright.
 #     24 of the 690 diverged, in exactly two contexts. Refuses now.
 #     The typeof row graduated 2026-09-08 (the thirty-sixth increment —
 #     the read model collapses the apply at the read, so typeof takes
@@ -174,8 +174,8 @@ def mk fn [[g:Function][Function][( fn [[v:Integer][Integer][(g v)]] )]] end def
 #     two meanings: compiled bound only the shadowed value, so
 #     `def f 1 ; def f (mk 1) ; undef f ; (f 2)` answered `1 2` where
 #     the interpreter answers 3. The drop is fixed; the shadow
-#     refuses. Ledgered.
-def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f 1 end def f (mk 1) end undef f (f 2)	3	a computed fn shadowing a live binding, then undef (compiled answered `1 2`; refuses now)
+#     declines. Ledgered.
+def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f 1 end def f (mk 1) end undef f (f 2)	3	a computed fn shadowing a live binding, then undef (compiled answered `1 2`; declines now)
 #
 # §10 the fetched-fn APPLY shape (2026-08-24, NUR073's BROAD park). BROAD
 #     removed the paren-application idiom this row was written in, so the
@@ -191,7 +191,7 @@ def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end de
 #     undefined_word is gone and the flat twin is pinned in
 #     lang/spec/fn-value.tsv. The compile lane still takes the branch
 #     arm's dispatch through recovery, so the row lives here with its
-#     refusal ledgered rather than in the production corpus.
+#     compile failure ledgered rather than in the production corpus.
 def chainif fn [[a:Function b:Function s:Integer][Any][def r1 (a s) if (r1.ok) [def r2 (b (r1.rest)) (r2.val)] [0]]] chainif ([z:Integer] => [{ok:true rest:8}]) ([z:Integer] => [{ok:true val:50}]) 4	50	the branch-local def-split (NUR087's own shape): checks clean since the fix; the compile lane recovers the branch dispatch
 #
 # §12 the LIST Function form (NUR086's fix, 2026-08-24). All four words

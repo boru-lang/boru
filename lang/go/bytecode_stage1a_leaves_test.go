@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-// Stage-1a leaf pins (voxgig zero-refusals plan): two closure/materialization
+// Stage-1a leaf pins (voxgig zero-compile failures plan): two closure/materialization
 // fixes whose exact shapes the langspec differential does not cover.
 //
 //  1. Mutable-instance closure captures (callable_words.go
 //     moduleScopeMutableCaptures): a module-scope `def acc (flex […])` (or a
 //     class instance) read inside an each/fold body cannot const-bake, and per
 //     the language the reference is dynamic (not a lexical capture) — the body
-//     refused. It now rides as a capture: the identity is fixed for the whole
+//     declined. It now rides as a capture: the identity is fixed for the whole
 //     dispatch (a compiled body cannot rebind a module-scope name), so the
 //     value pushed at OpPushClosure equals every per-run lookup.
 //  2. Nested-container element materialization (engine.go elemEvalRecordable):
@@ -44,7 +44,7 @@ func stage1aCompiles(t *testing.T, src string) {
 	stage1aSound(t, src)
 	a, _ := New()
 	if _, reason, _, err := a.CompileCheck(src); err != nil || reason != "" {
-		t.Fatalf("expected the shape to force-compile, got refusal: %v / %q\n  src: %s", err, reason, src)
+		t.Fatalf("expected the shape to force-compile, got compile failure: %v / %q\n  src: %s", err, reason, src)
 	}
 }
 
@@ -81,7 +81,7 @@ outs`)
 }
 
 // NEGATIVE: a deferred residual list (a fn body RETURNING a bare-word list)
-// must still refuse/fall back — the recordability propagation is scoped to
+// must still decline/fall back — the recordability propagation is scoped to
 // container evals anchored at a recordable site, not end-of-run residuals
 // whose frame has popped (the undefined_word divergence the consumed gate
 // guards).
@@ -93,7 +93,7 @@ func TestDeferredResidualListStaysSound(t *testing.T) {
 // unit-spec cascade): `def kid (user-call …)` produced inside the OUTER if's
 // else-arm, referenced as the INNER if's arm-out. The boolean fragInternal
 // conflated "same fragment" with "same-or-ancestor", so the producer was never
-// promoted and the inner arm refused "branch leaves extra values" (out=opEvent,
+// promoted and the inner arm declined "branch leaves extra values" (out=opEvent,
 // vm=0, fragEvents=0). crossFragRef (fragment-identity tracking in
 // collectPromotableEvents) now promotes it to a unit-frame local.
 func TestCrossNestedFragmentUserCallPromotes(t *testing.T) {

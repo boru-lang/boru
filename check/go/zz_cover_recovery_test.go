@@ -11,7 +11,7 @@ package check
 //     the paren fn-carrier collapse, the fallback-position walk, the
 //     surface-shape typing, the assume-sig recovery) model exactly what
 //     their doc comments state;
-//   - the two compile-mode refusals (RefuseForwardStackDrift,
+//   - the two compile-mode compile failures (RefuseForwardStackDrift,
 //     refuseStrandedMemberFn) mark uncompilable only in their documented
 //     hazard shapes, observed through a test EmitRecorder stub embedding
 //     the inactive recorder (the same pattern core's own emit-stub tests
@@ -356,10 +356,10 @@ func zzDriftEng(t *testing.T, vals []core.Value, pointer int) (*core.Engine, *zz
 	return e, es, fin
 }
 
-func TestZZCoverForwardStackDriftRefuses(t *testing.T) {
+func TestZZCoverForwardStackDriftFailsToCompile(t *testing.T) {
 	// The documented hazard: dynamic on top, concrete beneath, an atomic
 	// literal right after the word — the all-stack match drifts from the
-	// interpreter's forward collection, so the compile refuses.
+	// interpreter's forward collection, so the compile declines.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		core.NewInteger(5), core.NewDynamicCarrier(core.TAny),
 		core.NewWord("zzadd"), core.NewInteger(1),
@@ -367,14 +367,14 @@ func TestZZCoverForwardStackDriftRefuses(t *testing.T) {
 	defer fin()
 	RefuseForwardStackDrift(e, zzDriftSig(), []int{0, 1})
 	if !es.hasUncomp("forward operand accounting") {
-		t.Errorf("drift shape must refuse, marks = %v", es.uncomp)
+		t.Errorf("drift shape must decline, marks = %v", es.uncomp)
 	}
 }
 
 func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	dyn := func() core.Value { return core.NewDynamicCarrier(core.TAny) }
 
-	// NoEvalArgs (code-body word): never this guard's drift; no refusal.
+	// NoEvalArgs (code-body word): never this guard's drift; no compile failure.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		core.NewInteger(5), dyn(), core.NewWord("zzif"), core.NewInteger(0),
 	}, 2)
@@ -383,7 +383,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	sig.NoEvalArgs = map[int]bool{1: true}
 	RefuseForwardStackDrift(e, sig, []int{0, 1})
 	if len(es.uncomp) != 0 {
-		t.Errorf("a NoEvalArgs word must not refuse, marks = %v", es.uncomp)
+		t.Errorf("a NoEvalArgs word must not decline, marks = %v", es.uncomp)
 	}
 
 	// An out-of-range matched position aborts silently.
@@ -393,7 +393,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	defer fin2()
 	RefuseForwardStackDrift(e2, zzDriftSig(), []int{0, 99})
 	if len(es2.uncomp) != 0 {
-		t.Errorf("bad position must not refuse, marks = %v", es2.uncomp)
+		t.Errorf("bad position must not decline, marks = %v", es2.uncomp)
 	}
 
 	// Concrete on top: the interpreter takes the all-stack match too.
@@ -403,7 +403,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	defer fin3()
 	RefuseForwardStackDrift(e3, zzDriftSig(), []int{0, 1})
 	if len(es3.uncomp) != 0 {
-		t.Errorf("concrete top must not refuse, marks = %v", es3.uncomp)
+		t.Errorf("concrete top must not decline, marks = %v", es3.uncomp)
 	}
 
 	// No trailing token at all: nothing to forward-collect.
@@ -413,7 +413,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	defer fin4()
 	RefuseForwardStackDrift(e4, zzDriftSig(), []int{0, 1})
 	if len(es4.uncomp) != 0 {
-		t.Errorf("no trailing token must not refuse, marks = %v", es4.uncomp)
+		t.Errorf("no trailing token must not decline, marks = %v", es4.uncomp)
 	}
 
 	// A structural trailing token (`)`) is NOT a forward operand.
@@ -434,7 +434,7 @@ func TestZZCoverStrandedMemberFn(t *testing.T) {
 	memfn.ID = "zzmemfn1"
 
 	// The hazard: a member-fn read directly beneath the consumed operand
-	// (a structural Mark between them is skipped) — refuse.
+	// (a structural Mark between them is skipped) — decline.
 	e, es, fin := zzDriftEng(t, []core.Value{
 		memfn, core.NewMark("zzm"), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 3)
@@ -442,7 +442,7 @@ func TestZZCoverStrandedMemberFn(t *testing.T) {
 	es.member["zzmemfn1"] = true
 	refuseStrandedMemberFn(e, []int{2})
 	if !es.hasUncomp("member fn value auto-applies mid-expression") {
-		t.Errorf("stranded member fn must refuse, marks = %v", es.uncomp)
+		t.Errorf("stranded member fn must decline, marks = %v", es.uncomp)
 	}
 }
 
@@ -454,17 +454,17 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 	defer fin()
 	refuseStrandedMemberFn(e, []int{0})
 	if len(es.uncomp) != 0 {
-		t.Errorf("bottom operand must not refuse, marks = %v", es.uncomp)
+		t.Errorf("bottom operand must not decline, marks = %v", es.uncomp)
 	}
 
-	// A scope boundary (open paren) directly beneath: stop, no refusal.
+	// A scope boundary (open paren) directly beneath: stop, no compile failure.
 	e2, es2, fin2 := zzDriftEng(t, []core.Value{
 		core.NewOpenParen(), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 2)
 	defer fin2()
 	refuseStrandedMemberFn(e2, []int{1})
 	if len(es2.uncomp) != 0 {
-		t.Errorf("scope boundary must not refuse, marks = %v", es2.uncomp)
+		t.Errorf("scope boundary must not decline, marks = %v", es2.uncomp)
 	}
 
 	// First data value beneath is NOT a member-fn read: keep compiling.
@@ -678,7 +678,7 @@ func zzHasDiag(r *core.Registry, code string) bool {
 
 // TestZZCoverAssumeSigDisjunctPartitionFallthrough: a strict-disjunct
 // operand partitions per alternative; with nothing armed the straddle
-// is refused (MarkUncompilable is the inactive no-op here) and the
+// is declined (MarkUncompilable is the inactive no-op here) and the
 // per-alternative join is spliced — never a blanket no_signature.
 func TestZZCoverAssumeSigDisjunctPartitionFallthrough(t *testing.T) {
 	r := zzAssumeReg(t)
@@ -723,7 +723,7 @@ func TestZZCoverAssumeSigDisjunctPolyRecorded(t *testing.T) {
 
 // TestZZCoverAssumeSigDisjunctSingleUserFn: a SINGLE-overload boru user
 // fn over the disjunct records a guarded CALL_USER (its ReturnsFn's
-// results are spliced) instead of refusing.
+// results are spliced) instead of declining.
 func TestZZCoverAssumeSigDisjunctSingleUserFn(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -800,11 +800,11 @@ func TestZZCoverAssumeSigAnyCarrierPolyRecovery(t *testing.T) {
 	}
 }
 
-// TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses: everything
+// TestZZCoverAssumeSigAnyCarrierDoesNotLowerAndDiagnoses: everything
 // declines (unarmed braid, plain — non-Compiling — pass): the recovery
 // latches uncompilable and, with no best-fit candidate at all, reports
 // the genuine no_signature.
-func TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses(t *testing.T) {
+func TestZZCoverAssumeSigAnyCarrierDoesNotLowerAndDiagnoses(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
 	defer done()
@@ -828,7 +828,7 @@ func TestZZCoverAssumeSigAnyCarrierRefusesAndDiagnoses(t *testing.T) {
 // TestZZCoverAssumeSigAnyCarrierRematchTrap: on a COMPILE pass
 // (Compiling, armed recorder) the declined Any-carrier dispatch
 // compiles to the runtime rematch — the trap owns the tail and no
-// refusal is latched.
+// compile failure is latched.
 func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -843,7 +843,7 @@ func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 		t.Error("the compile pass must record the dispatch rematch")
 	}
 	if len(es.uncomp) != 0 {
-		t.Errorf("a recorded rematch must not latch a refusal, marks = %v", es.uncomp)
+		t.Errorf("a recorded rematch must not latch a compile failure, marks = %v", es.uncomp)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
 		t.Errorf("the rematch splices the modelled results, tape len = %d", e.Tape.Len())
@@ -852,7 +852,7 @@ func TestZZCoverAssumeSigAnyCarrierRematchTrap(t *testing.T) {
 
 // TestZZCoverAssumeSigAnyCarrierSingleUserFn: the single-overload user
 // fn over an Any carrier records the guarded CALL_USER (splicing its
-// ReturnsFn results) — the L4 leaf — instead of refusing.
+// ReturnsFn results) — the L4 leaf — instead of declining.
 func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -863,7 +863,7 @@ func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 		[]core.Value{core.NewCarrier(core.TAny), core.NewWord("zzr-user1")}, 1,
 		func(s *core.Signature) bool { return s.ReturnsFn != nil && !s.Fallback })
 	if len(es.uncomp) != 0 {
-		t.Errorf("the recovered user fn must not refuse, marks = %v", es.uncomp)
+		t.Errorf("the recovered user fn must not decline, marks = %v", es.uncomp)
 	}
 	out := e.Tape.At(0)
 	if e.Tape.Len() != 1 || !out.Carrier || !out.Parent.Equal(core.TInteger) {
@@ -877,7 +877,7 @@ func TestZZCoverAssumeSigAnyCarrierSingleUserFn(t *testing.T) {
 // TestZZCoverAssumeSigImpreciseCarrierPolyRecovery: a concrete-but-
 // imprecise carrier (a String carrier against an Integer slot) is not a
 // definite mismatch — the armed pass recovers via the runtime
-// re-matching poly (test double) instead of refusing.
+// re-matching poly (test double) instead of declining.
 func TestZZCoverAssumeSigImpreciseCarrierPolyRecovery(t *testing.T) {
 	r := zzAssumeReg(t)
 	done := r.Check.Begin()
@@ -898,7 +898,7 @@ func TestZZCoverAssumeSigImpreciseCarrierPolyRecovery(t *testing.T) {
 		t.Error("the imprecise-carrier recovery must offer a dynamic-recovery poly")
 	}
 	if len(es.uncomp) != 0 {
-		t.Errorf("a recorded poly must not refuse, marks = %v", es.uncomp)
+		t.Errorf("a recorded poly must not decline, marks = %v", es.uncomp)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Carrier {
 		t.Errorf("the recovered dispatch splices its results, tape len = %d", e.Tape.Len())

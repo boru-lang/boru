@@ -117,7 +117,7 @@ def x (m get "k")
 // fence-blocked fix (3c part 2, the bounded alt): a laundered-Any
 // multi-overload call whose runtime value matches no arm, AFTER a print
 // effect. The open-fallback arm keeps byte-identity by re-running (pinned by
-// TestUserPolyNoMatchErrorAgreement); here the fence blocks the re-run, and
+// TestUserPolyNoMatchErrorAgreement); here nothing re-runs, and
 // the defer's DeferAlt surfaces the rich signature_error — canonical Detail,
 // live-value candidate verdicts — instead of an internal error telling the
 // user to report a compiler bug. Best-effort by design: the rendered tuple
@@ -158,7 +158,7 @@ def x (get-k {k:[1 2]})
 // TestPolyNoMatchUngatedAfterEffectKeepsInternal — the bounded edge: the
 // deeper-stack native shape both declines the faithful spec (the written
 // tuple is wider than the window) AND fails the alt's arity-uniformity
-// screen (`add` has 3-arg overloads), so the fence-blocked arm keeps the
+// screen (`add` has 3-arg overloads), so the bail keeps the
 // honest internal error + note. When either bound is later lifted, this pin
 // forces the re-diagnosis.
 func TestPolyNoMatchUngatedAfterEffectKeepsInternal(t *testing.T) {

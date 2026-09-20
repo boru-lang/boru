@@ -60,10 +60,10 @@ func TestW9IdealListToAnyErrorArms(t *testing.T) {
 	}
 }
 
-// --- test.go interpreter-path body refusals --------------------------------
+// --- test.go interpreter-path body compile failures --------------------------------
 
 // TestW9TestBodyInterpreterRefusals drives the interpreter-path
-// RequireConcreteList refusals of Test.describe (251), Test.test (303) and
+// RequireConcreteList compile failures of Test.describe (251), Test.test (303) and
 // Assert.throws (447) by invoking the handlers directly with a type-literal
 // List (the compiler never runs, so the closure arm is bypassed).
 func TestW9TestBodyInterpreterRefusals(t *testing.T) {
@@ -112,7 +112,7 @@ func TestW9TestRecordPathAndSkip(t *testing.T) {
 }
 
 // TestW9ReportSkipsNonMapResult drives report()'s non-map result skip
-// (test.go:1176): a value appended to the run.results that AsMap refuses.
+// (test.go:1176): a value appended to the run.results that AsMap declines.
 func TestW9ReportSkipsNonMapResult(t *testing.T) {
 	parent := mcovReg(t)
 	run := activeRun(parent)

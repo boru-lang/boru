@@ -144,7 +144,7 @@ func fixIf3ReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		}
 		if es.Recorder().Active() && !core.IsConcrete(v) && v.Parent != nil && v.Parent.ConformsTo(core.TList) {
 			// A COMPUTED list arm is the interpreter's spliced code body;
-			// the fixture does not model it — refuse the compile.
+			// the fixture does not model it — decline the compile.
 			es.Recorder().MarkUncompilable("fixture if: computed list arm")
 		}
 		vv := v

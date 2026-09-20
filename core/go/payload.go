@@ -536,7 +536,7 @@ type ClosurePayload struct {
 	// compiled where the interpreter raises type_error. Carrying the contract
 	// on the UNIT instead was built and reverted: it needs a per-fn memo key,
 	// and a distinct key alone (no contract at all) makes a SHARED closure unit
-	// recompile and refuse on operand provenance, islanding conforming
+	// recompile and decline on operand provenance, islanding conforming
 	// callbacks and tripping TestListFoldCallbackOrderPin. Two fns with
 	// identical bodies and inputs SHOULD share a unit; they differ only in what
 	// their results must satisfy, which is a property of the value.

@@ -212,7 +212,7 @@ func checkTuiPolicy(r *native.Registry, word, op string) error {
 // tuiAltScreenReserved enforces the §11.7 reservation: `alt-screen:`
 // is an accepted option KEY today so the inline tier can land without
 // a breaking opts change, but only the current behaviour (true, the
-// alt-screen takeover) is implemented — false is refused loudly.
+// alt-screen takeover) is implemented — false is declined loudly.
 func tuiAltScreenReserved(mp native.ReadMap, word string, r *native.Registry) error {
 	v, ok := mp.Get("alt-screen")
 	if !ok {
@@ -436,7 +436,7 @@ func tuiReadEventHandler(args []native.Value, _ map[string]native.Value, _ []nat
 // flow to a process mailbox instead of being pulled via read-event, so
 // a Tier-1 program can fold terminal input together with its other
 // messages the actor way. One delivery per terminal at a time;
-// read-event refuses while a delivery owns the stream. Delivery stops
+// read-event declines while a delivery owns the stream. Delivery stops
 // when the terminal closes (the event channel ends) or the target
 // process dies (Send fails), the latter releasing the stream for a new
 // deliver-events or read-event.

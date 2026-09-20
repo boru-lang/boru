@@ -24,7 +24,7 @@ package basic
 // conflict), and Pathon's catch-all pattern accepts any whitespace-free
 // source, so a micron literal never fails to parse. A shape the
 // gate accepts but the constructor rejects (e.g. an RFC edge net/mail
-// refuses) falls back to Pathon — exactly the old try-each-constructor
+// declines) falls back to Pathon — exactly the old try-each-constructor
 // cascade's behaviour.
 
 import (
@@ -57,7 +57,7 @@ func micronLiteralGrammar(tag, token string, pattern *regexp.Regexp, order []str
 				s := fmt.Sprintf("%v", r.O0.ResolveVal(r, ctx))
 				v, err := build(s)
 				if err != nil {
-					// The gate matched but the constructor refused —
+					// The gate matched but the constructor declined —
 					// fall to the family catch-all, like the cascade.
 					if out, perr := MakePathon(NewString(s), false); perr == nil {
 						v = out[0]

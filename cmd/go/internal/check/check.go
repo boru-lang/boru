@@ -360,7 +360,7 @@ Options:
 }
 
 // Emit runs the bytecode recording pass over source and prints the
-// Program disassembly to stdout, or the precise refusal reason when
+// Program disassembly to stdout, or the precise compile failure reason when
 // the emitter cannot lower the program (debug/tooling surface —
 // design/legacy/boru-bytecode-plan.0.ignore, Stage 1 gate and the DX section).
 func Emit(stdout, stderr io.Writer, source string) error {
@@ -474,7 +474,7 @@ type fileResult struct {
 func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 	if len(targets) == 0 {
 		// Nothing to check is not a failure for a library caller; the CLI
-		// refuses an empty target expansion before it gets here.
+		// declines an empty target expansion before it gets here.
 		return nil
 	}
 	multi := len(targets) > 1
@@ -674,7 +674,7 @@ func PreflightColor(stderr io.Writer, source, registry string, seed int64, verbo
 // build-time entry directory (buildrt.Main sets NativeRegistry().BaseDir
 // to cfg.EntryDir), so its pre-flight must ask the same question or a
 // perfectly buildable multi-file program invoked from a foreign cwd
-// would be refused. An empty baseDir keeps the cwd behaviour run/debug
+// would be declined. An empty baseDir keeps the cwd behaviour run/debug
 // want — for them, cwd IS how the subsequent execution resolves imports.
 func PreflightColorAt(stderr io.Writer, source, registry string, seed int64, verbose, color bool, baseDir string) error {
 	a, err := langNew(lang.Options{Registry: registry, Seed: seed})

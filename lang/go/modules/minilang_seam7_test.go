@@ -13,8 +13,8 @@ import (
 func s7bMap() native.Value { return native.NewMap(native.NewOrderedMap()) }
 
 // TestS7B_MiniByteLiteralSrcErrors drives the src / subject AsConcreteString
-// refusal arms of the hb, bb and re handlers (a non-concrete String passes
-// the sig but is refused by the handler).
+// decline arms of the hb, bb and re handlers (a non-concrete String passes
+// the sig but is declined by the handler).
 func TestS7B_MiniByteLiteralSrcErrors(t *testing.T) {
 	r := mcovReg(t)
 	litS := native.NewTypeLiteral(native.TString)

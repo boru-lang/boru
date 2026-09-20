@@ -1,39 +1,43 @@
 package core
 
 import (
-	"io"
 	"sync/atomic"
 )
 
-// The compiled-mode effect fence (design/RUNTIME-INDEPENDENCE-COMPLETION-
-// PLAN.0.md, contract C1 — the L-DUP class).
+// The effect ledger — what is left of the compiled-mode effect fence
+// (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, contract C1, the L-DUP
+// class), now an OBSERVABILITY SEAM and nothing more.
 //
-// RunCompiled resolves a genuine refusal or a runtime internal_error by
-// silently re-running the WHOLE source on the interpreter. That re-run is
-// sound only while the compiled request has emitted NO observable effect:
-// SnapshotForCompile/RestoreForCompile roll back registry scopes, but nothing
-// can un-print already-written output or un-send a network payload, so a
-// re-run after an effect DUPLICATES it (design/legacy/VOXGIG-COMPILE-LEAVES.2.ignore
-// §L-DUP — the full trie smoke suite printed twice). The pure-value
-// differential corpus never exercises emit-then-fall-back, which is exactly
-// why the class ships latent; the ledger makes the fallback arms prove
-// "nothing escaped yet" before re-running.
+// The fence existed because RunCompiled used to resolve a compile failure or a
+// runtime internal_error by silently re-running the WHOLE source on the
+// interpreter, and that re-run was sound only while nothing observable had
+// escaped: SnapshotForCompile/RestoreForCompile roll back registry scopes, but
+// nothing can un-print already-written output or un-send a network payload, so
+// a re-run after an effect DUPLICATED it (the full trie smoke suite printed
+// twice). The fence made each fallback arm prove "nothing escaped yet" before
+// re-running.
 //
-// The ledger is a monotonic generation counter, not an effect log: fence
-// sites snapshot Count() before the check pass and compare afterwards. Writes
-// to the registry's output writers mark it via ArmEffectFence's wrapper —
-// which forks (ForkConcurrent's shallow copy) and module sub-registries
-// (RunModuleBody copies the parent's writers) inherit by value — and
-// non-writer effect seams call Registry.NoteEffect directly.
+// Nothing re-runs the source any more (design/COMPILABLE-SUBSET.md §1: a
+// program compiles and its bytecode runs, or it does not compile and that is an
+// error), so there is no arm left to gate and the duplicate-effect class is
+// gone by construction. The writer-wrapping half went with it: ArmEffectFence
+// wrapped Output/ErrOutput so a print counted, and with no arm to block it
+// wrapped the writers for nobody.
+//
+// What survives is the counter itself, because the effect seams are a useful
+// PROBE: a test asserts that a denied request never reached the network, or
+// that a bailed callback body ran exactly once, by reading Count() across the
+// operation. It gates nothing at run time — treat it like the interp-entry and
+// runtime-bail hooks (interp_entry.go), a test seam rather than API.
 
-// EffectLedger counts observable side effects emitted during a compiled-mode
-// request. Concurrent branches share the parent's ledger pointer and may mark
-// it simultaneously, so the counter is atomic.
+// EffectLedger counts observable side effects emitted during a request.
+// Concurrent branches share the parent's ledger pointer and may mark it
+// simultaneously, so the counter is atomic.
 type EffectLedger struct{ n atomic.Uint64 }
 
 // Note marks one observable effect. Nil-safe: a registry assembled without
-// NewRegistry has no ledger, and counting nothing there keeps the fallback
-// behaviour it had before the fence existed.
+// NewRegistry has no ledger, and counting nothing there is harmless now that
+// no decision reads the count.
 func (l *EffectLedger) Note() {
 	if l == nil {
 		return
@@ -50,65 +54,15 @@ func (l *EffectLedger) Count() uint64 {
 }
 
 // NoteEffect marks one observable effect on the registry's ledger — the seam
-// non-writer effects (file writes, network sends) call so the fallback fence
-// sees them alongside output writes. Production callers: the write word
-// (fileio.go doWrite), folder (natives.go doFolder), HTTP fetch/direct
-// (fetch.go doFetch), and the model build FS (modules/model.go fileOpsFS).
-// Nil-safe on both receiver and ledger: direct handler-call tests pass a nil
-// registry, and counting nothing there matches the nil-ledger contract.
+// the effecting words call so a test can see them: the write word (fileio.go
+// doWrite), folder (natives.go doFolder), HTTP fetch/direct (fetch.go doFetch),
+// the IO handle/binary/lock/temp/mmap/fs words, and the model build FS
+// (modules/model.go fileOpsFS). Nil-safe on both receiver and ledger: direct
+// handler-call tests pass a nil registry, and counting nothing there matches
+// the nil-ledger contract.
 func (r *Registry) NoteEffect() {
 	if r == nil {
 		return
 	}
 	r.Effects.Note()
-}
-
-// noteEffectWriter marks the ledger on every write the underlying writer
-// ACCEPTED (n > 0 — partial writes escaped too). Delegating first is what
-// keeps the fence honest in both directions: a writer that rejects the bytes
-// outright (a closed pipe returning 0, err) provably emitted nothing, so
-// counting it would block a still-safe interpreter fallback. Wrapping the
-// registry's writers once (ArmEffectFence) covers the whole
-// print/stdout/stderr effect class without instrumenting each printing word:
-// forks and module sub-registries copy the wrapped writer VALUE, so their
-// writes count too.
-type noteEffectWriter struct {
-	w io.Writer
-	l *EffectLedger
-}
-
-func (nw noteEffectWriter) Write(p []byte) (int, error) {
-	n, err := nw.w.Write(p)
-	if n > 0 {
-		nw.l.Note()
-	}
-	return n, err
-}
-
-// Unwrap returns the writer this fence wraps, so a caller that must ask the
-// OPERATING SYSTEM about the destination — `IO.is-tty`, and the CLI's own
-// auto-colour decision, both of which stat the endpoint — reaches the real
-// *os.File instead of this instrument. Without it the fence silently changed an
-// observable answer: compiled mode arms the fence, so `IO.is-tty (IO.stdout)`
-// reported false on a real terminal while the interpreter reported true. Same
-// contract, and same reason, as SyncWriter.Unwrap (fork.go).
-func (nw noteEffectWriter) Unwrap() io.Writer { return nw.w }
-
-// ArmEffectFence wraps the registry's Output/ErrOutput writers so every write
-// marks the effect ledger, and returns a restore func reinstating the
-// original writers. Compiled-mode entry points arm the fence BEFORE the check
-// pass: the check pass executes module imports, so an import-time effect (a
-// module body printing at load) must count against the refusal fallback arm
-// too, not only the runtime-bail arm.
-func (r *Registry) ArmEffectFence() func() {
-	savedOut, savedErr := r.Output, r.ErrOutput
-	if r.Output != nil {
-		r.Output = noteEffectWriter{w: r.Output, l: r.Effects}
-	}
-	if r.ErrOutput != nil {
-		r.ErrOutput = noteEffectWriter{w: r.ErrOutput, l: r.Effects}
-	}
-	return func() {
-		r.Output, r.ErrOutput = savedOut, savedErr
-	}
 }

@@ -73,7 +73,7 @@ func w8registerReturningPoly(t *testing.T, r *core.Registry, word string, result
 // The runtime auto-apply this arm used to pin was removed with the shaped
 // 0-arg landing model: the recorder now models the interpreter's instant
 // auto-fire as an explicit arity-0 OpCallDynMethod after the poly (or the
-// program refuses via check.TryShapedMethodDispatch's guard-owned decline), so
+// program declines via check.TryShapedMethodDispatch's guard-owned decline), so
 // the poly must return the member VALUE for that opcode to consume.
 
 func TestW8CallPolyGetMethodValueStaysData(t *testing.T) {

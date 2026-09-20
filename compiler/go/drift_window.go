@@ -2,8 +2,8 @@ package compiler
 
 import core "github.com/boru-lang/boru/core/go"
 
-// Forward-drift window (REFUSAL-CLOSURE.0 §1) — the COMPILING model for the
-// dispatch refuseForwardStackDrift otherwise refuses.
+// Forward-drift window (COMPILE FAILURE-CLOSURE.0 §1) — the COMPILING model for the
+// dispatch refuseForwardStackDrift otherwise declines.
 //
 // The shape: a forward-eligible word matched ALL-STACK under a DYNAMIC
 // top-of-stack operand with a concrete leading residual beneath it and a
@@ -33,7 +33,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	if es == nil || !es.Active() || es.SuspendedNow() {
 		return false
 	}
-	// The refusal-site preconditions (mirrors refuseForwardStackDrift): a
+	// The compile failure-site preconditions (mirrors refuseForwardStackDrift): a
 	// forward-eligible non-full-stack sig, no code-body positions, at least
 	// a dynamic top + one deeper operand.
 	if sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(sig.NoEvalArgs) > 0 || len(positions) < 2 {
@@ -73,7 +73,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// TERMINAL: the window's variadic result must land in the program
 	// residual — nothing may follow the forward literal except statement
 	// furniture. A downstream consumer would need a static count the island
-	// cannot promise; those shapes keep the refusal — an open defect, not a
+	// cannot promise; those shapes keep the compile failure — an open defect, not a
 	// settled boundary.
 	for i := fwdIdx + 1; i < e.Tape.Len(); i++ {
 		t := e.Tape.At(i)
@@ -84,7 +84,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// BYSTANDER-FREE: a data value below the window (`1 2 3 do … add 1` —
 	// the 1 and 2 the dispatch never touched) breaks the in-order
 	// reconciliation once the window re-pushes its const operands above
-	// where the bystanders land; those shapes keep the refusal — an open
+	// where the bystanders land; those shapes keep the compile failure — an open
 	// defect, not a settled boundary.
 	for i := 0; i < minPos; i++ {
 		t := e.Tape.At(i)

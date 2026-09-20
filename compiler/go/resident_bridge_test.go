@@ -13,10 +13,10 @@ import (
 // twins and the fresh unit's def events stamps and places; EVERY
 // mismatch — name, kind, leftover on either side, stale memoized unit,
 // wrong body identity — adopts nothing, leaving the twins unplaced and
-// the program refused (the sound direction the parity oracle pins). Adopted names fence later root reads —
-// NoteDefRead poisons the placement gate (armReadRefusal, refused at
+// the program declined (the sound direction the parity oracle pins). Adopted names fence later root reads —
+// NoteDefRead poisons the placement gate (armReadCompileFailure, declined at
 // Finalize's seam, NOT a recorder-layer MarkUncompilable: the
-// refusal-site census counts that layer and its count only falls) —
+// compile failure-site census counts that layer and its count only falls) —
 // until a live root install re-binds them.
 func TestAdoptResidentTwinsFences(t *testing.T) {
 	r, err := core.NewRegistry()
@@ -74,21 +74,21 @@ func TestAdoptResidentTwinsFences(t *testing.T) {
 		t.Fatal("adopted names must join the read fence")
 	}
 	// The read fence poisons the placement gate (the recorder itself stays
-	// Compilable — the refusal is Finalize's seam), and a live root
+	// Compilable — the compile failure is Finalize's seam), and a live root
 	// install lifts it.
 	es.NoteDefRead("some-id", "x")
-	if !es.Compilable || !strings.Contains(es.armReadRefusal, "read of `x` after a multi-run body binds it") ||
-		!strings.HasPrefix(es.armReadRefusal, "twin regime: ") {
-		t.Fatalf("a root read of an arm-bound name must poison the placement gate (Compilable=%v, refusal %q)",
-			es.Compilable, es.armReadRefusal)
+	if !es.Compilable || !strings.Contains(es.armReadCompileFailure, "read of `x` after a multi-run body binds it") ||
+		!strings.HasPrefix(es.armReadCompileFailure, "twin regime: ") {
+		t.Fatalf("a root read of an arm-bound name must poison the placement gate (Compilable=%v, compile failure %q)",
+			es.Compilable, es.armReadCompileFailure)
 	}
 	es2 := build([]string{"z"}, []string{"z"})
 	es2.AdoptResidentTwins(body)
 	es2.RecordBindTwin(core.BindTransition{Kind: core.BindDef, Name: "z", Depth: 1, Pos: pos},
 		core.DefEntry{Body: core.NewInteger(7)}) // live root install re-binds
 	es2.NoteDefRead("some-id", "z")
-	if !es2.Compilable || es2.armReadRefusal != "" {
-		t.Fatalf("a live root install must lift the read fence (refusal %q)", es2.armReadRefusal)
+	if !es2.Compilable || es2.armReadCompileFailure != "" {
+		t.Fatalf("a live root install must lift the read fence (compile failure %q)", es2.armReadCompileFailure)
 	}
 
 	// Name mismatch: nothing adopted.
@@ -252,7 +252,7 @@ func TestAdoptResidentTwinsTypeTwins(t *testing.T) {
 
 	// The screen declines: the body binds the word the bound reads. The
 	// event and the twin agree on everything else, so only the screen can
-	// be what refuses.
+	// be what declines.
 	esDep := NewEmitState()
 	esDep.BindRegistry(r)
 	depBody := core.NewList([]core.Value{

@@ -11,7 +11,7 @@ import (
 // overload, but at run time holds ONE concrete alternative the same first-match
 // the interpreter takes dispatches. checkModeAssumeSig's recovery used to fire
 // only for a bare Any carrier (anyAnyCarrier); a Disjunct carrier (Parent=Disjunct,
-// no payload) missed it and hit the hard refuse. Now it records a
+// no payload) missed it and hit the hard decline. Now it records a
 // runtime-re-matching OpCallNativePoly. Pinned compiled==interpreter across
 // present-key / other-member / absent-key (the off-corpus recursive-node shape
 // the langspec differential does not cover).
@@ -28,7 +28,7 @@ func TestGetOverDisjunctReceiver(t *testing.T) {
 			a, _ := New()
 			got, err := a.RunCompiledStrict(src)
 			if err != nil {
-				t.Fatalf("get over a union receiver must compile, refused: %v", err)
+				t.Fatalf("get over a union receiver must compile, declined: %v", err)
 			}
 			b, _ := New()
 			want, werr := b.RunInterp(src)
@@ -45,15 +45,15 @@ func TestGetOverDisjunctReceiver(t *testing.T) {
 	}
 }
 
-// TestGetOverConcreteNonContainerRefuses guards the widening: a get over a
+// TestGetOverConcreteNonContainerFailsToCompile guards the widening: a get over a
 // CONCRETE non-container receiver (Integer) is a genuine type error, not a union
-// dispatch, and must still REFUSE strict compile (falling back to the
+// dispatch, and must still DECLINE strict compile (falling back to the
 // interpreter, which raises) — the widening must not swallow real type errors.
-func TestGetOverConcreteNonContainerRefuses(t *testing.T) {
+func TestGetOverConcreteNonContainerFailsToCompile(t *testing.T) {
 	const src = `def f fn [[x:Integer] [Any] [(x "k" get)]] (5 f)`
 	a, _ := New()
 	if _, err := a.RunCompiledStrict(src); err == nil {
-		t.Fatal("get over a concrete Integer must refuse strict compile (genuine type error), not poly-recover")
+		t.Fatal("get over a concrete Integer must decline strict compile (genuine type error), not poly-recover")
 	}
 	// And it must still error the same way under the interpreter / fallback.
 	b, _ := New()

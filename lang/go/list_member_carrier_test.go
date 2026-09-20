@@ -11,7 +11,7 @@ import (
 // for a read of its name — right where the read is an operand, wrong where
 // the name is a body TOKEN — and the thirty-eighth increment let the read
 // through inside a nested body, leaving the compiler
-// (RecordMakeListInner) as the one place that still refuses the carrier
+// (RecordMakeListInner) as the one place that still declines the carrier
 // when it lands as a list ELEMENT. The guard's own ledger records what it
 // costs to lose: the `each` DATA-argument spelling `each [1 2 3] [(f 5)]`
 // assembled the data list as [carrier, 5], dropped each's own input list
@@ -20,16 +20,16 @@ import (
 // The carrier reaches an element only where the read model cannot claim
 // the wrapper's arity, so no dispatch consumes it: `FnUtil.flip sub/v`
 // wraps the OVERLOADED `sub`, which has no one shape (the "closure shape
-// unknown" neighbour of def_computed_fn_test.go). Every refusal row below
-// is answered by the interpreter fallback, which is what makes the
-// refusal sound rather than a lost answer; the positive neighbour is the
+// unknown" neighbour of def_computed_fn_test.go). Every compile failure row below
+// is answered by the compile failure, which is what makes the
+// compile failure sound rather than a lost answer; the positive neighbour is the
 // SAME list literal over a shaped carrier (`def f (mk 1)`), whose read
 // does dispatch and still compiles VM-native.
 //
 // The `/v` SPELLING joined the guard on 2026-09-19 (S1b-2). It used to
 // sit outside on the premise that `fs/v` "resolves through Defs and never
 // consults the side table" — but a computed fn has no Defs binding under
-// analysis, so that read reported undefined_word and the program refused
+// analysis, so that read reported undefined_word and the program declined
 // for that instead. stepWordVal now resolves the table, which makes the
 // two spellings one convention and puts `[fs/v]` where `[fs 3 10]`
 // already was: the compile model holds a CARRIER, not the value, so
@@ -41,11 +41,11 @@ import (
 const lmcFlip = `import "boru:fn-util"  def fs (FnUtil.flip sub/v) end `
 const lmcMk = `def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end `
 
-// TestListMemberFnCarrierSoundRefusals pins the refusal: a table carrier
-// at a list member refuses the assembly, and the interpreter still
+// TestListMemberFnCarrierSoundCompileFailures pins the compile failure: a table carrier
+// at a list member declines the assembly, and the interpreter still
 // answers. The last case is the negative — a CONCRETE fn value at a list
 // member (a Defs binding, no carrier) assembles and compiles.
-func TestListMemberFnCarrierSoundRefusals(t *testing.T) {
+func TestListMemberFnCarrierSoundCompileFailures(t *testing.T) {
 	const reason = "computed fn read inside an unevaluated body"
 	rows := []struct{ src, interp, note string }{
 		{lmcFlip + `[(fs 3 10)]`, "[[-7]]", "the paren apply at the sole element"},
@@ -66,11 +66,11 @@ func TestListMemberFnCarrierSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal (%s)", c.src, c.note)
+			t.Errorf("%q: compiled — expected a compile failure (%s)", c.src, c.note)
 			continue
 		}
 		if !strings.Contains(got, reason) {
-			t.Errorf("%q: refused %q, want a reason containing %q", c.src, got, reason)
+			t.Errorf("%q: declined %q, want a reason containing %q", c.src, got, reason)
 		}
 		d, err := New()
 		if err != nil {
@@ -95,7 +95,7 @@ func TestListMemberFnCarrierSoundRefusals(t *testing.T) {
 		t.Fatal(cerr)
 	}
 	if prog == nil {
-		t.Errorf("`[g/v]`: refused (%q) — a concrete fn value at a list member is a genuine data list", got)
+		t.Errorf("`[g/v]`: declined (%q) — a concrete fn value at a list member is a genuine data list", got)
 	}
 	d, err := New()
 	if err != nil {

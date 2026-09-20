@@ -174,5 +174,5 @@ def Workon (refine Emailon) (make Workon 'a@b.co') is Emailon	true	…and widens
 def Workon (refine Emailon) (make Emailon 'a@b.co') is Workon	false	…but the leaf value is not the newtype (nominal, one-way)
 def Workon (refine Emailon) (make Workon 'a@b.co').host	'b.co'	derived properties read through the newtype tag
 # the naming rule — every Micron name ends in 'on'
-def Work (refine Emailon) 1	ERROR:micron_name	a refine that would mint a badly-named micron is refused
+def Work (refine Emailon) 1	ERROR:micron_name	a refine that would mint a badly-named micron is declined
 def M Emailon 1	ERROR:micron_name	…and so is a bad ALIAS onto the family

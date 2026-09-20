@@ -2,16 +2,16 @@
 # design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore "Test-first frontier
 # suite"). Each row was a hand-pinned off-corpus compiled/interpreted parity
 # regression whose VALUE half is ordinary shared-spec material; the
-# opcode/refusal/disassembly halves stay in the owning Go tests. Expected
+# opcode/compile failure/disassembly halves stay in the owning Go tests. Expected
 # values are interpreter-derived (eng.Canon), and every row was verified to
-# compile NATIVELY (no refusal, no island) before entering the corpus — the
+# compile NATIVELY (no compile failure, no island) before entering the corpus — the
 # census gates now own them.
 #
 # Sources: bytecode_computedmap_test.go (computed-map fn-body/do-map shapes),
 # bytecode_do_catch_test.go (infallible multi-value do bodies),
 # bytecode_user_poly_test.go (OpCallUserPoly dispatch directions),
 # bytecode_edge_findings_test.go (the over-widening guards — negatives that
-# prove the EDGE-SPEC-FINDINGS refusals are not blanket).
+# prove the EDGE-SPEC-FINDINGS compile failures are not blanket).
 #
 def f fn [[a:Integer] [Map] [ def m {x:(a 1 add) y:(a 2 mul)} m ]] (f 5)	{x:6 y:10}
 def f fn [[a:Integer] [Integer] [ def m {x:(a 1 add)} (m "x" get) ]] (f 5)	6
@@ -61,7 +61,7 @@ def y 5  do [(10 div y) 2]	2 2
 # L-DO end-to-end pin (2026-07-14): a TYPED-return fallible multi-value do
 # body under a catch compiles natively — the variadic latch + strip-input
 # propagation carry the caught path (runtime nets 1 Error where the static
-# model says 2) with byte-identical parity. Any-typed returns stay refused
+# model says 2) with byte-identical parity. Any-typed returns stay declined
 # (the parked-fn auto-apply carve-out) pending the window lowering.
 def f fn [[x:Any] [Integer] [raise bad_input "nope"]]  do [(f 5) 2] error [dot code]	bad_input/q
 # Net drivers part 1 (2026-07-14): a computed multi-value loop body compiles
@@ -121,7 +121,7 @@ import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input 
 # NUR051 (SHARP-EDGES G13b): a bare type literal in map/list DATA position
 # is a first-class singleton value (ADR-010) — it interns as a canonical-ID
 # type operand and the assembly compiles exactly as it interprets. These
-# rows were the pre-fix refusals ("body result of unknown provenance").
+# rows were the pre-fix compile failures ("body result of unknown provenance").
 def f fn [[a:Integer] [Map] [ def m {x: a  r: None}  m ]] (f 1)	{x:1 r:None}
 def f fn [[a:Integer] [List] [ def l [a None]  l ]] (f 1)	[1 None]
 def f fn [[a:Integer] [Map] [ def m {x: a  k: Integer}  m ]] (f 2)	{x:2 k:Integer}
@@ -139,10 +139,10 @@ do [1 div 0] error [drop] end 2 add 3	5	§8.2(6) graduation: a PROVEN-raise do w
 # closure-capture family GRADUATED 2026-09-07 (the twenty-sixth increment,
 # design/FULL-COMPILATION-HANDOFF.0.md): a lambda VALUE unit takes the fn
 # path's residual replay (fnUnitRec.plainLambda) instead of the closure
-# count refusal, the replay's applicable count is names-aware, and the VM
+# count compile failure, the replay's applicable count is names-aware, and the VM
 # names a fn bound for a named param as the interpreter's frame binding
 # does (nameFrameFns). These were frontier-hof-audit.tsv rows 74, 96, 135
-# and 136, each a ledgered "body result of unknown provenance" refusal.
+# and 136, each a ledgered "body result of unknown provenance" compile failure.
 def compose fn [[f:Function g:Function][Function][ ( fn x:Integer Integer [ f (g x) ] ) ]] end def h (compose (a:Integer => [add 1 a]) (a:Integer => [mul 2 a])) end (h 5)	11	the §1.6 compose row: a returned lambda applying two captured fns
 def mk0 fn [[g:Function][Function][( fn [[v:Integer][Integer][(g)]] )]] end def h0 (mk0 (z:Integer => [add 7 z])) end (h0 5)	ERROR:signature_error	the §9 0-arg apply of a 1-arg capture: the fnval unit models the raise
 def app g:Function => [x:Any => [(g x)]] end def h (app (z:Integer => [add 7 z])) end (h 5)	12	the §9d arrow-inner factory with a gradual inner parameter
@@ -164,7 +164,7 @@ def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: 42} a
 # call's unit returns registers a PENDING application, the check engine's
 # re-step records it as the fn-value apply over the closure's producer
 # operand (OpCallDynApplyTop — the runtime payload carries the captures),
-# and a pending application no dispatch consumed refuses at Finalize. These
+# and a pending application no dispatch consumed declines at Finalize. These
 # were frontier-hof-audit.tsv rows 29, 30, 33, 34, 35 and 43 (§1 the
 # classical bases I = S K K, C, K and W; §2 Church true), each ledgered as
 # "computed closure at a word's argument slot"; every one runs VM-native.
@@ -192,7 +192,7 @@ def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:I
 # apply word over a fn-typed capture nets one value at run time, and the
 # check pass's call-site residual now collapses the window the same way
 # (EmitRecorder.UnitTailApply → collapseTailApply), so the produced-closure
-# apply records instead of refusing the capture. These were
+# apply records instead of declining the capture. These were
 # frontier-hof-audit.tsv's two §1 B rows (audit §5.8 over B; the NUR089
 # call-site pair).
 def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end 4 ((n:Integer => [add n 3]) (bb (n:Integer => [mul n 2])) apply) apply	14	B with inline-lambda args: runs to 14; the CHECK failure at this call site is NUR089
@@ -201,7 +201,7 @@ def bb f:Function => [g:Function => [x:Any => [(x g/v apply) f/v apply]]] end de
 # a produced closure at a DECLARED Function slot GRADUATED 2026-09-08 (the
 # thirtieth increment): a closure a factory call returns, handed to a user
 # fn's `p:Function` param, is the call's argument (the interpreter's frame
-# binding installs it as data), so the argument-slot hold no longer refuses
+# binding installs it as data), so the argument-slot hold no longer declines
 # it. Lifting the hold exposed a latent memo-key collision — a lambda body
 # that is one `=>` group carries no position, and two such lambdas of one
 # shape shared one compiled unit (cif's returned closure ran cnot's body,

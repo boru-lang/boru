@@ -6,17 +6,17 @@ import (
 	"testing"
 )
 
-// TestExtendLayerCompileBucket pins -extend5's compile-refusal bucket with a
-// SYNTHETIC passing root whose one-atom extensions refuse: a fn body whose
+// TestExtendLayerCompileBucket pins -extend5's compile-compile failure bucket with a
+// SYNTHETIC passing root whose one-atom extensions decline: a fn body whose
 // result is a FRAME-LOCAL module value (`def m (module […])` inside the fn)
 // has no bind operand for the popped-with-the-frame binding, so the unit
-// refuses "body result of unknown provenance" and `<root> drop` (and
-// friends) classify as compile-refused whatever follows the call. (The
+// declines "body result of unknown provenance" and `<root> drop` (and
+// friends) classify as compile-declined whatever follows the call. (The
 // root this test first used, a module value left on the TOP-LEVEL stack,
 // graduated 2026-09-05 — module-family values read live — which is why
-// the refusal has to live inside a fn unit now.) The pipeline test's
+// the compile failure has to live inside a fn unit now.) The pipeline test's
 // generated alphabet corpus stopped producing this bucket when
-// OpDispatchRematch compiled its last refusing candidates — a
+// OpDispatchRematch compiled its last declining candidates — a
 // user-supplied corpus still can, so the arm is pinned here with one.
 func TestExtendLayerCompileBucket(t *testing.T) {
 	dir := t.TempDir()
@@ -44,14 +44,14 @@ func TestExtendLayerCompileBucket(t *testing.T) {
 
 	rows := decodeFile(t, coOut)
 	if len(rows) == 0 {
-		t.Fatal("the module-residual root must yield compile-refused extensions (the five-way compile bucket)")
+		t.Fatal("the module-residual root must yield compile-declined extensions (the five-way compile bucket)")
 	}
 	found := false
 	for _, r := range rows {
 		if r.input == `def f fn [[] [Any] [def m (module [export "X" {a: 1}]) m]] f drop` {
 			found = true
 			if r.expected == "" {
-				t.Error("the compile bucket row must carry the refusal reason")
+				t.Error("the compile bucket row must carry the compile failure reason")
 			}
 		}
 	}

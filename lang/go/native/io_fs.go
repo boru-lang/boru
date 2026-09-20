@@ -16,7 +16,7 @@ import (
 // move, and copy — plus the shared record/option helpers. Handlers route
 // every filesystem touch through EffectiveFileOps(r) (so the in-memory
 // backing engages under context.__sys.fs) and reuse extractPath for target
-// routing. Mutating words call r.NoteEffect() (the compiled-mode effect fence).
+// routing. Mutating words call r.NoteEffect() (the effect ledger).
 
 // mapBoolOpt reads one boolean key from an options map, returning def when the
 // value is not a concrete map or the key is absent. It is the single option
@@ -151,7 +151,7 @@ func stripXattrNS(prefix, host string) (string, bool) {
 
 // attachXattrs adds the {xattr:{…}} sub-map to a stat record. A backend
 // that does not support xattrs (the non-unix OS arm, an unextended
-// mount) surfaces its refusal as the stat error rather than a silent
+// mount) surfaces its compile failure as the stat error rather than a silent
 // empty map — absence of support and absence of attributes must not
 // look alike.
 func attachXattrs(r *Registry, om Value, path string) error {
@@ -309,7 +309,7 @@ func ioRemoveOptsHandler(args []Value, _ map[string]Value, _ []Value, r *Registr
 }
 
 // refuseOverwrite is the shared {overwrite:false} guard for copy and move:
-// when the option is present-and-false and the destination exists, refuse
+// when the option is present-and-false and the destination exists, decline
 // with an exists-class error. This is a handler-layer check (rename(2) has
 // no portable no-replace flag), so it is best-effort against a concurrent
 // creator — the TOCTOU window is documented, matching Java's
@@ -325,7 +325,7 @@ func refuseOverwrite(r *Registry, opts Value, dst, word string) error {
 	return nil
 }
 
-// doMoveWord implements IO.move (rename/move); {overwrite:false} refuses an
+// doMoveWord implements IO.move (rename/move); {overwrite:false} declines an
 // existing destination. Returns the destination.
 func doMoveWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 	src := extractPath(args[0])
@@ -363,7 +363,7 @@ func doCopy(r *Registry, src, dst string, recursive bool) error {
 		// Overwrite parity with the file case (WriteFile truncates an existing
 		// file): the {overwrite:false} guard already ran in doCopyWord, so an
 		// existing destination is replaced rather than triggering EEXIST from
-		// Symlink. Removing an existing non-empty directory still refuses, the
+		// Symlink. Removing an existing non-empty directory still declines, the
 		// same as writing a file over a directory.
 		if _, sErr := ops.Stat(dst, false); sErr == nil {
 			if rmErr := ops.Remove(dst, false); rmErr != nil {
@@ -404,7 +404,7 @@ func copyTree(r *Registry, src, dst string) error {
 }
 
 // doCopyWord implements IO.copy. {recursive:true} copies a directory tree;
-// {overwrite:false} refuses an existing destination. Returns the destination.
+// {overwrite:false} declines an existing destination. Returns the destination.
 func doCopyWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 	src := extractPath(args[0])
 	dst := extractPath(args[1])

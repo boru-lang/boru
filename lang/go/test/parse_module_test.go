@@ -202,12 +202,12 @@ func TestParseGrammarSubtypeExports(t *testing.T) {
 // TestParseParserContract pins the finalizer failures — there is no kind
 // name any more (the parse kind namespace is fixed; a finalized parser is a
 // ParseLang Function VALUE), so the contract is grammar-shaped: single-use
-// finalization and loud non-grammar refusals.
+// finalization and loud non-grammar compile failures.
 func TestParseParserContract(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{
 			// The finalized parser closes over the grammar — a second
-			// finalize must refuse rather than mutate a live parser.
+			// finalize must decline rather than mutate a live parser.
 			"double finalize rejected",
 			parseImports + `def g Parse.grammar  Parse.abnf g "x = \"a\"" {start:'x'}  def p (Parse.parser g)  Parse.parser g`,
 			"parse_grammar_done",

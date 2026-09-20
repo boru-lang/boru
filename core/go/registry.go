@@ -512,7 +512,7 @@ func (r *Registry) SetDebugTraceFrom(cb DebugTraceFrom) { r.debugTrace = cb }
 // SetDebugParent links r (a module's captured sub-registry) to the
 // registry that imported it — see the debugParent field. Pass the
 // IMPORTING registry only: the links must form the acyclic import
-// tree. A self-link is refused so resolution always terminates.
+// tree. A self-link is declined so resolution always terminates.
 func (r *Registry) SetDebugParent(p *Registry) {
 	if p != r {
 		r.debugParent = p
@@ -978,7 +978,7 @@ func (r *Registry) Register(name string, sigs ...Signature) {
 // builtin — Register must have run first). The sigs dispatch after every
 // more-specific overload (they are unlocked, so a user/module override
 // wins by specificity) yet live on the native definition, so `undef` of
-// the builtin still refuses and no def-clone is created. They carry the
+// the builtin still declines and no def-clone is created. They carry the
 // CoreDefault flag so the export transplant skips them. The word stays in
 // builtinWords — this does NOT introduce a new dispatchable name.
 func (r *Registry) RegisterCoreDefault(name string, sigs ...Signature) {
@@ -1111,12 +1111,12 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	// The dispatchCache serves ONLY the interpreter's runtime-execution
 	// path (Check inactive). Check and compile passes deliberately get a
 	// fresh aggregate every call: their carrier-disjointness /
-	// unmatched-dispatch refusal proofs (carrier.go) and the emitter
+	// unmatched-dispatch compile failure proofs (carrier.go) and the emitter
 	// (callable_words.go, emit.go) compare a matched `*Signature` against
 	// `&Lookup(word).Signatures[i]` by POINTER identity — a contract that
 	// assumes each Lookup yields its own aggregate. A stable cached
 	// aggregate would make those identity tests hold across calls where
-	// they must not, flipping a refusal into a (wrong) compile. Runtime
+	// they must not, flipping a compile failure into a (wrong) compile. Runtime
 	// dispatch does no such identity test, so caching there is sound and
 	// is where the hot-loop win lives.
 	if r.analysisActive() {

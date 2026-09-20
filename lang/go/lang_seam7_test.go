@@ -231,11 +231,11 @@ func TestS7Lang_CompileFailureReason(t *testing.T) {
 }
 
 // TestS7Lang_AmbiguousGradualSplit drives CompileCheck's ambiguous-gradual-
-// split refusal (boru.go:345-347). An `if` join produces a genuinely MIXED
+// split compile failure (boru.go:345-347). An `if` join produces a genuinely MIXED
 // gradual carrier — Disjunct(Integer,Boolean) — and feeding it to `not`
 // (which has a Boolean overload that rejects the mixed carrier at the stack
 // top, plus a forward arm that grabs the trailing 0) makes the static
-// forward/stack split diverge from the runtime one. CompileCheck refuses to
+// forward/stack split diverge from the runtime one. CompileCheck declines to
 // compile (prog==nil) and reports the reason, rather than emitting bytecode
 // that would diverge from the interpreter.
 func TestS7Lang_AmbiguousGradualSplit(t *testing.T) {
@@ -246,13 +246,13 @@ func TestS7Lang_AmbiguousGradualSplit(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil {
-		t.Fatalf("CompileCheck returned an error, want a clean refusal: %v", cerr)
+		t.Fatalf("CompileCheck returned an error, want a clean compile failure: %v", cerr)
 	}
 	if prog != nil {
 		t.Fatalf("expected nil program (uncompilable), got %v", prog)
 	}
 	if !strings.Contains(reason, "gradual operand") {
-		t.Fatalf("expected the gradual-operand refusal reason, got: %q", reason)
+		t.Fatalf("expected the gradual-operand compile failure reason, got: %q", reason)
 	}
 }
 

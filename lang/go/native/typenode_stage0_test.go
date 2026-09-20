@@ -56,7 +56,7 @@ func TestTypedDefNodeConstraintRunsDepScalar(t *testing.T) {
 	r.Defs.PushType("NsBig", node, core.NewTypeLiteral(node))
 	if _, err := w8RunOn(t, r, "def nsx:NsBig 5"); err == nil ||
 		!strings.Contains(err.Error(), "does not unify") {
-		t.Fatalf("a non-member must be refused through the constraint, got %v", err)
+		t.Fatalf("a non-member must be declined through the constraint, got %v", err)
 	}
 	out, err := w8RunOn(t, r, "def nsy:NsBig 50  nsy")
 	if err != nil {
@@ -85,12 +85,12 @@ func TestTypedDefNodeConstraintSingleton(t *testing.T) {
 		t.Fatalf("the singleton member must bind the value, got %v", out)
 	}
 	if _, err := w8RunOn(t, r, "def nsw:NsOne 2"); err == nil {
-		t.Fatal("a non-member of the singleton must refuse")
+		t.Fatal("a non-member of the singleton must decline")
 	}
 }
 
 // The NUR093 surface, end to end: alias and singleton parameters
-// dispatch, wrong values still refuse, `is` unchanged.
+// dispatch, wrong values still decline, `is` unchanged.
 func TestAliasSingletonDispatch(t *testing.T) {
 	out, err := w8Run(t, "def Foo Integer  def f fn [[x:Foo] [Integer] [7]]  f 42")
 	if err != nil || len(out) != 1 || out[0].String() != "7" {
@@ -102,7 +102,7 @@ func TestAliasSingletonDispatch(t *testing.T) {
 	}
 	if _, err = w8Run(t, "def One 1  def g fn [[x:One] [Integer] [9]]  g 2"); err == nil ||
 		!strings.Contains(err.Error(), "no signature matches") {
-		t.Fatalf("a non-member must still refuse, got %v", err)
+		t.Fatalf("a non-member must still decline, got %v", err)
 	}
 	out, err = w8Run(t, "def Foo Integer  42 is Foo")
 	if err != nil || len(out) != 1 || out[0].String() != "true" {

@@ -39,7 +39,7 @@ func (d *DepScalarUnifier) Match(v Value, t *Type) bool {
 	// be re-verified on an abstract carrier anyway, so depScalarCheck below
 	// would conservatively (and wrongly) reject it. `def mk fn [[] [Big] [50]]
 	// use (mk)` failed exactly here. A CONCRETE value (Data present) still runs
-	// the predicate check, so a plain `5` is correctly refused for `Big`.
+	// the predicate check, so a plain `5` is correctly declined for `Big`.
 	if v.Carrier && !IsConcrete(v) && v.Parent != nil && t != nil && v.Parent.ConformsTo(t) {
 		return true
 	}
