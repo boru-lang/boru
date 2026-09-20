@@ -127,7 +127,7 @@ func TestW8FailToCompileForwardStackDriftOutOfRange(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewInteger(1)}, core.StackHeadroom)
 	sig := &core.Signature{Args: []*core.Type{core.TInteger, core.TInteger}, BarrierPos: 1}
-	check.RefuseForwardStackDrift(e, sig, []int{0, 999})
+	check.DeclineForwardStackDrift(e, sig, []int{0, 999})
 }
 
 func TestW8SpliceFnValueCheckResultEmptyDeclaredReturns(t *testing.T) {

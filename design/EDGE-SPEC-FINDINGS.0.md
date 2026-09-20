@@ -55,7 +55,7 @@ overload, so check-mode matchSignature falls to the `[Scalar Scalar]`
 catch-all in ALL-STACK form — reaching PAST the dynamic top-of-stack to
 the deeper leading residual (`5`) and stranding the forward token that
 the interpreter (concrete operand) would collect. `eng/go/engine.go`
-`refuseForwardStackDrift` refuses, in compile mode only, a
+`declineForwardStackDrift` refuses, in compile mode only, a
 forward-eligible dispatch that matched all-stack with a DYNAMIC
 top-of-stack operand, a NON-dynamic deeper operand, and an atomic-literal
 forward token immediately after the word. `mul 2` / `sub 1` (forward-
@@ -88,7 +88,7 @@ residual tail to the wrong value. Because the read's static type is
 `dynamic(Any)`, the fn-ness is invisible downstream, so a get-family read
 of a fn-valued container member is TAGGED at record time
 (`eng/go/emit.go` `readsFnMember` / `noteMemberFnRead`) and
-`eng/go/engine.go` `refuseStrandedMemberFn` refuses (compile mode only) a
+`eng/go/engine.go` `declineStrandedMemberFn` refuses (compile mode only) a
 dispatch whose deepest stack operand sits directly above such a tagged
 value. The bare statement-tail apply `m.double 21` never reaches the
 guard (nothing dispatches above the fn) and keeps lowering to the

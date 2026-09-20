@@ -577,7 +577,7 @@ func TestRecordDefRebindCompileFailures(t *testing.T) {
 func TestFailToCompileCarriedUndefFound(t *testing.T) {
 	es := NewEmitState()
 	es.loopCarried = []*loopCarriedScope{{unitDepth: 1, slots: map[string]int{"n": 0}}}
-	es.RefuseCarriedUndef("n")
+	es.DeclineCarriedUndef("n")
 	if es.Compilable {
 		t.Fatal("undef of a loop-carried name should decline")
 	}
@@ -591,14 +591,14 @@ func TestFailToCompileCarriedUndefFound(t *testing.T) {
 // never takes the speculative arm.
 func TestFailToCompileSpeculativeUndefArms(t *testing.T) {
 	es := NewEmitState()
-	es.RefuseSpeculativeUndef("k")
+	es.DeclineSpeculativeUndef("k")
 	if es.Compilable || !strings.Contains(es.Reason, "undef of the enclosing binding `k`") {
 		t.Fatalf("a speculative undef declines: compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
 	// Suspended recording still declines: the compile failure is the program's.
 	es2 := NewEmitState()
 	resume := es2.Suspend()
-	es2.RefuseSpeculativeUndef("k")
+	es2.DeclineSpeculativeUndef("k")
 	resume()
 	if es2.Compilable {
 		t.Fatal("a speculative undef under a suspended recorder still declines")
@@ -607,19 +607,19 @@ func TestFailToCompileSpeculativeUndefArms(t *testing.T) {
 	es3 := NewEmitState()
 	es3.fnRecs = append(es3.fnRecs, &fnUnitRec{closure: true})
 	es3.openUnitRecs = append(es3.openUnitRecs, 0)
-	es3.RefuseSpeculativeUndef("k")
+	es3.DeclineSpeculativeUndef("k")
 	if !es3.Compilable {
 		t.Fatalf("a closure body compile keeps compiling: %q", es3.Reason)
 	}
 	// The carried hook never takes the speculative arm, and a nil recorder
 	// is a no-op.
 	es4 := NewEmitState()
-	es4.RefuseCarriedUndef("k")
+	es4.DeclineCarriedUndef("k")
 	if !es4.Compilable {
 		t.Fatalf("an uncarried undef through the carried hook compiles: %q", es4.Reason)
 	}
 	var none *EmitState
-	none.RefuseSpeculativeUndef("k")
+	none.DeclineSpeculativeUndef("k")
 }
 
 func TestMixedDynamicApplyShape(t *testing.T) {

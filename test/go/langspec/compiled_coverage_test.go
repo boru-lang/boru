@@ -163,7 +163,7 @@ func TestCompiledCoverage(t *testing.T) {
 	t.Parallel()
 	c := gatherCensus(t)
 	rows, compiled, checkErr, declined, islanded := c.rows, c.compiled, c.checkErr, c.declined, c.islanded
-	buckets := c.refusalBuckets
+	buckets := c.failureBuckets
 
 	// Histogram, most-frequent first.
 	type kv struct {
@@ -246,7 +246,7 @@ func TestCompiledCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkCompileFailureLedger(t, ledger, c.byFile, c.refusedRows, filteredCorpus())
+	checkCompileFailureLedger(t, ledger, c.byFile, c.failedRows, filteredCorpus())
 	gate(t, "compile failures", declined, 0, ledgerTotal(ledger), false,
 		"corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv")
 	gate(t, "interpreter islands", islanded, islandGate, islandCeilingLive, false,

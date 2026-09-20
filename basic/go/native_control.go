@@ -1363,7 +1363,7 @@ func AsInt64Or(v Value, def int64) int64 {
 // not-disjoint matching against a REAL family instead of Any — the L-EACH
 // graduation (`5 do [7] error [drop 9] add 1`): with dynamic(Integer) the
 // String catch-all overload of `add` is disjoint and check mode selects the
-// same forward collection the interpreter takes, so refuseForwardStackDrift
+// same forward collection the interpreter takes, so declineForwardStackDrift
 // has nothing to decline. Anything inconclusive — a non-token handler, a
 // multi-value or empty handler residual, a nil parent — keeps the historical
 // dynamic(Any), so genuinely dynamic boundaries keep declining.

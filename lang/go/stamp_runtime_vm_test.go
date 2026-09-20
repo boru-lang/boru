@@ -482,10 +482,10 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 	src := `module [
   def helper (fn [[x:Integer] [Integer] [x add 1]])
   def alias (helper/v)
-  def refuser (fn [[x:Integer] [Integer] [ (((fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [x add a add b add c]])]])]]) 1) 2) 3 ]])
+  def decliner (fn [[x:Integer] [Integer] [ (((fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [x add a add b add c]])]])]]) 1) 2) 3 ]])
   def fact (fn [[n:Integer] [Integer] [ if (n lte 1) [1] [n mul (fact (n sub 1))] ]])
   def tbl {k: 1}
-  export "M" {helper: helper/v fact: fact/v refuser: refuser/v}
+  export "M" {helper: helper/v fact: fact/v decliner: decliner/v}
 ]`
 
 	fetch := func(a *Boru, name string) Value {
@@ -537,7 +537,7 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 	if ref := refOf(inner(armed, "helper")); ref == nil || ref.Prog == nil {
 		t.Fatalf("armed load must stamp the module fn's inner binding")
 	}
-	if refOf(inner(armed, "refuser")) != nil {
+	if refOf(inner(armed, "decliner")) != nil {
 		t.Fatalf("a declining body must stay unstamped at load")
 	}
 
@@ -550,7 +550,7 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 	if refOf(inner(plain, "helper")) != nil {
 		t.Fatalf("an unarmed load must not stamp module fns")
 	}
-	for _, probe := range []string{`M.helper 41`, `M.fact 5`, `M.refuser 7`} {
+	for _, probe := range []string{`M.helper 41`, `M.fact 5`, `M.decliner 7`} {
 		gotA, errA := armed.RunInterp(probe)
 		gotP, errP := plain.RunInterp(probe)
 		if errA != nil || errP != nil {

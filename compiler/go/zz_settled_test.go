@@ -109,8 +109,8 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.RecordBindTwin(core.BindTransition{}, core.DefEntry{})
 	e.MarkValueDef(in)
 	e.RecordDefRebind("n", in, core.SrcPos{})
-	e.RefuseCarriedUndef("n")
-	e.RefuseSpeculativeUndef("n")
+	e.DeclineCarriedUndef("n")
+	e.DeclineSpeculativeUndef("n")
 	e.RecordSpeculativeUndef("n", core.SrcPos{})
 	e.NoteLiveRead(nil, "n", core.SrcPos{})
 	if e.RegisterLocal("id") != -1 {

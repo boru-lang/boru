@@ -187,7 +187,7 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 	}
 }
 
-// RefuseForwardStackDrift declines (compile mode only) a dispatch whose
+// DeclineForwardStackDrift declines (compile mode only) a dispatch whose
 // check-mode operand match would DIVERGE from the interpreter's runtime
 // forward collection — the reified-error / island residual accounting of
 // design/EDGE-SPEC-FINDINGS.0.md §1. Preconditions (checked by the caller):
@@ -216,7 +216,7 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 // Without the top-is-dynamic and trailing-token gates a genuine all-stack
 // dynamic dispatch (`get key dyn`, `dyn 5 add`) would be declined although it
 // compiles faithfully, so both gates are load-bearing.
-func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) {
+func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) {
 	es := e.Registry.Check.Recorder()
 	if !es.Active() || sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(positions) < 2 {
 		return
@@ -261,7 +261,7 @@ func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []in
 	}
 }
 
-// refuseStrandedMemberFn declines (compile mode only) a dispatch that consumes a
+// declineStrandedMemberFn declines (compile mode only) a dispatch that consumes a
 // stack operand while a parked FUNCTION VALUE sits directly beneath it — the
 // mid-expression member-fn-apply divergence of design/EDGE-SPEC-FINDINGS.0.md
 // §2. The interpreter auto-applies a surfaced member fn (`m.double`) to the
@@ -270,7 +270,7 @@ func RefuseForwardStackDrift(e *core.Engine, sig *core.Signature, positions []in
 // stranded fn at the residual tail (to the wrong value). The bare statement-tail
 // apply `m.double 21` never reaches here — nothing dispatches above the fn — so
 // it keeps compiling. No-op outside a compile pass (recorder inactive).
-func refuseStrandedMemberFn(e *core.Engine, positions []int) {
+func declineStrandedMemberFn(e *core.Engine, positions []int) {
 	es := e.Registry.Check.Recorder()
 	if !es.Active() {
 		return
@@ -1242,8 +1242,8 @@ func installCheckBraid() {
 	core.CheckBraid.DrainUndefinedAtoms = drainUndefinedAtoms
 	core.CheckBraid.ExprRefsCarrier = exprRefsCarrier
 	core.CheckBraid.NoteSpeculativeBarrierCommit = noteSpeculativeBarrierCommit
-	core.CheckBraid.RefuseForwardStackDrift = RefuseForwardStackDrift
-	core.CheckBraid.RefuseStrandedMemberFn = refuseStrandedMemberFn
+	core.CheckBraid.DeclineForwardStackDrift = DeclineForwardStackDrift
+	core.CheckBraid.DeclineStrandedMemberFn = declineStrandedMemberFn
 	core.CheckBraid.ShareCheckState = shareCheckState
 	core.CheckBraid.SpliceAnonCheckResult = spliceAnonCheckResult
 	core.CheckBraid.SpliceCheckResults = spliceCheckResults

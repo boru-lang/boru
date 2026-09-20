@@ -1865,7 +1865,7 @@ loop-carried form. `residualReadHazard` refuses it by name at the unit
 finish, a branch arm and a loop body — through `residualStands`, the ONE
 `MarkUncompilable` site those four settlements now share with their
 "result of unknown provenance" arm: the refusal-site census
-(`refusalSiteCeiling`) caught the first cut's four new sites at once
+(`compileFailureSiteCeiling`) caught the first cut's four new sites at once
 (100 against 96), and the fold took the count to 93, where the ceiling
 now sits. The hazard is keyed by FRAGMENT
 IDENTITY (`EmitFragment.id`, monotone from `beginFragment`): a read in a
@@ -8401,8 +8401,8 @@ compiled lane cannot place. It trades a wrong answer for a defect of the
 other kind, and the lowering stays owed: the sixty-eighth increment below
 starts paying it. `undefHandler`'s blocked branch now notifies
 the recorder through its own hook, and the two undef hooks
-(`RefuseCarriedUndef`, `RefuseSpeculativeUndef`) refuse through one
-`MarkUncompilable` (`refuseUndef` — the census counts sites, and the
+(`DeclineCarriedUndef`, `DeclineSpeculativeUndef`) refuse through one
+`MarkUncompilable` (`declineUndef` — the census counts sites, and the
 disposition row, re-keyed to it, covers both shapes): the undef of a
 carried def (as before) and the undef of an enclosing binding from a
 speculative region ("undef of the enclosing binding `k` inside a
@@ -8443,7 +8443,7 @@ before the undef in the same body (`if true [M.m drop undef k 1] [1] k`)
 slipped through, because the recorder re-derived the block from ITS
 registry — the last-bound one, a module sub-registry after `M.m` — so the
 handler now passes the fact through its own hook
-(`RefuseSpeculativeUndef`, one refusal site behind both hooks); a
+(`DeclineSpeculativeUndef`, one refusal site behind both hooks); a
 never-bound name (`undef nope` in a fn body) refused, because the gate
 also silences the speculative diagnostic for a name with nothing to pop —
 the handler notifies only for a real pre-region depth; the `do [undef T]`
@@ -8488,7 +8488,7 @@ half's), the fn-carrier side table's, an active token, and a FRAME binding
 of an enclosing fn (`Depth(name) > TopFnBaseline()[name]` — a param or
 body-local, whose reads are slots). The handler asks the model first and
 the recorder second (`RecordSpeculativeUndef` for the placeable shape,
-`RefuseSpeculativeUndef` for the declined), the #463 lesson kept: the
+`DeclineSpeculativeUndef` for the declined), the #463 lesson kept: the
 fact is the handler's registry's.
 
 **The recorder's half.** Where recording is LIVE at the site — a branch
@@ -8588,7 +8588,7 @@ handler the leniency exists for (all suspended; an undef event with no
 stream home is the dropped undef the sixty-seventh measured) and an
 arm-resident bracket (the residency bridge pairs events to ledger twins
 one to one, and this transition has no twin). Every refusal goes through
-`refuseUndef`, now keyed by shape (`undefCompileFailure`), so the refusal-site
+`declineUndef`, now keyed by shape (`undefCompileFailure`), so the refusal-site
 census is unchanged at 92 and the disposition row names every arm.
 
 ### The review's other two (#464)
@@ -8629,7 +8629,7 @@ row of NUR144 (`add k 1`) refuses, above.
 ### Records
 
 - NUR146 (the did-you-mean pool), recorded.
-- The disposition row for `refuseUndef#1` names every arm; no register
+- The disposition row for `declineUndef#1` names every arm; no register
   entry is owed for the carried post-loop undef (refused, as NUR144 was).
 
 ## The forward slot of a generalised name routes (2026-09-16, the sixty-ninth increment)
@@ -8832,7 +8832,7 @@ on main inside a unit — placed frame-scoped and called twice
 pins that held family L's refusal (`TestEdgeFindingConditionalFnShadowFailsToCompile`,
 `TestEdgeFindingCondFragmentRedefCompiles`) hold the placement now.
 
-What refuses, through `refuseUndef`'s one site, and answers as the
+What refuses, through `declineUndef`'s one site, and answers as the
 interpreter does under the hatch: a def the recorder cannot place — a loop
 body (it re-rounds and carries its defs by slot), a fn body's replace, an
 each body and a `do` body (the resident bridge's and the closure compile's)
@@ -8844,7 +8844,7 @@ the bake would answer where the interpreter has no binding). A capturing
 closure's conditional def keeps family L's own refusal, and a fresh def in
 BOTH arms the join's older fn-carrier one. The refusal-site census stays
 at 92 (installDef's site keeps its capturing and frame arms; the three new
-kinds read through `refuseUndef`); the disposition rows name the arms.
+kinds read through `declineUndef`); the disposition rows name the arms.
 
 ### The review's five
 
@@ -9561,7 +9561,7 @@ position than the construct that produced the binding.
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
 | `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
-| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
+| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/compile_failure_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
 | `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindDoesNotLowerDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveRead`, `TestTwinInstallsAndRootDynBindSkip`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`, `TestSpeculativeUndefAcrossRequests`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live events at their tokens, the miss raising the interpreter's undefined_word there; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
 | `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnFailingToCompileSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
@@ -9800,10 +9800,10 @@ as #455 (`6ea8ac1`).
 
 1. The measurement PRs, in two halves:
    - **1a, DONE 2026-09-14** (#455): `engineEntryCeiling` lowered to its
-     live 281 (measured three times), `refusalSiteCeiling` to its live
+     live 281 (measured three times), `compileFailureSiteCeiling` to its live
      92, and every `MarkUncompilable` site given one of the three legal
      dispositions in
-     `test/go/langspec/refusal_disposition_census_test.go`, gated in
+     `test/go/langspec/compile_failure_disposition_census_test.go`, gated in
      both directions, pinned at 92 in both directions, and keyed
      syntactically (file, enclosing function, ordinal). The tally is in
      the gate table above. What it says about the plan: 87 of 92 sites

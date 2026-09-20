@@ -879,7 +879,7 @@ func frontierRowCompiles(input string) error {
 	return nil
 }
 
-// refusalRowLedger pins the knownCompileFailures rows' TARGET failure modes: each
+// failureRowLedger pins the knownCompileFailures rows' TARGET failure modes: each
 // must eventually compile via the sound runtime re-dispatch mechanism (plan
 // Phase 3, OpDispatchRematch) and raise the interpreter-identical error.
 // DERIVED from knownCompileFailures — the single source of truth for the row
@@ -891,7 +891,7 @@ func frontierRowCompiles(input string) error {
 // dispatch half already records an offset-form rematch, so its compile failure
 // signature is the branch-residual seat, not the dispatch recovery — a row
 // developing a different failure mode trips the drift arm.
-var refusalRowLedger = func() map[string]frontierEntryLS {
+var failureRowLedger = func() map[string]frontierEntryLS {
 	m := make(map[string]frontierEntryLS, len(knownCompileFailures))
 	for input, why := range knownCompileFailures {
 		mode := why
@@ -914,7 +914,7 @@ func TestFrontierCompileFailureRowsCompile(t *testing.T) {
 	t.Parallel()
 	for input := range knownCompileFailures {
 		err := frontierRowCompiles(input)
-		entry, ledgered := refusalRowLedger[input]
+		entry, ledgered := failureRowLedger[input]
 		switch {
 		case !ledgered && err != nil:
 			t.Errorf("knownCompileFailures row must COMPILE (not ledgered — did Phase 3 graduate it?): %v\n  input: %.100s", err, input)
@@ -926,7 +926,7 @@ func TestFrontierCompileFailureRowsCompile(t *testing.T) {
 			t.Errorf("compile failure row failure MODE drifted:\n  got:    %v\n  pinned: %q\n  input: %.100s", err, entry.failsWith, input)
 		}
 	}
-	for input := range refusalRowLedger {
+	for input := range failureRowLedger {
 		if _, ok := knownCompileFailures[input]; !ok {
 			t.Errorf("orphan compile failure-ledger entry (row left knownCompileFailures): %.80s…", input)
 		}

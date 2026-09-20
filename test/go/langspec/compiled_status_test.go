@@ -96,9 +96,9 @@ func renderCompiledStatus(c *census, failureCeiling int) string {
 	} else {
 		byCause := map[string]int{}
 		b.WriteString("| count | bucket | root cause |\n| ---: | --- | --- |\n")
-		for _, r := range sortedKeys(c.refusalBuckets) {
-			b.WriteString(fmt.Sprintf("| %d | %s | %s |\n", c.refusalBuckets[r], r, rootCause(r)))
-			byCause[rootCause(r)] += c.refusalBuckets[r]
+		for _, r := range sortedKeys(c.failureBuckets) {
+			b.WriteString(fmt.Sprintf("| %d | %s | %s |\n", c.failureBuckets[r], r, rootCause(r)))
+			byCause[rootCause(r)] += c.failureBuckets[r]
 		}
 		b.WriteString("\n| root cause | compile failures |\n| --- | ---: |\n")
 		for _, cause := range []string{"correct-error", "soundness", "scheduling", "opcode", "coverage"} {

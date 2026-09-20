@@ -11,8 +11,8 @@ package check
 //     the paren fn-carrier collapse, the fallback-position walk, the
 //     surface-shape typing, the assume-sig recovery) model exactly what
 //     their doc comments state;
-//   - the two compile-mode compile failures (RefuseForwardStackDrift,
-//     refuseStrandedMemberFn) mark uncompilable only in their documented
+//   - the two compile-mode compile failures (DeclineForwardStackDrift,
+//     declineStrandedMemberFn) mark uncompilable only in their documented
 //     hazard shapes, observed through a test EmitRecorder stub embedding
 //     the inactive recorder (the same pattern core's own emit-stub tests
 //     use).
@@ -339,7 +339,7 @@ func TestZZCoverSpliceFnValueCheckResult(t *testing.T) {
 	}
 }
 
-// --- RefuseForwardStackDrift -------------------------------------------------
+// --- DeclineForwardStackDrift -------------------------------------------------
 
 func zzDriftSig() *core.Signature {
 	return &core.Signature{Args: []*core.Type{core.TAny, core.TAny}, BarrierPos: 1}
@@ -365,7 +365,7 @@ func TestZZCoverForwardStackDriftFailsToCompile(t *testing.T) {
 		core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin()
-	RefuseForwardStackDrift(e, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e, zzDriftSig(), []int{0, 1})
 	if !es.hasUncomp("forward operand accounting") {
 		t.Errorf("drift shape must decline, marks = %v", es.uncomp)
 	}
@@ -381,7 +381,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 	defer fin()
 	sig := zzDriftSig()
 	sig.NoEvalArgs = map[int]bool{1: true}
-	RefuseForwardStackDrift(e, sig, []int{0, 1})
+	DeclineForwardStackDrift(e, sig, []int{0, 1})
 	if len(es.uncomp) != 0 {
 		t.Errorf("a NoEvalArgs word must not decline, marks = %v", es.uncomp)
 	}
@@ -391,7 +391,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin2()
-	RefuseForwardStackDrift(e2, zzDriftSig(), []int{0, 99})
+	DeclineForwardStackDrift(e2, zzDriftSig(), []int{0, 99})
 	if len(es2.uncomp) != 0 {
 		t.Errorf("bad position must not decline, marks = %v", es2.uncomp)
 	}
@@ -401,7 +401,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		dyn(), core.NewInteger(5), core.NewWord("zzadd"), core.NewInteger(1),
 	}, 2)
 	defer fin3()
-	RefuseForwardStackDrift(e3, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e3, zzDriftSig(), []int{0, 1})
 	if len(es3.uncomp) != 0 {
 		t.Errorf("concrete top must not decline, marks = %v", es3.uncomp)
 	}
@@ -411,7 +411,7 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"),
 	}, 2)
 	defer fin4()
-	RefuseForwardStackDrift(e4, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e4, zzDriftSig(), []int{0, 1})
 	if len(es4.uncomp) != 0 {
 		t.Errorf("no trailing token must not decline, marks = %v", es4.uncomp)
 	}
@@ -421,13 +421,13 @@ func TestZZCoverForwardStackDriftGates(t *testing.T) {
 		core.NewInteger(5), dyn(), core.NewWord("zzadd"), core.NewCloseParen(),
 	}, 2)
 	defer fin5()
-	RefuseForwardStackDrift(e5, zzDriftSig(), []int{0, 1})
+	DeclineForwardStackDrift(e5, zzDriftSig(), []int{0, 1})
 	if len(es5.uncomp) != 0 {
 		t.Errorf("a close paren is not a forward operand, marks = %v", es5.uncomp)
 	}
 }
 
-// --- refuseStrandedMemberFn --------------------------------------------------
+// --- declineStrandedMemberFn --------------------------------------------------
 
 func TestZZCoverStrandedMemberFn(t *testing.T) {
 	memfn := core.NewDynamicCarrier(core.TAny)
@@ -440,7 +440,7 @@ func TestZZCoverStrandedMemberFn(t *testing.T) {
 	}, 3)
 	defer fin()
 	es.member["zzmemfn1"] = true
-	refuseStrandedMemberFn(e, []int{2})
+	declineStrandedMemberFn(e, []int{2})
 	if !es.hasUncomp("member fn value auto-applies mid-expression") {
 		t.Errorf("stranded member fn must decline, marks = %v", es.uncomp)
 	}
@@ -452,7 +452,7 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 		core.NewInteger(21), core.NewWord("zzeq"),
 	}, 1)
 	defer fin()
-	refuseStrandedMemberFn(e, []int{0})
+	declineStrandedMemberFn(e, []int{0})
 	if len(es.uncomp) != 0 {
 		t.Errorf("bottom operand must not decline, marks = %v", es.uncomp)
 	}
@@ -462,7 +462,7 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 		core.NewOpenParen(), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 2)
 	defer fin2()
-	refuseStrandedMemberFn(e2, []int{1})
+	declineStrandedMemberFn(e2, []int{1})
 	if len(es2.uncomp) != 0 {
 		t.Errorf("scope boundary must not decline, marks = %v", es2.uncomp)
 	}
@@ -472,7 +472,7 @@ func TestZZCoverStrandedMemberFnGates(t *testing.T) {
 		core.NewInteger(1), core.NewInteger(21), core.NewWord("zzeq"),
 	}, 2)
 	defer fin3()
-	refuseStrandedMemberFn(e3, []int{1})
+	declineStrandedMemberFn(e3, []int{1})
 	if len(es3.uncomp) != 0 {
 		t.Errorf("a plain value beneath is not the hazard, marks = %v", es3.uncomp)
 	}

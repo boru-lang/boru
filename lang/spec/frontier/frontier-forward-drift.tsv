@@ -1,5 +1,5 @@
 # L-EACH — forward operand accounting across a dynamic/island residual (plan
-# Phase 5; engine.go refuseForwardStackDrift). The over-widening guards (the
+# Phase 5; engine.go declineForwardStackDrift). The over-widening guards (the
 # five compile-negatives) stay in lang/go/bytecode_edge_findings_test.go.
 # GRADUATED 2026-07-14: all three rows compile natively — errorReturnsFn
 # narrows the catch result to dynamic(join(pass-through, handler-residual)),

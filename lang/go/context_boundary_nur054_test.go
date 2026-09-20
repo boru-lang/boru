@@ -28,7 +28,7 @@ import (
 // the resulting AGREEMENT and the canonical values; this test pins the
 // mechanism, so agreement can never silently become "both engines leak".
 func TestNur054InlineCtxCompileFailure(t *testing.T) {
-	const refusalMark = "NUR054"
+	const failureMark = "NUR054"
 
 	decline := []struct{ name, src string }{
 		{"set in case clause body", "case 1 [ 1 [ context set y 1 5 ] 2 [ 6 ] ]\ncontext has y/q"},
@@ -57,7 +57,7 @@ func TestNur054InlineCtxCompileFailure(t *testing.T) {
 			if cerr != nil {
 				t.Fatalf("CompileCheck: %v", cerr)
 			}
-			if prog != nil || !strings.Contains(reason, refusalMark) {
+			if prog != nil || !strings.Contains(reason, failureMark) {
 				t.Errorf("must decline with the NUR054 reason; prog=%v reason=%q",
 					prog != nil, reason)
 			}

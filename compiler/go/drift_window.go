@@ -3,7 +3,7 @@ package compiler
 import core "github.com/boru-lang/boru/core/go"
 
 // Forward-drift window (COMPILE FAILURE-CLOSURE.0 §1) — the COMPILING model for the
-// dispatch refuseForwardStackDrift otherwise declines.
+// dispatch declineForwardStackDrift otherwise declines.
 //
 // The shape: a forward-eligible word matched ALL-STACK under a DYNAMIC
 // top-of-stack operand with a concrete leading residual beneath it and a
@@ -33,7 +33,7 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	if es == nil || !es.Active() || es.SuspendedNow() {
 		return false
 	}
-	// The compile failure-site preconditions (mirrors refuseForwardStackDrift): a
+	// The compile failure-site preconditions (mirrors declineForwardStackDrift): a
 	// forward-eligible non-full-stack sig, no code-body positions, at least
 	// a dynamic top + one deeper operand.
 	if sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(sig.NoEvalArgs) > 0 || len(positions) < 2 {

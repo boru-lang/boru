@@ -436,7 +436,7 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 // interpreter applies a surfaced member fn (`m.double`) the moment its
 // argument window fills — `m.double 21 eq 42` runs `(m.double 21)` BEFORE
 // `eq` — while the recorder previously only saw word dispatches, so the
-// downstream word stole the operand and refuseStrandedMemberFn declined the
+// downstream word stole the operand and declineStrandedMemberFn declined the
 // program. This hook fires where the check pass steps the member-read
 // carrier: when the read pinpointed the member (memberFnReadValue — a
 // concrete container + key) and the member's SINGLE plain signature's whole
@@ -450,7 +450,7 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 // fn fires the moment its single signature's args arrive, so the token after
 // the window (a word, `eq`) never enters the collection. Everything this
 // hook declines keeps today's paths — the statement-tail Finalize apply for
-// shapes it never sees, refuseStrandedMemberFn's compile failure for the rest:
+// shapes it never sees, declineStrandedMemberFn's compile failure for the rest:
 //   - COMPILE pass only (live recording; plain checks and suspended passes
 //     stay byte-identical);
 //   - a uniquely-resolved, NAMED, non-anonymous, non-macro, capture-free
@@ -561,16 +561,16 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 // stays silent and the carrier keeps today's paths.
 func declineMemberFnArrival(es core.EmitRecorder, member core.Value) bool {
 	if core.FnValueZeroArg(member) {
-		return refuseArrival(es,
+		return declineArrival(es,
 			"fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at "+fnDefName(member))
 	}
 	return false
 }
 
-// refuseArrival is the arrival models' shared guard-owned decline: the
+// declineArrival is the arrival models' shared guard-owned decline: the
 // landing declines with the reason its model owns, and the model reports
 // "not consumed" so the engine steps on to the compile failure's fallback.
-func refuseArrival(es core.EmitRecorder, reason string) bool {
+func declineArrival(es core.EmitRecorder, reason string) bool {
 	es.MarkUncompilable(reason)
 	return false
 }
@@ -621,7 +621,7 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 		return false
 	}
 	decline := func(what string) bool {
-		return refuseArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
+		return declineArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
 	}
 	args, why := shapedFnReadWindow(e, valIdx, n)
 	if why != "" {

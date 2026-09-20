@@ -17,7 +17,7 @@
 //
 // T2 ("No islands") is not satisfiable while this number is non-zero, whatever
 // the OpFallback ceiling says. The ceiling below is a DOWNWARD ratchet, like
-// refusalSiteCeiling: it only falls.
+// compileFailureSiteCeiling: it only falls.
 package langspec
 
 import (

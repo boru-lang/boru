@@ -12,7 +12,7 @@
 // The other two layers are measured elsewhere and deliberately not
 // duplicated here: the lowerer/Finalize declines and the CompileCheck
 // latches surface as compile failure REASONS in the corpus census
-// (compiled_census_test.go's refusalBuckets, over rows actually declined)
+// (compiled_census_test.go's failureBuckets, over rows actually declined)
 // and as pinned rows in the frontier ledger. This census is the static
 // half — it counts machinery that exists, not machinery that fired, so it
 // keeps falling even while the corpus census sits at zero.
@@ -26,17 +26,17 @@ import (
 	"testing"
 )
 
-// refusalSiteCeiling is the number of MarkUncompilable call sites in
+// compileFailureSiteCeiling is the number of MarkUncompilable call sites in
 // production Go. Monotone DOWN only; 0 at Stage 9, when the recorder's
 // terminal arm emits a generic lowering instead of latching a compile failure.
 // Never raise it: a new compile failure site is new debt, and the design's whole
 // claim is that the count only falls.
-const refusalSiteCeiling = 92 // 96 (2026-08-25, Stage-1 baseline) -> 93 (2026-09-04, Stage 4b: the residual-order hazard shares the residual-provenance arm at its four sites) -> 92 (2026-09-10, NUR067: await's winner-takes-all residual is RECORDED as a runtime-variadic region instead of declining the program) -> 93 the SAME DAY, and the round trip is the honest number: recording the region exposed that a region cannot carry a CALLABLE (only the interpreter re-steps one), so the wholesale compile failure came back as a narrow one at the same arity. A representation that removes a compile failure and then owes a smaller one nets zero here, and the census is right to say so -> 92 (2026-09-14, the disposition census: the live count had been 92 since the NUR067 round trip's narrow compile failure landed on an existing line, and a ceiling one above the live value lets a site-and-row pair land unnoticed; refusal_disposition_census_test.go pins the same 92 in both directions) -> 0 (Stage 9)
+const compileFailureSiteCeiling = 92 // 96 (2026-08-25, Stage-1 baseline) -> 93 (2026-09-04, Stage 4b: the residual-order hazard shares the residual-provenance arm at its four sites) -> 92 (2026-09-10, NUR067: await's winner-takes-all residual is RECORDED as a runtime-variadic region instead of declining the program) -> 93 the SAME DAY, and the round trip is the honest number: recording the region exposed that a region cannot carry a CALLABLE (only the interpreter re-steps one), so the wholesale compile failure came back as a narrow one at the same arity. A representation that removes a compile failure and then owes a smaller one nets zero here, and the census is right to say so -> 92 (2026-09-14, the disposition census: the live count had been 92 since the NUR067 round trip's narrow compile failure landed on an existing line, and a ceiling one above the live value lets a site-and-row pair land unnoticed; compile_failure_disposition_census_test.go pins the same 92 in both directions) -> 0 (Stage 9)
 
-// refusalSites counts MarkUncompilable call sites per module, skipping test
+// compileFailureSites counts MarkUncompilable call sites per module, skipping test
 // files (their sites are fixtures and helpers, not compiler machinery) and
 // the two declarations of the method itself.
-func refusalSites(t *testing.T) (map[string]int, int) {
+func compileFailureSites(t *testing.T) (map[string]int, int) {
 	t.Helper()
 	root := filepath.Join("..", "..", "..")
 	byModule := map[string]int{}
@@ -102,7 +102,7 @@ func moduleOf(root, path string) string {
 
 func TestCompileFailureSiteCensus(t *testing.T) {
 	t.Parallel()
-	byModule, total := refusalSites(t)
+	byModule, total := compileFailureSites(t)
 
 	mods := make([]string, 0, len(byModule))
 	for m := range byModule {
@@ -120,8 +120,8 @@ func TestCompileFailureSiteCensus(t *testing.T) {
 	}
 	t.Logf("compile failure-site census: %d MarkUncompilable sites (%s)", total, strings.Join(parts, ", "))
 
-	if total > refusalSiteCeiling {
+	if total > compileFailureSiteCeiling {
 		t.Errorf("compile failure-site census %d exceeds ceiling %d — a new compile failure was added; the count only falls: %s",
-			total, refusalSiteCeiling, strings.Join(parts, ", "))
+			total, compileFailureSiteCeiling, strings.Join(parts, ", "))
 	}
 }

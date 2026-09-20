@@ -2931,7 +2931,7 @@ func (e *Engine) stepWord(val Value) error {
 	// the residual tail) diverges. Decline so the body falls back. The
 	// statement-tail apply (`m.double 21`, nothing dispatches above the fn) is
 	// unaffected — its residual [fn, 21] lowers to the correct trailing apply.
-	CheckBraid.RefuseStrandedMemberFn(e, positions)
+	CheckBraid.DeclineStrandedMemberFn(e, positions)
 
 	// Forward collection needed: defer execution.
 	if fwdCount > 0 {
@@ -2965,7 +2965,7 @@ func (e *Engine) stepWord(val Value) error {
 	if DriftWindowRecorder(e, w, sig, positions) {
 		return nil
 	}
-	CheckBraid.RefuseForwardStackDrift(e, sig, positions)
+	CheckBraid.DeclineForwardStackDrift(e, sig, positions)
 
 	// Immediate execution: read args from recorded positions.
 	match := &MatchResult{Sig: sig, Positions: positions, Name: w.Name}
@@ -3015,7 +3015,7 @@ func MixedFormStackSlotAny(e *Engine, sig *Signature, positions []int) bool {
 // all-stack). The structural exclusions mirror checkForwardStrandsOperand's
 // scope-boundary set (a CloseParen marker's Parent quirkily conforms to
 // TScalar, so the type test below is not sufficient on its own). Used only by
-// refuseForwardStackDrift.
+// declineForwardStackDrift.
 func ForwardLiteralOperand(t Value) bool {
 	if IsOpenParen(t) || IsCloseParen(t) || IsForward(t) || IsEnd(t) ||
 		IsDefCleanup(t) || IsParenExpr(t) ||
@@ -3963,7 +3963,7 @@ func (e *Engine) stepLiteral() error {
 		// of inert tokens follows — model the interpreter's auto-dispatch
 		// mid-expression (`m.double 21 eq 42` applies BEFORE `eq`). Declines
 		// leave the carrier to today's paths (the statement-tail Finalize
-		// apply, refuseStrandedMemberFn's compile failure).
+		// apply, declineStrandedMemberFn's compile failure).
 		if e.Registry.analysisActive() && CheckBraid.TryMemberFnArrivalDispatch(e, valIdx) {
 			return nil
 		}

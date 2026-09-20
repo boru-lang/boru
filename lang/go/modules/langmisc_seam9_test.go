@@ -63,7 +63,7 @@ func TestW9IdealListToAnyErrorArms(t *testing.T) {
 // --- test.go interpreter-path body compile failures --------------------------------
 
 // TestW9TestBodyInterpreterRefusals drives the interpreter-path
-// RequireConcreteList compile failures of Test.describe (251), Test.test (303) and
+// RequireConcreteList rejections of Test.describe (251), Test.test (303) and
 // Assert.throws (447) by invoking the handlers directly with a type-literal
 // List (the compiler never runs, so the closure arm is bypassed).
 func TestW9TestBodyInterpreterRefusals(t *testing.T) {

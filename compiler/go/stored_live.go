@@ -174,7 +174,7 @@ func (es *EmitState) noteLiveNameTransition(name string) {
 		return
 	}
 	if es.liveReadNames[name] && dispatchingBinding(v) {
-		es.refuseUndef(name, liveReadDispatching)
+		es.declineUndef(name, liveReadDispatching)
 		return
 	}
 	if es.liveLeadNames[name] {
@@ -199,7 +199,7 @@ func dispatchingBinding(v core.Value) bool {
 // not record has no unit to compile against) — declined the same way.
 func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 	if !es.Active() || !fnSigsDeclared(v) {
-		es.refuseUndef(name, liveLeadUndeclared)
+		es.declineUndef(name, liveLeadUndeclared)
 		return
 	}
 	fd := v.Data.(core.FnDefInfo)

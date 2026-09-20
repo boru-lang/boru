@@ -110,9 +110,9 @@ func sortedFileNames(m map[string]int) []string {
 // not stale — it is simply not this run's; unfiltered, such a line names a
 // file the corpus no longer has. On the direction lane a file's open debt
 // is an error, as the corpus-wide gate's is.
-func checkCompileFailureLedger(t testing.TB, ledger, live map[string]int, rows []refusedRow, filtered bool) {
+func checkCompileFailureLedger(t testing.TB, ledger, live map[string]int, rows []failedRow, filtered bool) {
 	t.Helper()
-	byFile := map[string][]refusedRow{}
+	byFile := map[string][]failedRow{}
 	for _, r := range rows {
 		byFile[r.file] = append(byFile[r.file], r)
 	}
@@ -202,7 +202,7 @@ func TestCompileFailureLedgerParses(t *testing.T) {
 
 func TestCompileFailureLedgerAssertsEveryWalkedFile(t *testing.T) {
 	t.Parallel()
-	rows := []refusedRow{
+	rows := []failedRow{
 		{file: "a.tsv", line: 3, input: "x y", reason: "why a3"},
 		{file: "a.tsv", line: 9, input: "x z", reason: "why a9"},
 		{file: "b.tsv", line: 1, input: "q", reason: "why b1"},
@@ -237,7 +237,7 @@ func TestCompileFailureLedgerAssertsEveryWalkedFile(t *testing.T) {
 	}
 	// A file the ledger does not list rises against zero.
 	rec = &recTB{}
-	checkCompileFailureLedger(rec, map[string]int{}, map[string]int{"c.tsv": 1}, []refusedRow{{file: "c.tsv", line: 2}}, true)
+	checkCompileFailureLedger(rec, map[string]int{}, map[string]int{"c.tsv": 1}, []failedRow{{file: "c.tsv", line: 2}}, true)
 	if len(rec.errs) != 1 || !strings.Contains(rec.errs[0], "c.tsv: 1 compile failures, the ledger says 0") {
 		t.Errorf("unlisted rise: errs = %q", rec.errs)
 	}

@@ -77,7 +77,7 @@ func TestCompileFailuresAreBugs(t *testing.T) {
 	c := gatherCensus(t)
 
 	seen := make(map[string]bool, len(knownCompileFailures))
-	for _, r := range c.refusedRows {
+	for _, r := range c.failedRows {
 		if _, ok := knownCompileFailures[r.input]; ok {
 			seen[r.input] = true
 			continue
@@ -94,5 +94,5 @@ func TestCompileFailuresAreBugs(t *testing.T) {
 		}
 	}
 
-	t.Logf("compile failures: %d rows, all %d documented in knownCompileFailures", len(c.refusedRows), len(knownCompileFailures))
+	t.Logf("compile failures: %d rows, all %d documented in knownCompileFailures", len(c.failedRows), len(knownCompileFailures))
 }

@@ -122,7 +122,7 @@ the Stage-1 baseline and the end state each gate's own comment names.
 | `interpEntryRowCeiling` | corpus rows that run compiled and still enter the interpreter unattributed | 184 (08-28) | **28** | 0 debt (attributed entries permitted) | 156 rows |
 | `failureCeiling` / `islandCeiling` | corpus rows refused / with an `OpFallback` span | 0 / 0 | **0 / 0** | 0 / 0 | pinned before the project began |
 | compiled rows | corpus rows that produce a Program | 7,180 | **7,475** of 7,798 (323 statically invalid) | all | corpus growth |
-| `refusalSiteCeiling` | `MarkUncompilable` call sites in the source | 96 (08-25) | **92** (ceiling 93) | 0 at Stage 9 | 4 sites |
+| `compileFailureSiteCeiling` | `MarkUncompilable` call sites in the source | 96 (08-25) | **92** (ceiling 93) | 0 at Stage 9 | 4 sites |
 | lowerer / `Finalize` declines | decline sites after recording | 78 (08-25) | not re-measured; 161 reason templates in total | none reachable | unknown |
 | `undeclaredHandlerCeiling` | declaration-relevant signatures with no compile declaration | 114 of 172 (08-25) | **114** | 0 at Stage 6 | 0 |
 | `deferCeiling` | `vmDefer` activations on the corpus walk | 5 (08-25) | **5** (`poly-nout-drift` ×3, `poly-no-match` ×2; one more resolved locally); 17 `vmDefer` sites in `eng/go` | 0 at Stage 9, then the mechanism deletes | 0 |

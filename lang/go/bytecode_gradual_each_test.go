@@ -82,8 +82,8 @@ func TestGradualAnyEachFoldScan(t *testing.T) {
 	// single TFunction overload so the ambiguity gate never fires and it commits
 	// the one matched overload), and an EMPTY collection (the seed/empty paths).
 	sound := []struct{ name, src string }{
-		// NOTE (NUR086's fix, 2026-08-24): "lambda over dynamic map" MOVED to
-		// refusesAndFallsBack below. The invariant the comment above states —
+		// NOTE (NUR086's fix, 2026-08-24): "lambda over dynamic map" MOVED out
+		// of this slice. The invariant the comment above states —
 		// "a TFunction lambda body matches only the single {TFunction,Map}
 		// overload (count 1) — so a lambda never reaches here" — no longer
 		// holds: each/for-each/fold/scan gained {TFunction,List}, so a lambda

@@ -233,17 +233,46 @@ are now gone. Nothing in this section changes a gate value.
   The per-callback path (`InvokeCallback` with no stamped unit → `CallBoru`)
   and interpreter ISLANDS are still live, so those comments were kept — an
   explicit exclusion list, not a blanket sweep.
-- **The `refus*` vocabulary: 260 distinct identifier forms → 65, 4380
-  occurrences → 665.** Every survivor is an ENTITLED refusal, where the word is
+- **The `refus*` vocabulary: 269 distinct identifier forms → 77, 5447
+  occurrences → 740** (measured 2026-09-20 over `[A-Za-z_][A-Za-z0-9_]*`
+  tokens; see the correction below — the figures first published for this
+  were wrong). Every survivor is an ENTITLED refusal, where the word is
   correct: policy denials, vault and proxy security, weak containers, option
   validation, exit ranges, capability gates, help renders, `await` isolation,
-  signature matching. 131 test names, 26 identifiers and 6 files renamed;
-  `refusalCeiling` (a gate that no longer exists) became `failureCeiling`;
-  the corpus TSVs' 133 `REFUSES:` descriptions became `DOES NOT COMPILE:`.
+  `del`/process/debugger rejections. **`compiler`, `check`, `eng` and `basic`
+  contain the string `refus` exactly zero times.** 131 test names, 50
+  identifiers and 6 files renamed; `refusalCeiling` became `failureCeiling`,
+  `refusalSiteCeiling` → `compileFailureSiteCeiling`,
+  `refusalDispositionCeiling` → `compileFailureDispositionCeiling`; four
+  EXPORTED symbols moved (`RefuseCarriedUndef`, `RefuseSpeculativeUndef`,
+  `RefuseForwardStackDrift`, `RefuseStrandedMemberFn` → `Decline*`); the
+  corpus TSVs' 133 `REFUSES:` descriptions became `DOES NOT COMPILE:`.
   Verb forms became *declines* (a code path declining to lower is a fact, not
   a claim of entitlement); nouns became *compile failure*.
+
+  **THE MECHANISM IS UNTOUCHED, and this was only ever vocabulary:** 92
+  `MarkUncompilable` sites and 34 `vmDefer` sites stand, and the ledgers do
+  not move. Not one additional program compiles because of this work.
 - **The dead `BORU_COMPILE_FALLBACK` references**, including two live
   `t.Setenv` calls on a variable nothing reads.
+
+**A CORRECTION, and the method lesson under it (2026-09-20).** The first
+published figures for this sweep — "260 → 65, 4380 → 665, every survivor
+entitled" — were WRONG, and the count and the claim failed together for one
+reason. The counting regex was
+`[A-Za-z_][A-Za-z0-9_]*[Rr]efus[A-Za-z0-9_]*`, which requires at least one
+character BEFORE `refus`: every identifier that STARTS with `refus`/`Refus`
+was invisible to it, at both ends of the measurement. Hidden that way were
+`refuseUndef`, `refuseStrandedMemberFn`, `refuseArrival`,
+`refuseForwardStackDrift`, four exported `Refuse*` symbols, and — worst —
+two GATE NAMES, which is the first thing the doctrine says to fix. So the
+sweep reported itself finished while roughly 185 compilation-sense
+occurrences stood, and the "every survivor is entitled" claim was false.
+**A measurement that cannot see a class of its subject will report that
+class as absent.** Sanity-check the instrument against a case you KNOW is
+there before trusting a count — the bug was one anchor character, and it
+survived a full review round because every number it produced looked
+plausible.
 
 **The method lesson this sweep paid for.** A blanket regex over a vocabulary
 is a *refactor of claims*, and it breaks them two ways. It rewrote history

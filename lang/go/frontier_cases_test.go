@@ -301,13 +301,13 @@ var frontierCases = []frontierCase{
 		// interpreted (a raising one cannot distinguish a re-run's error from
 		// a returned compile failure): the paren-bounded fn-value application
 		// does not compile and runs to bad_input/q on the interpreter.
-		const refusingButSucceeds = `def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg`
+		const failingButSucceeds = `def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg`
 		a, err := fcNew()
 		if err != nil {
 			return err
 		}
 		a.SetOutput(&bytes.Buffer{})
-		out, compiled, rerr := a.RunCompiled(refusingButSucceeds)
+		out, compiled, rerr := a.RunCompiled(failingButSucceeds)
 		if !compiled && rerr == nil && len(out) > 0 {
 			return fmt.Errorf("compile failure resolved by the silent interpreter re-run (post-Stage-J it returns the compile failure error)")
 		}

@@ -768,7 +768,7 @@ func TestW8StepWordUsurpRefRecorder(t *testing.T) {
 	}
 }
 
-// --- refuseForwardStackDrift / tryRecordUnmatchedDispatchTrap (direct) -----
+// --- declineForwardStackDrift / tryRecordUnmatchedDispatchTrap (direct) -----
 
 // --- isRecordableLiteral: control-marker arm ------------------------------
 
