@@ -69,6 +69,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if e.RecordDynMethod(core.Value{}, nil, nil, "w", core.SrcPos{}) {
 		t.Fatal("inactive RecordDynMethod should decline")
 	}
+	e.NoteReStepLanding(core.Value{}, core.SrcPos{})
 	if e.RecordFallback(core.FallbackSpan{}, nil, core.Value{}, core.SrcPos{}) {
 		t.Fatal("inactive RecordFallback should decline")
 	}

@@ -1251,6 +1251,7 @@ func installCheckBraid() {
 	core.CheckBraid.TagCheckModeDefRead = tagCheckModeDefRead
 	core.CheckBraid.TryDynamicFnValueDispatch = tryDynamicFnValueDispatch
 	core.CheckBraid.TryMemberFnArrivalDispatch = tryMemberFnArrivalDispatch
+	core.CheckBraid.NoteReStepLanding = noteReStepLanding
 	core.CheckBraid.ParenPlacedFnCarrier = parenPlacedFnCarrier
 	core.CheckBraid.NoteStrandedTypeCall = noteStrandedTypeCall
 	core.CheckBraid.TryShapedMethodDispatch = TryShapedMethodDispatch

@@ -337,33 +337,87 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
-## NUR169 is re-diagnosed: it is NUR173, a LIVE silent miscompile (2026-09-20)
+## NUR173 is FIXED, and this page's own first account of it was wrong (2026-09-20)
 
-Read this before picking up the fn-value line — it changes the next increment.
+Read this before picking up the fn-value line.
 
-NUR169 named a one-value paren and a missing `count == 1` case in
-`stepCloseParen`. **Both are wrong.** Bare `m.f` diverges identically to
-`(m.f)`, so the paren is incidental; and a literal map returned by a FN, or
-produced by an `if` ARM, diverges with no `set` anywhere, so `set` is
-incidental too. The discriminator is how the map ARRIVES: a const-baked
-literal keeps the provenance that makes an unmarked dot-read of a function a
-CALL (NUR038); an EVENT RESULT loses it.
+**The defect.** `m.f` is not a dot operator at the tape level: it lowers to the
+REACH GROUP `( m dot f )`. That collapse never parks — an unmarked dot-read of
+a function is a CALL (NUR038) — so the rewind lands ON the one value it leaves
+and `stepLiteral` RE-STEPS it, dispatching a callable one. The check pass holds
+a CARRIER there and steps past it as data. `recordParenReStep` excludes reach
+groups (its contract is the more-than-one-survivor case) and every
+fn-value-call arm of `resolveDynamicApply` needs a second residual entry, so a
+lone survivor reached no arm at all and the program pushed the runtime fn as
+DATA. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` was 42
+interpreted and `fn h` compiled — silently, on `main`, with no gate lifted.
 
-**It is reachable on `main` today with no gate lifted.** `boru run` over
-`def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end
-def m (mk) end m.f` prints `fn h` against the interpreter's 42 — a silent
-wrong answer on a factory returning a map of handlers.
+**Two corrections this page owes.**
 
-Recorded as [NUR173](../NUR.md#nur173); NUR169 is marked superseded, not
-deleted. Two plausible seats were ruled out by measurement and are written up
-in the handoff log: `fnReturnPark` (the lanes DO differ there, but the
-bare-dot rows have no paren to park) and the member TYPE (a check-pass bind
-for `set` was built, proven to fire, and moved nothing).
+1. NUR169 said "no case for `count == 1`". That MECHANISM is right — the seat
+   is one function out, at `recordParenReStep`'s exclusion and
+   `resolveDynamicApply`'s `len(residual) >= 2`.
+2. This page's earlier entry said *"not the paren — bare `m.f` and `(m.f)`
+   diverge identically"*. **Both spellings lower to the same paren**, so that
+   control varied nothing. A control that cannot vary its variable proves
+   nothing, and this is the week's second measurement bug of that shape (the
+   first was a counting regex blind to its own subject, PR #478). **Vary the
+   axis at the level the MACHINE works at, not the level the source is written
+   at.**
 
-**The next increment is the operand-PROVENANCE family** — 16 of S1b's
-remaining fn-value compile failures, same root as NUR170 — not the
-apply lowering. The payoff is unchanged: it still unblocks `CompileStoresFn`
-and its six rows (53 -> 47). Only the route moved.
+**The fix, and why it is a runtime one.** Declining instead — a carrier
+receiver whose member type still admits a Function — was built and measured at
+**53 -> 282** compile failures: nearly every computed container is `Map`-of-
+`Any` to the check pass, so there is no static answer. The decision belongs to
+the value, so the collapse records what it alone knows
+(`CheckState.ReachReSteppedFnIDs`), `check`'s `noteReStepLanding` NOTES the
+producing event as owing a landing, and `OpReStepLanding` — emitted right after
+that event's own op — islands an unquoted appliable value ALONE. `Run` over one
+token IS `stepLiteral`'s re-step, so a matching signature runs and a
+non-matching fn stays data with no no-match raised. The note consumes nothing,
+splices nothing and DECLINES nothing, which is what lets it sit last without
+disturbing the three models above it.
+
+**It stands aside four ways, and none of them declines:** a collectable token
+written after the survivor (the alone-island cannot take it — `Cli.parse
+{name:"x"} ["x"]` ran an export's body with its parameters unbound), a
+MULTI-result event (which of several the rewind lands on is not this model's
+to guess), a variadic producer's runtime-variable region, and a value with no
+producing event to hang the op on. Declining those was measured at **53 ->
+181** corpus compile failures, because `def x m.y` is the commonest shape in
+the language — which is also why the op is emitted at the top of
+`seatCallResults`, the one moment the result is on the stack on every path,
+promoted to a frame slot or not.
+
+**Cost, measured.** Every gate unchanged — the four ledgers, the 92
+`MarkUncompilable` sites, and the generated sweep diffed cell by cell against a
+clean-worktree baseline (zero regressions, zero movement). The sweep does not
+move because it has no statement-tail member read off an EVENT-RESULT
+container. What proves the fix is **twelve new rows in `lang/spec/fn-value.tsv`
+§8**, every one of which answered wrongly before it.
+
+**One more trade the gates named, and it is worth keeping.** The landing's first
+VM draft islanded every applied value — the interpreter's own one-token re-step,
+semantically exact — and the censuses counted 21 extra interpreter entries for
+it (engine entries 422 -> 442, interp-entry rows 78 -> 100). An island IS an
+interpreter entry, and this project counts every one. The op now takes
+`callDynTrailTop`'s ladder instead — native apply, then `dynApplyEnter` into the
+matched compiled unit, island only as a last resort — and both gates return to
+their ceilings. The last row to come back was `module-rand.tsv:L16`
+(`[10 20 30] r.one-of`), which already compiled correctly and was paying an
+island for nothing: a module DELEGATION wrapper is asked `MatchFnSig(v, nil)`
+here, unlike in `noMatchIfSigged`, because a wrong "no" costs a landing this
+model would have skipped anyway where a wrong "yes" costs an interpreter entry
+on every read of one.
+
+**Three holes remain, all named in [NUR173](../NUR.md#nur173):** the `get`-WORD
+twin (`m get 'f'` is not a reach group, so nothing records its landing), a
+collectable token written after the survivor, and a variadic producer's region
+top. The sweep's two `def container` CRASH cells (`CALL_DYNAMIC underflow`,
+`SWAP underflow`) are still open; the FIRST draft of this fix closed both, so
+the shape is reachable from here, but which stand-aside holds them is
+unmeasured — and this page has already been wrong once today about a cause it
+had not measured.
 
 ## Where the project is
 

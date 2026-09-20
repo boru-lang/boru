@@ -197,6 +197,13 @@ type EmitRecorder interface {
 	RecordDynApplyName(name string, args []Value, fn, out Value, pos SrcPos) bool
 	DynApplyLeadEligible(v Value) bool
 	RecordDynMethod(fn Value, args, outs []Value, word string, pos SrcPos) bool
+	// NoteReStepLanding marks the event that produced v as owing a GUARDED
+	// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+	// rewinds onto v and re-steps it, dispatching a callable one, so the op
+	// goes right after the producing event's own op. A value with no producing
+	// event, and a producer whose result is a runtime-variable REGION, are both
+	// shapes no landing op can express: they are left alone, on today's paths.
+	NoteReStepLanding(v Value, pos SrcPos)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
@@ -488,6 +495,7 @@ func (inactiveEmit) DynApplyLeadEligible(Value) bool { return false }
 func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }

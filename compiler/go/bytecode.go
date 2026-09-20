@@ -599,6 +599,27 @@ const (
 	// residual as the frame region (CompiledFn.Deopts[Arg]). Plain data
 	// costs the test and nothing else.
 	OpDeoptIfFn
+
+	// OpReStepLanding is the guarded LANDING of a reach-lowered group's single
+	// survivor (NUR173). `m.f` lowers to the paren `( m dot f )`, and that
+	// collapse never parks — an unmarked dot-read of a function is a CALL
+	// (NUR038), so fnReturnPark declines a reach group by kind — which means
+	// the rewind lands ON the one value it left and stepLiteral RE-STEPS it:
+	// dispatched when it is callable, pushed when it is not.
+	//
+	// The check pass holds a carrier there whose static bound admits both, so
+	// the decision belongs to the runtime VALUE. The op reads the top of the
+	// stack and, for an unquoted appliable fn, islands [fn] — the
+	// interpreter's own one-token re-step, which applies a matching signature
+	// and leaves a non-matching fn as data. Anything else is left exactly
+	// where it is, so an ordinary (non-fn) container read costs one type test.
+	//
+	// Unlike OpCallDynTrailTop over zero args, it raises NO no-match: at this
+	// landing a fn that matches nothing is the interpreter's answer, not an
+	// error (`m.g` alone, where g takes one argument, is `fn a1(Integer)` on
+	// both lanes). The recorded landing claims ONE value, so a result count
+	// that differs is a claim failure and defers. Arg is unused.
+	OpReStepLanding
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -663,6 +684,7 @@ var opcodeNames = [...]string{
 	OpDeoptIfFn:            "DEOPT_IF_FN",
 	OpBindResident:         "BIND_RESIDENT",
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
+	OpReStepLanding:        "RESTEP_LANDING",
 }
 
 func (o Opcode) String() string {

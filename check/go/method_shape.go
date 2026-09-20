@@ -705,3 +705,83 @@ func shapedReadOut(r *core.Registry, id string) core.Value {
 	}
 	return core.NewDynamicCarrier(core.TAny)
 }
+
+// noteReStepLanding records the GUARDED LANDING of a value a REACH-lowered
+// group's collapse rewinds onto and re-steps (NUR173). It is the LAST model
+// in stepLiteral's chain on purpose: TryShapedMethodDispatch,
+// tryMemberFnArrivalDispatch and TryDynamicFnValueDispatch each resolve the
+// member and can claim an arity, and every claim is worth more than this. What
+// reaches here is the shape none of them can see — a read off a container the
+// pass knows only as a carrier, so the member is not resolvable at all:
+//
+//	def h fn [[] [Integer] [42]] end
+//	def mk fn [[] [Map] [{f: h/v}]] end
+//	def m (mk) end
+//	m.f        -> 42 interpreted, `fn h` compiled, silently
+//
+// The collapse recorded that its rewind lands here (CheckState.
+// ReachReSteppedFnIDs), and the interpreter's step below DISPATCHES a callable
+// value at this exact point — an unmarked dot-read of a function is a CALL
+// (NUR038). The pass cannot tell whether the runtime value is one, and no
+// static answer is available, so the decision is deferred to the VALUE:
+// OpReStepLanding islands a callable value through the interpreter's own
+// one-token re-step and leaves anything else untouched.
+//
+// It NOTES and nothing else — no splice, no consume, no decline — and that is
+// the whole of why it is safe to put last. The pass keeps stepping the same
+// value, so every model keyed on its id (the fn-value lowerings, the read
+// accounting, the paren placement facts) sees exactly what it saw before; only
+// the recorder learns that an op belongs after the read. Two earlier drafts
+// recorded the landing as an EVENT over the survivor, and both moved something
+// the lowerings were relying on: splicing a fresh carrier for the out cost
+// them the operand they had resolved (a lambda member bound and then called
+// declined, and so did a `fold` over one), and re-pointing the survivor's own
+// provenance cost a binding read inside a later `if` arm its value outright
+// (`boru:cli` handed `set` an empty Value). A model that only needs to be SEEN
+// must not also move what it sees.
+func noteReStepLanding(e *core.Engine, valIdx int) {
+	r := e.Registry
+	es := r.Check.Recorder()
+	if !es.Active() || es.SuspendedNow() {
+		return
+	}
+	v := e.Tape.At(valIdx)
+	if v.Quoted || v.ID == "" || core.IsConcrete(v) {
+		return
+	}
+	if !r.Check.ReachReSteppedFnIDs[v.ID] {
+		return
+	}
+	// NOTHING THE RE-STEP COULD COLLECT may follow. The landing islands the one
+	// value ALONE, and the interpreter's own re-step does not: execFnDefLiteral
+	// matches over the live tape, so a fn with parameters collects the tokens
+	// written after it. `Cli.parse {name:"x" flags:{}} ["x"]` is that shape —
+	// the island ran the export's body with its parameters unbound. A FUNCTION
+	// WORD is not collectable (MatchSignature's forward phase stops at one), and
+	// a boundary or the end of the tape leaves nothing at all, so those are the
+	// shapes the alone-island models faithfully; an inert VALUE after it is not,
+	// and the landing stands aside (never declines — see emitLandingAfter).
+	if !nothingToCollectAfter(e, valIdx) {
+		return
+	}
+	// Once per value: a second note would hang a second op on the same event,
+	// and the fact is spent either way — this landing has been taken.
+	delete(r.Check.ReachReSteppedFnIDs, v.ID)
+	es.NoteReStepLanding(v, v.Pos())
+}
+
+// nothingToCollectAfter reports whether the re-step of the value at valIdx has
+// no forward argument available: the next token is a statement boundary or a
+// WORD — MatchSignature's forward phase stops at a function word — or the tape
+// ends there. See noteReStepLanding for why the landing needs it.
+func nothingToCollectAfter(e *core.Engine, valIdx int) bool {
+	if valIdx+1 >= e.Tape.Len() {
+		return true
+	}
+	tv := e.Tape.At(valIdx + 1)
+	// A boundary ends the statement and a WORD stops the forward phase, so in
+	// both cases the re-step has nothing written after it to take. Anything
+	// else is a token the collection could reach, and the alone-island would
+	// not.
+	return statementWindowBoundary(tv) || core.IsWord(tv)
+}

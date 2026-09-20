@@ -995,3 +995,62 @@ func TestZZCoverSurfaceShapeDeclinesNonFnsigShape(t *testing.T) {
 		t.Errorf("declining must leave the tape untouched, len = %d", e.Tape.Len())
 	}
 }
+
+// --- noteReStepLanding (NUR173) ---------------------------------------------
+
+// The landing NOTES and nothing more — it consumes nothing, splices nothing
+// and declines nothing, which is what lets it sit last in stepLiteral's model
+// chain without disturbing the three above it. The gates each leave it
+// unrecorded: a suspended recorder, a quoted / id-less / concrete value, a
+// value the collapse never recorded, and a collectable token written after the
+// survivor (which the alone-island could not have taken).
+func TestZZCoverReStepLandingGates(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland2"
+	quoted := v
+	quoted.Quoted = true
+	noID := core.NewDynamicCarrier(core.TAny)
+	noID.ID = ""
+	for _, tc := range []struct {
+		name    string
+		tape    []core.Value
+		record  bool
+		suspend bool
+	}{
+		{"suspended", []core.Value{v}, true, true},
+		{"quoted", []core.Value{quoted}, true, false},
+		{"no id", []core.Value{noID}, true, false},
+		{"concrete", []core.Value{core.NewInteger(7)}, true, false},
+		{"unrecorded", []core.Value{v}, false, false},
+		{"a collectable token follows", []core.Value{v, core.NewInteger(1)}, true, false},
+		{"a word follows — a barrier, so it lands", []core.Value{v, core.NewWord("zzeq")}, true, false},
+		{"a boundary follows — it lands", []core.Value{v, core.NewCloseParen()}, true, false},
+	} {
+		e, es, fin := zzDriftEng(t, tc.tape, 0)
+		if tc.record && tc.tape[0].ID != "" {
+			e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{tc.tape[0].ID: true}
+		}
+		if tc.suspend {
+			es.Suspend()
+		}
+		noteReStepLanding(e, 0)
+		if len(es.uncomp) != 0 {
+			t.Errorf("%s must never decline, marks = %v", tc.name, es.uncomp)
+		}
+		fin()
+	}
+}
+
+// The recorded fact is SPENT by the landing that takes it: a second note over
+// the same value would hang a second op on the same event.
+func TestZZCoverReStepLandingSpendsTheFact(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland3"
+	e, _, fin := zzDriftEng(t, []core.Value{v}, 0)
+	defer fin()
+	e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{v.ID: true}
+	noteReStepLanding(e, 0)
+	if e.Registry.Check.ReachReSteppedFnIDs[v.ID] {
+		t.Error("the fact must be spent once the landing has been taken")
+	}
+}

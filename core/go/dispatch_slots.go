@@ -72,6 +72,7 @@ var CheckBraid = struct {
 	TagCheckModeDefRead          func(e *Engine, top *Value, name string, pos SrcPos)
 	TryDynamicFnValueDispatch    func(e *Engine, valIdx int) bool
 	TryMemberFnArrivalDispatch   func(e *Engine, valIdx int) bool
+	NoteReStepLanding            func(e *Engine, valIdx int)
 	// ParenPlacedFnCarrier reports whether the value at idx is an
 	// analysis-pass carrier the check side knows to be a FUNCTION (a
 	// pinpointed member-fn read, whose fn identity lives in the recorder's
@@ -108,6 +109,7 @@ var CheckBraid = struct {
 	TagCheckModeDefRead:          inactiveTagCheckModeDefRead,
 	TryDynamicFnValueDispatch:    inactiveTryDynamicFnValueDispatch,
 	TryMemberFnArrivalDispatch:   inactiveTryMemberFnArrivalDispatch,
+	NoteReStepLanding:            inactiveNoteReStepLanding,
 	ParenPlacedFnCarrier:         inactiveParenPlacedFnCarrier,
 	NoteStrandedTypeCall:         inactiveNoteStrandedTypeCall,
 	TryShapedMethodDispatch:      inactiveTryShapedMethodDispatch,
@@ -145,6 +147,8 @@ func inactiveNoteSpeculativeBarrierCommit(e *Engine, fwd ForwardInfo) {}
 func inactiveDeclineForwardStackDrift(e *Engine, sig *Signature, positions []int) {}
 
 func inactiveDeclineStrandedMemberFn(e *Engine, positions []int) {}
+
+func inactiveNoteReStepLanding(e *Engine, valIdx int) {}
 
 func inactiveShareCheckState(e *Engine, capturedReg *Registry) func() { return func() {} }
 

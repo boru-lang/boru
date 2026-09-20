@@ -47,6 +47,7 @@ func TestInactiveCheckBraid(t *testing.T) {
 	if inactiveTryMemberFnArrivalDispatch(nil, 0) {
 		t.Fatal("inactive memberFnArrival must decline")
 	}
+	inactiveNoteReStepLanding(nil, 0)
 	if inactiveParenPlacedFnCarrier(nil, 0) {
 		t.Fatal("inactive parenPlacedFnCarrier must decline")
 	}

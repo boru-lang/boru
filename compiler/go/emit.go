@@ -979,6 +979,12 @@ type EmitState struct {
 	// noted result is fn-TYPED (the runtime value is certainly a fn) rather
 	// than a gradual maybe-fn.
 	reStepNotes map[int]reStepNote
+	// landingAfter marks the events whose single result the interpreter
+	// RE-STEPS where it lands (NUR173): a reach-lowered group's collapse
+	// rewinds onto it and dispatches a callable one. The lowering emits
+	// OpReStepLanding right after the event's own op (emitLandingAfter).
+	// Keyed by event seq, valued by the read's position.
+	landingAfter map[int]core.SrcPos
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -8303,6 +8309,46 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		es.setProducedAt(outs[i], seq, i)
 	}
 	return true
+}
+
+// NoteReStepLanding marks the event that produced v as owing a GUARDED
+// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+// rewinds onto v and re-steps it, dispatching a callable one, and the pass
+// holds a carrier that only sometimes is. The op goes right after the
+// producing event's own op, where the interpreter's re-step happens — which is
+// why this is a NOTE on that event and not an event of its own. An event of
+// its own was tried twice: recording the landing as a consumer of v either
+// splices a new value (and the lowerings keyed on v's id lose the operand they
+// resolved) or re-points v's provenance (and a binding read inside a later
+// branch resolves to a result the arm cannot reach). A note moves nothing.
+//
+// A value with no producing event has no op to hang the landing on, and a
+// VARIADIC producer leaves a runtime-variable region where the landing tests
+// one value: both are left alone, on today's paths, and so is a token the
+// re-step could collect (check's nothingToCollectAfter). None of the three
+// declines — declining what the landing cannot seat was built and measured at
+// 53 -> 181 corpus compile failures, because `def x m.y` is the commonest
+// shape in the language.
+func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
+	if !es.Active() {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok || pr.idx != 0 {
+		return
+	}
+	// A VARIADIC producer (a loop, a variadic branch, a call to an already-
+	// variadic fn) leaves a runtime-variable REGION where the landing tests one
+	// value on top. The landing cannot model the region, so it stands aside and
+	// the shape keeps today's paths; re-stepping a region's top belongs to the
+	// mark-window machinery (OpCallDynMixedFromMark).
+	if es.eventInfo[pr.seq].variadicResult {
+		return
+	}
+	if es.landingAfter == nil {
+		es.landingAfter = map[int]core.SrcPos{}
+	}
+	es.landingAfter[pr.seq] = pos
 }
 
 // containerFnAutoDispatchRisk reports whether a get-family dispatch may
