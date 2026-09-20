@@ -280,6 +280,16 @@ an EXISTING package (a new package changes the go-tree digest the graph
 hashes, so the graph you just built is stale the moment you delete it), and
 regenerate AFTER every document edit is final.
 
+**The gate is OFF as of 2026-09-20 (maintainer's call).** Gating documentation
+edits on a generator that cannot run blocks every doc change in the repo, so
+`kg-verify` is deactivated in `scripts/ci-steps.sh` and the matching
+commit-gate lane in `scripts/commit-gate.sh`. Both carry the reason and the
+one-line re-activation; `make -C kg verify` and `graph` are untouched and
+still run by hand. RE-ACTIVATE THEM WITH THE EVALUATING HOST — the gate is
+worth having back, and the graph it guards is the fastest orientation in the
+repo. CLAUDE.md and AGENTS.md say the same so a fresh session is not misled
+into thinking a doc change owes a rebuild it cannot perform.
+
 **Three method lessons this increment paid for.** They are the reusable part:
 
 - **A fence is only as good as the arm it guards.** Removing the effect fence

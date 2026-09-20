@@ -164,7 +164,11 @@ if [ -f "$tmp/smoke.rc" ]; then
 fi
 
 # ---- the knowledge graph ------------------------------------------------------
-if [ "$docs" = 1 ]; then
+# DEACTIVATED 2026-09-20 with the CI step of the same name: the kg generator
+# cannot run (the generic lane's evaluating host — scripts/ci-steps.sh carries
+# the full reason and the re-activation instruction), so a doc edit could fail
+# this lane with no way to fix it. Re-activate here and there together.
+if false && [ "$docs" = 1 ]; then
   kg_verify() { make -s -C cmd/go build && make -s -C kg verify; }
   lane "kg verify" kg_verify
 fi
