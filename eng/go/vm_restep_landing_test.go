@@ -211,4 +211,27 @@ func TestReStepLandingErrorArms(t *testing.T) {
 	if _, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(boom)}, seam7Dbg, 0); err == nil {
 		t.Error("a raising member must surface its error at the landing")
 	}
+
+	// The ISLAND rung: a boru-bodied 0-arg value the VM cannot take, whose
+	// body does not resolve here. The island IS the interpreter's re-step, so
+	// whatever it raises is the member's own error and surfaces stamped at the
+	// landing — the same discipline as the two rungs above, at the rung that
+	// runs the interpreter rather than the VM.
+	islandRaiser := core.FnDefInfo{
+		Name: "island-raiser",
+		Signatures: []core.Signature{{
+			BarrierPos: -1,
+			Returns:    []*core.Type{core.TInteger},
+			// NOT a single-word body: that shape is a trivial DELEGATION
+			// wrapper, which vmNativeApplicable admits, and the value would
+			// take the native rung instead of this one.
+			Impl: core.Boru([]core.Value{core.NewInteger(9)}),
+		}},
+	}
+	if vmNativeApplicable(r, islandRaiser) {
+		t.Fatal("fixture reads as natively applicable — it would take the native arm, not the island")
+	}
+	if _, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(islandRaiser)}, seam7Dbg, 0); err == nil {
+		t.Error("an island that raises must surface the error, not a stack")
+	}
 }
