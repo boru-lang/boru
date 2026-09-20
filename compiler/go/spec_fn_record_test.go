@@ -131,12 +131,12 @@ func TestRecordSpeculativeFnDefArms(t *testing.T) {
 	}
 	// The other two kinds read through the one site.
 	es6 := NewEmitState()
-	es6.refuseUndef("f", specFnUnrouted)
+	es6.declineUndef("f", specFnUnrouted)
 	if es6.Compilable || !strings.Contains(es6.Reason, "dispatch of the conditionally-defined fn `f` cannot route") {
 		t.Fatalf("the unrouted compile failure: %q", es6.Reason)
 	}
 	es7 := NewEmitState()
-	es7.refuseUndef("f", specFnValueRead)
+	es7.declineUndef("f", specFnValueRead)
 	if es7.Compilable || !strings.Contains(es7.Reason, "value read of the conditionally-defined fn `f`") {
 		t.Fatalf("the value-read compile failure: %q", es7.Reason)
 	}

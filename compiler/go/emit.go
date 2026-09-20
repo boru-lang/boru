@@ -945,13 +945,13 @@ type EmitState struct {
 	// through the instance CARRIER — whose payload inspection sees only the
 	// schema — still tags noteMemberFnRead: the §3 arrival model then
 	// compiles the landing with parity, and every shape it declines gets
-	// refuseStrandedMemberFn's failure instead of the pre-existing
+	// declineStrandedMemberFn's failure instead of the pre-existing
 	// stranded-apply miscompile (`o.f 21 eq 42` → fn-as-data + eq(21,42)).
 	fnMemberFields map[string]map[string]core.Value
 	// memberFnReads holds the value IDs of get-family reads that surfaced a
 	// FUNCTION-valued container member (readsFnMember). The read's static type is
 	// dynamic(Any), so downstream code cannot see it is a fn; this side table
-	// lets the stranded-member-fn guard (refuseStrandedMemberFn) recognise the
+	// lets the stranded-member-fn guard (declineStrandedMemberFn) recognise the
 	// value and decline a mid-expression auto-apply
 	// (design/EDGE-SPEC-FINDINGS.0.md §2). Over-approximate + append-only like
 	// fnRiskFields — a stale entry only ever over-declines (sound).
@@ -979,6 +979,12 @@ type EmitState struct {
 	// noted result is fn-TYPED (the runtime value is certainly a fn) rather
 	// than a gradual maybe-fn.
 	reStepNotes map[int]reStepNote
+	// landingAfter marks the events whose single result the interpreter
+	// RE-STEPS where it lands (NUR173): a reach-lowered group's collapse
+	// rewinds onto it and dispatches a callable one. The lowering emits
+	// OpReStepLanding right after the event's own op (emitLandingAfter).
+	// Keyed by event seq, valued by the read's position.
+	landingAfter map[int]core.SrcPos
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -5159,15 +5165,15 @@ func (es *EmitState) inClosureBodyCompile() bool {
 	return n > 0 && es.fnRecs[es.openUnitRecs[n-1]].closure
 }
 
-// RefuseCarriedUndef is the undef handler's teardown hook: an `undef` of a
+// DeclineCarriedUndef is the undef handler's teardown hook: an `undef` of a
 // name an active armed loop carries exposes the PREVIOUS binding while the
 // carried slot still holds the rebound value, so compiled reads would
 // diverge from the interpreter — the program declines. Any other name is
 // untouched here; the speculative shape has its own hook below, and both
-// decline through refuseUndef's one site.
-func (es *EmitState) RefuseCarriedUndef(name string) { es.refuseUndef(name, undefCarried) }
+// decline through declineUndef's one site.
+func (es *EmitState) DeclineCarriedUndef(name string) { es.declineUndef(name, undefCarried) }
 
-// RefuseSpeculativeUndef is the undef handler's BLOCKED branch for a
+// DeclineSpeculativeUndef is the undef handler's BLOCKED branch for a
 // binding the model declined to generalise: an `undef` of an ENCLOSING
 // binding from inside a speculative region (a branch arm, a loop or each
 // body, an error handler, a fn body — core.Registry.SpecUndefBlocked with
@@ -5186,7 +5192,7 @@ func (es *EmitState) RefuseCarriedUndef(name string) { es.refuseUndef(name, unde
 // the program's, not the fragment's — and stays out of a closure body
 // compile (inClosureBodyCompile), whose transitions are the enclosing
 // run's.
-func (es *EmitState) RefuseSpeculativeUndef(name string) { es.refuseUndef(name, undefSpeculative) }
+func (es *EmitState) DeclineSpeculativeUndef(name string) { es.declineUndef(name, undefSpeculative) }
 
 // RecordSpeculativeUndef is the blocked branch's PLACEABLE shape (the
 // sixty-eighth increment): the model generalised the binding's value in
@@ -5213,7 +5219,7 @@ func (es *EmitState) RecordSpeculativeUndef(name string, pos core.SrcPos) {
 		return
 	}
 	if !es.Active() || es.armResidentDepth > 0 || es.nameCarried(name) {
-		es.refuseUndef(name, undefSpeculative)
+		es.declineUndef(name, undefSpeculative)
 		return
 	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
@@ -5320,7 +5326,7 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 		// def declined would keep the join's model, which is exactly the
 		// bug the placement exists for, so it declines here.
 		if !replace {
-			es.refuseUndef(name, specFnUnplaced)
+			es.declineUndef(name, specFnUnplaced)
 		}
 		return false
 	}
@@ -5443,17 +5449,17 @@ func (es *EmitState) placeRoutedLiveSlots(d *RegionDesc, args []core.Value) {
 	}
 }
 
-// undefCompileFailure names the shape refuseUndef is asked about.
+// undefCompileFailure names the shape declineUndef is asked about.
 type undefCompileFailure uint8
 
 const (
-	// undefCarried: RefuseCarriedUndef — an undef of a name a live armed
+	// undefCarried: DeclineCarriedUndef — an undef of a name a live armed
 	// loop carries in a frame slot (the slot still holds the rebound
 	// value while the registry exposes the previous binding).
 	undefCarried undefCompileFailure = iota
 	// undefSpeculative: an undef of an enclosing binding from a
 	// speculative region the compiled lane cannot place — the model
-	// declined to generalise it (RefuseSpeculativeUndef), or the recorder
+	// declined to generalise it (DeclineSpeculativeUndef), or the recorder
 	// cannot seat the transition (RecordSpeculativeUndef's declines).
 	undefSpeculative
 	// defAfterSpecUndef: RecordDynBind — a `def` of a name a placed
@@ -5508,10 +5514,10 @@ const (
 	liveReadDispatching
 )
 
-// refuseUndef is the one failure site behind the undef hooks and the
+// declineUndef is the one failure site behind the undef hooks and the
 // def-after-undef guard — the census counts sites, and the disposition row
 // covers every shape.
-func (es *EmitState) refuseUndef(name string, kind undefCompileFailure) {
+func (es *EmitState) declineUndef(name string, kind undefCompileFailure) {
 	if es == nil || !es.Compilable {
 		return
 	}
@@ -6189,21 +6195,21 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// live lookup the compiled operand baked (fwdReadAfterSpecUndef).
 	if !generic && es.Active() && (es.specFnNames[word] || live) && region != nil {
 		if n := es.specUndefUnroutedSlot(region, false); n != "" {
-			es.refuseUndef(n, fwdReadAfterSpecUndef)
+			es.declineUndef(n, fwdReadAfterSpecUndef)
 			return
 		}
 		region = &RegionDesc{Lead: LeadWord, Word: word, Pos: wordPos, Reg: es.reg, LiveLead: live}
 		generic = len(rec.caps) == 0 && es.routeRegion(region)
 	}
 	if !generic && es.specFnNames[word] {
-		es.refuseUndef(word, specFnUnrouted)
+		es.declineUndef(word, specFnUnrouted)
 		return
 	}
 	if generic && live {
 		es.noteUnitLive(word)
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
-		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
 	for _, cb := range rec.caps {
@@ -6265,7 +6271,7 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 	// The user-poly seat re-matches its baked arms; a speculative fn
 	// family's arms are the live binding's (RecordSpeculativeFnDef).
 	if es.specFnNames[word] {
-		es.refuseUndef(word, specFnUnrouted)
+		es.declineUndef(word, specFnUnrouted)
 		return
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
@@ -6483,7 +6489,7 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 		decline = "trailing fn-value apply over a call result (runtime quote state unknown)"
 	}
 	// ONE failure site for both arms, deliberately: the failure-site census is
-	// a downward ratchet (test/go/langspec refusalSiteCeiling), so a second
+	// a downward ratchet (test/go/langspec compileFailureSiteCeiling), so a second
 	// MarkUncompilable here would raise the count even though the shapes it
 	// declines are strictly fewer than before.
 	if decline != "" {
@@ -7213,7 +7219,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 	// re-matches the pass's binding; the live one may be absent or the
 	// outer overload.
 	if es.specFnNames[word] {
-		es.refuseUndef(word, specFnUnrouted)
+		es.declineUndef(word, specFnUnrouted)
 		return false
 	}
 	ops := make([]EmitOperand, len(vals))
@@ -7385,7 +7391,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		es.placeRoutedLiveSlots(region, args)
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
-		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return
 	}
 	es.SiteCounts[SiteMono]++
@@ -8224,7 +8230,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.placeRoutedLiveSlots(region, args)
 	}
 	if n := es.specUndefUnroutedSlot(region, generic); n != "" {
-		es.refuseUndef(n, fwdReadAfterSpecUndef)
+		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
@@ -8303,6 +8309,46 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		es.setProducedAt(outs[i], seq, i)
 	}
 	return true
+}
+
+// NoteReStepLanding marks the event that produced v as owing a GUARDED
+// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+// rewinds onto v and re-steps it, dispatching a callable one, and the pass
+// holds a carrier that only sometimes is. The op goes right after the
+// producing event's own op, where the interpreter's re-step happens — which is
+// why this is a NOTE on that event and not an event of its own. An event of
+// its own was tried twice: recording the landing as a consumer of v either
+// splices a new value (and the lowerings keyed on v's id lose the operand they
+// resolved) or re-points v's provenance (and a binding read inside a later
+// branch resolves to a result the arm cannot reach). A note moves nothing.
+//
+// A value with no producing event has no op to hang the landing on, and a
+// VARIADIC producer leaves a runtime-variable region where the landing tests
+// one value: both are left alone, on today's paths, and so is a token the
+// re-step could collect (check's nothingToCollectAfter). None of the three
+// declines — declining what the landing cannot seat was built and measured at
+// 53 -> 181 corpus compile failures, because `def x m.y` is the commonest
+// shape in the language.
+func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
+	if !es.Active() {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok || pr.idx != 0 {
+		return
+	}
+	// A VARIADIC producer (a loop, a variadic branch, a call to an already-
+	// variadic fn) leaves a runtime-variable REGION where the landing tests one
+	// value on top. The landing cannot model the region, so it stands aside and
+	// the shape keeps today's paths; re-stepping a region's top belongs to the
+	// mark-window machinery (OpCallDynMixedFromMark).
+	if es.eventInfo[pr.seq].variadicResult {
+		return
+	}
+	if es.landingAfter == nil {
+		es.landingAfter = map[int]core.SrcPos{}
+	}
+	es.landingAfter[pr.seq] = pos
 }
 
 // containerFnAutoDispatchRisk reports whether a get-family dispatch may
@@ -8673,7 +8719,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	// rolled-back region of this unit, cannot be placed after the undef
 	// (defAfterSpecUndef) — decline before recording anything for it.
 	if es.specUndefNames[name] && es.inRolledBackRegion() {
-		es.refuseUndef(name, defAfterSpecUndef)
+		es.declineUndef(name, defAfterSpecUndef)
 		return
 	}
 	if es.valBindEpoch == nil {
@@ -8850,7 +8896,7 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 		// not cover — would lower to a lookup delayed to its consumer or a
 		// residual re-push, past any effect in between (review of #464):
 		// decline it through the undef site rather than seat it late.
-		es.refuseUndef(name, unseatedRead)
+		es.declineUndef(name, unseatedRead)
 		return EmitOperand{}, false
 	}
 	if len(es.units) <= 1 {
@@ -12172,7 +12218,7 @@ func (es *EmitState) NoteValRead(id, name string) {
 	// have no binding at all: its dispatches route, its value has no live
 	// home. Declined through the undef site.
 	if es != nil && es.specFnNames[name] {
-		es.refuseUndef(name, specFnValueRead)
+		es.declineUndef(name, specFnValueRead)
 	}
 	if !es.Active() || id == "" {
 		return

@@ -895,6 +895,32 @@ func (lw *lowerer) emitReStepAfter(ev *EmitEvent) string {
 	return ""
 }
 
+// emitLandingAfter lowers a GUARDED LANDING (NUR173) as an OpReStepLanding
+// over the single result the event just left on the stack — the value the
+// interpreter's rewind lands on and re-steps, dispatching a callable one.
+//
+// Called at the TOP of seatCallResults, before the result is seated: that is
+// the one moment it is on top on every path, promoted to a frame slot or not.
+// (Emitting it after the seating instead skipped every `def`-bound read, which
+// is most of them.) The op is stack-neutral, so the seating below is unchanged.
+//
+// A multi-result event is left alone: the landing tests ONE value, and which
+// of several the rewind lands on is not this model's to guess.
+func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
+	if lw.es == nil {
+		return
+	}
+	pos, noted := lw.es.landingAfter[ev.seq]
+	if !noted {
+		return
+	}
+	delete(lw.es.landingAfter, ev.seq)
+	if c.nout != 1 {
+		return
+	}
+	lw.emit(OpReStepLanding, 0, pos)
+}
+
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
 // (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
@@ -2917,6 +2943,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 // other pushed as one slot per result. Shared by every evCall lowering,
 // the live read included.
 func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
+	// The guarded landing runs HERE, over the result still on top, before any
+	// of the seating below moves it (NUR173).
+	lw.emitLandingAfter(ev, c)
 	// A promoted result: store it into a frame slot now and re-push it per
 	// reference / per residual position (the references were rewritten to local
 	// operands). A single-result value-def stores one slot; a multi-output stack

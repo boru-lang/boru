@@ -290,7 +290,7 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 func TestSpecCompiledOrFallback(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
-	var rows, compiledPath, mismatches, refusedRows int
+	var rows, compiledPath, mismatches, failedRows int
 	entryCensus := newEngineEntryCensus()
 	bailCensus := newDeferCensus()
 	localBailCensus := newDeferCensus()
@@ -346,14 +346,14 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 			compiledPath++
 		}
 		if declined {
-			refusedRows++
+			failedRows++
 		}
 		if unledgered {
 			mismatches++
 		}
 	})
 
-	t.Logf("compile-or-fallback: %d rows, %d compiled, %d declined (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, refusedRows, mismatches)
+	t.Logf("compile-or-fallback: %d rows, %d compiled, %d declined (the compile gate's), %d unledgered divergences (values + error taxonomy)", rows, compiledPath, failedRows, mismatches)
 	entryCensus.assertCeiling(t)
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)

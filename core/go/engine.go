@@ -2931,7 +2931,7 @@ func (e *Engine) stepWord(val Value) error {
 	// the residual tail) diverges. Decline so the body falls back. The
 	// statement-tail apply (`m.double 21`, nothing dispatches above the fn) is
 	// unaffected — its residual [fn, 21] lowers to the correct trailing apply.
-	CheckBraid.RefuseStrandedMemberFn(e, positions)
+	CheckBraid.DeclineStrandedMemberFn(e, positions)
 
 	// Forward collection needed: defer execution.
 	if fwdCount > 0 {
@@ -2965,7 +2965,7 @@ func (e *Engine) stepWord(val Value) error {
 	if DriftWindowRecorder(e, w, sig, positions) {
 		return nil
 	}
-	CheckBraid.RefuseForwardStackDrift(e, sig, positions)
+	CheckBraid.DeclineForwardStackDrift(e, sig, positions)
 
 	// Immediate execution: read args from recorded positions.
 	match := &MatchResult{Sig: sig, Positions: positions, Name: w.Name}
@@ -3015,7 +3015,7 @@ func MixedFormStackSlotAny(e *Engine, sig *Signature, positions []int) bool {
 // all-stack). The structural exclusions mirror checkForwardStrandsOperand's
 // scope-boundary set (a CloseParen marker's Parent quirkily conforms to
 // TScalar, so the type test below is not sufficient on its own). Used only by
-// refuseForwardStackDrift.
+// declineForwardStackDrift.
 func ForwardLiteralOperand(t Value) bool {
 	if IsOpenParen(t) || IsCloseParen(t) || IsForward(t) || IsEnd(t) ||
 		IsDefCleanup(t) || IsParenExpr(t) ||
@@ -3963,7 +3963,7 @@ func (e *Engine) stepLiteral() error {
 		// of inert tokens follows — model the interpreter's auto-dispatch
 		// mid-expression (`m.double 21 eq 42` applies BEFORE `eq`). Declines
 		// leave the carrier to today's paths (the statement-tail Finalize
-		// apply, refuseStrandedMemberFn's compile failure).
+		// apply, declineStrandedMemberFn's compile failure).
 		if e.Registry.analysisActive() && CheckBraid.TryMemberFnArrivalDispatch(e, valIdx) {
 			return nil
 		}
@@ -3975,6 +3975,17 @@ func (e *Engine) stepLiteral() error {
 		// non-callable bound or non-inert window.
 		if e.Registry.analysisActive() && CheckBraid.TryDynamicFnValueDispatch(e, valIdx) {
 			return nil
+		}
+		// Guarded landing of a re-stepped survivor (NUR173): a carrier a
+		// REACH-lowered group's collapse rewound onto, which none of the three
+		// models above claimed. The step about to run below DISPATCHES whatever
+		// the runtime read surfaced when it is callable, and the pass holds a
+		// carrier that only sometimes is — so record the landing and let the
+		// VALUE decide at run time. It only NOTES: the value stays, the pass
+		// steps it exactly as before, and the models above keep first refusal
+		// because each of them knows more than this does.
+		if e.Registry.analysisActive() {
+			CheckBraid.NoteReStepLanding(e, valIdx)
 		}
 		// If the value is a Function, execute it. Quoted function
 		// values are treated as data (not executed).
@@ -8401,6 +8412,12 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 	// for this shape and for `(mk 1) 2`, where no rewind ever arrives.
 	e.recordParenReStep(openIdx, closeIdx, park, wasReachGroup)
 
+	// The reach group's own half of the same rule (NUR173). recordParenReStep
+	// above answers the MORE-than-one-survivor question and excludes reach
+	// groups by name; this answers the ONE-survivor question they alone reach,
+	// because they are the collapse that never parks.
+	e.recordReachGroupReStep(openIdx, closeIdx, park, wasReachGroup)
+
 	// Recorder hook: the values that survived inside the paren will
 	// be re-encountered by the main loop after we set pointer back
 	// to openIdx (below). They were already emitted to the recorder
@@ -8420,6 +8437,46 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 	// (NUR038), same reason as fnReturnPark and tagReachCollapsedFn above.
 	e.creditParenSurvivorSkips(openIdx, closeIdx, reStepped)
 	return nil
+}
+
+// recordReachGroupReStep notes the single survivor of a REACH-lowered group
+// (`m.f` → `( m dot f )`) that this collapse is about to REWIND ONTO and
+// re-step — where stepLiteral dispatches it if it is callable, because an
+// unmarked dot-read of a function is a CALL (NUR038).
+//
+// The interpreter holds a concrete value there and its own re-step settles the
+// question. An analysis pass holds a CARRIER and steps past it as data, so the
+// program pushed the runtime fn as DATA where the interpreter applies it
+// (NUR173: `def mk fn [[] [Map] [{f: h/v}]] end  def m (mk) end  m.f`
+// answered 42 interpreted and `fn h` compiled, silently). This fact is what
+// check's noteReStepLanding fires on — the last model in stepLiteral's chain,
+// which notes the landing so the RUNTIME value makes the decision.
+//
+// Deliberately NOT folded into recordParenReStep: that one's contract is the
+// more-than-one-survivor case (`closeIdx > openIdx+2`, park declined), and a
+// reach group is the opposite shape — exactly one survivor, park declined by
+// KIND rather than by count.
+func (e *Engine) recordReachGroupReStep(openIdx, closeIdx, park int, wasReachGroup bool) {
+	if !wasReachGroup || park != 0 || closeIdx != openIdx+2 || openIdx >= e.Tape.Len() {
+		return
+	}
+	if e.Registry == nil || e.Registry.Check == nil {
+		return
+	}
+	v := e.Tape.At(openIdx)
+	if v.Quoted || v.ID == "" || IsConcrete(v) {
+		return
+	}
+	// The same "might be callable" test recordParenReStep and the residual
+	// lowering's auto-dispatch guard use, so every end agrees on what the
+	// rewind would have called.
+	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
+		return
+	}
+	if e.Registry.Check.ReachReSteppedFnIDs == nil {
+		e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{}
+	}
+	e.Registry.Check.ReachReSteppedFnIDs[v.ID] = true
 }
 
 // recordParenReStep notes a Function-typed carrier this collapse is about to

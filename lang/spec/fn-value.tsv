@@ -254,3 +254,24 @@ def flitp fn [[1] [1] [dup drop]] end 99	99	a literal PARAM pattern widens to it
 #     frontier-fnparam-deref.tsv.
 def nought fn [[] [Integer] [7]] def grab fn [[f:Function] [Any] [f]] typeof (grab nought)	Integer	arity-0 Function param read bare: the bare name is a call, so it APPLIES (7 -> Integer) on both lanes
 def dbl fn [[n:Integer] [Integer] [n mul 2]] def hold fn [[c:Function] [Any] [c]] typeof (hold dbl)	ERROR:no signature matches	arity-1 Function param read bare with no argument: the call RAISES on both lanes
+# §8  a member read the pass knows only by its CONTAINER'S TYPE still
+#     dispatches (NUR173). `m.f` lowers to the reach group `( m dot f )`,
+#     whose collapse rewinds onto the one value it leaves and re-steps it —
+#     an unmarked dot-read of a function is a CALL (NUR038). Where the
+#     container arrives as an EVENT RESULT (a fn's return, an `if` arm) the
+#     check pass holds a carrier and cannot resolve the member at all, so the
+#     compiled lane pushed the runtime fn as DATA and answered `fn h` against
+#     the interpreter's 42, silently. The landing is now recorded and the
+#     RUNTIME value decides (OpReStepLanding).
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f	42	a 0-arg member off a fn-returned map dispatches at the landing
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end (mk).f	42	…with the receiver read inline
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end (m.f)	42	…and inside a user paren, which parks the RESULT, not the read
+def h fn [[] [Integer] [42]] end def yes fn [[] [Boolean] [true]] end def m (if (yes) [{f: h/v}] [{f: h/v}]) end m.f	42	an `if` arm is an event result too — the container's provenance, not `set`, is what the pass loses
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f add 1	43	the landing runs BEFORE the following word takes the value
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	5 42	a 0-arg member takes no stack arg, so the value below it stays below it
+def h fn [[] [Integer] [42]] end def mkf fn [[] [Map] [{f: h/v}]] end def use fn [[] [Integer] [def m (mkf) end m.f]] end use	42	…and the same inside a fn body, where the landing rides the unit
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end m.g 21	22	a member that TAKES an argument still collects it
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end 5 m.g	6	…from the stack as well
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end typeof m.g	Function	a member with NO 0-arg overload and nothing to collect stays DATA — the landing raises no no-match, because the interpreter's re-step does not
+def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m.x add 1	8	an ordinary non-fn member read is untouched by the landing
+def mkn fn [[] [Map] [{a: {b: 5}}]] end def m (mkn) end m.a.b	5	…including a chained read, where every link lands

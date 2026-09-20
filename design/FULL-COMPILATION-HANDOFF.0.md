@@ -1865,7 +1865,7 @@ loop-carried form. `residualReadHazard` refuses it by name at the unit
 finish, a branch arm and a loop body — through `residualStands`, the ONE
 `MarkUncompilable` site those four settlements now share with their
 "result of unknown provenance" arm: the refusal-site census
-(`refusalSiteCeiling`) caught the first cut's four new sites at once
+(`compileFailureSiteCeiling`) caught the first cut's four new sites at once
 (100 against 96), and the fold took the count to 93, where the ceiling
 now sits. The hazard is keyed by FRAGMENT
 IDENTITY (`EmitFragment.id`, monotone from `beginFragment`): a read in a
@@ -8401,8 +8401,8 @@ compiled lane cannot place. It trades a wrong answer for a defect of the
 other kind, and the lowering stays owed: the sixty-eighth increment below
 starts paying it. `undefHandler`'s blocked branch now notifies
 the recorder through its own hook, and the two undef hooks
-(`RefuseCarriedUndef`, `RefuseSpeculativeUndef`) refuse through one
-`MarkUncompilable` (`refuseUndef` — the census counts sites, and the
+(`DeclineCarriedUndef`, `DeclineSpeculativeUndef`) refuse through one
+`MarkUncompilable` (`declineUndef` — the census counts sites, and the
 disposition row, re-keyed to it, covers both shapes): the undef of a
 carried def (as before) and the undef of an enclosing binding from a
 speculative region ("undef of the enclosing binding `k` inside a
@@ -8443,7 +8443,7 @@ before the undef in the same body (`if true [M.m drop undef k 1] [1] k`)
 slipped through, because the recorder re-derived the block from ITS
 registry — the last-bound one, a module sub-registry after `M.m` — so the
 handler now passes the fact through its own hook
-(`RefuseSpeculativeUndef`, one refusal site behind both hooks); a
+(`DeclineSpeculativeUndef`, one refusal site behind both hooks); a
 never-bound name (`undef nope` in a fn body) refused, because the gate
 also silences the speculative diagnostic for a name with nothing to pop —
 the handler notifies only for a real pre-region depth; the `do [undef T]`
@@ -8488,7 +8488,7 @@ half's), the fn-carrier side table's, an active token, and a FRAME binding
 of an enclosing fn (`Depth(name) > TopFnBaseline()[name]` — a param or
 body-local, whose reads are slots). The handler asks the model first and
 the recorder second (`RecordSpeculativeUndef` for the placeable shape,
-`RefuseSpeculativeUndef` for the declined), the #463 lesson kept: the
+`DeclineSpeculativeUndef` for the declined), the #463 lesson kept: the
 fact is the handler's registry's.
 
 **The recorder's half.** Where recording is LIVE at the site — a branch
@@ -8588,7 +8588,7 @@ handler the leniency exists for (all suspended; an undef event with no
 stream home is the dropped undef the sixty-seventh measured) and an
 arm-resident bracket (the residency bridge pairs events to ledger twins
 one to one, and this transition has no twin). Every refusal goes through
-`refuseUndef`, now keyed by shape (`undefCompileFailure`), so the refusal-site
+`declineUndef`, now keyed by shape (`undefCompileFailure`), so the refusal-site
 census is unchanged at 92 and the disposition row names every arm.
 
 ### The review's other two (#464)
@@ -8629,7 +8629,7 @@ row of NUR144 (`add k 1`) refuses, above.
 ### Records
 
 - NUR146 (the did-you-mean pool), recorded.
-- The disposition row for `refuseUndef#1` names every arm; no register
+- The disposition row for `declineUndef#1` names every arm; no register
   entry is owed for the carried post-loop undef (refused, as NUR144 was).
 
 ## The forward slot of a generalised name routes (2026-09-16, the sixty-ninth increment)
@@ -8832,7 +8832,7 @@ on main inside a unit — placed frame-scoped and called twice
 pins that held family L's refusal (`TestEdgeFindingConditionalFnShadowFailsToCompile`,
 `TestEdgeFindingCondFragmentRedefCompiles`) hold the placement now.
 
-What refuses, through `refuseUndef`'s one site, and answers as the
+What refuses, through `declineUndef`'s one site, and answers as the
 interpreter does under the hatch: a def the recorder cannot place — a loop
 body (it re-rounds and carries its defs by slot), a fn body's replace, an
 each body and a `do` body (the resident bridge's and the closure compile's)
@@ -8844,7 +8844,7 @@ the bake would answer where the interpreter has no binding). A capturing
 closure's conditional def keeps family L's own refusal, and a fresh def in
 BOTH arms the join's older fn-carrier one. The refusal-site census stays
 at 92 (installDef's site keeps its capturing and frame arms; the three new
-kinds read through `refuseUndef`); the disposition rows name the arms.
+kinds read through `declineUndef`); the disposition rows name the arms.
 
 ### The review's five
 
@@ -9561,7 +9561,7 @@ position than the construct that produced the binding.
 | `compiler/go/region_route_test.go` (`TestRouteRegionDecidesByShape`, `TestRouteRegionRetiresOnlyTheRoutedReads`, `TestLowerRoutedUserCall`, `TestRecordUserCallDeclinesCapturesAndLocalLeads`), `compiler/go/region_complete_test.go` (`TestCaptureCarriesTheLeadModifiers`), `compiler/go/region_validate_test.go` (`TestRegionDescValidateRejectsModsOfAnotherWord`), `eng/go/vm_generic_test.go` (`TestDispatchGenericEntersTheCommittedUnit`, `TestDispatchGenericCallsALiveNative`, `TestDispatchGenericDefers`, `TestDispatchGenericGatesAndDeliveries`, `TestDispatchGenericReviewGuards`), `eng/go/region_oracle_test.go` (`TestRegionOracleWalksWithTheLeadModifiers`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheKPair`, `TestRoutedDispatchKeepsTheCommittedCallElsewhere`, `TestRoutedDispatchReviewShapes`) | the sixty-fourth increment: the routing decision arm by arm and its negatives, the unfreeze accounting (one of two reads routed keeps the name frozen), the routed lowering; the op entering the committed unit and answering a rebind with the same bytecode, calling a live native, and every designed defer by the rebinding that reaches it, plus the VM invariants; the `k` pair end to end including the escaped unit, and the shapes routing leaves alone |
 | `compiler/go/region_route_test.go` (`TestLowerRoutedNativeCall`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchAnswersTheNativeSeat`), `lang/go/frozen_module_read_test.go` (`TestModuleReadRebindSoundFallbacks`, the two routed undef rows), `compiler/go/region_route_test.go` (`TestRouteRegionAndLoopCarriedNamesExclude`), `lang/go/region_generic_e2e_test.go` (`TestRoutedReadSeesEveryBindOfItsName`), `lang/go/nur144_undef_loop_test.go` (NUR144's fence), `compiler/go/region_route_test.go` (`TestValueDivergingWordDeclines`, `TestCompletionMarksAnUnheldLeadLocal`), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchReviewOfTheNativeSeat`), `test/go/langspec/region_table_test.go` (`routedFloor`) | the sixty-fifth increment: the native seat's routed lowering, mono and poly, unit-less, carrying the record's arity and its own set of implementations (the one signature, or the live table); a container token in the span refusing to route; the native `k` pair end to end including the escaped unit and a frame local beside the live slot; an undef of a routed type slot deferring at run time with parity; the corpus's routed-dispatch count under a floor |
 | `core/go/region_diag.go`'s seats in `core/go/engine.go` (unchanged behaviour, the engine suite), `eng/go/vm_generic_test.go` (`TestDispatchGenericDefers`: the no-match, strand and unbound-slot RAISES, the `def`-lead defer; `raised`: the file named exactly at a position), `lang/go/region_generic_e2e_test.go` (`TestRoutedDispatchLiveFaultsAreDiagnosedAtCheck`), `lang/go/vm_error_file_test.go` (`TestCompiledModuleErrorNamesItsFile`) | the sixty-sixth increment: the routed op raises the interpreter's no-match, strict-barrier and undefined-word diagnostics from its window, byte for byte; the one lead that keeps a defer; the shapes that would reach them, each diagnosed at check first; the review's one — a VM error names the file of the registry its unit runs on, as the interpreter's does |
-| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/refusal_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
+| `lang/go/nur144_undef_loop_test.go` (`TestSpeculativeUndefOfEnclosingBindingRefuses`; since the sixty-eighth increment `lang/go/spec_undef_placed_test.go`), `test/go/langspec/compile_failure_disposition_census_test.go` (the carried-undef site's row) | the sixty-seventh increment: a speculative undef of an enclosing binding refuses at the carried-undef site — the class NUR145 records, NUR144 resolved under it — every row falling back with parity, in-region undefs still compiling |
 | `core/go/spec_undef_test.go` (`TestGeneraliseSpecUndef`, `TestPopLiveBinding`), `compiler/go/spec_undef_record_test.go` (`TestRecordSpeculativeUndefArms`, `TestRecordDynBindDoesNotLowerDefAfterSpecUndef`, `TestSpecUndefFwdSlot`, `TestLowerSpeculativeUndefAndLiveRead`, `TestTwinInstallsAndRootDynBindSkip`), `eng/go/vm_undef_dyn_scope_test.go` (`TestVMUndefDynScope`), `lang/go/spec_undef_placed_test.go` (`TestSpeculativeUndefIsPlacedAndReadLive`, `TestSpeculativeUndefAcrossRequests`) | the sixty-eighth increment: a speculative undef of a module-scope value binding is placed (`OpUndefDynScope`) and its reads are live events at their tokens, the miss raising the interpreter's undefined_word there; the class's rows compile with parity, positions included; the def-after-undef, carried and forward-slot shapes refuse through the one site |
 | `compiler/go/spec_undef_route_test.go` (`TestForwardSlotOfGeneralisedNameRoutes`), `lang/go/spec_undef_placed_test.go` (the routed rows) | the sixty-ninth increment: a forward word slot reading a generalised name routes — at root too — the read's event a placeholder the op pops, so the op's window collects the unbound word as the interpreter does (a typed slot no-matches at the word, an Any slot claims it and the token raises); the refusal narrows to an undrivable region and a `/v` read |
 | `core/go/spec_fn_test.go` (`TestNoteSpecFnDefAndJoin`), `compiler/go/spec_fn_record_test.go` (`TestRecordSpeculativeFnDefArms`, `TestSpecFnFailingToCompileSeatsAndFinalize`, `TestLowerSpecFnBindAndRouteAdmission`), `eng/go/vm_generic_specfn_test.go` (`TestDispatchGenericSpecFn`), `lang/go/spec_fn_placed_test.go` (`TestConditionalFnDefIsSpeculative`, `TestConditionalFnDefAcrossRequests`) | the seventieth increment: a fn def inside a runtime-conditional body at module scope is speculative — the install placed at its site through the interpreter's own installer (an overlapping redefinition replaces, family L), the join noting no twin, the family's dispatches routed with a live lead (at root, slot-less too) running the live signature's own unit by body, a miss raising undefined_word at the word; loop, fn and each bodies, undrivable windows and `/v` reads refuse |
@@ -9800,10 +9800,10 @@ as #455 (`6ea8ac1`).
 
 1. The measurement PRs, in two halves:
    - **1a, DONE 2026-09-14** (#455): `engineEntryCeiling` lowered to its
-     live 281 (measured three times), `refusalSiteCeiling` to its live
+     live 281 (measured three times), `compileFailureSiteCeiling` to its live
      92, and every `MarkUncompilable` site given one of the three legal
      dispositions in
-     `test/go/langspec/refusal_disposition_census_test.go`, gated in
+     `test/go/langspec/compile_failure_disposition_census_test.go`, gated in
      both directions, pinned at 92 in both directions, and keyed
      syntactically (file, enclosing function, ordinal). The tally is in
      the gate table above. What it says about the plan: 87 of 92 sites
@@ -10843,3 +10843,252 @@ interpreter" — false in every one now, since nothing defers anywhere. That
 is a mechanical text sweep with no behaviour in it, and it is only left
 here because the messages ride in gate pins and each pin has to be re-read
 against the new text rather than rewritten with it.
+
+
+## NUR169 re-diagnosed as NUR173 — measured, and it is a live miscompile (2026-09-20)
+
+Picked up as "the next increment" on the strength of NUR169's record. The
+record is wrong, and four probes were enough to show it.
+
+**What NUR169 says.** A paren netting exactly ONE value that is a Function is
+auto-applied interpreted and silently skipped compiled; the seat is
+`stepCloseParen`'s recorder switch, which has a TRAILING case, a Stage-G
+leading one-arg fn-carrier case and a LEADING-dynamic `count >= 2` case, but
+no `count == 1` case. It records the two witnesses as needing the
+`CompileStoresFn` instrument (PR #475, reverted) to reproduce at all.
+
+**What the measurement says.** Both witnesses reproduce exactly as written,
+including the non-capturing twin that proves it is not a lost capture. Then
+the probes:
+
+| probe | compiled |
+|---|---|
+| `def m ({} set 'f' h/v) end (m.f)` | `fn h` |
+| `def m ({} set 'f' h/v) end m.f` — BARE, no paren | `fn h` |
+| `def m {f: h/v} end (m.f)` | 42 |
+| `def m {f: h/v} end m.f` | 42 |
+
+Bare and parenthesised agree in every row. The paren is not the
+discriminator; how the map was BUILT is. Then, with no instrument at all:
+
+| probe | compiled |
+|---|---|
+| `{f: h/v}.f` — literal, inline | 42 |
+| `def m (mk) end m.f` — the same literal returned by a fn | `fn h` |
+| `def m (if true [{f: h/v}] [{f: h/v}]) end m.f` | `fn h` |
+
+So `set` is incidental too. A const-baked literal keeps the provenance that
+makes an unmarked dot-read of a function a CALL (NUR038); an EVENT RESULT
+does not. `boru run` over the fn-result row prints `fn h` against the
+interpreter's 42 on `main` today — a silent wrong answer on a factory
+returning a map of handlers, which is ordinary code, and it needs no gate
+lifted. NUR169's belief that the shapes were unreachable is an artefact of
+the two witnesses it happened to pick.
+
+**Two wrong seats, both ruled out by measurement rather than reading.**
+
+`fnReturnPark`. A println at the decision site shows the lanes genuinely
+taking different arms for `(m.f)` — interpreted `park=0`, so the rewind lands
+on the survivor and the main loop re-steps it into a call; check pass
+`park=1`, so it is parked as a placement and no call is recorded. That looks
+exactly like the seat, and it is not: the BARE-dot rows diverge identically
+with no paren to park. It is downstream of the real cause.
+
+The member TYPE. `setMapTypedReturns` returns `d2TypedMapResidual(args[2])`,
+derived from the RECEIVER and ignoring the written value, so `{} set 'f' h/v`
+yields a map carrier with no `f` member at all while the literal carries one.
+That reads like the whole defect. A check-pass twin of `setMapHandler` was
+written — concrete receiver plus concrete key, bind the member, decline
+otherwise — and instrumented to prove it fired: `ZZ bind: key='f' val=fn h
+recv={} -> BOUND f`. The member is present and **the answer does not move**.
+Built, measured, reverted.
+
+**Where it actually belongs.** The operand-PROVENANCE family (16 of S1b's
+remaining fn-value compile failures), same root as NUR170, not the
+apply-lowering family NUR169 assigned it to. The fix must give an
+event-result map's member the same callable provenance a baked literal's
+member has. The payoff is unchanged — it still unblocks `CompileStoresFn`
+and its six corpus rows (53 -> 47) — only the route moved.
+
+**The method lesson.** NUR169 was recorded from a review's reading of a
+reverted PR and never re-derived from a run. That is process rule 3 —
+"a `what remains is…` narrowing inherits the last reader's vantage point" —
+applied to a DIAGNOSIS rather than a frontier note, and it cost a session's
+opening hour. Four probes moved it. Probe the discriminator before building
+against a recorded seat: vary ONE axis at a time (paren vs bare, literal vs
+fn-result vs if-arm vs set) and let the table name the cause.
+
+
+---
+
+## NUR173 fixed: the guarded re-step landing — and the correction to the entry above (2026-09-20)
+
+The entry above is wrong about the one thing it was most confident of, and
+the correction is worth more than the fix.
+
+**"Not the paren" varied nothing.** It concluded the paren was incidental
+because bare `m.f` and `(m.f)` diverge identically. They do — because they
+are the SAME PAREN. `m.f` is a Reach, and `lowerReach` expands it to the
+group `( m dot f )`; the user-written parentheses in `(m.f)` are a second,
+outer paren that parks the RESULT. So the control compared a paren with
+itself. **A control that cannot vary its variable proves nothing.** This is
+the week's second measurement bug of exactly that shape — the first was a
+counting regex that could not see identifiers starting with `refus`, and
+reported the class it could not see as absent (PR #478). Vary the axis at
+the level the MACHINE works at, not the level the source is written at.
+
+**Where the defect actually is, from the disassembly.** Two programs, one
+instrument — `Program.Disassemble()`:
+
+```
+def m {f: h/v} end m.f                       def m (mk) end m.f
+  …                                            …
+  CALL_NATIVE_POLY p0  ; dot/2 (poly)          CALL_NATIVE_POLY p0  ; dot/2 (poly)
+  CALL_DYN_METHOD  d0  ; h/0 -> 1              <nothing>
+```
+
+The literal case pinpoints the member — a concrete receiver plus a concrete
+key — so `tryMemberFnArrivalDispatch` claims the arity and emits a guarded
+`OpCallDynMethod`. The event-result case resolves no member at all, so no
+model claims anything, and the lowering stops at the read.
+
+Then the reason NOTHING catches it downstream. A reach group never parks
+(`fnReturnPark` declines it by kind — the re-step IS the dispatch, NUR038),
+so the rewind lands on the single survivor and `stepLiteral` re-steps it.
+`recordParenReStep` excludes reach groups by name, because its own contract
+is the MORE-than-one-survivor case. And every fn-value-call arm of
+`resolveDynamicApply` tests `len(residual) >= 2` — each needs an argument
+for the lead to take. A lone survivor reaches no arm. **That is NUR169's
+"no case for `count == 1`", and NUR169's mechanism was right all along**;
+only its seat was one function out.
+
+**The surface is smaller than either diagnosis claimed.** Measured across
+arities, only the **0-arg landing** ever diverged:
+
+| probe | interp | compiled (before) |
+|---|---|---|
+| `m.g 21` (1-arg member) | 22 | 22 |
+| `5 m.g` (1-arg, from the stack) | 6 | 6 |
+| `m.k 3 4` (2-arg member) | 7 | 7 |
+| `m.g` alone (1-arg, nothing to collect) | `fn a1(Integer)` | `fn a1(Integer)` |
+| `m.f` (0-arg) | 42 | **`fn h`** |
+| `m.f add 1` | 43 | **`[]`** |
+| `5 m.f` | `5 42` | **`42 5`** |
+
+The residual classifier already lowers `[dyn, args]` as a leading apply, and
+it is right. What it has no case for is `[dyn]`.
+
+**The static fix was measured and rejected.** Declining a get-family read off
+a carrier receiver whose member type still admits a Function took the corpus
+from **53 to 282** compile failures. Nearly every computed container is
+`Map`-of-`Any` to the check pass — a `{:Integer}` child or a typed record
+field is the exception, not the rule — so "could this member be a fn?" is
+statically almost always yes, and a static gate here is a gate on everything.
+**There is no static answer; the decision belongs to the runtime value.**
+
+**The fix, in three additive parts.**
+
+1. `CheckState.ReachReSteppedFnIDs` — the third sibling of `ParenPlacedFnIDs`
+   / `ParenReSteppedFnIDs`, recorded at the collapse because nothing
+   downstream can still tell a re-stepped survivor from a placed one.
+2. `check`'s `noteReStepLanding`, LAST in `stepLiteral`'s model chain: the
+   three above it resolve a member and can claim an arity, and every claim is
+   worth more than this one. It NOTES the producing event and does nothing
+   else.
+3. `OpReStepLanding`, emitted right after that event's own op — it islands an
+   unquoted appliable value ALONE. `Run` over one token IS `stepLiteral`'s
+   re-step, so a matching signature runs and a non-matching fn stays data.
+   `OpCallDynTrailTop` over zero args could not be reused for exactly one
+   clause: its `noMatchIfSigged` RAISES where the interpreter answers
+   `fn a1(Integer)`.
+
+**THREE DRAFTS, and the two that were thrown away are the useful half.**
+
+*Draft one spliced.* It recorded the landing as a consumer of the survivor and
+spliced a fresh carrier over it, the way the arrival models do. Seven
+witnesses fixed, two sweep cells broken: a lambda member bound and then called
+(`def f m.f end f 5` inside a paren) and a `fold` over one. The splice gives
+the result a NEW value id, and every lowering keyed on the OLD id — the
+paren-bounded apply, the placement facts, the read accounting — lost the
+operand it had already resolved.
+
+*Draft two re-pointed provenance.* Same event, no splice: `setProducedAt` over
+the value itself, so the op seats between the read and the first use without
+moving anything on the tape. That fixed both sweep cells and broke `boru:cli` —
+with a WRONG ANSWER, not a decline. `def so acc.short` binds the read, and a
+later `(so set (sh) g)` inside an `if` arm resolved `so` to a result the arm
+could not reach; `set` received an empty Value.
+
+*Draft three notes.* The landing is not an event at all: `landingAfter[seq]`
+marks the PRODUCING event, and the lowering emits the op straight after that
+event's ops, exactly where `emitReStepAfter` emits NUR124's deopt. Nothing
+moves, nothing is re-pointed, and both earlier failures go away. **A model that
+only needs to be SEEN must not also move what it sees** — twice, in two
+different ways, that was the whole defect.
+
+**Four stand-asides, each measured into place.**
+
+- A **collectable token** after the survivor. The island runs the value ALONE
+  and the interpreter's re-step does not: `execFnDefLiteral` matches over the
+  live tape, so a fn with parameters collects what is written after it.
+  `Cli.parse {name:"x" flags:{}} ["x"]` is that shape, and the alone-island ran
+  the export's body with its parameters unbound. A boundary or a WORD leaves
+  nothing to take (the forward phase stops at a function word).
+- A **MULTI-result event**, since the landing tests one value.
+- A **variadic producer**, whose result is a runtime-variable region.
+- A value with **no producing event** to hang the op on.
+
+Declining those instead was measured: **53 -> 181** corpus compile failures.
+They skip, and the holes are named in NUR173 rather than paid for with a fifth
+of the corpus.
+
+**The seat matters as much as the op.** Emitting the landing after the event's
+own ops — where NUR124's deopt goes — skipped every `def`-bound read, because
+the lowering has already stored the result to its frame slot by then, and
+`def x m.y` is the commonest shape in the language. The op goes at the TOP of
+`seatCallResults` instead: the one moment the result is on the stack on every
+path, promoted or not. It is stack-neutral, so the seating below is unchanged.
+
+**A/B-ing any of this required `-count=1`.** Go's test cache replayed a stale
+result across an env-var flip and showed the hook making no difference at all,
+in both directions, for twenty minutes.
+
+**Measured cost, and the honest note about what moved.** Every gate is
+unchanged: the four corpus ledgers (53 / 284 / 32 / 111 / 52), the 92
+`MarkUncompilable` sites, and the generated sweep diffed cell by cell against a
+clean-worktree baseline — zero regressions AND zero movement, DIVERGED 18 and
+call-form failures 200 in both.
+
+Two sweep cells are worth naming, because draft ONE fixed them and the final
+shape does not: `def` container under `fn-body` and under `module-body`, both
+of which CRASH the VM (`CALL_DYNAMIC underflow`, `SWAP underflow`). Their seed
+reads a LITERAL map whose member is an ANONYMOUS lambda. Which stand-aside
+holds them is NOT measured, and this log has already recorded one cause today
+that measurement overturned, so it is left as an open question rather than an
+attribution — the shape is reachable from here, and that is all that is
+established.
+
+What proves the fix is **twelve new rows in `lang/spec/fn-value.tsv` §8**,
+every one of which answered wrongly before it — the witnesses plus the
+must-not-regress arities, run on both lanes by `TestSpecProd` and the compiled
+differential.
+
+**One more trade the gates named, and it is worth keeping.** The landing's first
+VM draft islanded every applied value — the interpreter's own one-token re-step,
+semantically exact — and the censuses counted 21 extra interpreter entries for
+it (engine entries 422 -> 442, interp-entry rows 78 -> 100). An island IS an
+interpreter entry, and this project counts every one. The op now takes
+`callDynTrailTop`'s ladder instead — native apply, then `dynApplyEnter` into the
+matched compiled unit, island only as a last resort — and both gates return to
+their ceilings. The last row to come back was `module-rand.tsv:L16`
+(`[10 20 30] r.one-of`), which already compiled correctly and was paying an
+island for nothing: a module DELEGATION wrapper is asked `MatchFnSig(v, nil)`
+here, unlike in `noMatchIfSigged`, because a wrong "no" costs a landing this
+model would have skipped anyway where a wrong "yes" costs an interpreter entry
+on every read of one.
+
+**What is left of it.** The `get`-WORD twin — `m get 'f'` is not a reach group,
+so no collapse records its landing, and the read's result still lands at the
+pointer where the interpreter dispatches it. The `def`-bound read, which needs
+the landing emitted before the promotion store (push, land, store). And a
+variadic producer's region top, which is `OpCallDynMixedFromMark`'s job.

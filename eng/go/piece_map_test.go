@@ -108,7 +108,7 @@ var upwardRefs = []struct {
 		re: regexp.MustCompile(`(^|[^.\w])(checkMixedFormAdvisories|checkModeAssumeSig|` +
 			`checkModeFallbackPositions|checkModeParenFnCollapse|checkModeSurfaceShape|` +
 			`concreteEvalOnce|drainUndefinedAtoms|exprRefsCarrier|noteSpeculativeBarrierCommit|` +
-			`check.RefuseForwardStackDrift|refuseStrandedMemberFn|shareCheckState|spliceAnonCheckResult|` +
+			`check.DeclineForwardStackDrift|declineStrandedMemberFn|shareCheckState|spliceAnonCheckResult|` +
 			`spliceCheckResults|spliceFnCheckTail|check.SpliceFnValueCheckResult|tagCheckModeDefRead|` +
 			`tryDynamicFnValueDispatch|tryMemberFnArrivalDispatch|check.TryShapedMethodDispatch|` +
 			`undefinedWordCheckDiag)\(`),

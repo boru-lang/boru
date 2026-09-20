@@ -564,7 +564,7 @@ PR #471 (the ten classified reds, unchanged by the audit commit), with the
 row listings from `BORU_LOG_CENSUS_ROWS=1` runs of `TestCompiledCoverage`
 and `TestInterpEntryCensus` on the same head. Source counts are `grep`
 over the tree: `vmDefer(` calls and `vm:*` seam names in `eng/go`, the
-disposition table in `refusal_disposition_census_test.go`, the ledger map
+disposition table in `compile_failure_disposition_census_test.go`, the ledger map
 in `frontier_spec_test.go`. The language surface is `boru describe` (251
 core words; 11 loadable modules with 264 exports) and the declaration
 census's 522/172/114. Effort figures are `git log 4945889..origin/main`

@@ -147,7 +147,7 @@ open defects, each owed a fix by a later mechanism.
 ## Design — a cascade
 
 **Phase 0 — stop the wrong answer (refuse; ship first, independently valuable).**
-Add `refuseGradualReceiverInversion` beside the existing `refuseForwardStackDrift`
+Add `refuseGradualReceiverInversion` beside the existing `declineForwardStackDrift`
 (`engine.go` ~3069), fired from the `sig == nil` branch (~2828, before
 `checkModeAssumeSig`). Detect: a function word matched no signature where the sole
 blocking slot was a **stack** position holding a strict param-origin `Any` carrier
@@ -273,4 +273,4 @@ closed by it. **Do not** build a generalized non-terminal re-dispatch.
 The `~NNNN` anchors above are approximate and drift as `eng/go` evolves. Resolve
 each by symbol name (`sigTypeMatches`, `resolveForwardArgs`, `matchSignature`,
 `curryOrStack`, `checkParamContract`, `tryCompileUserPolyArms`,
-`dynamicReachableOverloadCount`, `refuseForwardStackDrift`) before editing.
+`dynamicReachableOverloadCount`, `declineForwardStackDrift`) before editing.

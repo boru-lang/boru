@@ -234,7 +234,7 @@ about the runtime.**
 This matters for the stage plan, not just for bookkeeping. **T2 is not
 satisfiable while this number is non-zero, whatever the `OpFallback` ceiling
 says**, so Stage 9 cannot honestly flip to total on the island ceiling alone.
-The census is a DOWNWARD ratchet like `refusalSiteCeiling` — it only falls,
+The census is a DOWNWARD ratchet like `compileFailureSiteCeiling` — it only falls,
 and a rise wants a design note rather than a bigger constant.
 
 The seam spread is also the work-list, and it is not one problem. Sampling the
@@ -3420,7 +3420,7 @@ New ratchets, alongside the existing ones (all monotone, all in-tree):
   the mechanism deletes. Measured 2026-08-25: **5** — `vm:poly-nout-drift×3`,
   `vm:poly-no-match×2`, both named in §6.10's retirement table.
 - **Refusal-site census** — the recorder's `MarkUncompilable` call sites,
-  counted by source scan (`test/go/langspec/refusal_site_census_test.go`):
+  counted by source scan (`test/go/langspec/compile_failure_site_census_test.go`):
   **96** at the Stage-1 baseline. This is the STATIC half — machinery that
   exists rather than machinery that fired — so it keeps falling while the
   corpus's runtime refusal count sits at zero. The lowerer/`Finalize` and

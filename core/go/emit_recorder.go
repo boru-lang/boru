@@ -197,6 +197,13 @@ type EmitRecorder interface {
 	RecordDynApplyName(name string, args []Value, fn, out Value, pos SrcPos) bool
 	DynApplyLeadEligible(v Value) bool
 	RecordDynMethod(fn Value, args, outs []Value, word string, pos SrcPos) bool
+	// NoteReStepLanding marks the event that produced v as owing a GUARDED
+	// LANDING (NUR173, OpReStepLanding): the collapse of a reach-lowered group
+	// rewinds onto v and re-steps it, dispatching a callable one, so the op
+	// goes right after the producing event's own op. A value with no producing
+	// event, and a producer whose result is a runtime-variable REGION, are both
+	// shapes no landing op can express: they are left alone, on today's paths.
+	NoteReStepLanding(v Value, pos SrcPos)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
@@ -308,8 +315,8 @@ type EmitRecorder interface {
 	// noted at generation g is reusable at a later call site exactly while
 	// Gen(name) is still g there.
 	NoteFrozenRead(name string, bake FrozenBake, gen int64)
-	RefuseCarriedUndef(name string)
-	// RecordSpeculativeUndef and RefuseSpeculativeUndef are undefHandler's
+	DeclineCarriedUndef(name string)
+	// RecordSpeculativeUndef and DeclineSpeculativeUndef are undefHandler's
 	// blocked branch: an `undef` of an ENCLOSING binding — one with a real
 	// pre-region depth — from inside a speculative region
 	// (Registry.SpecUndefBlocked), which the check pass keeps in its model.
@@ -324,7 +331,7 @@ type EmitRecorder interface {
 	// shape the model declined to generalise: a type or fn-family binding,
 	// a frame binding of an enclosing fn.
 	RecordSpeculativeUndef(name string, pos SrcPos)
-	RefuseSpeculativeUndef(name string)
+	DeclineSpeculativeUndef(name string)
 	// RecordSpeculativeFnDef places the fn def fn a branch arm the model
 	// cannot decide made (core.NoteSpecFnDef): fresh (a zero outer), or
 	// replacing the overlapping overload outer in place. True when placed:
@@ -488,6 +495,7 @@ func (inactiveEmit) DynApplyLeadEligible(Value) bool { return false }
 func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
@@ -519,13 +527,13 @@ func (inactiveEmit) AlreadyProduced(string) bool                            { re
 func (inactiveEmit) RecordBindTwin(BindTransition, DefEntry) {}
 func (inactiveEmit) MarkValueDef(Value)                      {}
 func (inactiveEmit) RecordDefRebind(string, Value, SrcPos)   {}
-func (inactiveEmit) RefuseCarriedUndef(string)               {}
+func (inactiveEmit) DeclineCarriedUndef(string)              {}
 func (inactiveEmit) RecordSpeculativeUndef(string, SrcPos)   {}
 func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcPos) bool {
 	return false
 }
 func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
-func (inactiveEmit) RefuseSpeculativeUndef(string)              {}
+func (inactiveEmit) DeclineSpeculativeUndef(string)             {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}

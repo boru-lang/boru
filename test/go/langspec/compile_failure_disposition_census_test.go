@@ -15,7 +15,7 @@
 //
 // "Carve-out" is not one of them, which is what the ruling adds.
 //
-// refusal_site_census_test.go counts the sites; this file assigns each one
+// compile_failure_site_census_test.go counts the sites; this file assigns each one
 // a disposition and the stage that retires it, and gates the assignment in
 // BOTH directions: a site with no entry fails (new debt must arrive with
 // its plan), and an entry with no site fails (the table can only shrink as
@@ -44,8 +44,8 @@ import (
 	"testing"
 )
 
-// refusalDisposition is one site's plan under the definition of done.
-type refusalDisposition struct {
+// compileFailureDisposition is one site's plan under the definition of done.
+type compileFailureDisposition struct {
 	kind  string // generic | trap | delete
 	stage int    // the FULL-COMPILATION.0.md section 10 stage that retires it
 	note  string
@@ -57,10 +57,10 @@ const (
 	dispDelete  = "delete"
 )
 
-// refusalDispositions is keyed by "<module path>:<enclosing func>#<ordinal>".
+// compileFailureDispositions is keyed by "<module path>:<enclosing func>#<ordinal>".
 // A site outside any function (the EmitRecorder interface's own method
 // declaration) has the function "<decl>".
-var refusalDispositions = map[string]refusalDisposition{
+var compileFailureDispositions = map[string]compileFailureDisposition{
 	// basic/go — the definition and control words.
 	"basic/go/native_control.go:if3ReturnsFn#1":                         {dispGeneric, 5, "a 0-netting arm is a region shape (the fifty-first increment took the top-level case)"},
 	"basic/go/native_definition.go:InstallAndRecordDef#1":               {dispGeneric, 4, "computed fn shadowing a live binding: the binder half makes Defs and the carrier table one store"},
@@ -73,17 +73,17 @@ var refusalDispositions = map[string]refusalDisposition{
 	"basic/go/native_definition.go:AfnHandler#1":                        {dispGeneric, 7, "as FnTripleHandler, for afn"},
 
 	// check/go — the analysis pass's own compile failures.
-	"check/go/carrier.go:RunFnBodyOnce#1":                  {dispGeneric, 8, "an analysis failure is not a program error (soundiness): the body lowers generically instead of declining"},
-	"check/go/check_fnbody.go:BuildFnBodyReturnsFn#1":      {dispGeneric, 3, "an Atom param bound to a computed value in a closure body: the capture rides as a value"},
-	"check/go/check_recovery.go:RefuseForwardStackDrift#1": {dispGeneric, 5, "forward accounting across a dynamic residual: inside a region the stack is the address"},
-	"check/go/check_recovery.go:refuseStrandedMemberFn#1":  {dispGeneric, 3, "a member fn value auto-applying mid-expression: the arrival model over the Apply kernel"},
-	"check/go/check_recovery.go:checkModeSurfaceShape#1":   {dispGeneric, 4, "surface-shape typed dispatch: OpDispatchGeneric selects at run time"},
-	"check/go/check_recovery.go:checkModeAssumeSig#1":      {dispGeneric, 4, "a recovered window rematches at run time (OpDispatchRematch); the definite-operand case already traps"},
-	"check/go/check_recovery.go:checkModeAssumeSig#2":      {dispGeneric, 4, "as #1"},
-	"check/go/check_recovery.go:checkModeAssumeSig#3":      {dispGeneric, 4, "as #1"},
-	"check/go/method_shape.go:TryShapedMethodDispatch#1":   {dispGeneric, 3, "a 0-arg member landing the model cannot claim: the Apply kernel decides at the landing"},
-	"check/go/method_shape.go:TryRecordMethodApply#1":      {dispGeneric, 5, "an operand of unknown provenance under a shaped apply: a region"},
-	"check/go/method_shape.go:refuseArrival#1":             {dispGeneric, 3, "the member-arrival model's declines (the NUR038 seal): admit the stack form, the computed first argument, the anonymous member"},
+	"check/go/carrier.go:RunFnBodyOnce#1":                   {dispGeneric, 8, "an analysis failure is not a program error (soundiness): the body lowers generically instead of declining"},
+	"check/go/check_fnbody.go:BuildFnBodyReturnsFn#1":       {dispGeneric, 3, "an Atom param bound to a computed value in a closure body: the capture rides as a value"},
+	"check/go/check_recovery.go:DeclineForwardStackDrift#1": {dispGeneric, 5, "forward accounting across a dynamic residual: inside a region the stack is the address"},
+	"check/go/check_recovery.go:declineStrandedMemberFn#1":  {dispGeneric, 3, "a member fn value auto-applying mid-expression: the arrival model over the Apply kernel"},
+	"check/go/check_recovery.go:checkModeSurfaceShape#1":    {dispGeneric, 4, "surface-shape typed dispatch: OpDispatchGeneric selects at run time"},
+	"check/go/check_recovery.go:checkModeAssumeSig#1":       {dispGeneric, 4, "a recovered window rematches at run time (OpDispatchRematch); the definite-operand case already traps"},
+	"check/go/check_recovery.go:checkModeAssumeSig#2":       {dispGeneric, 4, "as #1"},
+	"check/go/check_recovery.go:checkModeAssumeSig#3":       {dispGeneric, 4, "as #1"},
+	"check/go/method_shape.go:TryShapedMethodDispatch#1":    {dispGeneric, 3, "a 0-arg member landing the model cannot claim: the Apply kernel decides at the landing"},
+	"check/go/method_shape.go:TryRecordMethodApply#1":       {dispGeneric, 5, "an operand of unknown provenance under a shaped apply: a region"},
+	"check/go/method_shape.go:declineArrival#1":             {dispGeneric, 3, "the member-arrival model's declines (the NUR038 seal): admit the stack form, the computed first argument, the anonymous member"},
 
 	// compiler/go — the recorder.
 	"compiler/go/callable_words.go:tryRecordClosure#1":                {dispGeneric, 4, "a gradual-Any callback or collection: a runtime re-match — each/fold/scan/filter take it through CompileDynBody (S1a, 2026-09-19); the words that do not declare the flag still decline here"},
@@ -105,7 +105,7 @@ var refusalDispositions = map[string]refusalDisposition{
 	"compiler/go/emit.go:NoteLoopCarried#1":                           {dispGeneric, 4, "a pre-loop value that no longer resolves: a live lookup of the carried binding"},
 	"compiler/go/emit.go:RecordDefRebind#1":                           {dispGeneric, 3, "a fn value in a loop-carried slot: universal fn values"},
 	"compiler/go/emit.go:RecordDefRebind#2":                           {dispGeneric, 5, "a carried rebind of unknown provenance: a region"},
-	"compiler/go/emit.go:refuseUndef#1":                               {dispGeneric, 4, "the binder hooks' one site (RefuseCarriedUndef, RefuseSpeculativeUndef, RecordSpeculativeUndef's declines, the def-after-undef, forward-slot and unseated-read guards; since the seventieth increment RecordSpeculativeFnDef's declines, the unrouted-dispatch and value-read guards of a conditionally-defined fn): a speculative undef of a module-scope value binding is PLACED since the sixty-eighth increment (OpUndefDynScope, live reads seated at their tokens), a forward word slot of the name ROUTES since the sixty-ninth, and a fn def inside a conditional body at module scope is PLACED since the seventieth (OpBindResident at its site, its dispatches routed with a live lead, family L's replace included); what still declines — an undef of a carried name, of a type, fn-family or frame binding, one the recorder cannot seat (a suspended recording, an arm-resident bracket), a def of the name inside its region, a forward slot the op cannot drive, a `/v` read the hook does not seat, a conditional fn def in a loop body, an each or do body, a fn body's replace, a dispatch of such a fn at the poly or rematch seat (an undrivable window takes the slot-less descriptor), a `/v` read of it — is the resident bridge's pairing, the region host's evaluations and the frame-local binder"},
+	"compiler/go/emit.go:declineUndef#1":                              {dispGeneric, 4, "the binder hooks' one site (DeclineCarriedUndef, DeclineSpeculativeUndef, RecordSpeculativeUndef's declines, the def-after-undef, forward-slot and unseated-read guards; since the seventieth increment RecordSpeculativeFnDef's declines, the unrouted-dispatch and value-read guards of a conditionally-defined fn): a speculative undef of a module-scope value binding is PLACED since the sixty-eighth increment (OpUndefDynScope, live reads seated at their tokens), a forward word slot of the name ROUTES since the sixty-ninth, and a fn def inside a conditional body at module scope is PLACED since the seventieth (OpBindResident at its site, its dispatches routed with a live lead, family L's replace included); what still declines — an undef of a carried name, of a type, fn-family or frame binding, one the recorder cannot seat (a suspended recording, an arm-resident bracket), a def of the name inside its region, a forward slot the op cannot drive, a `/v` read the hook does not seat, a conditional fn def in a loop body, an each or do body, a fn body's replace, a dispatch of such a fn at the poly or rematch seat (an undrivable window takes the slot-less descriptor), a `/v` read of it — is the resident bridge's pairing, the region host's evaluations and the frame-local binder"},
 	"compiler/go/emit.go:StartFnCompile#1":                            {dispGeneric, 3, "a closure capturing a runtime-minted value: the capture rides by value at construction"},
 	"compiler/go/emit.go:StartFnCompile#2":                            {dispGeneric, 3, "an apply of a dynamic fn value mid-body: the Apply kernel at that point, section 6.4"},
 	"compiler/go/emit.go:StartFnCompile#3":                            {dispGeneric, 5, "a body count the model cannot settle: a region; a definite mismatch is the RET contract's own raise"},
@@ -168,11 +168,11 @@ var refusalDispositions = map[string]refusalDisposition{
 
 var funcHeader = regexp.MustCompile(`^func\s+(?:\([^)]*\)\s*)?([A-Za-z0-9_]+)`)
 
-// refusalSiteKeys walks the same files as refusalSites and keys every
+// compileFailureSiteKeys walks the same files as compileFailureSites and keys every
 // MarkUncompilable call site by file, enclosing top-level function and
 // ordinal within that function. It skips the same directories and the
-// method's own declarations, so its count equals refusalSites' total.
-func refusalSiteKeys(t *testing.T) []string {
+// method's own declarations, so its count equals compileFailureSites' total.
+func compileFailureSiteKeys(t *testing.T) []string {
 	t.Helper()
 	root := filepath.Join("..", "..", "..")
 	var keys []string
@@ -230,19 +230,19 @@ func siteKeysIn(rel, src string) []string {
 	return keys
 }
 
-// refusalDispositionCeiling pins the table's size in BOTH directions, which
+// compileFailureDispositionCeiling pins the table's size in BOTH directions, which
 // is what makes "the table only shrinks" a gate rather than a sentence: a
 // site-and-row pair added together passes the two membership checks, so
 // growth has to be caught by the count; and a site that retires must lower
 // this number in the same change, so the history below records every
-// retirement. Equal to refusalSiteCeiling by construction (the two scans
+// retirement. Equal to compileFailureSiteCeiling by construction (the two scans
 // count the same sites).
-const refusalDispositionCeiling = 92 // 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
+const compileFailureDispositionCeiling = 92 // 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
 
 // dispositionFindings is the gate, factored so its negative arms can be
 // driven over synthetic input: every finding is one string, and an empty
 // result is a pass.
-func dispositionFindings(keys []string, table map[string]refusalDisposition, ceiling int) (findings []string, byKind map[string]int, byStage map[int]int) {
+func dispositionFindings(keys []string, table map[string]compileFailureDisposition, ceiling int) (findings []string, byKind map[string]int, byStage map[int]int) {
 	found := map[string]bool{}
 	byKind = map[string]int{}
 	byStage = map[int]int{}
@@ -284,13 +284,13 @@ func dispositionFindings(keys []string, table map[string]refusalDisposition, cei
 
 func TestCompileFailureDispositionCensus(t *testing.T) {
 	t.Parallel()
-	keys := refusalSiteKeys(t)
-	_, total := refusalSites(t)
+	keys := compileFailureSiteKeys(t)
+	_, total := compileFailureSites(t)
 	if len(keys) != total {
 		t.Errorf("disposition scan found %d sites, the site census %d — the two scans must agree", len(keys), total)
 	}
 
-	findings, byKind, byStage := dispositionFindings(keys, refusalDispositions, refusalDispositionCeiling)
+	findings, byKind, byStage := dispositionFindings(keys, compileFailureDispositions, compileFailureDispositionCeiling)
 	for _, f := range findings {
 		t.Error(f)
 	}
@@ -314,8 +314,8 @@ func TestCompileFailureDispositionCensus(t *testing.T) {
 // a site and its row added together.
 func TestCompileFailureDispositionGateFailsToCompile(t *testing.T) {
 	t.Parallel()
-	ok := refusalDisposition{dispGeneric, 5, "a region"}
-	base := map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok}
+	ok := compileFailureDisposition{dispGeneric, 5, "a region"}
+	base := map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok}
 	keys := []string{"m/a.go:f#1", "m/a.go:f#2"}
 	if f, _, _ := dispositionFindings(keys, base, 2); len(f) != 0 {
 		t.Fatalf("a matched table at the ceiling must pass, got %v", f)
@@ -324,25 +324,25 @@ func TestCompileFailureDispositionGateFailsToCompile(t *testing.T) {
 	cases := []struct {
 		name  string
 		keys  []string
-		table map[string]refusalDisposition
+		table map[string]compileFailureDisposition
 		ceil  int
 		want  string
 	}{
 		{"a site and its row added together", append(keys, "m/a.go:g#1"),
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:g#1": ok}, 2, "exceeds ceiling"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:g#1": ok}, 2, "exceeds ceiling"},
 		{"a site retired without lowering the ceiling", keys[:1],
-			map[string]refusalDisposition{"m/a.go:f#1": ok}, 2, "below ceiling"},
-		{"a site with no row", keys, map[string]refusalDisposition{"m/a.go:f#1": ok}, 2, "has no disposition"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok}, 2, "below ceiling"},
+		{"a site with no row", keys, map[string]compileFailureDisposition{"m/a.go:f#1": ok}, 2, "has no disposition"},
 		{"a row with no site", keys,
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:z#1": ok}, 2, "names no compile failure site"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": ok, "m/a.go:z#1": ok}, 2, "names no compile failure site"},
 		{"a disposition outside the three", keys,
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {"carve-out", 5, "x"}}, 2, "not one of the three"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {"carve-out", 5, "x"}}, 2, "not one of the three"},
 		{"a stage outside section 10", keys,
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 2, "x"}}, 2, "not a FULL-COMPILATION"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 2, "x"}}, 2, "not a FULL-COMPILATION"},
 		{"a blank note", keys,
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "  "}}, 2, "one non-empty line"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "  "}}, 2, "one non-empty line"},
 		{"a multi-line note", keys,
-			map[string]refusalDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "a\nb"}}, 2, "one non-empty line"},
+			map[string]compileFailureDisposition{"m/a.go:f#1": ok, "m/a.go:f#2": {dispGeneric, 5, "a\nb"}}, 2, "one non-empty line"},
 	}
 	for _, c := range cases {
 		f, _, _ := dispositionFindings(c.keys, c.table, c.ceil)

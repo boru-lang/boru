@@ -1421,7 +1421,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			if core.GeneraliseSpecUndef(r, name) {
 				r.Check.Recorder().RecordSpeculativeUndef(name, args[0].Pos())
 			} else {
-				r.Check.Recorder().RefuseSpeculativeUndef(name)
+				r.Check.Recorder().DeclineSpeculativeUndef(name)
 			}
 		}
 		return nil, nil
@@ -1457,7 +1457,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// An undef of a LOOP-CARRIED def exposes the previous binding while the
 	// carried frame slot still holds the rebound value — compiled reads would
 	// diverge; decline and let the interpreter own the shape.
-	r.Check.Recorder().RefuseCarriedUndef(name)
+	r.Check.Recorder().DeclineCarriedUndef(name)
 	// The fn-carrier side table is a SECOND binding store for this name
 	// (installDef declines a computed fn, so the name lives only there).
 	// Drop it in step with the Defs pop, or the table outlives the binding

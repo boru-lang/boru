@@ -41,8 +41,8 @@ type census struct {
 	checkErr int // statically invalid in BOTH engines — not a compile failure
 	declined int // nil Program, no check error
 
-	refusalBuckets map[string]int // normaliseReason -> count, over declined rows only
-	refusedRows    []refusedRow   // one entry per declined row, in corpus order
+	failureBuckets map[string]int // normaliseReason -> count, over declined rows only
+	failedRows     []failedRow    // one entry per declined row, in corpus order
 	byFile         map[string]int // spec basename -> declined rows in it, for EVERY walked file (zero included): the per-file ledger's live side (compile_failure_ledger_test.go)
 
 	// Re-scoped P7 partition (design/legacy/boru-bytecode-completion.0.ignore §3) over the
@@ -59,10 +59,10 @@ type census struct {
 	computeBy   map[string]int
 }
 
-// refusedRow identifies one spec row the bytecode compiler declined to lower —
+// failedRow identifies one spec row the bytecode compiler declined to lower —
 // enough for TestCompileFailuresAreBugs to fail on it by exact source and point a
 // contributor at the offending row.
-type refusedRow struct {
+type failedRow struct {
 	file   string // spec basename, e.g. "apply.tsv"
 	line   int    // 1-based line within the file
 	input  string // the row's source (the trimmed first TSV column)
@@ -88,7 +88,7 @@ func gatherCensus(t *testing.T) *census {
 // newCensus is an empty census with its histograms allocated.
 func newCensus() *census {
 	return &census{
-		refusalBuckets: map[string]int{},
+		failureBuckets: map[string]int{},
 		byFile:         map[string]int{},
 		tier1By:        map[string]int{},
 		tier2By:        map[string]int{},
@@ -101,7 +101,7 @@ func newCensus() *census {
 // newDifferentialInstance) so it needs no *testing.T and can return IO errors
 // instead of FailNow-ing inside sync.Once. Each file's partial is folded in
 // sorted-name order — os.ReadDir's order, the order the one-goroutine walk
-// tallied in — so refusedRows and computeRows read in corpus order.
+// tallied in — so failedRows and computeRows read in corpus order.
 func computeCensus() (*census, error) {
 	var (
 		mu    sync.Mutex
@@ -182,8 +182,8 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 			}
 		} else {
 			c.declined++
-			c.refusalBuckets[normaliseReason(reason)]++
-			c.refusedRows = append(c.refusedRows, refusedRow{
+			c.failureBuckets[normaliseReason(reason)]++
+			c.failedRows = append(c.failedRows, failedRow{
 				file: r.File, line: r.Line, input: input, reason: reason,
 			})
 		}
@@ -261,9 +261,9 @@ func (c *census) add(p *census) {
 	c.islanded += p.islanded
 	c.checkErr += p.checkErr
 	c.declined += p.declined
-	addCounts(c.refusalBuckets, p.refusalBuckets)
+	addCounts(c.failureBuckets, p.failureBuckets)
 	addCounts(c.byFile, p.byFile)
-	c.refusedRows = append(c.refusedRows, p.refusedRows...)
+	c.failedRows = append(c.failedRows, p.failedRows...)
 	c.interp += p.interp
 	c.reducible += p.reducible
 	c.errorRows += p.errorRows

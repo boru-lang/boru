@@ -129,7 +129,17 @@ var pinnedAritySites = map[string]int{
 	// 11 -> 12: the OpDispatchGeneric arm enters the committed unit exactly
 	// as the OpCallUserPoly arm above it does — the same `i < fn.NParams`
 	// loop over the frame's PARAM slots (the sixty-fourth increment).
-	"eng/go/vm.go": 12,
+	// 12 -> 13: reStepLanding's `len(fnDef.OwnSigs()) > 0` (NUR173) is a
+	// PRESENCE test, not an arity one — the same three-ways-to-have-no-own-
+	// signatures question noMatchIfSigged asks four lines below, and it
+	// gates the same next step: whether MatchFnSig has anything to match
+	// against. The decision that follows is MatchFnSig's, the argument rule
+	// itself, asked with an empty window because the landing is where the
+	// interpreter re-steps a value with nothing written after it. A fn of
+	// any arity reaches it and is answered by its signatures, never by a
+	// count: one that matches at zero runs, one that does not stays data,
+	// which is what the interpreter's own re-step does there.
+	"eng/go/vm.go": 13,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the

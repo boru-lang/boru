@@ -166,7 +166,7 @@ func TestSpecUndefFwdSlot(t *testing.T) {
 		t.Fatal("a nil descriptor names nothing")
 	}
 	// The compile failure reads through the one undef site.
-	es.refuseUndef("k", fwdReadAfterSpecUndef)
+	es.declineUndef("k", fwdReadAfterSpecUndef)
 	if es.Compilable || !strings.Contains(es.Reason, "forward-slot read of `k` after a placed undef") {
 		t.Fatalf("the forward-slot compile failure: %v %q", es.Compilable, es.Reason)
 	}

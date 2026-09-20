@@ -23,7 +23,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.KeepDefsBodyGuard(nil, "")()
 	e.MultiRunBodyGuard(nil, "b")()
 	e.RecordDynUndef("x", SrcPos{})
-	e.RefuseSpeculativeUndef("x")
+	e.DeclineSpeculativeUndef("x")
 	e.RecordSpeculativeUndef("x", SrcPos{})
 	e.NoteLiveRead(nil, "x", SrcPos{})
 	e.FnBodyGuard()()
@@ -78,6 +78,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordDynMethod(Value{}, nil, nil, "w", SrcPos{}) {
 		t.Fatal("inactive RecordDynMethod must decline")
 	}
+	e.NoteReStepLanding(Value{}, SrcPos{})
 	if e.RecordFallback(FallbackSpan{}, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordFallback must decline")
 	}

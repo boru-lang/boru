@@ -19,6 +19,7 @@ package eng
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -1037,6 +1038,8 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 		return vc.callDynFrame(reg, arg, frameBase, stack, curDebug, pc, words)
 	case compiler.OpCallDynMethod:
 		return vc.callDynMethod(reg, &vc.p.DynMethods[arg], stack, curDebug, pc)
+	case compiler.OpReStepLanding:
+		return vc.reStepLanding(reg, stack, curDebug, pc)
 	default:
 		return vc.callDynamicOp(reg, op, arg, stack, curDebug, pc)
 	}
@@ -1051,6 +1054,83 @@ func (vc *vmContext) callDynamicOp(reg *core.Registry, op compiler.Opcode, arg i
 		return st, nil, err
 	}
 	return vc.callDynamic(reg, arg, op == compiler.OpCallDynamicTrailing, stack, curDebug, pc)
+}
+
+// reStepLanding executes OpReStepLanding (NUR173) — the guarded landing of a
+// reach-lowered group's single survivor. See the opcode's own comment for the
+// shape; the body here is the whole decision.
+//
+// The ladder is callDynTrailTop's, over an EMPTY argument window, with one
+// clause removed: there is no no-match raise. A fn whose signatures do not
+// take zero arguments is what the interpreter leaves as DATA at this landing
+// (`m.g` alone, where g takes one argument, is `fn a1(Integer)` on both
+// lanes), so the match failing is an answer here, not an error. That is the
+// clause OpCallDynTrailTop over zero args could not give.
+//
+// Entering the matched unit directly (dynApplyEnter) rather than islanding is
+// not an optimisation: an island is an interpreter entry, and the project's
+// census counts every one. The island stays as the last resort for a fn the VM
+// cannot take — a detached ref, a shape whose params do not match the unit.
+func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	top := len(stack) - 1
+	if top < 0 { //covergate:allow compiler/VM defensive arm; the op is emitted only where the producing event just left its single result (§compiler)
+		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING stack underflow")
+	}
+	v := stack[top]
+	if v.Quoted || !core.IsAppliableFn(v) {
+		return stack, nil, nil // data on both lanes — stepLiteral pushes it
+	}
+	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
+		results, err := vc.invokeClosure(vc.r, v, nil)
+		if err != nil {
+			return nil, nil, stampAt(err, curDebug, pc, reg)
+		}
+		return vc.landingResults(reg, stack, top, results, curDebug, pc)
+	}
+	if fnDef, ok := v.Data.(core.FnDefInfo); ok {
+		// No signature satisfiable with ZERO arguments: the re-step leaves the
+		// fn as DATA (`m.g` alone, where g takes one), so there is nothing to
+		// apply and — just as importantly — no island to pay for. A module
+		// DELEGATION wrapper is asked the same question here, unlike in
+		// noMatchIfSigged: a wrong "no" costs a landing this model would have
+		// skipped anyway, where a wrong "yes" costs an interpreter entry on
+		// every read of one (module-rand.tsv:L16, `[10 20 30] r.one-of`).
+		if len(fnDef.OwnSigs()) > 0 && core.MatchFnSig(v, nil) == nil {
+			return stack, nil, nil
+		}
+		if vmNativeApplicable(vc.r, fnDef) {
+			if results, done, err := vc.tryNativeFnApply(v, nil); done {
+				if err != nil {
+					return nil, nil, stampAt(err, curDebug, pc, reg)
+				}
+				return vc.landingResults(reg, stack, top, results, curDebug, pc)
+			}
+		}
+	}
+	if ent := vc.dynApplyEnter(v, nil); ent != nil {
+		return stack[:top], ent, nil
+	}
+	results, err := vc.islandRun(reg, []core.Value{v})
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	return vc.landingResults(reg, stack, top, results, curDebug, pc)
+}
+
+// landingResults seats one applied landing's results over the value it
+// replaced. The recorded landing claims ONE value (the read's own carrier), so
+// a member whose apply nets another count is a claim failure — loud, at the
+// landing, rather than a stack the caller cannot reconcile.
+func (vc *vmContext) landingResults(reg *core.Registry, stack []core.Value, top int, results []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	if err := vc.screenResults(results, "re-stepped landing at a member read", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, nil, err
+	}
+	if len(results) != 1 {
+		return nil, nil, vmDefer(reg, curDebug, pc, "vm:restep-landing-nout",
+			"re-stepped landing: the applied member returned "+strconv.Itoa(len(results))+
+				" values where the read's recorded landing claims one")
+	}
+	return append(stack[:top], results[0]), nil, nil
 }
 
 // callDynTrailTop applies a runtime FUNCTION value ON TOP of its n args to those
@@ -2631,7 +2711,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
-			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynApplyOne, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod:
+			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynApplyOne, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod,
+			compiler.OpReStepLanding:
 			// The fn-value-call boundary family: leading / trailing-1
 			// (callDynamic), interior-window (callDynamicMixed), fn-on-top
 			// (callDynTrailTop / callDynApplyTop) and the whole-frame replay
