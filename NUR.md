@@ -97,7 +97,8 @@ keep the two in sync in the same commit.
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
 | [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
 | [NUR168](#nur168) | A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
-| [NUR169](#nur169) | A paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane: `def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)` answers 42 interpreted and `fn h` compiled, with no fallback. The paren-collapse switch (core/go/engine.go stepCloseParen) has a case for a TRAILING fn applied to preceding args and one for a LEADING dynamic with `count >= 2` — whose whole test is "a dynamic value precedes args" — but NO case for `count == 1`, so the window records the member read and no call at all. Masked today because the shapes that reach it fail to compile earlier; found when `set`/`push` declared CompileStoresFn and retired that earlier gate (PR #475, reverted) | a Codex review of PR #475, 2026-09-19 |
+| [NUR173](#nur173) | A dot-read of a FN MEMBER dispatches on the compiled lane only while the map is a const-baked LITERAL. The moment the map arrives as an EVENT RESULT — a fn return, an `if` arm, a `set` — the member loses the provenance that makes the read a call, and the compiled lane returns the fn AS DATA where the interpreter applies it: `def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answers 42 interpreted and `fn h` compiled, silently, with no gate lifted. This is the defect NUR169 recorded as a one-value paren; the paren and `set` are both incidental | measurement, 2026-09-20 |
+| [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173) — the diagnosis below is wrong: the paren is incidental, and so is `set`. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane: `def h fn [[] [Integer] [42]] end def m ({} set 'f' h/v) end (m.f)` answers 42 interpreted and `fn h` compiled, with no fallback. The paren-collapse switch (core/go/engine.go stepCloseParen) has a case for a TRAILING fn applied to preceding args and one for a LEADING dynamic with `count >= 2` — whose whole test is "a dynamic value precedes args" — but NO case for `count == 1`, so the window records the member read and no call at all. Masked today because the shapes that reach it fail to compile earlier; found when `set`/`push` declared CompileStoresFn and retired that earlier gate (PR #475, reverted) | a Codex review of PR #475, 2026-09-19 |
 | [NUR166](#nur166) | A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
 | [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
 | [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
@@ -7020,9 +7021,79 @@ crash is what this record is for.
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
 
+## NUR173 — a fn member loses its dispatch provenance once the map is an event result {#nur173}
+
+**Status:** Pending (recorded 2026-09-20, by measurement).
+**Supersedes the diagnosis of** [NUR169](#nur169), which named a one-value
+paren. The paren is incidental. So is `set`.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence.** Reachable on `main` TODAY, with no gate lifted and no
+instrument — `boru run` alone:
+
+```
+def h fn [[] [Integer] [42]] end
+def mk fn [[] [Map] [{f: h/v}]] end
+def m (mk) end
+m.f
+  interp:    42
+  compiled:  fn h        <- silent
+```
+
+**What actually discriminates.** How the map ARRIVES, and nothing else. The
+same member read, the same member, the same fn:
+
+| how the map arrives | compiled |
+|---|---|
+| `def m {f: h/v} end m.f` — literal, bound directly | 42 |
+| `{f: h/v}.f` — literal, inline | 42 |
+| `def m (mk) end m.f` — literal returned by a FN | `fn h` |
+| `def m (if true [{f: h/v}] [{f: h/v}]) end m.f` — via an `if` ARM | `fn h` |
+| `def m ({} set 'f' h/v) end m.f` — via `set` | `fn h` |
+
+A const-baked literal keeps the provenance that makes an unmarked dot-read of
+a function a CALL (NUR038). An EVENT RESULT does not, so the lowering emits
+the member read and stops.
+
+**Three things it is NOT**, each ruled out by measurement rather than reading:
+
+- **Not the paren.** `(m.f)` and bare `m.f` behave identically on both lanes,
+  for every row above. NUR169's `count == 1` account of
+  `stepCloseParen`'s recorder switch does not describe this.
+- **Not `fnReturnPark`.** The two lanes DO take different arms there
+  (interpreted park 0 re-steps into a call; the check pass parks 1), but that
+  is downstream: the bare-dot rows diverge with no paren to park.
+- **Not the member TYPE.** Teaching `set`'s check-mode twin to bind the member
+  — a concrete receiver plus a concrete key, so the analysis map carries
+  `f -> fn h` exactly as the literal does — was built and measured. The bind
+  fires, the member is present, and the answer does not move. Built, measured,
+  reverted; the diagnosis is what survives.
+
+**Where it belongs.** The operand-PROVENANCE family (the 16 provenance rows of
+S1b's remaining fn-value compile failures), not the apply-lowering family. It
+is the same root as NUR170 — a container-read fn value that the compiled lane
+declines to treat as callable — and the fix has to give an event-result map's
+member the same callable provenance a baked literal's member has.
+
+**Why it matters more than its row count.** It is a SILENT WRONG ANSWER on
+ordinary code: a factory returning a map of handlers is a common shape, and
+nothing in the run says the call did not happen. It also blocks the same
+`CompileStoresFn` declaration NUR169 blocks (worth six corpus rows,
+compile failures 53 -> 47), because that declaration's whole point is to let
+fn values reach `set`.
+
 ## NUR169 — a one-value paren applies a function interpreted and skips it compiled {#nur169}
 
-**Status:** Pending (recorded 2026-09-19).
+**Status:** SUPERSEDED 2026-09-20 by [NUR173](#nur173). The witnesses below are
+real and still diverge; the DIAGNOSIS is wrong. The paren is incidental (bare
+`m.f` diverges identically) and so is `set` (a literal map returned by a fn,
+or produced by an `if` arm, diverges with no `set` anywhere). What the
+`stepCloseParen` account below calls the missing `count == 1` case is not the
+seat. Read NUR173 instead; kept here because its witnesses and its record of
+what was tried are still evidence.
+
+**Original status:** Pending (recorded 2026-09-19).
 **Found:** a Codex review of PR #475, whose `CompileStoresFn` declaration
 retired the gate that had been masking this — the programs that reach it
 did not compile at all before, so the defect had nowhere to show. The

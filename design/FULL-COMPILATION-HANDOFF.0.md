@@ -10843,3 +10843,78 @@ interpreter" — false in every one now, since nothing defers anywhere. That
 is a mechanical text sweep with no behaviour in it, and it is only left
 here because the messages ride in gate pins and each pin has to be re-read
 against the new text rather than rewritten with it.
+
+
+## NUR169 re-diagnosed as NUR173 — measured, and it is a live miscompile (2026-09-20)
+
+Picked up as "the next increment" on the strength of NUR169's record. The
+record is wrong, and four probes were enough to show it.
+
+**What NUR169 says.** A paren netting exactly ONE value that is a Function is
+auto-applied interpreted and silently skipped compiled; the seat is
+`stepCloseParen`'s recorder switch, which has a TRAILING case, a Stage-G
+leading one-arg fn-carrier case and a LEADING-dynamic `count >= 2` case, but
+no `count == 1` case. It records the two witnesses as needing the
+`CompileStoresFn` instrument (PR #475, reverted) to reproduce at all.
+
+**What the measurement says.** Both witnesses reproduce exactly as written,
+including the non-capturing twin that proves it is not a lost capture. Then
+the probes:
+
+| probe | compiled |
+|---|---|
+| `def m ({} set 'f' h/v) end (m.f)` | `fn h` |
+| `def m ({} set 'f' h/v) end m.f` — BARE, no paren | `fn h` |
+| `def m {f: h/v} end (m.f)` | 42 |
+| `def m {f: h/v} end m.f` | 42 |
+
+Bare and parenthesised agree in every row. The paren is not the
+discriminator; how the map was BUILT is. Then, with no instrument at all:
+
+| probe | compiled |
+|---|---|
+| `{f: h/v}.f` — literal, inline | 42 |
+| `def m (mk) end m.f` — the same literal returned by a fn | `fn h` |
+| `def m (if true [{f: h/v}] [{f: h/v}]) end m.f` | `fn h` |
+
+So `set` is incidental too. A const-baked literal keeps the provenance that
+makes an unmarked dot-read of a function a CALL (NUR038); an EVENT RESULT
+does not. `boru run` over the fn-result row prints `fn h` against the
+interpreter's 42 on `main` today — a silent wrong answer on a factory
+returning a map of handlers, which is ordinary code, and it needs no gate
+lifted. NUR169's belief that the shapes were unreachable is an artefact of
+the two witnesses it happened to pick.
+
+**Two wrong seats, both ruled out by measurement rather than reading.**
+
+`fnReturnPark`. A println at the decision site shows the lanes genuinely
+taking different arms for `(m.f)` — interpreted `park=0`, so the rewind lands
+on the survivor and the main loop re-steps it into a call; check pass
+`park=1`, so it is parked as a placement and no call is recorded. That looks
+exactly like the seat, and it is not: the BARE-dot rows diverge identically
+with no paren to park. It is downstream of the real cause.
+
+The member TYPE. `setMapTypedReturns` returns `d2TypedMapResidual(args[2])`,
+derived from the RECEIVER and ignoring the written value, so `{} set 'f' h/v`
+yields a map carrier with no `f` member at all while the literal carries one.
+That reads like the whole defect. A check-pass twin of `setMapHandler` was
+written — concrete receiver plus concrete key, bind the member, decline
+otherwise — and instrumented to prove it fired: `ZZ bind: key='f' val=fn h
+recv={} -> BOUND f`. The member is present and **the answer does not move**.
+Built, measured, reverted.
+
+**Where it actually belongs.** The operand-PROVENANCE family (16 of S1b's
+remaining fn-value compile failures), same root as NUR170, not the
+apply-lowering family NUR169 assigned it to. The fix must give an
+event-result map's member the same callable provenance a baked literal's
+member has. The payoff is unchanged — it still unblocks `CompileStoresFn`
+and its six corpus rows (53 -> 47) — only the route moved.
+
+**The method lesson.** NUR169 was recorded from a review's reading of a
+reverted PR and never re-derived from a run. That is process rule 3 —
+"a `what remains is…` narrowing inherits the last reader's vantage point" —
+applied to a DIAGNOSIS rather than a frontier note, and it cost a session's
+opening hour. Four probes moved it. Probe the discriminator before building
+against a recorded seat: vary ONE axis at a time (paren vs bare, literal vs
+fn-result vs if-arm vs set) and let the table name the cause.
+

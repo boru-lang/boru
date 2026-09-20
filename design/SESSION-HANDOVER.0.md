@@ -337,6 +337,34 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
+## NUR169 is re-diagnosed: it is NUR173, a LIVE silent miscompile (2026-09-20)
+
+Read this before picking up the fn-value line — it changes the next increment.
+
+NUR169 named a one-value paren and a missing `count == 1` case in
+`stepCloseParen`. **Both are wrong.** Bare `m.f` diverges identically to
+`(m.f)`, so the paren is incidental; and a literal map returned by a FN, or
+produced by an `if` ARM, diverges with no `set` anywhere, so `set` is
+incidental too. The discriminator is how the map ARRIVES: a const-baked
+literal keeps the provenance that makes an unmarked dot-read of a function a
+CALL (NUR038); an EVENT RESULT loses it.
+
+**It is reachable on `main` today with no gate lifted.** `boru run` over
+`def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end
+def m (mk) end m.f` prints `fn h` against the interpreter's 42 — a silent
+wrong answer on a factory returning a map of handlers.
+
+Recorded as [NUR173](../NUR.md#nur173); NUR169 is marked superseded, not
+deleted. Two plausible seats were ruled out by measurement and are written up
+in the handoff log: `fnReturnPark` (the lanes DO differ there, but the
+bare-dot rows have no paren to park) and the member TYPE (a check-pass bind
+for `set` was built, proven to fire, and moved nothing).
+
+**The next increment is the operand-PROVENANCE family** — 16 of S1b's
+remaining fn-value compile failures, same root as NUR170 — not the
+apply lowering. The payoff is unchanged: it still unblocks `CompileStoresFn`
+and its six rows (53 -> 47). Only the route moved.
+
 ## Where the project is
 
 The gates carry two numbers each (`test/go/langspec/lanes_test.go`): an
