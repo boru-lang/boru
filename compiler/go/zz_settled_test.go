@@ -592,3 +592,66 @@ func TestEngineRecorderAndTraceHooks(t *testing.T) {
 	e.SetRecorder(nil)
 	e.SetTrace(nil)
 }
+
+// --- the guarded landing's recorder and lowering arms (NUR173) -------------
+
+// NoteReStepLanding's gates. The landing is a NOTE on the event that produced
+// the survivor, so a value with no producing event has no op to hang it on,
+// and a VARIADIC producer leaves a runtime-variable region where the landing
+// tests one value on top. Neither declines — declining what the landing cannot
+// seat was measured at 53 -> 181 corpus compile failures, because `def x m.y`
+// is the commonest shape in the language.
+func TestNUR173NoteReStepLandingGates(t *testing.T) {
+	// An inactive recorder notes nothing at all.
+	inactive := NewEmitState()
+	inactive.NoteReStepLanding(core.NewDynamicCarrier(core.TAny), core.SrcPos{})
+	if len(inactive.landingAfter) != 0 {
+		t.Errorf("an inactive recorder must note nothing, got %v", inactive.landingAfter)
+	}
+
+	r := covRegistry(t, nil)
+	done := w8ArmCompile(t, r)
+	defer done()
+	es := r.Check.Emit.(*EmitState)
+	es.BindRegistry(r)
+
+	// No producing event: nothing to hang the op on.
+	orphan := core.NewDynamicCarrier(core.TAny)
+	es.NoteReStepLanding(orphan, core.SrcPos{})
+	if len(es.landingAfter) != 0 {
+		t.Errorf("a value with no producing event must note nothing, got %v", es.landingAfter)
+	}
+}
+
+// emitLandingAfter's gates, over a recorder that noted a landing. A lowerer
+// with no recorder has no table to read, and a MULTI-result event is left
+// alone because which of several results the rewind lands on is not this
+// model's to guess.
+func TestNUR173EmitLandingAfterGates(t *testing.T) {
+	ev := &EmitEvent{seq: 7}
+
+	// No recorder: nothing to read, nothing emitted.
+	(&lowerer{}).emitLandingAfter(ev, &emitCall{nout: 1})
+
+	es := NewEmitState()
+	es.landingAfter = map[int]core.SrcPos{7: {}}
+	var code []Instr
+	var debug []core.SrcPos
+	lw := &lowerer{es: es, code: &code, debug: &debug}
+	// A multi-result event SPENDS the note (one landing per event either way)
+	// and emits nothing.
+	lw.emitLandingAfter(ev, &emitCall{nout: 2})
+	if len(code) != 0 {
+		t.Errorf("a multi-result event must emit no landing, got %v", code)
+	}
+	if _, still := es.landingAfter[7]; still {
+		t.Error("the note is spent by the event it was hung on, whatever the lowering does with it")
+	}
+
+	// The single-result event emits the op.
+	es.landingAfter[8] = core.SrcPos{}
+	lw.emitLandingAfter(&EmitEvent{seq: 8}, &emitCall{nout: 1})
+	if len(code) != 1 || code[0].Op != OpReStepLanding {
+		t.Errorf("a single-result event must emit the landing, got %v", code)
+	}
+}
