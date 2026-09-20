@@ -28,6 +28,36 @@ func landingProg() *compiler.Program {
 	}
 }
 
+// landingNativeReg registers 0-arg NATIVE words and parks a reference to one,
+// which is the shape a landing actually dispatches. A NAMED 0-arg fn value is
+// the interpreter's property call; an ANONYMOUS one PARKS (execFnDefLiteral's
+// anonymous-0-arg rule), so a self-contained Go fn value — anonymous by
+// definition — can never reach the native rung here, and a fixture built from
+// one would be pinning behaviour the interpreter does not have.
+func landingNativeReg(t *testing.T, name string, out func() ([]core.Value, error)) (*core.Registry, core.Value) {
+	t.Helper()
+	r := seam7Reg(t)
+	r.Register(name, core.Signature{
+		BarrierPos: -1,
+		Returns:    []*core.Type{core.TInteger},
+		Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			return out()
+		}),
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+	inner := r.Lookup(name)
+	if inner == nil {
+		t.Fatalf("%s did not register", name)
+	}
+	fd := core.FnDefInfo{Name: name, Registry: r, Signatures: inner.Signatures}
+	if !vmNativeApplicable(r, fd) {
+		t.Fatalf("%s fixture does not read as natively applicable", name)
+	}
+	return r, core.NewFunction(fd)
+}
+
 // TestReStepLandingClosureArm: a compiled CLOSURE at the landing is invoked
 // through invokeClosure with no arguments, exactly as the interpreter's
 // re-step dispatches a 0-arg closure value.
@@ -54,26 +84,15 @@ func TestReStepLandingClosureArm(t *testing.T) {
 	}
 }
 
-// TestReStepLandingNativeArm: a SELF-CONTAINED Go-impl fn value with a 0-arg
-// signature applies natively, without an island — an island is an interpreter
-// entry and the censuses count every one.
+// TestReStepLandingNativeArm: a parked NATIVE fn value with a 0-arg signature
+// applies natively, without an island — an island is an interpreter entry and
+// the censuses count every one.
 func TestReStepLandingNativeArm(t *testing.T) {
-	r := seam7Reg(t)
+	r, fn := landingNativeReg(t, "zz-landing-eleven", func() ([]core.Value, error) {
+		return []core.Value{core.NewInteger(11)}, nil
+	})
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	fd := core.FnDefInfo{
-		Anonymous: true,
-		Signatures: []core.Signature{{
-			BarrierPos: -1,
-			Returns:    []*core.Type{core.TInteger},
-			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-				return []core.Value{core.NewInteger(11)}, nil
-			}),
-		}},
-	}
-	if !core.IsSelfContainedGoFnDef(fd) {
-		t.Fatal("fixture is not a self-contained Go fn value — it would not reach the native arm")
-	}
-	got, ent, err := vc.reStepLanding(r, []core.Value{core.NewFunction(fd)}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, []core.Value{fn}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("native landing: %v %v", ent, err)
 	}
@@ -85,24 +104,89 @@ func TestReStepLandingNativeArm(t *testing.T) {
 	}
 }
 
-// TestReStepLandingDriftDefers: the recorded landing claims ONE value, so a
-// member whose apply nets another count is a claim failure — loud, at the
-// landing, rather than a stack the caller cannot reconcile.
-func TestReStepLandingDriftDefers(t *testing.T) {
+// TestReStepLandingAnonymousParks: the interpreter's ANONYMOUS-0-ARG PARK,
+// which the landing must mirror in BOTH representations a lambda arrives in.
+// `def f ([] => [body])` binds the function and not the body's result, and a
+// landing that applied it anyway turned `def p (FnUtil.partial f/v 10) end (p)`
+// into a run-time claim failure (module-fn.tsv:L47) — the wrapper had already
+// been spent by the time the user's own paren called it.
+func TestReStepLandingAnonymousParks(t *testing.T) {
 	r := seam7Reg(t)
-	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+
+	// The FnDefInfo representation: a self-contained Go fn value, which is
+	// anonymous by definition (IsSelfContainedGoFnDef requires it).
 	fd := core.FnDefInfo{
 		Anonymous: true,
 		Signatures: []core.Signature{{
 			BarrierPos: -1,
-			Returns:    []*core.Type{core.TInteger, core.TInteger},
+			Returns:    []*core.Type{core.TInteger},
 			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-				return []core.Value{core.NewInteger(1), core.NewInteger(2)}, nil
+				return []core.Value{core.NewInteger(11)}, nil
 			}),
 		}},
 	}
-	_, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(fd)}, seam7Dbg, 0)
-	wantInternal(t, err, "recorded landing claims one")
+	if !core.IsSelfContainedGoFnDef(fd) {
+		t.Fatal("fixture is not a self-contained Go fn value")
+	}
+	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	got, ent, err := vc.reStepLanding(r, []core.Value{core.NewFunction(fd)}, seam7Dbg, 0)
+	if err != nil || ent != nil {
+		t.Fatalf("anonymous landing: %v %v", ent, err)
+	}
+	if len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+		t.Errorf("anonymous landing = %v, want the value parked as data", got)
+	}
+
+	// The CLOSURE representation: a lambda UNIT (CompiledFn.Lambda), which is
+	// what closureFnDef reads FnDefInfo.Anonymous off for the interpreter.
+	p := landingProg()
+	p.Consts = []core.Value{core.NewInteger(7)}
+	p.Fns = []compiler.CompiledFn{{
+		Name: "lam", NParams: 0, NLocals: 0, Lambda: true, Returns: []*core.Type{core.TAny},
+		Code:  []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpRet}},
+		Debug: []core.SrcPos{{}, {}},
+	}}
+	vcl := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{
+		Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
+	if !compiler.ClosureIsFnValue(cl) {
+		t.Fatal("fixture is not a fn-VALUE closure — the lambda rung would not consult it")
+	}
+	gotc, entc, errc := vcl.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0)
+	if errc != nil || entc != nil {
+		t.Fatalf("lambda landing: %v %v", entc, errc)
+	}
+	if len(gotc) != 1 || !gotc[0].Parent.Equal(core.TFunction) {
+		t.Errorf("lambda landing = %v, want the closure parked as data", gotc)
+	}
+}
+
+// TestReStepLandingNonFnValueClosureInvokes: the closure rung is NOT the whole
+// closure family. Only a fn-VALUE closure parks (see above); a unit that is not
+// one — a token body, an iteration handler — has no anonymous-value rule to
+// mirror and is invoked, which is what makes `def m (mk) end m.f` reach its
+// member at all when the member compiled to a unit.
+func TestReStepLandingNonFnValueClosureInvokes(t *testing.T) {
+	r := seam7Reg(t)
+	p := landingProg()
+	p.Consts = []core.Value{core.NewInteger(7)}
+	p.Fns = []compiler.CompiledFn{{
+		Name: "body", NParams: 0, NLocals: 0, Returns: []*core.Type{core.TAny},
+		Code:  []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpRet}},
+		Debug: []core.SrcPos{{}, {}},
+	}}
+	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
+	if compiler.ClosureIsFnValue(cl) {
+		t.Fatal("fixture reads as a fn-VALUE closure — it would park, not invoke")
+	}
+	got, ent, err := vc.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0)
+	if err != nil || ent != nil {
+		t.Fatalf("non-fn-value closure landing: %v %v", ent, err)
+	}
+	if n, _ := got[0].AsConcreteInteger(); n != 7 {
+		t.Errorf("non-fn-value closure landing = %v, want the unit's 7", got)
+	}
 }
 
 // TestReStepLandingStaysData: the three ways a landing leaves the value
@@ -197,18 +281,12 @@ func TestReStepLandingErrorArms(t *testing.T) {
 		t.Error("a raising closure member must surface its error, not a stack")
 	}
 
-	// The NATIVE rung: a handler that raises.
-	boom := core.FnDefInfo{
-		Anonymous: true,
-		Signatures: []core.Signature{{
-			BarrierPos: -1,
-			Returns:    []*core.Type{core.TInteger},
-			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-				return nil, core.MakeBoruError("bad_input", "landing handler raised", "boom", "", "")
-			}),
-		}},
-	}
-	if _, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(boom)}, seam7Dbg, 0); err == nil {
+	// The NATIVE rung: a parked native whose handler raises.
+	rb, boom := landingNativeReg(t, "zz-landing-boom", func() ([]core.Value, error) {
+		return nil, core.MakeBoruError("bad_input", "landing handler raised", "boom", "", "")
+	})
+	vcb := &vmContext{p: landingProg(), r: rb, ceiling: 1 << 20, stepLimit: 1 << 20}
+	if _, _, err := vcb.reStepLanding(rb, []core.Value{boom}, seam7Dbg, 0); err == nil {
 		t.Error("a raising member must surface its error at the landing")
 	}
 

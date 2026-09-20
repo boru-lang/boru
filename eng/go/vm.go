@@ -1081,6 +1081,20 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		return stack, nil, nil // data on both lanes — stepLiteral pushes it
 	}
 	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
+		// The interpreter's ANONYMOUS-0-ARG PARK in its closure representation.
+		// A fn-VALUE closure IS a `fn` / `=>` literal's value (ClosureIsFnValue
+		// asks the unit's own Lambda flag, the flag closureFnDef reads
+		// FnDefInfo.Anonymous off for the interpreter), and execFnDefLiteral
+		// leaves such a value as DATA at an empty window — which is what makes
+		// `def f ([] => [body])` bind the function and not the body's result.
+		// Applying it here spent the wrapper before the user's own paren could
+		// call it (module-fn.tsv:L47), and on a curried chain it also bought an
+		// interpreter entry for nothing: invokeFnValueClosure declines a
+		// parameterised unit and RunResolved steps the body to the same answer
+		// (bytecode-migrated.tsv:L285, callbacks.tsv:L150).
+		if compiler.ClosureIsFnValue(v) {
+			return stack, nil, nil
+		}
 		results, err := vc.invokeClosure(vc.r, v, nil)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -1096,6 +1110,17 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		// skipped anyway, where a wrong "yes" costs an interpreter entry on
 		// every read of one (module-rand.tsv:L16, `[10 20 30] r.one-of`).
 		if len(fnDef.OwnSigs()) > 0 && core.MatchFnSig(v, nil) == nil {
+			return stack, nil, nil
+		}
+		// The interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral): a lambda
+		// or macro VALUE that matched nothing — no forward args, no stack args
+		// — is DATA, so `def f ([] => [body])` binds the function and not the
+		// body's result. A NAMED 0-arg fn is the opposite: its only call form
+		// IS nullary, so it dispatches. ADR-016 forbids letting ORIGIN decide
+		// anything else, and the landing is a 0-arg window by construction, so
+		// the gate reads here exactly as it reads there. Applied is the one
+		// exception in both places — `f/v apply` asked for the application.
+		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
 			return stack, nil, nil
 		}
 		if vmNativeApplicable(vc.r, fnDef) {

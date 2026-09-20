@@ -275,3 +275,27 @@ def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]]
 def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end typeof m.g	Function	a member with NO 0-arg overload and nothing to collect stays DATA — the landing raises no no-match, because the interpreter's re-step does not
 def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m.x add 1	8	an ordinary non-fn member read is untouched by the landing
 def mkn fn [[] [Map] [{a: {b: 5}}]] end def m (mkn) end m.a.b	5	…including a chained read, where every link lands
+#
+# §9  THE LANDING IS A PROPERTY OF THE STEP, NOT OF WHO PRODUCED THE VALUE
+#     (NUR174). §8 recorded the landing at the REACH-GROUP COLLAPSE, which
+#     made the model a whitelist of producers — and `m get 'f'` is the same
+#     read written as a word call, so no collapse ever saw it. The fact is
+#     now read where check's model stands: inside stepLiteral, on the branch
+#     whose next act is execFnDefLiteral. A value the loop PARKED never
+#     reaches there, so it is an observation rather than a guess.
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'	42	the get-WORD twin: the same 0-arg member read as a word call
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end (m get 'f')	42	…inside a user paren
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def x (m get 'f') end x	42	…and def-bound, the commonest shape of all
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f' add 1	43	the landing runs before the following word takes the value
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	5 42	…and takes no stack arg
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end m get 'g' 21	22	a member that TAKES an argument still collects it through `get`
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end 5 m get 'g'	6	…from the stack as well
+def a1 fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{g: a1/v}]] end def m (mk) end typeof (m get 'g')	Function	…and with nothing to collect it stays DATA
+def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m get 'x' add 1	8	an ordinary non-fn member read is untouched
+#
+#     Three rungs the landing must mirror, because execFnDefLiteral decides
+#     them at the very index the model stands on. Each answered WRONGLY while
+#     its rung was missing, and each is the interpreter's own rule.
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/v	Function	a DISPATCH MODIFIER states data intent — the landing declines where execFnDefLiteral quotes
+def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/q	Function	…the quoting modifier likewise
+def f x:Integer => [add 1 x] end def mkp fn [[g:Function] [Function] [([] => [(g 10)])]] end def p (mkp f/v) end (p)	11	an ANONYMOUS 0-arg value is DATA at a landing (the interpreter's anonymous-0-arg park), so `def p` binds the WRAPPER and the user's own paren is what calls it

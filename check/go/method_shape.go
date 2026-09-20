@@ -706,8 +706,9 @@ func shapedReadOut(r *core.Registry, id string) core.Value {
 	return core.NewDynamicCarrier(core.TAny)
 }
 
-// noteReStepLanding records the GUARDED LANDING of a value a REACH-lowered
-// group's collapse rewinds onto and re-steps (NUR173). It is the LAST model
+// noteReStepLanding records the GUARDED LANDING of a callable value the
+// interpreter's step loop is about to re-step (NUR173; seated by NUR174). It
+// is the LAST model
 // in stepLiteral's chain on purpose: TryShapedMethodDispatch,
 // tryMemberFnArrivalDispatch and TryDynamicFnValueDispatch each resolve the
 // member and can claim an arity, and every claim is worth more than this. What
@@ -718,11 +719,11 @@ func shapedReadOut(r *core.Registry, id string) core.Value {
 //	def mk fn [[] [Map] [{f: h/v}]] end
 //	def m (mk) end
 //	m.f        -> 42 interpreted, `fn h` compiled, silently
+//	m get 'f'  -> the same read as a word call, and the same silence
 //
-// The collapse recorded that its rewind lands here (CheckState.
-// ReachReSteppedFnIDs), and the interpreter's step below DISPATCHES a callable
-// value at this exact point — an unmarked dot-read of a function is a CALL
-// (NUR038). The pass cannot tell whether the runtime value is one, and no
+// The interpreter's step below DISPATCHES a callable value at this exact
+// point — an unmarked dot-read of a function is a CALL (NUR038), and a `get`
+// call's result is re-stepped where the word stood. The pass cannot tell whether the runtime value is one, and no
 // static answer is available, so the decision is deferred to the VALUE:
 // OpReStepLanding islands a callable value through the interpreter's own
 // one-token re-step and leaves anything else untouched.
@@ -749,7 +750,30 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	if v.Quoted || v.ID == "" || core.IsConcrete(v) {
 		return
 	}
-	if !r.Check.ReachReSteppedFnIDs[v.ID] {
+	// CALLABLE-OR-NOTHING. The pass is standing exactly where the interpreter
+	// stands: noteReStepLanding is called FROM stepLiteral, in the branch whose
+	// very next act is execFnDefLiteral on a Function value. A value the loop
+	// PARKED never reaches here — parking moves the pointer past it — so this
+	// is an observation, not a guess about who put the value there.
+	//
+	// It deliberately does NOT ask which producer left it here. NUR173 recorded
+	// the fact at the reach-group collapse and NUR174's `m get 'f'` proved that
+	// whitelist incomplete: a dispatch result splices at the pointer and is
+	// re-stepped with no collapse to see it. A producer list can only ever be
+	// as complete as the shapes measured so far; the step itself cannot.
+	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) {
+		return
+	}
+	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
+	// execFnDefLiteral defers (NUR035: a group's job is to produce the value;
+	// the call belongs to whatever encloses it). The close paren reads as a
+	// boundary to nothingToCollectAfter, so without this rung `m.f/v` landed a
+	// call one token before the `/v` that says DATA, and answered 42 where the
+	// interpreter answers `fn h`. Declining costs nothing: the collapse never
+	// parks a reach group, so the survivor is re-stepped at the enclosing
+	// position and judged there with the modifier — and the tokens that follow
+	// it — actually in view.
+	if aloneInLiveReachGroup(e, valIdx) {
 		return
 	}
 	// NOTHING THE RE-STEP COULD COLLECT may follow. The landing islands the one
@@ -764,10 +788,19 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	if !nothingToCollectAfter(e, valIdx) {
 		return
 	}
-	// Once per value: a second note would hang a second op on the same event,
-	// and the fact is spent either way — this landing has been taken.
-	delete(r.Check.ReachReSteppedFnIDs, v.ID)
 	es.NoteReStepLanding(v, v.Pos())
+}
+
+// aloneInLiveReachGroup reports whether valIdx holds the only token of a
+// REACH-lowered group whose markers are still on the tape — the O(1) test
+// execFnDefLiteral makes at the same index, read the same way (the marker
+// itself says who wrote it, so no lookahead is needed).
+func aloneInLiveReachGroup(e *core.Engine, valIdx int) bool {
+	if valIdx == 0 || valIdx+1 >= e.Tape.Len() {
+		return false
+	}
+	open := e.Tape.At(valIdx - 1)
+	return open.ReachGroup && core.IsOpenParen(open) && core.IsCloseParen(e.Tape.At(valIdx+1))
 }
 
 // nothingToCollectAfter reports whether the re-step of the value at valIdx has
@@ -779,6 +812,15 @@ func nothingToCollectAfter(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	tv := e.Tape.At(valIdx + 1)
+	// A DISPATCH MODIFIER states DATA intent, and execFnDefLiteral honours it
+	// by consuming the marker and QUOTING the value rather than calling it
+	// (`m.f/v`, `m.f/q`). It is a Word by kind, so the clause below would read
+	// it as "nothing to collect" and land a call on the one read written
+	// specifically not to be one: `m.f/v` answers `fn h` interpreted and
+	// answered 42 compiled while this rung was missing.
+	if core.IsDispatchMod(tv) {
+		return false
+	}
 	// A boundary ends the statement and a WORD stops the forward phase, so in
 	// both cases the re-step has nothing written after it to take. Anything
 	// else is a token the collection could reach, and the alone-island would

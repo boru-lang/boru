@@ -97,7 +97,8 @@ keep the two in sync in the same commit.
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
 | [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
 | [NUR168](#nur168) | A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
-| [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the `get`-WORD twin and a variadic region's top remain. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
+| [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
+| [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
 | [NUR166](#nur166) | A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
 | [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
@@ -7021,6 +7022,109 @@ crash is what this record is for.
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
 
+## NUR174 — the re-step landing was recorded per PRODUCER, so the same read written as a word call was never seen {#nur174}
+
+**Status:** FIXED 2026-09-20. **Corrects the SEAT of** [NUR173](#nur173)'s fix,
+whose mechanism was right and whose recording site was a whitelist.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence** (reachable on `main` at `b39be40` by plain `boru run`, with
+NUR173 already merged):
+
+```
+def h  fn [[] [Integer] [42]] end
+def mk fn [[] [Map]     [{f: h/v}]] end
+def m (mk) end
+m get 'f'
+  interp:    42
+  compiled:  fn h        <- silent
+```
+
+`m.f` was fixed the day before. `m get 'f'` is the SAME READ written as a word
+call, and it answered wrongly, because NUR173 recorded the landing at the
+REACH-GROUP COLLAPSE and a `get` call has no collapse. A dispatch result is
+spliced at the pointer and `stepLiteral` re-steps it there, with nothing to see
+it.
+
+**The seat, and why a producer list is the wrong shape.** NUR173 put the fact in
+`CheckState.ReachReSteppedFnIDs`, written by `recordReachGroupReStep` at the
+collapse and read by `noteReStepLanding` in `stepLiteral`'s model chain. But
+`noteReStepLanding` is CALLED FROM `stepLiteral`, in the branch whose very next
+act is `execFnDefLiteral` on a Function value — and a value the loop PARKED
+never reaches it, because parking moves the pointer past. The model was already
+standing where the interpreter stands. Asking a side table who had put the value
+there added nothing and could only ever be as complete as the shapes measured so
+far.
+
+> A model that stands where the decision is made does not need to be told who
+> brought the value. A whitelist of producers is a list of the cases someone
+> thought of.
+
+So the gate is now the value's own callability, the apparatus is deleted —
+`ReachReSteppedFnIDs`, `recordReachGroupReStep` and the core-side plumbing — and
+`m.f` and `m get 'f'` are one case rather than two.
+
+**What it cost, measured before it was believed.** Widening emitted 20,710
+landing ops over one compile of every spec row, against 4,363 for the
+reach-only gate. A narrower alternative was then BUILT — recording at
+`spliceMatchResults`, the site NUR173 itself predicted — and measured at
+20,495: a **1%** saving, because nearly every fn-typed carrier the pass steps
+arrived from a dispatch splice. The economy argument evaporated on measurement,
+and with it the only reason to keep a producer list.
+
+**Three rungs of `execFnDefLiteral` the landing had to mirror.** Each was found
+by a probe written against the interpreter's own source rather than by running
+the corpus, and each was a wrong answer on its own. None is a consequence of
+widening: the first was reproduced under the NARROW gate too, which is what
+settled the design.
+
+| rung | the interpreter's rule | what the landing did without it |
+|---|---|---|
+| **anonymous-0-arg park** | a lambda / macro VALUE that matched nothing is DATA, so `def f ([] => [body])` binds the function; a NAMED 0-arg fn dispatches | applied the wrapper, so `def p (FnUtil.partial f/v 10) end (p)` met an Integer where it expected a function (`module-fn.tsv:L47`) |
+| **dispatch modifier** | a `Word/__DM` marker after the value states DATA intent and is honoured by QUOTING | `m.f/v` answered 42 against the interpreter's `fn h` — a call landed on the one read written specifically not to be one |
+| **alone in a LIVE reach group** | the group's job is to produce the value; the call belongs to whatever encloses it (NUR035) | landed one token before the `/v`, where the close paren reads as a boundary |
+
+The park is mirrored in BOTH representations a lambda arrives in: `FnDefInfo.
+Anonymous` for the interpreter's own value, and `CompiledFn.Lambda` — which is
+where `closureFnDef` reads that flag from — for a compiled closure. A first
+draft screened the closure arm for zero-arg matchability instead; that was
+SUBSUMED, because `ClosureIsFnValue` already implies `Lambda`, and keeping both
+would have left dead code behind a correct answer.
+
+**Measured cost.** Every gate at or below its ceiling and **zero regressions**:
+the four corpus ledgers (53 / 284 / 32 / 111 / 52), diagnostic parity at 351,
+runtime defers at 8, the interp-entry census at 78, and the generated sweep
+diffed against a pre-change baseline with no cell moved.
+
+**Engine entries TIGHTENED, 422 -> 420.** The park takes two rows off the
+interpreter that were paying for nothing: `bytecode-migrated.tsv:L285` and
+`callbacks.tsv:L150`, hand-written curried chains whose 1-param wrapper the
+landing invoked, had `invokeFnValueClosure` decline, and paid a `RunResolved`
+entry to step the body to the same "stays data". They already compiled
+correctly. That is `module-rand.tsv:L16`'s trade one increment on, and the
+ceiling falls with it.
+
+What proves the fix is **twelve new rows in `lang/spec/fn-value.tsv` §9** —
+nine covering the `get`-word family at every arity, and one per rung above.
+
+**What remains.** Of NUR173's list, the `get`-word twin is closed. Still open:
+
+- **A collectable token written after the survivor.** The landing stands aside
+  rather than islanding the window the interpreter's forward collection would
+  take (`OpCallDynamicMixed`'s shape).
+- **A VARIADIC producer's region top**, whose re-step belongs to the
+  mark-window machinery (`OpCallDynMixedFromMark`).
+- **The sweep's two `def container` CRASH cells** (`CALL_DYNAMIC underflow`
+  under `fn-body`, `SWAP underflow` under `module-body`), unmoved by this
+  increment.
+- A **pre-existing compile failure** this increment measured but did not widen
+  into: a container member that is an ANONYMOUS lambda declines with "0-arg
+  landing not modelable at fn value" on both the `.` and the `get` spelling
+  (`def ml {f: ([] => [9])} end ml.f`). Identical at `b39be40`; it is the
+  shaped-method guard's decline, not the landing's.
+
+
 ## NUR173 — a reach-lowered group's lone survivor is re-stepped interpreted and pushed as data compiled {#nur173}
 
 **Status:** FIXED 2026-09-20 for the reach-group family (`OpReStepLanding`).
@@ -7102,6 +7206,9 @@ belongs to the runtime value.
 1. The collapse records the fact it alone knows — `CheckState.
    ReachReSteppedFnIDs`, the third sibling of `ParenPlacedFnIDs` /
    `ParenReSteppedFnIDs` (`core/go/engine.go`, `recordReachGroupReStep`).
+   **SUPERSEDED the next day by [NUR174](#nur174)**, which found the fact is a
+   property of the STEP rather than of the producer, closed the `get`-word twin
+   with it, and deleted this apparatus. The rest of this page stands.
 2. `check`'s `noteReStepLanding` — the LAST model in `stepLiteral`'s chain,
    after the three that can resolve a member and claim an arity — NOTES the
    producing event as owing a landing. It consumes nothing, splices nothing and
@@ -7172,11 +7279,10 @@ on every read of one.
 
 **What remains.**
 
-- **The `get`-WORD twin.** `m get 'f'` is not a reach group, so no collapse
-  records it; the read's result still lands at the pointer and the interpreter
-  still dispatches it. `def m (mkf) end m get 'f'` is 42 interpreted and
-  `fn h` compiled. Same fix shape, different recording site: a dispatch result
-  spliced at the pointer with no pending forward.
+- ~~**The `get`-WORD twin.**~~ CLOSED 2026-09-20 by [NUR174](#nur174) — and
+  not in the way this line predicted. It guessed "a different recording site";
+  the answer was that there should be no recording site at all, because the
+  model already stands where the interpreter decides.
 - **A collectable token written after the survivor** — the first stand-aside
   above. Closing it means islanding the window the interpreter's forward
   collection would take, not just the value: `OpCallDynamicMixed`'s shape,

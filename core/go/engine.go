@@ -8412,12 +8412,6 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 	// for this shape and for `(mk 1) 2`, where no rewind ever arrives.
 	e.recordParenReStep(openIdx, closeIdx, park, wasReachGroup)
 
-	// The reach group's own half of the same rule (NUR173). recordParenReStep
-	// above answers the MORE-than-one-survivor question and excludes reach
-	// groups by name; this answers the ONE-survivor question they alone reach,
-	// because they are the collapse that never parks.
-	e.recordReachGroupReStep(openIdx, closeIdx, park, wasReachGroup)
-
 	// Recorder hook: the values that survived inside the paren will
 	// be re-encountered by the main loop after we set pointer back
 	// to openIdx (below). They were already emitted to the recorder
@@ -8437,46 +8431,6 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 	// (NUR038), same reason as fnReturnPark and tagReachCollapsedFn above.
 	e.creditParenSurvivorSkips(openIdx, closeIdx, reStepped)
 	return nil
-}
-
-// recordReachGroupReStep notes the single survivor of a REACH-lowered group
-// (`m.f` → `( m dot f )`) that this collapse is about to REWIND ONTO and
-// re-step — where stepLiteral dispatches it if it is callable, because an
-// unmarked dot-read of a function is a CALL (NUR038).
-//
-// The interpreter holds a concrete value there and its own re-step settles the
-// question. An analysis pass holds a CARRIER and steps past it as data, so the
-// program pushed the runtime fn as DATA where the interpreter applies it
-// (NUR173: `def mk fn [[] [Map] [{f: h/v}]] end  def m (mk) end  m.f`
-// answered 42 interpreted and `fn h` compiled, silently). This fact is what
-// check's noteReStepLanding fires on — the last model in stepLiteral's chain,
-// which notes the landing so the RUNTIME value makes the decision.
-//
-// Deliberately NOT folded into recordParenReStep: that one's contract is the
-// more-than-one-survivor case (`closeIdx > openIdx+2`, park declined), and a
-// reach group is the opposite shape — exactly one survivor, park declined by
-// KIND rather than by count.
-func (e *Engine) recordReachGroupReStep(openIdx, closeIdx, park int, wasReachGroup bool) {
-	if !wasReachGroup || park != 0 || closeIdx != openIdx+2 || openIdx >= e.Tape.Len() {
-		return
-	}
-	if e.Registry == nil || e.Registry.Check == nil {
-		return
-	}
-	v := e.Tape.At(openIdx)
-	if v.Quoted || v.ID == "" || IsConcrete(v) {
-		return
-	}
-	// The same "might be callable" test recordParenReStep and the residual
-	// lowering's auto-dispatch guard use, so every end agrees on what the
-	// rewind would have called.
-	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
-		return
-	}
-	if e.Registry.Check.ReachReSteppedFnIDs == nil {
-		e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{}
-	}
-	e.Registry.Check.ReachReSteppedFnIDs[v.ID] = true
 }
 
 // recordParenReStep notes a Function-typed carrier this collapse is about to
