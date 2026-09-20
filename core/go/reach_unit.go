@@ -27,8 +27,7 @@ import "sync"
 // ApplyReach would otherwise have interpreted, with the receiver VALUE replaced
 // by a reference to the bound parameter — no hand-lowering, no second model of
 // what a segment means. Everything else (dep freshness, the JIT re-stamp, the
-// effect fence, the internal-error degrade) is the CompiledRuntime seam's,
-// unchanged.
+// internal-error classification) is the CompiledRuntime seam's, unchanged.
 //
 // The receiver arrives as a NAMED param rather than a stack push, and that is
 // the one place this differs in shape from the interpreted chain. It was

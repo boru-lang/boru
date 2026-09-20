@@ -11,7 +11,7 @@ import (
 // (resolveDynamicApply runs only for the MAIN program residual, not fn bodies). The
 // compiler pushed [fnv, 100] WITHOUT applying, so RET saw 2 values and raised
 // "expected 1 return value, got 2" where the interpreter applies fnv → 5. The fn
-// finish now refuses a user-fn count mismatch whose residual carries a Function/
+// finish now declines a user-fn count mismatch whose residual carries a Function/
 // FnDef value → fall back → compile==interpret.
 //
 // The remaining cluster-E cases (a /v-deferred map field auto-invoked on `.field`,
@@ -44,7 +44,7 @@ func TestFnValueApplyInBody(t *testing.T) {
 		})
 	}
 
-	// NEGATIVE: my change refuses only a COUNT-MISMATCH residual carrying a Function;
+	// NEGATIVE: my change declines only a COUNT-MISMATCH residual carrying a Function;
 	// a plain fn (no fn-value) and a fn whose body's Function count MATCHES its
 	// declared [Function] return must STILL compile natively (RunCompiledStrict).
 	compiles := []struct{ name, src, want string }{

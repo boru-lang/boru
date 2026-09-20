@@ -5,7 +5,7 @@ import core "github.com/boru-lang/boru/core/go"
 // NUR037's fn-local fn (the seventy-second increment): a code body — a `do`
 // body, an `each` body, a `for-each` step — naming a fn the ENCLOSING fn's
 // body defined (`def g fn [[][Integer][def f fn [[x:Integer][Integer][x add
-// 1]] end  do [f 5]]]`) refused the whole program, because every path the
+// 1]] end  do [f 5]]]`) declined the whole program, because every path the
 // body could take baked the NAME: the closure unit's dispatch, the island's
 // re-run and the const-baked list all resolve `f` in the VM's registry,
 // which never held the enclosing unit's local (its `def f fn …` compiled
@@ -14,7 +14,7 @@ import core "github.com/boru-lang/boru/core/go"
 // increment's specFn lowering — `PUSH_CONST fn; BIND_DYN_SCOPE f` inside a
 // unit, torn down at the frame's RET as the interpreter's def-cleanup pops
 // it), so the body — compiled, islanded or interpreted — finds `f` where
-// the interpreter does. A capturing local fn keeps the refusal: its value is
+// the interpreter does. A capturing local fn keeps the compile failure: its value is
 // a closure the placement cannot bake (the seventieth's own limit), and a
 // def the current unit's frames do not hold keeps it too.
 
@@ -26,7 +26,7 @@ import core "github.com/boru-lang/boru/core/go"
 // closed body's redefinition, `do [def f …]` before an islanded read
 // (review of #468) — has no install to place, and stamping the stale
 // event would install the ORIGINAL where the interpreter runs the
-// redefinition; it refuses.
+// redefinition; it declines.
 func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
 	if es == nil || !es.Active() || name == "" || len(es.openUnitRecs) == 0 || !fnSigsDeclared(v) {
 		return false

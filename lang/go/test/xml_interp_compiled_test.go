@@ -14,13 +14,12 @@ import (
 // ("Xml") — baking that froze a wrong child (`<a>Xml</a>` instead of
 // `<a><b/></a>`). evalXmlInterp now mirrors evalInterpString: an all-concrete
 // interpolation compiles native; a hole that is non-concrete under analysis
-// refuses, so the program falls back to the interpreter and builds the real
-// tree. This test pins compiled == interpreted for every interpolation shape.
+// does not lower, so the program does not compile; the interpreter builds
+// the real tree. This test pins compiled == interpreted for every interpolation shape.
 func TestXmlInterpCompiledParity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch behavior (Stage J flipped the default
-	// to compile_failed; migrate this contract or retire it with the hatch).
-	t.Setenv("BORU_COMPILE_FALLBACK", "1")
+	// A hole the analysis cannot prove concrete is a compile failure, booked
+	// against refDefectCeiling by bookRefDefect below; the interpreted answer
+	// is asserted either way, so the fix has a target.
 	cases := []struct {
 		src  string
 		want string // the (shared) result both engines must produce

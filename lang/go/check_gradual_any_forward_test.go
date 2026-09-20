@@ -16,7 +16,7 @@ import (
 // recovered only because their String params were fed Any operands (engine/source/src
 // flowed from `opts get` over an Options receiver). Cleared the 5 pipeline errors
 // (template 12 -> 7) with compile==interpret intact (verify-bytecode PASSES — the
-// emitter still REFUSES the gradual dispatch in compile mode, since the rule is gated
+// emitter still DECLINES the gradual dispatch in compile mode, since the rule is gated
 // on !Compiling, so force-compile declines rather than baking a wrong call).
 //
 // SOUND + NARROW: only an ANY operand is accepted (gradual). A provable CONCRETE

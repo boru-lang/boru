@@ -26,7 +26,7 @@ func fcNew() (*Boru, error) {
 }
 
 // fcParityCompiledZeroBails asserts the FULL target for a source-level
-// frontier gap: the program compiles (no refusal), runs on the VM with zero
+// frontier gap: the program compiles (no compile failure), runs on the VM with zero
 // designed runtime bails, and its values, error taxonomy, AND printed output
 // are byte-identical to the interpreter's.
 func fcParityCompiledZeroBails(src string) error {
@@ -41,7 +41,7 @@ func fcParityCompiledZeroBails(src string) error {
 	gotC, compiled, reason, errC := a.RunCompiledReason(src)
 	if !compiled {
 		if reason != "" {
-			return fmt.Errorf("refused: %s", reason)
+			return fmt.Errorf("declined: %s", reason)
 		}
 		return fmt.Errorf("did not run compiled (err=%v)", errC)
 	}
@@ -77,9 +77,9 @@ func fcStampedRun(src, name string) error {
 	}
 	a.SetOutput(&bytes.Buffer{})
 	if _, _, err := a.RunCompiled(src); err != nil {
-		// A refusing fixture returns compile_failed under the Stage-J
+		// A declining fixture returns compile_failed under the Stage-J
 		// default; this case's contract is the STAMP REPORT, not the
-		// refusal policy, so fall back explicitly (the CLI's own pattern)
+		// compile failure policy, so fall back explicitly (the CLI's own pattern)
 		// and assert stamps over the interpreter run.
 		if !strings.Contains(fmt.Sprint(err), "compile_failed") {
 			return fmt.Errorf("run failed before the stamp assertion: %w", err)
@@ -101,7 +101,7 @@ func fcStampedRun(src, name string) error {
 		}
 	}
 	if attempted != nil {
-		return fmt.Errorf("stamp refused for %q: %s", name, attempted.Reason)
+		return fmt.Errorf("stamp declined for %q: %s", name, attempted.Reason)
 	}
 	return fmt.Errorf("no stamp attempt recorded for %q", name)
 }
@@ -216,7 +216,7 @@ var frontierCases = []frontierCase{
 	// compile to a correct unit and must DECLINE. The "graduated" unit
 	// silently returned the trailing arg (a constant generator — the
 	// r.int→9 miscompile that turned the trie/sort PBT suites vacuous). The
-	// decline fix (emit.go closure-residual dynMaybeFn refusal) makes the gen
+	// decline fix (emit.go closure-residual dynMaybeFn compile failure) makes the gen
 	// body interpret per-iteration, so this case is now legitimately red —
 	// ledgered below. The property body (no member-fn boundary) still
 	// compiles; only the direct rand-call gen interprets.
@@ -250,11 +250,11 @@ var frontierCases = []frontierCase{
 
 	// Phase 10 — the executed-census seeds.
 	{"p10/no-unattributed-interp-on-islanded-program", func() error {
-		// A genuine whole-program refusal (the each variadic-if knownRefusals
+		// A genuine whole-program compile failure (the each variadic-if knownCompileFailures
 		// row): today the silent fallback re-runs the source unattributed.
 		// Target: every residual interpreter entry belongs to a named C4 seam.
 		return fcNoUnattributedInterp(func(a *Boru) error {
-			_, _, _ = a.RunCompiled(zzRefusingRow) // the row raises; the entries are the assertion
+			_, _, _ = a.RunCompiled(zzFailingRow) // the row raises; the entries are the assertion
 			return nil
 		})
 	}},
@@ -293,15 +293,14 @@ var frontierCases = []frontierCase{
 		})
 	}},
 	{"p11/no-unbounded-fallback", func() error {
-		// GRADUATED 2026-07-15 (permanent pin): the Stage-J DEFAULT is
-		// compile_failed — a genuine refusal returns the reason as an
-		// error and never silently re-runs the source (the one-release
-		// BORU_COMPILE_FALLBACK=1 hatch restores the old behavior for the
-		// legacy contracts that pin it explicitly).
-		// The probe must be a refusing program that SUCCEEDS interpreted (a
-		// raising one cannot distinguish the fallback's error from a
-		// returned refusal): the paren-bounded fn-value application refuses
-		// and runs to bad_input/q on the interpreter.
+		// GRADUATED 2026-07-15 (permanent pin): a program that does not
+		// compile returns the reason as an error and never silently re-runs
+		// the source. The BORU_COMPILE_FALLBACK=1 hatch that used to restore
+		// the old behaviour retired with every other fallback on 2026-09-19.
+		// The probe must be a program that FAILS TO COMPILE yet SUCCEEDS
+		// interpreted (a raising one cannot distinguish a re-run's error from
+		// a returned compile failure): the paren-bounded fn-value application
+		// does not compile and runs to bad_input/q on the interpreter.
 		const refusingButSucceeds = `def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg`
 		a, err := fcNew()
 		if err != nil {
@@ -310,7 +309,7 @@ var frontierCases = []frontierCase{
 		a.SetOutput(&bytes.Buffer{})
 		out, compiled, rerr := a.RunCompiled(refusingButSucceeds)
 		if !compiled && rerr == nil && len(out) > 0 {
-			return fmt.Errorf("refusal resolved by the silent interpreter fallback (post-Stage-J it returns the refusal error)")
+			return fmt.Errorf("compile failure resolved by the silent interpreter re-run (post-Stage-J it returns the compile failure error)")
 		}
 		return nil
 	}},
@@ -329,9 +328,9 @@ func zzShapedInstanceE() *Boru {
 
 var frontierLedger = map[string]frontierEntry{
 	// GRADUATED 2026-07-14: p4/l-np-no-runtime-bail-after-join — BOTH stages
-	// at once: the L-JOIN refusal was a per-alternative recording leak (the
+	// at once: the L-JOIN compile failure was a per-alternative recording leak (the
 	// disjunct-distribution combos ran a user fn's ReturnsFn under the armed
-	// recording with fresh-ID alternative copies — RecordUserCall then refused
+	// recording with fresh-ID alternative copies — RecordUserCall then declined
 	// "unknown provenance"); the fix suspends the combo probes and records ONE
 	// CALL_USER with the original args (partition-joined carriers re-IDed onto
 	// the recorded results, gated by disjunctCombosTakeSig). The anticipated

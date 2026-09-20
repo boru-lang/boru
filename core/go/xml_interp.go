@@ -1,7 +1,7 @@
 package core
 
 // rebuildXmlFromTmpl is BuildXmlFromTmpl's HOLE-CONSUMING twin (OpInterpXml,
-// REFUSAL-CLOSURE §9.2c): instead of evaluating the ${...} expressions it
+// COMPILE FAILURE-CLOSURE §9.2c): instead of evaluating the ${...} expressions it
 // consumes their pre-evaluated single values from holes, in the SAME
 // traversal order the build evaluates (attributes first, then children
 // left-to-right, depth-first through nested elements). Every assembly rule

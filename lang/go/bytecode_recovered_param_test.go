@@ -12,7 +12,7 @@ import (
 // and dispatch recovers. The body unit must then be compiled against the
 // DECLARED param type (the contract the VM's CALL_USER guard enforces), not
 // strict-Any — otherwise a multi-overload word inside the body (notably
-// `convert`) sees strict-Any, matches no overload, and refuses
+// `convert`) sees strict-Any, matches no overload, and declines
 // ("unmatched dispatch recovered at convert"). This is the voxgig bloom-filter
 // `Bloom.make` → derive-m leaf (`n MathUtil.negate convert Float`). The langspec
 // differential is blind to this shape, so it is pinned as RunCompiled==Run.

@@ -7,7 +7,7 @@ import "testing"
 // (s get k)` where the get on a generic Map returns a dynamic Any); such a
 // value optimistically conforms to every type (the dynamic-modality rule), so
 // without a guard it claims quote's word-capture sig (TAtom, QuoteArgs) and then
-// refuses to compile instead of falling to the value sig (TAny, ReturnsIdentity).
+// fails to compile instead of falling to the value sig (TAny, ReturnsIdentity).
 // The guard rejects a non-concrete carrier at a /q position. This is
 // check-mode-only — at runtime the operand is concrete, so positionalMatch is
 // unaffected there. See design/legacy/module-fn-checkstate-ownership.2.ignore.

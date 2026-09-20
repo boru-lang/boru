@@ -21,7 +21,7 @@
 #
 # WHERE THE `is` ROWS ARE. `4 is Even` is the headline spelling, and it does
 # not compile: a predicate type's body is a function value, and a function
-# value reaching `is` is a Stage 3 refusal — pre-existing, and identical for
+# value reaching `is` is a Stage 3 compile failure — pre-existing, and identical for
 # the capitalised-fn form this word replaces. Those rows therefore live in
 # lang/spec/frontier/frontier-fnpred.tsv with a ledger entry, which is why
 # no `is` row appears below. Every row here compiles; the typed-def and
@@ -31,11 +31,11 @@
 # §1  The pair form — fnpred <input> <body>
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  typeof Even	Integer	the node is parented at the INPUT type, so it inherits Integer's capabilities
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def p:Even 4  p	4	a typed def admits a member
-def Even fnpred n:Integer [eq 0 (mod 2 n)]  def q:Even 5  q	ERROR:does not satisfy	…and refuses a non-member
+def Even fnpred n:Integer [eq 0 (mod 2 n)]  def q:Even 5  q	ERROR:does not satisfy	…and declines a non-member
 #
 # §2  The spec-list form — a LIST input always selects it, exactly as with fn
 def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  def p:Even 4  p	4	the spec-list form is the same type
-def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  def q:Even 5  q	ERROR:does not satisfy	…and refuses the same values
+def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  def q:Even 5  q	ERROR:does not satisfy	…and declines the same values
 #
 # §3  Both membership conventions — the body chooses
 #     (a) return a Boolean
@@ -47,7 +47,7 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  def q:Positive 0  q	ERRO
 #
 # §4  A predicate type is a TYPE: dispatch enforces it at parameters
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 4	4	a parameter admits a member
-def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5	ERROR:signature_error	…and dispatch refuses a non-member
+def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5	ERROR:signature_error	…and dispatch declines a non-member
 #
 # §5  Same type as the capitalised-fn form it replaces
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def p:Even 4  p	4	fnpred…
@@ -60,13 +60,13 @@ def E fnpred [[n:Integer]]	ERROR:fnpred_invalid_spec	an odd-length spec list: pa
 def E fnpred [[n:Integer] [1] [2]]	ERROR:fnpred_invalid_spec	…and a triple is not a pair — that is `fn`
 #     A well-shaped pair whose INPUT is not a valid param spec fails in
 #     construction, exactly as `fn`'s does — fnpred adds no new leniency.
-def E fnpred [[n:NoSuchTypeXyz] [1]]	ERROR:unknown type	an unknown param type is refused at construction
+def E fnpred [[n:NoSuchTypeXyz] [1]]	ERROR:unknown type	an unknown param type is declined at construction
 #
 # §7  `is` against a predicate type — the headline spelling for the
 #     membership a fnpred declaration creates.
 #
 #     These lived in lang/spec/frontier/frontier-fnpred.tsv until 2026-08-28,
-#     ledgered as `function value reaches is (Stage 3)`. The refusal was
+#     ledgered as `function value reaches is (Stage 3)`. The compile failure was
 #     never about `is`: a predicate NODE is a bare type literal that rides as
 #     data, and the body runs through the callback seam, not the tape. What
 #     blocked them was that the seam's nested arm declined every detached
@@ -78,7 +78,7 @@ def E fnpred [[n:NoSuchTypeXyz] [1]]	ERROR:unknown type	an unknown param type is
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  4 is Even	true	an even Integer is a member
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  5 is Even	false	an odd one is not
 def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  4 is Even	true	the spec-list form is the same type
-def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  5 is Even	false	…and refuses the same values
+def Even fnpred [[n:Integer] [eq 0 (mod 2 n)]]  5 is Even	false	…and declines the same values
 def Big fnpred n:Integer [n gt 10]  50 is Big	true	Boolean convention: true means member
 def Big fnpred n:Integer [n gt 10]  5 is Big	false	…and false means not
 def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  5 is Positive	true	None-on-failure: a non-none result means member

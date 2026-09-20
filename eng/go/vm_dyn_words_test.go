@@ -159,7 +159,7 @@ func TestClosureAsWordDeclines(t *testing.T) {
 		t.Errorf("an unbridgeable closure at a word entry declines the words path: %v %v", handled, err)
 	}
 	// A unit that recorded no declared param contract (a token body) declines
-	// too: guessing Any would apply where the interpreter refuses.
+	// too: guessing Any would apply where the interpreter declines.
 	vc.p = &compiler.Program{Fns: []compiler.CompiledFn{{NArgs: 1}}}
 	if _, ok := vc.closureAsWord(r, cl); ok {
 		t.Error("a unit without its param contract declines")

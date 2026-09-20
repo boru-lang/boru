@@ -199,7 +199,7 @@ func TestEmitIslandReport(t *testing.T) {
 	//
 	// The fixture used to be a literal-list `each` with a lambda body — a
 	// check-clean program, chosen over the `[dup mul]` spelling that does not
-	// type-check (a failed dispatch inside it refuses the compile outright,
+	// type-check (a failed dispatch inside it declines the compile outright,
 	// design/legacy/FN-VALUE-DISPATCH.0.ignore, a different report than the
 	// islanding this test is about). Since S1a of
 	// design/FULL-COMPILATION-REPLAN.0.md (2026-09-19) that each compiles
@@ -221,7 +221,7 @@ func TestEmitIslandReport(t *testing.T) {
 }
 
 func TestEmitUncompilableWithSiteCounts(t *testing.T) {
-	// A computed-START range refuses to compile (FOR_SETUP const-bakes
+	// A computed-START range fails to compile (FOR_SETUP const-bakes
 	// start/step; only a computed END lowers) but still tallies dispatch sites.
 	var stdout, stderr bytes.Buffer
 	if err := Emit(&stdout, &stderr, "for [(1 add 2), 5] [i]"); err != nil {
@@ -439,10 +439,10 @@ func TestPreflightColorAtAnchorsRelativeImports(t *testing.T) {
 		t.Fatalf("anchored preflight: %v; stderr: %s", err, stderr.String())
 	}
 	// An empty baseDir keeps the cwd behaviour run/debug rely on: from this
-	// foreign cwd the import misses and the check refuses.
+	// foreign cwd the import misses and the check declines.
 	stderr.Reset()
 	if err := PreflightColorAt(&stderr, source, "", 0, false, false, ""); err == nil {
-		t.Fatal("unanchored preflight resolved ./lib.boru from a foreign cwd; want refusal")
+		t.Fatal("unanchored preflight resolved ./lib.boru from a foreign cwd; want compile failure")
 	}
 }
 

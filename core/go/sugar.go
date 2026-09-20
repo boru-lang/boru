@@ -12,7 +12,7 @@ import "fmt"
 // the language layer binds at registration (BindSugarWord). A registry
 // with no binding for a stepped role fails loudly — the
 // `undefined_word` precedent — so a host that doesn't support a sugar
-// refuses cleanly, and the bare kernel (calc) runs with zero bindings.
+// declines cleanly, and the bare kernel (calc) runs with zero bindings.
 //
 // Design: design/legacy/LANG-ENG-CONTENT-AUDIT.0.ignore §7A. Precedents: Reach
 // (lowered by the engine), DispatchMod (peeked at dispatch), __SP

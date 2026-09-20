@@ -7,19 +7,19 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// lower_seam8_test.go covers the bytecode lowerer's Stage-2/Stage-3 REFUSAL
+// lower_seam8_test.go covers the bytecode lowerer's Stage-2/Stage-3 COMPILE FAILURE
 // arms (lower.go) — the defensive layouts that make Finalize fall back to the
 // interpreter rather than emit an unsound instruction stream. A well-formed
 // recorded trace never produces these layouts, and the eng/lang program
 // suites don't reach them, so they are driven by direct calls to the in-
 // package lowerer with hand-built EmitEvent traces (the direct-call seam the
-// fleet brief authorises, matching vm_seam7/emit_seam7). Each refusal returns
+// fleet brief authorises, matching vm_seam7/emit_seam7). Each compile failure returns
 // a non-empty reason string; the lowerer never mutates program state past the
-// refusal, so a bare *lowerer with a hand-seeded simulated stack is enough.
+// compile failure, so a bare *lowerer with a hand-seeded simulated stack is enough.
 
 // w8lw builds a fresh lowerer over an empty program, ready for direct
 // method calls. The returned *[]Instr is the emission target (rarely read;
-// the refusal arms emit nothing).
+// the decline arms emit nothing).
 func w8lw() *lowerer {
 	p := &Program{}
 	code := []Instr{}
@@ -70,7 +70,7 @@ func TestW8PlanVariadicClaimsMissingProducer(t *testing.T) {
 	}
 }
 
-// --- spillSeat: underflow + non-operand-interleaved refusals -------------
+// --- spillSeat: underflow + non-operand-interleaved compile failures -------------
 
 func TestW8SpillSeatUnderflow(t *testing.T) {
 	lw := w8lw() // empty sim stack
@@ -88,7 +88,7 @@ func TestW8SpillSeatNonOperandInterleaved(t *testing.T) {
 	}
 }
 
-// --- lowerLoop: variadic bound + count-not-on-top refusals ----------------
+// --- lowerLoop: variadic bound + count-not-on-top compile failures ----------------
 
 func TestW8LowerLoopVariadicBound(t *testing.T) {
 	lw := w8lw()
@@ -107,7 +107,7 @@ func TestW8LowerLoopCountNotOnTop(t *testing.T) {
 	}
 }
 
-// --- lowerLoop: carried-init refusals (past a const-bound FOR_SETUP) -------
+// --- lowerLoop: carried-init compile failures (past a const-bound FOR_SETUP) -------
 
 func w8constBoundLoop(carried []carriedInit) *EmitEvent {
 	return &EmitEvent{seq: 1, kind: evLoop, loop: &emitLoop{
@@ -133,7 +133,7 @@ func TestW8LowerLoopCarriedInitNotOnTop(t *testing.T) {
 	}
 }
 
-// --- lowerStore: variadic + not-on-top refusals ---------------------------
+// --- lowerStore: variadic + not-on-top compile failures ---------------------------
 
 func TestW8LowerStoreVariadic(t *testing.T) {
 	lw := w8lw()
@@ -166,7 +166,7 @@ func TestW8LowerEventsUnknownKind(t *testing.T) {
 func TestW8LowerEventsPromotedMergeNotSingle(t *testing.T) {
 	lw := w8lw()
 	// A PROMOTED branch value-def whose merge is variadic (not a clean single
-	// value on top) refuses the promoted store (lower.go:432). The const-cond
+	// value on top) declines the promoted store (lower.go:432). The const-cond
 	// branch lowers cleanly, then the post-branch store check trips because the
 	// merge slot was marked variadic.
 	lw.promoted[1] = 0
@@ -204,7 +204,7 @@ func TestW8LayoutOperandsReverseMissSpills(t *testing.T) {
 	lw := w8lw()
 	// Three event operands whose sim slots match neither the in-order nor the
 	// reverse layout: the reverse fast-path bails (slotIs miss) and the
-	// switch default spills — which, with no matching sim, refuses.
+	// switch default spills — which, with no matching sim, declines.
 	lw.vm = []vmSlot{{seq: 9, idx: 0}, {seq: 9, idx: 0}, {seq: 9, idx: 0}}
 	ops := []EmitOperand{EventOperand(1, 0), EventOperand(2, 0), EventOperand(3, 0)}
 	msg := layoutMsgs{shapeBeyond: "SHAPEBEYOND"}
@@ -222,7 +222,7 @@ func TestW8LayoutOperandsResultNotTop(t *testing.T) {
 	}
 }
 
-// --- seatResults: aboveLiteral / reordered / unconsumed refusals ----------
+// --- seatResults: aboveLiteral / reordered / unconsumed compile failures ----------
 
 func w8seatMsgs() seatMsgs {
 	return seatMsgs{variadic: "VAR", aboveLiteral: "ABOVELIT", reordered: "REORDERED", unconsumed: "UNCONSUMED"}
@@ -262,7 +262,7 @@ func TestW8FragmentOutsNilBranch(t *testing.T) {
 	}
 }
 
-// --- lowerFragment refusal / drop arms -----------------------------------
+// --- lowerFragment compile failure / drop arms -----------------------------------
 
 // w8pushEvent is a minimal make-list call event that pushes nout result
 // slots without operands (OpMakeList over 0 operands), so a fragment's
@@ -313,7 +313,7 @@ func TestW8LowerFragmentOutNilExtra(t *testing.T) {
 func TestW8LowerFragmentMultiValueNoVariadic(t *testing.T) {
 	lw := w8lw()
 	// A multi-value arm (residualN>1) presented to a position that cannot
-	// absorb a variadic merge (allowVariadic false) refuses.
+	// absorb a variadic merge (allowVariadic false) declines.
 	out := EventOperand(1, 0)
 	frag := &EmitFragment{residualN: 2}
 	if reason := lw.lowerFragment(frag, &out, false, core.SrcPos{}); !strings.Contains(reason, "branch leaves extra values") {
@@ -331,14 +331,14 @@ func TestW8LowerFragmentEventOutMismatch(t *testing.T) {
 	}
 }
 
-func TestW8LowerFragmentLeftoverRefuse(t *testing.T) {
+func TestW8LowerFragmentLeftoverFailToCompile(t *testing.T) {
 	lw := w8lw()
 	// A const out with a leftover side-effect event on the sim, at a position
-	// that may NOT trim (allowVariadic false) refuses.
+	// that may NOT trim (allowVariadic false) declines.
 	out := ConstOperand(0)
 	frag := &EmitFragment{events: []EmitEvent{w8pushEvent(5, 1)}}
 	if reason := lw.lowerFragment(frag, &out, false, core.SrcPos{}); !strings.Contains(reason, "branch leaves extra values") {
-		t.Fatalf("leftover-refuse reason = %q", reason)
+		t.Fatalf("leftover-decline reason = %q", reason)
 	}
 }
 
@@ -353,7 +353,7 @@ func TestW8LowerFragmentLeftoverDrop(t *testing.T) {
 	}
 }
 
-// w8failFrag is a fragment whose lowerFragment refuses: one event leaves a
+// w8failFrag is a fragment whose lowerFragment declines: one event leaves a
 // value the (mismatching) event out cannot claim.
 func w8failFrag() (*EmitFragment, EmitOperand) {
 	return &EmitFragment{events: []EmitEvent{w8pushEvent(5, 1)}}, EventOperand(9, 0)
@@ -370,16 +370,16 @@ func TestW8LowerContinueOutsideLoop(t *testing.T) {
 
 // --- lowerUserCall / lowerUserPolyCall ------------------------------------
 
-func TestW8LowerUserCallLayoutRefusal(t *testing.T) {
+func TestW8LowerUserCallLayoutCompileFailure(t *testing.T) {
 	lw := w8lw()
-	lw.es.fnRecs = []*fnUnitRec{{name: "f"}} // referenced by the refusal message
+	lw.es.fnRecs = []*fnUnitRec{{name: "f"}} // referenced by the compile failure message
 	ev := &EmitEvent{seq: 1, kind: evCallUser, uc: emitUserCall{unit: 0, ops: []EmitOperand{EventOperand(1, 0)}}}
 	if reason := lw.lowerUserCall(ev); !strings.Contains(reason, "result is not on top") {
 		t.Fatalf("user-call layout reason = %q", reason)
 	}
 }
 
-func TestW8LowerUserPolyCallLayoutRefusal(t *testing.T) {
+func TestW8LowerUserPolyCallLayoutCompileFailure(t *testing.T) {
 	lw := w8lw()
 	ev := &EmitEvent{seq: 1, kind: evCallUser, uc: emitUserCall{
 		unit: -1, ops: []EmitOperand{EventOperand(1, 0)}, poly: &emitUserPolySpec{word: "p"},
@@ -406,7 +406,7 @@ func TestW8LowerUserPolyCallPromotedAndDead(t *testing.T) {
 	}
 }
 
-// --- lowerFallback: threaded-input refusals -------------------------------
+// --- lowerFallback: threaded-input compile failures -------------------------------
 
 func TestW8LowerFallbackArms(t *testing.T) {
 	// Variadic threaded input.
@@ -455,7 +455,7 @@ func TestW8MarkTailCallsBranchSeqMismatch(t *testing.T) {
 	}
 }
 
-// --- lowerBranch: condition / computed-arm refusals -----------------------
+// --- lowerBranch: condition / computed-arm compile failures -----------------------
 
 func w8condEventBranch(cond EmitOperand) *EmitEvent {
 	return &EmitEvent{seq: 1, kind: evBranch, br: &emitBranch{cond: cond}}
@@ -476,19 +476,19 @@ func TestW8LowerBranchCondNotOnTop(t *testing.T) {
 	}
 }
 
-func TestW8LowerBranchCondFragRefusal(t *testing.T) {
+func TestW8LowerBranchCondFragCompileFailure(t *testing.T) {
 	lw := w8lw()
 	frag, badOut := w8failFrag()
 	ev := &EmitEvent{seq: 1, kind: evBranch, br: &emitBranch{condFrag: frag, condOut: badOut}}
 	if reason := lw.lowerBranch(ev); reason == "" {
-		t.Fatal("failing cond-frag branch should refuse")
+		t.Fatal("failing cond-frag branch should decline")
 	}
 }
 
 func TestW8LowerBranchVariadicElseLayout(t *testing.T) {
 	lw := w8lw()
 	lw.variadicElse = map[int]bool{1: true}
-	// A non-event cond in the variadic-else claim trips the stack-layout refusal.
+	// A non-event cond in the variadic-else claim trips the stack-layout compile failure.
 	ev := &EmitEvent{seq: 1, kind: evBranch, br: &emitBranch{cond: ConstOperand(0)}}
 	if reason := lw.lowerBranch(ev); !strings.Contains(reason, "variadic-else claim stack layout") {
 		t.Fatalf("variadic-else layout reason = %q", reason)
@@ -556,12 +556,12 @@ func TestW8LowerComputedCondNotBelowEager(t *testing.T) {
 	}
 }
 
-func TestW8LowerComputedCondFragRefusal(t *testing.T) {
+func TestW8LowerComputedCondFragCompileFailure(t *testing.T) {
 	lw := w8lw()
 	frag, badOut := w8failFrag()
 	_, reason := lw.lowerComputedCond(&emitBranch{condFrag: frag, condOut: badOut}, false)
 	if reason == "" {
-		t.Fatal("failing computed cond-frag should refuse")
+		t.Fatal("failing computed cond-frag should decline")
 	}
 }
 
@@ -591,7 +591,7 @@ func TestW8RewritePromotedRefsFallback(t *testing.T) {
 
 // --- lowerBranch const-cond / variadic-else arm failures -----------------
 
-func TestW8LowerBranchConstCondArmRefusal(t *testing.T) {
+func TestW8LowerBranchConstCondArmCompileFailure(t *testing.T) {
 	lw := w8lw()
 	tru := true
 	frag, badOut := w8failFrag()
@@ -599,7 +599,7 @@ func TestW8LowerBranchConstCondArmRefusal(t *testing.T) {
 		constCond: &tru, then: frag, thenOut: badOut, hasThenOut: true,
 	}}
 	if reason := lw.lowerBranch(ev); reason == "" {
-		t.Fatal("const-cond branch with a failing taken arm should refuse")
+		t.Fatal("const-cond branch with a failing taken arm should decline")
 	}
 }
 
@@ -621,7 +621,7 @@ func TestW8LowerBranchConstCondVariadicMerge(t *testing.T) {
 	}
 }
 
-func TestW8LowerBranchVariadicElseArmRefusal(t *testing.T) {
+func TestW8LowerBranchVariadicElseArmCompileFailure(t *testing.T) {
 	lw := w8lw()
 	lw.variadicElse = map[int]bool{1: true}
 	lw.vm = []vmSlot{{seq: 2, idx: 0}, {seq: 3, idx: 0}} // [elsVal, cond]
@@ -631,11 +631,11 @@ func TestW8LowerBranchVariadicElseArmRefusal(t *testing.T) {
 		then: frag, thenOut: badOut, hasThenOut: true,
 	}}
 	if reason := lw.lowerBranch(ev); reason == "" {
-		t.Fatal("variadic-else branch with a failing then arm should refuse")
+		t.Fatal("variadic-else branch with a failing then arm should decline")
 	}
 }
 
-func TestW8LowerBranchComputedCondRefusal(t *testing.T) {
+func TestW8LowerBranchComputedCondCompileFailure(t *testing.T) {
 	lw := w8lw()
 	lw.vm = []vmSlot{{seq: 5, idx: 0}} // eager value on top
 	frag, badOut := w8failFrag()
@@ -644,13 +644,13 @@ func TestW8LowerBranchComputedCondRefusal(t *testing.T) {
 		condFrag: frag, condOut: badOut,
 	}}
 	if reason := lw.lowerBranch(ev); reason == "" {
-		t.Fatal("computed branch with a failing condition should refuse")
+		t.Fatal("computed branch with a failing condition should decline")
 	}
 }
 
 // --- lowerComputedBranch arm failures -------------------------------------
 
-func TestW8LowerComputedBranchThenComputedElseRefusal(t *testing.T) {
+func TestW8LowerComputedBranchThenComputedElseCompileFailure(t *testing.T) {
 	lw := w8lw()
 	lw.emit(OpJmpIfFalse, 0, core.SrcPos{}) // pre-emit so jf=0 is a valid patch target
 	lw.vm = []vmSlot{nonEventSlot}          // the eager then value on top
@@ -660,11 +660,11 @@ func TestW8LowerComputedBranchThenComputedElseRefusal(t *testing.T) {
 		els: frag, elsOut: badOut, hasElsOut: true,
 	}}
 	if reason := lw.lowerComputedBranch(ev, 0); reason == "" {
-		t.Fatal("computed-then branch with a failing else arm should refuse")
+		t.Fatal("computed-then branch with a failing else arm should decline")
 	}
 }
 
-func TestW8LowerComputedBranchElseThenRefusal(t *testing.T) {
+func TestW8LowerComputedBranchElseThenCompileFailure(t *testing.T) {
 	lw := w8lw()
 	lw.emit(OpJmpIfFalse, 0, core.SrcPos{})
 	lw.vm = []vmSlot{nonEventSlot} // the eager else value on top
@@ -674,7 +674,7 @@ func TestW8LowerComputedBranchElseThenRefusal(t *testing.T) {
 		then:         frag, thenOut: badOut, hasThenOut: true,
 	}}
 	if reason := lw.lowerComputedBranch(ev, 0); reason == "" {
-		t.Fatal("computed-else branch with a failing then arm should refuse")
+		t.Fatal("computed-else branch with a failing then arm should decline")
 	}
 }
 

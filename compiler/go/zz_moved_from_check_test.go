@@ -33,9 +33,9 @@ func TestS5bEReturnsFnArmedRootCarrierArg(t *testing.T) {
 }
 
 // The guard-owned decline: an annotated genuine-0-arg member whose landing
-// the window model cannot claim (a raw Word in the statement window) REFUSES
+// the window model cannot claim (a raw Word in the statement window) DECLINES
 // the program — the read guard was skipped for the annotated read, so the
-// landing owns the miscompile-E refusal.
+// landing owns the miscompile-E compile failure.
 func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 	r := seam7Reg(t)
 	impl := core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
@@ -63,7 +63,7 @@ func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 	// following token belongs to the NEXT dispatch and cannot decline this
 	// one. The MODEL is attempted regardless of the follower; this synthetic
 	// carrier has NO compiled home, so RecordDynMethod declines and the
-	// guard-owned refusal moves to the operand-provenance arm — still sound,
+	// guard-owned compile failure moves to the operand-provenance arm — still sound,
 	// still interpreter-owned.
 	check.TryShapedMethodDispatch(e, 0)
 	es, ok := r.Check.Emit.(*EmitState)
@@ -71,13 +71,13 @@ func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 		t.Fatal("compile pass recorder missing")
 	}
 	if es.Compilable || !strings.Contains(es.Reason, "operand of unknown provenance at z9g") {
-		t.Errorf("want the operand-provenance refusal, got compilable=%v reason=%q", es.Compilable, es.Reason)
+		t.Errorf("want the operand-provenance compile failure, got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
 
 	// A 0-arg member whose MODEL screens out (a NoEvalArgs sig — the arity-0
-	// apply cannot bake it) keeps the guard-owned 213 refusal: the model is
+	// apply cannot bake it) keeps the guard-owned 213 compile failure: the model is
 	// attempted (the window scan is skipped for all-0-arg members) but the
-	// signature screen declines every sig, so the landing refuses rather
+	// signature screen declines every sig, so the landing declines rather
 	// than auto-dispatching as data (the miscompile-E belt, re-homed).
 	r2 := seam7Reg(t)
 	impl2 := core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
@@ -103,7 +103,7 @@ func TestShapedMethodGuardOwnedDecline(t *testing.T) {
 		t.Fatal("compile pass recorder missing (z9h)")
 	}
 	if es2.Compilable || !strings.Contains(es2.Reason, "shaped 0-arg method landing not modelable at z9h") {
-		t.Errorf("want the 0-arg guard refusal, got compilable=%v reason=%q", es2.Compilable, es2.Reason)
+		t.Errorf("want the 0-arg guard compile failure, got compilable=%v reason=%q", es2.Compilable, es2.Reason)
 	}
 }
 
@@ -119,7 +119,7 @@ func TestS6aRunFnBodyOnceErrorMarksUncompilable(t *testing.T) {
 	}
 }
 
-func TestW8RefuseForwardStackDriftOutOfRange(t *testing.T) {
+func TestW8FailToCompileForwardStackDriftOutOfRange(t *testing.T) {
 	// An out-of-range matched position bails the drift check early.
 	r := covRegistry(t, nil)
 	done := w8ArmCompile(t, r)

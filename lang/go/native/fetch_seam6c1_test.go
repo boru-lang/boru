@@ -113,7 +113,7 @@ func TestDoFetchFieldTypeErrorArms(t *testing.T) {
 }
 
 func TestDoFetchPolicyDenied(t *testing.T) {
-	// sandbox uninstalls the network scope: doFetch must refuse before
+	// sandbox uninstalls the network scope: doFetch must decline before
 	// building any request.
 	r, err := DefaultRegistryWithPolicy(loadPolicy(t, "sandbox"))
 	if err != nil {

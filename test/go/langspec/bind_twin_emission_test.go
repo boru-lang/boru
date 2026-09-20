@@ -143,8 +143,8 @@ func twinOpIdxs(code []compiler.Instr) []int {
 // recording was suspended (an each/fold body's leaking def) has no stream
 // home until its twin becomes arm-resident, and an op recorded inside a
 // discarded island vanishes with it — the FLIP is where every unplaced twin
-// must either gain an op or refuse the program, and this gate is what that
-// refusal logic will tighten.
+// must either gain an op or decline the program, and this gate is what that
+// compile failure logic will tighten.
 func TestBindTwinOpsArePlacedOrderedSubset(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex

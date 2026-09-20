@@ -69,7 +69,7 @@ func TestVMRunComputeWorksForArith(t *testing.T) {
 func TestVMRunWithExplicitPolicy(t *testing.T) {
 	a := newBoru(t, nil)
 	// Inline jsonic policy via a map literal: deny `add`, allow
-	// everything else. Sub-engine should refuse 1 add 2.
+	// everything else. Sub-engine should decline 1 add 2.
 	// Stack order for binary dispatch (top=args[0], deeper=args[1]):
 	// push policy-map first, then code string. Then Vm.run-with
 	// resolves to a FnDef and auto-invokes.
@@ -80,7 +80,7 @@ func TestVMRunWithExplicitPolicy(t *testing.T) {
 		Vm.run-with
 	`)
 	if err == nil {
-		t.Fatalf("expected Vm.run-with to refuse add, got %v", out)
+		t.Fatalf("expected Vm.run-with to decline add, got %v", out)
 	}
 	if !strings.Contains(err.Error(), "denied") && !strings.Contains(err.Error(), "add") {
 		t.Errorf("expected denial mentioning add: %v", err)
@@ -159,7 +159,7 @@ func TestVMAttenuationParentDenyRuleSurvives(t *testing.T) {
 	a := newBoru(t, parentPol)
 	// Child opens fileops with no rules — under the old subset
 	// check this slipped through. With Compose, parent's deny rule
-	// is consulted on every check and the read is refused.
+	// is consulted on every check and the read is declined.
 	_, err = a.Run(`
 		(import "boru:vm")
 		{ scopes: { fileops: { words: { default: "allow" } } } }
@@ -240,9 +240,9 @@ func TestVMCompileCompilable(t *testing.T) {
 	mustScalar(t, a, `(import "boru:vm") ((Vm.compile "1 add 2").sites).mono`, int64(1))
 }
 
-// Negative contract: an UNCOMPILABLE program is refusal-as-data — ok:false
+// Negative contract: an UNCOMPILABLE program is compile failure-as-data — ok:false
 // with the first offender named, and no Go error raised.
-func TestVMCompileRefusesAsData(t *testing.T) {
+func TestVMCompileDoesNotLowerAsData(t *testing.T) {
 	a := newBoru(t, nil)
 	out, err := a.Run(`(import "boru:vm") Vm.compile "(size (for 5 [i]))"`)
 	if err != nil {
@@ -255,7 +255,7 @@ func TestVMCompileRefusesAsData(t *testing.T) {
 	// reason is non-empty: it names why the program could not be lowered.
 	reasonLen := runScalar(t, a, `(import "boru:vm") size (Vm.compile "(size (for 5 [i]))").reason`)
 	if n, _ := reasonLen.(int64); n == 0 {
-		t.Error("expected a non-empty refusal reason")
+		t.Error("expected a non-empty compile failure reason")
 	}
 }
 

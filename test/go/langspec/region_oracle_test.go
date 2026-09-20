@@ -54,7 +54,7 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 //     binding: `keys sift-catalog` in boru:sift's `Sift.kinds`. The keys
 //     agree today because the check pass performs the same mutations the
 //     run does (a dry-passed `set` on a concrete flex) and a mutation
-//     between requests makes the next compile REFUSE (the memo's
+//     between requests makes the next compile DECLINE (the memo's
 //     materialisation guard); the operand is still not the object the
 //     interpreter reads (NUR143). Found the moment the agreement test
 //     became identity (review of #458).

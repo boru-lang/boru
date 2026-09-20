@@ -32,7 +32,7 @@ func TestNur038ReachFnWouldClaim(t *testing.T) {
 	}{
 		{"Any slot claims a literal", anyFn, NewInteger(5), true},
 		{"typed slot claims a fitting literal", intFn, NewInteger(5), true},
-		{"typed slot refuses a misfit", intFn, NewList([]Value{NewInteger(99)}), false},
+		{"typed slot declines a misfit", intFn, NewList([]Value{NewInteger(99)}), false},
 		{"end is a boundary", anyFn, NewEnd(), false},
 		{"close paren is a boundary", anyFn, NewCloseParen(), false},
 		{"forward marker is a boundary", anyFn, NewForward(ForwardInfo{}), false},
@@ -46,7 +46,7 @@ func TestNur038ReachFnWouldClaim(t *testing.T) {
 		{"a stack-only sig claims nothing forward", stackOnly, NewInteger(5), false},
 		{"a sig-less value claims nothing", Value{Parent: TFunction, Data: FnDefInfo{Name: "z"}}, NewInteger(5), false},
 		{"none is a reserved literal, like true", anyFn, NewWord("none"), true},
-		{"a typed slot refuses none", intFn, NewWord("none"), false},
+		{"a typed slot declines none", intFn, NewWord("none"), false},
 		{"a 0-arg-only fn claims nothing, even a group", Value{Parent: TFunction, Data: FnDefInfo{Name: "p0", Signatures: []Signature{
 			{BarrierPos: -1},
 		}}}, NewOpenParen(), false},

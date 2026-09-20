@@ -67,7 +67,7 @@ func (w *wireEnd) send(t *testing.T, m map[string]any) {
 	}
 }
 
-// failWriteConn refuses writes once tripped, forcing the upstream
+// failWriteConn declines writes once tripped, forcing the upstream
 // event-write error arm without racing the downstream reader.
 type failWriteConn struct {
 	net.Conn
@@ -76,7 +76,7 @@ type failWriteConn struct {
 
 func (c *failWriteConn) Write(b []byte) (int, error) {
 	if c.fail.Load() {
-		return 0, errors.New("wire write refused")
+		return 0, errors.New("wire write declined")
 	}
 	return c.Conn.Write(b)
 }
@@ -292,44 +292,44 @@ func TestAttachLoopArms(t *testing.T) {
 
 	// present failure
 	vb := tuikit.NewVirtualBackend(4, 2)
-	vb.PresentErr = errors.New("present refused")
+	vb.PresentErr = errors.New("present declined")
 	err = runSession(t, vb, nil, func(s *wireEnd) {
 		acceptHello(t, s)
 		s.send(t, textFrame)
 	})
-	if err == nil || !strings.Contains(err.Error(), "present refused") {
+	if err == nil || !strings.Contains(err.Error(), "present declined") {
 		t.Fatalf("present failure = %v", err)
 	}
 
 	// cursor failure on the visible-cursor frame…
 	vb = tuikit.NewVirtualBackend(4, 2)
-	vb.CursorErr = errors.New("cursor refused")
+	vb.CursorErr = errors.New("cursor declined")
 	err = runSession(t, vb, nil, func(s *wireEnd) {
 		acceptHello(t, s)
 		s.send(t, cursorFrame)
 	})
-	if err == nil || !strings.Contains(err.Error(), "cursor refused") {
+	if err == nil || !strings.Contains(err.Error(), "cursor declined") {
 		t.Fatalf("visible-cursor failure = %v", err)
 	}
 	// …and on the hidden-cursor frame
 	vb = tuikit.NewVirtualBackend(4, 2)
-	vb.CursorErr = errors.New("cursor refused")
+	vb.CursorErr = errors.New("cursor declined")
 	err = runSession(t, vb, nil, func(s *wireEnd) {
 		acceptHello(t, s)
 		s.send(t, textFrame)
 	})
-	if err == nil || !strings.Contains(err.Error(), "cursor refused") {
+	if err == nil || !strings.Contains(err.Error(), "cursor declined") {
 		t.Fatalf("hidden-cursor failure = %v", err)
 	}
 
 	// title failure; a non-string title is skipped (session then quits)
 	vb = tuikit.NewVirtualBackend(4, 2)
-	vb.TitleErr = errors.New("title refused")
+	vb.TitleErr = errors.New("title declined")
 	err = runSession(t, vb, nil, func(s *wireEnd) {
 		acceptHello(t, s)
 		s.send(t, map[string]any{"tag": "title", "text": "x"})
 	})
-	if err == nil || !strings.Contains(err.Error(), "title refused") {
+	if err == nil || !strings.Contains(err.Error(), "title declined") {
 		t.Fatalf("title failure = %v", err)
 	}
 	err = runSession(t, tuikit.NewVirtualBackend(4, 2), nil, func(s *wireEnd) {
@@ -343,12 +343,12 @@ func TestAttachLoopArms(t *testing.T) {
 
 	// bell failure
 	vb = tuikit.NewVirtualBackend(4, 2)
-	vb.BellErr = errors.New("bell refused")
+	vb.BellErr = errors.New("bell declined")
 	err = runSession(t, vb, nil, func(s *wireEnd) {
 		acceptHello(t, s)
 		s.send(t, map[string]any{"tag": "bell"})
 	})
-	if err == nil || !strings.Contains(err.Error(), "bell refused") {
+	if err == nil || !strings.Contains(err.Error(), "bell declined") {
 		t.Fatalf("bell failure = %v", err)
 	}
 
@@ -385,7 +385,7 @@ func TestAttachLoopArms(t *testing.T) {
 		for range s.lines { // hold the conn open until the client fails
 		}
 	})
-	if err == nil || !strings.Contains(err.Error(), "wire write refused") {
+	if err == nil || !strings.Contains(err.Error(), "wire write declined") {
 		t.Fatalf("event write failure = %v", err)
 	}
 }

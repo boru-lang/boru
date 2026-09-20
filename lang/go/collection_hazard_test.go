@@ -9,7 +9,7 @@ package lang
 // replay and the unnamed-param replay alike. The engine now notes the
 // collection hazard where the scope is known (Engine.noteCollectionHazards)
 // and the lowerings decline a marked lead. These rows pin the four witnesses
-// as refusals the interpreter absorbs and their admitted twins as parity.
+// as compile failures, and their admitted twins as parity.
 
 import (
 	"strings"
@@ -18,7 +18,7 @@ import (
 
 const hzF = `def f fn [[g:Function x:Integer][Integer]`
 
-func TestCollectionHazardRefuses(t *testing.T) {
+func TestCollectionHazardFailsToCompile(t *testing.T) {
 	rows := []struct{ src, reason string }{
 		{hzF + `[g x add 1]]  f (z:Integer => [mul 3 z]) 5`, "NUR121"},
 		{hzF + `[(g x add 1)]]  f (z:Integer => [mul 3 z]) 5`, "NUR121"},
@@ -50,11 +50,11 @@ func TestCollectionHazardRefuses(t *testing.T) {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — the hazard lead must refuse (it answered 18 for the interpreter's 16)", c.src)
+			t.Errorf("%q: compiled — the hazard lead must decline (it answered 18 for the interpreter's 16)", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		// The fallback answers the interpreter's 16 on both lanes.
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)

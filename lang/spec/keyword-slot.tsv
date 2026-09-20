@@ -34,6 +34,6 @@ def anyword fn [[w:Atom/q] [Atom] [w]]  anyword other	other/q	…any word at all
 
 # ─────────────────────────────────────────────────────────────────────
 # §6  a keyword-slot fn whose name collides with a CORE word is an
-#     ownership refusal (design/OPEN-WORDS.1.md): unanchored sigs can
+#     ownership compile failure (design/OPEN-WORDS.1.md): unanchored sigs can
 #     no longer merge onto builtin words — pick a fresh name.
-def between fn [[a:Integer in/q b:Integer] [Integer] [b sub a]]  between 3 in 10	ERROR:extend_owner	`between` is a core query word; the unanchored merge refuses
+def between fn [[a:Integer in/q b:Integer] [Integer] [b sub a]]  between 3 in 10	ERROR:extend_owner	`between` is a core query word; the unanchored merge declines

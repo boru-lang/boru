@@ -17,16 +17,16 @@ package core
 //   - Value{} — the zero Value a caller propagates when an upstream
 //     analysis produced nothing at all.
 //
-// Both must be refused with (nil, nil) BEFORE the sub-engine is built, and
+// Both must be declined with (nil, nil) BEFORE the sub-engine is built, and
 // without touching the registry (no diagnostics, no def-stack churn).
 
 import (
 	"testing"
 )
 
-// TestGatecarrier2584PayloadlessBodyRefused drives the Data == nil arm through
+// TestGatecarrier2584PayloadlessBodyFailedToCompile drives the Data == nil arm through
 // every RunCarrierBody* entry point that funnels into runCarrierBodyDefsAdds.
-func TestGatecarrier2584PayloadlessBodyRefused(t *testing.T) {
+func TestGatecarrier2584PayloadlessBodyFailedToCompile(t *testing.T) {
 	bodies := map[string]Value{
 		"non-container carrier": NewCarrier(TInteger),
 		"zero value":            {},
@@ -71,7 +71,7 @@ func TestGatecarrier2584PayloadlessBodyRefused(t *testing.T) {
 }
 
 // TestGatecarrier2584ListCarrierTakesTheAsListArm pins the boundary: a List
-// carrier DOES carry a payload, so it slips past the 2584 guard and is refused
+// carrier DOES carry a payload, so it slips past the 2584 guard and is declined
 // one guard later by AsList. Without this the two arms are easy to conflate.
 func TestGatecarrier2584ListCarrierTakesTheAsListArm(t *testing.T) {
 	body := NewCarrier(TList)

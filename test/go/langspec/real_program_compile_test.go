@@ -15,7 +15,7 @@ import (
 // Every other compile gate in this package measures the SPEC CORPUS — 7,798
 // rows whose median length is 40 characters. The compiler scores 95.9% there.
 // On real programs it scores 56%. The gap is structural, not incidental: a
-// refusal is WHOLE-PROGRAM and latches on the FIRST construct it cannot lower
+// compile failure is WHOLE-PROGRAM and latches on the FIRST construct it cannot lower
 // (design/COMPILABLE-SUBSET.md §1), so a 10,000-character file compiles only
 // if every construct in it does. A corpus of one-liners cannot see that, and
 // until this gate existed nothing in the tree measured it — the 56% was
@@ -23,7 +23,7 @@ import (
 //
 // So this walks the repo's OWN programs — the utils suite, the knowledge-graph
 // pipeline, the example apps, the module sources — and pins which of them the
-// emitter refuses. It is COMPILE-ONLY: CompileCheck records through the checker
+// emitter declines. It is COMPILE-ONLY: CompileCheck records through the checker
 // and never executes, so the gate cannot fire a program's side effects.
 //
 // realProgramLedger is the inventory of programs that do NOT compile today.
@@ -31,10 +31,10 @@ import (
 // exceptions" — not a sanctioned outcome, and not an allowlist in the sense of
 // permitting anything. It ratchets DOWN: the test fails when a ledgered
 // program starts compiling (drop the entry) just as loudly as when an
-// unledgered one starts refusing.
+// unledgered one starts declining.
 var realProgramLedger = map[string]string{
 	// The check-diagnostics sentinel: the checker produced findings, so the
-	// emitter refuses the whole program. This is the single largest blocker
+	// emitter declines the whole program. This is the single largest blocker
 	// for real code — 13 of the 27, more than the next three causes combined.
 	"bench/networking/apps/echo_redis.boru": "check diagnostics",
 	"bench/networking/apps/echo_s3.boru":    "check diagnostics",
@@ -68,10 +68,10 @@ var realProgramLedger = map[string]string{
 
 	// `kg/main.boru` GRADUATED 2026-09-19 (S1a of
 	// design/FULL-COMPILATION-REPLAN.0.md): the knowledge-graph pipeline's
-	// own entry point refused at `each` over a code body whose collection
+	// own entry point declined at `each` over a code body whose collection
 	// the pass could not type; each now declares CompileDynBody, so the
 	// dispatch lowers to a poly re-match over its own overloads instead of
-	// refusing at the ambiguous-overload gate.
+	// declining at the ambiguous-overload gate.
 
 	// A dynamic-scope def of a value the pass could not promote.
 	"utils/cut.boru": "fn cli-usage-line: dynamic-scope def `ap2` of unpromoted computed value",
@@ -95,7 +95,7 @@ func TestRealProgramsCompile(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 
 	type result struct{ path, reason string }
-	var refused, compiled []result
+	var declined, compiled []result
 
 	for _, root := range realProgramRoots {
 		walkRoot := filepath.Join(repo, root)
@@ -125,7 +125,7 @@ func TestRealProgramsCompile(t *testing.T) {
 			prog, reason, _, cerr := a.CompileCheck(string(src))
 			switch {
 			case cerr != nil:
-				// A real program either compiles or refuses; an ERROR from
+				// A real program either compiles or declines; an ERROR from
 				// CompileCheck (a parse failure, an analysis error) is a
 				// regression, never a third bucket that silently drops the file
 				// from both counts (a Codex review of #471). No discovered file
@@ -137,7 +137,7 @@ func TestRealProgramsCompile(t *testing.T) {
 			case prog != nil:
 				compiled = append(compiled, result{rel, ""})
 			default:
-				refused = append(refused, result{rel, reason})
+				declined = append(declined, result{rel, reason})
 			}
 			return nil
 		})
@@ -146,17 +146,17 @@ func TestRealProgramsCompile(t *testing.T) {
 		}
 	}
 
-	sort.Slice(refused, func(i, j int) bool { return refused[i].path < refused[j].path })
+	sort.Slice(declined, func(i, j int) bool { return declined[i].path < declined[j].path })
 
-	total := len(compiled) + len(refused)
+	total := len(compiled) + len(declined)
 	if total == 0 {
 		t.Fatal("no real programs discovered — the roots are wrong, and a gate that measures nothing passes vacuously")
 	}
 	t.Logf("real programs: %d compiled, %d FAILED to compile (%d total, %.1f%% compiled)",
-		len(compiled), len(refused), total, 100*float64(len(compiled))/float64(total))
+		len(compiled), len(declined), total, 100*float64(len(compiled))/float64(total))
 
 	byReason := map[string]int{}
-	for _, r := range refused {
+	for _, r := range declined {
 		byReason[r.reason]++
 	}
 	reasons := make([]string, 0, len(byReason))
@@ -173,9 +173,9 @@ func TestRealProgramsCompile(t *testing.T) {
 		t.Logf("  failure cause x%-3d %s", byReason[r], r)
 	}
 
-	// A program that refuses and is NOT ledgered is a regression.
+	// A program that declines and is NOT ledgered is a regression.
 	seen := map[string]bool{}
-	for _, r := range refused {
+	for _, r := range declined {
 		seen[r.path] = true
 		want, ledgered := realProgramLedger[r.path]
 		if !ledgered {

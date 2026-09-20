@@ -71,7 +71,7 @@ classify "hi"`
 		t.Errorf("single-overload predicate fn must not go poly:\n%s", oneDis)
 	}
 
-	// A ZERO-return overload set BAKES (REFUSAL-CLOSURE.0 §6a): every arm
+	// A ZERO-return overload set BAKES (COMPILE FAILURE-CLOSURE.0 §6a): every arm
 	// nets zero values, so the call site records a 0-output poly call and
 	// the VM's runtime re-match picks the arm — output parity included.
 	zeroRet := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
@@ -107,7 +107,7 @@ shout -3`
 
 	// When the poly bake DECLINES — a zero-DECLARED-return arm whose body
 	// leaves a residual (the interpreter's "residual IS the result" shape,
-	// which a 0-output call site cannot carry) — the hazard refuses the
+	// which a 0-output call site cannot carry) — the hazard declines the
 	// program: silently interpreted, so parity holds and the compile failure is hidden.
 	declining := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
 def zpick fn [
@@ -119,12 +119,12 @@ zpick -3`
 	prog, reason, _, cerr := g.CompileCheck(declining)
 	if cerr != nil || prog != nil ||
 		!strings.Contains(reason, "fn-predicate-typed overload dispatch at `zpick`") {
-		t.Errorf("declining poly bake must refuse with the hazard reason: prog=%v reason=%q err=%v",
+		t.Errorf("declining poly bake must decline with the hazard reason: prog=%v reason=%q err=%v",
 			prog != nil, reason, cerr)
 	}
 	h := mustNew(t)
 	if got, ierr := h.RunInterp(declining); ierr != nil || fmt.Sprint(got) != "[0]" {
-		t.Errorf("the refused program must interpret cleanly: got=%v err=%v", got, ierr)
+		t.Errorf("the declined program must interpret cleanly: got=%v err=%v", got, ierr)
 	}
 }
 

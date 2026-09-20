@@ -1,7 +1,7 @@
 // The single live census of compiled-coverage state.
 //
 // Three surfaces report on how much of the spec corpus the bytecode compiler
-// covers: the refusal/island ceilings (TestCompiledCoverage), the re-scoped P7
+// covers: the compile failure/island ceilings (TestCompiledCoverage), the re-scoped P7
 // tier partition (TestOnlyMetaFallsBack), and the generated status document
 // (TestCompiledStatus). They used to walk the corpus independently and emit
 // only to t.Logf, so the live numbers lived nowhere durable — they had to be
@@ -31,22 +31,22 @@ import (
 )
 
 // census is the whole-corpus tally: the per-row disposition (native /
-// islanded / refused / static check-error) plus the re-scoped-P7 tier
+// islanded / declined / static check-error) plus the re-scoped-P7 tier
 // partition over every not-fully-native row. A field added here is folded
 // in add as well — that is how one file's partial reaches the whole.
 type census struct {
 	rows     int
 	compiled int // native + islanded
 	islanded int // subset of compiled that still embeds an OpFallback island
-	checkErr int // statically invalid in BOTH engines — not a refusal
-	refused  int // nil Program, no check error
+	checkErr int // statically invalid in BOTH engines — not a compile failure
+	declined int // nil Program, no check error
 
-	refusalBuckets map[string]int // normaliseReason -> count, over refused rows only
-	refusedRows    []refusedRow   // one entry per refused row, in corpus order
-	byFile         map[string]int // spec basename -> refused rows in it, for EVERY walked file (zero included): the per-file ledger's live side (compile_failure_ledger_test.go)
+	refusalBuckets map[string]int // normaliseReason -> count, over declined rows only
+	refusedRows    []refusedRow   // one entry per declined row, in corpus order
+	byFile         map[string]int // spec basename -> declined rows in it, for EVERY walked file (zero included): the per-file ledger's live side (compile_failure_ledger_test.go)
 
 	// Re-scoped P7 partition (design/legacy/boru-bytecode-completion.0.ignore §3) over the
-	// not-fully-native rows (refused OR islanded): tier 1 interpreter-only
+	// not-fully-native rows (declined OR islanded): tier 1 interpreter-only
 	// (permanent), tier 2 reducible (TODO), allowlisted error rows, and the
 	// remaining compute frontier.
 	interp      int
@@ -59,14 +59,14 @@ type census struct {
 	computeBy   map[string]int
 }
 
-// refusedRow identifies one spec row the bytecode compiler refused to lower —
-// enough for TestRefusalsAreFailures to fail on it by exact source and point a
+// refusedRow identifies one spec row the bytecode compiler declined to lower —
+// enough for TestCompileFailuresAreBugs to fail on it by exact source and point a
 // contributor at the offending row.
 type refusedRow struct {
 	file   string // spec basename, e.g. "apply.tsv"
 	line   int    // 1-based line within the file
 	input  string // the row's source (the trimmed first TSV column)
-	reason string // the whole-program refusal reason
+	reason string // the whole-program compile failure reason
 }
 
 var (
@@ -142,8 +142,8 @@ func computeCensus() (*census, error) {
 // the two gate tests exactly (their ceilings are the safety net): a
 // check-error row is statically invalid in both engines, an islanded Program
 // still re-enters the interpreter at run time, and a nil Program with no
-// check error is a refusal. The tier partition classifies every NOT-fully-
-// native row — refused or islanded — first by the permanent/reducible word
+// check error is a compile failure. The tier partition classifies every NOT-fully-
+// native row — declined or islanded — first by the permanent/reducible word
 // allowlists (classify), then as an allowlisted error row, else as a
 // compute-frontier gap.
 func tallyFile(file string, rows []specRow) (*census, error) {
@@ -163,11 +163,11 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 		a.SetClock(specClock)
 		prog, reason, res, cerr := a.CompileCheck(input)
 
-		// A refusal from a pass that substituted a fn-carrier read
+		// A compile failure from a pass that substituted a fn-carrier read
 		// (Stage 1) classifies with the check-diagnostics sentinel it
-		// refused behind before the substitution landed: RunCompiled
-		// keeps the same silent interpreter fallback for this class,
-		// so it is not a hard refusal (the frontier compile ledger
+		// declined behind before the substitution landed: RunCompiled
+		// keeps the same silent interpreter re-run for this class,
+		// so it is not a hard compile failure (the frontier compile ledger
 		// tracks its precise reasons row by row).
 		if cerr != nil || reason == "check diagnostics" ||
 			(prog == nil && res.FnCarrierReadSubstituted) {
@@ -181,7 +181,7 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 				c.islanded++
 			}
 		} else {
-			c.refused++
+			c.declined++
 			c.refusalBuckets[normaliseReason(reason)]++
 			c.refusedRows = append(c.refusedRows, refusedRow{
 				file: r.File, line: r.Line, input: input, reason: reason,
@@ -190,23 +190,23 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 		if prog != nil && !islanded {
 			continue // fully native — outside the tier partition
 		}
-		// Refused or islanded: classify into the P7 partition.
+		// Declined or islanded: classify into the P7 partition.
 		//
-		// A refused/islanded row whose SPEC expects an error is a
-		// correct-error row: the checker refuses (or islands) so the
+		// A declined/islanded row whose SPEC expects an error is a
+		// correct-error row: the checker declines (or islands) so the
 		// interpreter raises the matching taxonomy, and the full-corpus gate
 		// confirms parity. The spec's ERROR: marker is the authoritative
 		// signal — it distinguishes these from value rows that happen to share
-		// a refusal reason (`x/v` illegal_ref vs `mini re` dynamic output both
-		// refuse "...unknown provenance"). errorRowReason stays as a secondary
+		// a compile failure reason (`x/v` illegal_ref vs `mini re` dynamic output both
+		// decline "...unknown provenance"). errorRowReason stays as a secondary
 		// signal for the few error reasons that are intrinsically diagnostic.
 		//
 		// This disposition is checked BEFORE tier-2, so an error row is never
 		// mis-counted as reducible compiler debt merely because its source
 		// mentions a tier-2 word. (Example of an ERROR row that previously
-		// refused: `mini re 'a'` with no import — the interpreter raises
+		// declined: `mini re 'a'` with no import — the interpreter raises
 		// mini_unknown_lang; these compile to a top-level OpTrap now, but a
-		// nested occurrence still declines the trap and refuses here.) Note
+		// nested occurrence still declines the trap and declines here.) Note
 		// macro.tsv:45 (`def loopy (macro [[a] [quote [loopy unquote a]]])
 		// macroexpand (loopy 1)`, ERROR:expansion too deep) no longer reaches
 		// this branch at all: it COMPILES to a terminal macroexpand_error
@@ -217,17 +217,17 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 		// A row whose SOURCE mentions a tier-2 word but whose actual blocker is
 		// the SOUNDNESS frontier (a dynamically-fetched fn value with lost
 		// provenance) is attributed to the COMPUTE frontier, not word-specific
-		// debt. The tier-2 bucket is for rows refused by a WORD-CLASS gap the
+		// debt. The tier-2 bucket is for rows declined by a WORD-CLASS gap the
 		// compiler does not model (rootCause "coverage": code-body higher-order
 		// words like flex's `walk`, the test harness's `test-check-prop`). usurp
 		// itself COMPILES (`add/u 1 2` → 3); the path-modifier rows `m.a/u 1 2`
-		// refuse on "operand provenance" (rootCause "soundness") — usurp of a
+		// decline on "operand provenance" (rootCause "soundness") — usurp of a
 		// MAP-STORED fn, the exact dynamic-fn-application frontier its non-usurp
-		// sibling `m.a 1 2` also refuses on, and which the usurp `why` explicitly
+		// sibling `m.a 1 2` also declines on, and which the usurp `why` explicitly
 		// excludes from its residual ("quote/codequote or a non-fn target"). They
 		// surfaced INTO this partition only because the checker false-positive
 		// fixes (15b9fb1: flex / stored-fn-ref) moved them from check-error
-		// (uncounted) to refused value rows — real debt newly visible, not a
+		// (uncounted) to declined value rows — real debt newly visible, not a
 		// compiler regression, and it belongs to the frontier they actually hit.
 		soundnessFrontier := tier == 2 && rootCause(bucket) == "soundness"
 		switch {
@@ -249,7 +249,7 @@ func tallyFile(file string, rows []specRow) (*census, error) {
 			c.computeRows = append(c.computeRows, firstN(input, 88)+" — "+r)
 		}
 	}
-	c.byFile[file] = c.refused // the file's own line of the per-file ledger, zero included
+	c.byFile[file] = c.declined // the file's own line of the per-file ledger, zero included
 	return c, nil
 }
 
@@ -260,7 +260,7 @@ func (c *census) add(p *census) {
 	c.compiled += p.compiled
 	c.islanded += p.islanded
 	c.checkErr += p.checkErr
-	c.refused += p.refused
+	c.declined += p.declined
 	addCounts(c.refusalBuckets, p.refusalBuckets)
 	addCounts(c.byFile, p.byFile)
 	c.refusedRows = append(c.refusedRows, p.refusedRows...)

@@ -49,7 +49,7 @@ var eventKindSites = map[string]string{
 	"RewritePromotedRefs":     "lower.go — rewrites promoted operand refs (a missing case leaves them stale)",
 	"collectPromotableEvents": "lower.go — which events may be promoted to frame locals",
 	"planValueDefLocals":      "lower.go — the promotion plan itself",
-	"lowerEvents":             "lower.go — the emission (default: REFUSES, \"unknown event kind\" — the shape worth copying)",
+	"lowerEvents":             "lower.go — the emission (default: DECLINES, \"unknown event kind\" — the shape worth copying)",
 	"singleOutputCall":        "lower.go — is this a promotable single-result call? (default: false)",
 	"fragSingleResidual":      "lower.go — does the fragment net exactly one value?",
 	"fragmentOuts":            "lower.go — the fragment's out operands",

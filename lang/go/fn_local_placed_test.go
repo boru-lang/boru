@@ -8,14 +8,14 @@ import (
 
 // NUR037's fn-local fn (the seventy-second increment): a code body — a
 // `do` body, an `each` body — naming a fn the ENCLOSING fn's body defined
-// refused the whole program, since every path the body could take resolved
+// declined the whole program, since every path the body could take resolved
 // the name in the VM's registry, which never held the enclosing unit's
 // local (its `def f fn …` compiled away, the unit reaching f by index). The
 // def is placed now as a registry-visible install for the frame
 // (placeFnLocalDef: the seventieth increment's `PUSH_CONST fn;
 // BIND_DYN_SCOPE f` inside a unit, torn down at RET), so the body —
 // compiled, islanded or interpreted — finds f where the interpreter does.
-// A capturing local fn keeps the refusal (its value is a closure the
+// A capturing local fn keeps the compile failure (its value is a closure the
 // placement cannot bake).
 func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 	const local = "def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end "
@@ -94,19 +94,19 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 			t.Errorf("%q: got %s, want %s", c.src, got, c.want)
 		}
 	}
-	refused := []struct{ src, reason string }{
+	declined := []struct{ src, reason string }{
 		// A capturing local fn: its value is a closure the placement cannot
 		// bake.
 		{"def g fn [[k:Integer][Integer][def f fn [[x:Integer][Integer][x add k]] end do [f 5]]] end g 10", "code-body names fn-local fn `f` at `do`"},
 		// The current binding is a CLOSED body's redefinition (review of
 		// #468): the unit's def event is the original's, not the current
-		// binding's, so there is no install to place — refused, where
+		// binding's, so there is no install to place — declined, where
 		// stamping the stale event installed the original (6 for 15).
 		{local + "do [def f fn [[x:Integer][Integer][x add 10]] end] do [raise x \"e\"] error [f 5]]] end g", "code-body names fn-local fn `f` at `do`"},
 		// The same rule where the redefining body is the reading one: the
 		// body's def replaces the local in place (the overlap rule) before
 		// the site records, so the current binding is the closed body's
-		// (55 and 111 answered by index before the review; refused now).
+		// (55 and 111 answered by index before the review; declined now).
 		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5]]] end g", "code-body names fn-local fn `f` at `do`"},
 		{local + "do [def f fn [[x:Integer][Integer][x add 50]] end f 5] f 6 add]] end g", "code-body names fn-local fn `f` at `do`"},
 		// A VALUE read of the local (review of #468): the closure returned
@@ -115,7 +115,7 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 		{"def g fn [[][Any][def f fn [[x:Integer][Integer][x add 1]] end do [f/v]]] end g", "code-body names fn-local fn `f` at `do`"},
 		{"def g fn [[][Any][def f fn [[x:Integer][Integer][x add 1]] end do [f/u 5]]] end g", "code-body names fn-local fn `f` at `do`"},
 	}
-	for _, c := range refused {
+	for _, c := range declined {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -125,7 +125,7 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
 		if prog != nil || !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: want the refusal %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
+			t.Errorf("%q: want the compile failure %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)

@@ -1508,7 +1508,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// true` parks a forward whose operands never all arrive — a word
 	// between the marker and its operands produced no residual — and the
 	// program ends with the forward still pending, which is exactly what
-	// this resolves and refuses. The pragma that stood here is gone with
+	// this resolves and declines. The pragma that stood here is gone with
 	// the unreachability it claimed.
 	if err := e.resolveOrphanedForwards(); err != nil {
 		return nil, e.faultReturn(err)
@@ -1556,8 +1556,8 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			// elides gen. Record a TERMINAL trap so a compiled program raises
 			// the byte-identical gen_without_constructor error at this point
 			// (orphan gen errors at end-of-run, exactly where this fires)
-			// instead of refusing; if the trap can't be recorded (nested), keep
-			// the blanket-refusal flag so the program falls back.
+			// instead of declining; if the trap can't be recorded (nested), keep
+			// the blanket-compile failure flag so the program falls back.
 			if !e.Registry.analysisRecorder().RecordTrap("gen_without_constructor",
 				"gen: parameter spec was not consumed by a type constructor", "gen",
 				"hint: follow gen [...] with refine Record [...], class {...}, fnsig [...], or fn [...]",
@@ -1906,7 +1906,7 @@ func (e *Engine) ScratchParenSpan(items []Value) []Value { return e.expandParenE
 // arm keeps it in the per-pass side table, core/go/check_fncarrier.go), so
 // the plan walk and the per-candidate scan saw a bare WORD at the slot and
 // `each f/v [1 2 3]` dispatched with the token itself at each's Function
-// slot: no overload matched, and the compile pass refused "unmatched
+// slot: no overload matched, and the compile pass declined "unmatched
 // dispatch recovered at each" where the plain pass — running the factory's
 // body and binding the concrete fn — typed the same program clean. The
 // seat resolves the table the way the pointer's own read does (stepWord's
@@ -2241,9 +2241,9 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			// Check mode is lenient (the illegal_ref diagnostic is advisory), but
 			// the interpreter raises illegal_ref here at runtime. Record a TERMINAL
 			// trap so a compiled program raises the byte-identical error in place
-			// instead of refusing on the downstream Undefined placeholder. Only a
+			// instead of declining on the downstream Undefined placeholder. Only a
 			// top-level trap is recordable; a nested /u keeps the placeholder path
-			// and refuses (falls back) as before.
+			// and declines (falls back) as before.
 			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "", e.currentPos())
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
@@ -2316,9 +2316,9 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			// producing event and `(pmany digit/v)` compiled to a 0-arg
 			// call. With the notes the read lowers as the bare read's
 			// twin, which is what lets `each f/v [1 2 3]` dispatch and
-			// compile; the APPLY shapes (`5 f/v apply`) still refuse, at
+			// compile; the APPLY shapes (`5 f/v apply`) still decline, at
 			// their own gate rather than at this read, and the frontier's
-			// pmany / pseq rows refuse earlier than this read today and
+			// pmany / pseq rows decline earlier than this read today and
 			// stay pinned there. No noteWordRead: a `/v` read never
 			// dispatches.
 			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
@@ -2488,7 +2488,7 @@ func (e *Engine) stepWord(val Value) error {
 	// other piece of data — exactly the case `valof` exists to enable. /v
 	// is TOTAL over binding kinds: for a fn it suppresses the call, for
 	// anything else it is the identity, so one spelling reads a slot whose
-	// kind is not known statically. Only an unbound name refuses (NUR085).
+	// kind is not known statically. Only an unbound name declines (NUR085).
 	if w.ForceVal {
 		return e.stepWordVal(val, w)
 	}
@@ -2582,7 +2582,7 @@ func (e *Engine) stepWord(val Value) error {
 			// raises undefined_word, because an ALIAS binding is not Minted
 			// and so retires no node (basic/go/native_definition.go's undef
 			// type arm) — the baked ID keeps resolving after its binding is
-			// gone. The value-name twin of both rows has been refused since
+			// gone. The value-name twin of both rows has been declined since
 			// the freeze discipline landed; only the type half was missing.
 			//
 			// No IsConcrete conjunct here, deliberately. On the value side
@@ -2656,7 +2656,7 @@ func (e *Engine) stepWord(val Value) error {
 				// Freeze discipline: a CONCRETE module-scope binding read inside
 				// an open fn/closure unit bakes into the unit across calls, where
 				// the interpreter re-resolves the name per call — a later module
-				// rebind would diverge. Note it so NotifyNameRebound refuses.
+				// rebind would diverge. Note it so NotifyNameRebound declines.
 				e.noteBindingRead(w.Name, top)
 			}
 			// A def'd word binds a VALUE: push it as-is. Lists bind like
@@ -2745,7 +2745,7 @@ func (e *Engine) stepWord(val Value) error {
 			// event for the resolved literal (loud no-match commits
 			// included) — `tape.Set + return nil` would silently strand
 			// a pending collection that the pre-opacity parser literal
-			// used to satisfy or refuse loudly.
+			// used to satisfy or decline loudly.
 			lit := NewTypeLiteral(t)
 			lit.pos = val.pos
 			e.Tape.Set(e.Pointer, lit)
@@ -2776,7 +2776,7 @@ func (e *Engine) stepWord(val Value) error {
 		// per-pass side table: the read substitutes the carrier exactly as
 		// a def-value read would, with the same use + NoteDefRead
 		// provenance, so `def h (mk 1)  (h 2)` feeds the carrier-lead
-		// apply machinery (IsFnTypedCarrier) instead of refusing the unit
+		// apply machinery (IsFnTypedCarrier) instead of declining the unit
 		// with a false undefined_word. This used to be compile-pass-scoped
 		// on the premise that a PLAIN check never holds a table entry (a
 		// factory's `fn` handler runs in check and constructs the concrete
@@ -2805,7 +2805,7 @@ func (e *Engine) stepWord(val Value) error {
 			e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 			e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
 			e.noteWordRead(cv, w.Name, val.Pos())
-			// Mark a COMPILE pass: if it ends in a refusal anyway, the
+			// Mark a COMPILE pass: if it ends in a compile failure anyway, the
 			// compile entry points keep the SILENT interpreter
 			// fallback this program class had before Stage 1 (the
 			// read used to raise the check-diagnostics sentinel).
@@ -2928,7 +2928,7 @@ func (e *Engine) stepWord(val Value) error {
 	// APPLIES the moment a value lands on it in the interpreter. A dispatch that
 	// instead consumes that value while the fn sits stranded just below it
 	// (`m.double 21 eq 42` — `eq` grabs 21, and the fn is then applied WRONGLY at
-	// the residual tail) diverges. Refuse so the body falls back. The
+	// the residual tail) diverges. Decline so the body falls back. The
 	// statement-tail apply (`m.double 21`, nothing dispatches above the fn) is
 	// unaffected — its residual [fn, 21] lowers to the correct trailing apply.
 	CheckBraid.RefuseStrandedMemberFn(e, positions)
@@ -2956,11 +2956,11 @@ func (e *Engine) stepWord(val Value) error {
 	// dynamic value to a deeper leading residual (`add` over [dyn, 5] → 5+7).
 	// The residual-window operand accounting across the reified-error / island
 	// boundary is unsound as a STATIC record — but a TERMINAL window models it
-	// faithfully as a runtime island (tryRecordDriftWindow, REFUSAL-CLOSURE §1):
+	// faithfully as a runtime island (tryRecordDriftWindow, COMPILE FAILURE-CLOSURE §1):
 	// the window re-steps [residual, dynamic value, word, forward literal]
 	// verbatim, so the island's own dispatch performs the interpreter's
 	// forward collection. Shapes the window declines (non-terminal, variadic
-	// operands, non-contiguous) keep the refusal and fall back. The
+	// operands, non-contiguous) keep the compile failure and fall back. The
 	// interpreter and plain check mode are untouched (recorder inactive).
 	if DriftWindowRecorder(e, w, sig, positions) {
 		return nil
@@ -3231,7 +3231,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// VALUE dispatch (a module wrapper's trivial-delegation
 		// short-circuit steps the Function literal, not a Word) — the
 		// match's own name. A true anonymous lambda has both empty,
-		// which is what the emit pass keys its fn-value refusal on.
+		// which is what the emit pass keys its fn-value compile failure on.
 		name := match.Name
 		var pos SrcPos
 		if e.Pointer < e.Tape.Len() {
@@ -3273,7 +3273,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			// carry known provenance (EmitState.FoldFullStack), so
 			// depth/pick/roll compile instead of dying at Finalize as
 			// residuals of unknown provenance. A declined fold keeps the
-			// twin's carrier results and the historical refusal path.
+			// twin's carrier results and the historical compile failure path.
 			if folded, ok := e.Registry.analysisRecorder().FoldFullStack(name, match.Args, preserved); ok {
 				results = folded
 			}
@@ -3918,7 +3918,7 @@ func (e *Engine) stepLiteral() error {
 			// carrier's type is a bound, not a proof — it stays poisoned.
 			// Poisoning marks the program uncompilable; the check proceeds
 			// with the carrier approximation, and the dyn-body backstop (or
-			// the whole-program fallback) owns the shape with the
+			// the compile failure) owns the shape with the
 			// interpreter's own runtime semantics. Suspended analyses (a
 			// ReturnsFn body run) stay silent — only a LIVE recording is
 			// poisoned.
@@ -3926,14 +3926,14 @@ func (e *Engine) stepLiteral() error {
 				!IsConcrete(info.Data) && !IsBareTypeNode(info.Data) &&
 				(info.Data.Dynamic || info.Data.Parent == nil ||
 					TList.ConformsTo(info.Data.Parent) || info.Data.Parent.ConformsTo(TList)) {
-				// REFUSAL-CLOSURE §9.2b: record the spread as an OpSpliceDyn
+				// COMPILE FAILURE-CLOSURE §9.2b: record the spread as an OpSpliceDyn
 				// event over the payload operand — the VM spreads a DATA
 				// payload exactly as the marker re-step (spliceExpand) and
 				// DEFERS to the interpreter for a code-bearing one. The
 				// result count is runtime-variable, so the event is variadic
 				// (only the program residual absorbs it; fixed-arity
-				// consumers keep refusing). An unresolvable payload keeps
-				// the refusal.
+				// consumers keep declining). An unresolvable payload keeps
+				// the compile failure.
 				if !rec.RecordSpliceDyn(info.Data, e.Tape.At(valIdx).Pos()) {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
@@ -3958,12 +3958,12 @@ func (e *Engine) stepLiteral() error {
 		if e.Registry.analysisActive() && CheckBraid.TryShapedMethodDispatch(e, valIdx) {
 			return nil
 		}
-		// Container-member fn arrival-apply (REFUSAL-CLOSURE.0 §3): a
+		// Container-member fn arrival-apply (COMPILE FAILURE-CLOSURE.0 §3): a
 		// pinpointed member-fn read carrier whose single signature's arity
 		// of inert tokens follows — model the interpreter's auto-dispatch
 		// mid-expression (`m.double 21 eq 42` applies BEFORE `eq`). Declines
 		// leave the carrier to today's paths (the statement-tail Finalize
-		// apply, refuseStrandedMemberFn's refusal).
+		// apply, refuseStrandedMemberFn's compile failure).
 		if e.Registry.analysisActive() && CheckBraid.TryMemberFnArrivalDispatch(e, valIdx) {
 			return nil
 		}
@@ -4249,7 +4249,7 @@ func AutoEvalConsumedMap(r *Registry, v Value, dataMap bool) (Value, error) {
 // (EmitRecorder.PushInlineCtxBoundary — NUR054): the sub-run's RUNTIME twin
 // pushes a context layer (Engine.Run's Contexts Push/Pop pair), but its
 // recorded events lower INLINE into the enclosing unit (OpMakeList /
-// OpInterp assembly), so an ambient-context write inside it must refuse
+// OpInterp assembly), so an ambient-context write inside it must decline
 // rather than compile one scope too shallow. Outside analysis the wrapper is
 // exactly RunPooledSub — the hot interpreter path pays nothing.
 func (e *Engine) runInlineCtxRegion(input []Value, elemEvalRecordable bool) ([]Value, error) {
@@ -4337,7 +4337,7 @@ func (e *Engine) evalInterpString(val Value) (Value, error) {
 		// already recorded their own dispatch events, and OpInterp pops their
 		// results and rebuilds the string at run time (byte-identical to
 		// evalInterpParts). The static result is a String carrier either way; on
-		// the rare unlowerable shape (a hole producing 0 or >1 values) refuse and
+		// the rare unlowerable shape (a hole producing 0 or >1 values) decline and
 		// fall back. Mirrors RecordMakeMap — re-assembled per run, no const bake.
 		out := NewCarrier(TString)
 		if es := e.Registry.analysisRecorder(); es.Active() {
@@ -4361,7 +4361,7 @@ func (e *Engine) evalInterpString(val Value) (Value, error) {
 // signal interrupted the walk) — the precondition evalInterpString needs to
 // lower the template to OpInterp (one operand-stack value per hole). When a
 // hole yields zero or several values, holesOK is false and holes is unused
-// (the caller refuses compilation and falls back); the string itself is still
+// (the caller declines compilation and falls back); the string itself is still
 // built faithfully.
 func (e *Engine) evalInterpParts(parts []InterpPart) (s string, dynamic bool, holes []Value, holesOK bool, err error) {
 	var buf strings.Builder
@@ -4436,11 +4436,11 @@ func (e *Engine) EvalXmlInterp(val Value) (Value, error) {
 		// constant: baking the check-mode tree would freeze a wrong child (a
 		// carrier renders as its type tag, e.g. "Xml") and diverge from the
 		// interpreter, which builds the real tree at run time. When recording,
-		// lower it to OpInterpXml (REFUSAL-CLOSURE §9.2c): the hole
+		// lower it to OpInterpXml (COMPILE FAILURE-CLOSURE §9.2c): the hole
 		// expressions already recorded their own dispatch events in traversal
 		// order, and the op pops their results and rebuilds the element at
 		// run time (rebuildXmlFromTmpl — byte-identical to this build). The
-		// rare unlowerable shape (a 0-or-many-valued hole) keeps the refusal
+		// rare unlowerable shape (a 0-or-many-valued hole) keeps the compile failure
 		// and falls back, exactly as the string sibling.
 		if es := e.Registry.analysisRecorder(); es.Active() {
 			out := NewCarrier(TXml)
@@ -4464,7 +4464,7 @@ func (e *Engine) EvalXmlInterp(val Value) (Value, error) {
 //
 // The returned dynamic flag is true when any hole (an attribute part, a child
 // expression, or a nested template) evaluated to a NON-CONCRETE value — a
-// carrier seen only under static analysis. EvalXmlInterp uses it to refuse
+// carrier seen only under static analysis. EvalXmlInterp uses it to decline
 // const-folding while recording (the InterpString contract).
 // BuildXmlFromTmpl additionally collects the per-hole single result values
 // in TRAVERSAL order (attrs first, then children left-to-right, depth-first
@@ -4801,7 +4801,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			// CHECK-MODE const-fold: a computed container value (a class field
 			// default like (make Foo 1), or a data-map (1 add 2)) evaluated
 			// abstractly leaves a recorded event the container then swallows
-			// ("unconsumed call results"), so the program refuses. When the
+			// ("unconsumed call results"), so the program declines. When the
 			// expression is DETERMINISTIC it is a compile-time constant — fold
 			// it to its concrete value so the container bakes as a const. The
 			// downstream const-bake gate (typeBodyConstOK for a schema default,
@@ -4813,7 +4813,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			// (the loop iterator `i`). The fold's determinism check (two equal
 			// concrete evals) does NOT catch that — `i` is stable WITHIN the fold —
 			// so freezing the value would replicate it across iterations. Those
-			// keep refusing and fall back (mirrors the OpMakeList gate).
+			// keep declining and fall back (mirrors the OpMakeList gate).
 			// The expression must also not REFERENCE a CARRIER binding (a def-local
 			// bound to a computed value, `def v0 (0 add 3) ... {a: (5 mul v0)}`): the
 			// concrete fold coerces the carrier (e.g. to 0) and freezes a WRONG value
@@ -4867,7 +4867,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// fold above for the un-parenthesised form. A bare word that is a 0-arg
 		// fn auto-fires as a map value (`{a:g}` → `{a:42}`, exactly like the
 		// parenthesised `{a:(g)}`); evaluated abstractly in the sub-engine below
-		// it leaves a carrier of unknown provenance and the map refuses. When the
+		// it leaves a carrier of unknown provenance and the map declines. When the
 		// value is DETERMINISTIC at the top frame and references no carrier
 		// binding, fold it to its concrete result (identical to the sub-engine
 		// eval the interpreter runs) so the map bakes as a const. Same gating and
@@ -4903,7 +4903,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// RECORDING mode: a LIST-valued entry (`{n:[expr]}` — the `do {map}` idiom,
 		// where each value is a code list left AS a list) is a COMPUTED list whose
 		// elements have provenance (their dispatches recorded above) but whose list
-		// WRAPPER was never recorded — RecordMakeList's top-frame guard refuses a
+		// WRAPPER was never recorded — RecordMakeList's top-frame guard declines a
 		// fn-body list. Record the OpMakeList HERE, inline, right after this value's
 		// dispatches, so the assembly is interleaved with the per-value events in
 		// stack order (`get_n, wrap_n, get_m, wrap_m, …`) — wrapping in RecordMakeMap
@@ -5464,7 +5464,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// trivial-delegation dispatch: the recorder's poly re-match
 	// (tryRecordPoly) validates the matched sig against THAT registry's
 	// own binding and the VM re-matches over it (PolyRef.Reg). Without it
-	// a dynamic-operand dispatch of a module native refused as "dynamic
+	// a dynamic-operand dispatch of a module native declined as "dynamic
 	// input at <word>" although the runtime re-match over the sub-registry
 	// IS the interpreter's dispatch. Interpretation is unchanged — Reg is
 	// read only at the check-mode carrierResults seam (execMatch:2625).
@@ -5861,7 +5861,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 					// Anything the trap declines — an inexact operand, a plain
 					// (non-compiling) check pass, a nested frame or unit —
 					// keeps the model-undermining diagnostic and the whole-program
-					// refusal it earns.
+					// compile failure it earns.
 					d := CheckDiagnostic{
 						Code:   "uncalled_function",
 						Detail: detail,
@@ -5894,7 +5894,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 //
 // It holds when every value the failed match examined is the value the
 // RUNTIME match examines: a plain concrete const. Everything else declines,
-// and the whole-program refusal stands:
+// and the whole-program compile failure stands:
 //
 //   - a CARRIER or DYNAMIC operand carries a static tag, not a value — the
 //     runtime tag may be a refinement that matches (and the rich diagnostic
@@ -6258,18 +6258,18 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	tokens = append(tokens, NewCloseParen())
 
 	// Report the application to an installed Recorder with an EMPTY name,
-	// which stackform.Replayable refuses (NUR077).
+	// which stackform.Replayable declines (NUR077).
 	//
 	// This splice path bypasses execMatch entirely, so without any event a fn
 	// VALUE applied off a container or a param produced NO op at all and the
 	// recorded form silently dropped the call — replaying to the function
-	// itself instead of its result. Refusing is the fix; recording a real
+	// itself instead of its result. Declining is the fix; recording a real
 	// Call is not, EVEN when the value carries a name. `Call{Name, Arity}`
 	// re-invokes by name and does not consume a receiver, whereas an
 	// application consumes the fn value the stack already holds — so a named
 	// Call would strand that value and produce it twice. Expressing this
 	// faithfully needs an apply-style Op the vocabulary does not have; until
-	// it does, the honest form is one that refuses rather than one that lies.
+	// it does, the honest form is one that declines rather than one that lies.
 	if e.recorder != nil && !e.inFnFrame() {
 		e.sawFnFrame = true
 		e.recorder.OnCall("", nArgs, 0)
@@ -6433,7 +6433,7 @@ func fnHasForwardSigPast(fd FnDefInfo, floor int) bool {
 // intercept), and execFnDefLiteral clears it the moment the
 // call-vs-data decision is made, so it never rides into a binding or a
 // container. User-written parens carry no ReachGroup and tag nothing;
-// `/v` data intent arrives Quoted and is never refused.
+// `/v` data intent arrives Quoted and is never declined.
 func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	if !wasReachGroup || closeIdx != idx+2 || idx >= e.Tape.Len() {
 		return
@@ -6519,7 +6519,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 		// pass folded to a concrete Function — an inert `/v` reference, a
 		// `valof`, an inline literal — and it returns before the carrier arm
 		// below ever asks the braid, so without this the residual layout never
-		// learns the lead was placed and refuses `(inc/v) 7` against its own
+		// learns the lead was placed and declines `(inc/v) 7` against its own
 		// interpreted answer of `fn inc(Integer) 7`.
 		//
 		// Reach groups are excluded above, so reaching here proves a USER
@@ -6549,7 +6549,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 	// header warns about. Parking here is positional and stamps nothing on
 	// the value, exactly as intended — but the compiler learns about it
 	// through ParenPlacedFnIDs, which is keyed by value ID, and an ID travels
-	// with a binding. So `def h (mk 1) end  h 2` now refuses ("fn value
+	// with a binding. So `def h (mk 1) end  h 2` now declines ("fn value
 	// precedes residual args"): h's value carries the placed mark from the
 	// paren that produced it, and the residual lowering declines to apply a
 	// lead it believes was placed — even though `h` is a bare-NAME dispatch
@@ -7887,16 +7887,16 @@ func (e *Engine) stepPastOpenParen(val Value) {
 // stepCloseParen handles the ")" word. It resolves any pending forwards
 // inside the paren scope via implicit end, then collapses the sub-expression.
 // recordParenLeadingApply records a leading-dynamic fn-value apply bounded
-// by a paren (REFUSAL-CLOSURE §9.2e): the value at `first` IS the fn being
+// by a paren (COMPILE FAILURE-CLOSURE §9.2e): the value at `first` IS the fn being
 // applied to the values after it — `((m get "f") x)`. Recorded as a guarded
 // OpCallDynMethod (the §3 arrival chassis): the VM applies the RUNTIME value
 // to the args exactly as the interpreter's paren auto-dispatch and DEFERS on
 // a non-callable value or a result-count mismatch (interpreter re-run —
 // never a wrong stack). The window collapses to the one modeled carrier, so
 // a trailing consumer (`add 1 (...)`) seats the apply's RESULT — the
-// paren-unaware reorder the old refusal guarded against cannot happen. Only
+// paren-unaware reorder the old compile failure guarded against cannot happen. Only
 // a CONTAINER MEMBER read models here (memberFnRead provenance); any other
-// leading dynamic keeps its existing paths, as the old refusal did. Returns
+// leading dynamic keeps its existing paths, as the old compile failure did. Returns
 // the possibly-shrunk closeIdx (args spliced out).
 func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeIdx int) int {
 	fnVal := e.Tape.At(first)
@@ -7907,7 +7907,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// paren that produced the lead — `(tbl get k)` in `((tbl get k) 5)` — says
 	// nothing here: the outer paren undoes it. A gate on that mark was added
 	// 2026-08-26 under the since-falsified "place uniformly" ruling and
-	// refused this row against its own interpreted answer of 10; it is gone.
+	// declined this row against its own interpreted answer of 10; it is gone.
 	if !es.MemberFnRead(fnVal.ID) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
@@ -7929,7 +7929,7 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 			e.Tape.Remove(argIdxs[j])
 			closeIdx--
 		}
-	} else { //covergate:allow RecordDynMethod resolves fnVal (a member-read EVENT, gated above) and each argVal (an isRecordableLiteral — a concrete const or an event-backed carrier resolveOperand handles), so it cannot decline here — the belt keeps the refusal if a future window shape breaks that invariant (§compiler)
+	} else { //covergate:allow RecordDynMethod resolves fnVal (a member-read EVENT, gated above) and each argVal (an isRecordableLiteral — a concrete const or an event-backed carrier resolveOperand handles), so it cannot decline here — the belt keeps the compile failure if a future window shape breaks that invariant (§compiler)
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 	}
 	return closeIdx
@@ -7947,12 +7947,12 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 // DYNAMIC lead recordParenLeadingApply's guarded method path, a CONCRETE
 // fn the auto-dispatch paths (it applied for real during the check step),
 // an EVENT lead the curried paths (DynApplyLeadEligible declines it —
-// RecordDynApply would hard-refuse), an unnamed-param frame the
+// RecordDynApply would hard-decline), an unnamed-param frame the
 // whole-frame replay (its leading collection can reach beneath the
 // window), and a multi-arg lead (count > 2) is never collapsed — beyond
 // one argument the spellings' collection orders diverge — so a bare
 // multi-arg body tail rides the single-applicable whole-frame replay
-// while a CHAINED one (`f (g x y)`) refuses on the two-applicable window.
+// while a CHAINED one (`f (g x y)`) declines on the two-applicable window.
 func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, lastIdx int) int {
 	if count != 2 {
 		return -1
@@ -7988,7 +7988,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 	// barrier when the lead parked a forward, the lead's own no-match when
 	// no overload could), selected by engine-internal collection state the
 	// window does not carry. So there is no faithful lowering to admit the
-	// shape with, and the refusal stands (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore
+	// shape with, and the compile failure stands (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore
 	// §5.8; pinned by TestS5BParenLeadFnApplyIdxGradualArgDeclines).
 	if last.Dynamic || IsFnValueResidual(last) {
 		return -1
@@ -8016,7 +8016,7 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 // splicing the argument out. This is what compiles compose natively: the
 // inner `(g x)` becomes an event, and the outer `f <event>` rides the
 // single-applicable RetReplay body tail. On a decline the window is left
-// intact for the downstream machinery (refusal-or-replay). Returns
+// intact for the downstream machinery (compile failure-or-replay). Returns
 // the possibly-shrunk closeIdx.
 func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeIdx int) int {
 	lead := e.Tape.At(leadFn)
@@ -8038,7 +8038,7 @@ func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeI
 // fn-typed value that is not Dynamic, or a Dynamic value the recorder holds
 // a pending `apply`-word application for (`(x r apply)` over a gradual r —
 // the apply word owns the application, so the value is the lead, not the
-// leading-dynamic reorder hazard recordParenLeadingApply refuses).
+// leading-dynamic reorder hazard recordParenLeadingApply declines).
 func parenTrailingFnApply(es EmitRecorder, last Value, count, lastIdx int) bool {
 	if count < 2 || lastIdx < 0 {
 		return false
@@ -8277,7 +8277,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 	// the op reorders ahead of the apply and the value is applied to the wrong
 	// argument — `((m.g 3) add 1)` compiled m.g(3 add 1)=8 instead of
 	// (m.g 3) add 1=7. The interpreter dispatches the concrete fn AT the paren,
-	// so refuse here and let the faithful interpreter fallback run it.
+	// so decline here: the program does not compile.
 	if es := e.Registry.analysisRecorder(); es.Active() {
 		first, count, lastIdx := -1, 0, -1
 		for i := openIdx + 1; i < closeIdx; i++ {
@@ -8311,7 +8311,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			// event seats like any computed result (a def-local `def c (a b comp)`, an
 			// `if` operand, a list member, the body residual), so a comparator apply
 			// bound to a local compiles, not ONLY the body's trailing residual. On
-			// refusal (an unresolvable operand or a nested unapplied fn arg) the residual
+			// compile failure (an unresolvable operand or a nested unapplied fn arg) the residual
 			// is left intact and the body-residual lowering (RegisterTrailingApply) still
 			// handles the trailing-residual case soundly.
 			var argVals []Value
@@ -8328,11 +8328,11 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			// return: its result is GRADUAL (Dynamic), the honest type, so a
 			// later dispatch over it matches gradually and records a runtime
 			// re-match instead of the checker's best-fit recovery (a strict
-			// Any there refused `x (x f/v apply) apply` as "unmatched
+			// Any there declined `x (x f/v apply) apply` as "unmatched
 			// dispatch recovered at apply", the twenty-seventh increment).
 			// A plain paren apply of a fn-typed carrier (`(1 2 c)`) keeps its
 			// strict Any: the comparator convention's consumers were built on
-			// it, and a gradual result there refused an each body's residual
+			// it, and a gradual result there declined an each body's residual
 			// ("result above a literal") that compiles today.
 			if last.Dynamic || es.ApplyPending(last.ID) {
 				out.Dynamic = true
@@ -8361,7 +8361,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			// complexity cap).
 			closeIdx = e.recordParenLeadFnApply(es, leadFn, lastIdx, closeIdx)
 		case first >= 0 && count >= 2:
-			// LEADING dynamic apply (REFUSAL-CLOSURE §9.2e) — extracted to
+			// LEADING dynamic apply (COMPILE FAILURE-CLOSURE §9.2e) — extracted to
 			// recordParenLeadingApply for the stepCloseParen complexity cap.
 			closeIdx = e.recordParenLeadingApply(es, first, openIdx, closeIdx)
 		}
@@ -8780,7 +8780,7 @@ func SigOrderArgs(args []Value, nStack int) []Value {
 // synthetic fallback would courtesy-dispatch. The sole sig either matches the
 // runtime arg (dispatch == interpreter) or misses it (the CALL_USER param contract
 // raises == the interpreter's fallback raise). Returns true — and splices the
-// recovered returns — when it records; false leaves the caller's refusal to stand
+// recovered returns — when it records; false leaves the caller's compile failure to stand
 // (multi-overload → Cluster C). The L4 leaf: design/legacy/VOXGIG-COMPILE-LEAVES.1.ignore.
 // singleOverloadRecoverable reports whether fn is a user fn with EXACTLY ONE
 // real (arg-bearing, non-fallback) overload — the shape whose dispatch over an
@@ -8895,11 +8895,11 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 //     cannot even fill (arity shortfall over the same tape) fails
 //     deterministically too;
 //   - a DYNAMIC operand (no static type at all) — routed to the runtime
-//     rematch alongside carriers (REFUSAL-CLOSURE.0 §2): the rematch reads
+//     rematch alongside carriers (COMPILE FAILURE-CLOSURE.0 §2): the rematch reads
 //     only the operand's live runtime value, never the static tag;
 //   - an UNDEFINED-word placeholder (the interpreter raises undefined_word,
 //     a different taxonomy — and the pass already carries an error diagnostic
-//     that refuses the program before Finalize);
+//     that declines the program before Finalize);
 //   - a 0-arg real (non-fallback) signature on the word: matchSignature's
 //     fallback scan and the synthetic-fallback courtesy dispatch can run it
 //     at run time instead of raising.
@@ -8914,8 +8914,8 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 //
 // RecordTrap's own guard keeps this top-level-only (frames and units both at
 // depth 1): a trap inside a branch arm or fn unit is conditional and stays a
-// refusal. Returns true when the trap now owns the program's tail; false
-// leaves the caller's MarkUncompilable refusal to stand.
+// compile failure. Returns true when the trap now owns the program's tail; false
+// leaves the caller's MarkUncompilable compile failure to stand.
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	es := e.Registry.analysisRecorder()
 	if !es.Active() || !e.Registry.analysisCompiling() {
@@ -8943,7 +8943,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 	// examines — never definite. (`add 100 (for 4 [add i 1])`: the static
 	// window holds the raw `for` word where the runtime sees the loop's
 	// value; latent under the pre-M4 screens only because such programs
-	// still refused at Finalize's residual seating, which the trap
+	// still declined at Finalize's residual seating, which the trap
 	// truncation now legitimately skips.)
 	for i := e.Pointer + 1; i < e.Tape.Len(); i++ {
 		inWindow := false
@@ -8982,7 +8982,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 					// artifact, not a definite runtime failure (the pmany /
 					// pseq shape: `def digits (pmany digit/v)` trapped
 					// signature_error where the interpreter succeeds).
-					// Decline; the caller's refusal stands and the program
+					// Decline; the caller's compile failure stands and the program
 					// falls back faithfully.
 					if _, hit := CheckFnCarrierBind(e.Registry, wi.Name); hit {
 						return false
@@ -9029,7 +9029,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// interpreter builds it at run time over the carrier's CONCRETE
 		// value, so the two would diverge (design/DIAGNOSTICS.0.md phase 7:
 		// the compiled and interpreted reports must be byte-identical).
-		// Decline; the whole program then falls back to the interpreter,
+		// Decline; the program then does not compile,
 		// which raises the exact rich error at run time — free, since a
 		// trap is terminal, so the program errors here either way and only
 		// the (irrelevant, error-path) compilation of the tail is given up.
@@ -9041,14 +9041,14 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// rich diagnostic at run time (or defers when it matches).
 		//
 		// A DYNAMIC operand (statically-unknown type — an evaluated flex
-		// read, a do-result) classifies the same way (REFUSAL-CLOSURE.0 §2):
+		// read, a do-result) classifies the same way (COMPILE FAILURE-CLOSURE.0 §2):
 		// the rematch never reads the static tag, only the operand's LIVE
 		// runtime value — which is exactly what the interpreter's dispatch
 		// examines — so a bounded-dynamic that failed the static match
 		// re-matches faithfully (defer on match, the byte-identical rich
 		// raise on no-match). The provenance requirement still gates: a
 		// dynamic with no compiled home fails RecordDispatchRematchValues'
-		// operand resolution and the refusal stands.
+		// operand resolution and the compile failure stands.
 		if v.Carrier || v.Dynamic {
 			needsRematch = true
 		}
@@ -9072,7 +9072,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// access to — the tape reorder probe and the fn-shape
 		// typed-binding hint — must not apply; runtimeNoMatch rebuilds
 		// the value-based reorderHintFor itself. Declines leave the
-		// caller's refusal.
+		// caller's compile failure.
 		written := e.rematchWritten()
 		if len(written) == 0 || len(written) > len(vals) {
 			return false

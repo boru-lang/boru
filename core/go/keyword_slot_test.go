@@ -112,7 +112,7 @@ func TestDispatchSigNoImplementation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A match-only shape (no Impl) must refuse loudly, not panic.
+	// A match-only shape (no Impl) must decline loudly, not panic.
 	if _, err := DispatchSig(&Signature{Args: []*Type{TAny}}, nil, r); err == nil {
 		t.Fatal("a signature with no run implementation must error")
 	}

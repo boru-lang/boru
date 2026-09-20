@@ -412,7 +412,7 @@ func TestSweepInstallWordExtensionRegisterHook(t *testing.T) {
 func TestSweepTransplantSourceCloneAuthorDefault(t *testing.T) {
 	// A SOURCE clone (no ExtOwner) onto a BUILTIN word: the author
 	// defaults to the exporting module's owner, and the unanchored
-	// kernel-typed tuple is refused.
+	// kernel-typed tuple is declined.
 	r := covRegistry(t, nil)
 	ext := NewWordExtension("", "cadd", []Signature{sweepGoSig(TBoolean, TBoolean)})
 	if ext.ExtOwner != "" {

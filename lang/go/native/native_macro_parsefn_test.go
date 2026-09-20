@@ -6,13 +6,13 @@ import (
 
 // Coverage for the `parse` macro's ParseLang-value form (parseFnExpand) —
 // the arms a surface program cannot reach through sig dispatch: the matcher
-// refuses a bare Function type literal for a TFunction slot, and a carrier
+// declines a bare Function type literal for a TFunction slot, and a carrier
 // operand only arrives under analysis. Driven directly, mirroring the W9
 // macro seams. See design/TEST-SEAMS.10.md.
 
-// A fn-family value whose payload is not an FnDefInfo is refused: the sig
+// A fn-family value whose payload is not an FnDefInfo is declined: the sig
 // matcher never delivers one from surface syntax (a bare `Function` type
-// literal is parented at Type and refuses every parse sig — pinned by the
+// literal is parented at Type and declines every parse sig — pinned by the
 // module-parselang.tsv §10 signature_error row), so the defensive guard is
 // driven directly with a crafted payload, like the eng fn-value seams.
 func TestParseFnExpandNonFnPayload(t *testing.T) {

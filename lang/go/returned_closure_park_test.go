@@ -33,12 +33,12 @@ func TestReturnedClosureParkParity(t *testing.T) {
 		// parked: a Go-impl fn value returned by a user fn
 		{`import "boru:math-util" def f fn [[] [Any] [MathUtil.sqrt/v]]  f 16.0`, "fn sqrt(Number) 16.0 — was 4.0"},
 		// family C: two dynamic results live at once are two placed values
-		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 m.p 7`, "5 7 — was refused"},
+		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 m.p 7`, "5 7 — was declined"},
 		{`def f fn [[x:Any] [Any] [x]] def m {p: f/v} m.p 5 7`, "5 7"},
 		// a def-bound factory result applies by its BINDING's read, and its
 		// arity is provable off the baked lambda's own signature (the
 		// eleventh increment) — the paren and the bare read alike
-		{mk1 + `  def h (mk) h 7`, "8 — was refused, the closure shape unknown"},
+		{mk1 + `  def h (mk) h 7`, "8 — was declined, the closure shape unknown"},
 		{mk1 + `  def h (mk) (h 7)`, "8"},
 		// still applies: a paren rewind over two survivors
 		{mk1 + `  (mk 7)`, "8"},
@@ -129,7 +129,7 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {
@@ -150,7 +150,7 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 // Every sibling arm of resolveDynamicApply already consulted the park rule;
 // trailingApply checked only the shape.
 //
-// It stayed open for two increments because the sound fix refused a corpus
+// It stayed open for two increments because the sound fix declined a corpus
 // row: `10 (mk2 5) apply` parks identically and then APPLIES, because the
 // trailing word dispatches the parked value on purpose — and both lower to
 // the same OpCallDynamicTrailing, so the residual cannot separate them. The
@@ -169,15 +169,15 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 	src := mk2 + `10 (mk2 5) apply`
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if !compiled {
-		t.Error("`… apply` must keep compiling — the corpus row the previous attempt refused")
+		t.Error("`… apply` must keep compiling — the corpus row the previous attempt declined")
 	}
 	requireParity(t, src, gotC, errC, gotI, errI)
 	if fmt.Sprint(gotI) != "[11]" {
 		t.Errorf("the apply word applies the parked result: %v", gotI)
 	}
 
-	// Nothing claims it: the arm declines rather than applies. A refusal is
-	// the refusal the interpreter absorbs — the default lane then answers on the interpreter.
+	// Nothing claims it: the arm declines rather than applies. A compile failure is
+	// the compile failure — the default lane then answers on the interpreter.
 	// The forty-third increment's residual rebuild does NOT take this shape:
 	// its callable screen stands aside for a residual that may hold a
 	// Function, because a re-push is a data push where the interpreter
@@ -194,7 +194,7 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 		t.Error("an unclaimed parked result must not compile to an apply")
 	}
 	if !strings.Contains(reason, "call result above a literal") {
-		t.Errorf("refusal = %q, want the existing residual-shape site", reason)
+		t.Errorf("compile failure = %q, want the existing residual-shape site", reason)
 	}
 	// And the value both lanes agree on is the PARKED pair.
 	d, _ := New()
@@ -207,7 +207,7 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 	for _, s := range []string{mk + `(mk 3) 5`, mk + `5 (mk 3) 7`, mk + `1 2 (mk 3)`} {
 		gc, ok, ec, gi, ei := runBothEngines(t, s)
 		if !ok {
-			t.Logf("%q: not compiled (refusal, not a divergence)", s)
+			t.Logf("%q: not compiled (compile failure, not a divergence)", s)
 			continue
 		}
 		requireParity(t, s, gc, ec, gi, ei)
@@ -259,7 +259,7 @@ func TestShuffleRestepTimingDeclines(t *testing.T) {
 	// shuffle and drop empties the body on both lanes.
 	gotC, ok, errC, gotI, errI := runBothEngines(t, g+`[g/v] each [5 swap drop]`)
 	if !ok {
-		t.Fatal("the timing row must still compile — a refusal would hide the defect")
+		t.Fatal("the timing row must still compile — a compile failure would hide the defect")
 	}
 	if errI == nil || !strings.Contains(errI.Error(), "body produced no result") {
 		t.Errorf("the interpreter applies AT the shuffle, so drop empties the body: %v/%v", gotI, errI)

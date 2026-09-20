@@ -8,12 +8,12 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// The fn-predicate bind's DECLINED-record refusal (the concrete-permitting
-// twin of recordTypedBindOrRefuse): with an ACTIVE recorder and a body whose
+// The fn-predicate bind's DECLINED-record compile failure (the concrete-permitting
+// twin of recordTypedBindOrDecline): with an ACTIVE recorder and a body whose
 // operand has no resolvable provenance, RecordTypedBind declines and the
-// refuse closure marks the program uncompilable — never the silent bake the
+// decline closure marks the program uncompilable — never the silent bake the
 // 2026-07-15 flip attempt caught.
-func TestRecordTypedBindOrRefuseConcreteDecline(t *testing.T) {
+func TestRecordTypedBindOrFailToCompileConcreteDecline(t *testing.T) {
 	r, err := DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +24,7 @@ func TestRecordTypedBindOrRefuseConcreteDecline(t *testing.T) {
 	dyn.Dynamic = true
 	dyn.ID = ""
 	cons := core.NewCarrier(TAny)
-	out := recordTypedBindOrRefuseConcrete(r, func() core.TypedBindSpec {
+	out := recordTypedBindOrDeclineConcrete(r, func() core.TypedBindSpec {
 		return core.TypedBindSpec{Kind: core.TypedBindPredicate, Name: "zz", Describe: "Zz", Cons: &cons}
 	}, dyn, dyn, core.SrcPos{}, func() { markFnPredicateBindUncompilable(r, "zz") })
 	if !out.Dynamic {
@@ -32,7 +32,7 @@ func TestRecordTypedBindOrRefuseConcreteDecline(t *testing.T) {
 	}
 	_, reason, _ := r.Check.Recorder().(*compiler.EmitState).Finalize(nil)
 	if !strings.Contains(reason, "fn-predicate bind is runtime-evaluated") {
-		t.Fatalf("declined record must refuse; Finalize reason = %q", reason)
+		t.Fatalf("declined record must decline; Finalize reason = %q", reason)
 	}
 }
 

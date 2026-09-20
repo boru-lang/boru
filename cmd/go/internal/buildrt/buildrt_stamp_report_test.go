@@ -8,7 +8,7 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// PrintStampReport rendering: stamped lines, refusal lines (explicit and
+// PrintStampReport rendering: stamped lines, compile failure lines (explicit and
 // DEFAULTED empty reason), anonymous-name fallback, position suffix, and the
 // empty-report header.
 func TestPrintStampReport(t *testing.T) {

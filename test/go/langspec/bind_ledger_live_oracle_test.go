@@ -95,7 +95,7 @@ func liveOracleRow(src, where string) []string {
 	}
 	// The UNLEDGERED direction runs only for rows that COMPILED: the
 	// twin-replay contract it defends exists only where a Program does. A
-	// refused or erroring row legitimately leaves partial state the ledger
+	// declined or erroring row legitimately leaves partial state the ledger
 	// does not model — an error path abandons mid-construct exactly as the
 	// interpreter does (`gen [T] gen [U] …` raises with the outer gen binder
 	// still pushed, in BOTH engines) — and no twin will ever replay it.

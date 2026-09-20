@@ -31,7 +31,7 @@ import "sync/atomic"
 type InterpEntry struct {
 	// Seam names the entry point: "Engine.Run", "RunResolved", "CallBoru",
 	// "runPooledSub", or "InvokeCallback:callboru" (the callback seam's
-	// interpreter fallback — distinguished so its C4 decline tag can attach
+	// compile failure — distinguished so its C4 decline tag can attach
 	// when attribution lands).
 	Seam string
 	// Attribution is the C4 carve-out tag this entry belongs to ("check-mode"
@@ -199,7 +199,7 @@ func (r *Registry) NoteInterp(seam string) {
 // SetInterpAttribution installs tag as the C4 attribution context for
 // interpreter entries on this registry and returns the restore func — the
 // compiled-mode entry points bracket their SANCTIONED fallback re-runs with
-// it ("fallback:refusal", "fallback:runtime-bail") so the interp-entry hook
+// it ("fallback:compile failure", "fallback:runtime-bail") so the interp-entry hook
 // reports the re-run's entries as attributed. Pair with defer.
 func (r *Registry) SetInterpAttribution(tag string) func() {
 	prev := r.interpAttribution

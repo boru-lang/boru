@@ -22,7 +22,7 @@ import (
 // generator, the r.int→9 miscompile the trie/sort PBT suites tripped over).
 // So the invariance holds only for bodies that genuinely compile; the
 // member-fn gen is ledgered red (p6/check-prop-body-on-vm). The fn-scope
-// ${frame-local} guard (TestCheckPropInterpStringFnScopeRefuses) is the
+// ${frame-local} guard (TestCheckPropInterpStringFnScopeFailsToCompile) is the
 // standing negative: stored-param-body compiles are module-scope only.
 func TestCheckPropIterationsAddNoInterpEntries(t *testing.T) {
 	entryCensus := func(runs int) map[string]int {
@@ -149,12 +149,12 @@ def res (Test.check-prop "gen-raises" [raise bad_input "boom"] [ 0 gte ] 3 1 0)
 	}
 }
 
-// TestCheckPropRefusedBodyFallsBackSound — a gen body the stored-param
+// TestCheckPropFailedToCompileBodyFallsBackSound — a gen body the stored-param
 // compile declines (a capitalised type install doesn't lower in a closure
 // unit) falls through to the standing NoEvalArgs replay-hazard gates, which
-// refuse the program: the interpreter fallback runs it with parity — slow,
+// decline the program: it does not compile, and that is a defect —
 // not wrong, exactly the do-registry-replay discipline.
-func TestCheckPropRefusedBodyFallsBackSound(t *testing.T) {
+func TestCheckPropFailedToCompileBodyFallsBackSound(t *testing.T) {
 	const src = `import "boru:test" end
 def res (Test.check-prop "hazard" [def Big Integer 9] [ 0 gte ] 2 1 0)
 res get "ok"`
@@ -171,7 +171,7 @@ res get "ok"`
 		t.Fatalf("RunCompiled: %v", err)
 	}
 	if compiled {
-		t.Fatal("the replay-hazard gen body must refuse the compile (the interpreter owns it)")
+		t.Fatal("the replay-hazard gen body must decline the compile (the interpreter owns it)")
 	}
 	b, err := New()
 	if err != nil {

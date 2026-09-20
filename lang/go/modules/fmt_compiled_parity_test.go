@@ -14,7 +14,7 @@ import (
 // value fetched from a map at runtime, applied to a waiting value) COMPILES
 // via the whole-frame dynamic-apply replay (OpCallDynFrame + RetReplay) and
 // produces byte-identical results to the interpreter. Before the
-// noteDynFrameReplay widening to Dynamic residuals these programs refused
+// noteDynFrameReplay widening to Dynamic residuals these programs declined
 // ("fn apply: result above a literal (Stage 3)") and ran interpreter-only.
 
 // runBothEngines runs prog through a fresh compiled instance and a fresh
@@ -29,16 +29,16 @@ func runBothEngines(t *testing.T, prog string) (compiled, interpreted string) {
 	gotC, wasCompiled, errC := ac.RunCompiled(prog)
 	if errC != nil {
 		// Since the BROAD park (NUR073 clause 3) the rules engine's fetched
-		// fn reaches `apply` as an untyped carrier, and the record refuses
+		// fn reaches `apply` as an untyped carrier, and the record declines
 		// ("apply over a dynamic lead") rather than lower an unprovable
 		// overload — the interpreter owns the shape until it graduates.
 		if strings.Contains(errC.Error(), "compile_failed") {
-			t.Skipf("compiled lane refused: %v", errC)
+			t.Skipf("compiled lane declined: %v", errC)
 		}
 		t.Fatalf("RunCompiled: %v", errC)
 	}
 	if !wasCompiled {
-		t.Skipf("program refused compilation (sound; see the BROAD note above)")
+		t.Skipf("program declined compilation (sound; see the BROAD note above)")
 	}
 	ai, err := lang.New()
 	if err != nil {

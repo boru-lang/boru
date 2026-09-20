@@ -432,11 +432,11 @@ func TestZZMSCompilePassModelRecordsDynMethod(t *testing.T) {
 		t.Errorf("the modelled result must be the declared Integer carrier, got %v", out)
 	}
 	if len(rec.reasons) != 0 {
-		t.Errorf("a clean model must not refuse, got %v", rec.reasons)
+		t.Errorf("a clean model must not decline, got %v", rec.reasons)
 	}
 }
 
-// The seam's operand-provenance refusal: RecordDynMethod declines (the
+// The seam's operand-provenance compile failure: RecordDynMethod declines (the
 // synthetic carrier has no compiled home) and TryRecordMethodApply marks
 // the program uncompilable — still consuming the pending apply.
 func TestZZMSCompilePassRecordDeclineMarksUncompilable(t *testing.T) {
@@ -458,14 +458,14 @@ func TestZZMSCompilePassRecordDeclineMarksUncompilable(t *testing.T) {
 
 	e := zzmsEngine(r, []core.Value{carrier, core.NewInteger(5), core.NewEnd()})
 	if !TryShapedMethodDispatch(e, 0) {
-		t.Fatal("the model still consumes the dispatch; only the recording refuses")
+		t.Fatal("the model still consumes the dispatch; only the recording declines")
 	}
 	if len(rec.reasons) != 1 ||
 		!strings.Contains(rec.reasons[0], "operand of unknown provenance at zzmsadd") {
-		t.Errorf("want the operand-provenance refusal, got %v", rec.reasons)
+		t.Errorf("want the operand-provenance compile failure, got %v", rec.reasons)
 	}
 	if r.Check.PendingMethodApply != nil {
-		t.Error("the pending apply must be consumed even when recording refuses")
+		t.Error("the pending apply must be consumed even when recording declines")
 	}
 }
 
@@ -497,9 +497,9 @@ func TestZZMSCompilePassUnconsumedPendingDeclines(t *testing.T) {
 }
 
 // The guard-owned decline: an annotated genuine-0-arg member whose landing
-// the window model cannot claim (a NoEvalArgs inner 0-arg sig) REFUSES —
+// the window model cannot claim (a NoEvalArgs inner 0-arg sig) DECLINES —
 // the read guard was skipped for the annotated read, so the landing owns
-// the miscompile-E refusal.
+// the miscompile-E compile failure.
 func TestZZMSCompilePassZeroArgGuardOwnedDecline(t *testing.T) {
 	r := zzmsReg(t)
 	zzmsRegisterInner(t, r, "zzms0g", core.Signature{
@@ -518,12 +518,12 @@ func TestZZMSCompilePassZeroArgGuardOwnedDecline(t *testing.T) {
 	}
 	if len(rec.reasons) != 1 ||
 		!strings.Contains(rec.reasons[0], "shaped 0-arg method landing not modelable at zzms0g") {
-		t.Errorf("want the guard-owned 0-arg refusal, got %v", rec.reasons)
+		t.Errorf("want the guard-owned 0-arg compile failure, got %v", rec.reasons)
 	}
 }
 
 // A window decline on a NON-0-arg member under the armed recorder is a
-// silent per-carrier decline — no refusal, today's paths keep the carrier.
+// silent per-carrier decline — no compile failure, today's paths keep the carrier.
 func TestZZMSCompilePassWindowDeclineNonZeroArgSilent(t *testing.T) {
 	r := zzmsReg(t)
 	zzmsRegisterInner(t, r, "zzmsadd", core.Signature{
@@ -541,7 +541,7 @@ func TestZZMSCompilePassWindowDeclineNonZeroArgSilent(t *testing.T) {
 		t.Error("a non-inert window must decline the compile-pass model")
 	}
 	if len(rec.reasons) != 0 {
-		t.Errorf("a 1-arg member's window decline must not refuse, got %v", rec.reasons)
+		t.Errorf("a 1-arg member's window decline must not decline, got %v", rec.reasons)
 	}
 }
 
@@ -743,7 +743,7 @@ func TestZZMSMemberFnArrivalDispatchDeclines(t *testing.T) {
 }
 
 // Fault injection on the two recorder-facing tails: a probe producing a
-// non-single result, and a RecordDynMethod refusal — both decline after
+// non-single result, and a RecordDynMethod compile failure — both decline after
 // resuming, leaving the tape untouched.
 func TestZZMSMemberFnArrivalDispatchRecorderFaults(t *testing.T) {
 	// CarrierResults produces TWO outs (a crafted ReturnsFn against the
@@ -763,16 +763,16 @@ func TestZZMSMemberFnArrivalDispatchRecorderFaults(t *testing.T) {
 		t.Error("the decline must resume the recorder and leave the tape untouched")
 	}
 
-	// RecordDynMethod refuses: the model declines without splicing.
+	// RecordDynMethod declines: the model declines without splicing.
 	m2 := core.NewFunction(core.FnDefInfo{Name: "zzmsfr", Signatures: []core.Signature{zzmsArrivalSig()}})
 	r2, rec2, c2, done2 := zzmsArrivalFix(t, m2)
 	defer done2()
 	rec2.dynOK = false
 	e2 := zzmsEngine(r2, []core.Value{c2, core.NewInteger(21), core.NewEnd()})
 	if tryMemberFnArrivalDispatch(e2, 0) {
-		t.Error("a refused recording must decline the model")
+		t.Error("a declined recording must decline the model")
 	}
 	if e2.Tape.Len() != 3 {
-		t.Error("a refused recording must leave the tape untouched")
+		t.Error("a declined recording must leave the tape untouched")
 	}
 }

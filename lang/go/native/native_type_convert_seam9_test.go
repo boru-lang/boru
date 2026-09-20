@@ -283,12 +283,12 @@ func TestW9Convert3HandlerTruthy(t *testing.T) {
 func TestConvertBoolOptsHandlerArms(t *testing.T) {
 	r := seam5Reg(t)
 
-	// Short arg window: REFUSED, not delegated. convert3Handler indexes
+	// Short arg window: DECLINED, not delegated. convert3Handler indexes
 	// args[2] unconditionally, so delegating here would panic — and this
 	// codebase does not permit a panic on any input (ADR-005).
 	if _, err := convertBoolOptsHandler(
 		[]Value{NewTypeLiteral(TBoolean), NewString("x")}, nil, nil, r); err == nil {
-		t.Fatal("a short arg window must be refused, not delegated into an indexing handler")
+		t.Fatal("a short arg window must be declined, not delegated into an indexing handler")
 	}
 
 	// A non-concrete options slot (a Map CARRIER, as check mode produces):
@@ -304,18 +304,18 @@ func TestConvertBoolOptsHandlerArms(t *testing.T) {
 		t.Fatalf("non-map options slot must delegate, got %v", err)
 	}
 
-	// An unknown key is refused by NAME — the whole point of the handler.
+	// An unknown key is declined by NAME — the whole point of the handler.
 	_, err := convertBoolOptsHandler(
 		[]Value{NewTypeLiteral(TBoolean), optsKV("truthyy", NewBoolean(true)), NewString("no")}, nil, nil, r)
 	if err == nil || !strings.Contains(err.Error(), "unknown option key truthyy") {
-		t.Fatalf("unknown key must be refused by name, got %v", err)
+		t.Fatalf("unknown key must be declined by name, got %v", err)
 	}
 
-	// A known key with the wrong value type is refused by TYPE.
+	// A known key with the wrong value type is declined by TYPE.
 	_, err = convertBoolOptsHandler(
 		[]Value{NewTypeLiteral(TBoolean), optsKV("truthy", NewString("yes")), NewString("no")}, nil, nil, r)
 	if err == nil || !strings.Contains(err.Error(), "option truthy expects Boolean") {
-		t.Fatalf("wrong-typed option must be refused by type, got %v", err)
+		t.Fatalf("wrong-typed option must be declined by type, got %v", err)
 	}
 
 	// A known key explicitly set to `none` means "not supplied" (the

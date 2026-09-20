@@ -42,7 +42,7 @@ func drRun(t *testing.T, src string) (ran bool, agree bool, cerr error) {
 }
 
 // TestDeferredWindowRematchRaisesByteIdentically — the raising direction.
-// These rows used to refuse the WHOLE program; they now compile and raise
+// These rows used to decline the WHOLE program; they now compile and raise
 // the interpreter's own signature_error, caret and candidate notes included.
 func TestDeferredWindowRematchRaisesByteIdentically(t *testing.T) {
 	for _, src := range []string{
@@ -56,7 +56,7 @@ func TestDeferredWindowRematchRaisesByteIdentically(t *testing.T) {
 		t.Run(src, func(t *testing.T) {
 			ran, agree, cerr := drRun(t, src)
 			if !ran {
-				t.Fatalf("the deferred window must take the rematch, not the whole-program fallback: %v", cerr)
+				t.Fatalf("the deferred window must take the rematch, not bail: %v", cerr)
 			}
 			if cerr == nil {
 				t.Fatal("the dispatch must still raise")
@@ -113,13 +113,13 @@ func TestDeferredWindowRematchDefersWhenItMatches(t *testing.T) {
 	}
 }
 
-// TestReorderHintWindowKeepsItsRefusal is the line the rematch does not
+// TestReorderHintWindowKeepsItsCompileFailure is the line the rematch does not
 // cross, and it is structural rather than incidental. When the operands are
 // in the wrong ORDER, sigError attaches a reorder hint ("did you swap the
 // arguments?") derived from TAPE STATE — which the runtime rebuild has no
 // access to, so it could not reproduce the error byte for byte. The rematch
 // declines on exactly that, and the interpreter answers.
-func TestReorderHintWindowKeepsItsRefusal(t *testing.T) {
+func TestReorderHintWindowKeepsItsCompileFailure(t *testing.T) {
 	const src = `$.1 [10 20 30] apply`
 	a, err := New()
 	if err != nil {
@@ -130,10 +130,10 @@ func TestReorderHintWindowKeepsItsRefusal(t *testing.T) {
 		t.Fatalf("check: %v", cerr)
 	}
 	if prog != nil {
-		t.Fatal("a window carrying a reorder hint must keep the refusal — the hint reads tape state")
+		t.Fatal("a window carrying a reorder hint must keep the compile failure — the hint reads tape state")
 	}
 	if !strings.Contains(reason, "unmatched dispatch recovered at apply") {
-		t.Errorf("refusal reason drifted: %q", reason)
+		t.Errorf("compile failure reason drifted: %q", reason)
 	}
 	b, err := New()
 	if err != nil {

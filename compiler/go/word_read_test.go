@@ -87,9 +87,9 @@ func TestCreditWordReadArms(t *testing.T) {
 }
 
 // TestWordReadAccounting pins the unit-finish rule: no reads pass; a read
-// consumed nowhere the replay or an apply lowering saw refuses (a container
+// consumed nowhere the replay or an apply lowering saw declines (a container
 // member, an arm residual); a credited read passes; a read seated in the
-// replay window passes; an id read both bare and by /v refuses.
+// replay window passes; an id read both bare and by /v declines.
 func TestWordReadAccounting(t *testing.T) {
 	es, rec, g, x := wordReadUnit(t)
 	if r := es.wordReadAccounting(rec); r != "" {
@@ -97,7 +97,7 @@ func TestWordReadAccounting(t *testing.T) {
 	}
 	es.NoteWordRead(g, "g", core.SrcPos{})
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "consumed where the interpreter dispatches it") {
-		t.Errorf("an unseated fn-typed read refuses: %q", r)
+		t.Errorf("an unseated fn-typed read declines: %q", r)
 	}
 	es.creditWordRead(g.ID)
 	if r := es.wordReadAccounting(rec); r != "" {
@@ -112,7 +112,7 @@ func TestWordReadAccounting(t *testing.T) {
 	}
 	es.NoteValRead(g.ID, "n")
 	if r := es.wordReadAccounting(rec); !strings.Contains(r, "read both bare and by /v") {
-		t.Errorf("a mixed read refuses: %q", r)
+		t.Errorf("a mixed read declines: %q", r)
 	}
 }
 
@@ -120,7 +120,7 @@ func TestWordReadAccounting(t *testing.T) {
 // replayValueApplicables and noteWordReadReplay: a nil record, a quoted
 // value and an apply-pending id are not word reads; a residual with no
 // word read arms nothing; a gradual read the window cannot seat keeps the
-// slot push (true, unarmed); a fn-typed one refuses (false); a seatable
+// slot push (true, unarmed); a fn-typed one declines (false); a seatable
 // read arms the replay with the word table.
 func TestWordReadReplayArms(t *testing.T) {
 	es, rec, g, x := wordReadUnit(t)
@@ -144,7 +144,7 @@ func TestWordReadReplayArms(t *testing.T) {
 		t.Error("a window without a word read has no table")
 	}
 	if !es.noteWordReadReplay(u, rec, []core.Value{core.NewInteger(1)}) || rec.dynFrameW != 0 {
-		t.Error("no word read: nothing to arm, nothing to refuse")
+		t.Error("no word read: nothing to arm, nothing to decline")
 	}
 	// A window whose events run AFTER the read is not a body tail: a fragment
 	// event positioned past the read.
@@ -153,7 +153,7 @@ func TestWordReadReplayArms(t *testing.T) {
 		t.Error("a gradual read the window cannot seat keeps the slot push, unarmed")
 	}
 	if es.noteWordReadReplay(u, rec, []core.Value{g}) {
-		t.Error("a fn-typed read the window cannot seat refuses")
+		t.Error("a fn-typed read the window cannot seat declines")
 	}
 	rec.frag = &EmitFragment{}
 	names := es.dynFrameWordsFor(u, rec, []core.Value{core.NewInteger(1), g})
@@ -210,12 +210,12 @@ func TestLamParamContract(t *testing.T) {
 	}
 }
 
-// TestFnResidualReplayReasonArms pins the shared refusal site's three
+// TestFnResidualReplayReasonArms pins the shared compile failure site's three
 // verdicts: a closure unit takes none; a trailing apply takes neither the
 // count nor the replay verdict but still the READ accounting (the
 // thirty-second increment: an uncredited bare read beneath the tail apply
-// refuses, a credited one passes); a fn-typed word read the window cannot
-// seat (an event after the read) refuses with the NUR123 reason; a seated
+// declines, a credited one passes); a fn-typed word read the window cannot
+// seat (an event after the read) declines with the NUR123 reason; a seated
 // read passes the accounting.
 func TestFnResidualReplayReasonArms(t *testing.T) {
 	es, rec, g, _ := wordReadUnit(t)
@@ -254,7 +254,7 @@ func TestFnResidualReplayReasonArms(t *testing.T) {
 // and gradual (never strict); a value neither local nor produced here, or
 // produced but bound in an ENCLOSING scope, is not this unit's to seat; a
 // binding read both bare and by `/v` is never seated (wordReadName) — that
-// mix is the accounting's refusal.
+// mix is the accounting's compile failure.
 func TestNoteWordReadBodyLocalProducer(t *testing.T) {
 	es, rec, _, _ := wordReadUnit(t)
 	u := es.units[len(es.units)-1]

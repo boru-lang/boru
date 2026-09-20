@@ -257,7 +257,7 @@ turned out to be a record the collapse already takes:
 The two remaining arm/list shapes (`if true [(mk 1) 2]`, `[((mk 1) 2)]`) need
 the apply RECORDED rather than skipped, which needs `RecordDynApply` to admit
 an EVENT lead — `DynApplyLeadEligible` declines it today. When that lands,
-`TestParenReStepListElementRefusal` graduates to a parity row and
+`TestParenReStepListElementCompileFailure` graduates to a parity row and
 `ParenReSteppedFnIDs` can retire in favour of the recorded event.
 
 The ratchet for what already graduated is

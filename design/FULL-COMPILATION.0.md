@@ -62,7 +62,8 @@ The four sentences of the directive, made checkable:
 - **T1 — Totality.** For every source program the interpreter accepts,
   `CompileCheck` returns a `*Program`. `compile_failed` (Stage J,
   `lang/go/boru.go:1079-1099`) becomes an internal invariant violation, not
-  a result. The `BORU_COMPILE_FALLBACK` hatch retires at the end state.
+  a result. The `BORU_COMPILE_FALLBACK` hatch RETIRED EARLY, on 2026-09-19
+  (PR #476), with every other interpreter fallback.
 - **T2 — No islands.** At runtime, a compiled program never re-enters the
   interpreter's stepping machinery over tokens — neither recorded *source*
   tokens (`OpFallback`, `eng/go/vm.go:1166-1199`; drift-window

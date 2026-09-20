@@ -116,7 +116,7 @@ func TestSeatProgramResidualScreensACallable(t *testing.T) {
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
 	reason := lw.seatProgramResidual(ops, callable, core.SrcPos{})
 	if reason == "" {
-		t.Fatal("a residual that may carry a callable must keep the seating's refusal")
+		t.Fatal("a residual that may carry a callable must keep the seating's compile failure")
 	}
 	if len(lw.p.Code) != 0 {
 		t.Errorf("the screen must emit nothing, got %v", lw.p.Code)
@@ -128,14 +128,14 @@ func TestSeatProgramResidualScreensACallable(t *testing.T) {
 	lw = rbLowerer(1)
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
 	if lw.seatProgramResidual(ops, []core.Value{core.NewInteger(9), dyn}, core.SrcPos{}) == "" {
-		t.Error("a dynamic residual entry must keep the refusal")
+		t.Error("a dynamic residual entry must keep the compile failure")
 	}
 }
 
 func TestResidualRebuildDeclines(t *testing.T) {
 	// Nothing on the simulated stack: there is no call result to seat, so
 	// the in-place seating owns the shape (a const-only residual) and its
-	// refusal is the honest one.
+	// compile failure is the honest one.
 	if rbLowerer().seatResidualRebuild([]EmitOperand{ConstOperand(0)}, core.SrcPos{}) {
 		t.Error("an empty simulated stack must decline")
 	}

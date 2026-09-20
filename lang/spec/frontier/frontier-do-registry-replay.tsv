@@ -3,7 +3,7 @@
 # `do [...]` body containing a registry-mutating statement replayed it
 # against the check pass's surviving state (typed defs raised a
 # type-conflict Error; check-time registrations were invisible). Now: the
-# bake decision refuses a body carrying a capitalised def
+# bake decision declines a body carrying a capitalised def
 # (eng bodyHasReplayHazard) so the interpreter owns these rows with full
 # parity, and the import half compiles natively as a closure unit after the
 # ensureExportsBound namespace re-bind fix. Value defs (`do [def b 5 …]`)
@@ -16,25 +16,25 @@
 # ── Added 2026-08-28 and REMOVED the same day; the note stays because the
 #    round trip is the finding. stampFnConst's container descent stamps the
 #    fn values inside a map const, which made these two mount-handler seeds
-#    refuse: compileStoredFnUnit analyses against the LIVE emit state, so the
+#    decline: compileStoredFnUnit analyses against the LIVE emit state, so the
 #    ENCLOSING compile inherited a dynamic-scope promotion decision and a dep
 #    record from a body it may never apply. Two rows landed here as ledgered
-#    refusals.
+#    compile failures.
 #
 #    The justification for ledgering them was that without the descent the
 #    `for`-wrapped seed MISCOMPILES (a flex map captured by a mount handler
 #    loses its identity across loop iterations: the compiled run raises
 #    `expected a FlexMap, got FlexMap` where the interpreter round-trips),
-#    and a refusal beats a wrong answer. That justification was the mistake.
+#    and a compile failure beats a wrong answer. That justification was the mistake.
 #    The descent was not FIXING that miscompile, it was MASKING it — the
 #    stamp is an optimisation that declines for a capturing fn, for a body
-#    whose lowering refuses, and whenever runtime stamping is unarmed, so the
+#    whose lowering declines, and whenever runtime stamping is unarmed, so the
 #    wrong answer would have come back silently the first time any of those
 #    held.
 #
 #    The stamp now restores es.dynScopeNames and declines rather than perturb
 #    the enclosing program, and an optional ref no longer escalates a rebind
-#    to a program-level refusal. Both rows compile again, both buckets are
+#    to a program-level compile failure. Both rows compile again, both buckets are
 #    gone, and the flex-map divergence is pinned honestly where divergences
 #    belong — varyKnownMiscompiles in test/go/langspec/vary_differential_test.go.
 #

@@ -77,7 +77,7 @@ func TestVarySweepIOFailures(t *testing.T) {
 	}
 }
 
-// TestVarySweepEndToEnd — a tiny corpus (one passing seed, one refusing
+// TestVarySweepEndToEnd — a tiny corpus (one passing seed, one declining
 // seed, one interp-rejected seed) classified through the real pipeline via
 // the main() dispatch, producing the expected classification files.
 func TestVarySweepEndToEnd(t *testing.T) {
@@ -90,16 +90,16 @@ func TestVarySweepEndToEnd(t *testing.T) {
 		}
 	}
 	corpus := "1 add 2\t3\n" + // passing base: fans out into every transform
-		// refused base (a def-PROMOTED do-catch read — the result leaves the
+		// declined base (a def-PROMOTED do-catch read — the result leaves the
 		// stack for a frame slot, so neither the mark window nor the paren
 		// apply can reproduce it): skipped, no variants. (`for 3 [1 2]`
 		// graduated when net drivers landed; the bare do-catch region
 		// `do [(zf 5) 2] error [dot code]` graduated when the mark-window
-		// island landed — neither can serve as the refusing seed anymore.)
+		// island landed — neither can serve as the declining seed anymore.)
 		"def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg\tbad_input/q\n" +
-		// A passing base whose FOR-BODY variant refuses (a typed def
+		// A passing base whose FOR-BODY variant declines (a typed def
 		// re-embedded in a loop body — the conditional-body rollback keeps
-		// this a wrapped-context refusal; the DO-body wrap compiles natively
+		// this a wrapped-context compile failure; the DO-body wrap compiles natively
 		// since do-def leak fidelity landed 2026-07-14).
 		"def Big Integer 15 is Big\ttrue\n" +
 		"# comment\nbroken zz\tERROR:undefined_word\n" // error row: not a seed
@@ -118,19 +118,19 @@ func TestVarySweepEndToEnd(t *testing.T) {
 	if !strings.Contains(string(pass), "1 add 2") {
 		t.Errorf("vary-pass.tsv has no variant of the passing seed:\n%s", pass)
 	}
-	ref, err := os.ReadFile(filepath.Join(outDir, "vary-refused.tsv"))
+	ref, err := os.ReadFile(filepath.Join(outDir, "vary-declined.tsv"))
 	if err != nil {
-		t.Fatalf("vary-refused.tsv (the registry-replay variant must refuse): %v", err)
+		t.Fatalf("vary-declined.tsv (the registry-replay variant must decline): %v", err)
 	}
 	if !strings.Contains(string(ref), "for 2 [def Big Integer 15 is Big]") {
-		t.Errorf("vary-refused.tsv missing the wrapped typed-def refusal:\n%s", ref)
+		t.Errorf("vary-declined.tsv missing the wrapped typed-def compile failure:\n%s", ref)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "vary-diverged.tsv")); !os.IsNotExist(err) {
 		t.Errorf("vary-diverged.tsv exists — a healthy build must produce no divergence (stat err=%v)", err)
 	}
-	// The refusing seed contributes NO variant rows (its base is skipped) —
+	// The declining seed contributes NO variant rows (its base is skipped) —
 	// no row of any output file may reference s.tsv:2.
-	for _, fn := range []string{"vary-pass.tsv", "vary-refused.tsv", "vary-diverged.tsv", "vary-interp-reject.tsv"} {
+	for _, fn := range []string{"vary-pass.tsv", "vary-declined.tsv", "vary-diverged.tsv", "vary-interp-reject.tsv"} {
 		data, err := os.ReadFile(filepath.Join(outDir, fn))
 		if os.IsNotExist(err) {
 			continue // a bucket with no rows writes no file
@@ -139,7 +139,7 @@ func TestVarySweepEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(data), "s.tsv:2") {
-			t.Errorf("%s references the refused base's variants:\n%s", fn, data)
+			t.Errorf("%s references the declined base's variants:\n%s", fn, data)
 		}
 	}
 }

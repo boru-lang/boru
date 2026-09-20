@@ -77,7 +77,7 @@ func allForwardSig(sig *core.Signature) bool {
 //	  compiled     'str'
 //
 // A silent wrong answer rather than an error — the class this project ranks
-// strictly above a refusal. The declared return is only checkable at RUN time
+// strictly above a compile failure. The declared return is only checkable at RUN time
 // here (the body returns its `n:Any` param, so the check pass cannot rule the
 // String out statically), which is exactly why the runtime contract has to
 // ride along.

@@ -14,7 +14,7 @@ import (
 // (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §6.4): compose, pipe, curry, partial,
 // const, identity, flip, on, memoize. Every word was writable in user boru in
 // a handful of lines; shipping them native removes the friction AND the §5.8
-// compile refusals the user-space spellings draw — a native word's produced
+// compile failures the user-space spellings draw — a native word's produced
 // wrapper is an ordinary Function value backed by a Go handler, invoked
 // through the same callback seam filter uses (MatchFnSig + InvokeCallbackFn on
 // the fn's DEFINING registry, or InvokeBody for a compiled closure), so the
@@ -66,7 +66,7 @@ func BuildFnUtilModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 // fnUtilArg validates a callable operand: an interpreter Function value
 // (FnDefInfo). A compiled closure cannot reach these words today — every
-// fn-util row refuses compilation (the frontier ledger) — so the closure
+// fn-util row declines compilation (the frontier ledger) — so the closure
 // arm waits for the §5.8 campaign to make it reachable, with coverage.
 func fnUtilArg(v native.Value, opName string, r *native.Registry) (native.Value, error) {
 	if _, ok := v.Data.(native.FnDefInfo); ok {
@@ -88,7 +88,7 @@ func fnUtilSigArg(v native.Value, opName string, r *native.Registry) (native.FnD
 		fmt.Sprintf("%s: argument must be a function value with a signature (a compiled closure or non-function cannot be reshaped), got %s", opName, v.String()), opName)
 }
 
-// fnUtilSingleSig returns the operand's one own signature, refusing
+// fnUtilSingleSig returns the operand's one own signature, declining
 // multi-overload functions — reshaping picks ONE parameter list, and
 // choosing among overloads silently would be a wrong-answer generator.
 func fnUtilSingleSig(fd native.FnDefInfo, opName string, r *native.Registry) (*native.Signature, error) {
@@ -169,7 +169,7 @@ func goFnValue(name string, nParams int, h native.Handler) native.Value {
 // shape of a def-bound wrapper (`def k (FnUtil.const 7)  (k 99)`) the way it
 // knows a compiled factory's returned closure. A word whose arity depends on
 // an operand the pass cannot see concretely (a computed fn) makes no claim,
-// and the classifier's "closure shape unknown" refusal stands.
+// and the classifier's "closure shape unknown" compile failure stands.
 func fnShapeReturns(shape func(args []native.Value) (core.FnShape, bool)) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		out := native.NewCarrier(native.TFunction)
@@ -244,9 +244,9 @@ func fnShapeCurry() func([]native.Value) (core.FnShape, bool) {
 // CompileStoresFn contract, and the same criterion parse.go states for its own
 // slots ("the fn is stored, not invoked on the tape"). Without the
 // declaration the recorder assumes the DEFAULT — a fn-valued operand means the
-// handler invokes it on the tape — and refuses every call at
+// handler invokes it on the tape — and declines every call at
 // RecordCallOperands, keyed on the SIGNATURE's declared arg type before it can
-// look at the operand. `/v` at the call site cannot lift that: the refusal is
+// look at the operand. `/v` at the call site cannot lift that: the compile failure is
 // about what the WORD does, and `/v` only stops a dispatch the TFunction slot
 // already prevents (see the exports comment above).
 //
@@ -255,14 +255,14 @@ func fnShapeCurry() func([]native.Value) (core.FnShape, bool) {
 // fnUtilArg / fnUtilSigArg. A CAPTURING fn at such a slot cannot bake as a
 // const, would lower to a bare OpPushClosure, and the handler would then
 // reject the ClosurePayload with a type_error the interpreter never raises;
-// the strict flag makes the recorder refuse so the interpreter owns the shape.
+// the strict flag makes the recorder decline so the interpreter owns the shape.
 // This mirrors native_service.go's service/add slots exactly. `_f_const`
 // stores its operand OPAQUELY — it never inspects the value, so a closure
 // round-trips through it untouched — and therefore declares no strict flag.
 //
 // This cleared the FIRST of two walls in front of the fn-util rows. The second
 // was the def-bound computed-fn model (§5.4 / NUR101): with the declaration in
-// place every behaviour row refused with "def-bound computed fn apply (closure
+// place every behaviour row declined with "def-bound computed fn apply (closure
 // shape unknown — Stage 1)" instead — the compile pass knew a def-bound
 // wrapper only as a Function carrier of no shape. The thirty-fifth increment
 // (2026-09-08) took that wall down from three sides: each wrapper-producing

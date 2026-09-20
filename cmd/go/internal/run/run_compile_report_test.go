@@ -14,7 +14,7 @@ func TestExecuteCompileReport(t *testing.T) {
 	// constructed at RUN time, so the STORE-SITE stamp fires and records.
 	//
 	// The fixture used to CAPTURE the factory's parameter, which does not
-	// compile — the stamp was reached only because the interpreter fallback
+	// compile — the stamp was reached only because the compile failure
 	// ran the factory. There is no fallback, so the capturing form now fails
 	// outright and the fixture is its non-capturing twin, which compiles and
 	// still exercises the surface this test is about. (The capturing shape

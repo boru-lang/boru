@@ -83,12 +83,12 @@ func TestCellStatusAndGlyph(t *testing.T) {
 		{Cell{Seed: probe, Base: res(vary.Pass)}, StaleNA, "n/a?!"},
 		{Cell{Seed: seed, Base: res(vary.InterpReject)}, Invalid, "✗"},
 		{Cell{Seed: seed, Base: res(vary.CheckReject)}, CheckReject, "C"},
-		{Cell{Seed: seed, Base: res(vary.Refused)}, Failed, "F"},
+		{Cell{Seed: seed, Base: res(vary.Declined)}, Failed, "F"},
 		{Cell{Seed: seed, Base: res(vary.Islanded)}, Islanded, "I"},
 		{Cell{Seed: seed, Base: res(vary.Diverged)}, Diverged, "D!"},
 		{Cell{Seed: seed, Base: res(vary.Panicked)}, Panicked, "P!"},
 		{Cell{Seed: seed, Base: res(vary.Hung)}, Hung, "H!"},
-		{Cell{Seed: seed, Base: res(vary.Pass), Variants: []vary.Variant{{Res: res(vary.Pass)}, {Res: res(vary.Refused)}}}, Pass, "✓ 1/2"},
+		{Cell{Seed: seed, Base: res(vary.Pass), Variants: []vary.Variant{{Res: res(vary.Pass)}, {Res: res(vary.Declined)}}}, Pass, "✓ 1/2"},
 	}
 	for i, c := range cases {
 		if s := c.cell.Status(); s != c.status {
@@ -153,7 +153,7 @@ func TestRunRenderCount(t *testing.T) {
 func TestRenderDefectArms(t *testing.T) {
 	seed := &Seed{Src: "p"}
 	cells := []Cell{
-		{Word: "a", Kind: Literal, Seed: seed, Base: vary.Result{Outcome: vary.Refused, Detail: "why"}},
+		{Word: "a", Kind: Literal, Seed: seed, Base: vary.Result{Outcome: vary.Declined, Detail: "why"}},
 		{Word: "a", Kind: Lambda, Seed: seed, Base: vary.Result{Outcome: vary.Islanded}},
 		{Word: "a", Kind: NamedFn, Seed: seed, Base: vary.Result{Outcome: vary.Diverged, Detail: strings.Repeat("x", 200)}},
 		{Word: "a", Kind: Factory, Seed: seed, Base: vary.Result{Outcome: vary.CheckReject}},
@@ -161,7 +161,7 @@ func TestRenderDefectArms(t *testing.T) {
 		{Word: "b", Kind: Lambda, Seed: seed, Base: vary.Result{Outcome: vary.Hung, Detail: "HUNG: y"}},
 		{Word: "a", Kind: Container, Seed: &Seed{Src: "p", NA: true}, Base: vary.Result{Outcome: vary.Pass}},
 		{Word: "a", Kind: ModuleExport, Seed: seed, Base: vary.Result{Outcome: vary.Pass}, Variants: []vary.Variant{
-			{Transform: "fn-body", Res: vary.Result{Outcome: vary.Refused, Detail: "r"}},
+			{Transform: "fn-body", Res: vary.Result{Outcome: vary.Declined, Detail: "r"}},
 			{Transform: "do-body", Res: vary.Result{Outcome: vary.Pass}},
 		}},
 	}
@@ -171,7 +171,7 @@ func TestRenderDefectArms(t *testing.T) {
 		"- `a` literal — **failed**: `p` — why",
 		"- `a` lambda — **islanded**: `p`",
 		"…", "- `a` factory — **check-reject**", "- `a` container — **n/a-STALE**",
-		"- `a` module-export · fn-body — **refused** — r",
+		"- `a` module-export · fn-body — **declined** — r",
 		"| `b` | P! | H! |", "- `b` literal — **PANIC**: `p` — PANIC in run: x", "- `b` lambda — **HUNG**: `p` — HUNG: y",
 	} {
 		if !strings.Contains(out, w) {

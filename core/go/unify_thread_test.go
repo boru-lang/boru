@@ -20,7 +20,7 @@ func TestUnifyThreadedSurfaceFold(t *testing.T) {
 // the chain's registry for its bound walk: a compound bound whose
 // alternative is a predicate fn admits the candidate only when the
 // registry resolves the fn to its predicate type. The unarmed call
-// cannot resolve it and refuses — exactly the verdict split the old
+// cannot resolve it and declines — exactly the verdict split the old
 // ambient stack produced for the same pair.
 func TestUnifyThreadedTypeParamKeepsRegistry(t *testing.T) {
 	r := x5reg(t)
@@ -56,7 +56,7 @@ func TestUnifyThreadedTypeParamKeepsRegistry(t *testing.T) {
 // A binding-body node (a named typed-list whose child is a predicate
 // fn) reached by dispatchUnifier from inside an ARMED unify runs its
 // body unify with the chain's registry, so each element resolves the
-// predicate; the unarmed call refuses.
+// predicate; the unarmed call declines.
 func TestUnifyThreadedBindingBodyKeepsRegistry(t *testing.T) {
 	r := x5reg(t)
 	_, fn := x5PredType(t, r, "X5ThrPosB")
@@ -82,7 +82,7 @@ func TestUnifyThreadedBindingBodyKeepsRegistry(t *testing.T) {
 		t.Fatal("unarmed: the predicate-fn child cannot resolve without a registry")
 	}
 	// The Match side (the `is` fast path) is unarmed by contract and
-	// refuses the same pair; matchR with the registry admits it.
+	// declines the same pair; matchR with the registry admits it.
 	u := def.Behavior().(*BindingBodyUnifier)
 	if u.Match(lst, def) {
 		t.Fatal("Match is unarmed: the predicate-fn child cannot resolve")
@@ -112,13 +112,13 @@ func TestUnifyThreadedFnShapePatternKeepsRegistry(t *testing.T) {
 	_, armedPair := unifyWithin(specPat, fnPat, r)
 	_, unarmedPair := Unify(specPat, fnPat)
 	if armedPair == nil || !unarmedPair {
-		t.Fatalf("reference: the predicate-child pair must refuse armed (%v) and admit unarmed (%v)", armedPair, unarmedPair)
+		t.Fatalf("reference: the predicate-child pair must decline armed (%v) and admit unarmed (%v)", armedPair, unarmedPair)
 	}
 
 	// Anonymous constraint: the ShapeFnUndef fold.
 	undef := NewValueRaw(TFnUndef, FnUndefInfo{Sigs: []FnSigSpec{spec}})
 	if _, uerr := UnifyExplainR(undef, fn, r); uerr == nil {
-		t.Fatal("armed fold: the pattern pair refuses under the registry, so the shape must refuse")
+		t.Fatal("armed fold: the pattern pair declines under the registry, so the shape must decline")
 	}
 	if _, ok := Unify(undef, fn); !ok {
 		t.Fatal("unarmed fold: the pattern pair settles structurally, so the shape admits")
@@ -128,7 +128,7 @@ func TestUnifyThreadedFnShapePatternKeepsRegistry(t *testing.T) {
 	def := MintTestType("FunctionSignature/X5ThrFnU")
 	installFnUndefUnifier(def, []FnSigSpec{spec}, "X5ThrFnU")
 	if _, uerr := UnifyExplainR(NewTypeLiteral(def), fn, r); uerr == nil {
-		t.Fatal("armed node: the pattern pair refuses under the registry, so the node must refuse")
+		t.Fatal("armed node: the pattern pair declines under the registry, so the node must decline")
 	}
 	if _, ok := Unify(NewTypeLiteral(def), fn); !ok {
 		t.Fatal("unarmed node: the pattern pair settles structurally, so the node admits")
@@ -139,7 +139,7 @@ func TestUnifyThreadedFnShapePatternKeepsRegistry(t *testing.T) {
 		t.Fatal("Match is unarmed: the pattern pair settles structurally")
 	}
 	if fu.matchR(fn, def, r) {
-		t.Fatal("matchR with the registry resolves the predicate child and refuses")
+		t.Fatal("matchR with the registry resolves the predicate child and declines")
 	}
 	// The exported entries stay unarmed.
 	if !FnUndefMatchesFnDef(undef, fn) || !FnDefHasSig(fn.Data.(FnDefInfo), spec) {

@@ -6,13 +6,13 @@ import (
 
 // Interpreter-only pin for the TRAILING spelling of a fn-shape-typed
 // class-member apply (`5 ((make C {…}) dot op)`), kept OUT of the spec
-// corpus so the compiled ratchets (compiled_coverage refusalCeiling=0)
+// corpus so the compiled ratchets (compiled_coverage failureCeiling=0)
 // stay untouched — the same split fn-triple.tsv documents. The compiled
-// lane REFUSES this shape ("unconsumed fn-value carrier in residual"):
+// lane DECLINES this shape ("unconsumed fn-value carrier in residual"):
 // with fn-shape carriers recognised as maybe-callable (core.
 // IsFnTypedCarrier — the NUR095 retirement), the trailing residual is a
-// carrier the trailing-apply lowering does not claim, and refusal is the
-// refusal the interpreter absorbs where the pre-fix recorder silently compiled the fn as
+// carrier the trailing-apply lowering does not claim, and compile failure is the
+// compile failure where the pre-fix recorder silently compiled the fn as
 // inert data. The leading spellings compile and are pinned as class.tsv
 // fn-members rows.
 func TestFnShapeMemberTrailingApplyInterp(t *testing.T) {

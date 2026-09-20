@@ -10,7 +10,7 @@ import (
 // unit pushes a closure — at the main program and inside a unit.
 //
 // Every §5.8 combinator row the twenty-seventh increment re-diagnosed
-// refused at `argIsProducedClosure` when the apply word's [Function]
+// declined at `argIsProducedClosure` when the apply word's [Function]
 // overload took the closure (`99 (kk 7) apply`): the guard reads a produced
 // closure at a word's argument slot as a paren that failed to collapse, but
 // under `apply` the closure at the slot IS what the word applies. The word
@@ -21,7 +21,7 @@ import (
 // recordPendingClosureApply → RecordDynApply → OpCallDynApplyTop) — a unit
 // call could not: the closure's construction-scope captures are unreachable
 // at the call site, and only the runtime payload carries them. A pending
-// entry no dispatch consumed refuses at Finalize.
+// entry no dispatch consumed declines at Finalize.
 
 const pcaK = `def kk x:Any => [y:Any => [x/v]] end `
 
@@ -52,7 +52,7 @@ func runCompiledNative(t *testing.T, src string) (gotC []any, compiled bool, isl
 // on both lanes, and run VM-NATIVE — no interpreter island.
 func TestProducedClosureApplyParity(t *testing.T) {
 	rows := []struct{ src, note string }{
-		{pcaK + `99 (kk 7) apply`, "7 — the K combinator row (was refused: computed closure at a word's argument slot)"},
+		{pcaK + `99 (kk 7) apply`, "7 — the K combinator row (was declined: computed closure at a word's argument slot)"},
 		{pcaK + `99 (kk 7) apply 1 (kk 8) apply`, "99 8 — two applies of one lambda source, each its own event (the freshened out)"},
 		{pcaK + `99 (kk 7) apply 5`, "99 7 — a token after the apply word binds as the interpreter's re-step binds it"},
 		{pcaK + `1 99 (kk 7) apply`, "1 7 — a deeper value survives beneath the apply"},
@@ -68,7 +68,7 @@ func TestProducedClosureApplyParity(t *testing.T) {
 		{`def ctrue t:Any => [f:Any => [t/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif ctrue/v) apply) apply`, "T — Church true"},
 		{`def cfalse t:Any => [f:Any => [f/v]] end def cif p:Function => [t:Any => [e:Any => [e/v (t/v p/v apply) apply]]] end 'F' ('T' (cif cfalse/v) apply) apply`, "F — Church false: its capture-free inner lambda is a stamped const, entered under the value's own contract"},
 		{`def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") apply]] def rules {inc: ([x:Integer] => [x add 1])} app 5 rules`, "6 — the fetched-fn apply (increment 27's positive twin), native now"},
-		// A two-arg closure over two literals. This was a refusal
+		// A two-arg closure over two literals. This was a compile failure
 		// ("the seating cannot reorder") until the forty-third increment:
 		// the apply's two operands leave the residual in an order no static
 		// offset reaches, and the program residual now REBUILDS instead —
@@ -94,16 +94,16 @@ func TestProducedClosureApplyParity(t *testing.T) {
 	}
 }
 
-// TestProducedClosureApplySoundRefusals pins the neighbours that REFUSE —
+// TestProducedClosureApplySoundCompileFailures pins the neighbours that DECLINE —
 // the default lane then answers on the interpreter — never a wrong value.
-func TestProducedClosureApplySoundRefusals(t *testing.T) {
+func TestProducedClosureApplySoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, note string }{
 		// nothing beneath the closure: the interpreter leaves it as data
 		{pcaK + `(kk 7) apply`, "never dispatched", "fn (Any) on the interpreter"},
 		// the values beneath match no signature: data again
 		{`def kk x:Integer => [y:Integer => [x add y]] end "s" (kk 7) apply`, "never dispatched", "s fn (Integer)"},
 		// a fn-typed CARRIER lead (a declared [Function] return) keeps the
-		// argument-slot refusal — lifted, `1 99 (mk 7) apply` seated all
+		// argument-slot compile failure — lifted, `1 99 (mk 7) apply` seated all
 		// three as data (measured)
 		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot", "1 106"},
 		// a produced closure applied over ANOTHER produced closure: the
@@ -120,11 +120,11 @@ func TestProducedClosureApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal (%s)", c.src, c.note)
+			t.Errorf("%q: compiled — expected a compile failure (%s)", c.src, c.note)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 	}
 }

@@ -15,7 +15,7 @@ import (
 // the arm's lowering applies the fn where the interpreter's applyHandler
 // does. The window is the arm's own: the arm frame seals the enclosing
 // stack off on both lanes, so a pending fn with nothing beneath it inside
-// the arm keeps the refusal (the interpreter applies it over an empty
+// the arm keeps the compile failure (the interpreter applies it over an empty
 // stack and parks it).
 
 const atkCPS = `def factk fn [[n:Integer k:Function][Any][ if (lte 1 n) [ 1 k/v apply ] [ def kk ( fn r:Integer Any [ def m (mul n r) m k/v apply ] ) (factk (sub 1 n) kk/v) ] ]] end `
@@ -48,9 +48,9 @@ func TestArmTailApplyParity(t *testing.T) {
 	}
 }
 
-// TestArmTailApplySoundRefusals pins the neighbour that still REFUSES,
+// TestArmTailApplySoundCompileFailures pins the neighbour that still DECLINES,
 // with the interpreter's own answer.
-func TestArmTailApplySoundRefusals(t *testing.T) {
+func TestArmTailApplySoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// nothing beneath the pending fn inside the arm: the interpreter
 		// applies it over the arm's empty stack and parks it
@@ -66,11 +66,11 @@ func TestArmTailApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {

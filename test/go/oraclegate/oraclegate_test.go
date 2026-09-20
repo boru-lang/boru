@@ -1,7 +1,7 @@
 // oraclegate_test.go stops NUR106 from recurring.
 //
 // Stage J flipped `lang.Run` from the tree-walking interpreter to the COMPILED
-// path (with an interpreter fallback only on refusal). 75 parity assertions
+// path (with a compile failure only on compile failure). 75 parity assertions
 // across five files were not swept with it and kept reading `Run` as their
 // interpreter oracle — so each compared the compiled lane to ITSELF and passed
 // unconditionally. Five NUR101 miscompiles and the divergence filed as NUR107

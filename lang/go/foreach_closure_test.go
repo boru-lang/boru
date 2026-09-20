@@ -37,7 +37,7 @@ func feRun(t *testing.T, src string) (string, []string) {
 		t.Fatalf("RunCompiled(%q): %v", src, cerr)
 	}
 	if !compiled {
-		t.Fatalf("RunCompiled(%q): fell back to the interpreter", src)
+		t.Fatalf("RunCompiled(%q): did not compile", src)
 	}
 	return fmt.Sprintf("%v", out), islands
 }
@@ -47,7 +47,7 @@ func TestForEachCompilesItsBodyWithParity(t *testing.T) {
 	const acc = `def acc (flex []) end `
 	for _, tc := range []struct{ src, want string }{
 		// The frontier row: the Function form, which the Stage-3 gate used
-		// to refuse outright.
+		// to decline outright.
 		{dbl + `for-each dbl/v [1 2 3]`, "[]"},
 		{acc + dbl + `for-each dbl/v [1 2 3] end acc`, "[[]]"},
 		// A side-effecting fn value driven once per element — the result is
@@ -102,7 +102,7 @@ func TestForEachBodyIsAClosureUnit(t *testing.T) {
 	}
 	prog, reason, _, cerr := a.CompileCheck(`[1 2 3] for-each [print]`)
 	if cerr != nil || prog == nil {
-		t.Fatalf("refused %q err=%v", reason, cerr)
+		t.Fatalf("declined %q err=%v", reason, cerr)
 	}
 	dis := prog.Disassemble()
 	if !strings.Contains(dis, "PUSH_CLOSURE") || !strings.Contains(dis, "for-each$body") {
@@ -138,15 +138,15 @@ func TestForEachLambdaConventionMatchesTheInterpreter(t *testing.T) {
 	}
 }
 
-// TestForEachKeepsTheAmbiguousOverloadRefusal is the flag NOT set, and why.
+// TestForEachKeepsTheAmbiguousOverloadCompileFailure is the flag NOT set, and why.
 // CrossCollectionTokenShape licenses committing to the List overload for a
 // statically-ambiguous (gradual-Any) collection, because each's handler
 // delegates to the map iteration when the runtime value turns out to be a
 // map. forEachHandler does not — it reads args[1] as a list — so committing
-// would raise where the interpreter iterates. The refusal is the sound
+// would raise where the interpreter iterates. The compile failure is the sound
 // fallback, and `each` compiling the same shape is what makes the
 // difference visible.
-func TestForEachKeepsTheAmbiguousOverloadRefusal(t *testing.T) {
+func TestForEachKeepsTheAmbiguousOverloadCompileFailure(t *testing.T) {
 	const src = `def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`
 	a, err := New()
 	if err != nil {
@@ -157,10 +157,10 @@ func TestForEachKeepsTheAmbiguousOverloadRefusal(t *testing.T) {
 		t.Fatalf("check: %v", cerr)
 	}
 	if prog != nil {
-		t.Fatalf("a gradual collection must refuse, not commit to the List overload:\n%s", prog.Disassemble())
+		t.Fatalf("a gradual collection must decline, not commit to the List overload:\n%s", prog.Disassemble())
 	}
 	if !strings.Contains(reason, "gradual-Any operand") {
-		t.Errorf("refused %q, want the ambiguous-overload refusal", reason)
+		t.Errorf("declined %q, want the ambiguous-overload compile failure", reason)
 	}
 	b, err := New()
 	if err != nil {

@@ -194,7 +194,7 @@ func GenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 }
 
 // validateGenParamName enforces the type-name convention (capitalized)
-// and uniqueness, and refuses to shadow a same-named live binding in a
+// and uniqueness, and declines to shadow a same-named live binding in a
 // confusing way only when it is itself a placeholder (nested gen with
 // a reused name is almost certainly a bug).
 func validateGenParamName(r *Registry, name string, seen map[string]bool) error {

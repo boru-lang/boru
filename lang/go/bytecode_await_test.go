@@ -12,7 +12,7 @@ import (
 // store-body pattern applied to each parallels element) and run via RunUnit
 // on their per-branch forks. Pinned here: compiled parity across the value /
 // def-body / raising-branch / full-mode shapes, plus the per-element
-// interpreter fallback for a branch the store-body compile declines (a
+// compile failure for a branch the store-body compile declines (a
 // Module construction in the body) — the base program's zero-interp-entry
 // end state is the p6/concurrent-fork-bodies-on-vm frontier pin.
 func TestAwaitCompiledBranchParity(t *testing.T) {
@@ -63,9 +63,9 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 	}
 }
 
-// TestAwaitWinnerRegionRefusesFixedArityConsumers — the negative half of
+// TestAwaitWinnerRegionDoesNotLowerFixedArityConsumers — the negative half of
 // NUR067's graduation. The region is REPRESENTED now (the wholesale
-// MarkUncompilable is gone), so what refuses is each position that genuinely
+// MarkUncompilable is gone), so what declines is each position that genuinely
 // needs a STATIC count, one at a time and for its own stated reason:
 //
 //   - a promotion — `def x (await …) x` would store exactly nout values into
@@ -78,10 +78,11 @@ func TestAwaitCompiledBranchParity(t *testing.T) {
 // closing ops and are pinned as PARITY rows in region_collect_test.go and
 // region_prefix_test.go, beside their `for` twins.
 //
-// Each refusal below is a SOUND interpreter fallback, so parity is asserted
-// alongside it: a refusal that changed the answer would be no better than the
-// miscompile it replaced.
-func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
+// Each row below is a COMPILE FAILURE — a defect owed a fix, counted in the
+// ledgers, not a sanctioned outcome. The interpreted answer is asserted
+// alongside the failure so the fix has a target: a lowering that changed the
+// answer would be no better than the miscompile it replaced.
+func TestAwaitWinnerRegionDoesNotLowerFixedArityConsumers(t *testing.T) {
 	for _, tc := range []struct{ src, reason, want string }{
 		{`import "boru:time-util" def x (TimeUtil.await {mode:"first"} [[1 2 3]]) x`,
 			"variadic region promoted to a frame slot", "[2 3 1]"},
@@ -98,12 +99,12 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 				return
 			}
 			if compiled {
-				t.Fatal("a fixed-arity consumer of the winner region must refuse: the runtime count is not the static seat")
+				t.Fatal("a fixed-arity consumer of the winner region must decline: the runtime count is not the static seat")
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.reason) {
-				t.Fatalf("refusal reason drifted: want %q, got %v", tc.reason, err)
+				t.Fatalf("compile failure reason drifted: want %q, got %v", tc.reason, err)
 			}
-			// The refusal is a FALLBACK, so the answer the program gives is
+			// The compile failure is a FALLBACK, so the answer the program gives is
 			// the interpreter's — asserted against a value written out here
 			// rather than against a second run of the same lane, which would
 			// be comparing the interpreter to itself (NUR106).
@@ -122,12 +123,12 @@ func TestAwaitWinnerRegionRefusesFixedArityConsumers(t *testing.T) {
 	}
 }
 
-// TestAwaitRefusedBranchInterpretsPerElement — an element the store-body
+// TestAwaitFailedToCompileBranchInterpretsPerElement — an element the store-body
 // compile declines (a Module construction has no operand provenance) keeps
 // its raw list: THAT branch runs on the interpreter (an Engine.Run entry
 // appears) while the program still runs compiled with interpreter-identical
 // results. The sibling compiled branch is unaffected — per-element, sound.
-func TestAwaitRefusedBranchInterpretsPerElement(t *testing.T) {
+func TestAwaitFailedToCompileBranchInterpretsPerElement(t *testing.T) {
 	const src = `import "boru:time-util" TimeUtil.await [[9 (module [export "X" {a:1}]) drop] [3 mul 4]]`
 	a, err := New()
 	if err != nil {
@@ -153,7 +154,7 @@ func TestAwaitRefusedBranchInterpretsPerElement(t *testing.T) {
 		t.Fatalf("RunCompiled: %v", err)
 	}
 	if !compiled {
-		t.Fatal("the program itself must run compiled — only the refused ELEMENT interprets")
+		t.Fatal("the program itself must run compiled — only the declined ELEMENT interprets")
 	}
 	mu.Lock()
 	runs := engRuns
@@ -242,13 +243,13 @@ func TestAwaitEmptyBranchEntersNoInterpreter(t *testing.T) {
 	}
 }
 
-// The C1 effect fence on a BRANCH unit's internal_error (the runParallelBranch
-// twin of RunCompiled's runtime-bail arm): with no observable effect the
-// branch re-runs its raw tokens on the interpreter and the program matches
-// the interpreter exactly; after an effect the re-run is blocked — the output
-// is emitted exactly once and the branch surfaces the internal error as its
-// error value (the L-DUP doctrine: no-duplicate-effects beats parity).
-func TestAwaitBranchBailBeforeEffectFallsBack(t *testing.T) {
+// A BRANCH unit's internal_error (the runParallelBranch twin of RunCompiled's
+// runtime-bail arm). The branch used to re-run its raw tokens on the
+// interpreter when no observable effect had escaped, fenced after one so the
+// output could not be emitted twice. Neither arm exists now: the bail is a
+// compiler defect, the branch reports it, and an effect fires exactly once
+// because there is only ever one run. These two pin both shapes.
+func TestAwaitBranchBailBeforeEffectSurfaces(t *testing.T) {
 	const src = `import "boru:time-util" TimeUtil.await [[def i (zz-inst) i.m 5 42] [3 mul 4]]`
 	a := zzShapedInstance(t)
 	a.SetOutput(&bytes.Buffer{})
@@ -290,6 +291,6 @@ func TestAwaitBranchBailAfterEffectSurfaces(t *testing.T) {
 		t.Errorf("output = %q, want exactly one %q (no duplicate from a branch re-run)", out.String(), "once\n")
 	}
 	if s := fmt.Sprintf("%v", gotC); !strings.Contains(s, "internal") {
-		t.Errorf("fenced branch must surface the internal error as its value, got %v", gotC)
+		t.Errorf("the branch must surface the internal error as its value, got %v", gotC)
 	}
 }

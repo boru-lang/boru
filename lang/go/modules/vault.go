@@ -399,7 +399,7 @@ func vaultDeclaredReturns(ret *native.Type) native.ReturnsFunc {
 // index out of range inside the validator).
 //
 // Known, not concrete: DeepKnown also admits a bare type node, because
-// `{value: None}` is as decided as `{value: 5}` and the validator refuses
+// `{value: None}` is as decided as `{value: 5}` and the validator declines
 // both at run time. A dynamic operand still closes the gate for the
 // reason DeepConcreteOptionsAt states: it was matched optimistically, so
 // the runtime value may not be the shape being validated.
@@ -444,7 +444,7 @@ func argsMatchDeclared(args []native.Value, declared []*native.Type) bool {
 // order, so the diagnostic carries the byte-identical code and detail
 // the runtime raises.
 //
-// The policy gate is consulted but its refusal is NOT reported: when the
+// The policy gate is consulted but its compile failure is NOT reported: when the
 // policy denies the op the runtime never reaches the usage validation,
 // so claiming a usage defect there would name the wrong error. Declining
 // keeps the mirror's rule exact — it fires only where the run does.

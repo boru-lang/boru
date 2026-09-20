@@ -136,7 +136,7 @@ func TestRefSurvivesRedefinition(t *testing.T) {
 	}
 }
 
-// TestValofOnUndefinedNameErrors: an unbound name is the ONE refusal
+// TestValofOnUndefinedNameErrors: an unbound name is the ONE compile failure
 // left after `/v` became total over binding kinds, via both surface
 // forms. The error must name the unbound operand — asserting only that
 // something failed would pass even if the surface word itself were the
@@ -182,7 +182,7 @@ func TestValOnNonFunctionBindingIsTheValue(t *testing.T) {
 
 // TestValOnUnboundNameIsStillAnError is the negative twin: dropping the
 // function-only gate did NOT make `/v` accept anything. A name with no
-// binding has no value to take, and both surfaces still refuse.
+// binding has no value to take, and both surfaces still decline.
 func TestValOnUnboundNameIsStillAnError(t *testing.T) {
 	for _, src := range []string{`nope/v`, `valof nope`} {
 		_, err := runNativeSteps(t, nil, []string{src})

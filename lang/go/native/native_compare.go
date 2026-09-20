@@ -109,7 +109,7 @@ var comparisonNatives = []NativeFunc{
 		// yields -1 / 0 / 1 for ANY two values, via the unified
 		// lattice total order (the order sort and the collection
 		// words use). Reach for it when you want cross-type ordering
-		// that cmp refuses, e.g. `1 tcmp "a"`.
+		// that cmp declines, e.g. `1 tcmp "a"`.
 		Name:          "tcmp",
 		CompileEffect: CompileIslandPure | CompileScalarFold,
 

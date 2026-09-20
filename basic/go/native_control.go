@@ -37,7 +37,7 @@ var ControlNatives = []NativeFunc{
 				// CompileDynBody is the universal backstop: a body the closure
 				// path declines (computed carriers, args-bearing bodies) lowers
 				// to a CALL_NATIVE under the program's DynEnv mode instead of
-				// refusing — the handler's runtime execution is the
+				// declining — the handler's runtime execution is the
 				// interpreter's own semantics once names and args resolve
 				// identically (see eng CompileDynBody).
 				CompileEffect: CompileFallbackBody | CompileDynBody,
@@ -165,7 +165,7 @@ var ControlNatives = []NativeFunc{
 		// the stack, exactly as `for` leaves its per-iteration values.
 		// break/continue work as in `for`. Engine-stepped regions keep
 		// the loop inside the step budget (a non-terminating condition
-		// trips evaluation_limit). The compile lane refuses the word —
+		// trips evaluation_limit). The compile lane declines the word —
 		// the interpreter owns it (lang/spec/frontier/frontier-while.tsv).
 		Name: "while",
 		Signatures: []Signature{{
@@ -275,7 +275,7 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 //   - an IO.exit request — a control transfer, not a failure (trapping it
 //     as data would demote `IO.exit 4` to exit 0);
 //   - a designed VM defer (IsVMDefer: an internal_error the compiled VM
-//     raises to request whole-program fallback — DISPATCH_GENERIC with no
+//     raises when it cannot continue — DISPATCH_GENERIC with no
 //     live unit, a poly no-match, a recovered lowering panic). Trapping it
 //     as an Error value STRANDS the fallback — the defer never reaches the
 //     top-level run that re-runs interpreted, so the internal message
@@ -315,9 +315,9 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// static bound, not a proof. Gated to !Compiling (mirroring the
 	// producer, which never attaches during a compile pass): the
 	// recording pass keeps the dynamic(Any) hatch so a `do` over a
-	// computed body carrier keeps REFUSING to lower (whole-program
-	// interpreter fallback) — checker precision must not imply compile
-	// coverage (lang/go/code_effect_test.go pins the refusal).
+	// computed body carrier keeps DECLINING to lower (whole-program
+	// compile failure) — checker precision must not imply compile
+	// coverage (lang/go/code_effect_test.go pins the compile failure).
 	if body.Carrier && !r.Check.Compiling {
 		if eff, ok := body.Data.(CodeEffectInfo); ok && eff.Analysed && len(eff.In) == 0 && len(eff.Out) > 0 {
 			out := make([]Value, len(eff.Out))
@@ -372,7 +372,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// runtime. Mirror the handler: return the full residual. The common
 	// single-value `do [expr]` is unaffected (len(stk)==1). The emit closure /
 	// island paths require a single output, so a genuinely multi-value body
-	// (rare) declines those and rides the whole-program fallback — correct,
+	// (rare) declines those, so the program does not compile — correct,
 	// just not natively compiled.
 	//
 	// COMPILE PASS: a multi-value body that can RAISE has a runtime-VARIABLE
@@ -384,7 +384,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// LATCHES the recorder: the record paths (RecordClosureCall / the generic
 	// RecordCall / tryRecordDynBody) mark the event's result VARIADIC — the
 	// residual absorbs the variable region and a fixed-arity consumer keeps
-	// the refusal (plan Phase 5, L-DO). A pure / infallible multi-value body
+	// the compile failure (plan Phase 5, L-DO). A pure / infallible multi-value body
 	// (`do [10 20 30]`, `do [1 add 2 10 mul 4]`) keeps its exact residual and
 	// fixed seating. Gated to Compiling so check-mode precision is intact.
 	if r.Check.Compiling {
@@ -396,7 +396,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// downstream Error accessor (`.code`, `.message`, `convert Map e`) dispatches
 		// its Error overload instead of no_signature-ing on a bare scalar — the stats
 		// `((do [Stats.mean [] end]).code)` shape, which raised on empty input but typed
-		// the residual as the declared Float (#stats code-body refusal). Mirrors the
+		// the residual as the declared Float (#stats code-body compile failure). Mirrors the
 		// `if [scalar] [raise]` arm-union. Node/Error residuals already match the
 		// accessor sigs (excluded); an infallible body keeps its exact scalar.
 		// Gated to Compiling ONLY: check-mode precision is intact (`do [1 add 2]` stays
@@ -464,7 +464,7 @@ func tokensMayRaise(toks []Value, r *Registry) bool {
 // raise: a MODULE-export value, a REGISTERED word, or a callable def binding
 // (fnDefMayRaise). A plain value read (`x` → 5) cannot raise; an unbound name
 // cannot raise HERE either — it raises undefined_word at dispatch, which the
-// check mirrors as its own model-undermining diagnostic, refusing the program
+// check mirrors as its own model-undermining diagnostic, declining the program
 // before any seat is laid.
 func wordMayRaise(name string, r *Registry) bool {
 	v, ok := r.Defs.Top(name)
@@ -722,7 +722,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		thenFrag = recorderState(es).TakeFragment()
 		restoreThen()
 	} else if body, ok := computedArmDoBody(r, args[1]); ok {
-		// REFUSAL-CLOSURE.0 §4: a COMPUTED List-conforming arm is the
+		// COMPILE FAILURE-CLOSURE.0 §4: a COMPUTED List-conforming arm is the
 		// interpreter's spliced code body (spliceArg executes it), and
 		// arm-splice ≡ `do <arm>` on every probed axis (multi-values,
 		// def leaking, flow escape) — so synthesize the `[do <arm>]` body
@@ -785,7 +785,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
 		// diverging break/continue/raise): the if is a 0-value STATEMENT, not a
 		// value-producing branch. Record it (RecordBranch marks the event
-		// zeroOut and the lowering emits no merge slot) rather than refusing —
+		// zeroOut and the lowering emits no merge slot) rather than declining —
 		// mirroring the 2-arg if2 guard. The registered result is a phantom None
 		// the residual reconciliation skips.
 		out := NewCarrier(TNone)
@@ -824,7 +824,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 }
 
 // computedArmDoBody synthesizes the `[do <arm>]` body for a COMPUTED
-// List-conforming branch arm (REFUSAL-CLOSURE.0 §4): the interpreter's
+// List-conforming branch arm (COMPILE FAILURE-CLOSURE.0 §4): the interpreter's
 // spliceArg EXECUTES a computed list arm as a code body, and probes prove
 // the splice ≡ `do <arm>` (multi-values, def leaking via do's keep-defs,
 // break/continue via the FlowCtrl escape) — so the arm compiles through the
@@ -1153,7 +1153,7 @@ func forListListReturnsFn(args []Value, r *Registry) []Value {
 // RecordLoop lowers the loop (FOR_SETUP/FOR_NEXT with the iterator
 // as a VM local). The count form lowers as the range [0, n, 1]; the
 // range form decomposes a LITERAL integer range via ParseRange
-// (computed ranges record nothing and the generic path refuses).
+// (computed ranges record nothing and the generic path declines).
 func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Value, countArg int) []Value {
 	body := args[len(args)-1]
 	iter := NewCarrier(iterType)
@@ -1163,7 +1163,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 	// non-positive Integer never enters its body — at run time both engines
 	// iterate zero times and push zero values (`for 0 [body]` leaves the stack
 	// untouched). Its body is unreachable, so analysing it is both wasted work
-	// and a source of false refusals: a body that only type-checks (or only
+	// and a source of false compile failures: a body that only type-checks (or only
 	// compiles) for a live iteration — e.g. module-test:38's `for (subs size)
 	// [subspec run-spec]` over `subs: []`, whose recursive `run-spec` over a
 	// carrier `subspec` cannot dispatch — would otherwise poison the program for
@@ -1274,7 +1274,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 	// CALL_NATIVE — a double-lowered loop); RecordLoop already marked that event
 	// zeroOut for an empty bodyStk, so the fn/closure return reconciliation strips
 	// it there. When the loop is NOT lowerable (a computed start/step range the
-	// compiler refuses), NO loop event exists to link and the program falls back,
+	// compiler declines), NO loop event exists to link and the program falls back,
 	// so return the empty residual in the recording pass too — otherwise the check
 	// and compile passes disagree (plain check nets 0, compile keeps `out` and
 	// reports a phantom "got 2"), violating the same-diagnostics contract.
@@ -1321,12 +1321,12 @@ const loopSpreadResidualCap = 256
 // but requires only start/step to be statically known: RecordLoop const-bakes
 // those and resolves the end to its runtime operand. The end value is returned
 // AS-IS (carrying its ID) so resolveOperand finds its producing event/local.
-// ok=false when start or step is not a concrete integer (RecordLoop refuses a
+// ok=false when start or step is not a concrete integer (RecordLoop declines a
 // computed start/step) or the arity is not 1–3.
 func computedRangeBounds(elems []Value) (startV, endV, stepV Value, ok bool) {
 	// Every bound may be computed (carrier / event values returned AS-IS so
 	// resolveOperand finds their homes): RecordLoop admits const AND local
-	// operands for start/step and keeps refusing event-produced ones — the
+	// operands for start/step and keeps declining event-produced ones — the
 	// VM's opForSetup pops the full triple generically with the
 	// interpreter's own runtime Integer/zero-step taxonomy either way.
 	switch len(elems) {
@@ -1364,9 +1364,9 @@ func AsInt64Or(v Value, def int64) int64 {
 // graduation (`5 do [7] error [drop 9] add 1`): with dynamic(Integer) the
 // String catch-all overload of `add` is disjoint and check mode selects the
 // same forward collection the interpreter takes, so refuseForwardStackDrift
-// has nothing to refuse. Anything inconclusive — a non-token handler, a
+// has nothing to decline. Anything inconclusive — a non-token handler, a
 // multi-value or empty handler residual, a nil parent — keeps the historical
-// dynamic(Any), so genuinely dynamic boundaries keep refusing.
+// dynamic(Any), so genuinely dynamic boundaries keep declining.
 //
 // The seeded body run covers the PLAIN pass too (NUR049, un-gated
 // 2026-08-03): `error` handler bodies were the one body the checker never
@@ -1377,7 +1377,7 @@ func AsInt64Or(v Value, def int64) int64 {
 // checker-compiler-completeness-review.0.md §8.4.2) — and it is
 // corpus-safe by construction: every corpus row already passes this
 // analysis in the compile pass (an error-severity handler diagnostic
-// would have tripped the refusal gate at 0).
+// would have tripped the compile failure gate at 0).
 func ErrorReturnsFn(args []Value, r *Registry) []Value {
 	wide := []Value{NewDynamicCarrier(TAny)}
 	if !IsConcrete(args[0]) || args[1].Parent == nil {
@@ -1408,9 +1408,9 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		// internal_error leaked to the user from `do [risky] error [drop]`
 		// followed by any expression.
 		//
-		// Refusing is the sanctioned response: the island model cannot
-		// express this program, and under the refusal architecture the
-		// interpreter fallback is always sound. It is also what the adjacent
+		// Declining is the sanctioned response: the island model cannot
+		// express this program, and under the compile-failure contract the
+		// compile failure is the honest outcome. It is also what the adjacent
 		// no-error path already does for its own unrepresentable shape (a
 		// baked arg beyond BarrierPos — carrier.go's island decline).
 		//
@@ -1419,7 +1419,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		// CLOSURE path nets one from it with a runtime strip
 		// (TestErrorStripInputClosure pins `error [dup drop "k"]`, which
 		// measures 2 here because the compile-time strip's identity probe
-		// does not match after a dup/drop). Refusing those regressed a shape
+		// does not match after a dup/drop). Declining those regressed a shape
 		// that compiles correctly today. A residual >1 that the strip cannot
 		// reduce is already declined further down the pipeline, so it needs
 		// nothing from here either.
@@ -1431,7 +1431,7 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		// 0-output call — the same truth-telling the zero-return user-fn
 		// path performs — and the residual matches the runtime exactly
 		// (completeness-review §8.2(6), the zero-netting-handler
-		// graduation). A DYNAMIC Error bound keeps the refusal: there the
+		// graduation). A DYNAMIC Error bound keeps the compile failure: there the
 		// runtime may not raise, the pass-through nets one where the caught
 		// path nets zero, and a fixed seat cannot carry both.
 		if !args[1].Dynamic && args[1].Parent != nil && args[1].Parent.ConformsTo(TError) {
@@ -1439,12 +1439,12 @@ func ErrorReturnsFn(args []Value, r *Registry) []Value {
 		}
 		// The arity is variable, not unknown: ZERO on the caught path, ONE
 		// on the pass-through. A fixed seat cannot carry both — which is
-		// what the refusal here said — but a runtime-variadic REGION can,
+		// what the compile failure here said — but a runtime-variadic REGION can,
 		// and it is the same device await's winner-takes-all residual and a
 		// value-producing loop already ride (the forty-eighth increment).
 		// One recorded slot stands for the whole run, callVariadicRegion
 		// marks the dispatch, and the residual absorbs whatever the run
-		// delivers. A consumer that needs a fixed count still refuses, at
+		// delivers. A consumer that needs a fixed count still declines, at
 		// its own gate, over a region the recorder can name.
 		return []Value{NewVariadicCarrier(NewTypeLiteral(TAny))}
 	}

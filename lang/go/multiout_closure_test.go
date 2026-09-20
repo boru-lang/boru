@@ -22,7 +22,7 @@ import (
 	"testing"
 )
 
-// compileDisasm compiles src and returns the disassembly, failing on refusal.
+// compileDisasm compiles src and returns the disassembly, failing on compile failure.
 func compileDisasm(t *testing.T, src string) string {
 	t.Helper()
 	a, err := New()
@@ -81,7 +81,7 @@ func TestDoMultiOutClosure(t *testing.T) {
 
 // TestDoOutOfOrderResidualPromotes — the unit stores the computed result to a
 // frame local and re-pushes the residual in exact order (the forceOrder
-// mirror), rather than refusing "result above a literal".
+// mirror), rather than declining "result above a literal".
 func TestDoOutOfOrderResidualPromotes(t *testing.T) {
 	dis := compileDisasm(t, `def x 5  do [x 1 add 2]`)
 	if !strings.Contains(dis, "STORE_LOCAL") {
@@ -93,7 +93,7 @@ func TestDoOutOfOrderResidualPromotes(t *testing.T) {
 // closure (no island): the runtime strip nets one value from the 2-value
 // residual whose bottom is the unconsumed error.
 func TestErrorStripInputClosure(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	dis := compileDisasm(t, `do [raise x "e"] error ["fallback"]`)
 	if strings.Contains(dis, "FALLBACK") {
 		t.Errorf("error ignore-handler: must compile as a closure, not island:\n%s", dis)
@@ -120,7 +120,7 @@ func TestErrorStripInputClosure(t *testing.T) {
 	// the closure declines and the fallback owns it.
 	requireEngineParity(t, `def b true  do [1 2 (if b [] [9 9])]`, false)
 	// NEGATIVE: the historical forward-collection miscompile shape
-	// (design/EDGE-SPEC-FINDINGS.0.md) must refuse or be correct — never
+	// (design/EDGE-SPEC-FINDINGS.0.md) must decline or be correct — never
 	// silently wrong.
 	requireEngineParity(t, `5 do [raise x "e"] error [drop 9] add 1`, false)
 }
@@ -159,10 +159,10 @@ func TestDoSentinelBodyStaysUncompiled(t *testing.T) {
 //     dyn-body backstop with the interpreter's SPREAD semantics (the
 //     captured-carrier closure previously baked identity — [7 8] against
 //     the interpreter's 7 8, a miscompile);
-//   - the bare top-level splice-of-computed refuses (recording poisoned)
+//   - the bare top-level splice-of-computed declines (recording poisoned)
 //     with fallback parity.
 func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	compiles := []string{
 		`def b true  do [do [1 2 (if b [] [9 9])]]`,
 		`def mk fn [[] [List] [[7 8]]]  def xs (mk)  do [word xs]`,
@@ -172,7 +172,7 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 		// A LOOP inside a do body: the unrolled model repeats ONE value
 		// ([1 1 1] as the same Value), so tryRecordDynBody's intra-event ID
 		// de-collision mints fresh result identities — without it, producedBy
-		// collapsed to the last index and the residual refused "call results
+		// collapsed to the last index and the residual declined "call results
 		// reordered". Value above / below the run, and a computed range.
 		`do [for 3 [1]]`,
 		`do [for 3 [1] 7]`,
@@ -209,29 +209,29 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 	// The variadic-run-then-value body also compiles: the closure declines
 	// (exactness screen) and the dyn-body CALL_NATIVE takes the whole body.
 	requireEngineParity(t, `def b true  do [do [1 2 (if b [] [9 9])] 7]`, true)
-	// GRADUATED (REFUSAL-CLOSURE §9.2b, 2026-07-17): the computed-payload
+	// GRADUATED (COMPILE FAILURE-CLOSURE §9.2b, 2026-07-17): the computed-payload
 	// splice compiles to OpSpliceDyn — a DATA payload spreads verbatim, a
 	// code-bearing one defers to the interpreter at run time. Full family
 	// pinned in bytecode_splicedyn_test.go.
 	requireEngineParity(t, `def mk fn [[] [List] [[7 8]]]  def xs (mk)  word xs`, true)
 	// GRADUATED by the fifty-ninth increment, and it had been the pin for
 	// the sentence that was wrong: `def f fn [[] [] [for 3 [1] 7]]  f` was
-	// refused as "a variadic loop value MID-residual … the RET cannot seat a
+	// declined as "a variadic loop value MID-residual … the RET cannot seat a
 	// runtime-variable count with a fixed value above it". Above it is
 	// exactly where a fixed value CAN go — it is pushed after the run — and
 	// the shape that genuinely cannot seat is a fixed value BENEATH the run,
 	// which is what the mark plan exists for. A no-contract fn RETs whatever
 	// the body leaves, so the run and the 7 above it leave together.
 	requireEngineParity(t, `def f fn [[] [] [for 3 [1] 7]]  f`, true)
-	refusals := []string{
-		// What still refuses at that screen, and the honest witness for it:
+	failures := []string{
+		// What still declines at that screen, and the honest witness for it:
 		// an EVENT above the run. A call result is not pushed after the run,
 		// it is already on the simulated stack in its own production order,
 		// so seating it above a length nothing knows is the indexing problem
 		// the inert suffix does not have.
 		`def f fn [[] [] [for 3 [1] (1 add 2)]]  f`,
 	}
-	for _, src := range refusals {
+	for _, src := range failures {
 		a, err := New()
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -241,7 +241,7 @@ func TestDynBodyVariadicAndSpliceShapes(t *testing.T) {
 			t.Fatalf("CompileCheck(%q): %v", src, cerr)
 		}
 		if prog != nil || reason == "" {
-			t.Errorf("%q: must refuse with a named reason; got prog=%v reason=%q", src, prog != nil, reason)
+			t.Errorf("%q: must decline with a named reason; got prog=%v reason=%q", src, prog != nil, reason)
 		}
 		requireEngineParity(t, src, false)
 	}

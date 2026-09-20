@@ -10,7 +10,7 @@ import (
 // restep_deopt_test.go pins the RE-STEP point (NUR124): the recorder's note,
 // the planner's placement and declines, and the lowering — an OpDeoptIfFn
 // over the results the event left on top, with the unit's unpushed unnamed
-// params seated as the island's prefix — or the refusal a fn-typed note no
+// params seated as the island's prefix — or the compile failure a fn-typed note no
 // point serves.
 
 // reStepUnit opens a closure-shaped unit over one UNNAMED fn-typed input
@@ -141,21 +141,21 @@ func TestEmitReStepAfter(t *testing.T) {
 		t.Errorf("a pushed input is on the stack region already: %s %+v", reason, *tbl)
 	}
 	// The input pushed inside a nested fragment: the point cannot know
-	// whether the interpreter still holds it, and a strict note refuses.
+	// whether the interpreter still holds it, and a strict note declines.
 	lw, _, _ = fresh([]vmSlot{{seq: 1, idx: 0}, {seq: 1, idx: 1}})
 	lw.depth = 1
 	lw.emit(OpPushLocal, 0, deoptAt(1))
 	lw.depth = 0
 	if reason := lw.emitReStepAfter(swap); !strings.Contains(reason, "`swap`") || !strings.Contains(reason, "NUR124") {
-		t.Errorf("a nested push declines the point and the strict note refuses: %q", reason)
+		t.Errorf("a nested push declines the point and the strict note declines: %q", reason)
 	}
-	// The results not on top (promoted to a slot): a strict note refuses.
+	// The results not on top (promoted to a slot): a strict note declines.
 	lw, _, _ = fresh(nil)
 	if reason := lw.emitReStepAfter(swap); !strings.Contains(reason, "NUR124") {
 		t.Errorf("no results on top: %q", reason)
 	}
 	// A gradual note with no point keeps the optimistic model; a fallback
-	// event's refusal names no word.
+	// event's compile failure names no word.
 	lw, _, _ = fresh(nil)
 	if reason := lw.emitReStepAfter(&EmitEvent{seq: 3, kind: evFallback, fb: emitFallback{}}); reason != "" {
 		t.Errorf("gradual, unplanned: %q", reason)

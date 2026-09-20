@@ -7,7 +7,7 @@ import (
 
 // A BARE NODE head with no schema behind it (`P of [Integer]` at run
 // time, past the check pass): the head resolves through the bare-node
-// arm — CanonicalType + SchemaInfoOf — and refuses as "not a generic
+// arm — CanonicalType + SchemaInfoOf — and declines as "not a generic
 // schema". The check pass flags the same program statically, so the
 // runtime arm is driven directly here.
 func TestOfHandlerBareNodeHeadNotASchema(t *testing.T) {
@@ -23,6 +23,6 @@ func TestOfHandlerBareNodeHeadNotASchema(t *testing.T) {
 	args := []Value{NewList([]Value{NewTypeLiteral(TInteger)}), NewTypeLiteral(node)}
 	if _, err := OfHandler(args, nil, nil, r); err == nil ||
 		!strings.Contains(err.Error(), "not a generic schema") {
-		t.Fatalf("a plain named type's node must refuse instantiation, got %v", err)
+		t.Fatalf("a plain named type's node must decline instantiation, got %v", err)
 	}
 }

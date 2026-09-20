@@ -7,7 +7,7 @@ import (
 )
 
 // The freeze discipline's per-unit tables (unit_memo.go): what a unit BAKED
-// (frozen — the refusal's noun) and at which binding generation (bakes — the
+// (frozen — the compile failure's noun) and at which binding generation (bakes — the
 // memo's staleness key). These pin the recording contract directly; the
 // end-to-end rows live in lang/go/frozen_module_read_test.go and
 // lang/go/analysis_order_test.go.
@@ -38,7 +38,7 @@ func TestNoteFrozenReadRecordsTheBakeKindAndGen(t *testing.T) {
 			t.Fatalf("%v: an in-unit module read must record on the OPEN unit", c.bake)
 		}
 		if got.String() != c.want {
-			t.Errorf("%v: refusal would name %q, want %q", c.bake, got.String(), c.want)
+			t.Errorf("%v: compile failure would name %q, want %q", c.bake, got.String(), c.want)
 		}
 		if rec.bakes["n"] != 7 {
 			t.Errorf("%v: the bake must carry the generation the read saw; got %d", c.bake, rec.bakes["n"])
@@ -47,7 +47,7 @@ func TestNoteFrozenReadRecordsTheBakeKindAndGen(t *testing.T) {
 }
 
 // The invalid zero is DROPPED, not stored. A note that reached no classifier
-// would otherwise refuse a program while naming an artifact nothing froze —
+// would otherwise decline a program while naming an artifact nothing froze —
 // and "No Zero-Value Overload (CRITICAL)" forbids letting the zero stand in
 // for a real member.
 func TestNoteFrozenReadDropsTheInvalidZero(t *testing.T) {
@@ -59,7 +59,7 @@ func TestNoteFrozenReadDropsTheInvalidZero(t *testing.T) {
 	}
 }
 
-// FIRST BAKE WINS, so the refusal's text cannot depend on analysis order —
+// FIRST BAKE WINS, so the compile failure's text cannot depend on analysis order —
 // and the generation kept is the first read's too.
 func TestNoteFrozenReadKeepsTheFirstBake(t *testing.T) {
 	es := NewEmitState()
@@ -128,19 +128,19 @@ func TestNotifyNameReboundNamesTheBakeForAnEscapingUnit(t *testing.T) {
 			// Still inside the unit: a body-local def shadows independently.
 			es.NotifyNameRebound("g")
 			if !es.Compilable {
-				t.Fatalf("a rebind with a unit still open must not refuse; got %q", es.Reason)
+				t.Fatalf("a rebind with a unit still open must not decline; got %q", es.Reason)
 			}
 			es.openUnitRecs = es.openUnitRecs[:0]
 			es.NotifyNameRebound("g")
 			want := "module binding g rebound after a fn unit baked its call target"
 			if es.Compilable || es.Reason != want {
-				t.Errorf("want refusal %q, got compilable=%v reason=%q", want, es.Compilable, es.Reason)
+				t.Errorf("want compile failure %q, got compilable=%v reason=%q", want, es.Compilable, es.Reason)
 			}
 		})
 	}
 }
 
-// An ORDINARY unit's bake no longer refuses: the memo re-records it at the
+// An ORDINARY unit's bake no longer declines: the memo re-records it at the
 // next call site (TestStartFnCompileStaleHitRecompiles). This is the row
 // that fails if the latch widens back to every unit.
 func TestNotifyNameReboundLeavesAnOrdinaryUnitToTheMemo(t *testing.T) {
@@ -170,7 +170,7 @@ func TestNotifyNameReboundWalksFromTheEscapingUnit(t *testing.T) {
 	es.NotifyNameRebound("k")
 	want := "module binding k rebound after a fn unit baked its value"
 	if es.Compilable || es.Reason != want {
-		t.Errorf("want refusal %q through the escaping caller, got compilable=%v reason=%q", want, es.Compilable, es.Reason)
+		t.Errorf("want compile failure %q through the escaping caller, got compilable=%v reason=%q", want, es.Compilable, es.Reason)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestNotifyNameReboundIgnoresUnfrozenNames(t *testing.T) {
 	es.openUnitRecs = es.openUnitRecs[:0]
 	es.NotifyNameRebound("never-read")
 	if !es.Compilable {
-		t.Errorf("a rebind of a name no unit baked must not refuse; got %q", es.Reason)
+		t.Errorf("a rebind of a name no unit baked must not decline; got %q", es.Reason)
 	}
 }
 
@@ -192,7 +192,7 @@ func TestNotifyNameReboundIgnoresUnfrozenNames(t *testing.T) {
 // set on demand. The equality it tests — `suspended == keepModuleDepth +
 // multiRunModuleDepth` — is what makes the fix ADDITIVE: any suspension that
 // is not a leaking module-scope body run breaks it, so the latch can only gain
-// the `do` / multi-run refusals it is for.
+// the `do` / multi-run compile failures it is for.
 func TestRebindReachesModuleScope(t *testing.T) {
 	for _, c := range []struct {
 		name                         string
@@ -241,7 +241,7 @@ func TestNotifyNameReboundFiresUnderADoBody(t *testing.T) {
 	es.NotifyNameRebound("k")
 	want := "module binding k rebound after a fn unit baked its value"
 	if es.Compilable || es.Reason != want {
-		t.Errorf("a rebind inside a do body must refuse; got compilable=%v reason=%q", es.Compilable, es.Reason)
+		t.Errorf("a rebind inside a do body must decline; got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
 }
 
@@ -258,6 +258,6 @@ func TestNotifyNameReboundStaysQuietUnderAFnBody(t *testing.T) {
 	es.suspended = 1 // suspended, but by neither leaking-body counter
 	es.NotifyNameRebound("k")
 	if !es.Compilable {
-		t.Errorf("a fn-body-local rebind must not refuse; got %q", es.Reason)
+		t.Errorf("a fn-body-local rebind must not decline; got %q", es.Reason)
 	}
 }

@@ -111,7 +111,7 @@ def g fn [[a:Any b:Any] [Any] [add a b]] g 1 end def x 5 x	ERROR:no signature ma
 #     parked forward's slot rather than dispatching, so execFnDefLiteral
 #     cannot park a second forward) has NO row here on purpose: the shape
 #     needs a computed closure at a word's argument slot, which the
-#     compiler still refuses — "its apply did not collapse" — until the
+#     compiler still declines — "its apply did not collapse" — until the
 #     Stage 3/4 fn-value work lands, and a spec row must satisfy both
 #     lanes. Refusing is the right answer today. Measured by hand instead:
 #     `def mk fn [[n:Integer][Function][(fn [[v:Integer][Integer][add n

@@ -14,7 +14,7 @@ import (
 // a data def's value as a PUSH_CONST, a helper fn as a committed CALL_USER
 // — stayed frozen while the interpreter resolves the same names when the
 // handler runs. NotifyNameRebound's stored-ref latch answered that by
-// refusing the whole program at any later rebind of a name the body reads
+// declining the whole program at any later rebind of a name the body reads
 // (design/RELOAD-INVALIDATION.0.md §3 F1: a mid-program rebind must give
 // each call its point-in-program binding, which the twin regime's replay
 // now makes real at VM time).
@@ -30,7 +30,7 @@ import (
 // interpreter's undefined_word on a miss. Every rebind of such a name
 // compiles the new binding's own signatures to units (RecordBindTwin), so
 // the routed op always has the live signature's unit; a rebind to a value
-// with no declaration site — a lambda, a data value — refuses, since the
+// with no declaration site — a lambda, a data value — declines, since the
 // op could not run it. The latch keeps firing for a name a unit BAKED
 // (fnUnitRec.liveNames says which it did not).
 
@@ -163,7 +163,7 @@ func (es *EmitState) markLiveLead(word string) bool {
 // a binding the pass never dispatched elsewhere has none. A live READ's new
 // binding must be one OpLookupDynScope pushes: a fn, a class or an active
 // token it would DISPATCH — deferring past the handler's effects where the
-// interpreter runs it — is refused through the undef site (review of
+// interpreter runs it — is declined through the undef site (review of
 // #467). An unbound name is the miss the ops raise as undefined_word.
 func (es *EmitState) noteLiveNameTransition(name string) {
 	if es == nil || !es.Compilable || es.reg == nil || (!es.liveLeadNames[name] && !es.liveReadNames[name]) {
@@ -194,9 +194,9 @@ func dispatchingBinding(v core.Value) bool {
 
 // compileLiveLeadUnits gives every own signature of v, name's current
 // binding, a unit. A binding with no declared signature — a lambda's, a
-// data value's — is one the op cannot run: refused through the undef site.
+// data value's — is one the op cannot run: declined through the undef site.
 // Nothing while suspended (a transition inside a body the recorder does
-// not record has no unit to compile against) — refused the same way.
+// not record has no unit to compile against) — declined the same way.
 func (es *EmitState) compileLiveLeadUnits(name string, v core.Value) {
 	if !es.Active() || !fnSigsDeclared(v) {
 		es.refuseUndef(name, liveLeadUndeclared)

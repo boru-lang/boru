@@ -9,7 +9,7 @@ package core
 // types, the module load set, context-store state. The COMPILED path
 // relies on those persisting (OpPushType resolves minted IDs; islands
 // re-run via a sub-engine over the same registry). But when a program
-// is UNCOMPILABLE the interpreter fallback re-runs the whole source and
+// is UNCOMPILABLE nothing re-runs the source, and
 // double-applies them — a re-mint, a re-import, a re-run Test spec —
 // diverging from a clean interpreter run.
 //

@@ -63,7 +63,7 @@ func TestNonRegisterModuleWordStillCompiles(t *testing.T) {
 	a, _ := New()
 	got, err := a.RunCompiledStrict(src)
 	if err != nil {
-		t.Fatalf("ParseLang.kinds should compile, got refusal: %v", err)
+		t.Fatalf("ParseLang.kinds should compile, got compile failure: %v", err)
 	}
 	b, _ := New()
 	want, _ := b.RunInterp(src)

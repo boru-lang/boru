@@ -11,7 +11,7 @@ import (
 // overload, whose CALL_USER param guard then RAISED at runtime when the value
 // matched a SIBLING overload — but the interpreter runtime-re-matches and
 // dispatches the sibling (`(g (id 5))` → 'i' interpreted, signature_error
-// compiled). User-fn overloads have no OpCallNativePoly re-match. Now refused →
+// compiled). User-fn overloads have no OpCallNativePoly re-match. Now declined →
 // fall back → compile==interpret.
 func TestMultiOverloadGradualArg(t *testing.T) {
 	gradual := []struct{ name, src string }{
@@ -42,7 +42,7 @@ func TestMultiOverloadGradualArg(t *testing.T) {
 
 	// NEGATIVE: a SINGLE-overload gradual call (the param guard handles it) and a
 	// MULTI-overload call with a CONCRETE arg (not Dynamic → unambiguous) must STILL
-	// compile natively. Pins that the cluster-C refusal did not over-fire.
+	// compile natively. Pins that the cluster-C compile failure did not over-fire.
 	compiles := []struct{ name, src, want string }{
 		{"single-overload gradual match", `def id fn [[x:Any][Any][x]] def f fn [[n:Integer] [Integer] [n add 1]] f (id 41)`, "[42]"},
 		{"multi-overload concrete Integer", `def g fn [[a:Integer][String]['i'] [a:String][String]['s']] (g 5)`, "[i]"},

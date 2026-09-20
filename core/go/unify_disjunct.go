@@ -53,7 +53,7 @@ func (d *DisjunctUnifier) matchR(v Value, t *Type, r *Registry) bool {
 // Behavior chain carries a DisjunctUnifier — the evaluated NAME of a
 // disjunct type after the Stage 2 flip. The `is` handler uses it to
 // route a concrete candidate through the full Unify + value-identity
-// path (where the newtype-alternative swap is refused) instead of the
+// path (where the newtype-alternative swap is declined) instead of the
 // Match short-circuit (which stays deliberately loose for dispatch).
 func IsDisjunctTypeNode(v Value) bool {
 	if !IsBareTypeNode(v) {

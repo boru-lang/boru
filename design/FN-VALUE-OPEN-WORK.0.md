@@ -305,7 +305,7 @@ with it.
 ### 4.1 The refusal is an open defect — and deleting the guard is not the fix
 
 Two sites, identical text, both in `compiler/go/emit.go` — `:4647` (mono, a
-`recordCallRefusal` arm) and `:5064` (poly, a guard in `RecordPolyCall`).
+`recordCallCompileFailure` arm) and `:5064` (poly, a guard in `RecordPolyCall`).
 
 **Disabling both guards was measured**: with the guard off, `def z fn
 [[][Integer][42]] def m {k: z/r} (m.k)` compiles and returns **`fn z` instead
@@ -361,11 +361,11 @@ auto-dispatch" (`:512-515`).
 
 ### 4.4 It is untracked, which is its own finding
 
-`knownRefusals` is **empty** (`test/go/langspec/compiled_refusals_test.go:29`)
+`knownCompileFailures` is **empty** (`test/go/langspec/compiled_failures_test.go:29`)
 and the main corpus has **0 refusals**. Break 2's shape is absent from the main
 corpus and from every frontier TSV. It is pinned only by a
 *refusal-preserving* unit test
-(`lang/go/bytecode_findings_test.go:3597 TestFnValueAutoApplyRefusals`), which
+(`lang/go/bytecode_findings_test.go:3597 TestFnValueAutoApplyCompileFailures`), which
 locks the refusal in rather than tracking it for closure.
 
 **First step for whoever takes this: add a frontier row**, so the shape has a

@@ -6,7 +6,7 @@ import "testing"
 // recording (mini-s3's s3-parse-range wall): a MULTI-TOKEN fn body ending
 // in a computed container (`{from: from upto: upto}` over body-locals)
 // records its OpMakeMap assembly, so a CALLER fn's unit that compiles the
-// callee nested no longer refuses "body result of unknown provenance".
+// callee nested no longer declines "body result of unknown provenance".
 // Sound because the interpreter evaluates a multi-token body's trailing
 // computed container IN-frame on every dispatch path (CallBoru-class and
 // same-registry spliced, consumed and unconsumed alike).
@@ -65,7 +65,7 @@ module [
 // transparency — the returned container resolves the MODULE binding) is
 // spec-pinned in def-node-binding.tsv §3; here the CallBoru-class module
 // call is pinned: the container evaluates at the callee sub-run's end,
-// IN-frame, so the PARAM wins. (The whole-program compiler refuses this
+// IN-frame, so the PARAM wins. (The whole-program compiler declines this
 // shape — "body result of unknown provenance" — because a single unit
 // cannot serve both directions; the detached runtime stamp may serve the
 // CallBoru-only module path, where in-frame matches.)

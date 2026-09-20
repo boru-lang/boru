@@ -49,6 +49,6 @@ func TestSwapDefsGuards(t *testing.T) {
 	}
 	live := r.Defs
 	if r.SwapDefs(nil) != nil || r.Defs != live {
-		t.Error("a nil table is refused and the live table stays")
+		t.Error("a nil table is declined and the live table stays")
 	}
 }

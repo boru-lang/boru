@@ -120,7 +120,7 @@ the Stage-1 baseline and the end state each gate's own comment names.
 |---|---|---:|---:|---:|---|
 | `frontierCompileLedger` | corpus-adjacent rows the compiler refuses | 127 (08-26) | **29** | 0 | 98 rows |
 | `interpEntryRowCeiling` | corpus rows that run compiled and still enter the interpreter unattributed | 184 (08-28) | **28** | 0 debt (attributed entries permitted) | 156 rows |
-| `refusalCeiling` / `islandCeiling` | corpus rows refused / with an `OpFallback` span | 0 / 0 | **0 / 0** | 0 / 0 | pinned before the project began |
+| `failureCeiling` / `islandCeiling` | corpus rows refused / with an `OpFallback` span | 0 / 0 | **0 / 0** | 0 / 0 | pinned before the project began |
 | compiled rows | corpus rows that produce a Program | 7,180 | **7,475** of 7,798 (323 statically invalid) | all | corpus growth |
 | `refusalSiteCeiling` | `MarkUncompilable` call sites in the source | 96 (08-25) | **92** (ceiling 93) | 0 at Stage 9 | 4 sites |
 | lowerer / `Finalize` declines | decline sites after recording | 78 (08-25) | not re-measured; 161 reason templates in total | none reachable | unknown |
@@ -149,7 +149,7 @@ Three readings of that table matter more than any single row.
    census as the score; and lower the ceiling to 281 in the next
    increment that touches the file, since a ceiling that sits 80% above
    the live value cannot catch a regression.
-3. **The zeroes were zero before the project started.** `refusalCeiling`
+3. **The zeroes were zero before the project started.** `failureCeiling`
    and `islandCeiling` reached 0 under the previous programme, and the
    whole point of this one (§2.3 of the design) is that those zeroes were
    blind to 184 rows of live interpretation. Do not read them as progress.

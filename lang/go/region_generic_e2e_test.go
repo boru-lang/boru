@@ -70,7 +70,7 @@ func TestRoutedDispatchKeepsTheCommittedCallElsewhere(t *testing.T) {
 // (the op defers on it unconditionally) — so they compile and run compiled
 // as before the route existed. (The third decline, a callee with captures,
 // is pinned at the seam: no def-bound closure call over a live slot
-// compiles today, refusing earlier on its read window.) The next two route
+// compiles today, declining earlier on its read window.) The next two route
 // WITH the lead's modifiers: `w/f` over
 // a mixed barrier claims both operands forward live as it did at the
 // record, and `w/1` selects the one-operand overload live as the record
@@ -153,8 +153,8 @@ func TestRoutedDispatchAnswersTheNativeSeat(t *testing.T) {
 // loop's carried rebind, whose frame-slot STORE alone the registry never
 // saw (`for 2 [ go  def k 9 ]` answered `5 5` for the interpreter's `5 9`).
 // Both found off the corpus on the sixty-fifth increment's tree; the loop
-// shape first refused (the census does not admit a new refusal site), the
-// fn-body shape was found closing that refusal. A read of a name a loop
+// shape first declined (the census does not admit a new compile failure site), the
+// fn-body shape was found closing that compile failure. A read of a name a loop
 // ALREADY carries keeps its committed call (the other order).
 func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 	rows := []struct{ src, want string }{
@@ -243,7 +243,7 @@ func TestRoutedDispatchReviewOfTheNativeSeat(t *testing.T) {
 // strand or an unbound slot is one the check pass sees first, because the
 // memo keeps its key on a routed read (review of #461) and re-records the
 // unit — the escaped unit included, whose apply is analysed too. So each
-// shape below fails at CHECK with the interpreter's own error (or refuses
+// shape below fails at CHECK with the interpreter's own error (or declines
 // and falls back to it), and no `vm:generic-*` site fires. The raise is
 // pinned at the seam (`TestDispatchGenericDefers`), where a hand-built
 // window reaches it; this pins that the corpus of shapes has no program

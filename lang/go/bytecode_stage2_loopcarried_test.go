@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// Stage-2 loop-carried def rebind pins (voxgig zero-refusals plan): a
+// Stage-2 loop-carried def rebind pins (voxgig zero-compile failures plan): a
 // pre-loop `def` REBOUND inside a for body (decision.boru eval-table-first's
 // `def found true` inside an arm, read as `found not` the NEXT iteration)
-// used to refuse "operand of unknown provenance … at not" — the rebind's
+// used to decline "operand of unknown provenance … at not" — the rebind's
 // per-round JOIN carrier had no operand home across iterations. The fix is
 // loop-persistent frame slots:
 //
@@ -26,7 +26,7 @@ import (
 //
 // The differential corpus never sees these off-corpus shapes, so pin them
 // (the memory-noted RunCompiledStrict discipline): compile+parity for the
-// newly-compiling shapes, sound-fallback for the shapes that stay refused.
+// newly-compiling shapes, sound-fallback for the shapes that stay declined.
 
 // loopCarriedCompilesClean asserts the shape compiles WITHOUT an interpreter
 // island (no FALLBACK in the disassembly) and matches the interpreter.
@@ -105,13 +105,13 @@ func TestLoopCarriedZeroIterationsKeepInit(t *testing.T) {
 (keep 0)`)
 }
 
-// SOUND-fallback pins: shapes adjacent to the feature that stay refused (or
+// SOUND-fallback pins: shapes adjacent to the feature that stay declined (or
 // compile) must match the interpreter either way — never diverge.
 
 // A value-producing loop body that ALSO rebinds: per-iteration residual plus
 // carried stores.
 func TestLoopCarriedRebindValueLoopSound(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	stage1aSound(t, `def vals fn [[n:Integer] [List] [def acc 0 [(for n [def acc (acc add 1) acc])]]]
 (vals 3)`)
 }
@@ -124,28 +124,28 @@ func TestLoopCarriedSameIterationReadAfterRebindSound(t *testing.T) {
 }
 
 // NEGATIVE: `undef` of a loop-carried name inside the body exposes the
-// previous binding while the cell holds the rebound value — must refuse
+// previous binding while the cell holds the rebound value — must decline
 // (fall back), never read the stale slot.
 func TestLoopCarriedUndefStaysSound(t *testing.T) {
 	stage1aSound(t, `def flip fn [[n:Integer] [Integer] [def acc 5 for n [def acc (acc add 1) undef acc] end acc]]
 (flip 2)`)
 }
 
-// NEGATIVE: a rebind to a FUNCTION value inside a loop body REFUSES (fn
+// NEGATIVE: a rebind to a FUNCTION value inside a loop body DECLINES (fn
 // values do not ride carried slots in Stage 2). The loop-body `def h`
 // overlap-removes the enclosing `h` in place — the def depth is unchanged,
 // so the loop rollback cannot restore it — and compiled resolution statically
 // bakes the loop's `add 2` overload. The interpreter keeps the pre-loop
 // `add 1` when the loop runs ZERO times, so `(pickfn 0)` silently miscompiled
-// to 12 (should be 11) before this refusal landed; `(pickfn 2)` coincidentally
-// agreed at 12 because the loop runs. Refuse — compiled == interpreter at every
+// to 12 (should be 11) before this compile failure landed; `(pickfn 2)` coincidentally
+// agreed at 12 because the loop runs. Decline — compiled == interpreter at every
 // n — containment, not a fix. See the conditional-fn-shadow divergence fix.
 func TestLoopCarriedFnValueRebindStaysSound(t *testing.T) {
 	base := `def pickfn fn [[n:Integer] [Integer] [def h ([x:Integer] => [x add 1]) for n [def h ([x:Integer] => [x add 2])] end (h 10)]]`
-	// The DEFINITION carries the unsound loop rebind, so every call refuses.
-	mustRefuseWithParity(t, base+"\n(pickfn 0)", "redefined inside a conditional body")
-	mustRefuseWithParity(t, base+"\n(pickfn 2)", "redefined inside a conditional body")
-	// The interpreter is the source of truth the refusal falls back to: the
+	// The DEFINITION carries the unsound loop rebind, so every call declines.
+	mustFailToCompileWithParity(t, base+"\n(pickfn 0)", "redefined inside a conditional body")
+	mustFailToCompileWithParity(t, base+"\n(pickfn 2)", "redefined inside a conditional body")
+	// The interpreter is the source of truth the compile failure falls back to: the
 	// zero-iteration case (11) is exactly what the compiled bake got wrong.
 	for _, tc := range []struct {
 		n    int

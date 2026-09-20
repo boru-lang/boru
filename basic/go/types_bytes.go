@@ -100,7 +100,7 @@ func (BytesBehavior) Match(v Value, t *Type) bool { return core.DefaultBehavior.
 // already shares that array zero-copy on clone/fork/send, so a pooled
 // const shares exactly as the interpreter does. This is what let a
 // module-scope Bytes binding (mini-s3's s3-crlf delimiter) bake into a
-// stored-fn unit instead of refusing the unit; since the seventy-first
+// stored-fn unit instead of declining the unit; since the seventy-first
 // increment a stored unit reads such a binding live instead, and the
 // pool takes Bytes wherever else a const is baked.
 func (BytesBehavior) BakeableConst(_ Value) bool { return true }

@@ -10,7 +10,7 @@ package core
 // DriftWindowRecorder is the compiler's stack-drift island hook: offered
 // a matched dispatch whose forward window drifted, it may record the
 // window as a runtime island (drift_window.go) and report true to skip
-// the refusal path. The compiler piece installs the real recorder at
+// the compile failure path. The compiler piece installs the real recorder at
 // init; the NAMED default below is what a compiler-less build runs, so
 // the decline path is reachable and pinned like every other seam slot
 // (TestInactiveDriftWindowRecorder).
@@ -99,8 +99,8 @@ var CheckBraid = struct {
 	DrainUndefinedAtoms:          inactiveDrainUndefinedAtoms,
 	ExprRefsCarrier:              inactiveExprRefsCarrier,
 	NoteSpeculativeBarrierCommit: inactiveNoteSpeculativeBarrierCommit,
-	RefuseForwardStackDrift:      inactiveRefuseForwardStackDrift,
-	RefuseStrandedMemberFn:       inactiveRefuseStrandedMemberFn,
+	RefuseForwardStackDrift:      inactiveDeclineForwardStackDrift,
+	RefuseStrandedMemberFn:       inactiveDeclineStrandedMemberFn,
 	ShareCheckState:              inactiveShareCheckState,
 	SpliceAnonCheckResult:        inactiveSpliceAnonCheckResult,
 	SpliceCheckResults:           inactiveSpliceCheckResults,
@@ -142,9 +142,9 @@ func inactiveExprRefsCarrier(e *Engine, items []Value) bool { return false }
 
 func inactiveNoteSpeculativeBarrierCommit(e *Engine, fwd ForwardInfo) {}
 
-func inactiveRefuseForwardStackDrift(e *Engine, sig *Signature, positions []int) {}
+func inactiveDeclineForwardStackDrift(e *Engine, sig *Signature, positions []int) {}
 
-func inactiveRefuseStrandedMemberFn(e *Engine, positions []int) {}
+func inactiveDeclineStrandedMemberFn(e *Engine, positions []int) {}
 
 func inactiveShareCheckState(e *Engine, capturedReg *Registry) func() { return func() {} }
 

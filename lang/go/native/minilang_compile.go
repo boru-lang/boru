@@ -46,7 +46,7 @@ func miniHookToksMaterialisable(toks []Value) bool {
 		}
 		// Everything else is either concrete data, a bare type node, or a
 		// code token (word/marker) — recordable shapes (a shape the
-		// recorder still cannot seat refuses downstream, which keeps a wrong
+		// recorder still cannot seat declines downstream, which keeps a wrong
 		// answer out and leaves an open defect; this screen only diverts the
 		// KNOWN-unpoolable runtime carriers).
 	}
@@ -65,7 +65,7 @@ type miniCompileState struct {
 	// faithful marks kinds whose compile hook is TRANSDUCER-FAITHFUL: the
 	// tokens the hook splices at compile time are the same standard call the
 	// interpreter's transducer would run, so a DYNAMIC-src invocation may
-	// record that call instead of refusing on the non-concrete src. Off by
+	// record that call instead of declining on the non-concrete src. Off by
 	// default — a hook that bakes a src-specific plan is NOT faithful.
 	faithful map[string]bool
 }
@@ -104,7 +104,7 @@ func miniGoHook(r *Registry, kind string) (MiniCompileHook, bool) {
 
 // MarkMiniCompileHookFaithful declares kind's compile hook transducer-faithful:
 // the compile-time splice IS the interpreter's standard call, so a dynamic-src
-// `mini kind` may record that call rather than refusing on the non-concrete
+// `mini kind` may record that call rather than declining on the non-concrete
 // src. Only mark a kind that holds this by construction (see miniHookFaithful).
 func MarkMiniCompileHookFaithful(r *Registry, kind string) {
 	s := miniCompileStateFor(r, true)
@@ -114,7 +114,7 @@ func MarkMiniCompileHookFaithful(r *Registry, kind string) {
 }
 
 // miniHookFaithful reports whether kind's compile hook was declared
-// transducer-faithful. The refusal switch in native_macro consults it to let a
+// transducer-faithful. The compile failure switch in native_macro consults it to let a
 // faithful kind compile a dynamic-src invocation.
 func miniHookFaithful(r *Registry, kind string) bool {
 	s := miniCompileStateFor(r, false)

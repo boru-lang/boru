@@ -17,7 +17,7 @@ sub/f 10 3	-7	/f: both args forward → sig[0]=10, sig[1]=3 → 3-10
 sub/f 3 10	7	…the other operand order
 pow/f 2 3	9	/f pow: 3^2 (sig order unchanged, only the SOURCE of args is pinned)
 div/f 2 10	5	/f div: 10/2
-10 sub/f 3	ERROR:signature	/f refuses the stacked 10: only ONE forward token is there
+10 sub/f 3	ERROR:signature	/f declines the stacked 10: only ONE forward token is there
 sub/f 3	ERROR:signature	/f with a single forward arg and no more tokens
 add/f 1 2 3	3 3	/f collects exactly the two it needs; the 3 pushes
 mul/f 2 3 4	6 4	same for mul
@@ -93,8 +93,8 @@ def vs word [2,3] add 1 vs	3 3	a literal then the spread: add 1 2 fires, the 3 s
 def vs word [2,3] add vs ; 9	5 9	a barrier after the spread call behaves normally
 def f3 fn [[a:Integer b:Integer c:Integer][Integer][((a mul 100) add (b mul 10)) add c]] def vs word [2,3] f3 1 vs	123	mixed literal + spread fills a 3-arg fn in written order
 def tv word [2,[9,8,7]] take tv	[9 8]	a heterogeneous data splice fills TYPED slots: take 2 [9 8 7]
-# (dropped) word-splice + empty-paren before a splice refuses to compile (falls back sound); out of corpus for gate purity
-# (dropped) word-splice residual reaching an un-inlinable word refuses (an open defect the interpreter absorbs); same disposition as :96
+# (dropped) word-splice + empty-paren before a splice fails to compile (falls back sound); out of corpus for gate purity
+# (dropped) word-splice residual reaching an un-inlinable word declines (an open defect the interpreter absorbs); same disposition as :96
 def p word [1 add 2] mul 2 (p)	6	…group it to use its result
 def inc word [1 add] 1 inc mul 2	4	a code splice chains with the live stack: (1+1) then *2
 def vs word [2,3] size vs/q	2	/q takes the NAME vs, binding notwithstanding: two characters

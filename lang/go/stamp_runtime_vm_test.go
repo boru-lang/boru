@@ -110,7 +110,7 @@ func TestStampFnValueRealBodyVMMatchesInterpreter(t *testing.T) {
 
 // A callback body whose trailing residual is a COMPUTED MAP (a field built
 // from the param — the mini-redis catch-all shape) stamps: the detached
-// stored-fn unit records the map's OpMakeMap assembly rather than refusing
+// stored-fn unit records the map's OpMakeMap assembly rather than declining
 // "body result of unknown provenance". The VM re-assembles it per invoke,
 // value-identical to the interpreter. Recording is enabled ONLY for callback
 // bodies (isCallbackBodyName) — every callback is invoked in a live frame via
@@ -173,17 +173,17 @@ def h (fn [[x:Integer] [Integer] [x add bump]])
 	}
 }
 
-// A body the compiler refuses — a THREE-level curried inline apply threading
-// the enclosing param capture (§9.2d compiles two levels; the third refuses,
+// A body the compiler declines — a THREE-level curried inline apply threading
+// the enclosing param capture (§9.2d compiles two levels; the third declines,
 // its own inventory item) — declines the stamp and keeps interpreting
 // unchanged. (The former paren-apply fixture graduated 2026-07-17, §9.2e.)
-func TestStampFnValueRefusingBodyInterpretsUnchanged(t *testing.T) {
+func TestStampFnValueFailingToCompileBodyInterpretsUnchanged(t *testing.T) {
 	a, v := stampHarness(t, `
 def h (fn [[x:Integer] [Integer] [ 3 2 1 (fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [x add a add b add c]])]])]]) apply apply apply ]])
 `, "h", true)
 	stamped, ok := compiler.StampFnValue(a.registry, v)
 	if ok {
-		t.Fatalf("refusing body must decline the stamp")
+		t.Fatalf("declining body must decline the stamp")
 	}
 	// The returned value is the input, and it still runs on the interpreter:
 	// x + 1 + 2 + 3 = 7+6 = 13.
@@ -194,18 +194,18 @@ def h (fn [[x:Integer] [Integer] [ 3 2 1 (fn [[a:Integer] [Function] [(fn [[b:In
 }
 
 // A body whose OUTER stored-fn unit compiles but whose NESTED fn SUB-UNIT
-// refuses at Finalize — the detached-stamp Finalize belt (stamp_runtime.go).
+// declines at Finalize — the detached-stamp Finalize belt (stamp_runtime.go).
 // compileStoredFnUnit RECORDS the inner fn as a sub-unit and returns ok (it
 // lowers nothing); Finalize's per-unit lowering loop then declines the inner
 // unit ("fn zzinner: consumes loop results" — the Stage-2 loop-result
 // boundary), so StampDetachedFn leaves the value plain and it interprets
-// unchanged. This is distinct from TestStampFnValueRefusingBodyInterprets-
+// unchanged. This is distinct from TestStampFnValueFailingToCompileBodyInterpretsUnchanged-
 // Unchanged above, where compileStoredFnUnit itself declines (the earlier
-// return); here the outer compile succeeds and only Finalize refuses. It is
+// return); here the outer compile succeeds and only Finalize declines. It is
 // the shape the variation sweep's module-body transform reaches over a sift
 // row — the reason the belt graduated from //covergate:allow
 // (design/COVERAGE-ALLOWLIST.10.md).
-func TestDetachedStampSubUnitFinalizeRefusalDeclines(t *testing.T) {
+func TestDetachedStampSubUnitFinalizeCompileFailureDeclines(t *testing.T) {
 	a, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -375,10 +375,10 @@ func TestRunCompiledDoesNotLeakStampingIntoLaterRun(t *testing.T) {
 // module-load stamps: RestoreForCompile rolls them back, so ResetStampLog drops
 // them and only the fallback re-run's authoritative stamps reach the report.
 func TestRunCompiledFallbackNoDuplicateStampReport(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// A stampable module import followed by an uncompilable tail (a def
-	// consuming a DYNAMIC-count variadic loop region — the stable S5 refusing
-	// fixture) so the whole program falls back to the interpreter after the
+	// consuming a DYNAMIC-count variadic loop region — the stable S5 declining
+	// fixture) so the program does not compile after the
 	// check pass stamped the module helper in place. (The former paren-apply
 	// tail graduated 2026-07-17, §9.2e.)
 	src := `import ` + stampModuleSrc + ` def dm {n: 3} def zz (for (dm get "n") [1]) zz`
@@ -391,7 +391,7 @@ func TestRunCompiledFallbackNoDuplicateStampReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	if compiled {
-		t.Fatalf("expected the interpreter fallback for the refusing program")
+		t.Fatalf("expected the compile failure for the declining program")
 	}
 	if got := countStamped(a.StampReport(), "helper"); got != 1 {
 		t.Fatalf("helper stamped %d times in the report; the rolled-back check-pass stamp must not double-count", got)
@@ -443,7 +443,7 @@ func TestModuleRegistryInheritsRuntimeStamping(t *testing.T) {
 // The gradual-nesting mode (detached compiles only): a stored handler whose
 // body calls an `Any`-param helper that reads a FIELD of that param compiles
 // detached — the nested callee generalises the Any→Any arg as a GRADUAL
-// carrier, where a strict Any refused "unmatched dispatch recovered at dot".
+// carrier, where a strict Any declined "unmatched dispatch recovered at dot".
 // Pins the probe-inherits-mode contract too (a strict probe would decline
 // before the gradual real compile ran).
 func TestStampFnValueGradualNestedCallee(t *testing.T) {
@@ -538,7 +538,7 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 		t.Fatalf("armed load must stamp the module fn's inner binding")
 	}
 	if refOf(inner(armed, "refuser")) != nil {
-		t.Fatalf("a refusing body must stay unstamped at load")
+		t.Fatalf("a declining body must stay unstamped at load")
 	}
 
 	// Applications route through the runtime seam and agree with the

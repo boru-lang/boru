@@ -13,7 +13,7 @@ import (
 // vm_seam7_test.go drives the bytecode VM's defensive error arms and a few
 // otherwise-uncovered normal branches. Most of these guards are unreachable
 // through a correctly compiled program (they exist to turn a compiler bug into
-// a clean internal_error → interpreter fallback, never a Go panic), so they are
+// a clean internal_error → compile failure, never a Go panic), so they are
 // exercised here two ways:
 //
 //   - hand-built malformed Programs fed to RunProgram (the run() dispatch arms),
@@ -422,7 +422,7 @@ func TestSeam7RunFallbackArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
 	_, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, nil, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK underflow at d")
-	// NIn > 1 with enough stack: the lowerer never threads >1, so it is refused.
+	// NIn > 1 with enough stack: the lowerer never threads >1, so it is declined.
 	_, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK threads >1 input at d")
 }
@@ -681,7 +681,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 
 // TestSeam7MatchUserPolyUnitShapeMismatch drives the unit-shape guard: a
 // recorded arm whose Impl/arity still match the live table but whose compiled
-// unit index is out of range (a compile/run drift) is refused.
+// unit index is out of range (a compile/run drift) is declined.
 func TestSeam7MatchUserPolyUnitShapeMismatch(t *testing.T) {
 	r := seam7Reg(t)
 	core.InstallFnDef(r, "cpoly", core.FnDefInfo{

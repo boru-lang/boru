@@ -81,10 +81,9 @@ func TestRunUnitNestedForeignDynEnvRebalances(t *testing.T) {
 	}
 }
 
-// A soundness bailout inside ONE foreign callback degrades THAT callback:
-// InvokeCompiled's C1 fence then retries it on CallBoru. Without the local
-// recover the panic would unwind to the enclosing runVMEntry and abort the
-// whole program instead.
+// A soundness bailout inside ONE foreign callback is contained to THAT
+// callback, which reports it. Without the local recover the panic would unwind
+// to the enclosing runVMEntry and abort the whole program instead.
 func TestRunUnitNestedForeignPanicIsContained(t *testing.T) {
 	vc, _ := foreignVC(t, oneConstProg(1))
 	broken := oneConstProg(1)

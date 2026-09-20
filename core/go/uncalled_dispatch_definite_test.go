@@ -7,7 +7,7 @@ import "testing"
 // and declines every operand whose runtime value the check pass does not
 // hold exactly. Each decline is what keeps the baked error honest — the trap
 // serialises the error built HERE, so anything that could resolve
-// differently at run time must keep the whole-program refusal.
+// differently at run time must keep the whole-program compile failure.
 func TestUncalledDispatchDefiniteArms(t *testing.T) {
 	word := NewWord("zs")
 	dyn := NewDynamicCarrier(TString)

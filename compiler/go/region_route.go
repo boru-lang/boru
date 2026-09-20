@@ -6,7 +6,7 @@ import core "github.com/boru-lang/boru/core/go"
 // (design/FULL-COMPILATION.0.md §6.2, §6.5; Stage 4): a user-fn dispatch
 // inside a fn unit whose claim carries a LIVE word slot — the frozen-read
 // class the binding-sensitive memo re-records and the escaping latch
-// refuses — is lowered through its descriptor (OpDispatchGeneric) instead
+// declines — is lowered through its descriptor (OpDispatchGeneric) instead
 // of the committed CALL_USER, so the word is looked up at every execution
 // as the interpreter looks it up.
 //
@@ -55,7 +55,7 @@ import core "github.com/boru-lang/boru/core/go"
 //
 // A routed read is no longer a bake an ESCAPED unit holds stale: unfreezeRead
 // retires the escaping latch's note NoteFrozenRead made when the operand was
-// resolved, so the latch does not refuse it. The MEMO's staleness key stays
+// resolved, so the latch does not decline it. The MEMO's staleness key stays
 // (review of #461): a rebind the check pass sees re-records the unit, so
 // the record's own overload, result count and arity follow the binding,
 // and the routed op meets a live rebind only where no call site could

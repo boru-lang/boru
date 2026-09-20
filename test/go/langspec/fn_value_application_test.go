@@ -12,13 +12,13 @@ import (
 // §2.4b): the `OpCallDynamic`-family lowerings compile every fn-value
 // application SHAPE the corpus exercises. Positive rows must produce a native
 // Program (no interpreter island); the deliberate miscompile-E auto-dispatch
-// guard must keep refusing the 0-arg shaped-method reads. This is the
+// guard must keep declining the 0-arg shaped-method reads. This is the
 // regression floor for the feature — a lowering that silently reverts to
-// whole-program fallback, or a weakening of the guard, trips here.
+// compile failure, or a weakening of the guard, trips here.
 //
 // It complements the parity gates (TestSpecCompiledOrFallback,
 // TestPropertyDifferential) which prove the RESULTS are byte-identical: this
-// asserts the COMPILATION DECISION (native vs refuse) for the milestone shapes,
+// asserts the COMPILATION DECISION (native vs decline) for the milestone shapes,
 // so the coverage can't erode without a conscious change.
 func TestFnValueApplicationCompiles(t *testing.T) {
 	t.Parallel()
@@ -47,7 +47,7 @@ func TestFnValueApplicationCompiles(t *testing.T) {
 				t.Fatalf("check error: %v", err)
 			}
 			if prog == nil {
-				t.Fatalf("fn-value application regressed to whole-program fallback (reason %q): %s", reason, c.src)
+				t.Fatalf("fn-value application regressed to a compile failure (reason %q): %s", reason, c.src)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("fn-value application compiled with an interpreter island; expected fully native:\n%s", prog.Disassemble())
@@ -76,7 +76,7 @@ func TestFnValueApplicationCompiles(t *testing.T) {
 				t.Fatalf("check error: %v", err)
 			}
 			if prog == nil {
-				t.Fatalf("0-arg shaped-method landing refused (reason %q); the arity-0 OpCallDynMethod model regressed: %s", reason, c.src)
+				t.Fatalf("0-arg shaped-method landing declined (reason %q); the arity-0 OpCallDynMethod model regressed: %s", reason, c.src)
 			}
 			if !strings.Contains(prog.Disassemble(), "CALL_DYN_METHOD") {
 				t.Errorf("compiled without the guarded CALL_DYN_METHOD landing — a const-fold would freeze shape state:\n%s", prog.Disassemble())

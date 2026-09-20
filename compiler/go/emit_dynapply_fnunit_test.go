@@ -8,7 +8,7 @@ import (
 
 // emit_dynapply_fnunit_test.go pins the fn-unit dynamic-apply classifier arms
 // the corpus rows don't reach: dynFrameWindow's all-prefix decline,
-// noteDynFrameReplay's refuse path, noteApplyLoopReplay's shape declines, and
+// noteDynFrameReplay's decline path, noteApplyLoopReplay's shape declines, and
 // setLoopBodyApply's source-order gate.
 
 func daUnit(ids ...string) (*emitUnit, *fnUnitRec) {
@@ -47,16 +47,16 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	es := NewEmitState()
 	u, rec := daUnit("p0", "p1")
 	// A fn value beyond the exempt window whose residual is ALL prefix:
-	// dynFrameWindow declines, so the scan keeps the refusal (false).
+	// dynFrameWindow declines, so the scan keeps the compile failure (false).
 	if es.noteDynFrameReplay(u, rec, []core.Value{daFnCarrier("p0"), daFnCarrier("p1")}, 1) {
-		t.Error("an undecomposable fn residual must keep the refusal")
+		t.Error("an undecomposable fn residual must keep the compile failure")
 	}
 	if rec.retReplay {
 		t.Error("a declined replay must not mark the rec")
 	}
-	// No fn value at all: nothing to replay, no refusal.
+	// No fn value at all: nothing to replay, no compile failure.
 	if !es.noteDynFrameReplay(u, rec, []core.Value{core.NewInteger(1), core.NewInteger(2)}, 1) {
-		t.Error("a fn-free residual never refuses here")
+		t.Error("a fn-free residual never declines here")
 	}
 	// A fn value with a token region seats the replay.
 	u2, rec2 := daUnit("p0", "p1")
@@ -82,13 +82,13 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	// TWO applicable values in the window — the chained forward apply
 	// `f (g x)` over NAMED params (no unnamed prefix, so the window is the
 	// whole residual): the flat re-push lost the inner group's collapse, the
-	// re-step is unprovable — decline, keep the refusal.
+	// re-step is unprovable — decline, keep the compile failure.
 	u4 := &emitUnit{localByID: map[string]int{"f": 0, "g": 1, "x": 2}}
 	rec4 := &fnUnitRec{nParams: 3, nUnnamed: 0, returns: []*core.Type{core.TAny}}
 	xv := core.NewCarrier(core.TInteger)
 	xv.ID = "x"
 	if es.noteDynFrameReplay(u4, rec4, []core.Value{daFnCarrier("f"), daFnCarrier("g"), xv}, 2) {
-		t.Error("a window with two applicable fn values must keep the refusal")
+		t.Error("a window with two applicable fn values must keep the compile failure")
 	}
 	if rec4.retReplay {
 		t.Error("a declined multi-applicable replay must not mark the rec")
@@ -101,7 +101,7 @@ func TestNoteDynFrameReplayArms(t *testing.T) {
 	dyn2.Dynamic = true
 	dyn2.ID = "d1"
 	if es.noteDynFrameReplay(u5, rec5, []core.Value{daFnCarrier("f"), dyn2}, 1) {
-		t.Error("a Function + Dynamic window must keep the refusal")
+		t.Error("a Function + Dynamic window must keep the compile failure")
 	}
 }
 
@@ -214,7 +214,7 @@ func TestReplayForceOrderArms(t *testing.T) {
 		t.Errorf("out-of-order residual must force-order {3}, got %v", got)
 	}
 	// A MULTI-RESULT event operand (resIdx != 0) cannot be re-pushed as one
-	// slot — decline (nil), keep the seating refusal.
+	// slot — decline (nil), keep the seating compile failure.
 	if got := es.replayForceOrder([]EmitOperand{localOperand(1), EventOperand(3, 1)}); got != nil {
 		t.Errorf("a multi-result operand must decline force-order, got %v", got)
 	}

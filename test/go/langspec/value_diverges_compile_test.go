@@ -27,7 +27,7 @@ func TestValueDivergesCompilesNative(t *testing.T) {
 			t.Fatalf("%q: check error: %v", src, err)
 		}
 		if prog == nil {
-			t.Fatalf("%q: refused (reason %q); expected native compile", src, reason)
+			t.Fatalf("%q: declined (reason %q); expected native compile", src, reason)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%q: compiled with an interpreter island; expected fully native:\n%s", src, prog.Disassemble())

@@ -17,7 +17,7 @@ func TestEmitTrailingFnValueApply(t *testing.T) {
 	a, _ := New()
 	prog, _, _, _ := a.CompileCheck(src)
 	if prog == nil {
-		t.Fatalf("%q: must compile via trailing apply, but refused", src)
+		t.Fatalf("%q: must compile via trailing apply, but declined", src)
 	}
 	dis := prog.Disassemble()
 	if strings.Contains(dis, "FALLBACK") {
@@ -38,7 +38,7 @@ func TestEmitTrailingFnValueApply(t *testing.T) {
 	}
 
 	// NEGATIVE: the 2-arg mixed form is beyond the one-arg bound, so it must not
-	// compile to a trailing apply — it falls back to the interpreter faithfully.
+	// compile to a trailing apply — it does not compile faithfully.
 	const mixed = `def m {f: (fn [[a:Integer b:Integer][Integer][(a mul 100) add b]])}  3 m.f 2`
 	m, _ := New()
 	if mp, _, _, _ := m.CompileCheck(mixed); mp != nil && strings.Contains(mp.Disassemble(), "CALL_DYNAMIC_TRAILING") {

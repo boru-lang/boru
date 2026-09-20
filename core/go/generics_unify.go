@@ -167,7 +167,7 @@ func resolveSigFieldType(r *Registry, fv Value) (Value, bool) {
 // EXPRESSION — `{a:(Integer tor String)}`, `{b:(Box of [Integer])}`. In the
 // inline spelling the paren span is inert data inside the fn-spec list, so
 // the field kept a ParenExpr the dispatcher could never match: `fn
-// [[o:{a:(Integer tor String)}] …]` refused `{a:7}` outright, where the same
+// [[o:{a:(Integer tor String)}] …]` declined `{a:7}` outright, where the same
 // field written through `refine Record [{a:(Integer tor String)}]` — which
 // dispatches, and so evaluates — admits it. Same asymmetry as the bare type
 // word, one level up.

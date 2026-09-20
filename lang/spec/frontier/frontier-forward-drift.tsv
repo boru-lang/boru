@@ -6,4 +6,4 @@
 # making the drifting String catch-all disjoint, so check mode selects the
 # interpreter's forward collection (rows moved to bytecode-migrated.tsv;
 # the genuinely-wide-join negative `5 do [7] error ["x"] add 1` keeps the
-# drift refusal, pinned in bytecode_edge_findings_test.go).
+# drift compile failure, pinned in bytecode_edge_findings_test.go).

@@ -131,7 +131,7 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "set x 5 p p get x", want: "5"},
 		// Stage 2 flip: `P` denotes its minted node, so the type-literal
 		// guard fires ahead of the instance-shape assert — matching the
-		// production storage word's post-flip refusal.
+		// production storage word's post-flip compile failure.
 		{input: "set x 5 P", wantErr: "cannot set field on type literal"},
 		// …while a concrete non-instance at the Class slot still reaches
 		// the instance-shape assert (pm is P-typed but map-shaped).

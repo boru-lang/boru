@@ -47,7 +47,7 @@ var behaveNative = NativeFunc{
 		// behave STORES its fn for later invocation through the type's
 		// Behavior wrapper (never re-stepped on the VM tape) — the store-fn
 		// pattern log/patrun/service already carry, so a capture-free fn
-		// operand bakes as an inert const instead of refusing "function-
+		// operand bakes as an inert const instead of declining "function-
 		// valued operand" (probe-verified: `behave "compare" (… /v)`).
 		{
 			Args:      []*Type{TAtom, TFunction},
@@ -406,7 +406,7 @@ func validateMakeSig(sig core.FnSig) (*core.Type, error) {
 	if len(sig.Returns) != 1 {
 		return nil, fmt.Errorf("make: fn must return exactly 1 value")
 	}
-	// One branch for both refusals: a missing return type and an `Any` one
+	// One branch for both compile failures: a missing return type and an `Any` one
 	// fail for the same reason — neither names a type to construct — and
 	// folding them keeps the nil guard (which stops the Equal call below
 	// from dereferencing nothing) without a second arm no fn spelling can
@@ -822,7 +822,7 @@ func (u *userBehavior) Size(v Value) int {
 // `make` raises on failure, so a constructor rejecting its source is a real
 // answer — "a C cannot be built from that" — and falling through to the
 // kernel's coercion would silently produce a value the type's own
-// constructor refused. The result's CONFORMANCE to the target is checked by
+// constructor declined. The result's CONFORMANCE to the target is checked by
 // the kernel (makerCapability), not here: it is a rule about `make`, so a
 // Go-side Maker is held to it too.
 func (u *userBehavior) MakeValue(target *core.Type, src Value) (Value, error) {

@@ -142,7 +142,7 @@ func TestFunctionValueResolvesDefiningModule(t *testing.T) {
 			src := fmt.Sprintf(tc.caller, mod)
 
 			// The interpreter and the compiler must BOTH land on the defining
-			// module's answer. A compiler REFUSAL is an acceptable third
+			// module's answer. A compiler COMPILE FAILURE is an acceptable third
 			// outcome — the default driver falls through to the interpreter,
 			// so the user still gets the right answer — and the subtest skips
 			// on it. What is NOT allowed is compiling to a DIFFERENT answer:
@@ -164,8 +164,8 @@ func TestFunctionValueResolvesDefiningModule(t *testing.T) {
 						t.Fatalf("New: %v", err)
 					}
 					got, err := eng.run(a)
-					if isCompileRefusal(err) {
-						t.Skipf("%s: compilation refused (%v)", tc.word, err)
+					if isCompileFailure(err) {
+						t.Skipf("%s: compilation declined (%v)", tc.word, err)
 					}
 					if err != nil {
 						t.Fatalf("%s: %v", tc.word, err)
@@ -209,12 +209,12 @@ func TestFunctionValueScopeChecksClean(t *testing.T) {
 	}
 }
 
-// isCompileRefusal reports whether err is the compiler DECLINING a program
+// isCompileFailure reports whether err is the compiler DECLINING a program
 // rather than a program failing. RunCompiled is the strict entry point and
-// surfaces a refusal as an error; the default driver treats the same refusal as
-// a fall-through to the interpreter. A refusal therefore means "this seam has
+// surfaces a compile failure as an error; the default driver treats the same compile failure as
+// a fall-through to the interpreter. A compile failure therefore means "this seam has
 // no compiled path to compare", not "the answer is wrong".
-func isCompileRefusal(err error) bool {
+func isCompileFailure(err error) bool {
 	var be *BoruError
 	return errors.As(err, &be) && be.Code == "compile_failed"
 }

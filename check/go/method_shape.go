@@ -14,7 +14,7 @@ import core "github.com/boru-lang/boru/core/go"
 // a baked check-time closure would log with the shape state). The read
 // therefore stays DYNAMIC — and before this model, a statement-position
 // method call (`l.info "req" ; …`) stranded [dyn, args] mid-residual and
-// the program refused ("dynamic value precedes residual args").
+// the program declined ("dynamic value precedes residual args").
 //
 // The model, in three steps:
 //
@@ -52,7 +52,7 @@ import core "github.com/boru-lang/boru/core/go"
 // 0-arg member read (the break-2 closure) is claimed the same way by
 // tryMemberFnArrivalDispatch; in both cases the get-family read guards
 // (containerFnAutoDispatchRisk / zeroArgFnOut) skip the annotated /
-// pinpointed read and the landing model's guard-owned decline re-refuses
+// pinpointed read and the landing model's guard-owned decline re-declines
 // whatever it cannot claim.
 
 // evalFixedWindowToken reports whether a raw tape token is an INERT,
@@ -102,7 +102,7 @@ func evalFixedWindowToken(v core.Value) bool {
 // annotated dynamic method-read carrier sitting at the pointer (see the
 // file comment). Returns true when it consumed the dispatch (tape spliced,
 // event recorded or the program marked uncompilable); false leaves the
-// carrier to today's paths (residual windows, refusals) untouched.
+// carrier to today's paths (residual windows, compile failures) untouched.
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
@@ -153,7 +153,7 @@ func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	if !ok {
 		// Guard-owned decline: the get-family read guard was SKIPPED for this
 		// annotated read (NoteShapedRead), so a genuine-0-arg member whose
-		// landing the model cannot claim must refuse HERE — the auto-dispatch
+		// landing the model cannot claim must decline HERE — the auto-dispatch
 		// guard is re-homed onto the landing, never weakened.
 		if core.FnValueZeroArg(member) {
 			r.Check.Recorder().MarkUncompilable(
@@ -317,7 +317,7 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 	return core.FnValueOnlyZeroArgSigs(*fn)
 }
 
-// fnDefName names a function value for a refusal message.
+// fnDefName names a function value for a compile failure message.
 func fnDefName(v core.Value) string {
 	if fd, ok := v.Data.(core.FnDefInfo); ok && fd.Name != "" {
 		return fd.Name
@@ -432,11 +432,11 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 }
 
 // tryMemberFnArrivalDispatch models the interpreter's ARRIVAL-APPLY of a
-// container-member fn read mid-expression (REFUSAL-CLOSURE.0 §3): the
+// container-member fn read mid-expression (COMPILE FAILURE-CLOSURE.0 §3): the
 // interpreter applies a surfaced member fn (`m.double`) the moment its
 // argument window fills — `m.double 21 eq 42` runs `(m.double 21)` BEFORE
 // `eq` — while the recorder previously only saw word dispatches, so the
-// downstream word stole the operand and refuseStrandedMemberFn refused the
+// downstream word stole the operand and refuseStrandedMemberFn declined the
 // program. This hook fires where the check pass steps the member-read
 // carrier: when the read pinpointed the member (memberFnReadValue — a
 // concrete container + key) and the member's SINGLE plain signature's whole
@@ -450,7 +450,7 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 // fn fires the moment its single signature's args arrive, so the token after
 // the window (a word, `eq`) never enters the collection. Everything this
 // hook declines keeps today's paths — the statement-tail Finalize apply for
-// shapes it never sees, refuseStrandedMemberFn's refusal for the rest:
+// shapes it never sees, refuseStrandedMemberFn's compile failure for the rest:
 //   - COMPILE pass only (live recording; plain checks and suspended passes
 //     stay byte-identical);
 //   - a uniquely-resolved, NAMED, non-anonymous, non-macro, capture-free
@@ -464,9 +464,9 @@ func TryRecordMethodApply(r *core.Registry, word string, args, out []core.Value,
 //     the VM islands [fn] and the interpreter's own courtesy dispatch
 //     runs inside the island, byte-identical.
 //
-// Because the get-family read guard SKIPS its auto-dispatch refusal for a
+// Because the get-family read guard SKIPS its auto-dispatch compile failure for a
 // pinpointed genuine-0-arg member (zeroArgMemberFnLandingOut), a 0-arg
-// landing this model cannot claim must refuse HERE — the guard is
+// landing this model cannot claim must decline HERE — the guard is
 // re-homed onto the landing, never weakened (TryShapedMethodDispatch's
 // guard-owned-decline precedent). Every decline below routes through
 // declineMemberFnArrival for exactly that reason; for an arity >= 1
@@ -553,9 +553,9 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 }
 
 // declineMemberFnArrival is tryMemberFnArrivalDispatch's guard-owned
-// decline: the get-family read guard skipped its auto-dispatch refusal for
+// decline: the get-family read guard skipped its auto-dispatch compile failure for
 // a pinpointed GENUINE-0-arg member on the promise that the arrival model
-// owns the landing, so a 0-arg landing the model cannot claim refuses here
+// owns the landing, so a 0-arg landing the model cannot claim declines here
 // with the guard's own reason — re-homed, never weakened. A member without
 // a genuine 0-arg overload was never exempted at the read, so its decline
 // stays silent and the carrier keeps today's paths.
@@ -568,8 +568,8 @@ func declineMemberFnArrival(es core.EmitRecorder, member core.Value) bool {
 }
 
 // refuseArrival is the arrival models' shared guard-owned decline: the
-// landing refuses with the reason its model owns, and the model reports
-// "not consumed" so the engine steps on to the refusal's fallback.
+// landing declines with the reason its model owns, and the model reports
+// "not consumed" so the engine steps on to the compile failure's fallback.
 func refuseArrival(es core.EmitRecorder, reason string) bool {
 	es.MarkUncompilable(reason)
 	return false
@@ -599,7 +599,7 @@ func refuseArrival(es core.EmitRecorder, reason string) bool {
 // window stay on the tape, exactly as the interpreter leaves them
 // (`(k 1 2)` is `7 2`).
 //
-// Everything else REFUSES rather than declines: a window short of the
+// Everything else DECLINES rather than declines: a window short of the
 // arity (the interpreter fills the rest from the stack, or raises), a
 // non-fixed token inside it (a word, a paren, a carrier — the interpreter
 // evaluates it under the pending collection), a read the recorder cannot
@@ -620,16 +620,16 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	if !claimed {
 		return false
 	}
-	refuse := func(what string) bool {
+	decline := func(what string) bool {
 		return refuseArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
 	}
 	args, why := shapedFnReadWindow(e, valIdx, n)
 	if why != "" {
-		return refuse(why)
+		return decline(why)
 	}
 	out := shapedReadOut(r, v.ID)
 	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
-		return refuse("an operand has no compiled home")
+		return decline("an operand has no compiled home")
 	}
 	e.Tape.Splice(valIdx, 1+n, out)
 	return true
@@ -667,7 +667,7 @@ func shapedFnReadWindow(e *core.Engine, valIdx, n int) (args []core.Value, why s
 // carries the dispatch's one result rather than the carrier and its
 // arguments (the type-soundness ratchet saw `(bigger 3 5)` as [Function
 // Integer Integer] for the runtime's [Boolean]). A window the model cannot
-// claim is left as it is: a plain check has no refusal to make. The
+// claim is left as it is: a plain check has no compile failure to make. The
 // def-bound test is the fn-carrier side table itself (CheckFnCarrierBoundName)
 // — a plain check has no live recorder to remember the read — so an EVENT
 // carrier (`((FnUtil.const 7) 99)`) is not in the table and keeps its shape.

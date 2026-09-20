@@ -58,38 +58,38 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.RecordCall("w", nil, nil, nil, core.SrcPos{}, false, false)
 	e.RecordPoly("w")
 	if e.RecordPolyCall("w", nil, nil, core.SrcPos{}, nil, nil) {
-		t.Fatal("inactive RecordPolyCall should refuse")
+		t.Fatal("inactive RecordPolyCall should decline")
 	}
 	e.RecordUserCall(0, "w", nil, nil, core.SrcPos{}, core.SrcPos{})
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, core.SrcPos{}, "w", core.SrcPos{})
 	e.HoldRegion("w", core.SrcPos{})()
 	if _, ok := e.RecordDynApply(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
-		t.Fatal("inactive RecordDynApply should refuse")
+		t.Fatal("inactive RecordDynApply should decline")
 	}
 	if e.RecordDynMethod(core.Value{}, nil, nil, "w", core.SrcPos{}) {
-		t.Fatal("inactive RecordDynMethod should refuse")
+		t.Fatal("inactive RecordDynMethod should decline")
 	}
 	if e.RecordFallback(core.FallbackSpan{}, nil, core.Value{}, core.SrcPos{}) {
-		t.Fatal("inactive RecordFallback should refuse")
+		t.Fatal("inactive RecordFallback should decline")
 	}
 	if e.RecordTrap("c", "d", "w", "h", core.SrcPos{}) {
-		t.Fatal("inactive RecordTrap should refuse")
+		t.Fatal("inactive RecordTrap should decline")
 	}
 	in := core.NewInteger(3)
 	if out, ok := e.RecordTypedBind(core.TypedBindSpec{}, in, in, core.SrcPos{}); ok || out.ID != in.ID {
 		t.Fatalf("inactive RecordTypedBind = %v %v", out, ok)
 	}
 	if e.RecordMakeList(nil, nil, core.Value{}, core.SrcPos{}) {
-		t.Fatal("inactive RecordMakeList should refuse")
+		t.Fatal("inactive RecordMakeList should decline")
 	}
 	if e.RecordMakeListInner(nil, nil, core.Value{}, core.SrcPos{}) {
-		t.Fatal("inactive RecordMakeListInner should refuse")
+		t.Fatal("inactive RecordMakeListInner should decline")
 	}
 	if e.RecordMakeMap(nil, nil, nil, false, core.Value{}, core.SrcPos{}) {
-		t.Fatal("inactive RecordMakeMap should refuse")
+		t.Fatal("inactive RecordMakeMap should decline")
 	}
 	if e.RecordInterp(nil, nil, core.Value{}, core.SrcPos{}) {
-		t.Fatal("inactive RecordInterp should refuse")
+		t.Fatal("inactive RecordInterp should decline")
 	}
 	e.RegisterTrailingApply("id", 1)
 	e.NoteMemberFnRead("id", core.Value{})
@@ -145,7 +145,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 }
 
 // RecordSpliceDyn's decline arms (§9.2b): an inactive state and an
-// unresolvable payload both leave the refusal standing.
+// unresolvable payload both leave the compile failure standing.
 func TestRecordSpliceDynDeclines(t *testing.T) {
 	if (&EmitState{}).RecordSpliceDyn(core.Value{}, core.SrcPos{}) {
 		t.Error("an inactive EmitState must decline")
@@ -259,7 +259,7 @@ func TestPayloadMarkersInvoke(t *testing.T) {
 	}
 }
 
-func TestS7EvalXmlInterpCheckModeDynamicRefuses(t *testing.T) {
+func TestS7EvalXmlInterpCheckModeDynamicFailsToCompile(t *testing.T) {
 	r := xmlReg(t)
 	done := r.Check.Begin()
 	r.Check.Emit = NewEmitState()
@@ -450,7 +450,7 @@ func TestS6aTryRecordFallbackBakedNonInertDeclines(t *testing.T) {
 	// non-inert-data arg branch declines, so the program falls back to the
 	// interpreter unchanged. (An enclosing-scope binding read of such a value
 	// no longer reaches here — resolveOperand routes it to a dynamic-scope
-	// lookup — so this direct unit test pins the refusal contract.)
+	// lookup — so this direct unit test pins the compile failure contract.)
 	args := []core.Value{core.NewFlexList([]core.Value{core.NewInteger(1)})}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)} // dynamic out: island is legitimate
 	if TryRecordFallback(r, "s6afb6", sig, args, outs, core.SrcPos{}) {
@@ -467,9 +467,9 @@ func TestS6aTryRecordFallbackBakedNonInertDeclines(t *testing.T) {
 //     a standalone top-level const, and never when its holes are non-inert;
 //   - InterpBodyInert's TOP LEVEL stays exactly isInertConst — a standalone
 //     ParenExpr is NOT bakeable (baking `(loopy 1)` wrongly compiled a nested
-//     too-deep macroexpand that must refuse);
+//     too-deep macroexpand that must decline);
 //   - isInertConst itself is UNCHANGED — still strict — which is what keeps an
-//     InterpString body refused inside a compiled fn frame (the fn-scope
+//     InterpString body declined inside a compiled fn frame (the fn-scope
 //     miscompile guard rests on this).
 func TestInterpBodyInertBoundary(t *testing.T) {
 	// `v${k}` — an InterpString with an inert hole (the Word k).
@@ -512,13 +512,13 @@ func TestInterpBodyInertBoundary(t *testing.T) {
 	// INVARIANT: the strict whitelist must stay strict — it must NOT admit the
 	// InterpString. This is the foundation of the fn-scope miscompile guard: at
 	// fn scope noEvalBodiesInertScoped uses isInertConst, which keeps the body
-	// refused so it falls back to the interpreter instead of baking a
+	// declined so it does not compile instead of baking a
 	// frame-local ${name} that would resolve against the registry.
 	if core.IsInertConst(interp) {
 		t.Error("isInertConst(`v${k}`) = true; the strict whitelist must NOT admit an InterpString")
 	}
 	if core.IsInertConst(core.NewList([]core.Value{interp})) {
-		t.Error("isInertConst([`v${k}`]) = true; the strict whitelist must keep an InterpString body refused")
+		t.Error("isInertConst([`v${k}`]) = true; the strict whitelist must keep an InterpString body declined")
 	}
 }
 
@@ -531,7 +531,7 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 	// at run time — its frozen body has no captured names to leave unbound, so
 	// the const is faithful. A plain capture-free fn is const-baked by
 	// resolveOperand's isInertConst path BEFORE this switch; only a fn that
-	// isInertConst refuses reaches here. A capture-free MACRO module fn (Registry
+	// isInertConst declines reaches here. A capture-free MACRO module fn (Registry
 	// set, Macro true) is exactly that case — resolveOperand declines it, so the
 	// `IsConcrete && no-captures` arm is what places the const operand.
 	fn := core.Value{ID: core.GenerateID(core.IDPrefixForType(core.TFunction)), Parent: core.TFunction,
@@ -539,7 +539,7 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 			Registry: r, Macro: true}}
 	ops, ok := es.RecordCallOperands("stash", sig, []core.Value{fn})
 	if !ok {
-		t.Fatalf("a capture-free fn that resolveOperand refuses must bake as a const here")
+		t.Fatalf("a capture-free fn that resolveOperand declines must bake as a const here")
 	}
 	if len(ops) != 1 || ops[0].kind != opConst {
 		t.Fatalf("expected a single opConst operand, got %+v", ops)
@@ -547,7 +547,7 @@ func TestRecordCallOperandsInertFnBakeCaptureFree(t *testing.T) {
 }
 
 func TestXmlInterpDynamicCompilesToOp(t *testing.T) {
-	// GRADUATED (REFUSAL-CLOSURE §9.2c, 2026-07-17): a runtime-computed hole
+	// GRADUATED (COMPILE FAILURE-CLOSURE §9.2c, 2026-07-17): a runtime-computed hole
 	// lowers to OpInterpXml — the hole's own dispatch records its event and
 	// the op rebuilds the element from the popped value at run time
 	// (rebuildXmlFromTmpl). End-to-end parity is pinned in
@@ -559,7 +559,7 @@ func TestXmlInterpDynamicCompilesToOp(t *testing.T) {
 	}
 	prog, reason := compileTokens(t, r, []core.Value{core.NewXmlInterp(tmpl)})
 	if prog == nil {
-		t.Fatalf("dynamic XML interp must compile to OpInterpXml, refused: %s", reason)
+		t.Fatalf("dynamic XML interp must compile to OpInterpXml, declined: %s", reason)
 	}
 	if !strings.Contains(prog.Disassemble(), "INTERP_XML") {
 		t.Fatalf("expected an INTERP_XML op:\n%s", prog.Disassemble())

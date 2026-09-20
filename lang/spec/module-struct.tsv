@@ -55,7 +55,7 @@ import "boru:struct-util" StructUtil.inject {greeting:'`name`'} {name:'Alice'}	{
 import "boru:struct-util" StructUtil.selector {color:'red'} {a:{color:'red'} b:{color:'blue'}}	[{$KEY:'a' color:'red'}]	matching child carries its $KEY
 import "boru:struct-util" size (StructUtil.selector {color:'red'} {a:{color:'red'} b:{color:'blue'}})	1	the container is always a List — size takes it
 import "boru:struct-util" size (StructUtil.selector {color:'green'} {a:{color:'red'}})	0	a no-match selects the EMPTY list, not None
-import "boru:struct-util" append 1 (StructUtil.selector {color:'red'} {a:{color:'red'}})	ERROR:signature_error	a plain List is not a FlexList — append refuses it
+import "boru:struct-util" append 1 (StructUtil.selector {color:'red'} {a:{color:'red'}})	ERROR:signature_error	a plain List is not a FlexList — append declines it
 #
 # §13  walk — collect leaf path/value pairs
 import "boru:struct-util" StructUtil.walk {a:1 b:{c:2}}	[{path:'a' value:1} {path:'b.c' value:2}]	dotted leaf paths

@@ -3,8 +3,8 @@ package lang
 // MODULE-FAMILY VALUES READ LIVE (2026-09-05). An import-bound namespace
 // (`IO`, `StringUtil`) or a Module descriptor (`X.$module`, `def m (module
 // […])`) used as a VALUE — an eq/deq operand, a residual, a def body —
-// refused "operand of unknown provenance" / "residual value not statically
-// materialisable": the const gate refuses a namespace on purpose (a
+// declined "operand of unknown provenance" / "residual value not statically
+// materialisable": the const gate declines a namespace on purpose (a
 // pointer-shared map of fn exports; ConstBakeable is closed to module
 // instances), and a `$module` read was elided as a compile-time resolution
 // whose result then had no compiled home. Now the namespace read routes to
@@ -31,7 +31,7 @@ func TestModuleValueReadsCompileWithParity(t *testing.T) {
 		`import "boru:io" def x IO x`,
 		`import "boru:io" def x IO x def x IO`,
 		`import "boru:io" [IO] size`,
-		// a namespace read whose binding MOVES later — refused as "residual
+		// a namespace read whose binding MOVES later — declined as "residual
 		// value not statically materialisable" while a module fn value was the
 		// one kind with a home; now that every fn carries one, the read is
 		// modelled like any other module value and the row compiles with parity
@@ -65,7 +65,7 @@ func TestModuleValueReadsCompileWithParity(t *testing.T) {
 }
 
 // The shape the live read must NOT admit: a frame-local def of a
-// compile-time module value keeps its refusal (its binding is popped with
+// compile-time module value keeps its compile failure (its binding is popped with
 // the frame, so there is nothing for the live read to find); the interpreter
 // answers. The two moved-binding rows that used to sit here (`def x IO x def
 // x 5`, `… undef x`) graduated to the parity rows above once every fn value
@@ -88,7 +88,7 @@ func TestModuleValueReadSoundFallbacks(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refusal drifted: want %q in %q", c.src, c.reason, reason)
+			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
 		if compiled {

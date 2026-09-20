@@ -136,9 +136,9 @@ var storageNatives = []NativeFunc{
 
 			// WeakFlexMap (in-place key set; scalars store STRONGLY,
 			// mutable handles store WEAKLY, immutable Nodes and other
-			// value-like data are refused with a weak_value_error —
+			// value-like data are declined with a weak_value_error —
 			// design/FLEX-ATTRS.1.md §4.4. The dedicated sig is forced:
-			// the inherited FlexMap handler's AsMutableMap refuses the
+			// the inherited FlexMap handler's AsMutableMap declines the
 			// weak payload, by design.)
 			{
 				Args:      []*Type{TString, TAny, TWeakFlexMap},
@@ -283,7 +283,7 @@ var storageNatives = []NativeFunc{
 
 			// WeakFlexMap. The dedicated sig is forced for the same
 			// reason set's is: the inherited FlexMap handler's
-			// AsMutableMap refuses the weak payload by design.
+			// AsMutableMap declines the weak payload by design.
 			{
 				Args:      []*Type{TString, TWeakFlexMap},
 				Impl:      Go(delWeakFlexMapHandler),
@@ -748,7 +748,7 @@ func delFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 
 // delWeakFlexMapHandler is the WeakFlexMap form of del. It mirrors
 // delFlexMapHandler; the separate handler exists because the weak
-// payload has its own accessor (AsMutableMap refuses it by design).
+// payload has its own accessor (AsMutableMap declines it by design).
 // Unlike set's weak form there is no value to classify, so this cannot
 // raise weak_value_error.
 func delWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -776,7 +776,7 @@ func delWeakFlexMapReturns(args []Value, _ *Registry) []Value {
 // delFlexXmlHandler removes one ATTRIBUTE of a FlexXml element — the
 // slot set writes, so the pair is symmetric. Children are grown by
 // `append` and are not addressed by name; an absent attribute is a
-// no-op. The name is NOT validity-checked the way set's is: set refuses
+// no-op. The name is NOT validity-checked the way set's is: set declines
 // an invalid name to keep one from being created, while removing a name
 // that could never have been created is already a no-op.
 func delFlexXmlHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -834,7 +834,7 @@ func delStoreReturnsFn(args []Value, r *Registry) []Value {
 	// The forget marker is DYNAMIC Any — the widening this comment
 	// describes — not strict. Strict Any is the one carrier that conforms
 	// to NO typed slot, so recording it turns "this key is no longer
-	// narrowed" into "every later use of it refuses". getStoreReturnsFn
+	// narrowed" into "every later use of it declines". getStoreReturnsFn
 	// hands the recorded carrier straight back to the consumer, so the
 	// marker's modality is the consumer's modality:
 	//
@@ -887,7 +887,7 @@ func delClassInstanceReturns(args []Value, r *Registry) []Value {
 	return []Value{}
 }
 
-// delListHandler refuses index removal on every list flavour. set
+// delListHandler declines index removal on every list flavour. set
 // REPLACES at an index and leaves length alone; removing at an index
 // shifts the tail, so it is a different operation with different words
 // — which the hint names. The sig exists to say that rather than to
@@ -1069,7 +1069,7 @@ func setFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 
 // setWeakFlexMapHandler stores one entry in a WeakFlexMap. The value
 // domain is the decided Python-style rule (design/FLEX-ATTRS.1.md
-// §4.4): scalars strong, mutable handles weak, everything else refused
+// §4.4): scalars strong, mutable handles weak, everything else declined
 // with the rich weak_value_error diagnostic.
 func setWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	container := args[2]
@@ -1103,7 +1103,7 @@ func weakValueMirror(r *Registry, v Value, word, container string) {
 	// Statically-known stored values: a concrete value, a bare type
 	// literal, or ANY None-shaped check value — None has a single
 	// inhabitant, so even a None carrier is provably the none the
-	// runtime refuses.
+	// runtime declines.
 	if !IsConcrete(v) && !core.IsBareTypeNode(v) && !core.IsNoneShape(v) {
 		return
 	}
@@ -1367,7 +1367,7 @@ func recordSchemaFieldReturns(rt RecordTypeInfo, key Value) []Value {
 //
 // The bound is DYNAMIC (gradual) — a read is only a claim the write-enforcement
 // (Part C) backs. What the narrower bound buys: a provably-DISJOINT dispatch (a
-// {:Boolean} read reaching an Integer|String word) refuses at compile time, while
+// {:Boolean} read reaching an Integer|String word) declines at compile time, while
 // a COVERED read commits or polys exactly as the element type warrants, and an
 // UNTYPED read is unchanged.
 func d2TypedContainerBound(container Value) (Value, bool) {
@@ -1493,7 +1493,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// Function / FnDef, a /v ref (Reach), or a word-splice — keeps the
 	// dynamic Any the poly / island path already handles: returning its
 	// concrete value would push the compiler to lower a fn-value call or a
-	// modifier re-dispatch and refuse to compile (fn-value.tsv `m.f 2 3`,
+	// modifier re-dispatch and fail to compile (fn-value.tsv `m.f 2 3`,
 	// path-modifier.tsv `m.a/u`). Return a FRESH carrier of the field's
 	// TYPE, not the stored value — the stored value's Value ID is shared
 	// with the map field and collides in the emitter's operand-provenance
@@ -1530,7 +1530,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		// interpreter's auto-dispatch mid-stream as a guarded OpCallDynMethod.
 		// NoteMethodShape vets the member (delegation wrapper only, never a
 		// genuine 0-arg overload — the miscompile-E auto-dispatch class stays
-		// refused); everything it declines keeps the bare dynamic Any.
+		// declined); everything it declines keeps the bare dynamic Any.
 		if r != nil && val.Parent.ConformsTo(TFunction) {
 			out := NewDynamicCarrier(TAny)
 			r.Check.NoteMethodShape(out, val)
@@ -1563,7 +1563,7 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 //
 //   - dynamic(Any) becomes strict Any — the one carrier that conforms to
 //     no typed slot — so a value that merely had an unknown type starts
-//     REFUSING every typed use. `def l [(context get 'k')] (l get 0) add 1`
+//     DECLINING every typed use. `def l [(context get 'k')] (l get 0) add 1`
 //     ran to 3 while check reported no_signature on `add`.
 //   - dynamic(T) becomes strict T, which promotes a wrong-but-gradual
 //     bound into a wrong-and-committed one. `typeCovered` waves through
@@ -1674,7 +1674,7 @@ func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // field (→ None), or a type whose schema can't be resolved keeps the
 // dynamic(Any) the poly path handles — the same dispatch-bearing exclusion
 // as the concrete-map case (a returned fn value would push the compiler to
-// lower a fn-value call and refuse).
+// lower a fn-value call and decline).
 func getObjectReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
 	if r == nil || len(args) != 2 || !IsConcrete(args[0]) || args[1].Parent == nil {

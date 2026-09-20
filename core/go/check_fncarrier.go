@@ -71,7 +71,7 @@ func CheckFnCarrierBoundName(r *Registry, id string) (string, bool) {
 //
 // — the second because the pop exposed the SHADOWED `f = 1` in Defs while
 // the table kept the carrier. Dropping the entry makes the read miss, which
-// raises the ordinary undefined_word diagnostic and refuses the program to
+// raises the ordinary undefined_word diagnostic and declines the program to
 // the interpreter, where `undef` of a fn binding is the interpreter's own
 // business. Correct in both spellings, and correct whichever way that
 // separate question is eventually settled.

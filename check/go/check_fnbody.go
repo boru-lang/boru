@@ -98,7 +98,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 	// inflates the residual by an unknown count, so skip it too. It is a
 	// RuntimeMirror: the compile pass deliberately COMPILES the
 	// count-mismatched body and lets the VM RET raise the byte-identical
-	// error (emit.go — TestEmitP5MultiResult pins it), so the refusal
+	// error (emit.go — TestEmitP5MultiResult pins it), so the compile failure
 	// loop skips mirror diagnostics.
 	if extra > unnamedCount &&
 		!stackHasVariadic(stk) && !stackHasFnValue(stk) && !stackHasDynamic(stk) &&
@@ -331,7 +331,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// shares the check state with this closure's captured registry r. Without
 		// sharing, `es` below read the module's own INACTIVE CheckState:
 		// StartFnCompile declined, RecordUserCall never ran, every merged dispatch
-		// refused "user fn call … (Stage 3)", and the body was ANALYSED
+		// declined "user fn call … (Stage 3)", and the body was ANALYSED
 		// CONCRETELY with its diagnostics stranded on the invisible module Check.
 		// Sharing caller → r at the ReturnsFn boundary itself converts the WHOLE
 		// user-fn seam (every dispatch path that reaches a foreign-registry fn
@@ -426,23 +426,23 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// compiled `each [[k:Atom] => […]] (keys m)` APPLIED the lambda where
 		// the interpreter leaves it data (checker-compiler-completeness-review
 		// §2.2). Latch the probe uncompilable: the closure admission declines,
-		// the word's Stage-2 refusal stands, and the interpreter's own rule
+		// the word's Stage-2 compile failure stands, and the interpreter's own rule
 		// owns the program. Outside closure units every probed /q arrival
 		// already models faithfully (top-level no-match parity, the dynamic-
-		// carrier recovery refusal), so the guard stays scoped.
+		// carrier recovery compile failure), so the guard stays scoped.
 		if es.InClosureUnit() && quoteParamCarrierBind(sigParams, args) {
 			es.MarkUncompilable("fn " + nameCopy + ": Atom-typed param bound to a computed value in a closure body (quote capture is forward-only)")
 		}
 		// A FOREIGN-registry fn whose body constructs a fn value USED to
-		// refuse wholesale (the compiled unit executed against the
+		// decline wholesale (the compiled unit executed against the
 		// dispatching registry, losing module scope for the constructed
 		// lambda). Units now carry their owning registry (CompiledFn.Reg):
 		// the VM dispatches the unit's natives against it — exactly the
 		// registry the interpreter's foreign-wrapper CallBoru runs the body
 		// in — so a constructed lambda's downstream capability state (a
 		// listener's per-connection registries) forks module scope on both
-		// engines, and the refusal is retired (boru:repl rows 12/16/18
-		// compile; the remaining statement-position recovery strand refuses
+		// engines, and the compile failure is retired (boru:repl rows 12/16/18
+		// compile; the remaining statement-position recovery strand declines
 		// through the ordinary provenance paths).
 		if es.Armed() && !polyBarred {
 			// The body unit must be compiled against GENERALISED args
@@ -468,7 +468,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// the DECLARED param type, not strict-Any: the body's words then
 					// dispatch against the real type (e.g. `convert Float` over an
 					// Integer param inside a chain whose source was an Options `get`),
-					// instead of refusing "unmatched dispatch" on strict-Any. Sound by
+					// instead of declining "unmatched dispatch" on strict-Any. Sound by
 					// the param contract — SetUnitParamTypes installs a CALL_USER guard
 					// that raises == the interpreter when a runtime arg misses the
 					// declared type, so assuming it here can only narrow, never admit a
@@ -486,7 +486,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// against the declared type instead of a payload-stripped
 					// Disjunct carrier no sig accepts (mini-s3: s3-handle-get's
 					// `part` into s3-send-resp's `body:Bytes`, whose chunk loop
-					// then dispatched `slice` over a Disjunct and refused
+					// then dispatched `slice` over a Disjunct and declined
 					// "for: body nets multiple values"). The dynamic flag is
 					// preserved: a gradual disjunct keeps matching optimistically.
 					if pt := sigParams[i].Type; pt != nil && !pt.Equal(core.TAny) &&
@@ -502,13 +502,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// (ParamInputCarrier), not strict — the callee body's
 					// dispatch over the param keeps poly-matching optimistically,
 					// exactly as the unit's own params do via fnValueInputs; a
-					// strict Any refuses "unmatched dispatch recovered" on the
+					// strict Any declines "unmatched dispatch recovered" on the
 					// first field access (a stored service handler calling an
 					// `st:Any` helper that reads `st.kv`). Sound by the same
 					// contract as the narrowing above: the VM's per-word poly
 					// re-match raises exactly where the interpreter does. Scoped
 					// to the stored context because there the probe-then-real
-					// discipline makes a gradual-caused refusal per-body (one
+					// discipline makes a gradual-caused compile failure per-body (one
 					// unstamped handler); applied globally it flipped whole-
 					// program main-pass rows (module-repl). Args with CONCRETE
 					// parents keep the precise strict generalisation below.
@@ -683,7 +683,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// machinery, and surfacing the concrete FnDefInfo here instead
 				// reorders the recorded call residual and detaches the capture
 				// from its construction site — the factory-apply / returned-
-				// capturing-closure units then refuse ("capture … unreachable",
+				// capturing-closure units then decline ("capture … unreachable",
 				// "call results reordered"). The checker's precision win (a
 				// bindable, dispatchable closure) is only needed on the plain
 				// check pass; the compile pass keeps the carrier and compiles the
@@ -757,7 +757,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			// runtime exactly (the call runs for its effects; the next token is
 			// the residual) and return zero values. When the unit did NOT compile
 			// (fnUnit < 0, plain check mode), keep the lenient Any approximation
-			// so downstream provenance refuses and the program falls back.
+			// so downstream provenance declines and the program falls back.
 			if fnUnit >= 0 {
 				pos := core.SrcPos{}
 				if len(args) > 0 {
@@ -770,7 +770,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				es.RecordUserCall(fnUnit, call.word, args, nil, pos, call.pos)
 				return nil
 			}
-			// A ZERO-declared-return POLY set (REFUSAL-CLOSURE.0 §6a): every
+			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
 			// same-arity arm compiled and nets zero (tryCompileUserPolyArms'
 			// unitNetsZero gate), so record the runtime-re-matched 0-output
 			// poly call — the residual matches runtime exactly whichever arm
@@ -786,7 +786,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			}
 			// The 0-net / undeclared call whose body unit declined leaves a
 			// lenient STRICT Any approximation so a downstream consumer that reads
-			// the value refuses on unknown provenance and the program falls back.
+			// the value declines on unknown provenance and the program falls back.
 			// It is kept strict (not dynamic): a dynamic Any would match a
 			// concrete consumer's slot optimistically and hide a real error —
 			// `3 add (f 1)` where f returns nothing must still flag. But it is a
@@ -960,7 +960,7 @@ type callSite struct {
 // carries no position to match by), and RecordDynApply
 // over that value resolves the fn to the closure's producer operand — the
 // runtime payload with the captures it carries — where RecordUserCall could
-// only refuse the construction-scope captures unreachable at this call
+// only decline the construction-scope captures unreachable at this call
 // site. Single out, freshened as the §4.3 fallback freshens (the memoised
 // residual is shared across calls of one shape); a concrete out takes a
 // carrier of its type — the runtime value is the apply's, sound at the cost
@@ -968,7 +968,7 @@ type callSite struct {
 // (see below). The args arrive in signature order (sig[0] the stack top);
 // RecordDynApply takes the window deepest-first with sig[0] on top, so they
 // are reversed. A 0-arg closure declines (nothing beneath to lay out — the
-// entry stays for the finish to refuse), as does whatever RecordDynApply's
+// entry stays for the finish to decline), as does whatever RecordDynApply's
 // own guards decline.
 func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
 	if len(outs) != 1 || len(args) == 0 {
@@ -1008,7 +1008,7 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 // CONSTRUCTION-SCOPE (non-concrete) captures through the fn-VALUE apply
 // (RecordDynApply) instead of the unit call. Such a unit's captures are
 // analysis carriers resolvable only in the factory body's own scope, so
-// RecordUserCall refuses "capture X unreachable at a call site" at every
+// RecordUserCall declines "capture X unreachable at a call site" at every
 // OUTER call site (the audit's §4.3 capture family) — while the STORED
 // runtime value carries its own concrete captures, which the dynamic
 // apply's interpreter-dispatch island installs faithfully (CallBoru's
@@ -1025,8 +1025,8 @@ func recordPendingClosureApply(es core.EmitRecorder, body, args, outs []core.Val
 //     keeps the established unit call.
 //
 // RecordDynApply's own guards (operand provenance, the event-lead
-// quote-state refusal, fnConcreteSingleValuedOrCarrier) still apply; a
-// decline or refusal there leaves the program silently interpreted — the
+// quote-state compile failure, fnConcreteSingleValuedOrCarrier) still apply; a
+// decline or compile failure there leaves the program silently interpreted — the
 // answer is right, the compile failed, and nothing in the run says so.
 // Pinned end-to-end by frontier-hof-audit.tsv §9's mkap row.
 func recordFnValueApplyFallback(es core.EmitRecorder, r *core.Registry, name string, captures []core.CapturedBinding, args, outs []core.Value, pos core.SrcPos) (core.Value, bool) {
@@ -1113,7 +1113,7 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 		// and calls MarkUncompilable. Suspend stops recording but does NOT prevent
 		// MarkUncompilable from latching the program's EmitState.Compilable — so a
 		// construction-time check of a fn with a surface param would wrongly mark
-		// the WHOLE program uncompilable (surface.tsv:32 refused for exactly this).
+		// the WHOLE program uncompilable (surface.tsv:32 declined for exactly this).
 		// IsolateEmit swaps a fresh EmitState for the analysis (discarded on
 		// restore), so MarkUncompilable / recording land on the throwaway; the
 		// emitted DIAGNOSTICS (undefined_word for an uncalled body typo, the strand
@@ -1160,7 +1160,7 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 		// code. For a NAMED fn it stays: defining a fn is asking for its
 		// body to be analysed, and the existing surface is pinned. For a
 		// body the checker volunteered to look at, the honest output of a
-		// failed look is silence — the compile path still refuses these
+		// failed look is silence — the compile path still declines these
 		// programs, and loudly.
 		if name == "" {
 			kept := r.Check.Diagnostics[:before]

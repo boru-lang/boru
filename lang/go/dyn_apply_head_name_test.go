@@ -92,7 +92,7 @@ func TestDynApplyHeadNameUnnamed(t *testing.T) {
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
 		if !compiled {
-			t.Logf("%q: not compiled (%s) — refusal, not a divergence", c.src, c.note)
+			t.Logf("%q: not compiled (%s) — compile failure, not a divergence", c.src, c.note)
 			continue
 		}
 		requireParity(t, c.src, gotC, errC, gotI, errI)

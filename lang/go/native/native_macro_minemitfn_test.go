@@ -17,7 +17,7 @@ func TestMiniLangFnFilterShapedEmpty(t *testing.T) {
 	}
 }
 
-// A fn-family value whose payload is not an FnDefInfo is refused (the sig
+// A fn-family value whose payload is not an FnDefInfo is declined (the sig
 // matcher never delivers one from surface syntax — a bare `Function` type
 // literal is parented at Type; pinned by the §fnv signature_error rows).
 func TestMiniFnExpandNonFnPayload(t *testing.T) {

@@ -54,7 +54,7 @@ func loadApps(t *testing.T, names ...string) *Boru {
 // errorDiags returns the error-severity diagnostics for src — the ones that
 // abort `boru run`. It runs the SAME pass the run pre-flight gates on: plain
 // `Check` (cmd/go/internal/check.Preflight → a.Check), NOT the stricter compile
-// pass. A false positive here is what actually refuses an otherwise-correct
+// pass. A false positive here is what actually declines an otherwise-correct
 // program by default.
 func errorDiags(t *testing.T, a *Boru, src string) []CheckDiagnostic {
 	t.Helper()

@@ -118,7 +118,7 @@ func (r *Registry) RestoreBindings(s BindingSandbox) {
 
 // RestoreBindingsForReplay is the twin regime's runtime rollback: identical
 // to RestoreBindings EXCEPT that the module ledger stays PASS-FINAL. The
-// full restore exists for abandonment — a refused compile whose interpreter
+// full restore exists for abandonment — a declined compile whose interpreter
 // fallback re-runs the source, imports included, so the ledger must forget
 // them. Here nothing is abandoned: the run that follows replays each module
 // namespace BINDING through its def twin (the identical namespace instance
@@ -158,7 +158,7 @@ func (r *Registry) RestoreBindingsForReplay(s BindingSandbox) {
 // clones the table at the guard's open, swaps the clone in around each
 // compile, and swaps the leaked table back afterwards so the enclosing
 // analysis continues where the interpreter's run would have left it. A nil
-// table is refused: the registry always has a live table.
+// table is declined: the registry always has a live table.
 func (r *Registry) SwapDefs(dt *DefTable) *DefTable {
 	if r == nil || dt == nil {
 		return nil

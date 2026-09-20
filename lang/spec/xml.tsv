@@ -10,7 +10,7 @@
 # Scope note: FlexXml MUTATION (set / append on a flex element) and a
 # binding-fed ${} interpolation are RUNTIME builders the bytecode compiler
 # faithfully falls back on, so they cannot be spec value rows without
-# regressing the never-raise compile-refusal ceiling — they are covered by
+# regressing the never-raise compile-compile failure ceiling — they are covered by
 # lang/go/test/xml_literal_test.go. Everything here compiles natively.
 #
 # ─────────────────────────────────────────────────────────────────────

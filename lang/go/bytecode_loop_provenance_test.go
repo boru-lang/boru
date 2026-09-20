@@ -8,7 +8,7 @@ import (
 // A loop body ending on a MODULE INSTANCE bound by a module-scope def was
 // the minimal in-repo shape of a value the for-lowering could not seat — no
 // producing event, no frame local, not materialisable as a const — and this
-// test pinned the "for: body result of unknown provenance" refusal in both
+// test pinned the "for: body result of unknown provenance" compile failure in both
 // net arms. GRADUATED 2026-09-05: a module-family value reads LIVE
 // (dynScopeRescue's module-family arm, OpLookupDynScope) and a root def of
 // one needs no bind op (lowerDynBind), so both shapes compile with parity.
@@ -30,7 +30,7 @@ func TestForBodyModuleValueCompiles(t *testing.T) {
 				t.Fatalf("CompileCheck: %v", err)
 			}
 			if prog == nil {
-				t.Fatalf("must compile natively (the module value reads live); refused: %q", reason)
+				t.Fatalf("must compile natively (the module value reads live); declined: %q", reason)
 			}
 
 			b, err := New()

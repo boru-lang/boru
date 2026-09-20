@@ -86,7 +86,7 @@ func registerDynWords(r *core.Registry) {
 }
 
 // runTolerant executes tokens interpreted, asserts the expected render,
-// then compiles; a refusal is tolerated (logged), a compiled program must
+// then compiles; a compile failure is tolerated (logged), a compiled program must
 // agree with the interpreter.
 func runTolerant(t *testing.T, extra func(*core.Registry), tokens func() []core.Value, want string) {
 	t.Helper()
@@ -101,7 +101,7 @@ func runTolerant(t *testing.T, extra func(*core.Registry), tokens func() []core.
 	rc := covRegistry(t, extra)
 	prog, reason := compileTokens(t, rc, tokens())
 	if prog == nil {
-		t.Logf("compile refused (%s)", reason)
+		t.Logf("compile declined (%s)", reason)
 		return
 	}
 	cOut, cErr := RunProgram(prog, rc)
@@ -337,7 +337,7 @@ func TestCompiledCarrierDisjointTrapParity(t *testing.T) {
 	// Integer-only slot. A carrier is not concrete at compile time, so a
 	// trap built here could not carry a diagnostic matching the
 	// interpreter's runtime (concrete-value) one; the compile therefore
-	// DECLINES to trap and the program falls back to the interpreter. Both
+	// DECLINES to trap and the program does not compile. Both
 	// engines raise the identical signature_error either way (phase 7).
 	runErrParity(t, nil, func() []core.Value {
 		return []core.Value{
@@ -376,7 +376,7 @@ func TestCompiledConcreteTrapVoidGroup(t *testing.T) {
 		core.NewOpenParen(), core.NewWord("cvoid"), core.NewCloseParen(),
 	})
 	if prog == nil {
-		t.Logf("compile refused (%s)", reason)
+		t.Logf("compile declined (%s)", reason)
 		return
 	}
 	_, cErr := RunProgram(prog, rc)
@@ -393,7 +393,7 @@ func TestInvokeClosureRawTokens(t *testing.T) {
 	r := covRegistry(t, nil)
 	prog, reason := compileTokens(t, r, []core.Value{core.NewInteger(1)})
 	if prog == nil {
-		t.Fatalf("trivial compile refused: %s", reason)
+		t.Fatalf("trivial compile declined: %s", reason)
 	}
 	vc := &vmContext{p: prog, r: r}
 	body := core.NewList([]core.Value{core.NewWord("cadd")})

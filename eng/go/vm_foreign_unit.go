@@ -64,8 +64,7 @@ func vmInternalError(rec any, src string) error {
 //
 // The panic guard is local rather than borrowed from the enclosing
 // runVMEntry's: a soundness bailout inside ONE callback must degrade THAT
-// callback (InvokeCompiled's C1 fence then retries it on CallBoru), not abort
-// the whole enclosing program and re-run it on the interpreter.
+// callback (InvokeCompiled reports it), not abort the whole enclosing program.
 func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Value) (res []core.Value, handled bool, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {

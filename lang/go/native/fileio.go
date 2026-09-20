@@ -23,7 +23,7 @@ const (
 // fileOpError codes a FileOps failure, preferring the code the failure
 // ALREADY identifies itself by.
 //
-// A policy refusal is not a read failure: the remedy is to change the
+// A policy compile failure is not a read failure: the remedy is to change the
 // policy, not the path, and the code is the only part of an Error a
 // `case` arm can dispatch on. policy.Denied has carried that code
 // (`permission_denied`, `capability_not_installed`, …) all along, and
@@ -41,7 +41,7 @@ const (
 // shared classifier because it is a different error TYPE: fileops signals
 // an uninstalled capability with `notInstalledError`, not with a
 // `*policy.Denied`, since the FileOps wrapper is swapped out wholesale
-// rather than consulted and refused.
+// rather than consulted and declined.
 //
 // The two answers are kept apart on purpose: a rule said no (widen the
 // rule) versus the capability isn't there at all (install it).
@@ -51,11 +51,11 @@ func fileOpError(r *Registry, def, word, detail string, err error, pos SrcPos) e
 		return r.BoruErrorAt("capability_not_installed", detail, word, pos)
 	}
 	// The shared adapter (policy_error.go), so fileops and every other gated
-	// capability answer a refusal with the same code. This site passes its OWN
+	// capability answer a compile failure with the same code. This site passes its OWN
 	// detail: a file op has already built a "read: …" / "write: …" message
 	// naming the path, which is more use to the reader than the blame trail.
 	//
-	// A policy refusal keeps the adapter's UNPOSITIONED error: the adapter is
+	// A policy compile failure keeps the adapter's UNPOSITIONED error: the adapter is
 	// shared by every gated capability, and threading a position through it is
 	// the rest of the positionless-error work (design note: the boru:io pilot
 	// covers this word's OWN failures, not the policy layer's). The two arms
@@ -419,19 +419,19 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 		return nil, r.BoruErrorAt("write_error", fmt.Sprintf("write: %v", encErr), "write", pos)
 	}
 
-	// C1 effect fence (eng effects.go): a filesystem write is an observable
+	// effect ledger (core effects.go): a filesystem write is an observable
 	// effect the compiled-mode fallback cannot un-do, so it counts against
 	// the silent re-run. Noted on the ATTEMPT: an OS WriteFile can create
 	// or truncate the target before failing, so even the error path may
 	// already have mutated the filesystem.
-	// {exclusive} opens with O_EXCL BEFORE noting an effect: a refusal
+	// {exclusive} opens with O_EXCL BEFORE noting an effect: a compile failure
 	// (the path already exists) mutates nothing, so it stays a clean
 	// re-runnable write_error rather than tripping the compiled effect
 	// fence. writeExclusive notes the effect only once the create lands.
 	if exclusive {
 		if err := writeExclusive(r, path, data); err != nil {
 			// A BoruError (not a bare fmt.Errorf) so the compiled runtime
-			// treats the refusal as intentional and does not attempt a
+			// treats the compile failure as intentional and does not attempt a
 			// fallback — which a prior statement's effect would block,
 			// surfacing as a spurious internal_error (compiled_fullcorpus).
 			return nil, fileOpError(r, "write_error", "write", fmt.Sprintf("write: %v", err), err, pos)
@@ -440,7 +440,7 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 	}
 	r.NoteEffect()
 	// write_error for the same reason the {exclusive} branch above already
-	// gives: a coded BoruError is a deliberate refusal the compiled runtime
+	// gives: a coded BoruError is a deliberate compile failure the compiled runtime
 	// surfaces, where a foreign error triggers an interpreter re-run that
 	// the effect just noted would block — reappearing as a spurious
 	// internal_error. It also gives the failure a code to dispatch on.
@@ -463,7 +463,7 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 func writeExclusive(r *Registry, path string, data []byte) error {
 	h, err := EffectiveFileOps(r).Open(path, capabilities.OpenOpts{Write: true, Create: true, Exclusive: true})
 	if err != nil {
-		return err // EEXIST (or a gate refusal): nothing was created
+		return err // EEXIST (or a gate compile failure): nothing was created
 	}
 	r.NoteEffect() // the file now exists — an observable effect
 	_, werr := h.Write(data)
@@ -479,7 +479,7 @@ func writeExclusive(r *Registry, path string, data []byte) error {
 // filesystem — the global tmp root may be a different mount), then a
 // rename replaces the target in one step. A failure removes the temp
 // (best-effort) rather than stranding it — in particular a backend
-// without rename (a minimal mount) refuses CLEANLY.
+// without rename (a minimal mount) declines CLEANLY.
 func writeAtomic(r *Registry, path string, data []byte) error {
 	ops := EffectiveFileOps(r)
 	dir := filepath.Dir(path)

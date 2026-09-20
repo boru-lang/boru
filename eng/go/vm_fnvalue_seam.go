@@ -47,9 +47,10 @@ import (
 //     lanes, `each cbad/v [1 2]` the return-type error with cbad's name.
 //   - Delivery is OpCallUserPoly's: the ascribed view stripped, list params
 //     quoted, the interpreter's binding rule.
-//   - An internal error inside the unit degrades to the stepping path when no
-//     observable effect escaped (the C1 fence, as InvokeCompiled applies it);
-//     one that printed first propagates, since a re-run would print twice.
+//   - An internal error inside the unit PROPAGATES. It used to degrade to the
+//     stepping path when no observable effect had escaped, fenced so a unit
+//     that had printed did not print twice; nothing re-runs now, so the bail
+//     is the compiler defect it is and it surfaces either way.
 func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs []core.Value) ([]core.Value, error, bool) {
 	fd, ok := body.Data.(core.FnDefInfo)
 	if !ok || body.Quoted {
@@ -120,7 +121,7 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 // uncalled_function fork decides (NUR155's rule). Measured before the arm
 // (2026-09-19, the S1a/S1b-1 head): the unit ran blind over whatever the
 // handler pushed — `each (mk 1) ['a' 2]` answered `[1 3]` for the
-// interpreter's `[fn (Integer) 3]` — and every such shape was a refusal on
+// interpreter's `[fn (Integer) 3]` — and every such shape was a compile failure on
 // `main` ("function-valued operand at each"), so the release was S1a's and
 // the arm is what makes it sound.
 func (vc *vmContext) invokeFnValueClosure(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {

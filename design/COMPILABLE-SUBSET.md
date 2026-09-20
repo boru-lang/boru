@@ -339,7 +339,7 @@ user still gets an answer while the case is open:
   `replayIsBodyTail`'s `windowReadsID` arm (a dyn-bind of a value the
   window reads is not a reorderable event) armed its body tail — both
   spellings now compile natively (completeness-review §9.8). Pinned by
-  `TestChainedForwardApplyCompiles` / `TestMultiArgChainedApplyRefuses` /
+  `TestChainedForwardApplyCompiles` / `TestMultiArgChainedApplyFailsToCompile` /
   `TestTailProofNegatives`; only the sel1 control remains in
   `frontier-chained-apply.tsv`; graduation of the rest = Stage G proper.
 - **Quote-typed lambda callback** — a lambda whose param is Atom-typed (a

@@ -308,7 +308,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // matches under, so a `z:Integer` lambda handed a String no-matches there —
 // whose handler applies the closure through invoke. A unit that recorded no
 // contract (a token body) declines: guessing Any would apply where the
-// interpreter refuses. Anonymous mirrors the source fn's flag
+// interpreter declines. Anonymous mirrors the source fn's flag
 // (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
 // at the pointer (ADR-016's gate), so the value-path bridge parks in the
 // same places the interpreter's own value does.

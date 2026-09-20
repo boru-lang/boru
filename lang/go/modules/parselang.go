@@ -119,7 +119,7 @@ func BuildParseLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 			// parser in its OWN sub-engine (never re-stepped on the VM tape), so
 			// a CONCRETE parser fn value (a detached stamp binds the runtime-
 			// constructed parser concretely) bakes as a plain const operand
-			// rather than tripping the fn-value Stage-3 refusal.
+			// rather than tripping the fn-value Stage-3 compile failure.
 			FnInertArgs: map[int]bool{0: true},
 			Impl:        native.Go(parseFnDispatchHandler),
 		}},
@@ -337,7 +337,7 @@ func pureParseFoldReturns(returns []*native.Type, shell native.Handler) native.R
 // real at run time) could make the folded result diverge from the runtime
 // call, which would be an unsound commitment. Identity-bearing payloads
 // (stores, class instances, fn values, timers) are NOT inert — their
-// check-time state is not their runtime state — so they refuse the fold.
+// check-time state is not their runtime state — so they decline the fold.
 func parseFoldableValue(v native.Value) bool {
 	if v.Carrier || v.Dynamic || v.Undefined || !native.IsConcrete(v) {
 		return false

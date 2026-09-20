@@ -203,7 +203,7 @@ func countLines(t *testing.T, path string) int {
 	return strings.Count(s, "\n") + 1
 }
 
-// TestCitationResolutionNegatives pins the resolver's refusals. The gate is
+// TestCitationResolutionNegatives pins the resolver's compile failures. The gate is
 // only useful if it distinguishes "cannot resolve" (skip, so prose about a
 // hypothetical file never blocks a commit) from "resolves and is wrong"
 // (fail) — assert both directions, not just the happy path.

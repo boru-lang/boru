@@ -86,7 +86,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// raise instead of staying silent about a certainty. It is stamped a
 	// RuntimeMirror (CheckAddUniqueDiagnostic does that for its callers),
 	// which is what lets the compile pipeline keep compiling the program
-	// to the terminal trap below rather than refusing on an error
+	// to the terminal trap below rather than declining on an error
 	// diagnostic — the finding's model is exact, and the trap raises the
 	// identical error.
 	//
@@ -142,9 +142,9 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		// has run once. That is a certainty about the SOURCE, not a
 		// check-pass approximation, so the compiled program raises the
 		// byte-identical error through a TERMINAL trap instead of
-		// refusing the whole program. RecordTrap owns it only at the top
+		// declining the whole program. RecordTrap owns it only at the top
 		// level; inside a fn/branch/loop fragment it declines and the
-		// arity refusal below keeps the interpreter's fallback.
+		// arity compile failure below keeps the interpreter's fallback.
 		if emptyWhileCond(args[0]) && es.RecordTrap("runtime_error",
 			"while: condition produced no value", "while", "", args[0].Pos()) {
 			return []Value{out}
@@ -163,9 +163,9 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// fn's leak and await's winner-takes-all already use), not the one
 	// typed-List carrier above. That carrier is the recording pass's
 	// stand-in for the loop EVENT's result, where it is never read as a
-	// type: the compile lane refuses every consumption of a loop result
+	// type: the compile lane declines every consumption of a loop result
 	// ("consumes loop results"), and the residual it feeds is the
-	// program's. On the plain-check surface nothing refuses, so the
+	// program's. On the plain-check surface nothing declines, so the
 	// soundness oracle reads this stack directly — and a List where the
 	// runtime leaves N scalars is a false claim (measured: 5 violations
 	// the moment the while rows entered the main corpus, control.tsv §7).

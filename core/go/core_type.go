@@ -302,7 +302,7 @@ func IsValueOfType(v, t Value) bool {
 // validateTypeName runs the name checks every type binding must pass —
 // capitalisation, no part conflicting with an existing type, and no clash
 // with a registered function or a value def. Shared by InstallType (the
-// `def` path) and the host-Go DefineMemberType path so both refuse to
+// `def` path) and the host-Go DefineMemberType path so both decline to
 // shadow a builtin/user type or mint under an invalid name.
 func validateTypeName(r *Registry, name string) error {
 	if !IsCapitalisedName(name) {
@@ -500,7 +500,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// runs it on the VM instead of the CallBoru interpreter fallback —
 		// the same pre-publication in-place stamp module load applies to
 		// its exports (the binding has not escaped this goroutine).
-		// Declines (captures, compile refusals) keep the interpreter path;
+		// Declines (captures, compile failures) keep the interpreter path;
 		// only the REF is stamped, never the payload Name (the canon-
 		// ordering note above stands).
 		if r.RuntimeStampingEnabled() {
@@ -630,7 +630,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		// a newtype (`refine`) mints, an alias adopts. Route through
 		// CanonicalType so the adopted pointer is the canonical *Type
 		// and not a stack copy. The aliased family's SubtypeNamer rule
-		// still applies (`def Mail Emailon` still refuses), keeping the
+		// still applies (`def Mail Emailon` still declines), keeping the
 		// naming surface unchanged.
 		canon := CanonicalType(r, &body)
 		if err := validateSubtypeNameFor(canon, name); err != nil {

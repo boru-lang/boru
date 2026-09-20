@@ -39,7 +39,7 @@ def inc fn [[n:Integer][Integer][n add 1]]  5 inc apply	ERROR:signature_error	ba
 #
 # §5  The reach-lens overload is stack-only too (NUR098's fix, 2026-08-24):
 #     receiver beneath, lens on top — `receiver lens apply`. The forward
-#     spellings are refused exactly as the Function overload's are, so the
+#     spellings are declined exactly as the Function overload's are, so the
 #     word carries ONE sourcing regime with no per-overload exception. The
 #     two forward-lens NEGATIVES joined this file with the forty-sixth
 #     increment (2026-09-10): their check-time no-match takes the recovery
@@ -53,13 +53,13 @@ def inc fn [[n:Integer][Integer][n add 1]]  5 inc apply	ERROR:signature_error	ba
 #     The SWAPPED spelling `$.1 [10 20 30] apply` is deliberately NOT here.
 #     Its window carries sigError's REORDER HINT, which is derived from tape
 #     state the runtime rebuild cannot reproduce, so it keeps a sound
-#     whole-program refusal — and this corpus's refusal ceiling is 0, so a
-#     row that refuses does not belong in it whatever its answers are. It is
+#     whole-program compile failure — and this corpus's compile failure ceiling is 0, so a
+#     row that declines does not belong in it whatever its answers are. It is
 #     pinned instead by lang/go/deferred_rematch_test.go
-#     (TestReorderHintWindowKeepsItsRefusal), which asserts both the refusal
+#     (TestReorderHintWindowKeepsItsCompileFailure), which asserts both the compile failure
 #     and the interpreter's own hint. (It WAS added here by the forty-sixth
 #     increment and taken out again by the batch gate that caught it.)
 def p {name:'ada'}  p $.name apply	'ada'	apply a reach lens to a stack receiver (lens on top)
 [10 20 30] $.1 apply	20	apply an index lens to a stack list
-def p {name:'ada'}  p apply $.name	ERROR:signature_error	forward lens refused — apply is stack-only, no per-overload exception
-[10 20 30] apply $.1	ERROR:signature_error	forward lens refused for the list form too
+def p {name:'ada'}  p apply $.name	ERROR:signature_error	forward lens declined — apply is stack-only, no per-overload exception
+[10 20 30] apply $.1	ERROR:signature_error	forward lens declined for the list form too

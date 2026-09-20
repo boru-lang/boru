@@ -7,16 +7,16 @@ import (
 	lang "github.com/boru-lang/boru/lang/go"
 )
 
-// TestNur054InlineCtxRefusal pins the NUR054 refusal in both directions.
+// TestNur054InlineCtxCompileFailure pins the NUR054 compile failure in both directions.
 //
 // The compiler INLINES some bodies into the caller's unit — the `case`
 // desugar's clause fragments, auto-evaluated list arguments, interp-string
 // holes — where the interpreter runs each in a fresh sub-engine with its own
 // context layer. There is no call to bracket (vm.go's enterBodyUnit map,
-// path 5), so the region's layer has no compiled twin, and the refusal fires
-// AT THE MINT: a `context` read inside the region refuses compilation and
-// the program falls back to the interpreter (a refusal the interpreter absorbs,
-// design/COMPILABLE-SUBSET.md). Refusing the read — not just a set/del
+// path 5), so the region's layer has no compiled twin, and the compile failure fires
+// AT THE MINT: a `context` read inside the region declines compilation and
+// the program does not compile (a compile failure,
+// design/COMPILABLE-SUBSET.md). Declining the read — not just a set/del
 // through it — is what closes every consumption that can tell the region's
 // layer from the ambient one: aliases (`dup`), identity probes (`eq`),
 // renders, handles baked into containers. A handle bound OUTSIDE the region
@@ -27,10 +27,10 @@ import (
 // TestContextBoundaryDifferential / TestDocumentedContextBoundaries assert
 // the resulting AGREEMENT and the canonical values; this test pins the
 // mechanism, so agreement can never silently become "both engines leak".
-func TestNur054InlineCtxRefusal(t *testing.T) {
+func TestNur054InlineCtxCompileFailure(t *testing.T) {
 	const refusalMark = "NUR054"
 
-	refuse := []struct{ name, src string }{
+	decline := []struct{ name, src string }{
 		{"set in case clause body", "case 1 [ 1 [ context set y 1 5 ] 2 [ 6 ] ]\ncontext has y/q"},
 		{"del in case clause body", "context set y 9\ncase 1 [ 1 [ context del y 5 ] 2 [ 6 ] ]\ncontext has y/q"},
 		{"set in otherwise list argument", "false otherwise [ context set y 1 5 ]\ncontext has y/q"},
@@ -39,7 +39,7 @@ func TestNur054InlineCtxRefusal(t *testing.T) {
 		{"set in each collection list", "each [ drop 0 ] [ context set y 1 1 ]\ncontext has y/q"},
 		{"set in interp-string hole", "`x${context set y 1 5}`\ncontext has y/q"},
 		{"set in nested list element", "false otherwise [ [ context set y 1 1 ] ]\ncontext has y/q"},
-		// The refusal is AT THE MINT — `context` read inside the region —
+		// The compile failure is AT THE MINT — `context` read inside the region —
 		// which is what closes the consumption paths a write-site rule cannot
 		// chase (the 2026-08-14 Codex review round confirmed all three live):
 		// a re-IDed alias, an identity probe, an xml child hole.
@@ -47,8 +47,8 @@ func TestNur054InlineCtxRefusal(t *testing.T) {
 		{"identity eq in interp hole", "def s (context)\n`x${context eq s}`"},
 		{"set in xml child hole", "<p>${context set y 1 5}</p> drop\ncontext has y/q"},
 	}
-	for _, c := range refuse {
-		t.Run("refuses/"+c.name, func(t *testing.T) {
+	for _, c := range decline {
+		t.Run("declines/"+c.name, func(t *testing.T) {
 			a, err := lang.New()
 			if err != nil {
 				t.Fatalf("lang.New: %v", err)
@@ -58,7 +58,7 @@ func TestNur054InlineCtxRefusal(t *testing.T) {
 				t.Fatalf("CompileCheck: %v", cerr)
 			}
 			if prog != nil || !strings.Contains(reason, refusalMark) {
-				t.Errorf("must refuse with the NUR054 reason; prog=%v reason=%q",
+				t.Errorf("must decline with the NUR054 reason; prog=%v reason=%q",
 					prog != nil, reason)
 			}
 		})
@@ -97,7 +97,7 @@ func TestNur054InlineCtxRefusal(t *testing.T) {
 				t.Fatalf("CompileCheck: %v", cerr)
 			}
 			if prog == nil {
-				t.Errorf("must keep compiling; refused with reason=%q", reason)
+				t.Errorf("must keep compiling; declined with reason=%q", reason)
 			}
 		})
 	}

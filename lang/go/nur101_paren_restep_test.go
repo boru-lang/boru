@@ -6,22 +6,22 @@ import (
 	"testing"
 )
 
-// nur101Refusal pins a program the compiler must REFUSE rather than answer,
+// nur101CompileFailure pins a program the compiler must DECLINE rather than answer,
 // together with the interpreter's answer it must not contradict. It is the
-// fence shape NUR101's landing uses: a refusal is sound (the fallback runs the
+// fence shape NUR101's landing uses: a compile failure is sound (the fallback runs the
 // tree-walker, which is by definition right), a silent wrong answer is not.
 //
 // wantInterp is asserted against RunInterp — NEVER against Run, which post
 // Stage J is the compiled lane (NUR106).
-func nur101Refusal(t *testing.T, src, wantInterp string) {
+func nur101CompileFailure(t *testing.T, src, wantInterp string) {
 	t.Helper()
 	prog, reason, _, _ := mustNew(t).CompileCheck(src)
 	if prog != nil {
 		t.Errorf("%q: compiled — graduate this fence to a parity row (reason was %q)", src, reason)
 	}
-	// Asserted on wasCompiled, not on the error: under the one-release
-	// BORU_COMPILE_FALLBACK=1 hatch the library runs the fallback itself and
-	// returns no error, so the error text is not a stable refusal signal.
+	// Asserted on wasCompiled, not on the error: the error text names the
+	// construct and moves as lowerings land, so it is not a stable signal for
+	// "this did not compile".
 	gotC, _, errC := mustNew(t).RunCompiled(src)
 	got, err := mustNew(t).RunInterp(src)
 	if noteCompileDefect(t, src, gotC, errC) {
@@ -31,7 +31,7 @@ func nur101Refusal(t *testing.T, src, wantInterp string) {
 		t.Errorf("%q: interp = %v (%v), want %s", src, got, err, wantInterp)
 	}
 	// The fallback must answer exactly as a plain interpreted run — when it
-	// ran at all (without the hatch RunCompiled returns the refusal instead).
+	// ran at all (without the hatch RunCompiled returns the compile failure instead).
 	if errC == nil && fmt.Sprint(gotC) != fmt.Sprint(got) {
 		t.Errorf("%q: fallback=%v interp=%v", src, gotC, got)
 	}
@@ -42,7 +42,7 @@ func nur101Refusal(t *testing.T, src, wantInterp string) {
 
 // TestParenReStepRule is the standing measurement behind
 // design/PAREN-RESTEP-RULE.0.md: for every shape the rule classifies, the
-// compiled lane either AGREES with the tree-walking interpreter or REFUSES.
+// compiled lane either AGREES with the tree-walking interpreter or DECLINES.
 // It never answers differently.
 //
 // The rule: a Function a paren PLACED is re-stepped into a CALL exactly when
@@ -65,7 +65,7 @@ func TestParenReStepRule(t *testing.T) {
 		{mk + `(mk 1) 2`, "[fn (Integer) 2]", "program residual: nothing rewinds, so the carrier is placed"},
 		{mk + `((mk 1) 2)`, "[3]", "the outer paren rewinds onto the carrier and dispatches it"},
 		{mk + `[(mk 1) 2]`, "[[fn (Integer) 2]]", "a list literal does not rewind: two elements"},
-		{mk + `[((mk 1) 2)]`, "[[3]]", "the inner paren rewinds: one element (refused — see below)"},
+		{mk + `[((mk 1) 2)]`, "[[3]]", "the inner paren rewinds: one element (declined — see below)"},
 		{mk + `if true [(mk 1) 2]`, "[3]", "the arm's frame rewinds"},
 		{mk + `for 2 [(mk 1) 2]`, "[3 3]", "the loop body's frame rewinds, once per iteration"},
 		{mk + `do [(mk 1) 2]`, "[3]", "the do body's frame rewinds"},
@@ -87,7 +87,7 @@ func TestParenReStepRule(t *testing.T) {
 			continue
 		}
 		if !compiled {
-			continue // a refusal is sound; the per-shape fences below pin which ones
+			continue // a compile failure is sound; the per-shape fences below pin which ones
 		}
 		if errC != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
 			t.Errorf("%q: DIVERGENCE — compiled=%v (%v) interp=%v (%s)", c.src, gotC, errC, gotI, c.why)
@@ -98,12 +98,12 @@ func TestParenReStepRule(t *testing.T) {
 // TestParenReStepPlacedLayoutCompiles ratchets what the placed record BUYS,
 // not just what it prevents. A residual whose lead a user paren placed and no
 // enclosing paren re-stepped is inert on both lanes, so the layout may simply
-// lay it out — where before it refused, reading the absence of a record as
+// lay it out — where before it declined, reading the absence of a record as
 // evidence of a hazard.
 //
 // These graduated 2026-08-27 with Stage 3's first increment. Pinned as
-// POSITIVE so the coverage cannot quietly regress to a refusal: the rule test
-// above tolerates refusals by design, which is what makes it safe to extend
+// POSITIVE so the coverage cannot quietly regress to a compile failure: the rule test
+// above tolerates compile failures by design, which is what makes it safe to extend
 // and useless as a ratchet.
 func TestParenReStepPlacedLayoutCompiles(t *testing.T) {
 	for _, c := range []struct{ src, want, why string }{
@@ -119,7 +119,7 @@ func TestParenReStepPlacedLayoutCompiles(t *testing.T) {
 	} {
 		prog, reason, _, cerr := mustNew(t).CompileCheck(c.src)
 		if cerr != nil || prog == nil {
-			t.Errorf("%q: REGRESSED to a refusal (%s) — %s", c.src, reason, c.why)
+			t.Errorf("%q: REGRESSED to a compile failure (%s) — %s", c.src, reason, c.why)
 			continue
 		}
 		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
@@ -277,7 +277,7 @@ func TestListFoldCallbackOrderPin(t *testing.T) {
 	} {
 		prog, reason, _, cerr := mustNew(t).CompileCheck(tc.src)
 		if cerr != nil || prog == nil {
-			t.Fatalf("%s: refused: %s (err %v)", tc.src, reason, cerr)
+			t.Fatalf("%s: declined: %s (err %v)", tc.src, reason, cerr)
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {
 			t.Errorf("%s: the callback ISLANDED — the parity below would pass anyway, "+
@@ -305,8 +305,8 @@ func TestListFoldCallbackOrderPin(t *testing.T) {
 	}
 }
 
-// TestParenReStepListElementRefusal pins the one shape in the rule table that
-// the compiler REFUSES rather than answers, and why the refusal is not the
+// TestParenReStepListElementCompileFailure pins the one shape in the rule table that
+// the compiler DECLINES rather than answers, and why the compile failure is not the
 // lazy reading.
 //
 // `[((mk 1) 2)]` is `[3]` interpreted: the inner paren leaves two survivors,
@@ -318,13 +318,13 @@ func TestListFoldCallbackOrderPin(t *testing.T) {
 // RecordMakeList with byte-identical `[carrier, 2]` elements and really is two
 // elements on both lanes. Only the re-step record taken at the collapse
 // separates them — which is why that row above still compiles and this one
-// refuses.
+// declines.
 //
 // GRADUATION: Stage 3 records the apply as an element event and this becomes a
 // parity row.
-func TestParenReStepListElementRefusal(t *testing.T) {
+func TestParenReStepListElementCompileFailure(t *testing.T) {
 	const src = `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] [((mk 1) 2)]`
-	nur101Refusal(t, src, "[[3]]")
+	nur101CompileFailure(t, src, "[[3]]")
 
 	// The twin that MUST keep compiling: no inner rewind, so two elements.
 	const placed = `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] [(mk 1) 2]`

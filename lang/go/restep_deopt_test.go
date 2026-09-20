@@ -18,7 +18,7 @@ import (
 // TOKENS plus the rest of the body to the interpreter when one is a fn
 // (DEOPT_IF_FN with Results) — with the unit's unpushed unnamed inputs seated
 // beneath the region, the interpreter's own frame bottom. A fn-typed note no
-// point serves refuses instead of miscompiling.
+// point serves declines instead of miscompiling.
 
 const rsG = `def g fn [[x:Integer][Integer][x mul 3]]`
 
@@ -29,7 +29,7 @@ func TestReStepDeoptParity(t *testing.T) {
 	rows := []struct{ src, note string }{
 		{rsG + `  [g/v] each [5 swap drop]`, "each_error — g applied at the swap, drop empties the body; was [5]"},
 		{rsG + `  [g/v] each [5 swap drop 9]`, "[9] — was [9] for the wrong reason"},
-		{rsG + `  [g/v] each [5 swap drop 9 swap]`, "cannot call `swap` — the 15 was dropped; was the NUR124 refusal"},
+		{rsG + `  [g/v] each [5 swap drop 9 swap]`, "cannot call `swap` — the 15 was dropped; was the NUR124 compile failure"},
 		{rsG + `  def m {f: g/v}  [5] each [m get "f" drop]`, "a gradual map read re-stepped: each_error; was [5]"},
 		{rsG + `  def m {f: g/v}  [5] each [m get "f" drop 7]`, "[7]"},
 		{rsG + `  [5] each [{f: g/v} get "f" drop]`, "an inline map's fn member: each_error; was [5]"},
@@ -57,7 +57,7 @@ func TestReStepDeoptLowering(t *testing.T) {
 	a, _ := New()
 	prog, reason, _, err := a.CompileCheck(rsG + `  [g/v] each [5 swap drop 9]`)
 	if err != nil || prog == nil {
-		t.Fatalf("refused: %q %v", reason, err)
+		t.Fatalf("declined: %q %v", reason, err)
 	}
 	dis := prog.Disassemble()
 	if strings.Count(dis, "DEOPT_IF_FN") != 1 || !strings.Contains(dis, "re-step 2 result(s) on the interpreter if one is a fn") {
@@ -69,7 +69,7 @@ func TestReStepDeoptLowering(t *testing.T) {
 	b, _ := New()
 	prog, reason, _, err = b.CompileCheck(`[1 2] each [5 swap drop 9]`)
 	if err != nil || prog == nil {
-		t.Fatalf("refused: %q %v", reason, err)
+		t.Fatalf("declined: %q %v", reason, err)
 	}
 	if dis := prog.Disassemble(); strings.Contains(dis, "DEOPT_IF_FN") {
 		t.Errorf("no fn-typed result, no point:\n%s", dis)

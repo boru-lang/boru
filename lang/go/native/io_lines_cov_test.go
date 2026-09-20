@@ -245,7 +245,7 @@ func TestLineReaderForRejectsNonStreams(t *testing.T) {
 	if _, herr := lineReaderFor(NewAtom("banana"), r); herr == nil {
 		t.Error("an unrelated atom was accepted as a stream")
 	}
-	// A DepScalar constraint in the slot must be refused, not read as "".
+	// A DepScalar constraint in the slot must be declined, not read as "".
 	if _, herr := lineReaderFor(NewDepScalar(DepLT, NewString("z")), r); herr == nil {
 		t.Error("a String constraint was accepted as a stream")
 	}

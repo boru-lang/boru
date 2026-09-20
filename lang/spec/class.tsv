@@ -37,7 +37,7 @@ def Point class {x:1} def Point3 refine Point {z:3} (make Point3 {}) set w 1	ERR
 #
 # §5  errors — malformed definitions
 def Bad class 5	ERROR:signature_error	the schema must be a map
-class Map	ERROR:signature_error	a bare Map type literal is not a concrete schema map (matcher refuses it)
+class Map	ERROR:signature_error	a bare Map type literal is not a concrete schema map (matcher declines it)
 #
 # §6  strict field typing — no silent conversion (unlike legacy objects)
 def Point class {x:1} make Point {x:'hi'}	ERROR:expected Integer	a defaulted field rejects values outside the default's own type
@@ -118,7 +118,7 @@ def Foo class {items:(flex [])} def s (flex []) def a (make Foo {items:s}) def b
 #     maybe-callable tests knew only Function conformance, so no
 #     CALL_DYNAMIC was emitted; core.TypeIsFnShape /
 #     core.IsFnTypedCarrier close that). Field typing is sound
-#     everywhere: a wrong-shaped fn is refused at make.
+#     everywhere: a wrong-shaped fn is declined at make.
 def C class {op:(fn [[x:Integer] [Integer] [x mul 2]])} def c (make C {}) c.op 21	42	a named class's fn DEFAULT member is callable through dot access (BROAD respelling: a paren PLACES the fetched fn, so the member call is spelled as the dot read it always was)
 def C class {op:(fn [[x:Integer] [Integer] [x mul 2]])} def D refine C {} def d (make D {}) d.op 21	42	an INHERITED fn default is callable through the subclass — the default lives on C, reached through D's parent link
 def T fnsig Integer Integer def c (make (class {op:T}) {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op 5	6	an ANONYMOUS class's fnsig-typed member, provided at make, is callable
@@ -126,4 +126,4 @@ def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer
 def C class {op:(fnsig Integer Integer)} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op 5	6	a NAMED class's ANONYMOUS-fnsig member, provided at make, is callable (NUR095 retired)
 def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op 5	6	…and through a def-bound instance (the trailing stack-arg spelling is an interpreter-only pin — fnshape_member_interp_test.go)
 def R {op:(fnsig Integer Integer)} def r:R {op:(fn [[x:Integer] [Integer] [x add 9]])} r.op 1	10	a record-shape's fnsig-typed member, provided at bind, is callable
-def T fnsig Integer Integer def C class {op:T} make C {op:(fn [[x:String] [Integer] [1]])}	ERROR:does not satisfy fn shape	a wrong-shaped fn is refused at make — member typing is enforced
+def T fnsig Integer Integer def C class {op:T} make C {op:(fn [[x:String] [Integer] [1]])}	ERROR:does not satisfy fn shape	a wrong-shaped fn is declined at make — member typing is enforced

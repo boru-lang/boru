@@ -186,7 +186,7 @@ func itoa(n int) string {
 }
 
 // productionGoFiles walks the repository's Go modules for non-test sources,
-// skipping the same directories the refusal-site census does (agent
+// skipping the same directories the compile failure-site census does (agent
 // worktrees under .claude in particular, which would count every home twice).
 func productionGoFiles(t *testing.T, root string) []string {
 	t.Helper()

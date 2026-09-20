@@ -14,7 +14,7 @@ import (
 // the importer's engine. Its ReturnsFn closure captures the MODULE
 // sub-registry, and before M1 nothing on that path shared the check state, so
 // the closure read the module's own INACTIVE CheckState: StartFnCompile
-// declined, RecordUserCall never ran, and every merged dispatch refused
+// declined, RecordUserCall never ran, and every merged dispatch declined
 // "user fn call … (Stage 3)" — the entire user-fn-call census bucket
 // (open-words.tsv:72,77,78,82,85,86,87,98,99 + micron.tsv:200).
 //
@@ -23,7 +23,7 @@ import (
 // records identically no matter which dispatch path reached it (the §2.2
 // one-recording-path rule), while name resolution stays in the module's own
 // Defs/Types. These tests pin the compiled/interpreted differential for every
-// reproducer shape, the no-island rule (refusal → NATIVE, never → island),
+// reproducer shape, the no-island rule (compile failure → NATIVE, never → island),
 // and the negative twins (non-exported / undef'd / mistyped tuples keep their
 // byte-identical error taxonomy; a dynamic operand stays sound).
 
@@ -46,8 +46,8 @@ func mergedWordSound(t *testing.T, src string) {
 }
 
 // mergedWordCompilesNative additionally requires a NATIVE lowering: the
-// program compiles (no refusal) and contains no FALLBACK island — the design
-// round's codified rule that no stage may convert a refusal into an island.
+// program compiles (no compile failure) and contains no FALLBACK island — the design
+// round's codified rule that no stage may convert a compile failure into an island.
 func mergedWordCompilesNative(t *testing.T, src string) {
 	t.Helper()
 	mergedWordSound(t, src)
@@ -162,7 +162,7 @@ func TestMergedWordSeam_NegativeTwins(t *testing.T) {
 		},
 		{
 			// open-words.tsv:100 — the overload is anchored to the class on
-			// BOTH operands; a Point plus a number stays refused.
+			// BOTH operands; a Point plus a number stays declined.
 			"class tuple rejects a mixed call",
 			`import module [def Point class {x:Integer y:Integer} ` +
 				`def add fn [[a:Point b:Point] [Point] [make Point {x:(a.x add b.x) y:(a.y add b.y)}]] ` +
@@ -189,7 +189,7 @@ func TestMergedWordSeam_NegativeTwins(t *testing.T) {
 
 // A DYNAMIC operand reaching a merged word is an AMBIGUOUS dispatch (the
 // merged user sig plus the native overloads are all optimistically reachable)
-// — it must stay sound: either a faithful compile or a refusal + fallback,
+// — it must stay sound: either a faithful compile or a compile failure + fallback,
 // never a silently-committed wrong overload (the §2.2 poison signature; the
 // interpreter re-matches at run time and raises signature_error here because
 // a plain Boolean is NOT a Flag — the newtype is nominal).

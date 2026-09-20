@@ -10,10 +10,10 @@ import (
 // IsRecordShape's guards, IsValueOfType's typed-container / map-as-type /
 // metatype / Unify arms, validateTypeName's part-conflict wrap, and
 // InstallType's Micron / class-with-parent / schema-kind / surface /
-// predicate-stamping branches plus the SubtypeNamer refusal arms.
+// predicate-stamping branches plus the SubtypeNamer decline arms.
 
 // wt5NamerBehavior wraps DefaultBehavior with a SubtypeNamer capability
-// that refuses (or admits) every subtype name.
+// that declines (or admits) every subtype name.
 type wt5NamerBehavior struct {
 	TypeBehavior
 	err error
@@ -64,7 +64,7 @@ func TestWt5IsRecordShapeArms(t *testing.T) {
 func TestWt5IsValueOfTypeTypedContainers(t *testing.T) {
 	intList := NewTypedList(NewTypeLiteral(TInteger))
 	if IsValueOfType(NewList([]Value{NewInteger(1), NewString("s")}), intList) {
-		t.Fatal("a non-conforming element must refuse the typed list")
+		t.Fatal("a non-conforming element must decline the typed list")
 	}
 
 	intMap := NewTypedMap(NewTypeLiteral(TInteger))
@@ -72,20 +72,20 @@ func TestWt5IsValueOfTypeTypedContainers(t *testing.T) {
 		t.Fatal("a conforming map must satisfy the typed map")
 	}
 	if IsValueOfType(mapOf("a", NewString("s")), intMap) {
-		t.Fatal("a non-conforming value must refuse the typed map")
+		t.Fatal("a non-conforming value must decline the typed map")
 	}
 }
 
 func TestWt5IsValueOfTypeMapAsType(t *testing.T) {
 	shape := mapOf("a", NewTypeLiteral(TInteger))
 	if IsValueOfType(NewInteger(1), shape) {
-		t.Fatal("a non-map value must refuse a record-shape type")
+		t.Fatal("a non-map value must decline a record-shape type")
 	}
 	if IsValueOfType(mapOf("b", NewInteger(1)), shape) {
-		t.Fatal("a missing declared key must refuse")
+		t.Fatal("a missing declared key must decline")
 	}
 	if IsValueOfType(mapOf("a", NewString("s")), shape) {
-		t.Fatal("a mismatching field type must refuse")
+		t.Fatal("a mismatching field type must decline")
 	}
 	if !IsValueOfType(mapOf("a", NewInteger(1)), shape) {
 		t.Fatal("a conforming map must satisfy the record shape")
@@ -105,7 +105,7 @@ func TestWt5IsValueOfTypeMetatypeAndUnifyFallback(t *testing.T) {
 		t.Fatal("a value satisfies its own singleton")
 	}
 	if IsValueOfType(NewInteger(2), NewInteger(1)) {
-		t.Fatal("a different value must refuse the singleton")
+		t.Fatal("a different value must decline the singleton")
 	}
 }
 
@@ -115,7 +115,7 @@ func TestWt5InstallTypePartConflict(t *testing.T) {
 	r := newTestRegistry(t)
 	err := InstallType(r, "Integer", NewTypeLiteral(TString))
 	if err == nil || !strings.Contains(err.Error(), "conflicts with an existing type name") {
-		t.Fatalf("reusing a builtin part must be refused, got %v", err)
+		t.Fatalf("reusing a builtin part must be declined, got %v", err)
 	}
 	var be *BoruError
 	if !errors.As(err, &be) || be.Code != "type_error" {
@@ -145,13 +145,13 @@ func TestWt5InstallTypeMicronBranch(t *testing.T) {
 		t.Fatalf("Micron subtype must mint under the family root, got %v", def)
 	}
 
-	// A family whose SubtypeNamer refuses the name aborts the install.
+	// A family whose SubtypeNamer declines the name aborts the install.
 	fam2 := r.Types.MintTypeWithBehavior("Wt5MicFam2", TScalar,
-		wt5NamerBehavior{TypeBehavior: DefaultBehavior, err: errors.New("wt5 name refused")})
+		wt5NamerBehavior{TypeBehavior: DefaultBehavior, err: errors.New("wt5 name declined")})
 	body2 := NewValueRaw(fam2, MicronTypeInfo{Fields: NewOrderedMap()})
 	if err := InstallType(r, "Wt5MicBad", body2); err == nil ||
-		!strings.Contains(err.Error(), "wt5 name refused") {
-		t.Fatalf("SubtypeNamer refusal must abort the Micron install, got %v", err)
+		!strings.Contains(err.Error(), "wt5 name declined") {
+		t.Fatalf("SubtypeNamer compile failure must abort the Micron install, got %v", err)
 	}
 }
 
@@ -259,7 +259,7 @@ func TestWt5InstallTypePredicateStamping(t *testing.T) {
 func TestWt5InstallTypeSubtypeNamerRejections(t *testing.T) {
 	r := newTestRegistry(t)
 	rejBase := r.Types.MintTypeWithBehavior("Wt5RejBase", TInteger,
-		wt5NamerBehavior{TypeBehavior: DefaultBehavior, err: errors.New("wt5 subtype refused")})
+		wt5NamerBehavior{TypeBehavior: DefaultBehavior, err: errors.New("wt5 subtype declined")})
 
 	// Bare-refine prefab: the rename-and-bind path consults the namer.
 	prefab := r.Types.MintRefinePrefab(rejBase)
@@ -268,7 +268,7 @@ func TestWt5InstallTypeSubtypeNamerRejections(t *testing.T) {
 		t.Fatal("MintRefinePrefab must produce a prefab literal")
 	}
 	if err := InstallType(r, "Wt5RefBad", prefabLit); err == nil ||
-		!strings.Contains(err.Error(), "wt5 subtype refused") {
+		!strings.Contains(err.Error(), "wt5 subtype declined") {
 		t.Fatalf("prefab rename must consult the namer, got %v", err)
 	}
 
@@ -276,13 +276,13 @@ func TestWt5InstallTypeSubtypeNamerRejections(t *testing.T) {
 	ds := NewDepScalar(DepGT, NewInteger(10))
 	ds.Parent = rejBase
 	if err := InstallType(r, "Wt5DepBad", ds); err == nil ||
-		!strings.Contains(err.Error(), "wt5 subtype refused") {
+		!strings.Contains(err.Error(), "wt5 subtype declined") {
 		t.Fatalf("DepScalar mint must consult the namer, got %v", err)
 	}
 
 	// Alias of a namer-carrying type: the alias mint consults it too.
 	if err := InstallType(r, "Wt5AliasBad", NewTypeLiteral(rejBase)); err == nil ||
-		!strings.Contains(err.Error(), "wt5 subtype refused") {
+		!strings.Contains(err.Error(), "wt5 subtype declined") {
 		t.Fatalf("alias mint must consult the namer, got %v", err)
 	}
 }

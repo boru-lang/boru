@@ -77,7 +77,7 @@ var syntheticBranchArmSources = []string{
 	`def c false  if c [def op 1] [def op 2] end op`,
 	`def c false  if c [def op 1] [0] end  if c [def op2 2] [0] end 1`,
 	// List-form condition — the paren form `(n gt 0)` evaluates to a Boolean
-	// and while's (List, List) signature refuses it, so the paren spelling
+	// and while's (List, List) signature declines it, so the paren spelling
 	// never exercised a loop at all: its body list survived to the end-of-run
 	// drain instead, and the row "passed" composition without ever measuring
 	// the shape it was written for. The live-depth oracle caught it: a REAL

@@ -125,7 +125,7 @@ func TestContextStackUpdateChain(t *testing.T) {
 //
 // Every later missing-key lookup then walks that self-loop forever,
 // surfacing as `fatal error: stack overflow` — which recover() cannot catch
-// and no interpreter fallback can rescue.
+// and nothing can rescue.
 //
 // Asserted structurally (the prototype pointer) AND behaviourally (a real
 // missing-key walk terminates), because the pointer assertion alone would

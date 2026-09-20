@@ -5,13 +5,13 @@
 # The module ships the audit's §6.4 recommendation
 # (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore): compose, pipe, curry, partial,
 # const, identity, flip, on, memoize. Only the rows that COMPILE live
-# here (the main corpus holds refusalCeiling = 0). The behaviour rows
-# def-bind a computed fn — refused as "def-bound computed fn apply (closure
+# here (the main corpus holds failureCeiling = 0). The behaviour rows
+# def-bind a computed fn — declined as "def-bound computed fn apply (closure
 # shape unknown — Stage 1)", the §5.4 / NUR101 family, until 2026-09-08
 # (the thirty-fifth increment, the def-bound computed-fn model): the
 # producing word claims the wrapper's arity in check mode, the check pass
 # models the bound wrapper's word dispatch at the read, and the VM applies
-# the wrapper on its own signatures. The curried-chain row still refuses
+# the wrapper on its own signatures. The curried-chain row still declines
 # and stays in lang/spec/frontier/frontier-fn-util.tsv.
 import "boru:fn-util"  FnUtil.identity 42	42	identity returns its argument
 import "boru:fn-util"  FnUtil.identity 'v'	'v'	identity over a String
@@ -20,8 +20,8 @@ import "boru:fn-util"  FnUtil.identity 'v'	'v'	identity over a String
 # on an operand the recorder now bakes as an inert const (the family's
 # CompileStoresFn declaration), so the compiled lane raises the same
 # type_error the interpreter does.
-import "boru:fn-util"  def f fn [a:Integer Integer [a] s:String String [s]] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must have exactly one signature, got 2 overloads	curry refuses a multi-overload function
-import "boru:fn-util"  def f fn x:Integer Integer [x] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must take at least 2 parameters, got 1	curry refuses a unary function
+import "boru:fn-util"  def f fn [a:Integer Integer [a] s:String String [s]] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must have exactly one signature, got 2 overloads	curry declines a multi-overload function
+import "boru:fn-util"  def f fn x:Integer Integer [x] end def c (FnUtil.curry f/v)	ERROR:FnUtil.curry: the function must take at least 2 parameters, got 1	curry declines a unary function
 #
 # The BEHAVIOUR rows (graduated 2026-09-08, the thirty-fifth increment): a
 # def-bound wrapper's read is its word dispatch, modelled at the read over
@@ -54,11 +54,11 @@ import "boru:fn-util"  def sub3 fn [[a:Integer b:Integer c:Integer][Integer][a s
 #
 # GRADUATED 2026-09-10 (the forty-ninth increment), from
 # lang/spec/frontier/frontier-fn-util.tsv. A NAMED fn value reached as a call
-# whose match failed used to refuse the WHOLE program: the site's note read
+# whose match failed used to decline the WHOLE program: the site's note read
 # "there is no call here to compile", which is true and beside the point — a
 # mirror needs something that RAISES IDENTICALLY, not a call, and on the
 # uncaught top line over operands the runtime match examines unchanged, a
 # terminal OpTrap is exactly that. Both rows now compile to that trap and
 # raise the interpreter's own error, caret and `/v` hint included.
-import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip refuses a non-function operand at dispatch
-import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry refuses a non-function operand at dispatch
+import "boru:fn-util"  FnUtil.flip 5	ERROR:call to 'flip' matched no signature	flip declines a non-function operand at dispatch
+import "boru:fn-util"  FnUtil.curry 5	ERROR:call to 'curry' matched no signature	curry declines a non-function operand at dispatch

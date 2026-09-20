@@ -10,7 +10,7 @@ import (
 // unit takes the fn path's residual replay (fnResidualReplayReason) only
 // when its params carry no value PATTERN — a pattern is matched by the
 // interpreter's frame binding at the apply, which the closure apply ops do
-// not enforce, so a pattern lambda keeps the closure count refusal.
+// not enforce, so a pattern lambda keeps the closure count compile failure.
 func TestPlainLambda(t *testing.T) {
 	zero := core.NewInteger(0)
 	for _, c := range []struct {
@@ -33,7 +33,7 @@ func TestPlainLambda(t *testing.T) {
 	if ps := (&ClosureParamSpec{Patterns: []*core.Value{&zero}}); len(paramSpecPatterns(ps)) != 1 {
 		t.Error("a contract's patterns ride through")
 	}
-	// The count refusal stays for a pattern lambda and lifts for a plain one
+	// The count compile failure stays for a pattern lambda and lifts for a plain one
 	// (fnResidualReplayReason's gate): a closure that is no lambda returns
 	// no reason at all.
 	if reason := (&EmitState{}).fnResidualReplayReason(nil, &fnUnitRec{closure: true}, nil, nil, 0); reason != "" {

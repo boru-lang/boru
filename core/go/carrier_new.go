@@ -113,7 +113,7 @@ func UnionCarrierForType(t *Type) (Value, bool) {
 // return the same Value — one Value.ID — for several stack outputs, which
 // the bytecode emitter's per-value provenance (emit.go producedBy) cannot
 // tell apart: a `dup`-bodied higher-order word (`each [dup add]`) records
-// both of add's operands onto the LAST output, so the operand layout refuses
+// both of add's operands onto the LAST output, so the operand layout declines
 // them as "not adjacent." Each output of a repeated source gets a fresh
 // identity (the carrier-identity DUP path) so the N copies stay distinct;
 // the source's own provenance is left untouched (no output keeps its ID).

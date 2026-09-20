@@ -12,10 +12,10 @@ import (
 // an AMBIGUOUS List-vs-Map overload the checker can't statically commit and a
 // code-body word can't poly-re-match. It used to bake the Map overload and error
 // "expected concrete map" at runtime where the interpreter iterates the runtime
-// List (a compile==interpret VIOLATION). Now tryRecordClosure refuses
+// List (a compile==interpret VIOLATION). Now tryRecordClosure declines
 // (MarkUncompilable) → the program falls back → compile==interpret.
 func TestEachFoldGradualCollection(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	gradual := []struct{ name, src string }{
 		{"each over gradual list", `def mk fn [[][Any][[1 2 3]]] (each [mul 2] (mk))`},
 		{"fold over gradual list", `def id fn [[x:Any][Any][x]] (fold [add] (id [1 2 3]) 0)`},
@@ -46,7 +46,7 @@ func TestEachFoldGradualCollection(t *testing.T) {
 
 	// NEGATIVE: a CONCRETE collection is not Dynamic, so the guard does not fire —
 	// these must STILL compile natively (RunCompiledStrict forces full compilation)
-	// and match the interpreter. Pins that the refusal did not over-fire.
+	// and match the interpreter. Pins that the compile failure did not over-fire.
 	concrete := []struct{ name, src string }{
 		{"each concrete list", `def xs [1 2 3] (each [mul 2] xs)`},
 		{"fold concrete list", `(fold [add] [1 2 3] 0)`},
@@ -58,7 +58,7 @@ func TestEachFoldGradualCollection(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("concrete higher-order must compile, refused: %q", reason)
+				t.Fatalf("concrete higher-order must compile, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("concrete %s must compile native (no island)", c.name)

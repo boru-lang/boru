@@ -14,7 +14,7 @@ func TestS6aDynOutNativeOKFnValuedArgDeclines(t *testing.T) {
 	args := []core.Value{core.NewInteger(1)}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adyn", sig, args, outs) {
-		t.Error("a Function-typed arg slot must refuse the dyn-out bake")
+		t.Error("a Function-typed arg slot must decline the dyn-out bake")
 	}
 }
 
@@ -212,7 +212,7 @@ func TestS6aDynOutNativeOKFnValueDataDeclines(t *testing.T) {
 	args := []core.Value{core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "s6afn"})}
 	outs := []core.Value{core.NewDynamicCarrier(core.TAny)}
 	if dynOutNativeOK(r, "s6adynv", sig, args, outs) {
-		t.Error("a concrete fn-valued arg must refuse the dyn-out bake")
+		t.Error("a concrete fn-valued arg must decline the dyn-out bake")
 	}
 }
 
@@ -282,7 +282,7 @@ func TestDriftWindowUnresolvableOperandDeclines(t *testing.T) {
 	}
 }
 
-func TestRecordCallRefusalComputedRangeList(t *testing.T) {
+func TestRecordCallCompileFailureComputedRangeList(t *testing.T) {
 	r := covRegistry(t, nil)
 	done := w8ArmCompile(t, r)
 	defer done()
@@ -292,8 +292,8 @@ func TestRecordCallRefusalComputedRangeList(t *testing.T) {
 	lst.ID = core.GenerateID(core.IDPrefixForType(core.TList))
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, nout: 1, makeList: true}})
 	es.setProduced(lst, seq)
-	if !es.recordCallRefusal("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
-		t.Fatal("the computed-range-list arm must classify the refusal")
+	if !es.recordCallCompileFailure("for", &core.Signature{}, []core.Value{lst}, nil, core.SrcPos{}, false, false) {
+		t.Fatal("the computed-range-list arm must classify the compile failure")
 	}
 	if es.Compilable || !containsStr(es.Reason, "computed range list") {
 		t.Errorf("want the computed-range-list reason, got compilable=%v reason=%q", es.Compilable, es.Reason)
@@ -337,7 +337,7 @@ func TestSplitEventRegionBindDeclines(t *testing.T) {
 	}
 }
 
-func TestRecordDispatchOutcomeFnLocalFnRefusal(t *testing.T) {
+func TestRecordDispatchOutcomeFnLocalFnCompileFailure(t *testing.T) {
 	r := newTestRegistry(t)
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
@@ -348,14 +348,14 @@ func TestRecordDispatchOutcomeFnLocalFnRefusal(t *testing.T) {
 	}
 	if !strings.Contains(es.Reason, "fn-local fn `step`") ||
 		!strings.Contains(es.Reason, "for-each") {
-		t.Errorf("refusal reason = %q; want the fn-local-fn reason naming step and for-each", es.Reason)
+		t.Errorf("compile failure reason = %q; want the fn-local-fn reason naming step and for-each", es.Reason)
 	}
 }
 
 func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	// A dispatch a structured ReturnsFn hook already recorded (case's
 	// branch-chain desugar) lowered its clause bodies as inline events —
-	// not a leak path; the guard must not refuse it.
+	// not a leak path; the guard must not decline it.
 	r := newTestRegistry(t)
 	es := armEmit(r)
 	fnLocalBind(r, "step", core.NewFunction(core.FnDefInfo{Name: "step"}))
@@ -364,12 +364,12 @@ func TestRecordDispatchOutcomeFnLocalFnAlreadyProducedSkips(t *testing.T) {
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "case", sig, bodyArgs("step"), []core.Value{out}, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {
-		t.Errorf("already-produced dispatch hit the fn-local-fn refusal: %q", es.Reason)
+		t.Errorf("already-produced dispatch hit the fn-local-fn compile failure: %q", es.Reason)
 	}
 }
 
-func TestRecordDispatchOutcomeModuleScopeNotFnLocalRefused(t *testing.T) {
-	// The module-scope twin of the refusal test: whatever else the
+func TestRecordDispatchOutcomeModuleScopeNotFnLocalFailedToCompile(t *testing.T) {
+	// The module-scope twin of the compile failure test: whatever else the
 	// recording chain decides, the fn-local-fn reason must not fire.
 	r := newTestRegistry(t)
 	es := armEmit(r)
@@ -377,7 +377,7 @@ func TestRecordDispatchOutcomeModuleScopeNotFnLocalRefused(t *testing.T) {
 	sig := bodySig(core.CompileFallbackBody, nil)
 	recordDispatchOutcome(r, "for-each", sig, bodyArgs("step"), nil, core.SrcPos{}, r)
 	if strings.Contains(es.Reason, "fn-local fn") {
-		t.Errorf("module-scope callback hit the fn-local-fn refusal: %q", es.Reason)
+		t.Errorf("module-scope callback hit the fn-local-fn compile failure: %q", es.Reason)
 	}
 }
 

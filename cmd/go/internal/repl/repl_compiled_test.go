@@ -61,17 +61,15 @@ func TestStartStatePersistsAcrossCompiledLines(t *testing.T) {
 	}
 }
 
-// A REFUSED line falls back to the interpreter (attributed as the sound
-// fallback path is not yet — that unattributed Engine.Run is the Phase
-// 10/11 burn-down, pinned red in lang/go's frontier cases) and still
-// produces the interpreter's exact result — the REPL never errors on a
-// refusal.
-func TestStartRefusedLineFallsBackWithResult(t *testing.T) {
+// A loop line echoes its residual. `for 3 [1 2]` compiles natively, so this
+// pins the compiled path end to end through the REPL — the line that does NOT
+// compile is pinned by TestStartLineThatDoesNotCompilePrintsTheFailure below.
+func TestStartLoopLineEchoesItsResidual(t *testing.T) {
 	in := strings.NewReader("for 3 [1 2]\n")
 	out := &bytes.Buffer{}
 	Start(in, out, "")
 	if !strings.Contains(out.String(), "1 2 1 2 1 2") {
-		t.Fatalf("refused line must fall back to the interpreter's result; got %q", out.String())
+		t.Fatalf("a compiled loop line must echo its residual; got %q", out.String())
 	}
 }
 

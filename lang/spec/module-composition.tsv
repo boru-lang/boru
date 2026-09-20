@@ -9,7 +9,7 @@
 # it; an `each` / `for-each` / `filter` / `for` / `while` driving it over
 # a collection; and a `fold` / `join` / `emit` closing the pipeline.
 #
-# WHY THIS FILE EXISTS. A compile refusal is WHOLE-PROGRAM and latches on
+# WHY THIS FILE EXISTS. A compile compile failure is WHOLE-PROGRAM and latches on
 # the FIRST unsupported construct. The median spec row is ~40 characters;
 # the median real .boru file is ~10,472. So a corpus of one-liners scores
 # ~96% while real programs score ~65% — the gap is composition, not any
@@ -19,7 +19,7 @@
 # through core.Canon exactly as the spec runner renders it, and measured —
 # never guessed. Every row leaves exactly ONE value on the stack.
 #
-# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN DEFECTS.
+# ROWS THAT FAIL TO COMPILE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN DEFECTS.
 # They are gathered in §6 and each description quotes the reason
 # `BORU_FORCE_COMPILE=1` printed, verbatim, so the reason text is the
 # ledger of what is left to build. They are not mistakes and must not be
@@ -27,16 +27,16 @@
 #
 # THREE ROWS IN §6 ARE WORSE THAN A REFUSAL: they COMPILE and then give a
 # DIFFERENT ANSWER (or no answer at all) from the interpreter. Those are
-# marked "DIVERGES (no refusal)". They are the reason a refusal ratchet
+# marked "DIVERGES (no compile failure)". They are the reason a compile failure ratchet
 # alone is not enough — the compiled lane can be wrong silently.
 #
 # NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
-# refusalCeiling = 0 and compiled_fullcorpus_test.go asserts interpreter/
+# failureCeiling = 0 and compiled_fullcorpus_test.go asserts interpreter/
 # compiled parity for every row. The §6 rows are NEW EVIDENCE, not
 # regressions — the ceiling must be re-based (or this file moved under
 # lang/spec/frontier/) when the corpus is next gated.
 #
-# Counts at the time of writing: 69 rows, 56 compile, 10 refuse with a
+# Counts at the time of writing: 69 rows, 56 compile, 10 decline with a
 # force-compile reason, 1 aborts the compiled lane with tape_exhausted,
 # 2 compile to the wrong value.
 #
@@ -89,20 +89,20 @@ import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] e
 # §6  The OPEN DEFECTS. Every row below runs correctly on the interpreter and
 #     is rejected (or silently mis-executed) by the bytecode compiler. The
 #     reason text is quoted verbatim from `BORU_FORCE_COMPILE=1`.
-import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def acc (flex []) end for-each [M.dbl acc swap append drop] [1 2 3] end acc	(flex [2 4 6])	REFUSES: "residual value of unknown provenance" — the same accumulator with a CODE body
-import "boru:string-util" end def acc (flex []) end for-each [StringUtil.upper acc swap append drop] ['a' 'b'] end join ',' (valof acc)	'A,B'	REFUSES: "operand of unknown provenance or not statically materialisable at join" — flex fill then join
-import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each [a5] [1 2 3]	[6 7 8]	REFUSES: "code-body word each (Stage 2)" — a module-made CLOSURE bound, then used as an each body
-import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]	[6 7 8]	REFUSES: "unmatched dispatch recovered at each" — the /v spelling of the same call
-import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def fs {a: (M.mk 1) b: (M.mk 2)} end (fs.b 10)	12	REFUSES: "fn-value application bounded by a paren (dynamic value precedes args)" — a MAP of module-made closures
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def hof fn f:Function Function [f/v] end def g (hof M.inc/v) end (g 4)	5	REFUSES: "def-bound computed fn apply (closure shape unknown — Stage 1)" — an export through a higher-order fn
-import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end fold [add] (each [M.tbl.inc] [1 2 3]) 0	9	REFUSES: "fn each$body: result above a literal (Stage 3)" — a two-step dotted path to a handler
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def r (flex {}) end r set 'cb' M.inc/v drop end typeof (r.cb)	Function	REFUSES: "function value reaches set (Stage 3)" — the mutable module-handler registry
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def m {f: M.inc/v} end 5 (m 'f' get) apply	6	REFUSES: "apply over a dynamic lead (overload unprovable)" — an export fetched by get and applied
-import module [def Handler class {cb: Function} export "M" {Handler: Handler}] end def h (make M.Handler {cb: (fn n:Integer Integer [n add 1])}) end each h.cb [1 2 3]	[2 3 4]	REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply	6	DIVERGES (no refusal): the interpreter applies the export and yields 6; the compiled lane leaves 5 and the unapplied fn
-import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end each [f] [1 2 3]	[2 3 4]	DIVERGES (no refusal): the compiled lane returns three fn VALUES instead of [2 3 4]
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i	3	DIVERGES (no refusal): compiled, this while loop never terminates and aborts with boru/tape_exhausted
-import module [def big fn n:Integer Boolean [n gt 1] export "M" {big: big/v}] end fold [add] (filter [M.big] [1 2 3]) 0	5	the quotation form of filter over an export COMPILES — contrast the fn-value form, which refuses
+import module [def dbl fn n:Integer Integer [n mul 2] export "M" {dbl: dbl/v}] end def acc (flex []) end for-each [M.dbl acc swap append drop] [1 2 3] end acc	(flex [2 4 6])	DOES NOT COMPILE: "residual value of unknown provenance" — the same accumulator with a CODE body
+import "boru:string-util" end def acc (flex []) end for-each [StringUtil.upper acc swap append drop] ['a' 'b'] end join ',' (valof acc)	'A,B'	DOES NOT COMPILE: "operand of unknown provenance or not statically materialisable at join" — flex fill then join
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each [a5] [1 2 3]	[6 7 8]	DOES NOT COMPILE: "code-body word each (Stage 2)" — a module-made CLOSURE bound, then used as an each body
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]	[6 7 8]	DOES NOT COMPILE: "unmatched dispatch recovered at each" — the /v spelling of the same call
+import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def fs {a: (M.mk 1) b: (M.mk 2)} end (fs.b 10)	12	DOES NOT COMPILE: "fn-value application bounded by a paren (dynamic value precedes args)" — a MAP of module-made closures
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def hof fn f:Function Function [f/v] end def g (hof M.inc/v) end (g 4)	5	DOES NOT COMPILE: "def-bound computed fn apply (closure shape unknown — Stage 1)" — an export through a higher-order fn
+import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end fold [add] (each [M.tbl.inc] [1 2 3]) 0	9	DOES NOT COMPILE: "fn each$body: result above a literal (Stage 3)" — a two-step dotted path to a handler
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def r (flex {}) end r set 'cb' M.inc/v drop end typeof (r.cb)	Function	DOES NOT COMPILE: "function value reaches set (Stage 3)" — the mutable module-handler registry
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def m {f: M.inc/v} end 5 (m 'f' get) apply	6	DOES NOT COMPILE: "apply over a dynamic lead (overload unprovable)" — an export fetched by get and applied
+import module [def Handler class {cb: Function} export "M" {Handler: Handler}] end def h (make M.Handler {cb: (fn n:Integer Integer [n add 1])}) end each h.cb [1 2 3]	[2 3 4]	DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply	6	DIVERGES (no compile failure): the interpreter applies the export and yields 6; the compiled lane leaves 5 and the unapplied fn
+import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end each [f] [1 2 3]	[2 3 4]	DIVERGES (no compile failure): the compiled lane returns three fn VALUES instead of [2 3 4]
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i	3	DIVERGES (no compile failure): compiled, this while loop never terminates and aborts with boru/tape_exhausted
+import module [def big fn n:Integer Boolean [n gt 1] export "M" {big: big/v}] end fold [add] (filter [M.big] [1 2 3]) 0	5	the quotation form of filter over an export COMPILES — contrast the fn-value form, which declines
 #
 # §7  SEVERAL MODULES in one program — what a real file's preamble looks like.
 import "boru:string-util" end import "boru:array-util" end join '-' (each [StringUtil.upper] (ArrayUtil.unique ['a' 'a' 'b']))	'A-B'	two native modules, each + join over a deduplicated list

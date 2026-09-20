@@ -12,7 +12,7 @@ import (
 //
 // A returned lambda over a captured `g:Function` compiled only when its body
 // was the paren-apply over typed params, `[(g x)]`. The bare-name apply
-// `[g x]` and the `Any`-typed param `[[x:Any][Any][(g x)]]` both refused with
+// `[g x]` and the `Any`-typed param `[[x:Any][Any][(g x)]]` both declined with
 // the closure COUNT check — the residual [g, x] against one declared return —
 // which fired before the whole-frame replay a fn unit reaches. A lambda
 // VALUE unit is a fn in every way that matters at its finish (its count
@@ -35,11 +35,11 @@ const ccApp = `def app fn [[g:Function][Function][( fn `
 func TestClosureCaptureParity(t *testing.T) {
 	rows := []struct{ src, note string }{
 		// (a) the bare-name apply of a captured Function with a forward arg
-		{ccApp + `[[x:Integer][Integer][g x]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "15 — was refused (count check)"},
+		{ccApp + `[[x:Integer][Integer][g x]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "15 — was declined (count check)"},
 		{ccApp + `[[x:Integer][Integer][g x]] )]]  def h (app (z:String => [z]))  (h 5)`, "cannot call `g` on both lanes"},
 		{ccApp + `[[x:Integer][Integer][g]] )]]  def h (app ([] => [42]))  (h 5)`, "42 — a 0-arg capture fires as the word"},
 		// (c) an Any-typed inner param beside the captured fn
-		{ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "15 — was refused (count check)"},
+		{ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5)`, "15 — was declined (count check)"},
 		{ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:Integer => [mul 3 z]))  (h "s")`, "cannot call `g` — the gradual x holds a String"},
 		{ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:String => [z]))  (h 5)`, "cannot call `g`"},
 		// the control that always compiled
@@ -50,8 +50,8 @@ func TestClosureCaptureParity(t *testing.T) {
 		// its shape, so the read models its dispatch at the read — the
 		// returned fn is placed by the paren with the 2 beside it, and a
 		// def-bound read of it applies
-		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5) 2`, "fn g(Integer) 2 — was refused (the downstream apply)"},
-		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  def q (h 5)  q 2`, "6 — was refused (the downstream apply)"},
+		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  (h 5) 2`, "fn g(Integer) 2 — was declined (the downstream apply)"},
+		{ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  def q (h 5)  q 2`, "6 — was declined (the downstream apply)"},
 		// the rename on a plain fn body: the paren shape that diverged before
 		{`def f fn [[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3`, "fn g(Integer) 3 — was fn (Integer) 3"},
 		{`def g fn [[x:Integer][Integer][x mul 3]]  def f fn [[h:Function][Function][h/v]]  (f g/v) 3`, "fn h(Integer) 3 — a named fn takes the param's name"},
@@ -68,18 +68,18 @@ func TestClosureCaptureParity(t *testing.T) {
 	}
 }
 
-// TestClosureCaptureSoundRefusals pins the neighbours that REFUSE (the default
+// TestClosureCaptureSoundCompileFailures pins the neighbours that DECLINE (the default
 // lane then answers on the interpreter), never a wrong value: the returned
 // `/v` fn applied downstream, a gradual arg that turns out to be a fn (the
 // interpreter's strict-barrier error), and the pattern-param lambda whose
-// count refusal guards an apply the closure ops cannot check, and the
+// count compile failure guards an apply the closure ops cannot check, and the
 // gradual EVENT argument the replay cannot order. The two windows the
 // replay's one-lead rule must keep declining — a second fn-typed read
 // (`f (g x y)`) and a re-read across a bind (`g x def q 9 g q`) — are
 // pinned where they always were, bytecode_chained_apply_test.go: the first
 // cut of the names-aware count admitted both, and `f (g x y)` raised
 // `cannot call `f“ compiled for the interpreter's 14.
-func TestClosureCaptureSoundRefusals(t *testing.T) {
+func TestClosureCaptureSoundCompileFailures(t *testing.T) {
 	rows := []string{
 		ccApp + `[[x:Integer][Function][g/v]] )]]  def h (app (z:Integer => [mul 3 z]))  ((h 5) 2)`,
 		ccApp + `[[x:Any][Any][(g x)]] )]]  def h (app (z:Any => [z]))  (h ([] => [42]))`,
@@ -98,11 +98,11 @@ func TestClosureCaptureSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", src)
+			t.Errorf("%q: compiled — expected a compile failure", src)
 			continue
 		}
 		if reason == "" {
-			t.Errorf("%q: refused without a reason", src)
+			t.Errorf("%q: declined without a reason", src)
 		}
 	}
 }

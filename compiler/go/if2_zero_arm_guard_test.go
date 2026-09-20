@@ -14,7 +14,7 @@ import (
 // there is no `resolveArm` call to run the usual nil-fragment check, and the
 // event it appends is marked zeroOut, so a missing arm fragment sails past
 // every later consumer and reaches the lowerer as a branch with nothing to
-// lower on its true path. What happens then is not a soft refusal —
+// lower on its true path. What happens then is not a soft compile failure —
 // lowerBranch -> lowerArms -> lowerArm hands the nil fragment to
 // lowerFragment, which dereferences it (lower.go): deleting this guard turns
 // `if 5 6` into a nil-pointer PANIC inside CompileCheck. That is what the
@@ -26,10 +26,10 @@ import (
 // TakeFragment hands RecordBranch a nil fragment over an empty then-stack.
 //
 // lang/go/bytecode_if2_valuearm_test.go is the whole-program half; this is the
-// seam half, which can additionally show WHERE the refusal lands — before the
+// seam half, which can additionally show WHERE the compile failure lands — before the
 // event is appended, so no half-recorded branch is left behind.
 //
-// Both directions are pinned: the nil fragment refuses and records nothing,
+// Both directions are pinned: the nil fragment declines and records nothing,
 // and the same record carrying a real (empty-bodied) fragment records the
 // zeroOut branch and stays compilable.
 
@@ -56,26 +56,26 @@ func i2gRecord(frag core.EmitFragmentRef, out core.Value) core.BranchRecord {
 }
 
 func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
-	// The REFUSAL. TakeFragment returned nothing (the non-list then arm of
+	// The COMPILE FAILURE. TakeFragment returned nothing (the non-list then arm of
 	// `if 5 6`), so the recorder has no events to lower on the true path.
 	es := i2gState(t)
 	out := core.NewCarrier(core.TNone)
 	es.RecordBranch(i2gRecord(i2gNilFragmentRef(), out))
 
 	if es.Compilable {
-		t.Fatal("a 2-arg if whose then arm was never captured must refuse the program")
+		t.Fatal("a 2-arg if whose then arm was never captured must decline the program")
 	}
 	if es.Reason != "if: then-branch not captured" {
-		t.Errorf("refusal reason = %q, want the uncaptured-then-branch refusal", es.Reason)
+		t.Errorf("compile failure reason = %q, want the uncaptured-then-branch compile failure", es.Reason)
 	}
-	// The refusal must land BEFORE the branch is appended: a recorded event
+	// The compile failure must land BEFORE the branch is appended: a recorded event
 	// with no fragment is exactly what the guard exists to keep out of the
 	// trace, and Finalize would otherwise reach it.
 	if es.SiteCounts[SiteMono] != 0 {
-		t.Errorf("a refused branch must append no event, got %d mono sites", es.SiteCounts[SiteMono])
+		t.Errorf("a declined branch must append no event, got %d mono sites", es.SiteCounts[SiteMono])
 	}
 	if _, ok := es.producedBy[out.ID]; ok {
-		t.Error("a refused branch must not register its result as produced")
+		t.Error("a declined branch must not register its result as produced")
 	}
 
 	// THE TWIN: the same record, with the fragment an `if true []` really
@@ -86,7 +86,7 @@ func TestIf2ZeroValueArmRequiresItsFragment(t *testing.T) {
 	es2.RecordBranch(i2gRecord(&EmitFragment{}, out2))
 
 	if !es2.Compilable {
-		t.Fatalf("a captured 0-value then arm must record, got refusal %q", es2.Reason)
+		t.Fatalf("a captured 0-value then arm must record, got compile failure %q", es2.Reason)
 	}
 	if es2.SiteCounts[SiteMono] != 1 {
 		t.Fatalf("a recorded branch = %d mono sites, want 1", es2.SiteCounts[SiteMono])

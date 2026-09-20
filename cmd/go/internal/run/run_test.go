@@ -40,7 +40,7 @@ func TestEvalEngineError(t *testing.T) {
 }
 
 // CompileForce must run a compilable program through the VM and surface a
-// refusal (not silently fall back) for one the emitter cannot lower.
+// compile failure (not silently fall back) for one the emitter cannot lower.
 func TestEvalCompilesOrFails(t *testing.T) {
 	// A plain arithmetic program compiles and runs on the VM.
 	var buf bytes.Buffer

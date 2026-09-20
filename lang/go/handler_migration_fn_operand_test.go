@@ -57,15 +57,15 @@ func TestModifierValueFormsDeclareStoreFnStrict(t *testing.T) {
 	}
 }
 
-// TestModifierOverReturnedClosureRefusesWithParity pins the miscompile the
+// TestModifierOverReturnedClosureDoesNotCompileWithParity pins the miscompile the
 // pilot found and closed for the TYPED Function carrier: a capturing closure
 // returned by a user fn, wrapped by a modifier word. Before the declaration
 // was honoured, the gradual poly record lowered the wrap to
 // OpCallNativePoly and the VM handed the native a ClosurePayload its
 // FnDefInfo validation rejected — compiled `illegal_ref` against the
-// interpreter's value. Now the strict slot REFUSES and the fallback agrees
+// interpreter's value. Now the strict slot DECLINES and the fallback agrees
 // with the interpreter, value and taxonomy.
-func TestModifierOverReturnedClosureRefusesWithParity(t *testing.T) {
+func TestModifierOverReturnedClosureDoesNotCompileWithParity(t *testing.T) {
 	const mk = `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  `
 	for _, c := range []struct{ name, src, want string }{
 		{"usurp over a returned closure, def-bound", mk + `def r (usurp (mk 100))  r 10 3`, "[93]"},
@@ -74,10 +74,10 @@ func TestModifierOverReturnedClosureRefusesWithParity(t *testing.T) {
 		{"forward-args over a returned closure", mk + `def r (forward-args (mk 100))  r 10 3`, "[107]"},
 		{"force-arity over a returned closure", mk + `def r (force-arity 2 (mk 100))  r 10 3`, "[107]"},
 	} {
-		fnValueM2Refusal(t, c.name, c.src, "unknown provenance")
+		fnValueM2CompileFailure(t, c.name, c.src, "unknown provenance")
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
 		if compiled {
-			t.Errorf("%s: ran compiled; the strict slot must refuse", c.name)
+			t.Errorf("%s: ran compiled; the strict slot must decline", c.name)
 		}
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 		if got := fmt.Sprint(gotI); got != c.want {

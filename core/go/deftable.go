@@ -466,7 +466,7 @@ func (dt *DefTable) Restore(snap map[string]int) {
 //
 // For sequential shadowing scopes that is exactly right (the whole
 // point of a mutable container is that everyone holding it sees the
-// writes). For CONCURRENT forks it is not — `await` therefore REFUSES a
+// writes). For CONCURRENT forks it is not — `await` therefore DECLINES a
 // reachable mutable container at the branch boundary rather than relying
 // on this copy (lang/go/native/native_temporal_await.go).
 func (dt *DefTable) Clone() *DefTable {

@@ -62,7 +62,7 @@ func TestBodyResidualRebuildScreens(t *testing.T) {
 		// true. It lives in lang/spec/control.tsv now.
 		//
 		// This witness reaches the screen: the variadic region is NOT last,
-		// so no mark plan applies, seatResults refuses, and the rebuild
+		// so no mark plan applies, seatResults declines, and the rebuild
 		// declines on opsHaveVariadicResult — one spill slot cannot stand
 		// for a run whose length is a runtime value.
 		{"variadic branch result", `do [def b true  do [(if b [] [9 9]) (1 add 2)]]`, "variadic loop value"},
@@ -72,17 +72,17 @@ func TestBodyResidualRebuildScreens(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, cerr := a.RunCompiledStrict(tc.src); cerr == nil {
-			t.Fatalf("%s: compiled, want a refusal — one spill slot cannot stand for a run of "+
+			t.Fatalf("%s: compiled, want a compile failure — one spill slot cannot stand for a run of "+
 				"a length the compiler does not know", tc.name)
 		} else if !strings.Contains(cerr.Error(), tc.want) {
-			t.Fatalf("%s: refused with %q, want %q", tc.name, cerr, tc.want)
+			t.Fatalf("%s: declined with %q, want %q", tc.name, cerr, tc.want)
 		}
 		b, err := New()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, ierr := b.RunInterp(tc.src); ierr != nil {
-			t.Fatalf("%s: the interpreter must run it clean (a refusal row may not pin an "+
+			t.Fatalf("%s: the interpreter must run it clean (a compile failure row may not pin an "+
 				"ill-formed program): %v", tc.name, ierr)
 		}
 	}

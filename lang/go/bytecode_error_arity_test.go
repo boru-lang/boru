@@ -20,11 +20,11 @@ import (
 // a runtime fn-value, so the failure surfaced as `CALL_DYNAMIC underflow`
 // or `BIND_GLOBAL underflow`: an `internal_error` from ordinary source.
 //
-// The repair is to refuse rather than widen. A known-wrong arity is not an
+// The repair is to decline rather than widen. A known-wrong arity is not an
 // unknown one, the island model cannot express any out-count but 1, and
-// under the refusal architecture the interpreter fallback is always sound —
+// a clean compile failure beats an island that cannot express the shape —
 // `tryRecordFallback` already declines `len(outs) != 1` for the same reason,
-// and its sibling guard explicitly prefers "a clean refusal" to a new
+// and its sibling guard explicitly prefers "a clean compile failure" to a new
 // island.
 //
 // For most shapes this buys honesty rather than answers: the whole-program
@@ -38,7 +38,7 @@ import (
 // UPDATE 2026-08-03 (completeness-review §9.13): the PROVEN-raise shapes
 // GRADUATED — a strict Error do-result fixes the handler's zero as the
 // call's true arity, so the dispatch records a 0-output call and compiles
-// natively (no island, no phantom slot, no re-run hazard). The refusal
+// natively (no island, no phantom slot, no re-run hazard). The compile failure
 // remains only where zero is not the whole story (a def over the 0-value
 // result; a never-raising body whose pass-through nets one) — see
 // TestErrorHandlerZeroResidualDisposition.
@@ -49,7 +49,7 @@ import (
 // zero is a fixed arity, errorReturnsFn returns it truthfully as a 0-output
 // dispatch, and the strip-input shape screen's want-0 arm admits the empty
 // handler residual. The shapes where zero is NOT the whole story keep the
-// refusal with faithful interpreter parity: a def over the 0-value result
+// compile failure with faithful interpreter parity: a def over the 0-value result
 // (nothing to bind — both engines error identically), and a NEVER-raising
 // body (the pass-through delivers one value the handler model does not).
 func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
@@ -57,7 +57,7 @@ func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
 	fnValueM2Native(t, "trailing expression", "do [1 div 0] error [drop]\n2 add 3", "[5]")
 	fnValueM2Native(t, "leading value", "1\ndo [1 div 0] error [drop]", "[1]")
 
-	// KEPT — refusal + identical outcome on both engines.
+	// KEPT — compile failure + identical outcome on both engines.
 	for _, c := range []struct{ name, src string }{
 		{"def-bound (nothing to bind)", "def x (do [1 div 0] error [drop])\nx"},
 		{"handler never fires (pass-through nets one)", "do [1] error [drop]\n2 add 3"},
@@ -66,7 +66,7 @@ func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
 			a, _ := New()
 			prog, _, _, _ := a.CompileCheck(c.src)
 			if prog != nil {
-				t.Fatalf("must refuse, compiled to:\n%s", prog.Disassemble())
+				t.Fatalf("must decline, compiled to:\n%s", prog.Disassemble())
 			}
 			ra, _ := New()
 			got, err := ra.Run(c.src)
@@ -81,8 +81,8 @@ func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
 			if fmt.Sprint(got) != fmt.Sprint(want) {
 				t.Errorf("default-mode %v != interpreter %v", got, want)
 			}
-			// And no internal_error may escape under -force-compile: a refusal
-			// there is a refusal, not a bytecode fault.
+			// And no internal_error may escape under -force-compile: a compile failure
+			// there is a compile failure, not a bytecode fault.
 			if _, ferr := a.RunCompiledStrict(c.src); ferr != nil &&
 				strings.Contains(fmt.Sprint(ferr), "internal:") {
 				t.Errorf("force-compile leaked an internal error: %v", ferr)
@@ -93,7 +93,7 @@ func TestErrorHandlerZeroResidualDisposition(t *testing.T) {
 
 // TestErrorHandlerFencedOutputCompilesNatively — historically the variant
 // that made the zero-residual bug a default-path defect: output inside the
-// guarded block blocked the whole-program fallback (re-running would
+// guarded block blocked the re-run that used to follow (re-running would
 // duplicate it), so the island model's phantom slot surfaced an
 // internal_error to the user. Post-§9.13 the shape compiles NATIVELY — a
 // 0-output dispatch, no island, no re-run — so the output is emitted once
@@ -104,7 +104,7 @@ func TestErrorHandlerFencedOutputCompilesNatively(t *testing.T) {
 	a, _ := New()
 	prog, reason, _, _ := a.CompileCheck(src)
 	if prog == nil {
-		t.Fatalf("the proven-raise fenced shape must compile natively, refused: %q", reason)
+		t.Fatalf("the proven-raise fenced shape must compile natively, declined: %q", reason)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Fatalf("must compile WITHOUT an island (a fallback would re-run the emitted output):\n%s", prog.Disassemble())
@@ -122,14 +122,14 @@ func TestErrorHandlerFencedOutputCompilesNatively(t *testing.T) {
 }
 
 // TestErrorHandlerMultiResidualStillCompiles is the boundary that scopes the
-// refusal to ZERO rather than to "any arity but one".
+// compile failure to ZERO rather than to "any arity but one".
 //
 // A residual of two or more is NOT broken. Its bottom is the unconsumed
 // seeded error, and the paired closure path nets one from it with a runtime
 // strip. The compile-time strip in errorReturnsFn only removes that bottom
 // when its identity probe matches, and after a dup/drop it does not — so
 // `error [dup drop "k"]` measures 2 there while running perfectly well.
-// Refusing on `!= 1` regressed exactly that shape (TestErrorStripInputClosure
+// Declining on `!= 1` regressed exactly that shape (TestErrorStripInputClosure
 // caught it), which is why the condition is `== 0`.
 func TestErrorHandlerMultiResidualStillCompiles(t *testing.T) {
 	const src = `do [raise x "e"] error [dup drop "k"]`
@@ -137,7 +137,7 @@ func TestErrorHandlerMultiResidualStillCompiles(t *testing.T) {
 	prog, reason, _, _ := a.CompileCheck(src)
 	if prog == nil {
 		t.Fatalf("a handler whose extra residual is the unconsumed error is "+
-			"handled by the runtime strip and must still compile, refused: %q",
+			"handled by the runtime strip and must still compile, declined: %q",
 			reason)
 	}
 	got, err := a.RunCompiledStrict(src)
@@ -169,7 +169,7 @@ x`, "[9]"},
 			a, _ := New()
 			if prog, reason, _, _ := a.CompileCheck(c.src); prog == nil {
 				t.Fatalf("a one-value handler is exactly what the island models; "+
-					"it must still compile, refused: %q", reason)
+					"it must still compile, declined: %q", reason)
 			}
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {

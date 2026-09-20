@@ -72,11 +72,11 @@ func TestGradualApplyDefers(t *testing.T) {
 	}
 }
 
-// TestGradualApplySoundRefusals pins the neighbour that still REFUSES: a
+// TestGradualApplySoundCompileFailures pins the neighbour that still DECLINES: a
 // body declaring two returns over the one-result model. (The apply word
-// over a produced closure at the MAIN program was pinned here as a refusal
+// over a produced closure at the MAIN program was pinned here as a compile failure
 // until the twenty-eighth increment compiled it — produced_closure_apply_test.go.)
-func TestGradualApplySoundRefusals(t *testing.T) {
+func TestGradualApplySoundCompileFailures(t *testing.T) {
 	rows := []string{
 		gaAdd2 + `def w fn [[m:Map x:Integer][Any Any][x (m get "f") apply]]  w {f: ([] => [42])} 4`,
 	}
@@ -90,7 +90,7 @@ func TestGradualApplySoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", src, cerr)
 		}
 		if prog != nil || reason == "" {
-			t.Errorf("%q: compiled (reason %q) — expected a refusal", src, reason)
+			t.Errorf("%q: compiled (reason %q) — expected a compile failure", src, reason)
 		}
 	}
 }

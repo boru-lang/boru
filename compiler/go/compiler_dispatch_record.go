@@ -51,7 +51,7 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 // boundary to a single named call is the first step of the Emit/check
 // decoupling (checker review, Tier 2).
 func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, args, out []core.Value, pos core.SrcPos, ownerReg *core.Registry) {
-	// A CODE BODY that reads a def-bound compiled closure refuses here —
+	// A CODE BODY that reads a def-bound compiled closure declines here —
 	// the earliest point every native dispatch passes through, which is
 	// what makes the guard word-agnostic (`do` is the witness, but every
 	// NoEvalArgs code slot re-runs its tokens the same way). See
@@ -69,8 +69,8 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 		// `cannot order Function and Integer` where the interpreter
 		// raises about a non-Boolean body). A word that legitimately
 		// takes a fn value declares a Function slot and its argument is
-		// not one of these produced closures, so refuse here and let the
-		// interpreter fallback own the shape.
+		// not one of these produced closures, so decline here and let the
+		// compile failure name the shape.
 		if rec.argIsProducedClosure(word, sig, args) {
 			return
 		}
@@ -85,7 +85,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 				// The member VALUE rides the tag when the read pinpoints it (a
 				// concrete container + key) so the §3 arrival-apply model can
 				// claim its signature's window; a computed-key read tags alone
-				// and the model declines (the stranded-fn refusal stands).
+				// and the model declines (the stranded-fn compile failure stands).
 				member, _ := readFnMemberValue(args)
 				es.NoteMemberFnRead(out[0].ID, member)
 			} else if rec, isEmit := es.(*EmitState); isEmit {
@@ -102,11 +102,11 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			}
 		}
 	}
-	// NUR037 refusal: a code body naming a FN-LOCAL fn cannot lower soundly
+	// NUR037 compile failure: a code body naming a FN-LOCAL fn cannot lower soundly
 	// on any path below — the closure probe, the island span, and the plain
 	// CALL_NATIVE const-bake all bake a NAME the VM's runtime registry never
 	// binds (the enclosing body's `def … fn` is compiled away), turning a
-	// working program into undefined_word. Refuse the whole program up front
+	// working program into undefined_word. Decline the whole program up front
 	// so the interpreter owns it. A dispatch a structured ReturnsFn hook
 	// already recorded (case's branch-chain desugar — alreadyProduced)
 	// lowered its clause bodies as inline events with no name bake, so it is
@@ -118,12 +118,12 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			// placed as a registry-visible install for the frame
 			// (placeFnLocalDef), and the body resolves it where the
 			// interpreter does. EVERY local the body names is placed, or
-			// the program refuses (review of #468: an islanded body naming
+			// the program declines (review of #468: an islanded body naming
 			// two locals resolved the second in the registry, which held
 			// only the first); a capturing one, a def the unit's frames do
 			// not hold as the current binding, or a VALUE read of the local
 			// (`f/v`: the closure returns the fn as data where the
-			// interpreter dispatches it) keeps the refusal.
+			// interpreter dispatches it) keeps the compile failure.
 			ems, isEmit := es.(*EmitState)
 			for _, name := range names {
 				v, _ := r.Defs.Top(name)
@@ -135,7 +135,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			}
 		}
 	}
-	// NUR054 refusal, AT THE MINT: `context` INSIDE an inline-lowered region
+	// NUR054 compile failure, AT THE MINT: `context` INSIDE an inline-lowered region
 	// (a case clause fragment, an auto-evaluated list argument, an
 	// interp-string / xml hole) hands out the region's own context layer —
 	// the sub-engine push the compiled inline stream does not mirror — so the
@@ -145,7 +145,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// true, interpreted false), and so do the paths a write-site rule cannot
 	// chase — a re-IDed alias (`context dup drop set …`), an identity probe
 	// (`context eq s`), a render, a handle baked into a container or interp
-	// hole. Refusing the READ itself closes them all at once: no alias can be
+	// hole. Declining the READ itself closes them all at once: no alias can be
 	// constructed from a handle that never compiles. The program falls back
 	// to the interpreter, whose scoping is canonical. That keeps a wrong
 	// answer out and leaves the shape uncompiled — an open defect, not a
@@ -341,34 +341,34 @@ func concreteHandlerEval(r *core.Registry, sig *core.Signature, args []core.Valu
 // dynamic output is just a declared-Any return (e.g. unify's [Any, Boolean]),
 // not a best-guess sig — for a CORE builtin native the handler runs faithfully.
 // The dynamic result is still registered, so any downstream TYPED consumer of
-// it refuses via the dynamic-input guard, keeping it contained. Mirrors
+// it declines via the dynamic-input guard, keeping it contained. Mirrors
 // tryRecordPoly's safety (core sig, no meta/fn-value), and is the escape hatch
-// RecordCall's anyDynamicCarrier(outs) refusal consults via forceDynOut.
+// RecordCall's anyDynamicCarrier(outs) compile failure consults via forceDynOut.
 func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value) bool {
 	es := r.Check.Recorder()
 	if !es.Active() || sig == nil || len(outs) == 0 {
 		return false
 	}
 	// Concrete args + dynamic output only — a dynamic INPUT means the sig was
-	// widened (a guess), which stays refused.
+	// widened (a guess), which stays declined.
 	if check.AnyDynamicCarrier(args) || !check.AnyDynamicCarrier(outs) {
 		return false
 	}
 	if sig.CompileEffect.Has(core.CompileFallbackBody) {
 		return false
 	}
-	// Meta / re-stepping shapes never bake (RecordCall refuses them regardless;
+	// Meta / re-stepping shapes never bake (RecordCall declines them regardless;
 	// screen here so they don't slip through forceDynOut).
 	if sig.FnFrame() != nil || sig.FullStack() || sig.RunInCheckMode() || len(sig.QuoteArgs) > 0 {
 		return false
 	}
 	// A code-body (NoEvalArgs) native bakes only when its bodies are INERT consts
 	// with no enclosing-loop sentinel — the SAME screen RecordCall's code-body
-	// refusal uses (noEvalBodiesInert), not a blanket NoEvalArgs exclusion. An
+	// compile failure uses (noEvalBodiesInert), not a blanket NoEvalArgs exclusion. An
 	// inert body bakes as a code-as-data const and the handler sub-runs it
 	// faithfully (`await` runs its parallels; a body-running native runs its
 	// body), so the dynamic (declared-Any) result is sound to bake. A non-inert
-	// or sentinel-bearing body stays refused.
+	// or sentinel-bearing body stays declined.
 	if len(sig.NoEvalArgs) > 0 && !noEvalBodiesInert(sig, args) {
 		return false
 	}
@@ -391,7 +391,7 @@ func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, ou
 	// identical. The IsBuiltinWord gate on the core path is load-bearing: a
 	// user `def ifu (usurp if)` makes r.Lookup("ifu") return the usurp-MODIFIED
 	// if sig (pointer-equal to the match) — but ifu is not a builtin, so it is
-	// excluded here and stays refused (a usurp'd if re-steps and returns
+	// excluded here and stays declined (a usurp'd if re-steps and returns
 	// tape-coupled values). A usurp synthetic also matches no module export.
 	if r.IsBuiltinWord(word) {
 		if fn := r.Lookup(word); fn != nil {
@@ -417,14 +417,14 @@ func dynOutNativeOK(r *core.Registry, word string, sig *core.Signature, args, ou
 // this engine, and a baked Atom is the same value either way. Restricting to
 // module inner natives keeps it off the core meta words (usurp / force-arity /
 // ref-family) whose quoted operands drive re-stepping dispatch, and off any
-// user word (those refuse earlier as a user-fn call). Mutation-safety holds:
+// user word (those decline earlier as a user-fn call). Mutation-safety holds:
 // the query builders return fresh lazy-query values, they do not mutate a
 // pooled const.
 func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, args []core.Value) bool {
 	if sig == nil || len(sig.QuoteArgs) == 0 {
 		return false
 	}
-	// Meta / re-stepping / code-body shapes never bake (RecordCall refuses them
+	// Meta / re-stepping / code-body shapes never bake (RecordCall declines them
 	// regardless; screen here so they cannot slip through this exemption).
 	if sig.FnFrame() != nil || sig.FullStack() || sig.RunInCheckMode() || len(sig.NoEvalArgs) > 0 {
 		return false
@@ -573,7 +573,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// [Function] — reachable since the BROAD park, NUR073 clause 3).
 	// Wider overloads are harmless: with only N live values they cannot
 	// match on either engine. Decline; the dispatch falls to the ordinary
-	// record and its refusal nets.
+	// record and its compile failure nets.
 	// The no-match RECOVERY flavours (dynamicRecovery / noMatch) are
 	// exempt: they deliberately record a wider probe window and the VM's
 	// rematch owns under-match by deferring, so the smaller-arity hazard
@@ -588,7 +588,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 		return false
 	}
 	// Only a genuinely dynamic dispatch (the case the checker could not
-	// commit to one overload — an island or a refusal today), a strict-
+	// commit to one overload — an island or a compile failure today), a strict-
 	// disjunct straddle (disjunctStraddle), a no-signature recovery over an
 	// Any-typed operand (dynamicRecovery — matchSignature found no overload
 	// because an operand's type is statically unknown, e.g. a List/Map element),
@@ -632,9 +632,9 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// event built at emit.go's RecordPolyCall site carries no `sig` and no
 	// `diverges`, so a poly-recorded `raise` stops being a divergent terminal:
 	// its `if` arm is counted as a 0-value contributor, the enclosing fn turns
-	// variadic and every fixed-arity consumer refuses. `do [((f …) add 1)] error
+	// variadic and every fixed-arity consumer declines. `do [((f …) add 1)] error
 	// [(42)]` over a fn raising a DYNAMIC message answered 42 interpreted and
-	// refused compiled. TestEmitRaiseArmDivergence does not catch it because its
+	// declined compiled. TestEmitRaiseArmDivergence does not catch it because its
 	// raise operand is static, so the word never goes poly there. That latent
 	// hole is the poly event's to close, not this gate's; keeping the gate on
 	// the declaration keeps it out of reach.
@@ -656,7 +656,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 		}
 	}
 	// get/getr over a Map/Object/Module receiver can return a Function FIELD
-	// (a method). RecordPolyCall's read guard refuses the risky reads
+	// (a method). RecordPolyCall's read guard declines the risky reads
 	// (containerFnAutoDispatchRisk / zeroArgFnOut / instanceFnFieldRisk)
 	// unless the landing model owns them (an ANNOTATED shaped read — the
 	// recorder then lays an explicit arity-0 OpCallDynMethod after the poly);
@@ -695,7 +695,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 // a body the CLOSURE path declined — a COMPUTED (carrier) body whose tokens
 // exist only at run time, or a concrete body carrying context-dependent words
 // (`args`) — lowers to a plain CALL_NATIVE under the program's DynEnv mode
-// instead of refusing. Soundness: the handler's runtime execution (InvokeBody
+// instead of declining. Soundness: the handler's runtime execution (InvokeBody
 // → a pooled sub-engine over the concrete tokens) IS the interpreter's own
 // semantics, PROVIDED the name/args environment matches — which DynEnv
 // guarantees: every def emits its OpBindDynScope twin, every named unit param
@@ -703,7 +703,7 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 // args-stack push. The result is marked VARIADIC (the runtime count is the
 // body's own residual), so only variadic-absorbing positions (the program
 // residual, a drop) consume it; a fixed-arity downstream consumer keeps the
-// refusal. A body with a flow-control sentinel stays refused: the sub-run
+// compile failure. A body with a flow-control sentinel stays declined: the sub-run
 // cannot propagate break/continue across the handler boundary.
 func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	es, _ := r.Check.Recorder().(*EmitState)
@@ -732,7 +732,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	}
 	// Every operand must have a compiled home: the body rides as a threaded
 	// runtime value (a param local / event result) or an inert const; other
-	// operands resolve normally. An unresolvable operand leaves the refusal.
+	// operands resolve normally. An unresolvable operand leaves the compile failure.
 	ops := make([]EmitOperand, len(args))
 	for i := range args {
 		op, ok := es.resolveOperand(args[i])
@@ -776,7 +776,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// already lowers it to a fixed-nout CALL_NATIVE (lowerCall never flags a
 	// dyn-body event in lw.variadic), and a spurious record-time variadic mark
 	// only poisons an enclosing branch/fn residual (armOutVariadic →
-	// branchVariadicResult → rec.variadic), refusing a downstream fixed-arity
+	// branchVariadicResult → rec.variadic), declining a downstream fixed-arity
 	// consumer (`print (if c [do {a:1}] [do {b:2}])`) the VM runs correctly. A
 	// CODE-BODY (List/CompileFallbackBody) or a GRADUAL (Dynamic) body — whose
 	// runtime net count / overload is genuinely variable — keeps the marking.
@@ -792,7 +792,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled
 	// loop body (`do [for 3 [1]]`) models [1 1 1] as the SAME Value, whose
-	// shared ID would collapse producedBy to the LAST result index and refuse
+	// shared ID would collapse producedBy to the LAST result index and decline
 	// "call results reordered" at the residual. Unlike the generic RecordCall
 	// (which skips same-event collisions — dup/swap identity is the DUP
 	// lowering's job), a dyn-body CALL_NATIVE's results are N distinct runtime
@@ -807,9 +807,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// runs no such sub-body: its map arg is fully assembled (OpMakeMap) before the
 	// baked CALL_NATIVE, and doMapHandler just returns it — no dynamic-scope
 	// mirror is needed. Arming dynEnv for it would force every unrelated def in
-	// the program to a registry-visible OpBindDynScope twin and refuse the ones
+	// the program to a registry-visible OpBindDynScope twin and decline the ones
 	// whose value has no compiled home (`def found None` → "dynamic-scope def of
-	// unknown provenance"), an unnecessary, whole-program refusal.
+	// unknown provenance"), an unnecessary, whole-program compile failure.
 	if !fixedValueEval {
 		es.dynEnv = true
 	}
@@ -827,10 +827,10 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 // checker widened the site to a dynamic carrier — DECLARE CompileIslandPure. The
 // sub-engine picks the overload at run time exactly as the interpreter would, so
 // soundness holds without a static sig commitment; the dynamic result flows on
-// and a downstream TYPED dispatch still refuses via anyDynamicCarrier. (Report
+// and a downstream TYPED dispatch still declines via anyDynamicCarrier. (Report
 // §9.1's TYPE_CHECK boundary, realised as an interpreter island.)
 
-// TryRecordFallback attempts to compile a refused code-body higher-order
+// TryRecordFallback attempts to compile a declined code-body higher-order
 // word as an interpreter island: the construct re-runs through a
 // sub-engine over `word arg0 arg1 …` in forward form. The baked args
 // ride inside the island token span; a COMPUTED data arg (a prior
@@ -848,9 +848,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 // forward prefix and the one threaded value back-fills the deepest sig
 // position — positionally faithful by the split rule). A baked data arg
 // must be deeply concrete. Returns true when recorded; false leaves the
-// normal refusal (whole-program fallback) to stand. Soundness rides on
+// normal compile failure to stand. Soundness rides on
 // the differential gate: a threaded value is the program's real runtime
-// value, and the island's dynamic result still refuses any downstream
+// value, and the island's dynamic result still declines any downstream
 // TYPED dispatch via anyDynamicCarrier.
 func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	es := r.Check.Recorder()
@@ -861,9 +861,9 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// code body (`filter $.on data`, `each $.name data`): the island mechanism
 	// exists to run an interpreted CODE BODY, and a reach lens is inert data, not
 	// code. Now that an inert lens bakes as a const (isInertReach), letting these
-	// island would convert a clean refusal into a NEW interpreter island (a
+	// island would convert a clean compile failure into a NEW interpreter island (a
 	// regression on islandCeiling) for no gain — the reach form has no body to
-	// run. Decline so it refuses; the lens-as-const value/apply/getpath forms
+	// run. Decline so it declines; the lens-as-const value/apply/getpath forms
 	// (which do not route here) still compile natively.
 	if sig.Callable != nil && sig.Callable.BodyPos < len(args) && core.IsReach(args[sig.Callable.BodyPos]) {
 		return false
@@ -879,9 +879,9 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	// A pure typed word (get/make/is/typeof/size/type-algebra) is
 	// islanded ONLY when the dispatch is genuinely dynamic — a dynamic
 	// operand or a dynamic (Any-widened) result the normal path would
-	// refuse anyway. A concrete-operand one compiles as a faithful
+	// decline anyway. A concrete-operand one compiles as a faithful
 	// CALL_NATIVE and must NOT be islanded: islanding poisons its result
-	// to dynamic, refusing every downstream typed dispatch (a net
+	// to dynamic, declining every downstream typed dispatch (a net
 	// coverage LOSS). The code-body words always island (they never lower
 	// to CALL_NATIVE).
 	if sig.CompileEffect.Has(core.CompileIslandPure) && !sig.CompileEffect.Has(core.CompileFallbackBody) &&
@@ -946,7 +946,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 			if len(ins) > 0 {
 				// A baked arg AFTER a threaded one would break the
 				// forward-prefix / stack-suffix split — the threaded
-				// values must be the trailing run. Refuse.
+				// values must be the trailing run. Decline.
 				return false
 			}
 			span = append(span, cv)
@@ -954,7 +954,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 		}
 		// Not bakeable: thread the runtime value. A code body must be
 		// baked (its tokens carry the island's program); only a data
-		// arg can thread. resolveOperand (in RecordFallback) refuses
+		// arg can thread. resolveOperand (in RecordFallback) declines
 		// anything without compiled provenance.
 		if sig.NoEvalArgs[i] {
 			return false
@@ -1009,7 +1009,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 // def-node-binding `[[c1]]` residual), record NOTHING for the call. The list
 // then rides as the dispatch result and folds downstream exactly as a top-level
 // `[[c1]]` literal does (the args become dead pushes, pruned at lowering). Without
-// this the user-fn dispatch would hit recordCallRefusal ("user fn call … Stage 3")
+// this the user-fn dispatch would hit recordCallCompileFailure ("user fn call … Stage 3")
 // since no fn unit was compiled. Returns true when it claimed the dispatch.
 func tryRecordDeferredList(r *core.Registry, sig *core.Signature, outs []core.Value) bool {
 	if !r.Check.Recorder().Active() || sig == nil || sig.FnFrame() == nil || len(outs) != 1 {
@@ -1043,7 +1043,7 @@ func smallerArityOverload(r *core.Registry, word string, n int) bool {
 // Carrier-identity de-collision, extended to INTRA-event repeats: the modeled
 // outs of such a sub-run may repeat one value — an unrolled loop body (`do
 // [for 3 [1]]`) models [1 1 1] as the SAME Value, whose shared ID would
-// collapse producedBy to the LAST result index and refuse "call results
+// collapse producedBy to the LAST result index and decline "call results
 // reordered" at the residual. Unlike the generic RecordCall (which skips
 // same-event collisions — dup/swap identity is the DUP lowering's job), the
 // results here are N distinct runtime stack values, so every repeated out
@@ -1056,7 +1056,7 @@ func smallerArityOverload(r *core.Registry, word string, n int) bool {
 // fifty-seventh increment — a whole-residual CLOSURE call whose unit leaves a
 // count-agnostic region (RecordClosureCall). `do [7 for 3 [1]]` is the row
 // that proves they need the same treatment: it compiled only while the
-// backstop owned it, and refused "call results reordered" the moment the
+// backstop owned it, and declined "call results reordered" the moment the
 // closure path claimed it with the plain registration.
 func (es *EmitState) produceRunOuts(args, outs []core.Value, seq int) {
 	argIDs := make(map[string]bool, len(args))

@@ -351,12 +351,12 @@ func TestTapeReload(t *testing.T) {
 		t.Errorf("Reload content = %d, want 9", n)
 	}
 
-	// Negative: a program larger than the backing array refuses reuse.
+	// Negative: a program larger than the backing array declines reuse.
 	big := make([]core.Value, cap0+1)
 	for i := range big {
 		big[i] = core.NewInteger(int64(i))
 	}
 	if tp.Reload(big) {
-		t.Error("Reload of an over-capacity program returned true; must refuse so the caller reallocates")
+		t.Error("Reload of an over-capacity program returned true; must decline so the caller reallocates")
 	}
 }

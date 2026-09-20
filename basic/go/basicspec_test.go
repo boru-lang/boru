@@ -81,7 +81,7 @@ func basicSpecToken(tok string) core.Value {
 		return core.NewString(tok[1 : len(tok)-1])
 	}
 	// A capitalised builtin name is that type's LITERAL, so a row can pass
-	// a bare type where a word expects a concrete value — the refusal path
+	// a bare type where a word expects a concrete value — the compile failure path
 	// is otherwise unreachable from the corpus.
 	switch tok {
 	case "List":

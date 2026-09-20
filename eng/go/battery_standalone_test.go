@@ -61,14 +61,14 @@ func runBatteryCompiled(t *testing.T, input string) ([]core.Value, bool, error) 
 	rA.Check.EmitUnusedDefDiagnostics()
 	var prog *compiler.Program
 	if runErr == nil && !rA.Check.SuppressedRuntimeError && !rA.Check.AmbiguousGradualSplit {
-		refuse := false
+		decline := false
 		for _, d := range rA.Check.Diagnostics {
 			if !d.RuntimeMirror && (d.Severity == core.SeverityError || d.CaughtAtRuntime) {
-				refuse = true
+				decline = true
 				break
 			}
 		}
-		if !refuse {
+		if !decline {
 			if p, _, ok := rA.Check.Recorder().(*compiler.EmitState).Finalize(residual); ok {
 				prog = p
 			}
@@ -178,7 +178,7 @@ func TestControlBattery(t *testing.T) {
 
 // TestControlEdgeBattery drives the fixture control words' edge arms:
 // branches that produce no value (both the literal-cond fragment and
-// the dynamic join), the spliced computed-list arm refusal, doq bodies
+// the dynamic join), the spliced computed-list arm compile failure, doq bodies
 // reached through a def'd word and a fn param, loop captures whose
 // element type is a disjunct, the range-parse error taxonomy, and the
 // empty negative-step loop.
@@ -189,7 +189,7 @@ func TestControlEdgeBattery(t *testing.T) {
 		// A dynamic cond whose branches both net no value: the empty join.
 		{input: "5 if (0 addq 1) [1 drop] [1 drop]", want: "5"},
 		// A List param as an arm is the interpreter's spliced code body;
-		// the compile pass refuses it and the fallback island runs it.
+		// the compile pass declines it and the fallback island runs it.
 		{input: "def f fn [[x:List] [Integer] [if [true] x [9]]] f [7]", want: "7"},
 		// doq bodies: a def'd word resolves under the recorder; a fn
 		// param stays dynamic.
@@ -205,7 +205,7 @@ func TestControlEdgeBattery(t *testing.T) {
 		{input: "def E (enum [a b]) for 2 [E]", want: "E E"},
 		{input: "def E (enum [a b]) for [2] [E]", want: "E E"},
 		// A List param as an arm under a DYNAMIC cond: the computed-list
-		// refusal (the literal-cond twin of the row above).
+		// compile failure (the literal-cond twin of the row above).
 		{input: "def f fn [[x:List] [Integer] [if (0 addq 1) x [9]]] f [7]", want: "7"},
 		// Range-parse taxonomy: non-integer elements in every position,
 		// and the arity gate on both sides.

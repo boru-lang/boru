@@ -80,13 +80,13 @@ func TestW9LambdaHookCompatible(t *testing.T) {
 		t.Error("a nil-typed param should be skipped and the lambda accepted")
 	}
 	// The capture gate is caller-selected: the extras/hook path (false)
-	// refuses a capturing lambda; the body-lambda path (true) admits it.
+	// declines a capturing lambda; the body-lambda path (true) admits it.
 	capFd := &core.FnDefInfo{
 		Signatures: []core.Signature{{Params: []core.FnParam{{Name: "a"}}, Impl: body}},
 		Captured:   []core.CapturedBinding{{Name: "kv", Value: core.NewInteger(9)}},
 	}
 	if _, ok := lambdaHookCompatible(r, capFd, []core.Value{core.NewInteger(1)}, ClosureInValue, false, false); ok {
-		t.Error("the hook path must refuse a capturing lambda")
+		t.Error("the hook path must decline a capturing lambda")
 	}
 	if _, ok := lambdaHookCompatible(r, capFd, []core.Value{core.NewInteger(1)}, ClosureInValue, true, false); !ok {
 		t.Error("the body path must admit a capturing lambda")

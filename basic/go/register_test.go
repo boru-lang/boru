@@ -93,10 +93,10 @@ func TestRegisterRefusesOnTypeInitError(t *testing.T) {
 	if got := Register(r); !errors.Is(got, boom) {
 		t.Fatalf("Register must surface the init-time error, got %v", got)
 	}
-	// Refused BEFORE installing: the layer's first group is absent, so a
+	// Declined BEFORE installing: the layer's first group is absent, so a
 	// caller that ignored the error cannot mistake a half-built registry
 	// for a working one.
 	if r.Lookup("dup") != nil {
-		t.Fatal("Register must not install words after refusing")
+		t.Fatal("Register must not install words after declining")
 	}
 }

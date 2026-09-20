@@ -82,7 +82,7 @@ func setMicronReturns(args []Value, r *Registry) []Value {
 }
 
 // delMicronHandler is setMicronHandler's twin: a Micron is immutable, so
-// removing a property is refused for the same reason writing one is, and
+// removing a property is declined for the same reason writing one is, and
 // by the same mechanism — an explicit erroring signature rather than
 // sig-absence, so the negative spec rows can pin the message.
 func delMicronHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {

@@ -13,7 +13,7 @@ package core
 // interpreter's undefined_word on a miss), the join notes no root twin for
 // the arm's install (InstallJoinedDefs), and the install is placed at its
 // site. Declined — a recorder that cannot place it, or none — the family
-// keeps the model it had: the join's, and installDef's own refusal for a
+// keeps the model it had: the join's, and installDef's own compile failure for a
 // replace. Nothing for a nil registry or an empty name.
 func NoteSpecFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool {
 	if r == nil || r.Check == nil || name == "" {

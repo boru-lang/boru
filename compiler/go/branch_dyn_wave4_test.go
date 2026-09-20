@@ -139,14 +139,14 @@ func TestSigOrderArgsShapes(t *testing.T) {
 
 func TestFnConcreteSingleValuedOrCarrier(t *testing.T) {
 	if !fnConcreteSingleValuedOrCarrier(core.NewCarrier(core.TFunction)) {
-		t.Error("carrier refused")
+		t.Error("carrier declined")
 	}
 	one := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Name: "x", Type: core.TInteger}}, Returns: []*core.Type{core.TInteger},
 		Impl: core.Boru([]core.Value{core.NewWord("x")}), BarrierPos: core.BarrierAllForward,
 	}}})
 	if !fnConcreteSingleValuedOrCarrier(one) {
-		t.Error("single-return fn refused")
+		t.Error("single-return fn declined")
 	}
 	zero := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Name: "x", Type: core.TInteger}},

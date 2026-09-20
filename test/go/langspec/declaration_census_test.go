@@ -20,7 +20,7 @@
 // signature is one where the recorder is running on the zero value's
 // assumption — which is the substantive claim the triple's C1 exists to
 // stop being silent about, since a tri-state tapeBound that is unset must
-// refuse rather than default permissive.
+// decline rather than default permissive.
 package langspec
 
 import (

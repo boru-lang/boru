@@ -7,7 +7,7 @@ import (
 )
 
 // NUR149's second half (the seventy-third increment): a designed defer — an
-// internal_error the compiled VM raises to request whole-program fallback —
+// internal_error the compiled VM raises when it cannot continue —
 // raised inside a `do` (or `eval`) body was TRAPPED as an Error value by the
 // escape hatch (DoListHandler / DoEvalList), instead of propagating to the
 // top-level run that re-runs interpreted. Stranded, the internal message
@@ -33,7 +33,7 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 		svc + `do [do [call {} svc call {} svc]]`,
 	}
 	// The bail must PROPAGATE out of the `do`, not be trapped as an Error
-	// value. It used to have to propagate so the whole-program fallback could
+	// value. It used to have to propagate so the re-run that followed could
 	// complete; it has to propagate now so the defect is reported at all — a
 	// trapped bail surfaces the internal message as data, which is worse.
 	for _, src := range fellBack {
@@ -72,19 +72,19 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 // compiled def lowers to nothing and the family's live-lead dispatch resolves
 // the arm's binding (whose unit no call site compiled) or an unbound name.
 // No compiled twin reproduces a frame-local shadow the interpreter does not
-// tear down, so InstallDef refuses and the whole program falls back — slow,
+// tear down, so InstallDef declines and the program does not compile —
 // not wrong.
-func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
+func TestFnBodySpecFamilyRedefFailsToCompile(t *testing.T) {
 	const pre = `def m {e: %s} end  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end  `
 	const g = `def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  `
-	refused := []struct{ src, want string }{
+	declined := []struct{ src, want string }{
 		// The arm ran (module f = x add 100), g's body redefines f (x add 1):
 		// the interpreter keeps g's f past the call, so `f 1` = 2.
 		{fmt.Sprintf(pre, "true") + g + "g f 1", "[6 2]"},
 		// The arm did not run (f unbound): g's body's f is the only binding.
 		{fmt.Sprintf(pre, "false") + g + "g", "[6]"},
 	}
-	for _, c := range refused {
+	for _, c := range declined {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -94,7 +94,7 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
 		if prog != nil || !strings.Contains(reason, "redefined inside a fn body replaces a module-scope speculative-family overload") {
-			t.Errorf("%q: want the family-L-in-fn-body refusal, got compiled=%v reason=%q", c.src, prog != nil, reason)
+			t.Errorf("%q: want the family-L-in-fn-body compile failure, got compiled=%v reason=%q", c.src, prog != nil, reason)
 		}
 		gotC, _, errC, _, _ := runBothEngines(t, c.src)
 		requireCompileDefect(t, c.src, gotC, errC)
@@ -135,8 +135,8 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 	}
 	// An IN-FUNCTION speculative family (f absent at fn entry, created in an
 	// undecidable in-fn branch) redefined later in the SAME fn is NOT the
-	// module-family leak: the baseline gate keeps it off the refusal (Codex
-	// P2 on #469). It COMPILES (no refusal); its routed live-lead dispatch
+	// module-family leak: the baseline gate keeps it off the compile failure (Codex
+	// P2 on #469). It COMPILES (no compile failure); its routed live-lead dispatch
 	// may still defer to the interpreter at run time, which falls back with
 	// the same answer — contained, not fixed.
 	{
@@ -147,7 +147,7 @@ func TestFnBodySpecFamilyRedefRefuses(t *testing.T) {
 		}
 		prog, reason, _, cerr := a.CompileCheck(src)
 		if cerr != nil || prog == nil {
-			t.Errorf("the in-function family must NOT be refused: reason=%q err=%v", reason, cerr)
+			t.Errorf("the in-function family must NOT be declined: reason=%q err=%v", reason, cerr)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, src)
 		requireParity(t, src, gotC, errC, gotI, errI)

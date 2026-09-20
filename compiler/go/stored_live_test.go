@@ -11,7 +11,7 @@ import (
 // driven at the recorder: which open unit counts as a stored-ref unit,
 // what a unit notes as read live, which bare reads the stored-dep arm
 // seats, which leads it marks live, and what a transition of a live-lead
-// name compiles or refuses.
+// name compiles or declines.
 func TestStoredLiveSeats(t *testing.T) {
 	var nilES *EmitState
 	if nilES.storedUnitOpen() != nil || nilES.unitLiveNames(0) != nil || nilES.markLiveLead("f") || nilES.storedDepRead("k", core.NewInteger(1)) {
@@ -121,12 +121,12 @@ func TestStoredLiveSeats(t *testing.T) {
 	}
 	// A transition of a live-lead name: not live → nothing; unbound → the
 	// miss raises at run time, nothing; declared → its units; a lambda or
-	// a data value → refused; suspended → refused.
+	// a data value → declined; suspended → declined.
 	es.noteLiveNameTransition("nope")
 	reg.Defs.Pop("helper")
 	es.noteLiveNameTransition("helper") // unbound: nothing
 	if !es.Compilable {
-		t.Fatalf("an unbound live lead compiles nothing and refuses nothing: %q", es.Reason)
+		t.Fatalf("an unbound live lead compiles nothing and declines nothing: %q", es.Reason)
 	}
 	reg.Defs.Push("helper", fnv)
 	es.noteLiveNameTransition("helper")
@@ -137,7 +137,7 @@ func TestStoredLiveSeats(t *testing.T) {
 	es.noteLiveNameTransition("helper")
 	resume()
 	if es.Compilable || !strings.Contains(es.Reason, "module binding helper rebound to a value with no declared signature after a stored handler dispatched it live") {
-		t.Fatalf("a transition while suspended refuses: %v %q", es.Compilable, es.Reason)
+		t.Fatalf("a transition while suspended declines: %v %q", es.Compilable, es.Reason)
 	}
 	es2, reg2, done2 := beginRegionPass(t)
 	defer done2()
@@ -145,10 +145,10 @@ func TestStoredLiveSeats(t *testing.T) {
 	reg2.Defs.Push("helper", lam)
 	es2.noteLiveNameTransition("helper")
 	if es2.Compilable || !strings.Contains(es2.Reason, "no declared signature") {
-		t.Fatalf("a lambda rebind of a live lead refuses: %v %q", es2.Compilable, es2.Reason)
+		t.Fatalf("a lambda rebind of a live lead declines: %v %q", es2.Compilable, es2.Reason)
 	}
 	es2.noteLiveNameTransition("helper") // already uncompilable: nothing more
-	// A live READ's transition to a dispatching value refuses (review of
+	// A live READ's transition to a dispatching value declines (review of
 	// #467); to a value it does not.
 	es3, reg3, done3 := beginRegionPass(t)
 	defer done3()
@@ -161,7 +161,7 @@ func TestStoredLiveSeats(t *testing.T) {
 	reg3.Defs.Push("k", fnv)
 	es3.noteLiveNameTransition("k")
 	if es3.Compilable || !strings.Contains(es3.Reason, "module binding k rebound to a dispatching value after a stored handler read it live") {
-		t.Fatalf("a fn rebind of a live read refuses: %v %q", es3.Compilable, es3.Reason)
+		t.Fatalf("a fn rebind of a live read declines: %v %q", es3.Compilable, es3.Reason)
 	}
 	if !dispatchingBinding(core.NewWord("w")) || dispatchingBinding(core.NewInteger(1)) {
 		t.Fatal("dispatchingBinding: an active token is, a value is not")

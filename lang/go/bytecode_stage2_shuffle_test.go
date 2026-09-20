@@ -2,13 +2,13 @@ package lang
 
 import "testing"
 
-// Stage-2 shuffle-elision pins (voxgig zero-refusals plan): the
+// Stage-2 shuffle-elision pins (voxgig zero-compile failures plan): the
 // mutual-recursion-through-a-token-each shape (decision.boru eval-pred-all/any
-// — `(children each [input swap eval-pred]) all`) refused as "dynamic input at
+// — `(children each [input swap eval-pred]) all`) declined as "dynamic input at
 // swap": the each-body element of an untyped List is a DYNAMIC carrier, and
 // the pure stack shuffles (single all-Any signature, identity returns) fell
 // through every dynamic recovery (poly is single-result-only) into the blanket
-// anyDynamicCarrier refusal. Two mechanisms fix it (emit.go):
+// anyDynamicCarrier compile failure. Two mechanisms fix it (emit.go):
 //
 //  1. recordShuffleElided — a pure ID-preserving permutation (swap/rot/swap2)
 //     over dynamic operands records NOTHING: the outputs ARE the inputs, so
@@ -86,7 +86,7 @@ def apply-all fn [[xs:List env0:Map] [List] [(xs each [env0 swap pick-b])]]
 
 // A DUPLICATING shuffle over a dynamic element (fresh output IDs — the
 // CALL_NATIVE bake path, not the elision): `dup` feeding a poly-re-matched
-// native must either compile or refuse — never diverge — and produce
+// native must either compile or decline — never diverge — and produce
 // interpreter-identical results either way.
 func TestDynamicDupInEachBodySound(t *testing.T) {
 	stage1aSound(t, `def sq-all fn [[xs:List] [List] [(xs each [dup mul])]]
@@ -95,7 +95,7 @@ func TestDynamicDupInEachBodySound(t *testing.T) {
 
 // NEGATIVE: a shuffle whose runtime shape breaks the each contract (a 2-net
 // body via swap of the element under a pushed const) is the interpreter's own
-// each_error — compiled mode must refuse or raise identically, never silently
+// each_error — compiled mode must decline or raise identically, never silently
 // keep one value.
 func TestDynamicSwapTwoNetBodyStaysSound(t *testing.T) {
 	stage1aSound(t, `def two fn [[xs:List] [List] [(xs each [7 swap])]]

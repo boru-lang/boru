@@ -187,12 +187,12 @@ var pinnedAritySites = map[string]int{
 	//    function may act as a predicate at all by counting its parameters.
 	//    "predicate type K: RunPredicate: predicate must take exactly one
 	//    argument" — two functions that both express a membership test are
-	//    admitted or refused on arity alone. No verdict yet: the predicate
+	//    admitted or declined on arity alone. No verdict yet: the predicate
 	//    role does need to test ONE value, so removing the gate needs a
 	//    replacement contract, not a deletion.
 	"core/go/registry.go": 3,
 
-	// ── NUR100 §2, a NAMED DIVERGENCE: smallerArityOverload refuses a poly
+	// ── NUR100 §2, a NAMED DIVERGENCE: smallerArityOverload declines a poly
 	//    window when the word registers an overload consuming FEWER operands.
 	//    Lower stakes than §1 (compile-coverage conservatism, not an answer
 	//    change — the lane falls back and the results agree), but the same
@@ -217,7 +217,7 @@ var pinnedAritySites = map[string]int{
 	// (`len(fd.Signatures) == 0`) before asking each for a boru body with a
 	// declaration site — the identity a speculative family's routed op
 	// locates its unit by. A lambda or a Go alias declares none, so the
-	// placement refuses it; the count of PARAMS never enters — the
+	// placement declines it; the count of PARAMS never enters — the
 	// seventieth increment.
 	"compiler/go/emit.go": 7,
 	// sameFnDecls compares two fn VALUES for declaration identity — the

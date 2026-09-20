@@ -116,7 +116,7 @@ func TestCheckSpecStandalone(t *testing.T) {
 // pipeline (the identical primitives lang's CompileCheck composes —
 // BeginCompilePass, the check-mode run, the model-undermining
 // diagnostics gate, Recorder().Finalize) and executed on the VM when a
-// Program materialises; a refusal falls back to a fresh interpreter
+// Program materialises; a compile failure falls back to a fresh interpreter
 // run. Either way the result must match the row's expected column, so
 // the emit/lower/VM pipeline is exercised — and validated — by eng's
 // own suite.
@@ -141,14 +141,14 @@ func TestSpecCompiledStandalone(t *testing.T) {
 		rA.Check.EmitUnusedDefDiagnostics()
 		var prog *compiler.Program
 		if runErr == nil && !rA.Check.SuppressedRuntimeError && !rA.Check.AmbiguousGradualSplit {
-			refuse := false
+			decline := false
 			for _, d := range rA.Check.Diagnostics {
 				if !d.RuntimeMirror && (d.Severity == core.SeverityError || d.CaughtAtRuntime) {
-					refuse = true
+					decline = true
 					break
 				}
 			}
-			if !refuse {
+			if !decline {
 				if p, _, ok := rA.Check.Recorder().(*compiler.EmitState).Finalize(residual); ok {
 					prog = p
 				}
@@ -167,7 +167,7 @@ func TestSpecCompiledStandalone(t *testing.T) {
 			// entry honours with a silent re-run. Fall through to the
 			// interpreter arm below.
 		}
-		// Refused, check-pass errored, or the VM bailed out: interpreter
+		// Declined, check-pass errored, or the VM bailed out: interpreter
 		// fallback on a fresh registry, so check-mode side effects never
 		// leak into it.
 		rB, err := standaloneRegistry()

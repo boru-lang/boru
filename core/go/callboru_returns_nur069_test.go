@@ -37,7 +37,7 @@ func TestNUR069EnforceReturnsRejectsWrongType(t *testing.T) {
 	sig := &FnSig{Returns: []*Type{TInteger}}
 	err := r.enforceCallBoruReturns(sig, "f", []Value{NewString("nope")})
 	if err == nil {
-		t.Fatal("a String under a declared [Integer] must be refused")
+		t.Fatal("a String under a declared [Integer] must be declined")
 	}
 	if !strings.Contains(err.Error(), "expected Integer") {
 		t.Fatalf("the error must name the declared type, got %v", err)
@@ -69,7 +69,7 @@ func TestNUR069EnforceReturnsChecksOnlyPresentPositions(t *testing.T) {
 		t.Fatalf("a short result must check only what is there: %v", err)
 	}
 	if err := r.enforceCallBoruReturns(sig, "f", []Value{NewInteger(7)}); err == nil {
-		t.Fatal("…and must still refuse the wrong type in that position")
+		t.Fatal("…and must still decline the wrong type in that position")
 	}
 	// More results than declared: the surplus sits at the BOTTOM, so the
 	// declared positions pair with the TOP of the residual.
@@ -132,7 +132,7 @@ func TestNUR069CallBoruRejectsNonConformingReturn(t *testing.T) {
 }
 
 // …and the conforming twin, so the row above is proved to be about the
-// TYPE rather than about CallBoru refusing everything.
+// TYPE rather than about CallBoru declining everything.
 func TestNUR069CallBoruAcceptsConformingReturn(t *testing.T) {
 	r := nur069Reg(t)
 	sig := &FnSig{

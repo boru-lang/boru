@@ -1633,7 +1633,7 @@ func parseWord(text string) (core.Value, error) {
 	// literals never reach this path — jsonic lexes them as numbers.)
 	if isBasePrefixedInteger(name) {
 		// No uppercase check here: both lexers CLAIM a base-prefixed run as
-		// #NR whatever its magnitude, so an uppercase one is refused in
+		// #NR whatever its magnitude, so an uppercase one is declined in
 		// numberValToValue and can never reach this text path.
 		if strings.IndexByte(name, '_') >= 0 && !validUnderscores(name) {
 			return core.Value{}, &core.BoruError{Code: "syntax_error", Src: name,
@@ -2116,7 +2116,7 @@ func isPlainDecimalInteger(src string) bool {
 // Boru's numeric syntax prefixes are lowercase only. Both lexers still CLAIM
 // an uppercase run as a numeric token (declining would split the ports: Go's
 // stock scanner reads `0XFF` as 255 while the TS one reads it as text), so the
-// refusal belongs here in the converter, where one diagnostic serves both
+// compile failure belongs here in the converter, where one diagnostic serves both
 // ports and every context.
 func hasUppercaseNumericPrefix(src string) bool {
 	s := src
@@ -2133,10 +2133,10 @@ func hasUppercaseNumericPrefix(src string) bool {
 	return false
 }
 
-// uppercaseNumericPrefixError refuses an uppercase-prefixed numeric literal.
+// uppercaseNumericPrefixError declines an uppercase-prefixed numeric literal.
 // Loud in EVERY context, data decode included: `0XFF` is a typo for `0xFF`
 // far more often than it is text, and a silent string would be the kind of
-// wrong answer this parser exists to refuse.
+// wrong answer this parser exists to decline.
 func uppercaseNumericPrefixError(src string, row, col int) *core.BoruError {
 	// Callers reach here only via hasUppercaseNumericPrefix, so the prefix
 	// letter is always present — index it directly rather than carrying an

@@ -117,7 +117,7 @@ func UsurpFunction(v Value) (Value, bool) {
 		// its own frame) via a Go handler, so it is a GoImpl — replacing any
 		// inherited boru impl. RunInCheck lets the carrier compiler step the
 		// re-dispatch and compile the original call directly — `usurp (valof f) a
-		// b` lowers exactly like `f b a` — instead of refusing the opaque
+		// b` lowers exactly like `f b a` — instead of declining the opaque
 		// wrapper dispatch. Soundness rides the differential (the compiled
 		// re-dispatch is byte-identical to the runtime one).
 		rev.Impl = Go(usurpDispatchHandler(orig, origBarrier), RunInCheck())
@@ -193,7 +193,7 @@ func rebarrierFunction(v Value, stack bool) (Value, bool) {
 		// boru impl with a GoImpl. Like usurp, running it in CHECK mode lets the
 		// carrier compiler step the re-dispatch and compile the original call
 		// directly — `forward-args f a b` / `a b stack-args f` lower exactly like
-		// the plain `f` call — instead of refusing the opaque wrapper. Soundness
+		// the plain `f` call — instead of declining the opaque wrapper. Soundness
 		// rides the differential.
 		ws.Impl = Go(rebarrierDispatchHandler(orig, origBarrier), RunInCheck())
 		NormalizeSig(&ws)

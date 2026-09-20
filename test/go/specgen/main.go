@@ -26,7 +26,7 @@
 //
 // It is deliberately NOT dropped into lang/spec/: that directory's
 // suites carry curated, corpus-keyed accuracy ratchets (checker false-
-// positive pins, compiled-refusal ceilings) that an exhaustive ~137k-row
+// positive pins, compiled-compile failure ceilings) that an exhaustive ~137k-row
 // matrix would swamp with pin churn rather than signal. The existing
 // generated parity fixture (bytecode-combinations.tsv) is special-cased
 // out of those same ratchets for exactly this reason; a dedicated
@@ -356,7 +356,7 @@ const frontCodeMarker = "# format: front-coded"
 // DETAIL CODE, not the detail text. The distinct details (a handful per
 // file — the failure reasons) are enumerated once in the header as
 // `# detail <N>: <text>` lines, and each row stores only the integer N.
-// This collapses the heavily-repeated, sometimes-long refusal strings (the
+// This collapses the heavily-repeated, sometimes-long compile failure strings (the
 // fail-compile file had 19 distinct details over 60k rows) to one byte or
 // two per row. The decoder maps the code back to its text. Files without
 // this marker carry their trailing field verbatim.
@@ -621,14 +621,14 @@ func writePassingHeader(w *bufio.Writer, scanned, kept, maxLen int) {
 type frontierClass int
 
 const (
-	classCheck   frontierClass = iota // the type checker reports an error (compiler refuses)
+	classCheck   frontierClass = iota // the type checker reports an error (compiler declines)
 	classCompile                      // checker clean, but the compiler will not compile it
 	classRuntime                      // checker clean and it compiles, yet it is not a passing program
 )
 
 // classifyFrontier runs one prefix through CompileCheck on a reused
 // instance and returns the stage it fails at, a short detail (the check
-// error code, or the compiler's refusal reason), and whether the compiler
+// error code, or the compiler's compile failure reason), and whether the compiler
 // emitted a Program. CompileCheck runs the checker BEFORE any lowering
 // and returns a nil Program on any error-severity diagnostic — so a
 // check-stage failure can never also be `compiled`. The caller asserts
@@ -767,7 +767,7 @@ func extractFrontier(passingPath, checkOut, compileOut, runtimeOut string, max i
 
 	// 3. Write the three files in input order.
 	nCheck := writeFrontierFile(checkOut, "type-check", "check-fail", cands, classes, notes, classCheck, max)
-	nCompile := writeFrontierFile(compileOut, "compile", "compile-refused", cands, classes, notes, classCompile, max)
+	nCompile := writeFrontierFile(compileOut, "compile", "compile-declined", cands, classes, notes, classCompile, max)
 	nRuntime := writeFrontierFile(runtimeOut, "runtime", "runtime-fail", cands, classes, notes, classRuntime, max)
 
 	fmt.Fprintf(os.Stderr, "specgen -frontier: %d minimal failing prefixes — %d type-check, %d compile, %d runtime\n",
@@ -865,7 +865,7 @@ func writeFrontierHeader(w *bufio.Writer, kind, tag string, n, maxLen int) {
 	case "type-check":
 		fmt.Fprintf(w, "# These prefixes FAIL THE TYPE CHECKER: `boru check` reports at least one\n")
 		fmt.Fprintf(w, "# error-severity diagnostic. Because the compiler runs the checker first\n")
-		fmt.Fprintf(w, "# (lang.(*Boru).CompileCheck), every prefix here is also refused by the\n")
+		fmt.Fprintf(w, "# (lang.(*Boru).CompileCheck), every prefix here is also declined by the\n")
 		fmt.Fprintf(w, "# compiler — none is ever lowered to bytecode.\n")
 	case "runtime":
 		fmt.Fprintf(w, "# These prefixes PASS THE TYPE CHECKER and COMPILE to bytecode, yet they\n")
@@ -875,7 +875,7 @@ func writeFrontierHeader(w *bufio.Writer, kind, tag string, n, maxLen int) {
 	default:
 		fmt.Fprintf(w, "# These prefixes PASS THE TYPE CHECKER but the bytecode compiler will not\n")
 		fmt.Fprintf(w, "# lower them (CompileCheck returns no Program); the note gives the first\n")
-		fmt.Fprintf(w, "# offender / refusal reason. They run correctly via the interpreter.\n")
+		fmt.Fprintf(w, "# offender / compile failure reason. They run correctly via the interpreter.\n")
 	}
 	fmt.Fprintf(w, "#\n")
 	fmt.Fprintf(w, "# %d prefixes.\n", n)
@@ -1162,7 +1162,7 @@ func writeLen5Fail(path, kind string, cands []string, classes []fiveClass, notes
 // classification files under outDir:
 //
 //	vary-pass.tsv          variants that compile natively with parity
-//	vary-refused.tsv       compile refusals + islands (the NEW-frontier feed)
+//	vary-declined.tsv       compile failures + islands (the NEW-frontier feed)
 //	vary-diverged.tsv      compiler/interpreter divergences — MISCOMPILES
 //	vary-interp-reject.tsv variants the interpreter (or checker) rejects — discards
 //
@@ -1184,8 +1184,8 @@ func runVarySweep(seedDir, outDir string, nSeeds int) {
 
 	name := map[vary.Outcome]string{
 		vary.Pass:         "vary-pass.tsv",
-		vary.Refused:      "vary-refused.tsv",
-		vary.Islanded:     "vary-refused.tsv",
+		vary.Declined:     "vary-declined.tsv",
+		vary.Islanded:     "vary-declined.tsv",
 		vary.Diverged:     "vary-diverged.tsv",
 		vary.InterpReject: "vary-interp-reject.tsv",
 		vary.CheckReject:  "vary-interp-reject.tsv",
@@ -1222,8 +1222,8 @@ func runVarySweep(seedDir, outDir string, nSeeds int) {
 
 	fmt.Fprintf(os.Stderr, "specgen -vary: %d seeds (%d skipped non-passing) × %d transforms\n",
 		len(sample), skippedSeeds, len(vary.Transforms()))
-	fmt.Fprintf(os.Stderr, "specgen -vary: pass=%d refused=%d islanded=%d diverged=%d interp-reject=%d check-reject=%d\n",
-		counts[vary.Pass], counts[vary.Refused], counts[vary.Islanded], counts[vary.Diverged],
+	fmt.Fprintf(os.Stderr, "specgen -vary: pass=%d declined=%d islanded=%d diverged=%d interp-reject=%d check-reject=%d\n",
+		counts[vary.Pass], counts[vary.Declined], counts[vary.Islanded], counts[vary.Diverged],
 		counts[vary.InterpReject], counts[vary.CheckReject])
 	if counts[vary.Diverged] > 0 {
 		fmt.Fprintf(os.Stderr, "specgen -vary: NOTE %d divergences — MISCOMPILES, see vary-diverged.tsv\n", counts[vary.Diverged])
@@ -1255,7 +1255,7 @@ func writeLen5Header(w *bufio.Writer, kind string, n int) {
 		fmt.Fprintf(w, "# compile; `expected` is the canonical core.Canon result.\n")
 	case "type-check":
 		fmt.Fprintf(w, "# Format: FRONT-CODED + legend, extra = detail code. The type checker\n")
-		fmt.Fprintf(w, "# rejects these; the compiler, which runs the checker first, refuses them.\n")
+		fmt.Fprintf(w, "# rejects these; the compiler, which runs the checker first, declines them.\n")
 	case "runtime":
 		fmt.Fprintf(w, "# Format: FRONT-CODED + legend, extra = detail code. These check clean AND\n")
 		fmt.Fprintf(w, "# compile, yet error at run (detail = the runtime error class).\n")
@@ -1267,7 +1267,7 @@ func writeLen5Header(w *bufio.Writer, kind string, n int) {
 		fmt.Fprintf(w, "# NOT part of the four-way split — surfaced by the length-5 sweep.\n")
 	default:
 		fmt.Fprintf(w, "# Format: FRONT-CODED + legend, extra = detail code. These check clean but\n")
-		fmt.Fprintf(w, "# the compiler will not lower them (detail = the refusal reason).\n")
+		fmt.Fprintf(w, "# the compiler will not lower them (detail = the compile failure reason).\n")
 	}
 	fmt.Fprintf(w, "#\n")
 	fmt.Fprintf(w, "# %d rows.\n", n)

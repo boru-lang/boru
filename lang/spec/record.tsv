@@ -144,7 +144,7 @@ def R1 (refine Record [a:Integer b:Integer]) def R2 (refine Record [b:Integer a:
 # A `refine Record` type declared as a fn's return keeps its field		
 # schema on the result (the same schema `make R` and a record-typed		
 # param carry), so field reads through constructor functions narrow		
-# and schema-breaking uses are refused. The negatives pin the refusal		
+# and schema-breaking uses are declined. The negatives pin the compile failure		
 # side: a wrong-typed return, a field read fed to a map word, and a		
 # constructor result reaching a DIFFERENT record's param.		
 def R (refine Record [name:String n:Integer]) def mk fn [[] [R] [make R {name:'a' n:1}]] (mk) get 'name'	'a'	field read through a constructor fn

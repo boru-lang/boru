@@ -16,13 +16,13 @@ import (
 // registry-construction error arm of every Build*Module constructor and
 // Install*Exports helper (driven through the newDefaultRegistry /
 // newDefaultRegistryWithPolicy seams, design/TEST-SEAMS.10.md), the
-// transplant-failure arms, the per-module install=false policy refusal,
+// transplant-failure arms, the per-module install=false policy compile failure,
 // stampExportProvenance's skip arms, registerCollisionInstall's check-mode
 // re-analysis arm, and assorted small uncovered guards (gex compile seam,
 // matrix-size, matrixFromRows row guard, mapStrList atoms, Sunday weekday).
 
 // errSeam6D is the sentinel injected through the construction seams.
-var errSeam6D = errors.New("seam6d: registry construction refused")
+var errSeam6D = errors.New("seam6d: registry construction declined")
 
 // seam6dFailRegistryAfter swaps the newDefaultRegistry seam for a stub that
 // succeeds `succeed` times and then fails with errSeam6D, and the
@@ -51,7 +51,7 @@ func seam6dFailRegistryAfter(t *testing.T, succeed int) {
 
 // TestSeam6DBuilderRegistryInitError drives the sub-registry construction
 // error arm of every native module builder: when the default registry
-// cannot be built, each Build*Module must refuse loudly (never install a
+// cannot be built, each Build*Module must decline loudly (never install a
 // half-built module).
 func TestSeam6DBuilderRegistryInitError(t *testing.T) {
 	parent, err := native.DefaultRegistry()
@@ -182,7 +182,7 @@ func TestSeam6DTransplantFailurePropagates(t *testing.T) {
 }
 
 // TestSeam6DResolvePerModuleInstallFalse pins Resolve's per-module
-// install=false refusal: the modules scope is installed and import is
+// install=false compile failure: the modules scope is installed and import is
 // allowed, but the module's own subscope is uninstalled.
 func TestSeam6DResolvePerModuleInstallFalse(t *testing.T) {
 	pol, err := policy.LoadInline(`{
@@ -200,9 +200,9 @@ func TestSeam6DResolvePerModuleInstallFalse(t *testing.T) {
 	}
 	if _, rerr := Resolve("math-util", r); rerr == nil ||
 		!strings.Contains(rerr.Error(), "install=false in policy") {
-		t.Errorf("Resolve under per-module install=false: got %v, want install=false refusal", rerr)
+		t.Errorf("Resolve under per-module install=false: got %v, want install=false compile failure", rerr)
 	}
-	// A sibling module stays importable — the refusal is per-module.
+	// A sibling module stays importable — the compile failure is per-module.
 	if _, okErr := Resolve("array-util", r); okErr != nil {
 		t.Errorf("Resolve of an uninhibited module: %v", okErr)
 	}
@@ -247,12 +247,12 @@ func TestSeam6DStampExportProvenanceSkips(t *testing.T) {
 func TestSeam6DGexCompileSeamFailure(t *testing.T) {
 	orig := regexpCompile
 	regexpCompile = func(expr string) (*regexp.Regexp, error) {
-		return nil, errors.New("seam6d: compile refused")
+		return nil, errors.New("seam6d: compile declined")
 	}
 	t.Cleanup(func() { regexpCompile = orig })
 
 	if _, err := gexCompile("seam6d-unique-a*"); err == nil ||
-		!strings.Contains(err.Error(), "seam6d: compile refused") {
+		!strings.Contains(err.Error(), "seam6d: compile declined") {
 		t.Errorf("gexCompile under failing seam: got %v", err)
 	}
 	r, rerr := native.DefaultRegistry()

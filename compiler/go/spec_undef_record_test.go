@@ -9,7 +9,7 @@ import (
 
 // RecordSpeculativeUndef's arms (the sixty-eighth increment): placed as an
 // undef-half dyn-bind event where the recorder is live, the name joining
-// specUndefNames; refused through the undef site where it cannot be seated
+// specUndefNames; declined through the undef site where it cannot be seated
 // (a suspended recording, an arm-resident bracket, a carried name); exempt
 // inside a closure body compile; a no-op on a nil recorder.
 func TestRecordSpeculativeUndefArms(t *testing.T) {
@@ -22,33 +22,33 @@ func TestRecordSpeculativeUndefArms(t *testing.T) {
 	if d := es.frames[0][0].dyn; es.frames[0][0].kind != evDynBind || d == nil || !d.speculative || !d.undef || d.bindsValue() || d.name != "k" || d.pos != pos || d.residentTwin != -1 {
 		t.Fatalf("the placed event is a speculative undef half at its site: %+v", es.frames[0][0])
 	}
-	// Suspended: refused, the program's.
+	// Suspended: declined, the program's.
 	es2 := NewEmitState()
 	resume := es2.Suspend()
 	es2.RecordSpeculativeUndef("k", pos)
 	resume()
 	if es2.Compilable || !strings.Contains(es2.Reason, "undef of the enclosing binding `k`") {
-		t.Fatalf("a suspended recording refuses: %v %q", es2.Compilable, es2.Reason)
+		t.Fatalf("a suspended recording declines: %v %q", es2.Compilable, es2.Reason)
 	}
-	// An arm-resident bracket: refused (the bridge pairs events to twins).
+	// An arm-resident bracket: declined (the bridge pairs events to twins).
 	es3 := NewEmitState()
 	es3.armResidentDepth = 1
 	es3.RecordSpeculativeUndef("k", pos)
 	if es3.Compilable {
-		t.Fatal("an arm-resident bracket refuses")
+		t.Fatal("an arm-resident bracket declines")
 	}
 	// A carried name — by a live loop's slot, or by any loop so far.
 	es4 := NewEmitState()
 	es4.loopCarried = append(es4.loopCarried, &loopCarriedScope{unitDepth: 1, slots: map[string]int{"k": 0}})
 	es4.RecordSpeculativeUndef("k", pos)
 	if es4.Compilable {
-		t.Fatal("a name a live loop carries refuses")
+		t.Fatal("a name a live loop carries declines")
 	}
 	es5 := NewEmitState()
 	es5.carriedNames = map[string]bool{"k": true}
 	es5.RecordSpeculativeUndef("k", pos)
 	if es5.Compilable {
-		t.Fatal("a name a loop has carried refuses")
+		t.Fatal("a name a loop has carried declines")
 	}
 	if !es5.nameCarried("k") || es5.nameCarried("z") || es4.nameCarried("z") {
 		t.Fatal("nameCarried reads both channels")
@@ -72,10 +72,10 @@ func TestRecordSpeculativeUndefArms(t *testing.T) {
 }
 
 // The def-after-undef guard: a `def` of a generalised name inside a
-// rolled-back region of the CURRENT unit refuses through the undef site;
+// rolled-back region of the CURRENT unit declines through the undef site;
 // outside any region, or inside a region an enclosing unit's call site sits
 // in, the def records as before.
-func TestRecordDynBindRefusesDefAfterSpecUndef(t *testing.T) {
+func TestRecordDynBindDoesNotLowerDefAfterSpecUndef(t *testing.T) {
 	pos := core.SrcPos{Row: 1, Col: 1}
 	es := NewEmitState()
 	es.specUndefNames = map[string]bool{"k": true}
@@ -93,7 +93,7 @@ func TestRecordDynBindRefusesDefAfterSpecUndef(t *testing.T) {
 	}
 	es.RecordDynBind("k", core.NewInteger(6), pos)
 	if es.Compilable || !strings.Contains(es.Reason, "def of `k` inside the region that undefs it") {
-		t.Fatalf("a def of the generalised name inside the region refuses: %v %q", es.Compilable, es.Reason)
+		t.Fatalf("a def of the generalised name inside the region declines: %v %q", es.Compilable, es.Reason)
 	}
 	// A fragment an ENCLOSING unit opened: this unit's body is not that region.
 	es2 := NewEmitState()
@@ -165,17 +165,17 @@ func TestSpecUndefFwdSlot(t *testing.T) {
 	if es.specUndefFwdSlot(nil, 0, 3) != "" || es.specUndefUnroutedSlot(nil, true) != "" {
 		t.Fatal("a nil descriptor names nothing")
 	}
-	// The refusal reads through the one undef site.
+	// The compile failure reads through the one undef site.
 	es.refuseUndef("k", fwdReadAfterSpecUndef)
 	if es.Compilable || !strings.Contains(es.Reason, "forward-slot read of `k` after a placed undef") {
-		t.Fatalf("the forward-slot refusal: %v %q", es.Compilable, es.Reason)
+		t.Fatalf("the forward-slot compile failure: %v %q", es.Compilable, es.Reason)
 	}
 }
 
 // The lowering of a placed speculative undef is OpUndefDynScope at its
 // site, consuming nothing; a live read seated as an event lowers to the
 // lookup at the read's own token with one result on the sim; and a read
-// the placement did not seat refuses at the rescue.
+// the placement did not seat declines at the rescue.
 func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	undefAt := core.SrcPos{Row: 2, Col: 3}
 	readAt := core.SrcPos{Row: 4, Col: 5}
@@ -224,14 +224,14 @@ func TestLowerSpeculativeUndefAndLiveRead(t *testing.T) {
 	if len(es.frames[0]) != 1 {
 		t.Fatalf("only a generalised name's live read is seated: events=%d", len(es.frames[0]))
 	}
-	// A read of the name that reaches the rescue instead refuses.
+	// A read of the name that reaches the rescue instead declines.
 	es3 := NewEmitState()
 	es3.reg, _ = core.NewRegistry()
 	es3.specUndefNames = map[string]bool{"k": true}
 	c := core.NewCarrier(core.TInteger)
 	es3.defReads = map[string]string{c.ID: "k"}
 	if _, ok := es3.dynScopeRescue(c); ok || es3.Compilable || !strings.Contains(es3.Reason, "read of `k` after a placed undef the placement did not seat") {
-		t.Fatalf("an unseated read refuses: ok=%v %q", ok, es3.Reason)
+		t.Fatalf("an unseated read declines: ok=%v %q", ok, es3.Reason)
 	}
 	// Finalize hands the placed names to the Program.
 	es2 := NewEmitState()

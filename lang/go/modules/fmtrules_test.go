@@ -208,7 +208,7 @@ func TestFormatWithOverrides(t *testing.T) {
 }
 
 // TestValueToRulesRejects pins every validation branch: each malformed
-// table is refused with a message naming the offending field — never a
+// table is declined with a message naming the offending field — never a
 // silent no-op, never a panic.
 func TestValueToRulesRejects(t *testing.T) {
 	bad := []struct {
@@ -255,7 +255,7 @@ func TestValueToRulesRejects(t *testing.T) {
 
 // TestBuildFmtModuleStylesheetError pins the surfaced-at-construction
 // path: a recorded stylesheet init error (the embedded fmt-rules.boru
-// failing to parse — a build defect) makes BuildFmtModule refuse loudly
+// failing to parse — a build defect) makes BuildFmtModule decline loudly
 // instead of formatting with a zero table. Uses the formatter's test seam
 // (SwapDefaultRulesErr), mirroring the native.TypeInitError pattern.
 func TestBuildFmtModuleStylesheetError(t *testing.T) {

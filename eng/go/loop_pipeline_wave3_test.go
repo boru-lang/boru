@@ -348,10 +348,10 @@ func TestCompiledLoopSideEffectBody(t *testing.T) {
 	}
 }
 
-func TestNestedLoopsInterpretedAndRefused(t *testing.T) {
+func TestNestedLoopsInterpretedAndFailedToCompile(t *testing.T) {
 	// The interpreter runs nested mark/move loops; the Stage-2 compiler
-	// refuses a loop whose result is another loop's body result — the
-	// refusal reason is pinned so a silent miscompile can't replace it.
+	// declines a loop whose result is another loop's body result — the
+	// compile failure reason is pinned so a silent miscompile can't replace it.
 	tokens := func() []core.Value {
 		return []core.Value{
 			core.NewWord("cfor"), core.NewInteger(2),
@@ -378,7 +378,7 @@ func TestNestedLoopsInterpretedAndRefused(t *testing.T) {
 			t.Errorf("compiled nested loops diverge: %v %v", cOut, cErr)
 		}
 	} else if !strings.Contains(reason, "loop results as a branch/body result") {
-		t.Errorf("unexpected refusal reason: %s", reason)
+		t.Errorf("unexpected compile failure reason: %s", reason)
 	}
 }
 

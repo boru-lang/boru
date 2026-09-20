@@ -696,7 +696,7 @@ func TestWordRefUndefinedErrors(t *testing.T) {
 // TestWordValNonFunctionIsTheValue: `/v` is TOTAL over binding kinds —
 // for a non-fn binding it is the identity, not an error. The negative
 // twin is TestWordRefUndefinedErrors above: an UNBOUND name still
-// refuses, because there is no value to take.
+// declines, because there is no value to take.
 func TestWordValNonFunctionIsTheValue(t *testing.T) {
 	r := covRegistry(t, nil)
 	InstallDef(r, "plainv", NewInteger(2))

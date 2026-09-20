@@ -652,7 +652,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 			// runCheckProp's own CallBoru frames bind (gen: named `r`; property:
 			// one unnamed Any), and runCheckProp dispatches the carriers via
 			// InvokeCallback — per-iteration VM runs instead of interpreter
-			// frames. A body that refuses (a frame-local ${interp} — the
+			// frames. A body that declines (a frame-local ${interp} — the
 			// fn-scope guard) keeps its raw list and interprets, unchanged.
 			StoredBodies: []native.StoredBodySpec{
 				{Pos: 1, Params: []native.FnParam{{Name: "r", Type: native.TMap}}},
@@ -679,7 +679,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				// CALL_NATIVE bake is sound even when the bodies arrive as DYNAMIC
 				// values (the declarative `_prop_spec` surface fetches them via
 				// `p get "gen"` / `p get "property"`). Without this the NoEvalArgs
-				// dynamic-body refusal blocked every `_prop_spec` file.
+				// dynamic-body compile failure blocked every `_prop_spec` file.
 				CompileEffect: native.CompileRunsBodyIsolated,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 					return runCheckProp(parent, args)

@@ -2,7 +2,7 @@ package lang
 
 import "testing"
 
-// Stage-2 module-scope IMMUTABLE-instance capture pins (voxgig zero-refusals
+// Stage-2 module-scope IMMUTABLE-instance capture pins (voxgig zero-compile failures
 // plan, "fn call operand of unknown provenance" leaf under the trie/burst/tst
 // _unit_test test-test bodies).
 //
@@ -11,7 +11,7 @@ import "testing"
 // under-annotated Any). Read inside a code-body closure (a Test.test body, an
 // each/fold body), the reference is module-scope — below the fn baseline, so
 // ComputeCaptures excludes it — and it is NOT const-bakeable (materialise
-// refuses a non-concrete carrier). The body then refused "fn call operand of
+// declines a non-concrete carrier). The body then declined "fn call operand of
 // unknown provenance" (the instance reached a user call as an unresolved
 // operand) or "code-body word each/fold (Stage 2)".
 //

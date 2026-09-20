@@ -158,7 +158,7 @@ func spawnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		return nil, err
 	}
 	// A COMPILED spawn body arrives as a synthetic fn-value carrier with a
-	// CompiledFnRef (CompileStoresBody); an interpreted / refused body arrives as
+	// CompiledFnRef (CompileStoresBody); an interpreted / declined body arrives as
 	// a raw code-list. Run the former via RunUnit on the fork, the latter via a
 	// fresh interpreter sub-engine.
 	var compiledRef *compiler.CompiledFnRef
@@ -264,7 +264,7 @@ func resolveSendTarget(r *Registry, v Value) *core.Process {
 // sendableViolation walks a message value and returns the offending type
 // name when it contains a stateful mutable container, or "" when the
 // message is sendable. Plain List/Map are sendable (they are deep-copied
-// at the boundary); Store / Object / Table / Flex nodes are refused.
+// at the boundary); Store / Object / Table / Flex nodes are declined.
 func sendableViolation(v Value) string {
 	switch d := v.Data.(type) {
 	case *core.StoreInstanceInfo:
@@ -605,7 +605,7 @@ func receiveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	}
 	binds, ok := bindClause(clauses[idx], msg)
 	if !ok {
-		// Routing matched but a binding slot refused (missing field or
+		// Routing matched but a binding slot declined (missing field or
 		// type mismatch) — fall back to a catch-all clause if one exists.
 		fell := false
 		for i, c := range clauses {

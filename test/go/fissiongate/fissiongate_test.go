@@ -7,7 +7,7 @@
 // per-kind probes. The spec corpus pins the resulting BEHAVIOUR per kind,
 // but behaviour tests cannot stop a new special-case branch that arrives
 // with its own passing test. This gate pins the ARCHITECTURE the same way
-// the compiled-census ceilings pin refusals: the node-kind predicates
+// the compiled-census ceilings pin compile failures: the node-kind predicates
 // (IsPredicateTypeNode, IsDisjunctTypeNode) may be CALLED from exactly the
 // sites pinned below, each of which is a deliberate, design-cited
 // divergence. A call anywhere else fails this test.
@@ -59,7 +59,7 @@ var pinnedKindRoutingSites = map[string]int{
 	// param stays loose on the newtype-alternative swap while `is` stays
 	// strict — the DIVERGENCE PIN of design/legacy/TYPE-REPRESENTATION.1.ignore §6.
 	"lang/go/native/native_type.go": 2,
-	// (compiler/go/emit.go was pinned at 1 — the recorder refusing a
+	// (compiler/go/emit.go was pinned at 1 — the recorder declining a
 	// predicate-type node at a fn-invoking word "exactly as the fn value it
 	// replaced". RETIRED 2026-08-28: a predicate node is not a fn value in
 	// disguise, it is a bare type literal riding as data whose body runs

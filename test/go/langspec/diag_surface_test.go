@@ -15,7 +15,7 @@ package langspec
 // The sweep runs both surfaces over every corpus row (workers bound the
 // wall clock). Plain-surface-only diagnostics are NOT gated: the compile
 // pass legitimately resolves some plain-pass findings (a unit compile
-// binds what the abstract pass could not), and the refusal pipeline
+// binds what the abstract pass could not), and the compile failure pipeline
 // already surfaces anything blocking.
 
 import (
@@ -42,12 +42,12 @@ var diagSurfaceLedger = map[string]string{
 	// corpus row shows a compile-only unused_def any more. It REAPPEARED
 	// with the 2026-09-17 corpus expansion (a factory's value read at a
 	// higher-order word's forward slot: `each f/v xs`, where the compile
-	// pass refused the dispatch before it ever credited the read) and
+	// pass declined the dispatch before it ever credited the read) and
 	// graduated again on 2026-09-19 (S1b-2): the collection seat and the
 	// `/v` read resolve the side table, the dispatch matches, and the
 	// read credits its def on both passes.
-	"undefined_word":       "RE-DIAGNOSED 2026-09-19 (S1b-2): the Stage 1 `/v` hold is GONE — a `/v` read of a name def-bound to a computed fn resolves the fn-carrier side table with the bare read's provenance notes, so those rows no longer diverge. Two unrelated witnesses keep the class: `case zed/q [zed \"matched\" \"other\"]` (case.tsv:L97 — the compile pass reads the bare `zed` inside the clause list as a word where the plain pass leaves it an atom-match) and `0 fold [dot value add] bs` over a generic class's field (generics-fn.tsv:L55 — the compile pass reads `value` in the token body as a word rather than the dot's field name). Both are compile-lane token-body reads of a name that is not a binding; non-blocking for RESULTS (the refusal keeps the silent interpreter fallback). Graduation = a token body's word reads modelled as the interpreter models them, which is S3's runtime compilation.",
-	"macro_not_expandable": "compile-pass-only BY CONSTRUCTION: macro expansion (`parse <kind>` over a parser-fn value) is a compile-pipeline stage — the plain pass has no expansion step to fail. Info-severity; the row refuses and is interpreted. Graduation = none expected (a designed stage asymmetry); revisit if the class grows past its two parselang witnesses.",
+	"undefined_word":       "RE-DIAGNOSED 2026-09-19 (S1b-2): the Stage 1 `/v` hold is GONE — a `/v` read of a name def-bound to a computed fn resolves the fn-carrier side table with the bare read's provenance notes, so those rows no longer diverge. Two unrelated witnesses keep the class: `case zed/q [zed \"matched\" \"other\"]` (case.tsv:L97 — the compile pass reads the bare `zed` inside the clause list as a word where the plain pass leaves it an atom-match) and `0 fold [dot value add] bs` over a generic class's field (generics-fn.tsv:L55 — the compile pass reads `value` in the token body as a word rather than the dot's field name). Both are compile-lane token-body reads of a name that is not a binding; non-blocking for RESULTS (the compile failure keeps the silent interpreter re-run). Graduation = a token body's word reads modelled as the interpreter models them, which is S3's runtime compilation.",
+	"macro_not_expandable": "compile-pass-only BY CONSTRUCTION: macro expansion (`parse <kind>` over a parser-fn value) is a compile-pipeline stage — the plain pass has no expansion step to fail. Info-severity; the row declines and is interpreted. Graduation = none expected (a designed stage asymmetry); revisit if the class grows past its two parselang witnesses.",
 	"type_error":           "one word-splice witness (`def p word [1 add 2] … f p`): the compile pass's splice-body return-count model claims the body nets no value where the plain pass (and the runtime) see the spliced expression's value. Non-blocking on the corpus row (it compiles and runs). Graduation = splice-body return modeling in the unit walk.",
 	"fn_body_error":        "2026-09-17, the corpus expansion (fn-locals-scope.tsv:L158/L159/L223/L224): a fn body that imports a module, defines a class or a fnsig and then returns a value — the armed pass's body analysis reports fn_body_error where the plain pass and the runtime accept the body. Checker debt on the T1 path, counted by the armed-only ceiling. Graduation = the body analysis modelling a body-local import / type install (§10.1 S6).",
 	"case_not_exhaustive":  "one case-over-instantiated-scrutinee witness: per-call instantiation makes the compile pass judge exhaustiveness against the narrowed scrutinee type where the plain pass judges the declared one — the same designed call-site asymmetry as redundant_guard. Graduation = §8.4.4, with redundant_guard.",

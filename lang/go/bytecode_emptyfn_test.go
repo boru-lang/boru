@@ -9,7 +9,7 @@ import (
 // TestEmptyBodyFnLowers — a user fn declaring no returns and an empty body
 // (`def v fn [[x:Integer] [] []]`) produces ZERO values at run time. Stage 3's
 // check-mode ReturnsFn used to return a bogus single Any approximation and skip
-// recording, so any call refused "user fn call (Stage 3)". It now records a
+// recording, so any call declined "user fn call (Stage 3)". It now records a
 // 0-output CALL_USER and returns no carriers, so the residual matches runtime:
 // the call runs for its effects and the next token is the residual.
 func TestEmptyBodyFnLowers(t *testing.T) {

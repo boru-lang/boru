@@ -57,7 +57,7 @@ func TestTailCallReturnContract(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile, refused: %q", reason)
+				t.Fatalf("must compile, declined: %q", reason)
 			}
 			got, err := a.RunCompiledStrict(c.src)
 			if err != nil {

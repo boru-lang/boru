@@ -132,7 +132,7 @@ TimeUtil.await [[fact 5] [fact 6]] end`, "[[120 720]]"},
 	}
 }
 
-// TestAwaitRefusesFnLocalLambdaInBothEngines closes what was this check's
+// TestAwaitDoesNotLowerFnLocalLambdaInBothEngines closes what was this check's
 // worst hole, and the shape of the hole is why it is worth a long comment.
 //
 // The check resolves branch-body words through `r.Defs`. Compiled, a
@@ -160,7 +160,7 @@ TimeUtil.await [[fact 5] [fact 6]] end`, "[[120 720]]"},
 //
 // All four shapes now refuse in both engines. If any row here starts
 // passing, the walk has regressed to the state that raced.
-func TestAwaitRefusesFnLocalLambdaInBothEngines(t *testing.T) {
+func TestAwaitDoesNotLowerFnLocalLambdaInBothEngines(t *testing.T) {
 	for _, body := range []string{"[m]", "[m get a]", "[m size]", "[m set a 1]"} {
 		t.Run(body, func(t *testing.T) {
 			src := awaitPrelude + `def outer fn [[] [Any] [

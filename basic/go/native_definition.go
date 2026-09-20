@@ -92,7 +92,7 @@ var DefinitionNatives = []NativeFunc{
 		// body's RESIDUAL still on the stack, and in check mode that residual is a
 		// dynamic-Any carrier which gradually matches the 2-arg form's TFnUndef
 		// slot — so `undef name` mis-dispatched to UndefFnHandler and errored
-		// ("expected fn undef spec"), leaking the loop binding and refusing the
+		// ("expected fn undef spec"), leaking the loop binding and declining the
 		// closure. A dedicated 1-arg-only word can never mis-match the residual, so
 		// it dispatches identically (1-arg unbind) in check mode and at runtime —
 		// the property the compiled `each`/`fold`/… var-body closure needs. Reuses
@@ -123,7 +123,7 @@ var DefinitionNatives = []NativeFunc{
 		// promoted value-def locals (the def/body/undef tokens record exactly as a
 		// hand-written `def NAME val end … undef NAME` would). A body word the
 		// recorder cannot lower marks the program uncompilable through the same
-		// path it does anywhere else, so a refusing body REFUSES rather than
+		// path it does anywhere else, so a declining body DECLINES rather than
 		// producing a silent empty unit.
 		Signatures: []Signature{{
 			Args:       []*Type{TList},
@@ -345,7 +345,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 	// preserved (prevUsed stays true); a fresh def's self-use is undone.
 	checking := r.Check.IsActive()
 	prevUsed := checking && r.Check.DefsUsed != nil && r.Check.DefsUsed[name]
-	// S5 (REFUSAL-CLOSURE): a top-level def of a STATICALLY-COUNTED variadic
+	// S5 (COMPILE FAILURE-CLOSURE): a top-level def of a STATICALLY-COUNTED variadic
 	// loop region binds the region's FIRST value — the interpreter's pending
 	// forward collects the first-arrived value and the rest spill. The
 	// binding takes the element carrier; the region carrier itself returns
@@ -405,7 +405,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// `def f 1 ; def f (mk 1) ; undef f ; (f 2)` compiled `1 2` where
 		// the interpreter answers 3, because the interpreter's `def` bound
 		// the closure over the 1 and its `undef` left fn bindings alone.
-		// Refuse rather than model a name with two meanings.
+		// Decline rather than model a name with two meanings.
 		if _, shadowed := r.Defs.Top(name); shadowed {
 			r.Check.Recorder().MarkUncompilable(
 				"computed fn shadows a live binding of the same name (two binding stores disagree — Stage 1)")
@@ -415,7 +415,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// the analysis returned the callee unchanged. `def f2 (f1 2)` over
 		// a curried factory is the shape; compiled, both names take one
 		// slot and the unconsumed argument leaks into the residual
-		// (`2 fn (Integer) 3` where the interpreter answers `6`). Refuse
+		// (`2 fn (Integer) 3` where the interpreter answers `6`). Decline
 		// rather than leak: the program is then silently interpreted, which
 		// hides this failure instead of fixing it.
 		if prev, dup := CheckFnCarrierBoundName(r, value.ID); dup && prev != name {
@@ -448,7 +448,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 // and routing it through the composite form hides the inner dispatch
 // from the bytecode recorder, losing the operand provenance compiled
 // programs depend on (`def p0 make Pointer.Point {…} … (p0 add p1)`
-// refuses to compile). Its bare def form keeps today's wait-through
+// fails to compile). Its bare def form keeps today's wait-through
 // path; a keyword form needs recorder plumbing first.
 var defKeywordConstructors = []string{
 	"fn", "fnsig", "fnpred", "refine", "class", "surface", "enum", "quote", "word",
@@ -724,8 +724,8 @@ func DefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 // other def. Returns handled=false when the target is not extendable
 // this way: plain user fns keep today's whole-replacement shadowing
 // (the REPL/iterate idiom — §4.1), and a non-fn body on a built-in
-// keeps the reserved_word refusal. Sealed words (`def`, `make`,
-// `word`) refuse inside InstallWordExtension.
+// keeps the reserved_word compile failure. Sealed words (`def`, `make`,
+// `word`) decline inside InstallWordExtension.
 func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, error) {
 	if !body.Parent.Equal(TFunction) {
 		return false, nil
@@ -739,7 +739,7 @@ func DefWordExtension(r *Registry, name string, body Value, pos SrcPos) (bool, e
 	// deliberate `def <word> fn […]` extension, yet it carries the dispatched
 	// native's LOCKED signatures; without this guard a re-analysis (a def
 	// inside a `for` loop) finds the name already bound to it and misfires the
-	// open-words merge as a spurious `locked_signature` refusal instead of the
+	// open-words merge as a spurious `locked_signature` compile failure instead of the
 	// real dispatch diagnostic. Fall through to the ordinary value binding.
 	if body.FailedDispatch {
 		return false, nil
@@ -783,18 +783,18 @@ func reservedWordError(r *Registry, op, name string) error {
 		fmt.Sprintf("%s %s: '%s' is a built-in word and cannot be redefined", op, name, name), op)
 }
 
-// markRefineDefUncompilable refuses bytecode compilation of a typed-def whose
+// markRefineDefUncompilable declines bytecode compilation of a typed-def whose
 // refinement constraint could not be recorded as a typed-bind event — the
-// fallback behind RecordTypedBindOrRefuse. The COMMON dynamic refinement
+// fallback behind RecordTypedBindOrDecline. The COMMON dynamic refinement
 // shapes (predicate type / bare-refine newtype / DepScalar subset over a
 // param or computed carrier) now compile: RecordTypedBind emits an OpBindTyped
 // that runs the interpreter's own validate/reparent at run time (RunTypedBind,
-// eng/go/typed_bind.go — the closure of miscompile B's refusal). This
+// eng/go/typed_bind.go — the closure of miscompile B's compile failure). This
 // mark remains only for the residual shape RecordTypedBind declines: a dynamic
 // body whose operand has no resolvable provenance, where compiling would have
 // to guess the stack layout. Object / alias / schema typed-defs do not route
 // here.
-// MarkTypedContainerDefUncompilable refuses compilation of a typed-container
+// MarkTypedContainerDefUncompilable declines compilation of a typed-container
 // def (`def m:{:T} …` / `def xs:[:T] …`) whose body is NON-concrete (a flex /
 // carrier body). Such a body's element validation and tag-minting happen at
 // runtime only (Unify over the concrete value); the compiled path has no
@@ -814,7 +814,7 @@ func markRefineDefUncompilable(r *Registry, name string, body Value) {
 	// A STATIC (concrete) refinement value's reparent rides the const pool and
 	// compiles faithfully — `def p:Pt 5` (a const) folds to a Pt-tagged const, so
 	// `p is Pt` holds; RecordTypedBind declines those to keep the proven path,
-	// and they must not refuse here either.
+	// and they must not decline here either.
 	if IsConcrete(body) {
 		return
 	}
@@ -830,7 +830,7 @@ func markRefineDefUncompilable(r *Registry, name string, body Value) {
 // finding: a check-lenient bake bound the raw value where the interpreter
 // runs the transform). In a COMPILE pass the check-mode run is ANALYSIS ONLY
 // (recording suspended so the predicate body's dispatches are not emitted
-// inline ahead of the bind); a declined record refuses regardless of
+// inline ahead of the bind); a declined record declines regardless of
 // concreteness — no wrong bake, and no compile either.
 func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Value, describeType func() string, pos SrcPos) ([]Value, error) {
 	resumePred := func() {}
@@ -875,7 +875,7 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	// short-circuited on the carrier in check mode, so the runtime bind is
 	// the first real evaluation. reparentTo carries the SAME reparent
 	// decision the interpreter just took, so the two engines agree.
-	out = RecordTypedBindOrRefuseConcrete(r, func() core.TypedBindSpec {
+	out = RecordTypedBindOrDeclineConcrete(r, func() core.TypedBindSpec {
 		predCons := constraint
 		return core.TypedBindSpec{
 			Kind: core.TypedBindPredicate, Name: name, Describe: describeType(),
@@ -885,9 +885,9 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	return InstallAndRecordDef(r, name, out, pos)
 }
 
-// MarkFnPredicateBindUncompilable refuses compilation when a fn-predicate
+// MarkFnPredicateBindUncompilable declines compilation when a fn-predicate
 // typed-def's bind record declined: the predicate is a runtime evaluation
-// for every body shape, so there is no faithful bake to emit. The refusal
+// for every body shape, so there is no faithful bake to emit. The compile failure
 // keeps a wrong bake out; compiling it is still owed.
 func MarkFnPredicateBindUncompilable(r *Registry, name string) {
 	if es := r.Check.Recorder(); es.Active() {
@@ -895,39 +895,39 @@ func MarkFnPredicateBindUncompilable(r *Registry, name string) {
 	}
 }
 
-// RecordTypedBindOrRefuse threads a refinement typed-def through the bytecode
+// RecordTypedBindOrDecline threads a refinement typed-def through the bytecode
 // recorder: on success the returned binding carries a fresh provenance ID
 // registered against a typed-bind event (OpBindTyped re-runs the SAME
 // validate/reparent over the runtime value — RunTypedBind), and the program
 // keeps compiling. When the recorder declines — emit inactive, a CONCRETE body
 // (the static const-pool path stays untouched), or a body operand with no
-// resolvable provenance — the site's refusal mark runs instead, preserving the
+// resolvable provenance — the site's compile failure mark runs instead, preserving the
 // prior fallback taxonomy (and itself no-oping for the inactive/concrete
 // cases). bound is the CHECK-mode value the def is about to install; body is
 // the raw operand the runtime bind consumes. mkSpec is a THUNK so the spec
 // (its Describe renders the constraint) is only built when a bind is actually
 // recorded — a plain interpreter run pays nothing it did not pay before.
-func RecordTypedBindOrRefuse(r *Registry, mkSpec func() core.TypedBindSpec, body, bound Value, pos SrcPos, refuse func()) Value {
+func RecordTypedBindOrDecline(r *Registry, mkSpec func() core.TypedBindSpec, body, bound Value, pos SrcPos, decline func()) Value {
 	if es := r.Check.Recorder(); es.Active() && !IsConcrete(body) {
 		if out, ok := es.RecordTypedBind(mkSpec(), body, bound, pos); ok {
 			return out
 		}
 	}
-	refuse()
+	decline()
 	return bound
 }
 
-// RecordTypedBindOrRefuseConcrete is RecordTypedBindOrRefuse WITHOUT the
+// RecordTypedBindOrDeclineConcrete is RecordTypedBindOrDecline WITHOUT the
 // concrete-body decline: the fn-PREDICATE bind is a runtime evaluation for
 // every body shape (the predicate can transform, raise, or read live state),
 // so a concrete operand records the bind rather than riding the const pool.
-func RecordTypedBindOrRefuseConcrete(r *Registry, mkSpec func() core.TypedBindSpec, body, bound Value, pos SrcPos, refuse func()) Value {
+func RecordTypedBindOrDeclineConcrete(r *Registry, mkSpec func() core.TypedBindSpec, body, bound Value, pos SrcPos, decline func()) Value {
 	if es := r.Check.Recorder(); es.Active() {
 		if out, ok := es.RecordTypedBind(mkSpec(), body, bound, pos); ok {
 			return out
 		}
 	}
-	refuse()
+	decline()
 	return bound
 }
 
@@ -984,13 +984,13 @@ func LookupResourceTypeByName(r *Registry, name string) (ResourceTypeInfo, bool)
 // check arm installs a carrier and continues, so on a recording pass the
 // mirror is completed by a terminal RecordTrap (the macroexpand
 // discipline), and a declined trap (nested occurrence) keeps the
-// unstamped, compile-refusing emission. Deep inertness, not shallow
+// unstamped, compile-declining emission. Deep inertness, not shallow
 // concreteness, is the gate: a concrete LIST holding a check-mode
 // abstract class instance renders differently at check time than the
 // runtime value does (`[Box of [String]]` vs `[Box of [String]{value:…}]`
 // — the generics container rows), so such a body keeps the unstamped
 // emission and its runtime BIND_TYPED raise, which renders the live
-// value. A carrier body likewise stays unstamped — the static refusal is
+// value. A carrier body likewise stays unstamped — the static compile failure is
 // an approximation the runtime value could still satisfy.
 func typedDefUnifyMirror(r *Registry, name, detail string, body Value, pos SrcPos) {
 	// pos is always set now, and the fallback chain that used to stand here
@@ -1237,7 +1237,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			// x:(Integer gt 10) (f 1)` would bind whatever f returns where
 			// the interpreter may raise, and the compiler can't run the
 			// inline predicate (no canonical node carrying the DepScalar
-			// Behavior) — refuse abstract DepScalar typed-defs → fall back.
+			// Behavior) — decline abstract DepScalar typed-defs → fall back.
 			//
 			// A CONCRETE body deliberately falls THROUGH to the Unify below:
 			// unifyDepScalar runs the self-contained predicate on the real
@@ -1250,7 +1250,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			// predicate, no registry — over the runtime value, raising the
 			// byte-identical unify error on failure and binding Unify's result
 			// (base tag kept, no reparent) on success.
-			bound := RecordTypedBindOrRefuse(r, func() core.TypedBindSpec {
+			bound := RecordTypedBindOrDecline(r, func() core.TypedBindSpec {
 				depCons := depScalarCons
 				return core.TypedBindSpec{
 					Kind: core.TypedBindDepScalar, Name: name, Describe: describeType(), Cons: &depCons,
@@ -1308,7 +1308,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 				// A DYNAMIC body records a typed-bind event: OpBindTyped re-runs
 				// this exact Unify-against-builtin-ancestor + reparent over the
 				// runtime value, so compiled typeof/sig-dispatch see the newtype.
-				bound := RecordTypedBindOrRefuse(r, func() core.TypedBindSpec {
+				bound := RecordTypedBindOrDecline(r, func() core.TypedBindSpec {
 					return core.TypedBindSpec{
 						Kind: core.TypedBindRefine, Name: name, Describe: describeType(), Def: def,
 					}
@@ -1321,9 +1321,9 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 				// unify is a GUARANTEED runtime error mirror — the non-check
 				// branch below raises the identical text — and rides the
 				// stamping helper (RuntimeMirror + dedupe, NUR058). A carrier
-				// body keeps the unstamped emission: the static refusal is an
+				// body keeps the unstamped emission: the static compile failure is an
 				// approximation the runtime value could still satisfy, so the
-				// compile pipeline must keep refusing on it.
+				// compile pipeline must keep declining on it.
 				// Mirror discipline lives in typedDefUnifyMirror (NUR058).
 				typedDefUnifyMirror(r, name,
 					fmt.Sprintf("def %s: value %s does not unify with declared type %s",
@@ -1338,13 +1338,13 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// Registry-armed: a container constraint may carry a bare
 	// type-name child (`def xs:[:Foo]`) that only the registry can
 	// resolve (NUR060) — the registry-free Unify degraded it to an
-	// Atom and refused every value.
+	// Atom and declined every value.
 	unified, ok := UnifyR(body, constraint, r)
 	if !ok {
 		if r.Check.IsActive() {
 			// Same mirror discipline as the refine-ancestor arm above
 			// (NUR058): exactly-known operands stamp RuntimeMirror; a
-			// carrier body keeps the unstamped, compile-refusing emission.
+			// carrier body keeps the unstamped, compile-declining emission.
 			typedDefUnifyMirror(r, name,
 				fmt.Sprintf("def %s: value %s does not unify with declared type %s",
 					name, body.String(), describeType()), body, defPos)
@@ -1359,7 +1359,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// elements and mints the element tag only at RUNTIME (Unify over the concrete
 	// flex body). There is no compiled typed-container bind that re-runs that
 	// element check + preserves flex-ness, so the compiled path would drop the
-	// tag and skip enforcement. Refuse compilation → the def falls back to the
+	// tag and skip enforcement. Decline compilation → the def falls back to the
 	// interpreter, which enforces. A CONCRETE body is validated statically above
 	// and compiles faithfully (the plain {:T} map case is unaffected).
 	MarkTypedContainerDefUncompilable(r, name, body, constraint)
@@ -1410,7 +1410,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		// and the recorder places the pop at this site and reads the name
 		// live (the sixty-eighth increment). A binding the model declines
 		// to generalise — a type, a fn-family value, a frame binding of an
-		// enclosing fn — refuses instead, and the interpreter owns the
+		// enclosing fn — declines instead, and the interpreter owns the
 		// shape. Only for a binding that EXISTS before the region: for a
 		// never-bound name the gate merely silences the speculative
 		// diagnostic, and there is nothing to pop on either lane (review of
@@ -1456,7 +1456,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	}
 	// An undef of a LOOP-CARRIED def exposes the previous binding while the
 	// carried frame slot still holds the rebound value — compiled reads would
-	// diverge; refuse and let the interpreter own the shape.
+	// diverge; decline and let the interpreter own the shape.
 	r.Check.Recorder().RefuseCarriedUndef(name)
 	// The fn-carrier side table is a SECOND binding store for this name
 	// (installDef declines a computed fn, so the name lives only there).
@@ -1906,7 +1906,7 @@ func FnpredPairHandler(args []Value, names map[string]Value, stack []Value, r *R
 // and they disagree on the return type — Boolean-returning
 // (`fnpred n:Integer [eq 0 (mod 2 n)]`), and None-on-failure, where the body
 // yields the value for a member and None for a non-member
-// (`lang/spec/record.tsv` §177). Pinning the output to Boolean would refuse
+// (`lang/spec/record.tsv` §177). Pinning the output to Boolean would decline
 // the second; `Any` admits both and RunPredicate decides membership.
 func FnpredHandler(args []Value, names map[string]Value, stack []Value, r *Registry) ([]Value, error) {
 	if !IsConcrete(args[0]) {

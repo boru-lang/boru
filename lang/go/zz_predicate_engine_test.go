@@ -9,7 +9,7 @@ import (
 // measurement that used to assert the opposite, kept pointing the other way.
 //
 // The claim it used to pin: a predicate body never runs as a compiled unit, so
-// the `is`-against-a-predicate-type refusal was honest and had to stand. That
+// the `is`-against-a-predicate-type compile failure was honest and had to stand. That
 // claim was true, and its stated CAUSE — "predicate bodies do not compile to
 // units" — was wrong. They compiled. `def Positive fn […]` stamped a detached
 // unit at construction and recorded Stamped:true in the stamp ledger; the

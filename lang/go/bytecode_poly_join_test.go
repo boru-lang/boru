@@ -19,12 +19,12 @@ func TestPolyReturnJoinCompiles(t *testing.T) {
 		"[2]")
 }
 
-// TestPolyReturnJoinCountMismatchRefuses pins the edge the join deliberately
+// TestPolyReturnJoinCountMismatchFailsToCompile pins the edge the join deliberately
 // keeps: the call site bakes a FIXED nout, so arms whose return COUNTS
-// differ can never share one recorded call — the set refuses with faithful
-// interpreter fallback (userPolyArmShapeOK's count gate).
-func TestPolyReturnJoinCountMismatchRefuses(t *testing.T) {
-	fnValueM2Refusal(t, "arms with differing return counts",
+// differ can never share one recorded call — the set declines with faithful
+// compile failure (userPolyArmShapeOK's count gate).
+func TestPolyReturnJoinCountMismatchFailsToCompile(t *testing.T) {
+	fnValueM2CompileFailure(t, "arms with differing return counts",
 		`def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer] [Integer] [1] [a:String] [String String] ['a' 'b']] g (id 5)`,
 		"ambiguous dispatch, no poly re-match")
 }

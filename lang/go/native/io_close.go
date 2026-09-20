@@ -7,7 +7,7 @@ import "fmt"
 // holds: a File handle (IO.open) or a Watcher (IO.watch). IO.unwatch stays
 // as the Watcher-specific alias. The dispatch is structural (each asXxx
 // unwrap checks the payload's Go type), so a single TAny signature admits
-// both resource types and a non-resource value is refused cleanly.
+// both resource types and a non-resource value is declined cleanly.
 func doCloseWord(args []Value, r *Registry) ([]Value, error) {
 	if fh, ok := asFileHandle(args[0]); ok {
 		return closeResult(r, fh.Close())

@@ -8,8 +8,8 @@ import "testing"
 // count. The compiler used to seat the static N (via the closure / dyn-body /
 // generic RecordCall paths), which UNDERFLOWED on the caught path — a
 // STORE_LOCAL underflow (the voxgig-boru/trie `codec-roundtrip` shape:
-// `def msg (do [(s.decode) "x"] error […])`). doListReturnsFn now refuses a
-// fallible multi-value body so it rides the sound interpreter fallback, while a
+// `def msg (do [(s.decode) "x"] error […])`). doListReturnsFn now declines a
+// fallible multi-value body, so the program does not compile, while a
 // pure / infallible multi-value body still compiles at its exact arity.
 //
 // The differential corpus is BLIND to this (a fallible body that never raises
@@ -17,7 +17,7 @@ import "testing"
 // hand-pinned off-corpus regressions: engine parity (compiled == interpreter,
 // including the raised error) AND the native/fallback expectation per shape.
 func TestDoCatchMultiValueArity(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// A module with a value-dependently-raising fn (map-decode-like) and an
 	// always-raising one, reached as `M.dec` / `M.boom` (a Reach dispatch).
 	const mod = `import module [
@@ -31,20 +31,20 @@ func TestDoCatchMultiValueArity(t *testing.T) {
 	// lang/spec/bytecode-migrated.tsv (WS4 migration) — the census owns
 	// native-compile + parity for those rows.
 
-	// FALLS BACK (refuses natively) — fallible multi-value bodies. Parity must
+	// FALLS BACK (declines natively) — fallible multi-value bodies. Parity must
 	// still hold: the caught-error path is byte-identical to the interpreter,
-	// no STORE_LOCAL underflow. wantCompiled=false (the refusal the interpreter absorbs).
+	// no STORE_LOCAL underflow. wantCompiled=false (a compile failure).
 	fallback := []string{
 		// The trie codec shape: a Reach (module fn) that RAISES, caught, bound.
 		mod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
-		// The same body that does NOT raise at this input still refuses (the
+		// The same body that does NOT raise at this input still declines (the
 		// static shape is fallible) — and stays correct via fallback.
 		mod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`,
 		// An always-raising module fn.
 		mod + `do [(M.boom 5) "x"] error [dot code]`,
 		// A value-diverging native (`div`, CompileValueDiverges) with a NON-static
 		// divisor so the body stays multi-value (div does not statically diverge):
-		// refuses on the fallible-native path, correct via fallback (y=5, no raise).
+		// declines on the fallible-native path, correct via fallback (y=5, no raise).
 		`def y 5  do [(10 div y) 2]`,
 		// A user (boru-body) fn that raises, caught.
 		`def f fn [[x:Any] [Any] [raise bad_input "nope"]]  do [(f 5) 2] error [dot code]`,

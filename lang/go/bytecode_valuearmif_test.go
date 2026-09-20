@@ -8,10 +8,10 @@ import (
 
 // TestEmitValueArmIf: `if cond v1 v2` with VALUE arms (not `[body]` code lists)
 // now lowers the then arm symmetrically with the else arm — a select (push v1 /
-// push v2 around JMP_IF_FALSE) — instead of refusing "then-branch not captured".
+// push v2 around JMP_IF_FALSE) — instead of declining "then-branch not captured".
 // This covers the direct form, a dynamic condition, and the usurp-if shape
 // (`usurp if` dispatches `if` with value arms). The negative half pins that a
-// COMPUTED then value (an event eagerly on the stack) still refuses the
+// COMPUTED then value (an event eagerly on the stack) still declines the
 // value-then path rather than miscompiling.
 func TestEmitValueArmIf(t *testing.T) {
 	cases := []struct{ src, want string }{
@@ -25,7 +25,7 @@ func TestEmitValueArmIf(t *testing.T) {
 		a, _ := New()
 		prog, _, _, _ := a.CompileCheck(c.src)
 		if prog == nil {
-			t.Errorf("%q: must compile (value-arm if), but refused", c.src)
+			t.Errorf("%q: must compile (value-arm if), but declined", c.src)
 			continue
 		}
 		if strings.Contains(prog.Disassemble(), "FALLBACK") {

@@ -80,11 +80,11 @@ size r`,
 		t.Fatalf("list filter parity: got %v (%v), want 1", out[0], nErr)
 	}
 	// Stamp outcomes: every service handler — the capturing-filter list
-	// handler included — compiled to its unit; any refusal here is a
+	// handler included — compiled to its unit; any compile failure here is a
 	// regression of the probe-modality or poly-type-name fixes.
 	for _, ev := range reg.StampEvents() {
 		if !ev.Stamped {
-			t.Fatalf("service handler refused: %s (%s)", ev.Name, ev.Reason)
+			t.Fatalf("service handler declined: %s (%s)", ev.Name, ev.Reason)
 		}
 	}
 }

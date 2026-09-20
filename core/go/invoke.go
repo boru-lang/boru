@@ -97,7 +97,7 @@ func ClosureAsFnDef(r *Registry, v Value) (Value, bool) {
 // is one routing decision rather than an edit per word.
 //
 // Correctness is fail-safe: a nil CompiledRef, or an un-stamped ref (a body the
-// compiler refused, or a run that never reached Finalize), falls to CallBoru,
+// compiler declined, or a run that never reached Finalize), falls to CallBoru,
 // whose values and error taxonomy are unchanged. When the VM path IS taken it
 // executes the exact unit the differential gates prove equivalent to the
 // interpreter.
@@ -126,7 +126,7 @@ func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 	// depsFresh guards RUNTIME-stamped refs (StampDetachedFn): a module dep
 	// rebound or shadowed since the stamp means the frozen unit would diverge
 	// from live resolution. A stale DETACHED ref first tries the JIT re-stamp
-	// (REFUSAL-CLOSURE.0 §7c) — recompile against the live bindings, bounded
+	// (COMPILE FAILURE-CLOSURE.0 §7c) — recompile against the live bindings, bounded
 	// by the ref's try budget — and only a declined re-stamp takes the
 	// interpreter, where the seam previously degraded permanently.
 	// The compiled fast path lives behind the CompiledRuntime seam
@@ -295,7 +295,7 @@ func IsInternalError(err error) bool { return IsInternalErr(err) }
 // IsVMDefer reports whether err is a DESIGNED VM defer-to-interpreter (its
 // BoruError carries VMDefer), as opposed to a user `raise internal_error …`
 // carrying the same public code. The `do` escape hatch keys catch-or-re-raise
-// on this: a defer must propagate to complete the whole-program fallback, a
+// on this: a defer must propagate so the run reports it, a
 // user error stays trapped as an Error value.
 func IsVMDefer(err error) bool {
 	var ae *BoruError

@@ -128,7 +128,7 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 			t.Errorf("%q: compiled=%v/%v, want %s", c.src, gotC, errC, c.want)
 		}
 	}
-	// What refuses, through the undef site, and answers as the interpreter
+	// What declines, through the undef site, and answers as the interpreter
 	// does under the hatch: a def the recorder cannot place (a loop body —
 	// it re-rounds and carries its defs by slot; a fn body's REPLACE — the
 	// interpreter's drop-then-push leaves the frame's depth unchanged, so
@@ -137,9 +137,9 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 	// the closure compile's), a dispatch the op cannot drive (the user-poly
 	// and rematch seats), and a `/v` read of the value. A CAPTURING closure's conditional def is not a const the
 	// placement can bake: it keeps the closure machinery and family L's own
-	// refusal. A fresh def in BOTH arms keeps the join's older fn-carrier
-	// refusal.
-	refused := []struct{ src, reason string }{
+	// compile failure. A fresh def in BOTH arms keeps the join's older fn-carrier
+	// compile failure.
+	declined := []struct{ src, reason string }{
 		{outer + `for 2 ` + arm + ` f 1`, "fn 'f' redefined inside a conditional body"},
 		{outer + `def m {e: true} end while [m "e" get] [def f fn [[x:Integer][Integer][x add 100]] end def m {e: false} end] f 1`, "fn 'f' redefined inside a conditional body"},
 		{outer + `def m {e: true} end for 2 [if (m "e" get) ` + arm + ` []] f 1`, "fn 'f' redefined inside a conditional body"},
@@ -148,19 +148,19 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{`def kk k:Integer => [z:Integer => [add k z]] end def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "fn 'p' redefined inside a conditional body"},
 		// A LAMBDA declares no output signature, so it carries no
 		// declaration site for the routed op to locate its unit by: as the
-		// outer and as the placed value, the placement refuses.
+		// outer and as the placed value, the placement declines.
 		{`def f (x:Integer => [x add 1]) end def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, "fn 'f' redefined inside a conditional body"},
 		{`def m {e: true} end if (m "e" get) [def f (x:Integer => [x add 100]) end] [] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: false} end [1 2] each [if (m "e" get) ` + arm + ` []] f 1`, "fn `f` defined inside a conditional body where the compiled program cannot place"},
 		{`def m {e: false} end if (m "e" get) ` + arm + ` [] f/v`, "value read of the conditionally-defined fn `f`"},
-		// An undrivable window keeps one refusal: a slot naming a value a
+		// An undrivable window keeps one compile failure: a slot naming a value a
 		// placed speculative undef generalised owes a live lookup the
 		// compiled operand baked.
 		{`def k 5 end def m {e: false} end if (m "e" get) [undef k] [] if (m "e" get) [def f fn [[x:Integer y:Integer][Integer][x add y]] end] [] f (1 add 1) k`, "forward-slot read of `k` after a placed undef"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] 1 f/v apply`, "value read of the conditionally-defined fn `f`"},
 		{`def m {e: false} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "def-bound computed fn apply"},
 	}
-	for _, c := range refused {
+	for _, c := range declined {
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -170,7 +170,7 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 			t.Fatalf("%q: %v", c.src, cerr)
 		}
 		if prog != nil || !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: want the refusal %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
+			t.Errorf("%q: want the compile failure %q…, got compiled=%v reason=%q", c.src, c.reason, prog != nil, reason)
 		}
 		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)

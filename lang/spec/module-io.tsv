@@ -7,7 +7,7 @@
 # stays a core word so basic output needs no import.
 #
 # FILE I/O IS PATHON-ONLY. Every filesystem target is a `Scalar/Micron/
-# Pathon` built with `make Pathon "…"` — a bare string is refused, so a
+# Pathon` built with `make Pathon "…"` — a bare string is declined, so a
 # file target is type-distinct from an arbitrary string and from a stream
 # handle. A word that returns its target returns that Pathon (rendered
 # without quotes), so `IO.read (IO.write p x)` threads through.
@@ -41,9 +41,9 @@ read "x"	ERROR:undefined_word	`read` is no longer a core word
 folder "x"	ERROR:undefined_word	`folder` (filesystem op) also moved to boru:io
 IO.stdout	ERROR:undefined_word	`IO` is unbound without `import`
 #
-# §3a  Pathon-only — a STRING target is refused; the caller supplies a Pathon
+# §3a  Pathon-only — a STRING target is declined; the caller supplies a Pathon
 import "boru:io"  IO.read "data.csv"	ERROR:signature	a String read target no longer matches — file I/O is Pathon-only
-import "boru:io"  IO.write "out.txt" "hi"	ERROR:signature	a String write target is refused too
+import "boru:io"  IO.write "out.txt" "hi"	ERROR:signature	a String write target is declined too
 #
 # §4  printstr / stdin — output a value without a newline; the stdin handle
 import "boru:io"  IO.printstr "hi"		printstr writes formatted text to output, leaving no value
@@ -112,17 +112,17 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://G3/a.txt") "x" drop  list (make Pathon "mem://G3") {match:"[a].txt"}	[]	character classes are literal text, not glob syntax
 #
 # §11  move — rename/move a Pathon, returning the destination Pathon.
-#      {overwrite:false} refuses an existing destination.
+#      {overwrite:false} declines an existing destination.
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m.txt") "x" drop  IO.move (make Pathon "mem://m.txt") (make Pathon "mem://m2.txt")	mem:/m2.txt	move returns the destination
 import "boru:io"  context dot __sys dot fs set mem true  IO.move (make Pathon "mem://ghost.txt") (make Pathon "mem://z.txt")	ERROR:move	moving an absent path errors
-import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://mo.txt") "1" drop  IO.write (make Pathon "mem://mo2.txt") "2" drop  IO.move (make Pathon "mem://mo.txt") (make Pathon "mem://mo2.txt") {overwrite:false}	ERROR:move	{overwrite:false} refuses an existing move destination
+import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://mo.txt") "1" drop  IO.write (make Pathon "mem://mo2.txt") "2" drop  IO.move (make Pathon "mem://mo.txt") (make Pathon "mem://mo2.txt") {overwrite:false}	ERROR:move	{overwrite:false} declines an existing move destination
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://mv.txt") "1" drop  IO.move (make Pathon "mem://mv.txt") (make Pathon "mem://mv2.txt") {overwrite:false}	mem:/mv2.txt	{overwrite:false} allows an absent destination
 #
 # §12  copy — copy a Pathon to a destination. {recursive:true} copies a tree;
-#      {overwrite:false} refuses an existing destination.
+#      {overwrite:false} declines an existing destination.
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://c.txt") "hi" drop  IO.copy (make Pathon "mem://c.txt") (make Pathon "mem://c2.txt") drop  IO.read (make Pathon "mem://c2.txt")	'hi'	copy duplicates a file's contents
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://cd/a.txt") "x" drop  IO.copy (make Pathon "mem://cd") (make Pathon "mem://cd2")	ERROR:copy	copying a directory without {recursive} errors
-import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://co.txt") "1" drop  IO.write (make Pathon "mem://co2.txt") "2" drop  IO.copy (make Pathon "mem://co.txt") (make Pathon "mem://co2.txt") {overwrite:false}	ERROR:copy	{overwrite:false} refuses an existing copy destination
+import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://co.txt") "1" drop  IO.write (make Pathon "mem://co2.txt") "2" drop  IO.copy (make Pathon "mem://co.txt") (make Pathon "mem://co2.txt") {overwrite:false}	ERROR:copy	{overwrite:false} declines an existing copy destination
 #
 # §13  link — create a link at dst referring to src: a symlink by default,
 #      a hard link with {hard:true}. Returns the link Pathon.
@@ -147,14 +147,14 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 #
 # §16  text encodings — {enc} is EXPLICIT ONLY (default utf8, no BOM
 #      sniffing): utf16le / utf16be write a BOM and strip a matching one on
-#      read; latin1 is strict (a rune outside ISO 8859-1 refuses to encode);
+#      read; latin1 is strict (a rune outside ISO 8859-1 declines to encode);
 #      an unknown enc is a hard error on both read and write.
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://u.txt") "hi" {enc:'utf16le'} drop  IO.read (make Pathon "mem://u.txt") {enc:'utf16le'}	'hi'	utf16le round-trips through write and read
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://u.txt") "hi" {enc:'utf16le'} drop  IO.read (make Pathon "mem://u.txt") {enc:'bytes'}	Bytes<ff fe 68 00 69 00>	utf16le writes a little-endian BOM then LE code units
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://u.txt") "hi" {enc:'utf16be'} drop  IO.read (make Pathon "mem://u.txt") {enc:'bytes'}	Bytes<fe ff 00 68 00 69>	utf16be writes a big-endian BOM then BE code units
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://l.txt") "hé" {enc:'latin1'} drop  IO.read (make Pathon "mem://l.txt") {enc:'bytes'}	Bytes<68 e9>	latin1 maps into single bytes
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://l.txt") "hé" {enc:'latin1'} drop  IO.read (make Pathon "mem://l.txt") {enc:'latin1'}	'hé'	latin1 round-trips
-import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://l.txt") "€" {enc:'latin1'}	ERROR:write	a rune outside ISO 8859-1 refuses to encode (strict, no substitution)
+import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://l.txt") "€" {enc:'latin1'}	ERROR:write	a rune outside ISO 8859-1 declines to encode (strict, no substitution)
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://e.txt") "x" {enc:'bogus'}	ERROR:write	an unknown write encoding is a hard error
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://e.txt") "x" drop  IO.read (make Pathon "mem://e.txt") {enc:'bogus'}	ERROR:read	an unknown read encoding is a hard error
 #
@@ -200,19 +200,19 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://k") "x" drop  IO.close (IO.open (make Pathon "mem://k"))		close releases a File handle, leaving no value
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://k") "x" drop  IO.open (make Pathon "mem://ghost")	ERROR:open	opening an absent file read-only errors
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://k") "x" drop  IO.open (make Pathon "mem://k") {mode:'bogus'}	ERROR:open	an unknown open mode errors
-import "boru:io"  context dot __sys dot fs set mem true  IO.seek 42 0	ERROR:signature	seek of a non-File is refused — its sigs take a File handle
+import "boru:io"  context dot __sys dot fs set mem true  IO.seek 42 0	ERROR:signature	seek of a non-File is declined — its sigs take a File handle
 #
 # §23  exclusive write — write {exclusive:true} creates the path with
 #      O_EXCL (a true atomic create, no TOCTOU): it fails if the path
 #      already exists and cannot combine with append or a positioned
 #      {offset}.
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://k") "x" drop  IO.write (make Pathon "mem://new.txt") "fresh" {exclusive:true} drop  IO.read (make Pathon "mem://new.txt")	'fresh'	{exclusive:true} creates a new file
-import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://e.txt") "pre" drop  IO.write (make Pathon "mem://e.txt") "x" {exclusive:true}	ERROR:write	{exclusive:true} refuses an existing file
+import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://e.txt") "pre" drop  IO.write (make Pathon "mem://e.txt") "x" {exclusive:true}	ERROR:write	{exclusive:true} declines an existing file
 import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {exclusive:true atomic:true}	ERROR:{exclusive} cannot combine	{exclusive} and {atomic} are contradictory create strategies
 import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {exclusive:true mode:"append"}	ERROR:{exclusive} cannot combine	{exclusive} cannot append to a file it insists must not exist
-import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {exclusive:true atomic:true enc:"bogus"}	ERROR:{exclusive} cannot combine	the option-combo refusal precedes the encoding one — doWrite's order
+import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {exclusive:true atomic:true enc:"bogus"}	ERROR:{exclusive} cannot combine	the option-combo compile failure precedes the encoding one — doWrite's order
 import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {fmt:"xml"}	ERROR:is read-only	an explicit parser-backed fmt cannot be written
-import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {fmt:"xml" exclusive:true atomic:true}	ERROR:is read-only	the read-only fmt refusal precedes the option combo — writeOptsHandler's order, one frame above doWrite
+import "boru:io"  IO.write (make Pathon "mem://x.txt") "x" {fmt:"xml" exclusive:true atomic:true}	ERROR:is read-only	the read-only fmt compile failure precedes the option combo — writeOptsHandler's order, one frame above doWrite
 #
 # §24  advisory locks — IO.lock takes an advisory lock on a Pathon
 #      ({shared:true} for a read lock); {block:false} returns `none` on
@@ -232,35 +232,35 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m") "hello" drop  IO.read (IO.mmap (make Pathon "mem://m"))	'hello'	a Mmap region reads the file's bytes
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m") "hello" drop  IO.read (IO.mmap (make Pathon "mem://m") {offset:1 length:3})	'ell'	{offset length} window the mapping
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m") "AAAAA" drop  def m (IO.mmap (make Pathon "mem://m") {writable:true})  IO.write m (convert Bytes "BB") drop  IO.flush m drop  IO.close m  IO.read (make Pathon "mem://m")	'BBAAA'	a writable region splices in place and flushes back
-import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m") "x" drop  IO.write (IO.mmap (make Pathon "mem://m")) (convert Bytes "z")	ERROR:write	a read-only region refuses a write
+import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://m") "x" drop  IO.write (IO.mmap (make Pathon "mem://m")) (convert Bytes "z")	ERROR:write	a read-only region declines a write
 import "boru:io"  context dot __sys dot fs set mem true  IO.mmap (make Pathon "mem://ghost")	ERROR:mmap	mapping an absent path errors
 #
 # §18  mount — the boru→FileOps bridge: `IO.mount {read: fn …}` installs a
 #      filesystem IMPLEMENTED IN boru as the host FileOps, so every io word
 #      routes through the supplied handler fns (read/write/stat/list/remove,
-#      plus optional mkdir/rename/…; an op with no handler refuses cleanly).
+#      plus optional mkdir/rename/…; an op with no handler declines cleanly).
 #      `IO.unmount` restores the previous filesystem. A mounted row is
 #      hermetic by construction — every operation lands in boru state. The
 #      full handler contract and a database-backed example live in
 #      lang/go/native/io_mount.go and io_mount_test.go.
 import "boru:io"  IO.mount {read: (p:Pathon => ["from-boru"])}  IO.read (make Pathon "anything.txt")	'from-boru'	a mounted read handler serves IO.read
 import "boru:io"  def files (flex {})  IO.mount {read: (p:Pathon => [files get `${p}`]) write: ([p:Pathon data:Any] => [files set `${p}` data drop])}  IO.write (make Pathon "n/a.txt") "hello mounted" drop  IO.read (make Pathon "n/a.txt")	'hello mounted'	a flex-map-backed boru filesystem round-trips through the io words
-import "boru:io"  IO.mount {read: (p:Pathon => [none])}  IO.stat (make Pathon "x")	ERROR:stat	an operation with no mounted handler refuses cleanly
+import "boru:io"  IO.mount {read: (p:Pathon => [none])}  IO.stat (make Pathon "x")	ERROR:stat	an operation with no mounted handler declines cleanly
 import "boru:io"  IO.mount {write: ([p:Pathon d:Any] => [none])}	ERROR:mount	a mount needs at least a `read` handler
 import "boru:io"  IO.mount {read: 42}	ERROR:mount	every mounted handler must be a Function
-import "boru:io"  IO.unmount	ERROR:unmount	unmount with nothing mounted is refused
+import "boru:io"  IO.unmount	ERROR:unmount	unmount with nothing mounted is declined
 #
 # §18z  zip-as-filesystem — the Pathon form of `IO.mount`: a ".zip" path (or
 #       any path with {zip:true}) mounts a read-only ZIP archive, read through
 #       the effective FileOps; {writable:true} wraps it as the read-only lower
 #       of a fresh in-memory overlay (copy-on-write edits, memory-only). Every
-#       mutation on a bare archive refuses read-only. A ZIP archive is binary
+#       mutation on a bare archive declines read-only. A ZIP archive is binary
 #       (with per-entry CRCs) and cannot be spelled as a TSV literal, so the
-#       positive read/list/stat/open path and the read-only refusal are pinned
+#       positive read/list/stat/open path and the read-only compile failure are pinned
 #       with real archives in lang/go/capabilities/zipfs_test.go and
 #       lang/go/native/io_mount_zip_test.go; the deterministic spec surface is
-#       the intent-required refusal below.
-import "boru:io"  IO.mount (make Pathon "plain.txt")	ERROR:mount	a Pathon mount needs a .zip path or {zip:true} — a bare non-archive path is refused
+#       the intent-required compile failure below.
+import "boru:io"  IO.mount (make Pathon "plain.txt")	ERROR:mount	a Pathon mount needs a .zip path or {zip:true} — a bare non-archive path is declined
 #
 # §17  watch — subscribe to change events on a Pathon: `IO.watch p [body]`
 #      runs the body once per event (PUSH style, like TimeUtil.interval)
@@ -279,7 +279,7 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://d/w.txt") "x" drop  typeof (IO.watch (make Pathon "mem://d") [drop] {recursive:true match:"*.txt"})	Watcher	watch accepts a {recursive match} options map and still returns a Watcher
 import "boru:io"  context dot __sys dot fs set mem true  IO.watch (make Pathon "mem://ghost") [drop]	ERROR:watch	watching an absent path errors (fsnotify parity)
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://w.txt") "x" drop  IO.unwatch (IO.watch (make Pathon "mem://w.txt") [drop])		unwatch stops the watcher, leaving no value
-import "boru:io"  context dot __sys dot fs set mem true  IO.unwatch 42	ERROR:signature	unwatch of a non-Watcher is refused statically — its sole signature takes a Watcher
+import "boru:io"  context dot __sys dot fs set mem true  IO.unwatch 42	ERROR:signature	unwatch of a non-Watcher is declined statically — its sole signature takes a Watcher
 #
 # §18  args — the script's command-line arguments (everything after the
 #      script path), surfaced by the host through SetHostScriptArgs /
@@ -310,7 +310,7 @@ import "boru:io"  IO.env "PATH"	None	including names the surrounding process cer
 import "boru:io"  typeof (IO.env "HOME")	None	an unset name is none, never "" — "" is a real value a caller must distinguish
 import "boru:io"  size (IO.env-all)	0	and the whole-environment snapshot is empty
 import "boru:io"  typeof (IO.env-all)	Map	the snapshot is a Map, so a caller can iterate unconditionally
-import "boru:io"  IO.env 42	ERROR:signature	a non-String name is refused — the sole signature takes a String
+import "boru:io"  IO.env 42	ERROR:signature	a non-String name is declined — the sole signature takes a String
 import "boru:io"  IO.env true	ERROR:signature	likewise a Boolean: there is no coercion into the name slot
 import "boru:io"  IO.env-all "HOME"	{} 'HOME'	env-all takes no argument, so a stray one is left on the stack rather than treated as a name
 IO.env "HOME"	ERROR:undefined_word	`IO` is unbound without `import`
@@ -340,14 +340,14 @@ import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://rl4.txt") "a\r\nb\r\n" drop  IO.read-line (IO.open (make Pathon "mem://rl4.txt"))	'a'	CRLF is stripped as well as LF, so a Windows-written file reads as lines rather than lines ending in a stray carriage return
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://rl5.txt") "" drop  typeof (IO.read-line (IO.open (make Pathon "mem://rl5.txt")))	None	EOF at a line boundary is none, never "" — "" is a legitimate BLANK line, so a filter loop must be able to tell them apart
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://rl6.txt") "\n\n" drop  IO.read-line (IO.open (make Pathon "mem://rl6.txt"))	''	and a blank line reads as the empty string, which is why none had to mean EOF
-import "boru:io"  IO.read-line (IO.stdout)	ERROR:read_error	reading a line from an OUTPUT stream is refused, not reported as EOF: it is a bug in the program, and EOF would hide it behind a loop that exits immediately
+import "boru:io"  IO.read-line (IO.stdout)	ERROR:read_error	reading a line from an OUTPUT stream is declined, not reported as EOF: it is a bug in the program, and EOF would hide it behind a loop that exits immediately
 import "boru:io"  IO.read-line "notastream"	ERROR:signature	a String is not a stream or File handle
 import "boru:io"  context dot __sys dot fs set mem true  IO.write (make Pathon "mem://rl7.txt") "alpha\nbeta\n" drop  def f (IO.open (make Pathon "mem://rl7.txt"))  IO.read-line f drop  IO.seek f 0 drop  IO.read-line f	'alpha'	IO.seek drops the line buffer: after repositioning, a line read starts from the new position rather than serving lines buffered before the seek
 import "boru:io"  IO.read-line stdin/q	None	a BARE `stdin` atom reads the same stream as IO.stdin — StreamKind membership is by NAME, not by which import minted the handle
 import "boru:io"  IO.is-tty (IO.stdout)	false	with no host-installed probe every stream answers false — the runtime never asks the OS what it is attached to unless a host hands over a probe
 import "boru:io"  IO.is-tty (IO.stdin)	false	including stdin, and including when the surrounding process really does have a terminal
 import "boru:io"  IO.is-tty (IO.stderr)	false	and stderr — the answer is per-stream, so all three are pinned
-import "boru:io"  IO.is-tty 42	ERROR:signature	the argument is a stream handle; an Integer is refused
+import "boru:io"  IO.is-tty 42	ERROR:signature	the argument is a stream handle; an Integer is declined
 #
 # §27  exit — ask the DRIVER to stop with a status. IO.exit does not call
 #      os.Exit: it raises the reserved `boru/exit` control error carrying

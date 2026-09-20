@@ -61,7 +61,7 @@ type BoruImpl struct {
 	// representations, so a callback runs the compiled unit when the registry
 	// can host a VM run and falls back to splicing Body on the interpreter
 	// otherwise. Nil for a body the compiler never armed (a plain interpreter
-	// run, or a refused body). The slot is ATOMIC because a fn value is shared
+	// run, or a declined body). The slot is ATOMIC because a fn value is shared
 	// by every copy of the Value that carries it — a container field, a
 	// module export, a value handed to a forked process — and the lazy stamp
 	// writes it from whichever seam applies the value first while another
@@ -72,7 +72,7 @@ type BoruImpl struct {
 }
 
 // compiledSlot boxes the compiled ref so a nil ref is storable (atomic.Value
-// refuses a bare nil) and so a later Store never changes the stored type.
+// declines a bare nil) and so a later Store never changes the stored type.
 type compiledSlot struct{ ref any }
 
 func (a *BoruImpl) DispatchHandler() Handler { return a.dispatch }

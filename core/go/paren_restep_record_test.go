@@ -14,7 +14,7 @@ import "testing"
 // header): core/go is gated by its OWN suite at a 100% floor, so a decision
 // function reached only from above reads as uncovered there. Every negative
 // carries its reason — a record one case too wide makes the compiler APPLY a
-// value the interpreter places, which is a wrong answer rather than a refusal.
+// value the interpreter places, which is a wrong answer rather than a compile failure.
 func TestRecordParenReStep(t *testing.T) {
 	carrier := func() Value {
 		v := NewCarrier(TFunction)

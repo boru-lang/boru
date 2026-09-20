@@ -3,7 +3,7 @@
 # (shards_test.go) keeps it complete and disjoint; `make test-langspec
 # SHARD=n` runs one shard and the ci.yml matrix runs them in parallel.
 # Tests that share a memoised walk (gatherCensus: TestCompiledCoverage,
-# TestOnlyMetaFallsBack, TestRefusalsAreFailures, TestCompiledStatus; the
+# TestOnlyMetaFallsBack, TestCompileFailuresAreBugs, TestCompiledStatus; the
 # two TestSpecProd*) stay together so the walk runs once. Balanced greedily
 # on each test's wall clock with the parallel corpus walk on four idle
 # cores, one test at a time (`go test ./langspec -v -parallel 1`,
@@ -34,12 +34,12 @@
 6	TestInterpEntryCensus
 6	TestCompiledCoverage
 6	TestVariationDifferential
-6	TestIOSurfaceCompilesNoRefusal
-6	TestRefusalDispositionCensus
+6	TestIOSurfaceCompilesNoCompileFailure
+6	TestCompileFailureDispositionCensus
 6	TestFnValueApplicationCompiles
 6	TestDotAccessKeepsSourcePosition
 6	TestOnlyMetaFallsBack
-6	TestRefusalsAreFailures
+6	TestCompileFailuresAreBugs
 6	TestCompiledStatus
 6	TestCompileFailureLedgerIsWellFormed
 6	TestCompileFailureLedgerParses
@@ -50,10 +50,10 @@
 6	TestVariadicSpreadOracle
 6	TestRegionDescriptorValidateRejects
 6	TestRegionDescriptorOracle
-6	TestRefusalSiteKeysAreSyntactic
-6	TestRefusalDispositionGateRefuses
+6	TestCompileFailureSiteKeysAreSyntactic
+6	TestCompileFailureDispositionGateFailsToCompile
 6	TestDeclaresCheckReturnsPredicate
-6	TestFrontierRefusalRowsCompile
+6	TestFrontierCompileFailureRowsCompile
 6	TestTwinRegimeSmoke
 6	TestDeclarationCensus
 7	TestBindLedgerLiveDepths
@@ -62,7 +62,7 @@
 7	TestCorpusThreeModes
 7	TestSpecCompiledConcurrentRowsRaceFree
 7	TestCompiledCombinationPath
-7	TestRefusalSiteCensus
+7	TestCompileFailureSiteCensus
 7	TestWhileSpreadElementCoversEveryResidualValue
 7	TestBindLedgerEntriesArePositioned
 8	TestBindingSandboxRollbackAndReplay

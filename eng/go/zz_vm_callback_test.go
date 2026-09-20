@@ -56,7 +56,7 @@ func TestInvokeCallbackStaleDepFallsBack(t *testing.T) {
 	}
 }
 
-// The §7c JIT re-stamp (REFUSAL-CLOSURE.0): a detached ref whose dep was
+// The §7c JIT re-stamp (COMPILE FAILURE-CLOSURE.0): a detached ref whose dep was
 // REBOUND after the stamp re-compiles against the live binding at invoke
 // time — the fresh twin runs on the VM with the NEW value (parity with the
 // interpreter's live resolution) — instead of degrading permanently to

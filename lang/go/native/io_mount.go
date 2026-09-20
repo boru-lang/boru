@@ -36,7 +36,7 @@ import (
 // atime:Integer mtime:Integer]), truncate ([p size:Integer]), resolve
 // ([p] → String). An operation with no handler returns a clean
 // mount-unsupported error — the documented-no-op posture for exotic ops.
-// Watch is not bridgeable (no event source in Boru) and always refuses.
+// Watch is not bridgeable (no event source in Boru) and always declines.
 //
 // Precedence: the __sys.fs {mem}/{overlay} context toggles still win —
 // EffectiveFileOps consults them before the host slot — so tests can
@@ -269,7 +269,7 @@ func (a *boruFileOps) Truncate(path string, size int64) error {
 
 // Chown bridges to an optional `chown ([p uid gid])` handler (the follow
 // flag is not forwarded — a mounted filesystem models no symlink-deref
-// distinction unless its own handlers do). Absent handler: clean refusal.
+// distinction unless its own handlers do). Absent handler: clean compile failure.
 func (a *boruFileOps) Chown(path string, uid, gid int, _ bool) error {
 	_, err := a.call("chown", []Value{NewPathonFromString(path), NewInteger(int64(uid)), NewInteger(int64(gid))})
 	return err
@@ -390,7 +390,7 @@ func (a *boruFileOps) tempEmulatedName(dir, pattern string) string {
 }
 
 // Statfs bridges to an optional `statfs ([p] → {total free available
-// bsize type}|none)` handler. none (or an absent handler) refuses.
+// bsize type}|none)` handler. none (or an absent handler) declines.
 func (a *boruFileOps) Statfs(path string) (capabilities.FsInfo, error) {
 	res, err := a.call("statfs", []Value{NewPathonFromString(path)})
 	if err != nil {
@@ -442,9 +442,9 @@ func (a *boruFileOps) ResolvePath(path string) (string, error) {
 	return filepath.Clean(path), nil
 }
 
-// Lock and Mmap REFUSE cleanly on a mount: an advisory lock that locks
+// Lock and Mmap DECLINE cleanly on a mount: an advisory lock that locks
 // nothing (or a mapping over a value-based backend with no fd) is worse
-// than an honest refusal.
+// than an honest compile failure.
 func (a *boruFileOps) Lock(path string, _, _ bool) (io.Closer, error) {
 	return nil, &os.PathError{Op: "lock", Path: path, Err: errMountUnsupported}
 }
@@ -504,7 +504,7 @@ func doMountWord(args []Value, r *Registry) ([]Value, error) {
 	}
 	if _, ok := handlers.Get("read"); !ok {
 		return nil, r.BoruErrorHint("mount_error", "mount: a mounted filesystem needs at least a `read` handler", "mount",
-			"supply {read: ([p] => [...]), ...}; unhandled operations refuse cleanly")
+			"supply {read: ([p] => [...]), ...}; unhandled operations decline cleanly")
 	}
 	pushMountPrev(r)
 	SetHostFileOps(r, &boruFileOps{r: r, handlers: handlers})

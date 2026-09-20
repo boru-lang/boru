@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// REFUSAL-CLOSURE §9.2d (landed 2026-07-17) — a factory body RETURNING a
+// COMPILE FAILURE-CLOSURE §9.2d (landed 2026-07-17) — a factory body RETURNING a
 // nameless verbose-`fn` construction compiles exactly like the lambda form:
 // tryReturnedClosure's model now admits any NAMELESS fn value (`fn [...]`
 // in a body position constructs Anonymous=false but carries no name; a
@@ -34,16 +34,16 @@ func TestCurriedFactoryCompiles(t *testing.T) {
 	// as one rule rather than two behaviours: no enclosing rewind, so the
 	// carrier is PLACED and the 2 lands beside it.
 	//
-	// GRADUATED 2026-08-27 from a refusal to a parity row (Stage 3): the
+	// GRADUATED 2026-08-27 from a compile failure to a parity row (Stage 3): the
 	// residual-layout loops now skip a placed, unread carrier instead of
-	// refusing it on a closure-render fear that measurement did not support.
+	// declining it on a closure-render fear that measurement did not support.
 	mustCompileWithParity(t,
 		`def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] (mk 1) 2`,
 		"[fn (Integer) 2]")
 
 	// Decline fences, each parity-faithful:
 	// THREE-level currying (a capture threading through two constructions)
-	// keeps the refusal.
+	// keeps the compile failure.
 	{
 		src := `def mk3 fn [[a:Integer] [Function] [(fn [[b:Integer] [Function] [(fn [[c:Integer] [Integer] [a add b add c]])]])]] (((mk3 1) 2) 3)`
 		a, _ := New()

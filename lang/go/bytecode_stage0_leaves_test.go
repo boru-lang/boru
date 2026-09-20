@@ -6,18 +6,18 @@ import (
 	"testing"
 )
 
-// Stage-0 leaf pins (voxgig zero-refusals plan): two emitter/dispatch fixes
+// Stage-0 leaf pins (voxgig zero-compile failures plan): two emitter/dispatch fixes
 // whose exact shapes the langspec differential does not cover.
 //
 //  1. Options-carrier param match (signature.go): a Map-typed CARRIER matches
 //     an `opts:Options` slot — it is check mode's stand-in for a value that IS
 //     a concrete map at run time, and the runtime rule accepts that value.
-//     Without it the check-mode dispatch refused what the interpreter runs
-//     (template `{…} render` → Options-arm → tpl-render-opts refusal).
+//     Without it the check-mode dispatch declined what the interpreter runs
+//     (template `{…} render` → Options-arm → tpl-render-opts compile failure).
 //  2. Nested zeroOut branch (emit.go RecordBranch): a both-arms-void `if`
 //     nested in another arm registers a phantom (None) result; the arm
 //     residual must strip it (as the program/fn-body residuals do) or the
-//     lowerer refuses "branch leaves extra values" (the stats welford-push
+//     lowerer declines "branch leaves extra values" (the stats welford-push
 //     min/max guard shape).
 
 func stage0Sound(t *testing.T, src string) {
@@ -37,14 +37,14 @@ func stage0Sound(t *testing.T, src string) {
 	}
 }
 
-// stage0Compiles asserts the source force-compiles (no interpreter fallback)
+// stage0Compiles asserts the source force-compiles (no compile failure)
 // AND matches the interpreter — the flip claims of the two fixes.
 func stage0Compiles(t *testing.T, src string) {
 	t.Helper()
 	stage0Sound(t, src)
 	a, _ := New()
 	if _, reason, _, err := a.CompileCheck(src); err != nil || reason != "" {
-		t.Fatalf("expected the shape to force-compile, got refusal: %v / %q\n  src: %s", err, reason, src)
+		t.Fatalf("expected the shape to force-compile, got compile failure: %v / %q\n  src: %s", err, reason, src)
 	}
 }
 
@@ -60,9 +60,9 @@ def disp fn [
 ({a:'hi'} disp)`)
 }
 
-// NEGATIVE: a NON-map carrier must still refuse the Options slot — the match
+// NEGATIVE: a NON-map carrier must still decline the Options slot — the match
 // is scoped to carriers whose static type conforms to Map, not all carriers.
-func TestOptionsCarrierNonMapStillRefuses(t *testing.T) {
+func TestOptionsCarrierNonMapStillFailsToCompile(t *testing.T) {
 	src := `def helper fn [ [opts:Options] [String] [ "x" ] ]
 def f fn [[n:Integer] [String] [ helper n ]]
 (f 3)`

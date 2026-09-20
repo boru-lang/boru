@@ -11,7 +11,7 @@ import (
 // policies, the name registry, and shutdown wake-ups. The language-level
 // words are covered in lang/go/test/process_service_test.go; these tests
 // pin the kernel mailbox discipline directly, including the negative
-// paths (overflow refusal, shutdown errors) per the repo's
+// paths (overflow compile failure, shutdown errors) per the repo's
 // positive/negative pairing rule.
 
 func TestProcessMailboxFIFO(t *testing.T) {
@@ -149,7 +149,7 @@ func TestProcessRuntimeShutdownWakesReceiver(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("blocked receive never woke on shutdown")
 	}
-	// Inserting into a down runtime is refused.
+	// Inserting into a down runtime is declined.
 	if err := rt.Insert(core.NewProcess(rt, 1, core.OverflowBlock)); err != core.ErrRuntimeDown {
 		t.Errorf("insert after shutdown: got %v, want ErrRuntimeDown", err)
 	}

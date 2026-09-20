@@ -13,7 +13,7 @@ import (
 // arm nets only its single trailing result. The compiler, however, left the
 // user-call result loose on the simulated stack BELOW the arm result (the
 // "leave single-use user call on the stack" Stage-3 case shadowed the value-def
-// promotion that already fires for a NATIVE captured value-def), so the arm refused
+// promotion that already fires for a NATIVE captured value-def), so the arm declined
 // "branch leaves extra values". planValueDefLocals now PROMOTES a closure-captured
 // user-call value-def to a frame local (the capture re-pushes from the slot at
 // OpPushClosure). This is the radix-lsd-sort `def mx (lst list-max)` leaf —
@@ -56,7 +56,7 @@ func TestCapturedUserCallValueDefPromote(t *testing.T) {
 			a, _ := New()
 			prog, reason, _, _ := a.CompileCheck(c.src)
 			if prog == nil {
-				t.Fatalf("must compile natively, refused: %q", reason)
+				t.Fatalf("must compile natively, declined: %q", reason)
 			}
 			if strings.Contains(prog.Disassemble(), "FALLBACK") {
 				t.Errorf("%s must compile native (no island)", c.name)

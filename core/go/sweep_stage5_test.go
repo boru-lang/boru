@@ -234,7 +234,7 @@ func TestSweepMakeNodeHandlerRegisteredKindPrecedence(t *testing.T) {
 	if got, _ := AsString(out[0]); got != "sweep-made" {
 		t.Errorf("Instantiate result = %v", out)
 	}
-	// The same kind disabled is a loud refusal, not a silent fall-through.
+	// The same kind disabled is a loud compile failure, not a silent fall-through.
 	kind.Enabled = false
 	if _, err := MakeNodeHandler([]Value{NewTypeLiteral(TFlexMap), mapOf("a", NewInteger(1))}, nil, nil, r); err == nil || !strings.Contains(err.Error(), "not available") {
 		t.Errorf("disabled kind: err = %v", err)

@@ -4,7 +4,7 @@ import "testing"
 
 // Pins for the three checker design refits (design/legacy/CHECKER-COMPLETION.0.ignore
 // §7): the RuntimeMirror diagnostic classification and the narrowed
-// compile refusal, and the central caught-region re-attribution. The
+// compile failure, and the central caught-region re-attribution. The
 // BeginCompilePass helper is pinned kernel-side
 // (eng/go/drypass_test.go::TestBeginCompilePassArmsTheRitual).
 
@@ -19,10 +19,10 @@ func findDiag(diags []CheckDiagnostic, code string) (CheckDiagnostic, bool) {
 	return CheckDiagnostic{}, false
 }
 
-func TestCompileRefusalSkipsRuntimeMirrors(t *testing.T) {
+func TestCompileCompileFailureSkipsRuntimeMirrors(t *testing.T) {
 	// A guaranteed-runtime-error MIRROR (exact model — the program
 	// compiles and raises identically) must not flip the row to a "check
-	// diagnostics" refusal; a MODEL-UNDERMINING error (undefined word —
+	// diagnostics" compile failure; a MODEL-UNDERMINING error (undefined word —
 	// dispatch didn't resolve) must.
 	a, err := New()
 	if err != nil {
@@ -33,7 +33,7 @@ func TestCompileRefusalSkipsRuntimeMirrors(t *testing.T) {
 		t.Fatalf("CompileCheck(div 0): %v", cerr)
 	}
 	if reason == "check diagnostics" {
-		t.Fatalf("mirror diagnostic wrongly tripped the compile refusal (reason %q)", reason)
+		t.Fatalf("mirror diagnostic wrongly tripped the compile failure (reason %q)", reason)
 	}
 	d, ok := findDiag(res.Diagnostics, "arith_error")
 	if !ok || !d.RuntimeMirror || d.Severity != SeverityError {
@@ -49,7 +49,7 @@ func TestCompileRefusalSkipsRuntimeMirrors(t *testing.T) {
 		t.Fatalf("CompileCheck(undefined): %v", cerr)
 	}
 	if reason != "check diagnostics" {
-		t.Fatalf("model-undermining error must keep refusing, got reason %q", reason)
+		t.Fatalf("model-undermining error must keep declining, got reason %q", reason)
 	}
 }
 

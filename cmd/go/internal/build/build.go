@@ -113,10 +113,10 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	// CHECK-BY-DEFAULT (NUR044): the same static pre-flight `boru run`
-	// enforces, so `build` refuses to ship a binary whose first execution
+	// enforces, so `build` declines to ship a binary whose first execution
 	// would abort on a check error. -no-check / BORU_NO_CHECK=1 opt out,
 	// mirroring run's escape hatch. The gate is quiet: diagnostics print
-	// only when the build is about to be refused. Relative file imports
+	// only when the build is about to be declined. Relative file imports
 	// are anchored to cfg.EntryDir — the directory the BUILT binary will
 	// resolve them against (buildrt.Main sets BaseDir to EntryDir) — not
 	// the build-time cwd, so a multi-file program builds from anywhere.
@@ -132,7 +132,7 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	// COMPILE-BY-DEFAULT, ENFORCED AT BUILD TIME. The check gate above
-	// refuses to ship a binary whose first execution would abort on a check
+	// declines to ship a binary whose first execution would abort on a check
 	// error; this is its compile-side twin, and it exists because the
 	// asymmetry was a hole. A program the emitter could not lower used to
 	// build silently: the baked try mode meant the shipped binary dropped to
@@ -148,10 +148,10 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 		reason, cerr := compilePreflight(cfg.Source, preflightOpts, cfg.EntryDir)
 		// -no-check / BORU_NO_CHECK opts out of being gated on the CHECKER, and
 		// "check diagnostics" is the checker's verdict reaching the emitter as a
-		// sentinel rather than a named construct. Refusing on it here would make
+		// sentinel rather than a named construct. Declining on it here would make
 		// the compile gate a second check gate and defeat the opt-out, which
 		// `build` documents as "must still produce the artefact". A genuine
-		// construct refusal still stops the build either way.
+		// construct compile failure still stops the build either way.
 		//
 		// In the DEFAULT flow this carve-out is not a loophole: a program whose
 		// checker findings are errors never reaches here, because the gate above
@@ -195,11 +195,11 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// compilePreflight reports the emitter's refusal reason for src, or "" when the
+// compilePreflight reports the emitter's compile failure reason for src, or "" when the
 // whole program compiles. It COMPILES ONLY — CompileCheck runs the checker with
 // the recording pass and linearises the trace; it never executes the program, so
 // a build cannot trigger the program's side effects. A non-nil error is an
-// init/parse failure, which is distinct from a refusal: the first means we could
+// init/parse failure, which is distinct from a compile failure: the first means we could
 // not answer the question, the second is the answer.
 func compilePreflight(source string, o lang.Options, baseDir string) (string, error) {
 	a, err := lang.New(o)
@@ -213,7 +213,7 @@ func compilePreflight(source string, o lang.Options, baseDir string) (string, er
 	if cerr != nil {
 		// CompileCheck reserves this for a source it could not PARSE, so we
 		// could not answer the compile question at all. Report it rather than
-		// swallow it: returning "no refusal" here would let an unparseable
+		// swallow it: returning "no compile failure" here would let an unparseable
 		// program through the gate under -no-check and ship a binary that
 		// cannot run. In the default flow the check pre-flight has already
 		// returned 1 on such a source, so this arm is the -no-check path.
@@ -222,7 +222,7 @@ func compilePreflight(source string, o lang.Options, baseDir string) (string, er
 	if prog != nil {
 		return "", nil
 	}
-	if reason == "" { //covergate:allow unreachable trio: CompileCheck returns (nil program, non-empty reason) on every refusal and (nil, "parse error", err) on a parse failure, which the cerr arm above already took, so a nil program with an empty reason and no error cannot occur; kept as a belt so a future emitter path that forgets to set reason reports something actionable instead of an empty refusal (§misc)
+	if reason == "" { //covergate:allow unreachable trio: CompileCheck returns (nil program, non-empty reason) on every compile failure and (nil, "parse error", err) on a parse failure, which the cerr arm above already took, so a nil program with an empty reason and no error cannot occur; kept as a belt so a future emitter path that forgets to set reason reports something actionable instead of an empty compile failure (§misc)
 		reason = "no program produced (reason not reported)"
 	}
 	return reason, nil

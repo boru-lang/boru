@@ -48,7 +48,7 @@ func TestCapturingHandlerStampsAndRunsWithCaptures(t *testing.T) {
 	}
 }
 
-// The §7a landing (REFUSAL-CLOSURE.0, 2026-07-16): a handler capturing a
+// The §7a landing (COMPILE FAILURE-CLOSURE.0, 2026-07-16): a handler capturing a
 // runtime-COMPUTED value — `(n add 1)` evaluated during a plain interpreter
 // run, so the value carries NO compile identity under the mode-gated ID
 // elision — STAMPS too: the detached compile mints a fresh identity on a
@@ -99,7 +99,7 @@ func TestComputedCaptureStampsAndRunsWithCaptures(t *testing.T) {
 	}
 }
 
-// The §7b landing (REFUSAL-CLOSURE.0, 2026-07-16): a MULTI-OVERLOAD handler
+// The §7b landing (COMPILE FAILURE-CLOSURE.0, 2026-07-16): a MULTI-OVERLOAD handler
 // stamps EVERY own sig to its own unit — the invoke seam dispatches through
 // MatchFnSig, so the matched sig's own Impl ref is the "sig table". The
 // two-arity service-handler shape (a `[req st prior]` overload beside a
@@ -149,17 +149,17 @@ func TestMultiOverloadHandlerPartialStamp(t *testing.T) {
 	if err != nil || fmt.Sprint(out) != "[[7]]" {
 		t.Fatalf("armed run: out=%v err=%v, want [[7]]", out, err)
 	}
-	stamped, refused := 0, 0
+	stamped, declined := 0, 0
 	for _, ev := range a.StampReport() {
 		if ev.Stamped {
 			stamped++
 		} else if ev.Reason != "" {
-			refused++
+			declined++
 		}
 	}
-	if stamped != 1 || refused != 1 {
-		t.Errorf("want exactly one stamped + one reasoned refusal, got stamped=%d refused=%d: %+v",
-			stamped, refused, a.StampReport())
+	if stamped != 1 || declined != 1 {
+		t.Errorf("want exactly one stamped + one reasoned compile failure, got stamped=%d declined=%d: %+v",
+			stamped, declined, a.StampReport())
 	}
 	b := mustNew(t)
 	outI, errI := b.RunInterp(src)

@@ -10,7 +10,7 @@ import (
 // only through composed behaviour (ADR-012 rule 4), paired with their
 // negatives.
 
-// caseNumericValue refuses a non-concrete scrutinee outright — the
+// caseNumericValue declines a non-concrete scrutinee outright — the
 // carrier shape static analysis feeds it.
 func TestCaseNumericValueNonConcrete(t *testing.T) {
 	if _, _, _, ok := caseNumericValue(NewCarrier(TInteger)); ok {
@@ -21,7 +21,7 @@ func TestCaseNumericValueNonConcrete(t *testing.T) {
 	}
 }
 
-// lookupResourceTypeByName refuses a hidden-key binding that is not a
+// lookupResourceTypeByName declines a hidden-key binding that is not a
 // ResourceType — nothing but installResourceTypes writes these keys,
 // so the guard is the seam against a mis-installed schema.
 func TestLookupResourceTypeByNameNonResourcePayload(t *testing.T) {

@@ -23,7 +23,7 @@ package core
 // notes pushes and pops) see no transition; the generation moves, so a
 // unit that baked the binding re-records at its next call site
 // (unit_memo's staleness key) and the rebind notification runs, so an
-// escaping unit's bake refuses exactly as it does for a `def` of the
+// escaping unit's bake declines exactly as it does for a `def` of the
 // name; and every later read of the name is NON-CONCRETE — no fold, no
 // const bake, a live lookup (the recorder's dynScopeRescue) that finds the
 // binding when the region did not run and misses when it did, deferring

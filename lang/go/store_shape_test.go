@@ -276,7 +276,7 @@ func TestStoreShapeObservationFree(t *testing.T) {
 // the compile pass. Store/flex/patrun rows compile natively today
 // (through the flat-map typing and the dynamic hatches); with every
 // shape path gated to !Compiling they must keep compiling to the same
-// behavior — and the one refusal in the family keeps refusing with the
+// behavior — and the one compile failure in the family keeps declining with the
 // same reason.
 func TestStoreShapeCompileDiscipline(t *testing.T) {
 	compiles := []struct {
@@ -314,7 +314,7 @@ func TestStoreShapeCompileDiscipline(t *testing.T) {
 		}
 	}
 
-	// The family's historical refusal (`set` over the dynamic flex read
+	// The family's historical compile failure (`set` over the dynamic flex read
 	// committed the 0-return Store overload and starved the drop) now
 	// COMPILES: the compile pass narrows through the same shape bound the
 	// plain check uses, so `set` commits a container overload with the
@@ -330,7 +330,7 @@ func TestStoreShapeCompileDiscipline(t *testing.T) {
 		t.Fatalf("%q: CompileCheck error %v", src, cerr)
 	}
 	if prog == nil {
-		t.Errorf("%q: expected a native compile after the flex-shape narrowing; refused: %q", src, reason)
+		t.Errorf("%q: expected a native compile after the flex-shape narrowing; declined: %q", src, reason)
 	}
 	b, _ := New()
 	got, compiled, rerr := b.RunCompiled(src)

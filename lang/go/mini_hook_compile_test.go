@@ -14,7 +14,7 @@ import (
 // builtin-hook surface (RegisterMiniCompileGoHook) after the custom-kind
 // registration APIs were removed with the frozen namespace. The hook is
 // authoritative at the call site, so a compile pass must either mirror it
-// or refuse.
+// or decline.
 func zzBfHookInstance(t *testing.T) *Boru {
 	t.Helper()
 	a := mustNew(t)
@@ -47,11 +47,11 @@ func TestMiniGoHookCompilesIdentically(t *testing.T) {
 	}
 }
 
-// A hook over a NON-CONCRETE src (a fn param) refuses the same way — the
+// A hook over a NON-CONCRETE src (a fn param) declines the same way — the
 // hook cannot run at compile time, and baking the transducer instead would
 // miscompile a semantics-bearing hook.
-func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+func TestMiniGoHookNonConcreteSrcFailsToCompile(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	const src = `import "boru:minilang" end def f fn [[s:String][String][mini bf s]] f 'hi'`
 	a := zzBfHookInstance(t)
 	prog, reason, _, cerr := a.CompileCheck(src)
@@ -59,7 +59,7 @@ func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
 		t.Fatalf("CompileCheck: %v", cerr)
 	}
 	if prog != nil || !strings.Contains(reason, "concrete src") {
-		t.Fatalf("prog=%v reason=%q — a non-concrete src must refuse the hook bake", prog, reason)
+		t.Fatalf("prog=%v reason=%q — a non-concrete src must decline the hook bake", prog, reason)
 	}
 	// Parity via the (transitional-default) fallback.
 	gotC, ran, errC := zzBfHookInstance(t).RunCompiled(src)
@@ -72,10 +72,10 @@ func TestMiniGoHookNonConcreteSrcRefuses(t *testing.T) {
 	}
 }
 
-// A hook whose expansion the compile pass cannot mirror REFUSES — never the
+// A hook whose expansion the compile pass cannot mirror DECLINES — never the
 // transducer bake. Non-concrete opts (a fn param) is the exercised shape.
-func TestMiniGoHookNonConcreteOptsRefuses(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+func TestMiniGoHookNonConcreteOptsFailsToCompile(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	const src = `import "boru:minilang" end def f fn [[m:Map][String][mini bf 'hi' m]] f {x:1}`
 	a := zzBfHookInstance(t)
 	prog, reason, _, cerr := a.CompileCheck(src)
@@ -83,7 +83,7 @@ func TestMiniGoHookNonConcreteOptsRefuses(t *testing.T) {
 		t.Fatalf("CompileCheck: %v", cerr)
 	}
 	if prog != nil || !strings.Contains(reason, "concrete opts") {
-		t.Fatalf("prog=%v reason=%q — non-concrete opts must refuse the hook bake", prog, reason)
+		t.Fatalf("prog=%v reason=%q — non-concrete opts must decline the hook bake", prog, reason)
 	}
 	// Parity via the (transitional-default) fallback.
 	gotC, ran, errC := zzBfHookInstance(t).RunCompiled(src)
@@ -96,6 +96,6 @@ func TestMiniGoHookNonConcreteOptsRefuses(t *testing.T) {
 	}
 }
 
-// (TestMiniBoruHookRefuses died with the boru compile-hook surface —
+// (TestMiniBoruHookDeclines died with the boru compile-hook surface —
 // MiniLang.register-compiled is a tombstone now; the frozen-registry raise
 // is pinned in module-minilang.tsv and TestMiniCovRegisterTombstones.)

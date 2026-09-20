@@ -139,7 +139,7 @@ func gen(r *rand.Rand, c cat, depth int, scope []string) *gnode {
 			// residual is [element, <computed>, <lit>]. The handler reads only the
 			// top (the lit), so the compiler drops the element and the computed
 			// value below it (trimToTopResult); without that the event-above-inert
-			// residual refused. The body uses an empty scope, so it has no captures
+			// residual declined. The body uses an empty scope, so it has no captures
 			// and compiles as a real closure (PUSH_CLOSURE), exercising the trim.
 			ebody := gen(r, cInt, depth-1, nil)
 			return &gnode{op: "eachtail", cat: cList, ecat: cInt, n: r.Intn(6),
@@ -148,9 +148,9 @@ func gen(r *rand.Rand, c cat, depth int, scope []string) *gnode {
 			// `(<litList> each [var [[v] <body using v> <lit>]])` — the var-block
 			// closure-body idiom (a let-binding plus a trailing throwaway literal,
 			// so each element maps to the literal). `var` SPLICES its body, so it
-			// refuses inside the closure probe and the each body bakes as an
+			// declines inside the closure probe and the each body bakes as an
 			// interpreted const the handler runs per element — the path the var
-			// clean-refusal path enabled. The body still executes
+			// clean-compile failure path enabled. The body still executes
 			// (side effects / errors are compared for taxonomy parity), but the
 			// mapped value is the trailing literal.
 			vbody := gen(r, cInt, depth-1, append(append([]string{}, scope...), "v"))
@@ -216,7 +216,7 @@ var binOps = []string{"add", "mul", "sub"}
 
 // genIndex builds an integer-index read over a LITERAL list of c-elements:
 // `([e0 e1 …] get i)` with i in bounds, so the result is a value of category c.
-// The list is pure literals (a computed/var element refuses const-baking), which
+// The list is pure literals (a computed/var element declines const-baking), which
 // is the shape the checker narrows — "concrete-list integer-index read to the
 // element type": Integer for an int list, String for a string list. n is the
 // index; kids[0] is the literal list.
@@ -289,7 +289,7 @@ func genLitList(r *rand.Rand) *gnode {
 
 // genCase builds a well-typed `case` dispatch whose result is category c (cInt
 // or cStr) — a multi-way branch-join, the N-arm generalization of `if`. The
-// scrutinee stays a literal/var Integer (a computed scrutinee refuses); clauses
+// scrutinee stays a literal/var Integer (a computed scrutinee declines); clauses
 // mix scalar / [gt N] / [lt N] / Integer-type matches; a default is ALWAYS
 // present so the result is a well-typed value of c (embeddable anywhere). Some
 // cInt arms are value-consuming blocks ([<binop> N], which see the scrutinee).
@@ -471,7 +471,7 @@ func genObjRead(r *rand.Rand, fields []string) *gnode {
 // The fn may also CLOSE OVER outer def-locals: with some probability 1-2 `def
 // vK <lit>` bindings precede the fn and join its body scope, so the body
 // references them as captures (the FnBaselines / ComputeCaptures path). Capture
-// values are literals — capturing a computed (carrier) local refuses. keys holds
+// values are literals — capturing a computed (carrier) local declines. keys holds
 // the whole body scope (params ++ captured names); n marks the param prefix.
 func genFnProg(r *rand.Rand) *gnode {
 	nparams := r.Intn(3) // 0, 1, 2
@@ -602,8 +602,8 @@ func genInterpProg(r *rand.Rand) *gnode {
 //   - collection PROVENANCE for a HOF callback: literal list, computed
 //     (a filter result / `keys`), gradual (laundered through an [Any] fn).
 //
-// Many of these shapes REFUSE compilation by design — the oracle skips a
-// refusal (comp=false), so the gate is exactly the contract: whatever
+// Many of these shapes DECLINE compilation by design — the oracle skips a
+// compile failure (comp=false), so the gate is exactly the contract: whatever
 // COMPILES must agree with the interpreter. The compose miscompile and the
 // Atom-lambda callback divergence both COMPILED wrongly; either would have
 // been caught at seed time had this family existed.
@@ -735,7 +735,7 @@ func genStrProg(r *rand.Rand) *gnode {
 // replace/repeat -> String, contains -> Boolean, indexof -> Integer, split ->
 // List). Self-contained: it never calls gen, so it cannot perturb the other
 // grammar paths. concat takes LITERAL string elements (computed strings in a
-// list literal refuse); every other op nests freely.
+// list literal decline); every other op nests freely.
 func genS(r *rand.Rand, c cat, depth int) *gnode {
 	if depth <= 0 {
 		return sleaf(r, c)
@@ -836,7 +836,7 @@ func genProgram(r *rand.Rand, depth int) (*gnode, []string) {
 	// Optionally seed the CONTEXT STORE: `context set 'KEY' <lit> end` …, then
 	// expose each KEY as an Integer var that renders `(context get 'KEY')`, so
 	// the whole body generator weaves strict-key store reads through arithmetic,
-	// `if`, `for`, `case`, defs, … (a get inside a computed container refuses —
+	// `if`, `for`, `case`, defs, … (a get inside a computed container declines —
 	// harmlessly). Keys are '@'-tagged in scope to distinguish them from defs.
 	if r.Intn(3) == 0 {
 		nk := 1 + r.Intn(len(ctxKeys))

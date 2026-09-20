@@ -2,14 +2,14 @@ package lang
 
 import "testing"
 
-// REFUSAL-CLOSURE §9.2c (landed 2026-07-17) — an interpolated XML literal
+// COMPILE FAILURE-CLOSURE §9.2c (landed 2026-07-17) — an interpolated XML literal
 // with runtime-computed ${...} holes compiles to OpInterpXml: the hole
 // expressions record their own dispatch events in traversal order
 // (attributes first, then children left-to-right, depth-first) and the op
 // pops their results and rebuilds the element via rebuildXmlFromTmpl —
 // byte-identical to the interpreter's buildXmlFromTmpl over the same
 // values. The string sibling landed earlier as OpInterp; this is its tree
-// twin. A 0-or-many-valued hole keeps the refusal (one operand-stack
+// twin. A 0-or-many-valued hole keeps the compile failure (one operand-stack
 // slot per hole), pinned below.
 func TestXmlInterpComputedCompiles(t *testing.T) {
 	// Child hole — the reported §9.2 fixture family.
@@ -26,7 +26,7 @@ func TestXmlInterpComputedCompiles(t *testing.T) {
 	mustCompileWithParity(t, `def f fn [[x:Integer] [Xml] [<p>${x}-${x add 1}</p>]] f 1`, "[<p>1-2</p>]")
 	// A LIST-valued hole splices one level (the addChild rule) — the list
 	// arrives as a param (an inline computed list literal inside the hole
-	// declines operand resolution and keeps the refusal, fenced below).
+	// declines operand resolution and keeps the compile failure, fenced below).
 	mustCompileWithParity(t, `def f fn [[xs:List] [Xml] [<p>${xs}</p>]] f [7 8]`, "[<p>78</p>]")
 	// An XML-valued hole becomes a child ELEMENT (the addOne IsXmlValue arm).
 	mustCompileWithParity(t, `def f fn [[x:Xml] [Xml] [<p>${x}</p>]] f <q></q>`, "[<p><q/></p>]")
@@ -37,15 +37,15 @@ func TestXmlInterpComputedCompiles(t *testing.T) {
 	mustCompileWithParity(t, `def f fn [[x:Integer] [Xml] [<p a=${x}>${x add 1}</p>]] f 2`, `[<p a="2">3</p>]`)
 
 	// Decline fences. A 0-valued hole beside a dynamic one cannot map to
-	// one stack slot per hole — the refusal (and the interpreter fallback)
+	// one stack slot per hole — the compile failure (and the compile failure)
 	// stand. (A PURELY 0-valued hole with no dynamic sibling const-folds
 	// with parity — the empty element — so it is not a fence.)
-	mustRefuseWithParity(t,
+	mustFailToCompileWithParity(t,
 		`def f fn [[x:Integer] [] []] def g fn [[x:Integer] [Xml] [<p>${x}${f x}</p>]] g 1`,
 		"interpolated XML with a runtime-computed part")
 	// An inline COMPUTED LIST literal inside the hole declines operand
-	// resolution — refusal, absorbed by the interpreter and owed a fix.
-	mustRefuseWithParity(t,
+	// resolution — compile failure, absorbed by the interpreter and owed a fix.
+	mustFailToCompileWithParity(t,
 		`def f fn [[x:Integer] [Xml] [<p>${[x (x add 1)]}</p>]] f 7`,
 		"interpolated XML with a runtime-computed part")
 	// A FUNCTION-valued hole GRADUATED (2026-07-17): the compiled closure

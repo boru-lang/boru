@@ -94,7 +94,7 @@ is nearer 15% than the 25% the assessment gave.
 | `vmDefer(` calls in `eng/go` | 17 | **28** | 11 are the generic lane's own arms (ten names) |
 | routed dispatches (`OpDispatchGeneric`) | 0 | **676** (floor 600) | increments 64–65 |
 | region oracle, descriptors executed | 47,110 reproduced | **473,151** executed: 446,999 reproduced (94.5%), 9,016 under-claimed (1.9%), 17,130 declined (3.6%), 1 over-claim, 5 value divergences | increment 62 |
-| refusal-site dispositions | assigned | 87 generic (stage 5: 26, stage 3: 21, stage 4: 19, stage 7: 11, stage 6: 9, stage 8: 1), 1 trap, 4 delete | the disposition census (`TestRefusalDispositionCensus`) |
+| refusal-site dispositions | assigned | 87 generic (stage 5: 26, stage 3: 21, stage 4: 19, stage 7: 11, stage 6: 9, stage 8: 1), 1 trap, 4 delete | the disposition census (`TestCompileFailureDispositionCensus`) |
 | work landed | — | `main`: 17 commits, +10,997 / −1,492 non-doc lines, increments 60–73; this branch: 8 commits, +2,931 / −279 | one session each |
 
 Two readings. The rows that fell (refusals, islands, census) did not fall:

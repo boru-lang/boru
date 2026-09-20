@@ -162,7 +162,7 @@ const (
 	// same point. A MATCH means the static model was wrong (a refined
 	// runtime tag, a value-sensitive predicate satisfied) — the tail was
 	// truncated at this terminal op, so the run defers to the interpreter
-	// (vm:rematch-matched, the fenced whole-program fallback — slow, not
+	// (vm:rematch-matched, the bail the compiled run reports — not
 	// wrong). Terminal like OpTrap.
 	OpDispatchRematch
 	// OpReverse reverses the top Arg operand-stack values in place. It is the
@@ -171,7 +171,7 @@ const (
 	// where the args evaluate left→right so sig position 0 ends up DEEPEST, but the
 	// call wants it on top. SWAP handles N=2; OpReverse generalises it to N≥3
 	// (the 3-deep rotate the VM previously had no opcode for, so layoutOperands
-	// refused). Emitted only when layoutOperands recognises an exact reverse, so
+	// declined). Emitted only when layoutOperands recognises an exact reverse, so
 	// it can never seat an operand wrongly.
 	OpReverse
 	// OpCallDynamicTrailing applies a runtime FUNCTION value to the Arg values
@@ -256,7 +256,7 @@ const (
 	// order (the fn sits above a before-arg literal, which the in-order
 	// reconciliation otherwise forbids).
 	OpCallDynamicMixed
-	// OpSpliceDyn spreads a runtime splice payload (REFUSAL-CLOSURE §9.2b —
+	// OpSpliceDyn spreads a runtime splice payload (COMPILE FAILURE-CLOSURE §9.2b —
 	// `def d word xs d` over a computed xs): pop the payload; a plain list
 	// spreads its top-level elements (spliceExpand), any other value
 	// contributes itself — exactly the interpreter's marker re-step for a
@@ -266,7 +266,7 @@ const (
 	// dispatches against the live stack, which only the interpreter owns).
 	OpSpliceDyn
 	// OpInterpXml assembles an interpolated XML element from its computed
-	// holes (REFUSAL-CLOSURE §9.2c — the tree twin of OpInterp).
+	// holes (COMPILE FAILURE-CLOSURE §9.2c — the tree twin of OpInterp).
 	// Program.XmlInterps[Arg] holds the template skeleton; the VM pops one
 	// operand-stack value per hole (deepest popped = hole 0 — the
 	// depth-first attr-then-children traversal order BuildXmlFromTmpl
@@ -292,9 +292,9 @@ const (
 	// The user-fn mirror of OpCallNativePoly: used where a gradual-Any arg
 	// made the dispatch ambiguous at check time (two or more same-arity
 	// overloads reachable), so the VM selects the arm faithfully at run time
-	// instead of refusing the whole program. A no-match (or any drift between
+	// instead of declining the whole program. A no-match (or any drift between
 	// the recorded overload set and the word's live dispatch table) defers to
-	// the interpreter through the whole-program fallback, which raises the
+	// the interpreter, which raises the
 	// canonical signature_error / runs the live definition.
 	OpCallUserPoly
 	// OpCallDynTrailTop applies a runtime FUNCTION value sitting ON TOP of its Arg
@@ -343,7 +343,7 @@ const (
 	// result auto-applies. No strip: a Quoted runtime value leaves the
 	// window untouched (both engines' data case); an unquoted one applies
 	// exactly as OpCallDynTrailTop. This is what retires RecordDynApply's
-	// event-lead hard-refusal (PR #280's probe is the quoted witness).
+	// event-lead hard-compile failure (PR #280's probe is the quoted witness).
 	OpCallDynTrailKeepQ
 
 	// OpCallDynFrame replays a fn body's ENTIRE end-of-body residual — the
@@ -367,7 +367,7 @@ const (
 	// mismatch (the value stays data), or below-window collection — PROVIDED
 	// the window is the body's LAST statement: the replay fires at the RET,
 	// so a recorded event after it would reorder observable effects ahead of
-	// the apply's (the recorder's replayIsBodyTail gate refuses that shape).
+	// the apply's (the recorder's replayIsBodyTail gate declines that shape).
 	// The following RET applies the CallBoru-path trim (CompiledFn.RetReplay).
 	OpCallDynFrame
 
@@ -385,7 +385,7 @@ const (
 	// semantics — and (b) have a single push site, so within-call reads of one
 	// binding still share one instance. Main-unit pushes stay bare: top-level
 	// straight-line code evaluates each literal once, and loop-spread
-	// consumption refuses before lowering. Captured containers arrive through
+	// consumption declines before lowering. Captured containers arrive through
 	// capture slots (locals), never consts, so closure identity is preserved.
 	OpPushConstFresh
 
@@ -723,14 +723,14 @@ type UserPolyRef struct {
 	SigIdx []int
 	Units  []int
 	Impls  []core.SigImpl
-	// Sigs, when non-empty, is the STORED dispatch table (REFUSAL-CLOSURE.0
+	// Sigs, when non-empty, is the STORED dispatch table (COMPILE FAILURE-CLOSURE.0
 	// §6b): the arm signatures frozen at record time, for a BODY-LOCAL
 	// multi-overload fn whose binding is popped before the VM runs — a live
 	// name Lookup could never resolve it, so the runtime re-match runs over
 	// this frozen subset instead (matchUserPoly's stored mode). Freezing is
 	// faithful because a body-local fn's construction is source-determined
-	// and per-call identical (captures and conditional redefinitions refuse
-	// upstream, and a same-named local in ANY other fn refuses the freeze —
+	// and per-call identical (captures and conditional redefinitions decline
+	// upstream, and a same-named local in ANY other fn declines the freeze —
 	// the dynamic-scope mutation gate in tryCompileUserPolyArms), so the
 	// frozen table IS the table the interpreter's dispatch sees at the same
 	// program point. Empty = the live-Lookup mode with its index/Impl drift
@@ -874,12 +874,12 @@ type CompiledFnRef struct {
 	// optional ref that IS the whole remedy, because islanding restores the
 	// exact pre-stamp behaviour the differential already validates.
 	//
-	// A store-site ref is not optional and keeps the program-level refusal:
+	// A store-site ref is not optional and keeps the program-level compile failure:
 	// its handler is invoked at RUNTIME, after module-scope def sites have all
 	// executed in the compile pass, so the CallBoru fallback reads the
 	// PASS-FINAL binding where the interpreter read the point-in-program one
 	// (design/RELOAD-INVALIDATION.0.md §3 F1). Nothing the compile pass can do
-	// makes that right, which is why the whole program falls back there.
+	// makes that right, which is why the program does not compile there.
 	optional bool
 	// DepSnap is the RUNTIME-stamped twin of the compile-time poisoning above
 	// (StampDetachedFn): a ref created OUTSIDE a whole-program pass has no
@@ -898,7 +898,7 @@ type CompiledFnRef struct {
 	// interpreter. nil = compile-time ref, no validation (nil is the
 	// unambiguous unset for a map).
 	DepSnap map[string]DepSnapEntry
-	// Restamp is the JIT re-stamp box (REFUSAL-CLOSURE.0 §7c): a DETACHED
+	// Restamp is the JIT re-stamp box (COMPILE FAILURE-CLOSURE.0 §7c): a DETACHED
 	// ref whose DepSnap went stale re-compiles against the LIVE bindings at
 	// invoke time (CompiledFnRef.jitRestamp) instead of degrading
 	// permanently to CallBoru. Allocated by StampDetachedFn only — a
@@ -917,7 +917,7 @@ type CompiledFnRef struct {
 type RestampBox struct {
 	mu     sync.Mutex
 	fd     core.FnDefInfo
-	sigIdx int // which own sig this ref compiled (REFUSAL-CLOSURE §7b: per-sig refs)
+	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
 	Tries  int
 	Cur    *CompiledFnRef
@@ -1068,7 +1068,7 @@ type GlobalBindSpec struct {
 	// Splice selects the S5 first-value loop-bind mode: bind the value
 	// SpliceFromTop entries below the stack top and remove it — the
 	// interpreter's pending-forward collection of a loop region's first
-	// value, at the region's statically-known depth (REFUSAL-CLOSURE S5).
+	// value, at the region's statically-known depth (COMPILE FAILURE-CLOSURE S5).
 	Splice        bool
 	SpliceFromTop int
 }
@@ -1089,7 +1089,7 @@ type ConstLocalRef struct {
 // error-scraping tooling can never tell which engine ran. It lowers a
 // check-mode-suppressed runtime error (an orphan gen, an unpack of a missing
 // key, a statically-definite unmatched dispatch) into the compiled stream
-// rather than refusing the whole program. The rich fields are populated by
+// rather than declining the whole program. The rich fields are populated by
 // RecordTrapErr (serialising a built BoruError); the plain string RecordTrap
 // leaves them nil for the simpler callers.
 type TrapSpec struct {
@@ -1216,7 +1216,7 @@ type Program struct {
 	// §6.5): the check pass's bind ledger, mirrored entry for entry through
 	// NoteBindTransition's own funnel and finalized with the Program. Every
 	// entry has an op at its source position (Finalize's full-placement gate
-	// refuses otherwise) — OpBindTwin replays it, OpBindResident installs it
+	// declines otherwise) — OpBindTwin replays it, OpBindResident installs it
 	// per invocation — and the langspec gate asserts table == ledger for
 	// every compiled corpus program.
 	BindTwins []core.BindTransition
@@ -1705,7 +1705,7 @@ func (f *CompiledFn) ReturnPattern(k int) *core.Value {
 
 // CompiledRef returns the sig's durable compiled-unit reference, or nil
 // when the body was never compiled (a Go sig, an un-armed boru body, a
-// refused body). It is the read surface the callback-invocation seam and
+// declined body). It is the read surface the callback-invocation seam and
 // the lang layer consult to choose the VM path over CallBoru. A free
 // function in the compiler piece (not a Signature method): the core
 // Signature holds the ref as an OPAQUE handle it cannot name.

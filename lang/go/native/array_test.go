@@ -634,7 +634,7 @@ func TestReplicate(t *testing.T) {
 
 // --- group ---
 
-// Keys are Strings only (NUR030): an Atom key is refused, which is what
+// Keys are Strings only (NUR030): an Atom key is declined, which is what
 // keeps the record's collision case — the type literal `Integer` and the
 // atom `Integer/q`, both rendering "Integer" — from re-opening.
 func TestGroupTwoArgs(t *testing.T) {

@@ -39,7 +39,7 @@ import "boru:tui"  5 is Tui.Terminal	false	a non-handle value is not a Terminal
 #     spelling is not a call.
 import "boru:tui"  Tui.open {}	ERROR:no terminal backend registered	open with options requires a registered backend
 import "boru:tui"  Tui.open {alt-screen: true}	ERROR:no terminal backend registered	alt-screen: true is the accepted spelling of the default takeover
-import "boru:tui"  Tui.open {alt-screen: false}	ERROR:reserved but not yet implemented	the §11.7 inline-tier reservation refuses loudly
+import "boru:tui"  Tui.open {alt-screen: false}	ERROR:reserved but not yet implemented	the §11.7 inline-tier reservation declines loudly
 import "boru:tui"  Tui.open {alt-screen: 5}	ERROR:alt-screen: must be a Boolean	the reserved key is type-checked like every option
 #
 # §5  wrong-handle rejections — a live run needs a backend, so each word
@@ -66,7 +66,7 @@ import "boru:tui"  Tui.edit (Tui.edit (Tui.input "ab") {tag: "key" key: "home" c
 import "boru:tui"  Tui.edit (Tui.input "ab") {tag: "resize" cols: 1 rows: 1}	{w:'input' value:'ab' cursor:2 placeholder:'' focus:false}	a non-key event leaves the input unchanged
 import "boru:tui"  Tui.input "pw" {mask: true}	{w:'input' value:'pw' cursor:2 placeholder:'' focus:false mask:true}	the mask option rides the widget map (the renderer paints bullets)
 import "boru:tui"  Tui.edit (Tui.input "pw" {mask: true}) {tag: "key" key: "x" char: "x" mods: []}	{w:'input' value:'pwx' cursor:3 placeholder:'' focus:false mask:true}	edit preserves the mask across folds
-import "boru:tui"  Tui.input "pw" {mask: 5}	{w:'input' value:'pw' cursor:2 placeholder:'' focus:false mask:5}	options pass through the constructor; the renderer refuses a non-Boolean mask
+import "boru:tui"  Tui.input "pw" {mask: 5}	{w:'input' value:'pw' cursor:2 placeholder:'' focus:false mask:5}	options pass through the constructor; the renderer declines a non-Boolean mask
 import "boru:tui"  Tui.focusable (Tui.rows [(Tui.input "x" {id: "a"})])	['a']	focusable walks ids in document order
 import "boru:tui"  Tui.focusable (Tui.spacer)	[]	a tree without ids has no focusables
 import "boru:tui"  Tui.text 5	ERROR:uncalled_function	text requires a String
@@ -97,7 +97,7 @@ import "boru:tui"  Tui.text-width (Tui.colorize {fg: "red"} "hi")	2	escapes occu
 import "boru:tui"  Tui.colorize 5 "hi"	ERROR:uncalled_function	colorize requires a style Map
 import "boru:tui"  Tui.colorize {} 5	ERROR:uncalled_function	colorize requires the text as a String
 import "boru:tui"  Tui.colorize {fg: 5} "hi"	ERROR:fg: must be a String	style field types are validated
-import "boru:tui"  Tui.colorize {} "hi" {profile: "grayscale"}	ERROR:profile: must be	an unknown color profile is refused
+import "boru:tui"  Tui.colorize {} "hi" {profile: "grayscale"}	ERROR:profile: must be	an unknown color profile is declined
 import "boru:tui"  Tui.strip-ansi 5	ERROR:uncalled_function	strip-ansi requires a String
 import "boru:tui"  Tui.text-width 5	ERROR:uncalled_function	text-width requires a String
 import "boru:tui"  Tui.run {}	ERROR:missing update	run validates the app map before touching the terminal

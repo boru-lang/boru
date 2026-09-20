@@ -41,7 +41,7 @@ const (
 	sweepFailureCeiling        = 31  // valid seeds that FAIL to compile or hard-error in CompileCheck — every one a BUG. 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match. 36 -> 31 on 2026-09-19 (the fallback removal): five seeds that used to be classified as failures now compile and RUN — the classifier read the try-mode fallback's error as a compile failure, and with one outcome it reads the real one
 	sweepIslandCeiling         = 2   // valid seeds that compile with an interpreter island: inner ×2. 5 -> 2 on 2026-09-19 (S1a): scan × lambda, named-fn and module-export lower to a poly re-match instead of an island
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow refusal), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
+	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow compile failure), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
 	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 
@@ -144,7 +144,7 @@ func TestGeneratedSweep(t *testing.T) {
 	}
 
 	counts := sweep.Count(cells)
-	variantFailures := counts.Variants[vary.Refused] + counts.Variants[vary.Islanded] + counts.Variants[vary.CheckReject]
+	variantFailures := counts.Variants[vary.Declined] + counts.Variants[vary.Islanded] + counts.Variants[vary.CheckReject]
 	variantCrashes := counts.Variants[vary.Panicked] + counts.Variants[vary.Hung]
 	gateAssert(t, "sweep empty cells", counts.Cells[sweep.Empty], 0, sweepEmptyCeiling, true,
 		"word × operand-kind cells of the generated sweep with no seed program — holes in the instrument (test/go/sweep/seeds.tsv)", true)
@@ -160,9 +160,9 @@ func TestGeneratedSweep(t *testing.T) {
 		"call-form variants of passing seeds that fail to compile or island", true)
 	gateAssert(t, "sweep call-form crashes", variantCrashes, 0, sweepVariantCrashCeiling, true,
 		"call-form variants of passing seeds an engine PANICS on or never answers", true)
-	t.Logf("generated sweep: %d cells — pass %d, failed %d, islanded %d, diverged %d, panicked %d, hung %d, check-reject %d, invalid %d, n/a %d, empty %d; %d call-form variants — pass %d, refused %d, islanded %d, diverged %d, panicked %d, hung %d, interp-reject %d, check-reject %d",
+	t.Logf("generated sweep: %d cells — pass %d, failed %d, islanded %d, diverged %d, panicked %d, hung %d, check-reject %d, invalid %d, n/a %d, empty %d; %d call-form variants — pass %d, declined %d, islanded %d, diverged %d, panicked %d, hung %d, interp-reject %d, check-reject %d",
 		len(cells), counts.Cells[sweep.Pass], counts.Cells[sweep.Failed], counts.Cells[sweep.Islanded], counts.Cells[sweep.Diverged], counts.Cells[sweep.Panicked], counts.Cells[sweep.Hung], counts.Cells[sweep.CheckReject], counts.Cells[sweep.Invalid], counts.Cells[sweep.NotApplicable], counts.Cells[sweep.Empty],
-		sumVariants(counts), counts.Variants[vary.Pass], counts.Variants[vary.Refused], counts.Variants[vary.Islanded], counts.Variants[vary.Diverged], counts.Variants[vary.Panicked], counts.Variants[vary.Hung], counts.Variants[vary.InterpReject], counts.Variants[vary.CheckReject])
+		sumVariants(counts), counts.Variants[vary.Pass], counts.Variants[vary.Declined], counts.Variants[vary.Islanded], counts.Variants[vary.Diverged], counts.Variants[vary.Panicked], counts.Variants[vary.Hung], counts.Variants[vary.InterpReject], counts.Variants[vary.CheckReject])
 
 	want := sweep.Render(cells)
 	if os.Getenv("BORU_WRITE_SWEEP") != "" {

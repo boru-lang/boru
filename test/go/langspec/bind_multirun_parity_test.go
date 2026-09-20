@@ -32,12 +32,12 @@
 //
 //	parity  — compiles under the regime; driving-request results AND every
 //	          probe sequence must match the interpreter exactly.
-//	refused — must refuse with an error containing the given substring
+//	declined — must decline with an error containing the given substring
 //	          (the multi-run-body population, pinned until arm-resident
 //	          twins land). The interpreter half must still run clean, so a
 //	          row can never rot into pinning an ill-formed program.
 //
-// A shape can therefore never drift from refused to silently-wrong: the
+// A shape can therefore never drift from declined to silently-wrong: the
 // moment it compiles at all, its row fails until a reviewed edit says
 // parity — and parity means measured equality, not a green placement scan.
 package langspec
@@ -50,13 +50,13 @@ import (
 )
 
 // parityShape is one oracle row. probes are the names whose full install
-// stacks are compared (or, for refused rows, merely enumerated on the
+// stacks are compared (or, for declined rows, merely enumerated on the
 // interpreter to prove the shape is well-formed).
 type parityShape struct {
-	name    string
-	src     string
-	probes  []string
-	refused string // "" = parity; else the required refusal substring
+	name     string
+	src      string
+	probes   []string
+	declined string // "" = parity; else the required compile failure substring
 }
 
 var parityShapes = []parityShape{
@@ -80,11 +80,11 @@ var parityShapes = []parityShape{
 	// arm-resident bridge places a per-element runtime-value install
 	// (OpBindResident) at each def site inside the compiled unit, so
 	// count, values, order, and zero-iteration definedness are measured
-	// interpreter-equal. Still-refused rows pin the population the bridge
+	// interpreter-equal. Still-declined rows pin the population the bridge
 	// declines: the var-param Pos-0:0 def/undef pair (until the undef
 	// seam lands), nested multi-run bodies (the latch's bodyID fence),
 	// and any root read of an arm-bound name (body-run-dependent
-	// definedness — its own refusal reason, not the placement gate's).
+	// definedness — its own compile failure reason, not the placement gate's).
 	{name: "each-literal-def", src: "[1 2 3] each [def x 5]",
 		probes: []string{"x"}},
 	{name: "each-elem-valued-def", src: "[10 20] each [ var [[r] def x r x] ]",
@@ -92,12 +92,12 @@ var parityShapes = []parityShape{
 	{name: "each-zero-iterations", src: "[] each [def x 5]",
 		probes: []string{"x"}},
 	{name: "each-read-after", src: "[1 2] each [def x 5] x add 1",
-		probes: []string{"x"}, refused: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
 	{name: "each-underscore-def", src: "[1 2] each [def _u 5]",
 		probes: []string{"_u"}},
 	{name: "each-nested-multirun", src: "[1] each [[2 3] each [def x 5] 0]",
-		probes: []string{"x"}, refused: "twin regime:"},
-	// The regime's LAST corpus refusal, graduated: the var-param pair
+		probes: []string{"x"}, declined: "twin regime:"},
+	// The regime's LAST corpus compile failure, graduated: the var-param pair
 	// places both halves in-arm (RecordDynUndef's teardown event pairs
 	// the BindUndef twin), element-dependent defs re-push from
 	// force-promoted slots, and every probe — count, values, order, the
@@ -112,7 +112,7 @@ var parityShapes = []parityShape{
 	// entry per element, and these rows are what makes that more than a
 	// placement: the probe measures the DEPTH, which is the only thing a
 	// one-shot replay would get wrong and the only thing observable, since
-	// a root read of an arm-bound name refuses inside the same program.
+	// a root read of an arm-bound name declines inside the same program.
 	{name: "each-type-def", src: `[10 20] each [drop def Big (Integer gt 5) 7]`,
 		probes: []string{"Big"}},
 	{name: "each-type-def-pair-and-use", src: `[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]`,
@@ -121,10 +121,10 @@ var parityShapes = []parityShape{
 	// param, so each element mints a different node — measured, 15 fails
 	// against the top `ZB` and passes against the one below it. Replaying
 	// one captured node would answer that read wrongly, so the bridge
-	// declines and the whole program refuses. Graduation = an op that
+	// declines and the whole program declines. Graduation = an op that
 	// REBUILDS the type per element instead of replaying one.
 	{name: "each-type-def-element-dependent", src: `[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`,
-		probes: []string{"ZB", "e"}, refused: "twin regime:"},
+		probes: []string{"ZB", "e"}, declined: "twin regime:"},
 
 	// --- The sibling multi-run words, graduated on the same mechanism.
 	// `each` was flagged first because its body population is the simplest
@@ -142,7 +142,7 @@ var parityShapes = []parityShape{
 	// round records the var pair's twins afresh. Only the surviving round
 	// is placed; the superseded rows describe no runtime transition and the
 	// placement gate exempts them (MultiRunBodyGuard). Before that, this
-	// shape refused — the row is the regression pin.
+	// shape declined — the row is the regression pin.
 	{name: "fold-list-accumulator", src: "fold [ var [[k acc] (push k acc) ]] [1 2] []",
 		probes: []string{"k", "acc"}},
 	{name: "scan-elem-valued-def", src: "scan [ var [[a b] def x 5 (a add b)] ] [10 20]",
@@ -153,24 +153,24 @@ var parityShapes = []parityShape{
 		probes: []string{"x"}},
 	// The graduations' NEGATIVE half: enabling arm-resident compilation for
 	// a word must not weaken the fences that keep its unsupported
-	// populations out. Each sibling gets the two refusals `each` carries —
+	// populations out. Each sibling gets the two compile failures `each` carries —
 	// a root read of an arm-bound name (body-run-dependent definedness) and
 	// a nested multi-run body (the latch's bodyID fence) — so the lane
 	// proves the fences still REJECT, not merely that the happy path binds.
 	{name: "fold-read-after", src: "fold [ def x 5 ] [10 20] 0  x add 1",
-		probes: []string{"x"}, refused: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
 	{name: "scan-read-after", src: "scan [ def x 5 ] [10 20]  x add 1",
-		probes: []string{"x"}, refused: "read of `x` after a multi-run body binds it"},
-	// outer's body must consume BOTH inputs, so its refusal rows take the
-	// var form: a bare body refuses earlier as a Stage-2 code-body word,
-	// which would pin the wrong gate. (Its nested-multi-run shape refuses
+		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+	// outer's body must consume BOTH inputs, so its compile failure rows take the
+	// var form: a bare body declines earlier as a Stage-2 code-body word,
+	// which would pin the wrong gate. (Its nested-multi-run shape declines
 	// there too, so the bodyID fence is pinned on fold below rather than
 	// twice-over on a word that never reaches it.)
 	{name: "outer-read-after", src: "outer [ var [[a b] def x 5 (a add b)] ] [1 2] [3 4]  x add 1",
-		probes: []string{"x"}, refused: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
 	{name: "fold-nested-multirun",
 		src:    "fold [ var [[a b] ([1] each [def x 5]) (a add b)] ] [1 2] 0",
-		probes: []string{"x"}, refused: "twin regime:"},
+		probes: []string{"x"}, declined: "twin regime:"},
 
 	// --- The NESTED multi-run frontier, and the trap set for its fix.
 	//
@@ -185,8 +185,8 @@ var parityShapes = []parityShape{
 	// publishes only at FnBodyDepth == 0, which is exactly when a twin can be
 	// noted at all, so a compile-phase re-analysis has an empty range by
 	// construction and no longer overwrites anything). These three rows are
-	// its measurement: two shapes that now COMPILE where they refused, and
-	// one that never refused, so the graduation is attributed to the gate and
+	// its measurement: two shapes that now COMPILE where they declined, and
+	// one that never declined, so the graduation is attributed to the gate and
 	// not to the words involved.
 	{name: "nested-multirun-binds-nothing",
 		src:    "fold [ var [[a b] ([1] each [add 1]) (a add b)] ] [1 2] 0",
@@ -227,13 +227,13 @@ var parityShapes = []parityShape{
 	// owns. That is the shape this row makes impossible to reach quietly.
 	//
 	// The single-dispatch control is the attribution: it COMPILES, so the
-	// refusal below is the memo hit and not the aliasing.
+	// compile failure below is the memo hit and not the aliasing.
 	{name: "aliased-body-single-dispatch",
 		src:    "def q quote [ var [[r] def x r x] ]  ([10 20] each q)",
 		probes: []string{"x", "r", "q"}},
 	{name: "aliased-body-memo-hit",
 		src:    "def q quote [ var [[r] def x r x] ]  ([10 20] each q)  ([30 40] each q)",
-		probes: []string{"x", "r", "q"}, refused: "twin regime:"},
+		probes: []string{"x", "r", "q"}, declined: "twin regime:"},
 	// foldaxis — the rows that could NOT be written before NUR115's discharge
 	// (2026-09-02). The word's structural ReturnsFn never analysed its body,
 	// so no twin was recorded and the placement gate was blind: a def in the
@@ -265,10 +265,10 @@ var parityShapes = []parityShape{
 	// body.
 	{name: "foldaxis-read-after",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] [[1 2] [3 4]]  x add 1`,
-		probes: []string{"x"}, refused: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
 	{name: "foldaxis-nested-multirun",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [var [[a b] ([1] each [def x 5]) (a add b)]] [[1 2] [3 4]]`,
-		probes: []string{"x"}, refused: "twin regime:"},
+		probes: []string{"x"}, declined: "twin regime:"},
 }
 
 // probeInstalls enumerates name's install stack top-down on one instance
@@ -320,11 +320,11 @@ func TestMultiRunBindParityOracle(t *testing.T) {
 			regimeRun := func(src string) ([]any, error) { return ac.RunCompiledStrict(src) }
 			regimeOut, regimeErr := regimeRun(sh.src)
 
-			if sh.refused != "" {
-				if regimeErr == nil || !strings.Contains(regimeErr.Error(), sh.refused) {
-					t.Fatalf("classified refused(%q) but the regime answered out=%v err=%v — a compiling "+
+			if sh.declined != "" {
+				if regimeErr == nil || !strings.Contains(regimeErr.Error(), sh.declined) {
+					t.Fatalf("classified declined(%q) but the regime answered out=%v err=%v — a compiling "+
 						"multi-run shape must be RE-CLASSIFIED to parity in a reviewed edit, never allowed to "+
-						"drift (the silent-wrong-binding hazard)", sh.refused, regimeOut, regimeErr)
+						"drift (the silent-wrong-binding hazard)", sh.declined, regimeOut, regimeErr)
 				}
 				// Still exercise the probe on the interpreter so the row
 				// documents the semantics graduation must match.
@@ -335,7 +335,7 @@ func TestMultiRunBindParityOracle(t *testing.T) {
 			}
 
 			if regimeErr != nil {
-				t.Fatalf("parity row refused/errored under the regime: %v", regimeErr)
+				t.Fatalf("parity row declined/errored under the regime: %v", regimeErr)
 			}
 			if got, want := renderAny(regimeOut), renderAny(interpOut); got != want {
 				t.Fatalf("driving-request divergence: regime=%q interpreter=%q", got, want)

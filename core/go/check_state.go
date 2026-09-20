@@ -115,7 +115,7 @@ type CheckState struct {
 	// fails a real parse, so modelling would break bodies that work. The
 	// effect ledger
 	// (effects.go) is therefore left counting modelled writes too: over-
-	// counting only forgoes a safe interpreter fallback, while under-
+	// counting only forgoes a safe decline, while under-
 	// counting a real network send would duplicate it.
 	ModelEffects bool
 
@@ -259,7 +259,7 @@ type CheckState struct {
 	// body is such a loop body and a per-iteration binding is definitely
 	// reached with its residual intact. The S5 first-value loop split
 	// (SplitLoopRegionBind) consults exactly that equality for the
-	// loop-carried variadic def (REFUSAL-CLOSURE S9.2a); a branch arm keeps
+	// loop-carried variadic def (COMPILE FAILURE-CLOSURE S9.2a); a branch arm keeps
 	// the decline (a conditionally-reached split would leak the
 	// analysis-only binding — PR #278 review P1-b), and a computed-count or
 	// break/continue-bearing loop body never stamps (a zero-trip run leaks
@@ -272,11 +272,11 @@ type CheckState struct {
 	// or a loop body (the `keep=false` bodies of runCarrierBodyDefsAdds,
 	// whose net def growth is snapshot-restored). It EXCLUDES `do`
 	// (keep=true — always executes, leaks its defs by design). The compiler
-	// consults it to refuse a fn REDEFINITION that clobbers an enclosing
+	// consults it to decline a fn REDEFINITION that clobbers an enclosing
 	// binding in-place (the overlap-removal drops the outer overload without
 	// growing depth, so the branch rollback can't restore it): compiled
 	// resolution would statically bake the conditional shadow while the
-	// interpreter keeps the outer fn when the branch is not taken. Refusing
+	// interpreter keeps the outer fn when the branch is not taken. Declining
 	// keeps compiled == interpreter, at the price of not compiling at all —
 	// a defect owed a fix, not a resting place.
 	CondBodyDepth int
@@ -342,9 +342,9 @@ type CheckState struct {
 	// least one read of a name def-bound to a computed fn through the
 	// fn-carrier side table (stepWord's Stage 1 consult). Before Stage 1
 	// such a read raised a false undefined_word, so every program in this
-	// class refused with the SILENT check-diagnostics sentinel; when the
-	// pass ends in a refusal anyway, the compile entry points consult this
-	// flag to keep that silent interpreter fallback — a working program
+	// class declined with the SILENT check-diagnostics sentinel; when the
+	// pass ends in a compile failure anyway, the compile entry points consult this
+	// flag to keep that silent interpreter re-run — a working program
 	// must not trade its quiet slow path for a loud compile_failed just
 	// because the diagnostic became honest. Reset by Begin.
 	FnCarrierReadSubstituted bool
@@ -368,7 +368,7 @@ type CheckState struct {
 	// Recorded at the collapse, for the same reason ParenPlacedFnIDs is: the
 	// residual lowering sees the identical `[carrier, 2]` for both spellings
 	// and cannot recover which one it has. Without this the compiler must
-	// either apply both (miscompiling the placed one) or refuse both (losing
+	// either apply both (miscompiling the placed one) or decline both (losing
 	// the applied one) — it did the first until 2026-08-27 and the second
 	// briefly after, and neither is right. Reset by Begin.
 	ParenReSteppedFnIDs map[string]bool
@@ -421,8 +421,8 @@ type CheckState struct {
 	// other (a less-specific overload that forward-collects instead of
 	// grabbing the carrier from the stack). The two splits produce
 	// different result stacks, so the bytecode compiler reads this after
-	// the check pass and refuses — the program is uncompilable and must
-	// fall back to the interpreter. Dispatch itself is unchanged; this is
+	// the check pass and declines — the program is uncompilable and must
+	// not compile. Dispatch itself is unchanged; this is
 	// a compile-time advisory only.
 	AmbiguousGradualSplit bool
 
@@ -579,7 +579,7 @@ type CheckState struct {
 	// a frame local only when every param is NAMED; with an unnamed param the
 	// input stays live on the body stack and folding args.N strands it
 	// (a compile≠interpret divergence — design/EDGE-SPEC-FINDINGS.0.md §4), so
-	// specialWordResults refuses the program in compile mode when this is set.
+	// specialWordResults declines the program in compile mode when this is set.
 	ArgsFrameUnnamed bool
 
 	// FnNameStack is the stack of NAMED fn bodies currently under analysis
@@ -680,9 +680,9 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	"integer_overflow": SeverityError,
 	"arith_error":      SeverityError,
 	// `convert` of a PROVEN-Float source into a Big target — the one
-	// type-decidable convert refusal (native_type.go convertScalarReturns).
+	// type-decidable convert compile failure (native_type.go convertScalarReturns).
 	"convert_error": SeverityError,
-	// A boru:net address / TLS-option refusal decided from the call's OWN
+	// A boru:net address / TLS-option compile failure decided from the call's OWN
 	// literal options — a missing tcp:, a port outside 0–65535, a
 	// client-only TLS key on a listener (net_socket.go parseNetAddr,
 	// tlsopts.go). The mirror runs the SAME validator the handler runs and
@@ -692,18 +692,18 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// read as a note.
 	"net_error":   SeverityError,
 	"fetch_error": SeverityError,
-	// boru:io refusals decided from the call's OWN literal arguments —
+	// boru:io compile failures decided from the call's OWN literal arguments —
 	// an exit code outside 0..125, an unknown {mode:} on open. Each
 	// mirror runs the handler's own pure prefix over deep-concrete
 	// operands, so the flagged program raises this code at run time
 	// before touching a file or the process.
 	"exit_error": SeverityError,
 	"open_error": SeverityError,
-	// write's ENCODING refusals, mirrored from encodeEnc — doWrite's own
+	// write's ENCODING compile failures, mirrored from encodeEnc — doWrite's own
 	// encoder, pure in (content, enc): an unknown encoding name, or
 	// content carrying a character the encoding cannot represent.
 	"write_error": SeverityError,
-	// boru:vault ARGUMENT refusals, mirrored from the words' own pure
+	// boru:vault ARGUMENT compile failures, mirrored from the words' own pure
 	// prefixes: vaultCollectParams (a missing / empty / non-String
 	// required option key, a non-String scan path element) and identity's
 	// alias check. Both run BEFORE the backend lookup — the headless
@@ -711,11 +711,11 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// code at run time whether or not a vault backend is registered.
 	"vault_usage": SeverityError,
 	"vault_error": SeverityError,
-	// boru:tui ARGUMENT refusals, on the same footing: open's option
+	// boru:tui ARGUMENT compile failures, on the same footing: open's option
 	// parse, and the app-config / transport-option parses run and serve
 	// perform BEFORE the terminal is opened or the listener bound
 	// (module-tui.tsv). `unsupported` is the §11.7 alt-screen reservation
-	// — an accepted key whose false spelling is refused loudly.
+	// — an accepted key whose false spelling is declined loudly.
 	"tui_error":   SeverityError,
 	"unsupported": SeverityError,
 	// boru:time-util await's unknown {mode:}, mirrored from doAwait's own
@@ -805,7 +805,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// exactly when the type disjunction is fully met — so the finding
 	// fires only where a genuinely uncoverable value exists. NOT a
 	// RuntimeMirror: no-match is not a runtime error, so the compile
-	// pipeline refuses on it like any other model-level error.
+	// pipeline declines on it like any other model-level error.
 	"case_not_exhaustive": SeverityError,
 	// The advisory duals of the same coverage computation (info,
 	// non-gating, per the redundant_guard precedent): a trailing default
@@ -868,8 +868,8 @@ type CheckDiagnostic struct {
 	// the finding gates `boru check`, but the recording MODEL underneath it
 	// is exact — the program compiles and raises the identical error at
 	// runtime (a trap, the VM RET check, the same pure handler) — so the
-	// compile pipeline does NOT refuse on it (CompileCheck / Vm.compile
-	// skip mirrors in their error-diagnostic refusal). Contrast a
+	// compile pipeline does NOT decline on it (CompileCheck / Vm.compile
+	// skip mirrors in their error-diagnostic compile failure). Contrast a
 	// model-undermining diagnostic (undefined_word, no_signature), where
 	// dispatch did not resolve and the recording is a guess.
 	RuntimeMirror bool `json:"runtimeMirror,omitempty"`
@@ -1491,15 +1491,15 @@ func (c *CheckState) LookupContextType(key string) (Value, bool) {
 //
 //   - only a NAMED trivial-delegation wrapper carrying a foreign
 //     sub-registry qualifies (the shaped-instance-method class — a plain
-//     user fn stored in a map keeps today's refusal paths, so a capturing
-//     method fn still refuses);
+//     user fn stored in a map keeps today's compile failure paths, so a capturing
+//     method fn still declines);
 //   - a member with a GENUINE 0-arg overload — the miscompile-E
 //     auto-dispatch family (Span.finish, Rand.bool) — is now ANNOTATED
 //     rather than excluded: its landing is modelled as an arity-0
 //     OpCallDynMethod (shapedMethodApplyWindow's all-0-arg path), the
-//     read-guard refusal is skipped for the annotated read
+//     read-guard compile failure is skipped for the annotated read
 //     (EmitState.NoteShapedRead), and a landing the model cannot claim
-//     REFUSES outright (tryShapedMethodDispatch's guard-owned decline)
+//     DECLINES outright (tryShapedMethodDispatch's guard-owned decline)
 //     so the guard is re-homed, never weakened;
 //   - macros stay data (applied only by name).
 func (c *CheckState) NoteMethodShape(out, member Value) {
@@ -1518,8 +1518,8 @@ func (c *CheckState) NoteMethodShape(out, member Value) {
 	}
 	c.MethodShapes[out.ID] = member
 	// Mirror the annotation into the recorder so the get-family read
-	// guards (recordCallRefusal / RecordPolyCall) can skip their
-	// auto-dispatch refusal for a read the landing model owns.
+	// guards (recordCallCompileFailure / RecordPolyCall) can skip their
+	// auto-dispatch compile failure for a read the landing model owns.
 	c.Emit.NoteShapedRead(out.ID)
 }
 
@@ -1734,7 +1734,7 @@ func cloneMap[K comparable, V any](m map[K]V) map[K]V {
 // run once per analysed call shape, and a body can be analysed under
 // several shapes. Every caller mirrors a GUARANTEED runtime error over
 // exactly-known operands, so the diagnostic is stamped RuntimeMirror
-// (the compile pipeline does not refuse on it — the recording model is
+// (the compile pipeline does not decline on it — the recording model is
 // exact) and inside an error-catching `do` body AddDiagnostic
 // re-attributes it to a caught info finding. A caught (downgraded)
 // entry never blocks a later REAL emission of the same finding at
@@ -1752,7 +1752,7 @@ func CheckAddUniqueDiagnostic(r *Registry, code, detail, word string, pos SrcPos
 
 // CheckAddUnique is CheckAddUniqueDiagnostic's dedupe over a diagnostic the
 // caller shapes itself — for a finding that must NOT be stamped
-// RuntimeMirror because the compile pipeline should refuse on it. That is
+// RuntimeMirror because the compile pipeline should decline on it. That is
 // the MODEL-UNDERMINING class (eng/go/CLAUDE.md): a mirror promises the
 // program compiles and then raises the identical error, which is false when
 // dispatch itself did not resolve (`no_signature`, `undefined_word`,
@@ -1959,7 +1959,7 @@ func bindSitePos(r *Registry, pos SrcPos) SrcPos {
 // arm-residency bridge pairs the twin against (Recorder.RecordTypeInstall).
 // Every BindTypeInstall note goes through here so the two can never fall
 // out of step: a twin with no event, or an event with no twin, makes the
-// bridge's total pairing decline and the program refuse.
+// bridge's total pairing decline and the program decline.
 func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
 	r.NoteBindTransition(BindTypeInstall, name, pos)
 	if r == nil {

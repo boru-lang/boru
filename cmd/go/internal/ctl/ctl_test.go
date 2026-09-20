@@ -331,7 +331,7 @@ func TestIsConnectionTorn(t *testing.T) {
 		// net/http's errServerClosedIdle — the same teardown, reported
 		// differently when the transport's read loop wins the race.
 		{errors.New("http: server closed idle connection"), true},
-		{errors.New("dial tcp: connection refused"), false},
+		{errors.New("dial tcp: connection declined"), false},
 	}
 	for _, c := range cases {
 		if got := isConnectionTorn(c.err); got != c.want {

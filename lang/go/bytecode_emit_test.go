@@ -9,7 +9,7 @@ import (
 // Stage-1 bytecode emitter goldens (design/legacy/boru-bytecode-plan.0.ignore
 // Stage 1 gate): the recording pass lowers straight-line monomorphic
 // code to the expected instruction stream, and everything beyond the
-// stage is refused with a precise reason — never lowered wrongly.
+// stage is declined with a precise reason — never lowered wrongly.
 
 func compile(t *testing.T, src string) (string, string) {
 	t.Helper()
@@ -185,7 +185,7 @@ func TestEmitForLoopGolden(t *testing.T) {
 
 // Stage-2 completion shapes: range/negative-step loops, list-form
 // conditions, the 2-arg if, and break/continue all compile and any
-// downstream consumption of the variadic results refuses.
+// downstream consumption of the variadic results declines.
 func TestEmitStage2CompletionShapes(t *testing.T) {
 	for _, src := range []string{
 		`for [2,5] [i]`,
@@ -209,26 +209,26 @@ func TestEmitStage2CompletionShapes(t *testing.T) {
 		}
 	}
 	// Negative: the 2-arg if's result is VARIADIC — consuming it must
-	// refuse (only the program residual may absorb it).
+	// decline (only the program residual may absorb it).
 	if got, _ := compile(t, `(if (1 gt 0) [7]) add 1`); got != "" {
-		t.Errorf("2-arg if result consumption compiled but must refuse:\n%s", got)
+		t.Errorf("2-arg if result consumption compiled but must decline:\n%s", got)
 	}
-	// Negative: break outside any loop refuses.
+	// Negative: break outside any loop declines.
 	if got, _ := compile(t, `if (1 gt 0) [break] [1]`); got != "" {
-		t.Errorf("break outside a loop compiled but must refuse:\n%s", got)
+		t.Errorf("break outside a loop compiled but must decline:\n%s", got)
 	}
 	// Negative: a range whose START (or step) is computed does NOT compile — a
 	// FOR_SETUP loop const-bakes start/step and can only resolve a computed END,
 	// so a computed start/step keeps islanding over the runtime list (falls
 	// back). The interpreter runs it faithfully.
 	if got, _ := compile(t, `for [(1 add 2), 5] [i]`); got != "" && !strings.Contains(got, "FALLBACK") {
-		t.Errorf("computed-start range compiled NATIVELY but must island/refuse:\n%s", got)
+		t.Errorf("computed-start range compiled NATIVELY but must island/decline:\n%s", got)
 	}
 }
 
 // P5 multi-result lowering (design/legacy/boru-bytecode-runtime-independence.0.ignore):
 // 0-result side-effect words (set/raise/drop/…) and genuine multi-result
-// words now record and lower, where they previously refused "returns N
+// words now record and lower, where they previously declined "returns N
 // values". The (seq, idx) operand model distinguishes a multi-result call's
 // outputs; a 0-result word pushes nothing.
 func TestEmitP5MultiResult(t *testing.T) {
@@ -300,9 +300,9 @@ func TestEmitP5MultiResult(t *testing.T) {
 	// A body whose value count differs from the DECLARED returns is the
 	// interpreter's return-count type_error. It now COMPILES the error path —
 	// the VM's RET enforces the exact count and raises the byte-identical error
-	// — rather than refusing and falling back.
+	// — rather than declining and falling back.
 	if got, reason := compile(t, `def r2 fn [[n:Integer] [Integer] [n n]] r2 1`); got == "" {
-		t.Errorf("count-mismatch fn must now compile the error path, but refused: %q", reason)
+		t.Errorf("count-mismatch fn must now compile the error path, but declined: %q", reason)
 	}
 	if _, compiled, err := mustRun(t, `def r2 fn [[n:Integer] [Integer] [n n]] r2 1`); !compiled || err == nil {
 		t.Errorf("count-mismatch fn: compiled=%v err=%v, want compiled with the raised count error", compiled, err)
@@ -362,7 +362,7 @@ func TestEmitApplyFnValue(t *testing.T) {
 func TestEmitGuardIf(t *testing.T) {
 	// Positive: guard-if compiles and continues to the trailing value.
 	if _, r := compile(t, `def n 5 if (n eq 0) [raise "zero"] def q (10 div n) q`); r != "" {
-		t.Errorf("guard-if must compile, refused: %s", r)
+		t.Errorf("guard-if must compile, declined: %s", r)
 	}
 	okCases := []struct {
 		src  string
@@ -386,10 +386,10 @@ func TestEmitGuardIf(t *testing.T) {
 // TestEmitDynOutNative: a CORE builtin with CONCRETE args but a declared-Any
 // (dynamic) output — e.g. `unify`, [Any,Any]→[Any,Boolean] — bakes a plain
 // CALL_NATIVE (the sig was resolved by real matching; the handler runs
-// faithfully). A dynamic INPUT still refuses (the sig would be a guess).
+// faithfully). A dynamic INPUT still declines (the sig would be a guess).
 func TestEmitDynOutNative(t *testing.T) {
 	if _, r := compile(t, `List unify [1 2]`); r != "" {
-		t.Errorf("concrete-args unify must compile, refused: %s", r)
+		t.Errorf("concrete-args unify must compile, declined: %s", r)
 	}
 	// Value parity in compiled mode (unify returns [unified, ok]).
 	got, _, err := mustRun(t, `List unify [1 2]`)
@@ -399,10 +399,10 @@ func TestEmitDynOutNative(t *testing.T) {
 	// `push 3 l` now types as a List (push's List overload declares Returns=[List],
 	// the fold-push checker fix), so `… unify l` resolves to a real match and
 	// compiles — and compiled == interpreted. (Previously push typed as Any, so
-	// this stood as the dynamic-input refusal case; that path is still covered by
+	// this stood as the dynamic-input compile failure case; that path is still covered by
 	// the set/getpath dynamic-input emit tests below.)
 	if _, r := compile(t, `def l [1 2] push 3 l unify l`); r != "" {
-		t.Errorf("push-typed unify must compile, refused: %s", r)
+		t.Errorf("push-typed unify must compile, declined: %s", r)
 	}
 	gotP, _, errP := mustRun(t, `def l [1 2] push 3 l unify l`)
 	ai, _ := New()
@@ -416,7 +416,7 @@ func TestEmitDynOutNative(t *testing.T) {
 // list whose leaves are bare type nodes (`{a:Integer}`, `[Integer String]`,
 // `[Resource Entity]`) — bakes as one const operand (a type node is admitted
 // as a const MEMBER), so `is` / `typeof` / `size` over it compiles natively
-// instead of refusing "operand of unknown provenance." The pattern is inert
+// instead of declining "operand of unknown provenance." The pattern is inert
 // data the VM pushes verbatim, so the handler runs identically to the
 // interpreter.
 func TestEmitStructuralTypePattern(t *testing.T) {
@@ -435,7 +435,7 @@ func TestEmitStructuralTypePattern(t *testing.T) {
 	for _, c := range okCases {
 		dis, r := compile(t, c.src)
 		if r != "" {
-			t.Errorf("%s: structural type-pattern must compile, refused: %s", c.src, r)
+			t.Errorf("%s: structural type-pattern must compile, declined: %s", c.src, r)
 			continue
 		}
 		if strings.Contains(dis, "FALLBACK") {
@@ -451,7 +451,7 @@ func TestEmitStructuralTypePattern(t *testing.T) {
 	// naming a type parameter, so the placeholder rides through the
 	// ChildTypeInfo wrapper as inert schema data.
 	if _, r := compile(t, `def Stack gen [T] class {items:[:T]} end make Stack {items:[1 2]}`); r != "" {
-		t.Errorf("typed-list-field generic make must compile, refused: %s", r)
+		t.Errorf("typed-list-field generic make must compile, declined: %s", r)
 	}
 }
 
@@ -477,7 +477,7 @@ func TestEmitGenericSchema(t *testing.T) {
 	} {
 		dis, r := compile(t, src)
 		if r != "" {
-			t.Errorf("%s: generic schema must compile, refused: %s", src, r)
+			t.Errorf("%s: generic schema must compile, declined: %s", src, r)
 			continue
 		}
 		if strings.Contains(dis, "FALLBACK") {
@@ -497,7 +497,7 @@ func TestEmitGenericSchema(t *testing.T) {
 		`def Mapper gen [T U] fnsig [[T] [U]] end (Mapper of [Integer String]) teq (Mapper of [Integer String])`,
 	} {
 		if _, r := compile(t, src); r != "" {
-			t.Errorf("%s: fnsig value must compile, refused: %s", src, r)
+			t.Errorf("%s: fnsig value must compile, declined: %s", src, r)
 		}
 	}
 	if got, _, err := mustRun(t, `def Mapper gen [T U] fnsig [[T] [U]] end (Mapper of [Integer String]) teq (Mapper of [Integer String])`); err != nil || len(got) != 1 || fmt.Sprint(got[0]) != "true" {
@@ -510,7 +510,7 @@ func TestEmitGenericSchema(t *testing.T) {
 	// a fn body"). The compiled typeof matches the interpreter.
 	const innerMake = `def Box gen [T] class {value:T} def boxit gen [T] fn [[x:T] [Any] [make (Box of [T]) {value:x}]] end (boxit 5) typeof`
 	if _, r := compile(t, innerMake); r != "" {
-		t.Errorf("make of a generic instantiated in a fn body must compile, refused: %s", r)
+		t.Errorf("make of a generic instantiated in a fn body must compile, declined: %s", r)
 	}
 	if got, _, err := mustRun(t, innerMake); err != nil || len(got) != 1 || fmt.Sprint(got[0]) != "Box of [Integer]" {
 		t.Errorf("inner-make typeof: got %v err=%v, want [Box of [Integer]]", got, err)
@@ -533,7 +533,7 @@ func TestEmitSurfaceType(t *testing.T) {
 		pre + `def Circle class {r:1.0} def area fn [[c:Circle] [Float] [3.14]] Circle exposes Shape end (make Circle {}) is Shape`,
 	} {
 		if _, r := compile(t, src); r != "" {
-			t.Errorf("%s: surface must compile, refused: %s", src, r)
+			t.Errorf("%s: surface must compile, declined: %s", src, r)
 		}
 	}
 	// Value parity: a Circle that exposes Shape is a Shape; a bare Integer isn't.
@@ -549,7 +549,7 @@ func TestEmitSurfaceType(t *testing.T) {
 // the typed-def handler builds the instance via a direct MakeObject call,
 // skipping the make WORD dispatch — and with it the make event an explicit
 // make records. Without that event the bound instance has no provenance and a
-// downstream `b typeof` (or field access) refuses. The handler now records the
+// downstream `b typeof` (or field access) declines. The handler now records the
 // skipped make event in emit mode, so these compile, for plain classes,
 // explicit generic instantiations, inferred generic schemas, and the `<>`
 // sugar alike.
@@ -564,7 +564,7 @@ func TestEmitTypedDefInstance(t *testing.T) {
 	} {
 		dis, r := compile(t, c.src)
 		if r != "" {
-			t.Errorf("%s: typed-def instance must compile, refused: %s", c.src, r)
+			t.Errorf("%s: typed-def instance must compile, declined: %s", c.src, r)
 			continue
 		}
 		if strings.Contains(dis, "FALLBACK") {
@@ -578,7 +578,7 @@ func TestEmitTypedDefInstance(t *testing.T) {
 
 // TestEmitDeadValueDef: a single-result value-def referenced zero times — a
 // dead binding (`def b (make C {…})` / `def x (1 add 2)` with the name never
-// used) — used to refuse as an "unconsumed call result" on the simulated
+// used) — used to decline as an "unconsumed call result" on the simulated
 // stack. The call still runs (side effects preserved) and its result is
 // CONSUMED by the def's OpBindGlobal write-back (Pop mode — the binding
 // persists cross-request; pre-OpBindGlobal it was a plain DROP), so the
@@ -593,7 +593,7 @@ func TestEmitDeadValueDef(t *testing.T) {
 	} {
 		dis, r := compile(t, c.src)
 		if r != "" {
-			t.Errorf("%s: dead value-def must compile, refused: %s", c.src, r)
+			t.Errorf("%s: dead value-def must compile, declined: %s", c.src, r)
 			continue
 		}
 		if !strings.Contains(dis, "BIND_GLOBAL") {
@@ -610,7 +610,7 @@ func TestEmitDeadValueDef(t *testing.T) {
 	// write-back re-pushes from the promoted local and consumes the COPY).
 	dis, r := compile(t, `def x (1 add 2) (x add x)`)
 	if r != "" {
-		t.Fatalf("used value-def refused: %s", r)
+		t.Fatalf("used value-def declined: %s", r)
 	}
 	if strings.Contains(dis, "DROP") {
 		t.Errorf("used value-def emitted a DROP:\n%s", dis)
@@ -624,7 +624,7 @@ func TestEmitDeadValueDef(t *testing.T) {
 // the factory pattern) is always the interpreter's auto-apply case and now
 // compiles VM-native (see TestFactoryApplyCompiles); an inert CONCRETE fn value
 // ahead of args (`f/v 2`) is left as a stranded [fn args] residual and stays
-// refused so it falls back faithfully.
+// declined so it falls back faithfully.
 func TestEmitFnValueData(t *testing.T) {
 	const inc = `def f fn [[x:Integer] [Integer] [x add 1]] `
 	for _, c := range []struct{ src, want string }{
@@ -633,7 +633,7 @@ func TestEmitFnValueData(t *testing.T) {
 	} {
 		dis, r := compile(t, c.src)
 		if r != "" {
-			t.Errorf("%s: fn value as data must compile, refused: %s", c.src, r)
+			t.Errorf("%s: fn value as data must compile, declined: %s", c.src, r)
 			continue
 		}
 		if strings.Contains(dis, "FALLBACK") {
@@ -650,7 +650,7 @@ func TestEmitFnValueData(t *testing.T) {
 	// Auto-dispatch boundary: a CONCRETE (inert) fn value ahead of residual args
 	// must still fall back — the interpreter leaves it as a stranded [fn args]
 	// residual (NOT an apply), and a concrete fn is not a [Function]-typed
-	// CARRIER, so it stays refused. (The factory-apply `(mk2 5) 10` — a CARRIER
+	// CARRIER, so it stays declined. (The factory-apply `(mk2 5) 10` — a CARRIER
 	// lead — now compiles VM-native; see TestFactoryApplyCompiles.)
 	if _, r := compile(t, inc+`f/v 2`); r == "" {
 		t.Error("a concrete fn value ahead of residual args compiled but must fall back")
@@ -670,7 +670,7 @@ func TestEmitModuleInnerNative(t *testing.T) {
 	}
 	for _, src := range cases {
 		if _, r := compile(t, src); r != "" {
-			t.Errorf("module inner native must compile, refused: %s\n  %s", r, src)
+			t.Errorf("module inner native must compile, declined: %s\n  %s", r, src)
 		}
 		_, compiled, err := mustRun(t, src)
 		if err != nil || !compiled {
@@ -685,7 +685,7 @@ func TestEmitModuleInnerNative(t *testing.T) {
 	// byte-identical to the runtime one, so the compiled result matches.
 	const forceArityDef = `def ff (force-arity 2 add) ff 1 2`
 	if _, r := compile(t, forceArityDef); r != "" {
-		t.Errorf("force-arity'd user def must compile, refused: %s", r)
+		t.Errorf("force-arity'd user def must compile, declined: %s", r)
 	}
 	if got, _, err := mustRun(t, forceArityDef); err != nil || len(got) != 1 || fmt.Sprint(got[0]) != "3" {
 		t.Errorf("force-arity'd user def: got %v err=%v, want [3]", got, err)
@@ -707,7 +707,7 @@ func mustRun(t *testing.T, src string) ([]any, bool, error) {
 // the analyzer's residual but produces NO runtime value, so it is excluded from
 // the return-count check and leaves no operand — exactly as the top-level
 // residual reconciliation handles it. Without the exclusion the phantom inflated
-// the body count and the fn refused as "value count differs from declared
+// the body count and the fn declined as "value count differs from declared
 // returns".
 func TestFnGuardReturnCount(t *testing.T) {
 	// Positive: a guard + real result compiles and matches BOTH the fall-through
@@ -721,10 +721,10 @@ func TestFnGuardReturnCount(t *testing.T) {
 	}
 	// A GENUINE count mismatch (body leaves 2 DEFINITE values, declared 1) is the
 	// interpreter's return-count type_error. It now COMPILES the error path (the
-	// VM's RET enforces the exact count) rather than refusing — and running it
+	// VM's RET enforces the exact count) rather than declining — and running it
 	// raises the matching error, matching the interpreter.
 	if got, r := compile(t, `def r2 fn [[n:Integer] [Integer] [n n]] r2 1`); got == "" {
-		t.Errorf("count-mismatch fn must now compile the error path, but refused: %q", r)
+		t.Errorf("count-mismatch fn must now compile the error path, but declined: %q", r)
 	}
 	if _, compiled, err := mustRun(t, `def r2 fn [[n:Integer] [Integer] [n n]] r2 1`); !compiled || err == nil {
 		t.Errorf("count-mismatch fn: compiled=%v err=%v, want compiled with the raised count error", compiled, err)
@@ -734,7 +734,7 @@ func TestFnGuardReturnCount(t *testing.T) {
 // TestEmitTrap: a word lenient in check mode but erroring at run time — an
 // orphan gen (gen_without_constructor), an unpack of a missing key
 // (unpack_error) — compiles a terminal OpTrap that raises the byte-identical
-// error, instead of refusing the whole program.
+// error, instead of declining the whole program.
 func TestEmitTrap(t *testing.T) {
 	cases := []struct {
 		src, errSubstr string
@@ -745,7 +745,7 @@ func TestEmitTrap(t *testing.T) {
 	for _, tc := range cases {
 		got, reason := compile(t, tc.src)
 		if got == "" {
-			t.Errorf("%q must compile a trap, but refused: %q", tc.src, reason)
+			t.Errorf("%q must compile a trap, but declined: %q", tc.src, reason)
 			continue
 		}
 		if !strings.Contains(got, "TRAP") {
@@ -758,21 +758,21 @@ func TestEmitTrap(t *testing.T) {
 		}
 	}
 	// NEGATIVE: a suppressed error inside a branch fragment is conditional and
-	// not modelled as a trap, so it keeps the blanket refusal and falls back.
+	// not modelled as a trap, so it keeps the blanket compile failure and falls back.
 	if got, _ := compile(t, `if true [def mm {x:1} unpack [y] mm] [1]`); got != "" {
-		t.Errorf("nested suppressed error must refuse (no top-level trap), but compiled:\n%s", got)
+		t.Errorf("nested suppressed error must decline (no top-level trap), but compiled:\n%s", got)
 	}
 }
 
 // TestEmitReverse: an N-arg (N>=3) call whose args are all COMPUTED evaluates
 // them left-to-right (sig position 0 lands deepest), so the lowerer reverses the
 // top N with one OpReverse to seat them in sig order — the 3-deep rotate the VM
-// previously had no opcode for (it refused as "operand shape beyond Stage 1").
+// previously had no opcode for (it declined as "operand shape beyond Stage 1").
 func TestEmitReverse(t *testing.T) {
 	src := `range (1 add 0) (4 sub 0) (2 sub 1)` // range 1 4 1 -> [1 2 3], all 3 args computed
 	got, reason := compile(t, src)
 	if got == "" {
-		t.Fatalf("%q must compile via OpReverse, but refused: %q", src, reason)
+		t.Fatalf("%q must compile via OpReverse, but declined: %q", src, reason)
 	}
 	if !strings.Contains(got, "REVERSE") {
 		t.Errorf("%q compiled without a REVERSE:\n%s", src, got)
@@ -794,7 +794,7 @@ func TestEmitReverse(t *testing.T) {
 
 // TestEmitSpillSeat: an operand shape the cheap stack-only paths can't seat —
 // two COMPUTED args plus a trailing inert arg (`range (a) (b) const`), which the
-// old layoutOperands refused as "operand shape beyond Stage 1" — now compiles by
+// old layoutOperands declined as "operand shape beyond Stage 1" — now compiles by
 // spilling the event operands to frame-local destinations (STORE_LOCAL) and
 // re-pushing in sig order (DDCG frame-slot destinations). The result must match
 // the interpreter.
@@ -802,7 +802,7 @@ func TestEmitSpillSeat(t *testing.T) {
 	src := `range (1 add 0) (5 sub 0) 1` // range 1 5 1 -> [1 2 3 4]; sig[0],sig[1] computed, sig[2] const
 	got, reason := compile(t, src)
 	if got == "" {
-		t.Fatalf("%q must compile via spill, but refused: %q", src, reason)
+		t.Fatalf("%q must compile via spill, but declined: %q", src, reason)
 	}
 	if !strings.Contains(got, "STORE_LOCAL") {
 		t.Errorf("%q compiled without a spill (STORE_LOCAL):\n%s", src, got)
@@ -848,27 +848,27 @@ func TestEmitMethodField(t *testing.T) {
 }
 
 // Loop results are VARIADIC at run time (one value per iteration):
-// downstream calls must refuse to consume them — only the program
+// downstream calls must decline to consume them — only the program
 // residual may absorb the accumulation.
-func TestEmitRefusesLoopResultConsumption(t *testing.T) {
+func TestEmitDoesNotLowerLoopResultConsumption(t *testing.T) {
 	got, reason := compile(t, `(for 3 [i]) size`)
 	if got != "" {
-		t.Fatalf("loop-result consumption compiled but must refuse:\n%s", got)
+		t.Fatalf("loop-result consumption compiled but must decline:\n%s", got)
 	}
 	if !strings.Contains(reason, "loop") && !strings.Contains(reason, "provenance") {
-		t.Errorf("unexpected refusal reason %q", reason)
+		t.Errorf("unexpected compile failure reason %q", reason)
 	}
 }
 
-// Negative: every beyond-Stage-1 construct is refused with a precise
+// Negative: every beyond-Stage-1 construct is declined with a precise
 // reason — never lowered wrongly.
-func TestEmitRefusals(t *testing.T) {
+func TestEmitCompileFailures(t *testing.T) {
 	cases := []struct {
 		src        string
 		wantReason string
 	}{
 		// A loop-collect def with a DYNAMIC count: the S5 first-value split
-		// needs the static region size, so the refusal stands. (The
+		// needs the static region size, so the compile failure stands. (The
 		// statically-counted sibling — including its read inside a branch
 		// arm — graduated 2026-07-17 with the S5 split: the read resolves
 		// the live binding via OpLookupDynScope, so branch fragments consume
@@ -881,11 +881,11 @@ func TestEmitRefusals(t *testing.T) {
 	for _, c := range cases {
 		got, reason := compile(t, c.src)
 		if got != "" {
-			t.Errorf("%q compiled but must be refused at Stage 1:\n%s", c.src, got)
+			t.Errorf("%q compiled but must be declined at Stage 1:\n%s", c.src, got)
 			continue
 		}
 		if !strings.Contains(reason, c.wantReason) {
-			t.Errorf("%q refused with %q, want reason containing %q", c.src, reason, c.wantReason)
+			t.Errorf("%q declined with %q, want reason containing %q", c.src, reason, c.wantReason)
 		}
 	}
 }
@@ -894,7 +894,7 @@ func TestEmitRefusals(t *testing.T) {
 // OpCallNativePoly. A strict-disjunct straddle (`y` is Integer|String from the
 // two `if` arms) reaching more than one `is` overload lowers to a runtime-
 // matched poly call: the VM re-matches the one concrete runtime alternative,
-// so it no longer refuses as "polymorphic dispatch" (roadmap item 4).
+// so it no longer declines as "polymorphic dispatch" (roadmap item 4).
 // Faithfulness is the load-bearing assertion — the runtime value (1, the true
 // arm) dispatches `1 is Integer = true` in both engines.
 //
@@ -969,11 +969,11 @@ func TestEmitUserFnAndTailCall(t *testing.T) {
 	// value — returned, bound, then called once through the binding —
 	// now COMPILES: the read resolves through the fn-carrier side table
 	// and the leading-apply machinery owns the call (runtime parity 8,
-	// pinned by the frontier harness; repeated reads still refuse at the
+	// pinned by the frontier harness; repeated reads still decline at the
 	// fn-value residual nets). Locally-called closures were already
 	// compiled — see TestEmitClosureCaptureSlots.
 	if _, r3 := compile(t, `def mk fn [[x:Integer] [Function] [fn [[y:Integer] [Integer] [x add y]]]] def a5 (mk 5) a5 3`); r3 != "" {
-		t.Errorf("escaping closure must compile since Stage 1, refused: %s", r3)
+		t.Errorf("escaping closure must compile since Stage 1, declined: %s", r3)
 	}
 }
 
@@ -995,7 +995,7 @@ func TestRunCompiledTailGuarantee(t *testing.T) {
 		t.Fatalf("deep tail recursion: %v", err)
 	}
 	if !compiled {
-		t.Fatal("tail-recursive program fell back to the interpreter")
+		t.Fatal("tail-recursive program did not compile")
 	}
 	if len(out) != 1 || out[0] != int64(5000050000) {
 		t.Fatalf("s2 100000 0 = %v, want 5000050000", out)
@@ -1010,7 +1010,7 @@ func TestRunCompiledTailGuarantee(t *testing.T) {
 		return
 	}
 	if !compiled2 {
-		t.Fatal("non-tail program fell back to the interpreter")
+		t.Fatal("non-tail program did not compile")
 	}
 	if err2 == nil || !strings.Contains(err2.Error(), "tape_exhausted") {
 		t.Fatalf("deep non-tail recursion under tight ceiling = %v, want tape_exhausted", err2)
@@ -1053,7 +1053,7 @@ func TestRunCompiledConstCondTailGuarantee(t *testing.T) {
 		t.Fatalf("deep const-cond tail recursion: %v", err)
 	}
 	if !compiled {
-		t.Fatal("const-cond tail recursion fell back to the interpreter")
+		t.Fatal("const-cond tail recursion did not compile")
 	}
 	if len(out) != 1 || out[0] != int64(0) {
 		t.Fatalf("g 100000 = %v, want 0", out)
@@ -1072,7 +1072,7 @@ func TestRunCompiledConstCondTailGuarantee(t *testing.T) {
 		return
 	}
 	if !compiled2 {
-		t.Fatal("const-cond non-tail program fell back to the interpreter")
+		t.Fatal("const-cond non-tail program did not compile")
 	}
 	if err2 == nil || !strings.Contains(err2.Error(), "tape_exhausted") {
 		t.Fatalf("deep const-cond non-tail recursion = %v, want tape_exhausted", err2)
@@ -1113,7 +1113,7 @@ func TestRunCompiledMutualTailGuarantee(t *testing.T) {
 		t.Fatalf("deep mutual tail recursion: %v", err)
 	}
 	if !compiled {
-		t.Fatal("mutual tail recursion fell back to the interpreter")
+		t.Fatal("mutual tail recursion did not compile")
 	}
 	// convertResults renders Booleans as strings.
 	if len(out) != 1 || out[0] != "true" {
@@ -1136,7 +1136,7 @@ func TestRunCompiledMutualTailGuarantee(t *testing.T) {
 		return
 	}
 	if !compiled2 {
-		t.Fatal("mutual non-tail program fell back to the interpreter")
+		t.Fatal("mutual non-tail program did not compile")
 	}
 	if err2 == nil || !strings.Contains(err2.Error(), "tape_exhausted") {
 		t.Fatalf("deep mutual non-tail recursion under tight ceiling = %v, want tape_exhausted", err2)
@@ -1172,7 +1172,7 @@ func TestEmitClosureCaptureSlots(t *testing.T) {
 		t.Fatalf("closure over param: %v", err)
 	}
 	if !compiled {
-		t.Fatal("closure fell back to the interpreter")
+		t.Fatal("closure did not compile")
 	}
 	b, err := New()
 	if err != nil {
@@ -1204,7 +1204,7 @@ func TestCompiledFnRedefinitionBindsLatest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !compiled {
-		t.Fatal("redefinition program fell back to the interpreter")
+		t.Fatal("redefinition program did not compile")
 	}
 	if len(out) != 2 || out[0] != int64(2) || out[1] != int64(3) {
 		t.Fatalf("redefined fn calls = %v, want [2 3]", out)
@@ -1224,7 +1224,7 @@ func TestRunCompiledStepBudget(t *testing.T) {
 		return
 	}
 	if !compiled {
-		t.Fatal("tail spin fell back to the interpreter")
+		t.Fatal("tail spin did not compile")
 	}
 	if err == nil || !strings.Contains(err.Error(), "evaluation_limit") {
 		t.Fatalf("tail spin = %v, want evaluation_limit", err)
@@ -1435,7 +1435,7 @@ func TestEmitModuleCallLowering(t *testing.T) {
 	// result must still match the interpreter.
 	got2, reason2 := compile(t, `def m {a:1} m.a`)
 	if reason2 != "" {
-		t.Fatalf("concrete-map dot refused: %s", reason2)
+		t.Fatalf("concrete-map dot declined: %s", reason2)
 	}
 	if strings.Contains(got2, "FALLBACK") || strings.Contains(got2, "CALL_NATIVE_POLY") {
 		t.Errorf("concrete-map field dot should monomorphize to CALL_NATIVE:\n%s", got2)
@@ -1462,7 +1462,7 @@ func TestEmitModuleCallLowering(t *testing.T) {
 	// covered by TestEmitPolySiteLowersToRuntimeMatch.
 	got3, reason3 := compile(t, `def Foo class {a:1} def o (make Foo {}) o.a`)
 	if reason3 != "" {
-		t.Fatalf("object field dot refused: %s", reason3)
+		t.Fatalf("object field dot declined: %s", reason3)
 	}
 	if strings.Contains(got3, "FALLBACK") || strings.Contains(got3, "CALL_NATIVE_POLY") {
 		t.Errorf("object field dot should monomorphize to CALL_NATIVE:\n%s", got3)
@@ -1585,9 +1585,9 @@ func TestEmitFnValueFieldCallCompiles(t *testing.T) {
 	}
 	// NEGATIVE: a BARE inert ref directly followed by an arg (`f/v 2`) is NOT
 	// applied by the interpreter — the /v leaves it inert data, residual [f, 2] —
-	// so the compiler must refuse rather than auto-apply it (which would diverge).
+	// so the compiler must decline rather than auto-apply it (which would diverge).
 	if _, r := compile(t, `def f fn [[x:Integer] [Integer] [add x 1]]  f/v 2`); r == "" {
-		t.Error("bare inert ref `f/v 2` compiled but must refuse (interpreter leaves it inert)")
+		t.Error("bare inert ref `f/v 2` compiled but must decline (interpreter leaves it inert)")
 	}
 }
 
@@ -1633,7 +1633,7 @@ func TestEmitFallbackIsland(t *testing.T) {
 	// A body reading a CONCRETE module-def bakes it as a const in the
 	// closure body (plan P2 closure-capture / const-bake) — compiles native.
 	if got, r := compile(t, `def n 10 each [add n] [1 2 3]`); r != "" {
-		t.Errorf("each with a concrete def-referencing body refused: %s", r)
+		t.Errorf("each with a concrete def-referencing body declined: %s", r)
 	} else if strings.Contains(got, "FALLBACK") {
 		t.Errorf("each with a concrete def-referencing body islanded:\n%s", got)
 	}
@@ -1675,29 +1675,29 @@ func TestEmitFallbackIsland(t *testing.T) {
 
 // Plan P2: a single-result `do` body compiles to a CLOSURE unit (native),
 // not an island. The splice word `word` stays OUT (not a data transform) —
-// it refuses to whole-program fallback.
+// it does not compile.
 func TestEmitWidenedAllowSet(t *testing.T) {
 	for _, c := range []struct {
 		src  string
 		want any
-		isFn bool // compiles native via a closure (no island, no refusal)
+		isFn bool // compiles native via a closure (no island, no compile failure)
 	}{
 		{`do [1 add 2]`, int64(3), true},
 		{`do [mul 2 (add 3 4)]`, int64(14), true},
-		// (`word [1 add 2]` USED to refuse here; the splice now compiles by inline
+		// (`word [1 add 2]` USED to decline here; the splice now compiles by inline
 		// expansion to a plain native lowering — see TestWordSpliceCompilesNative.)
 	} {
 		got, reason := compile(t, c.src)
 		if c.isFn {
 			if reason != "" {
-				t.Errorf("%q expected a native closure, refused: %s", c.src, reason)
+				t.Errorf("%q expected a native closure, declined: %s", c.src, reason)
 			} else if strings.Contains(got, "FALLBACK") {
 				t.Errorf("%q expected a native closure, islanded:\n%s", c.src, got)
 			} else if !strings.Contains(got, "PUSH_CLOSURE") {
 				t.Errorf("%q expected a PUSH_CLOSURE:\n%s", c.src, got)
 			}
 		} else if reason == "" {
-			t.Errorf("%q expected refusal (whole-program fallback), but compiled:\n%s", c.src, got)
+			t.Errorf("%q expected a compile failure, but compiled:\n%s", c.src, got)
 		}
 		a, err := New()
 		if err != nil {
@@ -1735,7 +1735,7 @@ func TestEmitF4DynamicDispatch(t *testing.T) {
 	} {
 		got, reason := compile(t, c.src)
 		if reason != "" {
-			t.Errorf("%q F4 dispatch refused: %s", c.src, reason)
+			t.Errorf("%q F4 dispatch declined: %s", c.src, reason)
 		} else if strings.Contains(got, "FALLBACK") {
 			t.Errorf("%q islanded but a native-each result is a concrete query:\n%s", c.src, got)
 		}
@@ -1760,7 +1760,7 @@ func TestEmitF4DynamicDispatch(t *testing.T) {
 	// result to dynamic). `size [1 2 3]` lowers to a native call.
 	got, reason := compile(t, `size [1 2 3]`)
 	if reason != "" {
-		t.Fatalf("size of a concrete list refused: %s", reason)
+		t.Fatalf("size of a concrete list declined: %s", reason)
 	}
 	if strings.Contains(got, "FALLBACK") {
 		t.Errorf("concrete `size [1 2 3]` was islanded but must lower to CALL_NATIVE:\n%s", got)
@@ -1770,15 +1770,15 @@ func TestEmitF4DynamicDispatch(t *testing.T) {
 // Stage 5: a flow-control sentinel (break/continue/return) inside an
 // island body cannot cross the island boundary to an enclosing compiled
 // loop — the sub-engine would set FlowCtrl that the VM can't propagate.
-// Such a body refuses to island; the whole program falls back and the
+// Such a body does not island; the program does not compile and the
 // interpreter unwinds the sentinel correctly.
-func TestEmitIslandSentinelRefusal(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+func TestEmitIslandSentinelCompileFailure(t *testing.T) {
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// `each [break]` inside a compiled `for`: the break targets the for,
 	// not each — it must NOT be islanded.
 	src := `for 3 [each [break] [1 2]]`
 	if _, reason := compile(t, src); reason == "" {
-		t.Errorf("%q islanded a sentinel body but must refuse", src)
+		t.Errorf("%q islanded a sentinel body but must decline", src)
 	}
 	a, err := New()
 	if err != nil {
@@ -1855,7 +1855,7 @@ func TestEmitThreadedFallbackIsland(t *testing.T) {
 	// native: the def bakes as a const, the data threads as a computed
 	// operand (plan P2).
 	if got, r := compile(t, `def n 10 each [add n] (iota 3)`); r != "" {
-		t.Errorf("threaded each with a concrete def-referencing body refused: %s", r)
+		t.Errorf("threaded each with a concrete def-referencing body declined: %s", r)
 	} else if strings.Contains(got, "FALLBACK") {
 		t.Errorf("threaded each with a concrete def-referencing body islanded:\n%s", got)
 	}

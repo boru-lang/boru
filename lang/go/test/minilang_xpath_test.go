@@ -66,7 +66,7 @@ func TestMiniXPathDesugar(t *testing.T) {
 }
 
 // TestMiniXPathErrors pins the loud failures: a malformed XPath (parse error)
-// and a non-Xml document (the typed signature refuses to dispatch).
+// and a non-Xml document (the typed signature declines to dispatch).
 func TestMiniXPathErrors(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"bad xpath", `<r/> mini xp '//['`, "mini_parse_error"},

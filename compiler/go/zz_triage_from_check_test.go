@@ -255,7 +255,7 @@ func TestRecordUserPolyCallGuards(t *testing.T) {
 	es := NewEmitState()
 	es.RecordUserPolyCall("w", nil, nil, nil, nil, nil, []core.Value{carrierVal(core.TInteger)}, []core.Value{core.NewInteger(1)}, core.SrcPos{}, "w", core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("unresolvable poly operand should refuse")
+		t.Fatal("unresolvable poly operand should decline")
 	}
 }
 
@@ -282,7 +282,7 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	}
 	// Under the `apply` WORD (a pending entry for the lead) a fn-valued arg
 	// is DATA on the resolved stack (the thirty-second increment): recorded.
-	// (A fresh state: the decline above is the event-lead refusal, which
+	// (A fresh state: the decline above is the event-lead compile failure, which
 	// marks the state uncompilable.)
 	esW := NewEmitState()
 	seedProduced(esW, fn, 1)
@@ -299,8 +299,8 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	//
 	// The callee here must have a PROVABLE arity. Since the window trim moved
 	// the arity decision ahead of the operand build, an event lead with an
-	// unprovable arity refuses before any arg is resolved — so a carrier
-	// callee would exercise that refusal instead of this one.
+	// unprovable arity declines before any arg is resolved — so a carrier
+	// callee would exercise that compile failure instead of this one.
 	single := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{
 		Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
 	}}})
@@ -313,7 +313,7 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 
 	// An OVERLOADED concrete callee has no static arity — which arm runs is a
 	// runtime question — so applyWindowArity declines and the window is left
-	// untrimmed. Paired with an event lead that means the standing refusal.
+	// untrimmed. Paired with an event lead that means the standing compile failure.
 	over := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{
 		{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
 		{Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1},
@@ -322,25 +322,25 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 	esOver := NewEmitState()
 	seedProduced(esOver, over, 1)
 	if _, ok := esOver.RecordDynApply([]core.Value{core.NewInteger(1)}, over, core.NewCarrier(core.TInteger), core.SrcPos{}); ok {
-		t.Fatal("an overloaded callee has no provable arity — the event lead must refuse")
+		t.Fatal("an overloaded callee has no provable arity — the event lead must decline")
 	}
 	if esOver.Compilable {
 		t.Error("the overloaded event lead must mark the program uncompilable")
 	}
 }
 
-func TestRecordLoopRefusals(t *testing.T) {
+func TestRecordLoopCompileFailures(t *testing.T) {
 	// body == nil.
 	es := NewEmitState()
 	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("nil loop body should refuse")
+		t.Fatal("nil loop body should decline")
 	}
 	// range of unknown provenance (start unresolvable).
 	es = NewEmitState()
 	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("unresolvable range should refuse")
+		t.Fatal("unresolvable range should decline")
 	}
 	// computed start/step (start resolves to an event, not a const).
 	es = NewEmitState()
@@ -348,13 +348,13 @@ func TestRecordLoopRefusals(t *testing.T) {
 	seedProduced(es, start, 1)
 	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("computed loop start should refuse")
+		t.Fatal("computed loop start should decline")
 	}
 	// iterator slot not registered (all-const range, empty body).
 	es = NewEmitState()
 	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
-		t.Fatal("unregistered iterator should refuse")
+		t.Fatal("unregistered iterator should decline")
 	}
 }
 

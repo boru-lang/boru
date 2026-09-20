@@ -222,7 +222,7 @@ func vmNatives(parent *native.Registry) []native.NativeFunc {
 			// the source lowers to bytecode, reason names the first offender
 			// when it does not, and sites is the dispatch-site census (mono /
 			// poly / dynamic / meta). Like vm-check it never raises for
-			// uncompilable or malformed input — refusal is data, not an error.
+			// uncompilable or malformed input — compile failure is data, not an error.
 			Name: "vm-compile",
 			Signatures: []native.Signature{{
 				Args: []*native.Type{native.TString},
@@ -271,7 +271,7 @@ func vmCompileReportReturns(_ []native.Value, _ *native.Registry) []native.Value
 // CompiledSubRun is installed by the lang package (which owns the
 // compiled-by-default entry points; modules cannot import lang without a
 // cycle), so Vm.run executes its sub-engine source on the VM with lang's
-// explicit interpreter fallback on compile_failed. Nil keeps the
+// explicit compile failure on compile_failed. Nil keeps the
 // tree-walker.
 var CompiledSubRun func(subReg *native.Registry, src string) ([]native.Value, error)
 
@@ -416,9 +416,9 @@ func checkInSubEngine(parent *native.Registry, src string) (native.Value, error)
 
 // compileInSubEngine runs the bytecode compile pass over src in a fresh
 // sub-engine WITHOUT executing it, and returns a result map
-// { ok, reason, sites }. It mirrors lang.(*Boru).CompileCheck's refusal
+// { ok, reason, sites }. It mirrors lang.(*Boru).CompileCheck's compile failure
 // ladder but reports the outcome as data instead of a (Program, reason)
-// pair — refusal is never an error here. Policy handling matches
+// pair — compile failure is never an error here. Policy handling matches
 // checkInSubEngine.
 func compileInSubEngine(parent *native.Registry, src string) (native.Value, error) {
 	subReg, err := newSubEngineRegistry(parent, native.HostPolicy(parent))
@@ -473,9 +473,9 @@ func compileInSubEngine(parent *native.Registry, src string) (native.Value, erro
 func hasCheckError(diags []native.CheckDiagnostic) bool {
 	for _, d := range diags {
 		// Model-undermining findings only — a RuntimeMirror compiles the
-		// identical error path and must not refuse, while a CAUGHT
+		// identical error path and must not decline, while a CAUGHT
 		// non-mirror finding still marks a guessed recording (see
-		// CompileCheck's refusal loop).
+		// CompileCheck's compile failure loop).
 		if !d.RuntimeMirror && (d.Severity == native.SeverityError || d.CaughtAtRuntime) {
 			return true
 		}

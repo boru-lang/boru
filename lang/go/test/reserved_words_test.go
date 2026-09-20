@@ -22,7 +22,7 @@ func TestReservedCoreWordsCannotBeRedefined(t *testing.T) {
 		`def false 0`,  // reserved literal
 		`undef add`,    // can't undef a native (no extension present)
 		`undef true`,   // can't undef a literal
-		// sealed words: even the fn-merge form refuses
+		// sealed words: even the fn-merge form declines
 		`def def fn [[x:Number] [Number] [x]]`,
 		`def make fn [[x:Number] [Number] [x]]`,
 		`def word fn [[x:Number] [Number] [x]]`,
@@ -40,7 +40,7 @@ func TestReservedCoreWordsCannotBeRedefined(t *testing.T) {
 
 	// An attempt to claim a locked kernel tuple dies at ADMISSION under
 	// rev 2 (design/OPEN-WORDS.1.md): the all-kernel tuple has no owned
-	// nominal anchor, so the refusal is extend_owner — the replacement
+	// nominal anchor, so the compile failure is extend_owner — the replacement
 	// question is never even reached (the locked_signature arm survives
 	// for non-core locked-bearing words; eng pins it directly in
 	// TestMergeExtensionSigsLockedCollision).

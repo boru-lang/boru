@@ -41,7 +41,7 @@ func TestLowerBreakContinueEmitTheFlowSignal(t *testing.T) {
 				lw.loops = []loopCtx{{nextPC: 7}}
 			}
 			if reason := tc.lower(lw, &EmitEvent{kind: evBreak}); reason != "" {
-				t.Fatalf("lowering refused: %q", reason)
+				t.Fatalf("lowering declined: %q", reason)
 			}
 			ops := lfsOps(*lw.code)
 			if len(ops) != 1 || ops[0] != tc.want {
@@ -60,11 +60,11 @@ func TestLowerBreakContinueEmitTheFlowSignal(t *testing.T) {
 func TestLowerBreakOutsideLoop(t *testing.T) {
 	lw := w8lw() // no loop context, not a fn unit
 	if reason := lw.lowerBreak(&EmitEvent{kind: evBreak, call: emitCall{pos: core.SrcPos{}}}); reason == "" {
-		t.Fatal("a break with no loop and no frame to unwind into must refuse")
+		t.Fatal("a break with no loop and no frame to unwind into must decline")
 	} else if reason != "break outside a compiled loop (Stage 2)" {
 		t.Fatalf("break-outside-loop reason = %q", reason)
 	}
 	if len(*lw.code) != 0 {
-		t.Errorf("a refused break must emit nothing, got %v", lfsOps(*lw.code))
+		t.Errorf("a declined break must emit nothing, got %v", lfsOps(*lw.code))
 	}
 }

@@ -8,14 +8,14 @@ import (
 // TestUnmaskNoSigCheckVsCompile pins the resolution of the check-vs-compile wart
 // Leaf-5 Part 1 targeted: a get over a union (Disjunct) receiver bound by an
 // if-branch (the tst_unit shape) is CLEAN under a plain `boru check` (the fn body
-// is analysed once at its def site, not re-entered per call). It used to refuse
+// is analysed once at its def site, not re-entered per call). It used to decline
 // force-compile as the GENERIC "check diagnostics" — a checkModeAssumeSig
 // no_signature ERROR diagnostic, spuriously added on the compile pass, tripped
 // CompileCheck's diagnostic gate (boru.go:297) and masked the real reason. Two
 // fixes converge here: Part 1 gates that diagnostic on !Check.Compiling so it is
 // never spuriously added on the compile pass, and the Stage-D poly widening
 // makes this shape COMPILE outright. So now: plain check clean AND it compiles
-// AND the reason is never the masked "check diagnostics". (A still-refusing
+// AND the reason is never the masked "check diagnostics". (A still-declining
 // dynamic dispatch — the decision_smoke `raise`, the trie find-kid suspended
 // `get` — surfaces its specific "unmatched dispatch recovered at <w>" reason in
 // the voxgig force-compile sweep; the plain-check half is pinned by
@@ -39,7 +39,7 @@ func TestUnmaskNoSigCheckVsCompile(t *testing.T) {
 		t.Errorf("compile reason masked as %q (the wart Part 1 removes)", reason)
 	}
 	if prog == nil {
-		t.Errorf("expected compile (Stage-D get-over-union widening), refused: %q", reason)
+		t.Errorf("expected compile (Stage-D get-over-union widening), declined: %q", reason)
 	}
 }
 

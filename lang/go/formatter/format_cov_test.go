@@ -211,7 +211,7 @@ func TestFormatFnLongHeader(t *testing.T) {
 	// indents re-parse as fresh statements), so no idempotence check here.
 }
 
-// TestFormatFnNotApplicable covers tryFnFormat's refusal arms: fn with a
+// TestFormatFnNotApplicable covers tryFnFormat's decline arms: fn with a
 // non-list follower and a wrapper with fewer than three inner lists both
 // fall through to the generic wrap.
 func TestFormatFnNotApplicable(t *testing.T) {

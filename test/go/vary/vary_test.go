@@ -145,7 +145,7 @@ func TestOutcomeString(t *testing.T) {
 		Pass:         "pass",
 		InterpReject: "interp-reject",
 		CheckReject:  "check-reject",
-		Refused:      "refused",
+		Declined:     "declined",
 		Islanded:     "islanded",
 		Diverged:     "DIVERGED",
 	}
@@ -157,7 +157,7 @@ func TestOutcomeString(t *testing.T) {
 }
 
 // TestClassifyRealArms — the classifier arms a healthy build CAN reach:
-// pass, interpreter rejection, and a genuine compile refusal.
+// pass, interpreter rejection, and a genuine compile failure.
 func TestClassifyRealArms(t *testing.T) {
 	if r := Classify("1 add 2"); r.Outcome != Pass || r.Detail != "" {
 		t.Errorf("1 add 2: %v %q, want pass", r.Outcome, r.Detail)
@@ -165,14 +165,14 @@ func TestClassifyRealArms(t *testing.T) {
 	if r := Classify("zzvnosuchword"); r.Outcome != InterpReject {
 		t.Errorf("undefined word: %v %q, want interp-reject", r.Outcome, r.Detail)
 	}
-	// A def-PROMOTED do-catch read — a stable refusal (the result leaves the
+	// A def-PROMOTED do-catch read — a stable compile failure (the result leaves the
 	// stack for a frame slot, so neither the mark window nor the paren apply
 	// reproduces it). Earlier fixtures graduated to corpus-native: `for 3
 	// [1 2]` at net drivers, the bare do-catch region `do [(zf 5) 2] error
 	// [dot code]` at the mark-window island (L-DO part 2b).
 	r := Classify(`def zf fn [[x:Any] [Any] [raise bad_input 'no']]  def msg (do [(zf 5) 2] error [dot code])  msg`)
-	if r.Outcome != Refused || r.Detail == "" {
-		t.Errorf("promoted do-catch read: %v %q, want a refusal", r.Outcome, r.Detail)
+	if r.Outcome != Declined || r.Detail == "" {
+		t.Errorf("promoted do-catch read: %v %q, want a compile failure", r.Outcome, r.Detail)
 	}
 }
 
@@ -257,8 +257,8 @@ func TestClassifySeamArms(t *testing.T) {
 			return nil, false, errors.New("bailed")
 		}
 		r := Classify("1 add 2")
-		if r.Outcome != Refused || !strings.Contains(r.Detail, "runtime bail") {
-			t.Errorf("%v %q, want runtime-bail refusal", r.Outcome, r.Detail)
+		if r.Outcome != Declined || !strings.Contains(r.Detail, "runtime bail") {
+			t.Errorf("%v %q, want runtime-bail compile failure", r.Outcome, r.Detail)
 		}
 	})
 

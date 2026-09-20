@@ -25,7 +25,7 @@ import "boru:parse"  import "boru:parselang"  typeof Parse.RuleSpec	Map	Parse.Ru
 # §4  loud failures (negative coverage)
 import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.abnf g '= = bad ='  def broke (Parse.parser g)	ERROR:parse_bad_grammar	a malformed ABNF grammar is a loud error at register, not a panic
 import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.action g 'noat' ([nd:Any] => [1])	ERROR:parse_bad_action	an action ref must start with '@' (a mark/phase selector)
-import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.abnf g 'x = "a"' {start:'x'}  def p (Parse.parser g)  def p2 (Parse.parser g)	ERROR:parse_grammar_done	a finalized grammar is single-use — a second Parse.parser is refused
+import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.abnf g 'x = "a"' {start:'x'}  def p (Parse.parser g)  def p2 (Parse.parser g)	ERROR:parse_grammar_done	a finalized grammar is single-use — a second Parse.parser is declined
 #
 # §5  Parse.spec — the WHOLE grammar as one declarative map, mirroring the
 #     tabnas GrammarSpec document: {options rule ref v} plus the boru
@@ -44,11 +44,11 @@ import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.spec g 
 import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.spec g {matcher:{skip:{priority:1000000 fn:([s:String] => [None])}} ref:{'@op:o:INC': ([nd:Any] => [2])} abnf:{src:'op = "inc"' start:'op'}}  def sp7 (Parse.parser g)  end  parse sp7 'inc'	2	a declining custom matcher rides in the matcher section
 import "boru:parse"  import "boru:parselang"  def g Parse.grammar  Parse.spec g {v:1 options:{fixed:{token:{'#PL':'+'}}} rule:{extra:{open:[{s:'#PL' c:{'n.dlist':0} u:{tag:'t'} k:{p:'q'} n:{x:1}}]}} ref:{'@op:o:INC': ([nd:Any] => [1])} abnf:{src:'op = "inc"' start:'op'}}  def sp8 (Parse.parser g)  end  parse sp8 'inc'	1	the v version gate plus the widened alternate fields — declarative condition c (a DOTTED rule-property path: 'n.dlist', never a bare counter name), custom props u/k, counters n — build and register cleanly
 # §5  negatives — each malformed section shape is a loud per-section error
-import "boru:parse"  def g Parse.grammar  Parse.spec g {bogus:{}}	ERROR:parse_bad_spec	an unknown section key is refused (the tabnas GrammarSpec sections plus abnf/matcher)
+import "boru:parse"  def g Parse.grammar  Parse.spec g {bogus:{}}	ERROR:parse_bad_spec	an unknown section key is declined (the tabnas GrammarSpec sections plus abnf/matcher)
 import "boru:parse"  def g Parse.grammar  Parse.spec g {token:{'#PL':'+'}}	ERROR:parse_bad_spec	there is NO token section — fixed tokens are tabnas options: options:{fixed:{token:{…}}}
 import "boru:parse"  def g Parse.grammar  Parse.spec g {options:'x'}	ERROR:parse_bad_spec	the options section must be a map
 import "boru:parse"  def g Parse.grammar  Parse.spec g {v:'one'}	ERROR:parse_bad_spec	v must be an Integer
-import "boru:parse"  def g Parse.grammar  Parse.spec g {v:99}	ERROR:parse_bad_spec	the tabnas builtin config-schema version gate — a too-new v is refused at the spec itself (map-decidable, so the checker flags it too)
+import "boru:parse"  def g Parse.grammar  Parse.spec g {v:99}	ERROR:parse_bad_spec	the tabnas builtin config-schema version gate — a too-new v is declined at the spec itself (map-decidable, so the checker flags it too)
 import "boru:parse"  def g Parse.grammar  Parse.spec g {ref:{noat: ([nd:Any] => [1])}}	ERROR:parse_bad_action	a ref must start with '@' — same rule as Parse.action
 import "boru:parse"  def g Parse.grammar  Parse.spec g {matcher:{skip:{fn:([s:String] => [None])}}}	ERROR:parse_bad_matcher	a matcher entry needs an Integer priority
 import "boru:parse"  def g Parse.grammar  Parse.spec g {abnf:{start:'op'}}	ERROR:parse_bad_abnf	an abnf entry map must carry src

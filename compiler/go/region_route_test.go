@@ -167,7 +167,7 @@ func TestLowerRoutedUserCall(t *testing.T) {
 	lw.code, lw.debug = &lw.p.Code, &lw.p.Debug
 	ev := &EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 0, ops: []EmitOperand{ConstOperand(0), ConstOperand(1)}, nout: 1, region: &d, generic: true, tail: true}}
 	if reason := lw.lowerUserCall(ev); reason != "" {
-		t.Fatalf("lowering refused: %s", reason)
+		t.Fatalf("lowering declined: %s", reason)
 	}
 	if len(lw.p.Code) == 0 || lw.p.Code[len(lw.p.Code)-1].Op != OpDispatchGeneric {
 		t.Fatalf("a routed call lowers to DISPATCH_GENERIC, got %v", lw.p.Code)
@@ -214,7 +214,7 @@ func TestLowerRoutedNativeCall(t *testing.T) {
 			})}
 		}
 		if reason := lw.lowerCall(ev); reason != "" {
-			t.Fatalf("poly=%v: lowering refused: %s", poly, reason)
+			t.Fatalf("poly=%v: lowering declined: %s", poly, reason)
 		}
 		if n := len(lw.p.Code); n == 0 || lw.p.Code[n-1].Op != OpDispatchGeneric {
 			t.Fatalf("poly=%v: a routed native call lowers to DISPATCH_GENERIC, got %v", poly, lw.p.Code)

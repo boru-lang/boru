@@ -51,11 +51,11 @@ Test.check-prop "sort-dispatch"
   [ var [[lst] (lst S.srt S.by-number) drop true ] ]
   25 1 0
 end`
-	// Full compilation: no refusal, no fallback island.
+	// Full compilation: no compile failure, no fallback island.
 	a, _ := New()
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || reason != "" || prog == nil {
-		t.Fatalf("expected full compilation, got refusal: reason=%q err=%v", reason, cerr)
+		t.Fatalf("expected full compilation, got compile failure: reason=%q err=%v", reason, cerr)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Errorf("expected a full lowering, got an interpreter island:\n%s", prog.Disassemble())

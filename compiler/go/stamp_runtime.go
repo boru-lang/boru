@@ -15,7 +15,7 @@ import core "github.com/boru-lang/boru/core/go"
 // StampDetachedFn closes that gap: it compiles such a body to a standalone
 // one-unit *Program OUTSIDE any whole-program pass, on an isolated fork of
 // the live registry, and returns a ref the existing InvokeCallback seam runs
-// via RunUnit / runUnitNested with zero changes to its happy path. Refusal
+// via RunUnit / runUnitNested with zero changes to its happy path. Compile failure
 // is silent and per-body — the caller keeps the plain value and the
 // interpreter behaviour is byte-identical (slow, never wrong).
 //
@@ -33,7 +33,7 @@ import core "github.com/boru-lang/boru/core/go"
 // and the module-load sweep use (their values are single-overload by
 // construction). Multi-overload values stamp EVERY own sig through the
 // value-level loops (StampFnValue / StampFnValueInPlace →
-// StampDetachedSig, REFUSAL-CLOSURE §7b).
+// StampDetachedSig, COMPILE FAILURE-CLOSURE §7b).
 func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*CompiledFnRef, bool) {
 	si, ok := firstStampableSig(fd)
 	if !ok {
@@ -51,7 +51,7 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // (EnableRuntimeStamping — the compiled execution entry points). The compile
 // is fully isolated: it runs on a ForkConcurrent copy of r, which carries
 // its own fresh CheckState (the compile pass must not touch the parent's
-// live check state). Refusal returns (nil, false) and leaves r untouched.
+// live check state). Compile failure returns (nil, false) and leaves r untouched.
 //
 // The caller contract is ForkConcurrent's: invoke from the goroutine that
 // owns r (store words and codec resolution run on the registry executing
@@ -80,7 +80,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// Detached compiles run in GRADUAL-Any nesting mode: an Any arg
 		// flowing into a nested callee's Any param binds a gradual carrier
 		// (see EmitState.storedGradualDepth), so a handler calling an
-		// `st:Any` helper that reads `st.kv` compiles instead of refusing
+		// `st:Any` helper that reads `st.kv` compiles instead of declining
 		// on the first field access. Safe here and only here — this fork
 		// owns its program and Finalize, so any gradual-caused failure is
 		// one silently declined stamp.
@@ -91,8 +91,8 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	}
 	// An identity-less capture value (minted at pure runtime, where the
 	// mode-gated ID elision skips minting) cannot key its positional capture
-	// slot, so StartFnCompile's identity gate would refuse the unit
-	// (REFUSAL-CLOSURE.0 §7a). For a DETACHED unit the capture is per-ref
+	// slot, so StartFnCompile's identity gate would decline the unit
+	// (COMPILE FAILURE-CLOSURE.0 §7a). For a DETACHED unit the capture is per-ref
 	// and FROZEN — ref.Captures carries the construction-time snapshot — so
 	// minting a fresh identity on a CLONE of the captured slice is confined
 	// to this unit's compile: body reads resolve to the slot by the minted
@@ -119,7 +119,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	unit, ok := es.compileStoredFnUnit(fd, sigIdx, pos)
 	if !ok {
 		// The probe's latched reason when it gave one; the report printer
-		// substitutes a generic text for an empty reason (a refusal path
+		// substitutes a generic text for an empty reason (a compile failure path
 		// that never reached MarkUncompilable).
 		r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Reason: es.storedFnProbeReason})
 		return nil, false
@@ -141,7 +141,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// REACHABLE, sound per-body fallback. compileStoredFnUnit's probe/real
 		// passes only RECORD this body's events (and any nested fn as a
 		// sub-unit); they do not LOWER the recorded units. Finalize does — its
-		// per-unit lowering loop (emit.go, "fn <name>: " + reason) can refuse a
+		// per-unit lowering loop (emit.go, "fn <name>: " + reason) can decline a
 		// SUB-UNIT that the outer body's compile accepted. A runtime-constructed
 		// fn whose body defines a nested fn that consumes a loop result (Stage-2
 		// boundary: "consumes loop results") is the concrete case — the outer
@@ -165,7 +165,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// keeps "detached ref" distinguishable from "compile-time ref".
 		ref.DepSnap = map[string]DepSnapEntry{}
 	}
-	// Arm the JIT re-stamp box (REFUSAL-CLOSURE.0 §7c): the stamp inputs ride
+	// Arm the JIT re-stamp box (COMPILE FAILURE-CLOSURE.0 §7c): the stamp inputs ride
 	// the ref so a later dep rebind re-compiles against the live bindings at
 	// invoke time (jitRestamp) instead of degrading permanently to CallBoru.
 	// fd here carries the §7a identity-minted capture clone, so a re-stamp
@@ -181,14 +181,14 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 // CallBoru, which resolves the live binding exactly as the interpreter.
 const RestampMaxTries = 3
 
-// jitRestamp is InvokeCallback's stale-ref recovery (REFUSAL-CLOSURE.0 §7c):
+// jitRestamp is InvokeCallback's stale-ref recovery (COMPILE FAILURE-CLOSURE.0 §7c):
 // when a detached ref's DepSnap no longer matches the live def table, re-run
 // StampDetachedFn against the CURRENT bindings and return the fresh twin —
 // each re-stamp snapshots the new generations, so a stable rebind pays one
 // compile and then runs on the VM again. Returns nil when the seam should
 // take the interpreter instead: a compile-time ref (no box), an exhausted
 // try budget, or a declined re-stamp (stamping disarmed, the body now
-// refusing). The box mutex serialises concurrent invokers of one shared sig
+// declining). The box mutex serialises concurrent invokers of one shared sig
 // — the winner compiles, the rest reuse its twin; StampDetachedFn itself
 // runs on the CALLER's registry per its ForkConcurrent contract.
 func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
@@ -220,7 +220,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 // const), and mutating its shared *BoruImpl from a store word would race
 // concurrent readers; the compile-time stampCompiledRef mutates only
 // pre-publication interned consts. On any decline (not a fn value, already
-// stamped, capturing, ineligible shape, refusing body, policy off) it
+// stamped, capturing, ineligible shape, declining body, policy off) it
 // returns the input unchanged with ok=false, so callers may use the returned
 // value unconditionally.
 func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
@@ -228,7 +228,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 	if !ok {
 		return v, false
 	}
-	// Refuse an already-stamped value wholesale (first stamp wins: a
+	// Decline an already-stamped value wholesale (first stamp wins: a
 	// compile-time stamp or an earlier detached one already carries the VM
 	// edge for the sigs it accepted; re-stamping is the §7c box's job).
 	//
@@ -248,7 +248,7 @@ func StampFnValue(r *core.Registry, v core.Value) (core.Value, bool) {
 		}
 	}
 	// EVERY stampable own sig compiles to its OWN unit and ref
-	// (REFUSAL-CLOSURE §7b): the callback seam dispatches through
+	// (COMPILE FAILURE-CLOSURE §7b): the callback seam dispatches through
 	// MatchFnSig, so the matched sig's Impl ref is the sig table. A sig
 	// whose body declines stays plain and interprets — per-sig, fail-safe.
 	// The sig slice clones once (and each stamped impl clones) so the stamp
@@ -309,7 +309,7 @@ func StampFnValueInPlace(r *core.Registry, v core.Value) bool {
 	}
 	// Per-sig stamps onto the value's own shared impls (pre-publication —
 	// see the doc above): every stampable own sig gets its own ref
-	// (REFUSAL-CLOSURE §7b); a declining body leaves that sig plain.
+	// (COMPILE FAILURE-CLOSURE §7b); a declining body leaves that sig plain.
 	// The defining registry compiles the body — see StampFnValue.
 	homeIP, _ := core.FnHome(r, &fd)
 	any := false

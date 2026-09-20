@@ -80,7 +80,7 @@ import (
 // OPERAND side live and leaves the TARGET side as it was — a call-target
 // bake (noteBakedCallTarget) is still noted for the routed call, so a
 // redefinition of the callee between record and run is still the memo's to
-// re-record or the escaping latch's to refuse, and among one binding's
+// re-record or the escaping latch's to decline, and among one binding's
 // overloads a shape names one signature (the first of two identical shapes
 // wins the match on both lanes). The implementation identity joins the
 // spec when the escaping shapes route; the native seat already carries it
@@ -114,7 +114,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			// would re-run past the arm's effects (the seventieth increment).
 			return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, d.Word, d.Pos), curDebug, pc, reg)
 		}
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; deferring to the interpreter")
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; the compiled runtime cannot execute it")
 	}
 	// The window: the frame's resolved values, the word, the forward tokens.
 	base := stack[:len(stack)-d.NFwd]
@@ -138,7 +138,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	}
 	if err := h.Collected(core.CollectForward(h, fn, w, pointer+1)); err != nil {
 		if RegionCannotEval(err) {
-			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-declined", "DISPATCH_GENERIC at "+d.Word+": the walk needs an evaluation this host cannot perform; deferring to the interpreter")
+			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-declined", "DISPATCH_GENERIC at "+d.Word+": the walk needs an evaluation this host cannot perform; the compiled runtime cannot execute it")
 		}
 		return nil, -1, nil, stampAt(err, curDebug, pc, reg) //covergate:allow every error the plan walk can return through this host is a decline — the host declines each evaluation and each sugar expansion with errRegionCannotEval, and the walk raises nothing of its own; kept as the honest arm for a kernel raise a future host could surface (§compiler)
 	}
@@ -169,10 +169,10 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 				return nil, -1, nil, stampAt(core.StrandedForwardDiag(reg.Source, d.Word, nf-specAt, wi.Name, core.BarrierReceiverWord(reg, wi.Name), d.Pos), curDebug, pc, reg)
 			}
 		}
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-speculative", "DISPATCH_GENERIC at "+d.Word+": a claimed slot dispatches at run time (the strict barrier); deferring to the interpreter") //covergate:allow PlanMatch marks a slot speculative only for a WORD token of the window, and the window's forward tokens are the descriptor's slots, so the arms above always answer; kept as the honest defer for a kernel change (§compiler)
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-speculative", "DISPATCH_GENERIC at "+d.Word+": a claimed slot dispatches at run time (the strict barrier); the compiled runtime cannot execute it") //covergate:allow PlanMatch marks a slot speculative only for a WORD token of the window, and the window's forward tokens are the descriptor's slots, so the arms above always answer; kept as the honest defer for a kernel change (§compiler)
 	}
 	if nf != d.NFwd || len(positions) != gs.NArgs {
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-claim-drift", "DISPATCH_GENERIC at "+d.Word+": the live plan claims "+strconv.Itoa(nf)+" forward of "+strconv.Itoa(len(positions))+" where the record claimed "+strconv.Itoa(d.NFwd)+" of "+strconv.Itoa(gs.NArgs)+"; deferring to the interpreter")
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-claim-drift", "DISPATCH_GENERIC at "+d.Word+": the live plan claims "+strconv.Itoa(nf)+" forward of "+strconv.Itoa(len(positions))+" where the record claimed "+strconv.Itoa(d.NFwd)+" of "+strconv.Itoa(gs.NArgs)+"; the compiled runtime cannot execute it")
 	}
 	// The plan's positions, resolved as the arrival loop would resolve them:
 	// a forward position's token — a word to its live binding — and a stack
@@ -184,7 +184,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			tok := h.win.At(at)
 			if wi, err := core.AsWord(tok); err == nil {
 				if wi.ForceVal || wi.ForceUsurp {
-					return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-word-form", "DISPATCH_GENERIC at "+d.Word+": a modified word in the claim; deferring to the interpreter")
+					return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-word-form", "DISPATCH_GENERIC at "+d.Word+": a modified word in the claim; the compiled runtime cannot execute it")
 				}
 				v, ok := reg.Defs.Top(wi.Name)
 				if !ok {
@@ -194,7 +194,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 					// the collecting word is `def` itself — that lead keeps the
 					// defer.
 					if d.Word == "def" {
-						return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound-slot", "DISPATCH_GENERIC at "+d.Word+": no binding for the slot `"+wi.Name+"`; deferring to the interpreter")
+						return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound-slot", "DISPATCH_GENERIC at "+d.Word+": no binding for the slot `"+wi.Name+"`; the compiled runtime cannot execute it")
 					}
 					return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, wi.Name, tok.Pos()), curDebug, pc, reg)
 				}
@@ -209,10 +209,10 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 	out := base[:len(base)-stk]
 	if h := sig.DispatchHandler(); h != nil && !isBoruSig(sig) {
 		if sig.FullStack() {
-			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-full-stack", "DISPATCH_GENERIC at "+d.Word+": the live signature reads the full stack; deferring to the interpreter")
+			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-full-stack", "DISPATCH_GENERIC at "+d.Word+": the live signature reads the full stack; the compiled runtime cannot execute it")
 		}
 		if !gs.LiveSet && (gs.Impl == nil || sig.Impl != gs.Impl) && !pureNative(sig) {
-			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-native", "DISPATCH_GENERIC at "+d.Word+": a native overload the record did not take; deferring to the interpreter before it runs")
+			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-native", "DISPATCH_GENERIC at "+d.Word+": a native overload the record did not take; the compiled runtime declines it before it runs")
 		}
 		if err := vc.gateModuleCall(reg, sig.ModuleCall); err != nil {
 			return nil, -1, nil, err
@@ -225,7 +225,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			return nil, -1, nil, stampAt(err, curDebug, pc, reg)
 		}
 		if len(results) != gs.NOut {
-			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-nout-drift", "DISPATCH_GENERIC at "+d.Word+": the live handler's result count differs from the recorded claim; deferring to the interpreter")
+			return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-nout-drift", "DISPATCH_GENERIC at "+d.Word+": the live handler's result count differs from the recorded claim; the compiled runtime cannot execute it")
 		}
 		if err := vc.screenResults(results, "generic result at "+d.Word, curDebug, pc); err != nil {
 			return nil, -1, nil, err
@@ -242,10 +242,10 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 		if u := specFnUnit(p, sig); u >= 0 {
 			return out, u, args, nil
 		}
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature has no unit; deferring to the interpreter")
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature has no unit; the compiled runtime cannot execute it")
 	}
 	if gs.Unit < 0 || gs.Unit >= len(p.Fns) || !unitMatchesSig(&p.Fns[gs.Unit], sig) {
-		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature is not the committed unit's; deferring to the interpreter")
+		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-foreign-unit", "DISPATCH_GENERIC at "+d.Word+": the live signature is not the committed unit's; the compiled runtime cannot execute it")
 	}
 	return out, gs.Unit, args, nil
 }
@@ -283,8 +283,8 @@ func isBoruSig(sig *core.Signature) bool {
 
 // pureNative reports whether a native signature is declared PURE for the
 // recorder (CompileEffect): a word with no side effect, whose handler may
-// run before its result count is known because a count drift then defers
-// with nothing for the effect fence to block.
+// run before its result count is known because a count drift then bails
+// with no effect to duplicate.
 func pureNative(sig *core.Signature) bool {
 	return sig.CompileEffect&(core.CompileIslandPure|core.CompileModuleFold) != 0
 }

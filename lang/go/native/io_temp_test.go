@@ -47,7 +47,7 @@ func TestTempWordForms(t *testing.T) {
 		t.Errorf("shaped temp = %q", p)
 	}
 
-	// An absent {in} directory refuses (os.CreateTemp fidelity).
+	// An absent {in} directory declines (os.CreateTemp fidelity).
 	if err := runBoruError(t, r, []Value{NewWord("temp"), wrapMap(func(om *OrderedMap) {
 		om.Set("in", pathV("ghost"))
 	})}); err == nil {
@@ -76,7 +76,7 @@ func TestSpaceWord(t *testing.T) {
 	if _, ok := m.Get("bsize"); !ok {
 		t.Error("space record missing bsize")
 	}
-	// Absent path refuses.
+	// Absent path declines.
 	if err := runBoruError(t, r, []Value{NewWord("space"), pathV("ghost")}); err == nil {
 		t.Error("space on absent path should error")
 	}
@@ -109,7 +109,7 @@ func TestAtomicWrite(t *testing.T) {
 	if b, _ := mem.ReadFile("d/b.bin"); len(b) != 2 {
 		t.Errorf("atomic bytes = %v", b)
 	}
-	// {atomic} + {offset} is a contradiction and refuses.
+	// {atomic} + {offset} is a contradiction and declines.
 	if err := runBoruError(t, r, []Value{
 		NewWord("write"), pathV("d/b.bin"), NewBytesValue([]byte{9}),
 		wrapMap(func(om *OrderedMap) {
@@ -117,7 +117,7 @@ func TestAtomicWrite(t *testing.T) {
 			om.Set("offset", NewInteger(0))
 		}),
 	}); err == nil {
-		t.Error("atomic+offset should refuse")
+		t.Error("atomic+offset should decline")
 	}
 	// Append + atomic merges then replaces in one rename.
 	runBoru(t, r, []Value{
@@ -154,7 +154,7 @@ func TestAtomicWriteFailureArms(t *testing.T) {
 		})
 	}
 
-	// TempFile refusal (a minimal mount-like backend) is a clean error.
+	// TempFile compile failure (a minimal mount-like backend) is a clean error.
 	r, _ := newReg(&failAtOps{failTempFile: "d"})
 	if err := atomicWrite(r); err == nil || !strings.Contains(err.Error(), "atomic") {
 		t.Errorf("temp-fail arm: %v", err)
@@ -248,7 +248,7 @@ func TestMountTempStatfsBridge(t *testing.T) {
 	  statfs: (p:Pathon => [none])
 	}`))
 	if _, err := noneFS.Statfs("x"); err == nil {
-		t.Error("none statfs should refuse")
+		t.Error("none statfs should decline")
 	}
 	badFS := HostFileOps(mountFixture(t, `mount {
 	  read: (p:Pathon => [none])
@@ -259,7 +259,7 @@ func TestMountTempStatfsBridge(t *testing.T) {
 	}
 
 	// WITHOUT a temp handler the emulation routes through write/mkdir —
-	// and refuses cleanly when the map lacks even those.
+	// and declines cleanly when the map lacks even those.
 	emu := HostFileOps(mountFixture(t, `mount {
 	  read: (p:Pathon => [none])
 	  write: ([p:Pathon d:Any] => [p])
@@ -278,7 +278,7 @@ func TestMountTempStatfsBridge(t *testing.T) {
 	if _, err := bare.TempDir("", "x-*"); err == nil || !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("mkdir-less emulation: %v", err)
 	}
-	// Statfs with no handler refuses.
+	// Statfs with no handler declines.
 	if _, err := bare.Statfs("x"); err == nil || !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("handlerless statfs: %v", err)
 	}

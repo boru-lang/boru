@@ -5,7 +5,7 @@ package core
 // unifies with a concrete field-bag map by the runtime's open rule
 // (unifyRecordSchemaCarrierVsMap), and with a bare Map type literal as
 // the map instance it abstracts. Non-carrier record values keep the
-// nominal refusals on both arms.
+// nominal compile failures on both arms.
 
 import (
 	"strings"
@@ -71,7 +71,7 @@ func TestNur068RecordCarrierRejectsDisjointFieldBag(t *testing.T) {
 	q.Set("missing", NewTypeLiteral(TList))
 	qat := NewMap(q)
 	if _, err := unifyMapFamily(rec, Shape(rec), qat, Shape(qat), nil); err == nil {
-		t.Fatal("a required key outside the schema must refuse")
+		t.Fatal("a required key outside the schema must decline")
 	}
 }
 
@@ -110,34 +110,34 @@ func TestNur068RecordCarrierVsTypedMap(t *testing.T) {
 	// exactly as every runtime instance of the schema would be.
 	het := recSchemaCarrier(nur068Schema()) // name:String n:Integer
 	if _, err := unifyMapFamily(het, Shape(het), tm, Shape(tm), nil); err == nil {
-		t.Fatal("a String field must refuse a {:Integer} child constraint")
+		t.Fatal("a String field must decline a {:Integer} child constraint")
 	}
 }
 
-func TestNur068NonCarrierRecordKeepsNominalRefusal(t *testing.T) {
+func TestNur068NonCarrierRecordKeepsNominalCompileFailure(t *testing.T) {
 	// A record type BODY as a value (not a carrier) keeps the exclusive
 	// Record-only-unifies-with-Record rule against a concrete map.
 	body := NewRecordType(nur068Schema())
 	pat := nur068Pattern()
 	_, err := unifyMapFamily(body, Shape(body), pat, Shape(pat), nil)
 	if err == nil || !strings.Contains(err.Reason, "Record only unifies with Record") {
-		t.Fatalf("non-carrier record vs map must keep the nominal refusal, got %v", err)
+		t.Fatalf("non-carrier record vs map must keep the nominal compile failure, got %v", err)
 	}
 }
 
 func TestNur068EmptySchemaCarrierFallsThrough(t *testing.T) {
 	// A record carrier with no readable schema (nil Fields) declines the
-	// admission and falls to the nominal refusal.
+	// admission and falls to the nominal compile failure.
 	rec := Value{Parent: TMap, Carrier: true, Dynamic: true, Data: RecordTypeInfo{}}
 	pat := nur068Pattern()
 	if _, err := unifyMapFamily(rec, Shape(rec), pat, Shape(pat), nil); err == nil {
-		t.Fatal("nil-Fields record carrier must fall through to the refusal")
+		t.Fatal("nil-Fields record carrier must fall through to the compile failure")
 	}
 }
 
 func TestNur068UnreadableMapSideFallsThrough(t *testing.T) {
 	// A ShapeMap value with no readable field bag declines the admission
-	// (falls to the nominal refusal) instead of dereferencing. Two shapes:
+	// (falls to the nominal compile failure) instead of dereferencing. Two shapes:
 	// a TMap-parent ExtensionPayload (classified ShapeMap by the default
 	// map-family arm; not a MapPayload at all), and a Go-API-built
 	// MapPayload{M: nil} (AsMap boxes the nil *OrderedMap in a non-nil
@@ -145,11 +145,11 @@ func TestNur068UnreadableMapSideFallsThrough(t *testing.T) {
 	rec := recSchemaCarrier(nur068Schema())
 	ext := Value{Parent: TMap, Data: ExtensionPayload{Body: 42}}
 	if _, err := unifyMapFamily(rec, Shape(rec), ext, Shape(ext), nil); err == nil {
-		t.Fatal("an extension-payload map must fall through to the refusal")
+		t.Fatal("an extension-payload map must fall through to the compile failure")
 	}
 	nilMap := Value{Parent: TMap, Data: MapPayload{}}
 	if _, err := unifyMapFamily(rec, Shape(rec), nilMap, Shape(nilMap), nil); err == nil {
-		t.Fatal("a nil-OrderedMap MapPayload must fall through to the refusal")
+		t.Fatal("a nil-OrderedMap MapPayload must fall through to the compile failure")
 	}
 	if _, err := unifyMapFamily(nilMap, Shape(nilMap), rec, Shape(rec), nil); err == nil {
 		t.Fatal("a nil-OrderedMap MapPayload must fall through (swapped)")
@@ -175,12 +175,12 @@ func TestNur068RecordCarrierVsMapLiteral(t *testing.T) {
 	if !got2.Carrier || !IsRecordType(got2) {
 		t.Fatalf("expected the record carrier back (swapped), got %v", got2)
 	}
-	// A non-carrier record BODY still refuses against the bare literal.
+	// A non-carrier record BODY still declines against the bare literal.
 	body := NewRecordType(nur068Schema())
 	if _, err := unifyMapFamily(lit, Shape(lit), body, Shape(body), nil); err == nil {
-		t.Fatal("Map literal vs record body must keep the nominal refusal")
+		t.Fatal("Map literal vs record body must keep the nominal compile failure")
 	}
 	if _, err := unifyMapFamily(body, Shape(body), lit, Shape(lit), nil); err == nil {
-		t.Fatal("record body vs Map literal must keep the nominal refusal (swapped)")
+		t.Fatal("record body vs Map literal must keep the nominal compile failure (swapped)")
 	}
 }

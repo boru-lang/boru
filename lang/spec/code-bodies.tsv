@@ -1,7 +1,7 @@
 # boru Language Specification: CODE BODIES and quoted operands
 # Format: input<TAB>expected<TAB>description
 #
-# Family: code-bodies. The construct family that refuses most in REAL
+# Family: code-bodies. The construct family that declines most in REAL
 # code: `do` bodies; `if` / `case` / `guard` / `var` / `while` / `for`
 # bodies; bodies bound to a `def` and driven later; bodies parked in a
 # map, a list or a flex store and fetched at run time; bodies over
@@ -20,23 +20,23 @@
 # codequote, list, higher-order, macro, each-variants, callbacks) before
 # a single row here was written; it reproduced all 380 exactly.
 #
-# ROWS THAT REFUSE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN
+# ROWS THAT FAIL TO COMPILE TO COMPILE ARE RECORDED DELIBERATELY, AS OPEN
 # DEFECTS. Each such row was then run under `BORU_FORCE_COMPILE=1` and
-# its description carries the refusal VERBATIM, so the reason text is
+# its description carries the compile failure VERBATIM, so the reason text is
 # the ledger of what is left to build. They are not mistakes and must
 # not be deleted to make a ceiling green. The compiler scores ~96% on
 # the old one-liner corpus and ~65% on real files precisely because a
-# refusal is WHOLE-PROGRAM and latches on the FIRST unsupported
+# compile failure is WHOLE-PROGRAM and latches on the FIRST unsupported
 # construct, and the old corpus never COMBINED constructs. Combining
 # them is what this file does.
 #
-# Two rows are marked `REFUSES: HARD ERROR` rather than a refusal:
+# Two rows are marked `DOES NOT COMPILE: HARD ERROR` rather than a compile failure:
 # under BORU_FORCE_COMPILE=1 they do not decline the program, they
 # ABORT it — an internal_error or a case_error the interpreter never
 # raises. Those are the sharpest defects in the file.
 #
 # NOTE FOR THE RATCHET: test/go/langspec/compiled_coverage_test.go holds
-# refusalCeiling = 0. The refusing rows below are NEW EVIDENCE, not
+# failureCeiling = 0. The declining rows below are NEW EVIDENCE, not
 # regressions — the ceiling must be re-based (as it must for
 # callbacks.tsv and each-variants.tsv, written in the same corpus
 # expansion), or this file moved under a documented tier.
@@ -49,7 +49,7 @@
 #        def t 0 end for 3 [each [def t (t add 1) t] [0] drop] end t
 #      interpreter -> 3, bytecode -> 0. An `each` body's `def` of an
 #      enclosing binding is LOST when the each sits inside a `for` body.
-#      Compare the row in section 9 with the `do` wrapper, which refuses
+#      Compare the row in section 9 with the `do` wrapper, which declines
 #      cleanly, and the bare `for 3 [def t (t add 1)]`, which is correct.
 #
 #   2. NON-TERMINATION (fails everything, slowly):
@@ -119,9 +119,9 @@ def ops {inc:(quote [add 1]) dbl:(quote [mul 2])} end def k 'inc' end each (ops 
 def ops [(quote [add 1]) (quote [mul 2])] end each (ops get 1) [1 2 3]	[2 4 6]	a body read out of a list by index
 def bodies {inc:(quote [add 1]) dbl:(quote [mul 2])} end each bodies.inc (each bodies.dbl [1 2])	[3 5]	two map-held bodies composed
 def m {f:(quote [add 1])} end do [each m.f [1 2 3]]	[2 3 4]	a map-held body driven from inside a `do` body
-def bodies (flex {inc:(quote [add 1])}) end each bodies.inc [1 2]	[2 3]	the same map made MUTABLE (flex) — REFUSES: "code-body word each (Stage 2)"
-def s (flex {}) end s set 'body' (quote [add 1]) drop end each (s get 'body') [1 2 3]	[2 3 4]	a body STORED at runtime, then fetched and driven — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
-def s (flex {}) end s set 'body' (quote [add 1]) drop end each s.body [1 2 3]	[2 3 4]	…fetched by dotted access instead — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def bodies (flex {inc:(quote [add 1])}) end each bodies.inc [1 2]	[2 3]	the same map made MUTABLE (flex) — DOES NOT COMPILE: "code-body word each (Stage 2)"
+def s (flex {}) end s set 'body' (quote [add 1]) drop end each (s get 'body') [1 2 3]	[2 3 4]	a body STORED at runtime, then fetched and driven — DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def s (flex {}) end s set 'body' (quote [add 1]) drop end each s.body [1 2 3]	[2 3 4]	…fetched by dotted access instead — DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 #
 # §6  bodies over COMPUTED collections and computed bodies
 each [add 1] (iota 3)	[1 2 3]	the collection is a computed value
@@ -135,25 +135,25 @@ def d {xs:[1 2 3]} end each [add 1] d.xs	[2 3 4]	collection reached through a ma
 def s (flex {xs:[1 2 3]}) end fold [add] s.xs 0	6	…through a FLEX map field
 def mk fn [[n:Integer][List][quote [1 add 2]]] end do (mk 0)	3	`do` over a body RETURNED by a function
 def mk fn [[n:Integer][List][quote [1 add 2]]] end if true (mk 0) [0]	3	…the same body as an `if` branch
-def mk fn [[n:Integer][List][quote [add 1]]] end fold (mk 0) [1 2 3] 0	4	…as a fold step — REFUSES: "code-body word fold (Stage 2)"
-def mk fn [[n:Integer][List][quote [gt 1]]] end filter (mk 0) [1 2 3]	[2 3]	…as a filter predicate — REFUSES: "code-body word filter (Stage 2)"
-def mk fn [[n:Integer][List][quote [add]]] end scan (mk 0) [1 2 3]	[1 3 6]	…as a scan step — REFUSES: "code-body word scan (Stage 2)"
-def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)	0 1 2	…as a `for` body — REFUSES: "for: body not captured"
-def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)	'one'	…as a `case` clause list — REFUSES: HARD ERROR: error: [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional trailing default)
-def mkb fn [[][List][quote [add 1]]] end each (mkb) [1 2 3]	[2 3 4]	a zero-argument body factory driving an each — REFUSES: "code-body word each (Stage 2)"
-def pickbody fn [[f:Boolean][List][if f [(quote [add 1])] [(quote [mul 2])]]] end each (pickbody true) [1 2 3]	[2 3 4]	a body CHOSEN by a branch, then driven — REFUSES: "code-body word each (Stage 2)"
-def b (if true [(quote [add 1])] [(quote [mul 2])]) end each b [1 2 3]	[2 3 4]	…the same choice made inline and bound — REFUSES: "code-body word each (Stage 2)"
+def mk fn [[n:Integer][List][quote [add 1]]] end fold (mk 0) [1 2 3] 0	4	…as a fold step — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def mk fn [[n:Integer][List][quote [gt 1]]] end filter (mk 0) [1 2 3]	[2 3]	…as a filter predicate — DOES NOT COMPILE: "code-body word filter (Stage 2)"
+def mk fn [[n:Integer][List][quote [add]]] end scan (mk 0) [1 2 3]	[1 3 6]	…as a scan step — DOES NOT COMPILE: "code-body word scan (Stage 2)"
+def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)	0 1 2	…as a `for` body — DOES NOT COMPILE: "for: body not captured"
+def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)	'one'	…as a `case` clause list — DOES NOT COMPILE: HARD ERROR: error: [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional trailing default)
+def mkb fn [[][List][quote [add 1]]] end each (mkb) [1 2 3]	[2 3 4]	a zero-argument body factory driving an each — DOES NOT COMPILE: "code-body word each (Stage 2)"
+def pickbody fn [[f:Boolean][List][if f [(quote [add 1])] [(quote [mul 2])]]] end each (pickbody true) [1 2 3]	[2 3 4]	a body CHOSEN by a branch, then driven — DOES NOT COMPILE: "code-body word each (Stage 2)"
+def b (if true [(quote [add 1])] [(quote [mul 2])]) end each b [1 2 3]	[2 3 4]	…the same choice made inline and bound — DOES NOT COMPILE: "code-body word each (Stage 2)"
 #
 # §7  a code body arriving as a FUNCTION PARAMETER
 def f fn [[b:List][Any][do b]] end f (quote [1 add 2])	3	a body passed in and `do`ne
 def f fn [[b:List][Any][if true b [0]]] end f (quote [1 add 2])	3	…used as an `if` branch
-def f fn [[b:List xs:List][List][filter b xs]] end f (quote [gt 1]) [1 2 3]	[2 3]	…as a filter predicate — REFUSES: "code-body word filter (Stage 2)"
-def f fn [[b:List xs:List][Integer][fold b xs 0]] end f (quote [add]) [1 2 3]	6	…as a fold step — REFUSES: "code-body word fold (Stage 2)"
-def f fn [[b:List][Any][do [raise oops 'x'] error b]] end f (quote ['caught'])	'caught'	…as an `error` handler — REFUSES: "code-body word error (Stage 2)"
-def f fn [[xs:List b:List][List][each b xs]] end f [1 2] (quote [add 1])	[2 3]	…as an each body, collection first — REFUSES: "code-body word each (Stage 2)"
-def f fn [[b:List][List][each b [1 2 3]]] end f (quote [add 1])	[2 3 4]	…as an each body over a literal collection — REFUSES: "code-body word each (Stage 2)"
+def f fn [[b:List xs:List][List][filter b xs]] end f (quote [gt 1]) [1 2 3]	[2 3]	…as a filter predicate — DOES NOT COMPILE: "code-body word filter (Stage 2)"
+def f fn [[b:List xs:List][Integer][fold b xs 0]] end f (quote [add]) [1 2 3]	6	…as a fold step — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def f fn [[b:List][Any][do [raise oops 'x'] error b]] end f (quote ['caught'])	'caught'	…as an `error` handler — DOES NOT COMPILE: "code-body word error (Stage 2)"
+def f fn [[xs:List b:List][List][each b xs]] end f [1 2] (quote [add 1])	[2 3]	…as an each body, collection first — DOES NOT COMPILE: "code-body word each (Stage 2)"
+def f fn [[b:List][List][each b [1 2 3]]] end f (quote [add 1])	[2 3 4]	…as an each body over a literal collection — DOES NOT COMPILE: "code-body word each (Stage 2)"
 def body (quote [add 1]) end def f fn [[xs:List][List][each body xs]] end f [1 2]	[2 3]	a MODULE-LEVEL body read from inside a fn
-def m {f:(quote [add 1])} end def g fn [[c:Map][List][each c.f [1 2 3]]] end g m	[2 3 4]	a body read off a Map PARAMETER inside a fn — REFUSES: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def m {f:(quote [add 1])} end def g fn [[c:Map][List][each c.f [1 2 3]]] end g m	[2 3 4]	a body read off a Map PARAMETER inside a fn — DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 #
 # §8  bodies inside function bodies
 def f fn [[n:Integer][Integer][do [def m (n mul 2) m add 1]]] end f 5	11	a `do` body with a local, inside a fn
@@ -170,31 +170,31 @@ def pad fn [[s:String n:Integer][String][if ((size s) gte n) [s] [def r (pad (jo
 def get-or fn [[m:Map k:String d:Any][Any][def v (m get k) if (v is None) [d] [v]]] end get-or {a:1} 'z' 0	0	kg/util.boru's `get-or` — local, then a two-arm `if`
 def list-at fn [[m:Map k:String][List][def v (m get k) if (v is None) [[]] [v]]] end list-at {a:[1 2]} 'a'	[1 2]	…and its List-typed twin
 def step fn [[e:Any acc:List][List][push e acc]] end def cat fn [[a:List b:List][List][def r (fold [step] b a) r]] end cat [1] [2 3]	[1 2 3]	lang/go/modules/cli.boru's list-concat: a fold body naming a user word
-def f fn [[d:Map][Integer][unpack [a b] d end a add b]] end f {a:1 b:2}	3	`unpack` destructuring inside a fn body — REFUSES: "check-mode suppressed a runtime error (uncompilable)"
-def f fn [[a:Integer b:Integer][List][args]] end f 1 2	[1 2]	`args` — the frame's own argument list as a body result — REFUSES: "fn f: body result of unknown provenance"
+def f fn [[d:Map][Integer][unpack [a b] d end a add b]] end f {a:1 b:2}	3	`unpack` destructuring inside a fn body — DOES NOT COMPILE: "check-mode suppressed a runtime error (uncompilable)"
+def f fn [[a:Integer b:Integer][List][args]] end f 1 2	[1 2]	`args` — the frame's own argument list as a body result — DOES NOT COMPILE: "fn f: body result of unknown provenance"
 #
 # §9  bodies that mutate an enclosing binding (accumulator loops)
 def t 0 end for 3 [def t (t add 1)] end t	3	the plainest accumulator loop
 def t 0 end for 2 [for 2 [def t (t add 1)]] end t	4	a nested accumulator loop
 def t 0 end for 3 [def t (t add (do [i mul 2]))] end t	6	the accumulated value computed by an inner body
-def t 0 end for 3 [do [def t (t add 1)]] end t	3	the `def` moved inside a `do` body — REFUSES: "fn do$body: dynamic-scope def `t` of unpromoted computed value"
-def t 0 end for 2 [if true [def t (t add 1)] [0]] end t	2	the `def` inside an `if` arm inside the loop — REFUSES: "loop results as a branch/body result (Stage 2)"
-def t 0 end for 2 [case 1 [1 [drop def t (t add 1)] 0]] end t	2	…inside a `case` block instead — REFUSES: "loop results as a branch/body result (Stage 2)"
-def t 0 end each [def t (t add 1) t] [1 2 3] drop end t	3	an each body accumulating into an enclosing binding — REFUSES: "residual value of unknown provenance"
+def t 0 end for 3 [do [def t (t add 1)]] end t	3	the `def` moved inside a `do` body — DOES NOT COMPILE: "fn do$body: dynamic-scope def `t` of unpromoted computed value"
+def t 0 end for 2 [if true [def t (t add 1)] [0]] end t	2	the `def` inside an `if` arm inside the loop — DOES NOT COMPILE: "loop results as a branch/body result (Stage 2)"
+def t 0 end for 2 [case 1 [1 [drop def t (t add 1)] 0]] end t	2	…inside a `case` block instead — DOES NOT COMPILE: "loop results as a branch/body result (Stage 2)"
+def t 0 end each [def t (t add 1) t] [1 2 3] drop end t	3	an each body accumulating into an enclosing binding — DOES NOT COMPILE: "residual value of unknown provenance"
 def t 0 end fold [drop def t (t add 1) t] [1 2 3] 0	3	a fold body doing the same
 def i 0 end while [i lt 3] [def i (i add 1)] end i	3	a while body advancing its own condition
-def i 0 end while [i lt 3] [do [def i (i add 1)]] end i	3	…with the `def` wrapped in a `do` body — REFUSES: "fn do$body: dynamic-scope def `i` of unpromoted computed value"
+def i 0 end while [i lt 3] [do [def i (i add 1)]] end i	3	…with the `def` wrapped in a `do` body — DOES NOT COMPILE: "fn do$body: dynamic-scope def `i` of unpromoted computed value"
 def i 0 end while [i lt 3] [def i (i add 1) each [add i] [0] drop] end i	3	…with an each body inside the loop body
 def f fn [[xs:List][Integer][def t 0 for 3 [def t (t add 1)] t]] end f [1]	3	the accumulator loop moved inside a fn
-def f fn [[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]] end f [1 2 3]	3	…driven by an each over a parameter — REFUSES: "code-body word each (Stage 2)"
-def acc (flex []) end for-each [acc swap append drop] [1 2 3] end acc	(flex [1 2 3])	`for-each` accumulating into a FLEX list — REFUSES: "residual value of unknown provenance"
+def f fn [[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]] end f [1 2 3]	3	…driven by an each over a parameter — DOES NOT COMPILE: "code-body word each (Stage 2)"
+def acc (flex []) end for-each [acc swap append drop] [1 2 3] end acc	(flex [1 2 3])	`for-each` accumulating into a FLEX list — DOES NOT COMPILE: "residual value of unknown provenance"
 #
 # §10  `var` bodies — declarations plus body in one list
 var [[[a 1] [b 2]] a add b]	3	two declarations and a body
 var [[[k 10]] each [add k] [1 2 3]]	[11 12 13]	an each body inside a `var` body, closing over the declaration
 var [[[f (quote [add 1])]] each f [1 2 3]]	[2 3 4]	the declaration IS a code body
 var [[[k 1]] var [[[j 2]] k add j]]	3	a `var` body nested inside a `var` body
-do [var [[[k 1]] k add 1]]	2	a `var` body inside a `do` body — REFUSES: "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it"
+do [var [[[k 1]] k add 1]]	2	a `var` body inside a `do` body — DOES NOT COMPILE: "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it"
 def f fn [[n:Integer][List][var [[[k (n mul 2)]] each [add k] [1 2]]]] end f 3	[7 8]	a `var` body inside a fn, declaring from a parameter
 #
 # §11  `if` / `case` / `guard` bodies over computed values
@@ -210,7 +210,7 @@ each [case 1 [1 [add 100] 'no']] [5]	[101]	a whole `case` as an each body
 true guard (do [1 add 2])	3	`guard` over a body's value
 def b (quote [1 add 2]) end true guard (do b)	3	…a def-bound body's value
 def f fn [[n:Integer][Any][(n gt 3) guard (do [n mul 2])]] end f 1	None	a guarded body inside a fn, gate closed
-def f fn [[xs:List][List][each [if [gt 1] ['big'] ['small']] xs]] end f [1 2]	['small' 'big']	…the same inside a fn — REFUSES: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1
+def f fn [[xs:List][List][each [if [gt 1] ['big'] ['small']] xs]] end f [1 2]	['small' 'big']	…the same inside a fn — DOES NOT COMPILE: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1
 #
 # §12  quoted lists evaluated later, and macro-ish shapes
 quote [1 add 2] end do	3	a quoted list held, then evaluated
@@ -225,5 +225,5 @@ def m (macro [[b] [ quote [ each unquote b [1 2 3] ] ]]) end m (quote [add 1])	[
 def m (macro [[xs] [ quote [ splice xs ] ]]) end m [1 2 3]	1 2 3	`splice` flattening an operand into the call site
 def twice (macro [[e] [ quote [ unquote e add unquote e ] ]]) end do [twice 5]	10	a macro call inside a `do` body
 def m (macro [[e] [ quote [ unquote e add 1 ] ]]) end each [m 5] [9]	[6]	a macro call inside an each body
-def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)	'T'	`behave` takes a QUOTED word operand and a fn body — REFUSES: "quoted-operand word behave"
+def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)	'T'	`behave` takes a QUOTED word operand and a fn body — DOES NOT COMPILE: "quoted-operand word behave"
 import "boru:query" end Query.where [age gt 1] (Query.select [name])	[]	a query DSL clause is an inert code body

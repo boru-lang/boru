@@ -16,7 +16,7 @@ import (
 // WORD DISPATCH at the read (check's tryShapedFnReadArrival), over the
 // wrapper's arity of evaluation-fixed tokens inside the statement, as one
 // guarded OpCallDynMethod. The residual classifier's flattened window is
-// refused for this class: `bigger 3 ; 5` is the interpreter's
+// declined for this class: `bigger 3 ; 5` is the interpreter's
 // signature_error, not `bigger 3 5`.
 
 const dcfImport = `import "boru:fn-util"  `
@@ -63,9 +63,9 @@ func TestDefComputedFnParity(t *testing.T) {
 	}
 }
 
-// TestDefComputedFnSoundRefusals pins the neighbours that REFUSE, with the
+// TestDefComputedFnSoundCompileFailures pins the neighbours that DECLINE, with the
 // interpreter's own answer.
-func TestDefComputedFnSoundRefusals(t *testing.T) {
+func TestDefComputedFnSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// the stack form: the window is short, the interpreter fills from the stack
 		{dcfK + `5 k`, "the statement ends short of the wrapper's arity", "[7]"},
@@ -88,11 +88,11 @@ func TestDefComputedFnSoundRefusals(t *testing.T) {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}
 		if prog != nil {
-			t.Errorf("%q: compiled — expected a refusal", c.src)
+			t.Errorf("%q: compiled — expected a compile failure", c.src)
 			continue
 		}
 		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: refused %q, want %q", c.src, reason, c.reason)
+			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
 		}
 		d, err := New()
 		if err != nil {
@@ -105,11 +105,11 @@ func TestDefComputedFnSoundRefusals(t *testing.T) {
 	}
 }
 
-// TestDefComputedFnStatementWindowRefusals pins the flattened-window
+// TestDefComputedFnStatementWindowCompileFailures pins the flattened-window
 // miscompile the read model closes: the interpreter dispatches `bigger` at
 // the `;` with one argument and raises; the residual classifier saw
 // [bigger, 3, 5] and would have applied both.
-func TestDefComputedFnStatementWindowRefusals(t *testing.T) {
+func TestDefComputedFnStatementWindowCompileFailures(t *testing.T) {
 	for _, src := range []string{dcfOn + `bigger 3 ; 5`, dcfOn + `(bigger 3 ; 5)`} {
 		a, err := New()
 		if err != nil {
@@ -124,7 +124,7 @@ func TestDefComputedFnStatementWindowRefusals(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(reason, "the statement ends short of the wrapper's arity") {
-			t.Errorf("%q: refused %q", src, reason)
+			t.Errorf("%q: declined %q", src, reason)
 		}
 		d, err := New()
 		if err != nil {

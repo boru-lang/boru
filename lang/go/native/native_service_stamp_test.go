@@ -155,7 +155,7 @@ wrap ([req:Map state:Any prior:Any] => [ add 1 (prior req) ]) svc
 // The mini-redis CATCH-ALL shape — a handler whose whole body is a COMPUTED
 // MAP literal (`{message: (join …)}`, a field computed from the request) —
 // stamps at the store site. The map is the body's TRAILING residual, so the
-// stored-fn unit must record its OpMakeMap assembly instead of refusing "body
+// stored-fn unit must record its OpMakeMap assembly instead of declining "body
 // result of unknown provenance". runFnBodyOnce enables that recording only
 // for CALLBACK bodies (isCallbackBodyName), where both engines evaluate the
 // residual in the live frame via InvokeCallback / CallBoru — so the recorded

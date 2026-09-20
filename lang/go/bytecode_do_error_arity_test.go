@@ -26,7 +26,7 @@ func TestZeroNettingHandlerCompiles(t *testing.T) {
 
 // The DYNAMIC Error bound used to be pinned here as an edge the 2026-08-03
 // graduation kept: a body that may not raise has variable arity — the
-// pass-through nets one where the caught path nets zero — so it refused.
+// pass-through nets one where the caught path nets zero — so it declined.
 // The forty-eighth increment graduated it, and the diagnosis is what
 // changed rather than the shape: a run whose length is a runtime value is a
 // REGION, not an unrepresentable seat. See
@@ -151,13 +151,13 @@ func TestLeadApplyNoMatchTwoReturnParity(t *testing.T) {
 // already agree on the same question for a zero-iteration loop, which is why
 // the machinery to get this right demonstrably exists.
 //
-// Family L's CondBodyDepth gate refuses the SHADOW case (a redefinition whose
+// Family L's CondBodyDepth gate declines the SHADOW case (a redefinition whose
 // overlap-removal drops an enclosing overload, which the depth-based rollback
 // cannot revert). It is reached only when something is actually dropped, so a
 // fresh definition slips past it: the gate covers redefinition, not definition.
 //
 // Pinned as the measured divergence so it fails loudly when closed. The fix is
-// compiler-side and REFUSING counts — both siblings refuse, a refusal runs the
+// compiler-side and DECLINING counts — both siblings decline, a compile failure runs the
 // program correctly on the interpreter, and a silent wrong binding does not.
 func TestCondBodyFreshDefBindsCompiledOnly(t *testing.T) {
 	for _, tc := range []struct{ src, wantCompiled string }{
@@ -179,7 +179,7 @@ func TestCondBodyFreshDefBindsCompiledOnly(t *testing.T) {
 		}
 		if errC != nil || fmt.Sprint(gotC) != tc.wantCompiled {
 			t.Errorf("%s: compiled err=%v got=%v, want %s — if the compiled lane now RAISES or "+
-				"REFUSES, NUR110 is CLOSED: delete this fence and assert parity",
+				"DECLINES, NUR110 is CLOSED: delete this fence and assert parity",
 				tc.src, errC, gotC, tc.wantCompiled)
 		}
 	}
@@ -267,11 +267,11 @@ func TestMaybeRaisingZeroNettingHandlerIsARegion(t *testing.T) {
 	}
 }
 
-// TestRegionHandlerRefusesAFixedSeatConsumer is the line: a region can be
+// TestRegionHandlerDoesNotLowerAFixedSeatConsumer is the line: a region can be
 // absorbed by a residual, and it cannot fill a slot that needs exactly one
 // value. `def x (do … error […])` binds a name, which needs a count — and
 // both lanes raise the same def_error when the run turns out to be empty.
-func TestRegionHandlerRefusesAFixedSeatConsumer(t *testing.T) {
+func TestRegionHandlerDoesNotLowerAFixedSeatConsumer(t *testing.T) {
 	const src = `def x (do [1 div 0] error [drop]) end 5`
 	a, err := New()
 	if err != nil {

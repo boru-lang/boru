@@ -12,7 +12,7 @@ import (
 //   - M2a `apply` over a param/captured fn (recursion.tsv:90-92): the apply
 //     dispatch over a Function-typed CARRIER is elided with a PENDING apply on
 //     the enclosing unit; the unit's finish lowers the whole-residual window
-//     as OpCallDynApplyTop — applyHandler's unquote-then-apply — or REFUSES
+//     as OpCallDynApplyTop — applyHandler's unquote-then-apply — or DECLINES
 //     (a pending apply can never silently compile the fn+args as data).
 //   - M2b path-modifier map-stored fns (path-modifier.tsv:17-25,28,52-55):
 //     the modifier words' GRADUAL dispatch (usurp / stack-args / forward-args
@@ -28,7 +28,7 @@ import (
 //   - M2d fn-value-as-operand (module-minilang.tsv:306-315, corpus-core:134):
 //     `is`'s VALUE slot treats a fn operand as DATA (FnInertArgs — positional,
 //     because a Function in its TYPE slot is a predicate the handler INVOKES
-//     and must keep refusing), and a `/v` dispatch-mod marker survives the
+//     and must keep declining), and a `/v` dispatch-mod marker survives the
 //     check pass's carrier strip so an inline `(lambda)/v` parks exactly as
 //     the runtime does. The two-lambda walk positives live in
 //     TestWalkHookClosureCompiles.
@@ -42,7 +42,7 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 		t.Fatalf("%s: check error %v", name, cerr)
 	}
 	if prog == nil {
-		t.Fatalf("%s: refused: %s", name, reason)
+		t.Fatalf("%s: declined: %s", name, reason)
 	}
 	if strings.Contains(prog.Disassemble(), "FALLBACK") {
 		t.Errorf("%s: expected native, got island:\n%s", name, prog.Disassemble())
@@ -63,17 +63,17 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 	}
 }
 
-// fnValueM2Refusal pins a refusal: the program does NOT compile (reason
-// carries the expected substring), and the interpreter fallback agrees with a
+// fnValueM2CompileFailure pins a compile failure: the program does NOT compile (reason
+// carries the expected substring), and the compile failure agrees with a
 // plain interpreted run on value and error taxonomy.
-func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
+func fnValueM2CompileFailure(t *testing.T, name, src, wantReason string) {
 	t.Helper()
 	prog, reason, _, _ := mustNew(t).CompileCheck(src)
 	if prog != nil {
-		t.Fatalf("%s: compiled; want refusal", name)
+		t.Fatalf("%s: compiled; want compile failure", name)
 	}
 	if wantReason != "" && !strings.Contains(reason, wantReason) {
-		t.Errorf("%s: refusal reason %q; want substring %q", name, reason, wantReason)
+		t.Errorf("%s: compile failure reason %q; want substring %q", name, reason, wantReason)
 	}
 	gotC, _, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
@@ -91,7 +91,7 @@ func fnValueM2Refusal(t *testing.T, name, src, wantReason string) {
 // --- M2a — `apply` over a param fn ---------------------------------------
 
 func TestApplyOverParamFnCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	for _, c := range []struct{ name, src, want string }{
 		{"recursion.tsv:91 — apply over a Function param",
 			`def myfn ([x:Integer] => [x add 1000]) def runner fn [[myfn:Function v:Integer] [Integer] [v myfn/v apply]] def doubler ([x:Integer] => [x mul 2]) runner (doubler/v) 5`,
@@ -114,12 +114,12 @@ func TestApplyOverParamFnCompiles(t *testing.T) {
 	}
 
 	// NEGATIVES — a pending apply that is NOT the whole body-tail window must
-	// REFUSE (never compile the fn+args as unapplied data, never drop an apply
+	// DECLINE (never compile the fn+args as unapplied data, never drop an apply
 	// the interpreter performed), with faithful fallback.
-	fnValueM2Refusal(t, "mid-body apply (result dropped, tail is a literal)",
+	fnValueM2CompileFailure(t, "mid-body apply (result dropped, tail is a literal)",
 		`def h fn [[comp:Function v:Integer] [Integer] [v comp/v apply drop 42]] h (([x:Integer] => [x add 1])/v) 5`,
 		"apply of a dynamic fn value not at the body tail")
-	fnValueM2Refusal(t, "double apply (two pendings, one window)",
+	fnValueM2CompileFailure(t, "double apply (two pendings, one window)",
 		`def h fn [[c1:Function c2:Function v:Integer] [Integer] [v c1/v apply c2/v apply]] h (([x:Integer] => [x add 1])/v) (([x:Integer] => [x mul 3])/v) 5`,
 		"apply of a dynamic fn value not at the body tail")
 }
@@ -127,7 +127,7 @@ func TestApplyOverParamFnCompiles(t *testing.T) {
 // --- M2b — path-modifier map-stored fns -----------------------------------
 
 func TestPathModifierMapFnCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	for _, c := range []struct{ name, src, want string }{
 		{"path-modifier.tsv:17 — /u leading apply",
 			`def m {a:add/v} end m.a/u 1 2`, "[3]"},
@@ -161,15 +161,15 @@ func TestPathModifierMapFnCompiles(t *testing.T) {
 	}
 
 	// NEGATIVE — a non-fn member under a modifier errors identically in both
-	// engines (usurp finds an Integer): refusal + byte-identical taxonomy.
-	fnValueM2Refusal(t, "non-fn member under /u (signature_error parity)",
+	// engines (usurp finds an Integer): compile failure + byte-identical taxonomy.
+	fnValueM2CompileFailure(t, "non-fn member under /u (signature_error parity)",
 		`def m {a:5} end m.a/u 1 2`, "")
 }
 
 // --- M2c (partial) — Log.register stores its sink fn ----------------------
 
 func TestLogRegisterSinkCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// module-log.tsv:62 — a pure fn literal bakes as a const operand
 	// (CompileStoresFn); the sink registry mutates at RUN time only.
 	fnValueM2Native(t, "module-log.tsv:62 — register a pure fn sink",
@@ -194,12 +194,12 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 	}
 
 	// A LEXICALLY CAPTURING sink fn (an enclosing fn's param in the body) is
-	// not a bakeable const, and REFUSED until 2026-09-07 (the twenty-sixth
+	// not a bakeable const, and DECLINED until 2026-09-07 (the twenty-sixth
 	// increment): a lambda VALUE unit now takes the fn path's residual
 	// replay, so the capturing fn compiles as a closure unit and rides as an
 	// OpPushClosure operand — which a NON-strict store word invokes through
 	// the compiled runtime, as Patrun's stored closures already did (a strict
-	// handler slot, service/add, still refuses a capturing fn). Measured: the
+	// handler slot, service/add, still declines a capturing fn). Measured: the
 	// sink fires with the captured `p` on both lanes, in this run and in a
 	// later run of the same lane.
 	fnValueM2Native(t, "capturing sink fn compiles as a closure unit",
@@ -210,7 +210,7 @@ func TestLogRegisterSinkCompiles(t *testing.T) {
 // --- M2d — fn value as an INERT operand of `is` ---------------------------
 
 func TestIsFnValueOperandCompiles(t *testing.T) {
-	// Legacy refusal+fallback-parity contract: pins the one-release
+	// Legacy compile failure+fallback-parity contract: pins the one-release
 	for _, c := range []struct{ name, src, want string }{
 		{"module-minilang.tsv:306 — matcher fn is its minted kind",
 			`import "boru:minilang"  (+re/[a-z]+/) is (MiniLang.Re)`, "[true]"},
@@ -234,7 +234,7 @@ func TestIsFnValueOperandCompiles(t *testing.T) {
 	// The former NEGATIVE, flipped 2026-08-28 and kept for what it got wrong.
 	//
 	// It read: a Function in `is`'s TYPE slot is a PREDICATE the handler
-	// INVOKES (RunPredicate), so it must keep refusing — "whole-sig
+	// INVOKES (RunPredicate), so it must keep declining — "whole-sig
 	// CompileReadsFn would run the predicate against a baked shape". The
 	// premise is right and the inference is not. Invoking a predicate is not
 	// re-stepping it: the node rides as data and RunPredicate reaches the body

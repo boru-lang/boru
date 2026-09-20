@@ -7,13 +7,13 @@ import (
 )
 
 // compiledEqualsInterp is the local shape these pins share: the program must
-// COMPILE (no refusal) and the compiled answer must equal the interpreter's.
+// COMPILE (no compile failure) and the compiled answer must equal the interpreter's.
 func compiledEqualsInterp(t *testing.T, label, src string) {
 	t.Helper()
 	a, _ := New()
 	prog, reason, _, _ := a.CompileCheck(src)
 	if prog == nil {
-		t.Errorf("%s: must compile, refused %q\n  %s", label, reason, src)
+		t.Errorf("%s: must compile, declined %q\n  %s", label, reason, src)
 		return
 	}
 	ar, _ := New()
@@ -39,8 +39,8 @@ func compiledEqualsInterp(t *testing.T, label, src string) {
 // This is how an open-words override delegates to the base overload — the
 // `Atom/q` param passed back through a paren — and it is the shape of
 // lang/spec/as.tsv:52-54. Declaring CompileQuoteInert instead, whose
-// admission requires IsInertConst, refused all three and moved the
-// compile-refusal ceiling 113 -> 116. The corpus catches that, but only on a
+// admission requires IsInertConst, declined all three and moved the
+// compile-compile-failure ceiling 113 -> 116. The corpus catches that, but only on a
 // full unfiltered run: under BORU_SPEC_FILES the absolute counts are reported
 // rather than asserted, so a filtered run goes green. These pins fail in
 // seconds instead.
@@ -75,8 +75,8 @@ func TestQuotedKeyCarrierCompiles(t *testing.T) {
 // carries no signature on its event and therefore no divergence flag, so a
 // poly `raise` stops being a divergent terminal: its `if` arm counts as a
 // 0-value contributor, the enclosing fn turns variadic, and every fixed-arity
-// consumer refuses. Measured: this program answered 42 interpreted and
-// refused compiled with "consumes loop results".
+// consumer declines. Measured: this program answered 42 interpreted and
+// declined compiled with "consumes loop results".
 //
 // The existing divergence pin does not catch it because its raise operand is
 // STATIC, so the word never goes poly there. A raise whose message is a

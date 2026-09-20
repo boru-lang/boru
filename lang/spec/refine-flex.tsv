@@ -26,4 +26,4 @@ def L (refine FlexList)  def v:L (flex [1 2])  typeof v	L	the list column retags
 # ─────────────────────────────────────────────────────────────────────
 # §2  content-predicate types over containers (classification)
 def Sorted ([m:Map] => [(keys m) deq (sort (keys m))])  def f fn [[m:Sorted] [Integer] [size m]]  f {a:1 b:2}	2	a map satisfying the predicate dispatches the Sorted param
-def Sorted ([m:Map] => [(keys m) deq (sort (keys m))])  def f fn [[m:Sorted] [Integer] [size m]]  f (set a/q 1 (set b/q 2 { }))	ERROR:signature_error	an unsorted map is refused at dispatch (content, not provenance)
+def Sorted ([m:Map] => [(keys m) deq (sort (keys m))])  def f fn [[m:Sorted] [Integer] [size m]]  f (set a/q 1 (set b/q 2 { }))	ERROR:signature_error	an unsorted map is declined at dispatch (content, not provenance)

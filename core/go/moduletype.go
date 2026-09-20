@@ -39,7 +39,7 @@ func init() {
 // instance stays eq to itself while each NewModuleInstance call mints a
 // distinct instance (per-import-instance identity). The ExtensionPayload
 // wrapper itself is load-bearing — several kernel arms key on it (const
-// interning, resolution elision, ConstBakeable refusal, ID minting) — so
+// interning, resolution elision, ConstBakeable compile failure, ID minting) — so
 // the payload must stay an ExtensionPayload, never a bare *ModuleDesc.
 func NewModuleInstance(desc ModuleDesc) Value {
 	return Value{Parent: TModule, Data: ExtensionPayload{Body: &desc}}

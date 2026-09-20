@@ -57,7 +57,7 @@ func TestRuntimeBailPropagatesAsADefect(t *testing.T) {
 	}
 }
 
-// --- the refusal arm --------------------------------------------------------
+// --- the decline arm --------------------------------------------------------
 
 // zzCheckEmit registers `zz-emit`, a RunInCheckMode word that WRITES to the
 // registry output when it executes — so the CHECK pass itself emits an
@@ -74,40 +74,40 @@ func zzCheckEmit(a *Boru) {
 	})
 }
 
-// zzRefusingRow is an OFF-CORPUS refusing shape (a `def` consuming a
+// zzFailingRow is an OFF-CORPUS declining shape (a `def` consuming a
 // variadic loop region whose count is DYNAMIC — the S5 first-value split
-// needs the STATIC region size, so a runtime-only count keeps the refusal,
-// making this the stable refusing fixture): it compiles to a nil Program
-// with no check error, driving the refusal arm, and the interpreter runs it
+// needs the STATIC region size, so a runtime-only count keeps the compile failure,
+// making this the stable declining fixture): it compiles to a nil Program
+// with no check error, driving the decline arm, and the interpreter runs it
 // fine (binds xs to the region's first value and spills the rest —
-// `[1 1 1]`). Every CORPUS refusal has graduated (the each variadic-if row
+// `[1 1 1]`). Every CORPUS compile failure has graduated (the each variadic-if row
 // was the last, 2026-07-15); the deferred-token class graduated 2026-07-16
 // (the §2 rematch), and the statically-counted §5 shape graduated
 // 2026-07-17 (the S5 split), so the fence pins ride this dynamic-count
 // sibling.
-const zzRefusingRow = `def m {n: 3} def xs (for (m get "n") [1]) xs`
+const zzFailingRow = `def m {n: 3} def xs (for (m get "n") [1]) xs`
 
-// A genuine REFUSAL returns the compile_failed error (Stage J). The code is
+// A genuine COMPILE FAILURE returns the compile_failed error (Stage J). The code is
 // a GUARANTEE: no observable effect escaped the check pass, so a caller's
 // explicit whole-source re-run (Run's own fallback, the CLI surfaces') is
 // sound.
-func TestRefusalReturnsCompileRefused(t *testing.T) {
+func TestCompileFailureReturnsCompileFailedToCompile(t *testing.T) {
 	a := mustNew(t)
 	var out bytes.Buffer
 	a.SetOutput(&out)
 
-	got, compiled, err := a.RunCompiled(zzRefusingRow)
-	if noteCompileDefect(t, zzRefusingRow, got, err) {
+	got, compiled, err := a.RunCompiled(zzFailingRow)
+	if noteCompileDefect(t, zzFailingRow, got, err) {
 		return
 	}
 	if codeOf(err) != "compile_failed" {
-		t.Fatalf("refusal: err=[%s] %v (got=%v compiled=%v); want compile_failed (Stage J: no silent re-run)", codeOf(err), err, got, compiled)
+		t.Fatalf("compile failure: err=[%s] %v (got=%v compiled=%v); want compile_failed (Stage J: no silent re-run)", codeOf(err), err, got, compiled)
 	}
 	if !strings.Contains(err.Error(), "consumes loop results") {
-		t.Errorf("refusal error should carry the reason, got: %v", err)
+		t.Errorf("compile failure error should carry the reason, got: %v", err)
 	}
 	if out.String() != "" {
-		t.Errorf("refusal: output = %q, want none (no re-run)", out.String())
+		t.Errorf("compile failure: output = %q, want none (no re-run)", out.String())
 	}
 }
 
@@ -123,8 +123,8 @@ func TestCompileFailureAfterCheckEffectStillReportsTheDefect(t *testing.T) {
 	var out bytes.Buffer
 	a.SetOutput(&out)
 
-	got, compiled, err := a.RunCompiled(`zz-emit ; ` + zzRefusingRow)
-	if noteCompileDefect(t, `zz-emit ; `+zzRefusingRow, got, err) {
+	got, compiled, err := a.RunCompiled(`zz-emit ; ` + zzFailingRow)
+	if noteCompileDefect(t, `zz-emit ; `+zzFailingRow, got, err) {
 		return
 	}
 	if codeOf(err) != "compile_failed" {
@@ -138,7 +138,7 @@ func TestCompileFailureAfterCheckEffectStillReportsTheDefect(t *testing.T) {
 	zzCheckEmit(b)
 	var outB bytes.Buffer
 	b.SetOutput(&outB)
-	if _, rerr := b.Run(`zz-emit ; ` + zzRefusingRow); codeOf(rerr) != "compile_failed" {
+	if _, rerr := b.Run(`zz-emit ; ` + zzFailingRow); codeOf(rerr) != "compile_failed" {
 		t.Fatalf("Run over an effect-escaped compile failure: err=[%s] %v, want compile_failed", codeOf(rerr), rerr)
 	}
 	if outB.String() != "E" {
@@ -331,17 +331,23 @@ func TestCheckPassIsEffectFree(t *testing.T) {
 		a := mustNew(t)
 		var out bytes.Buffer
 		a.SetOutput(&out)
-		disarm := a.registry.ArmEffectFence()
+		// The writer fence that used to make a PRINT count is gone with the
+		// arms it gated, so the print class is asserted where it is actually
+		// observable — the output buffer — and the ledger covers the rest
+		// (file writes, network sends). Strictly stronger than the counter:
+		// it reads the bytes a user would have seen.
 		before := a.registry.Effects.Count()
 		_, _, _, err := a.CompileCheck(src)
 		after := a.registry.Effects.Count()
-		disarm()
 		if err != nil {
 			t.Errorf("CompileCheck(%q): %v", src, err)
 			continue
 		}
 		if after != before {
-			t.Errorf("check pass over %q emitted %d observable effect(s) (output %q) — the check pass must be effect-free (O1)", src, after-before, out.String())
+			t.Errorf("check pass over %q emitted %d observable effect(s) — the check pass must be effect-free (O1)", src, after-before)
+		}
+		if out.Len() != 0 {
+			t.Errorf("check pass over %q printed %q — the check pass must be effect-free (O1)", src, out.String())
 		}
 	}
 }

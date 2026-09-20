@@ -165,7 +165,7 @@ func TestBinaryWave4MaskEdges(t *testing.T) {
 }
 
 // TestBinaryWave4OrdChr pins ord / chr and their rejections: the empty
-// string has no codepoint, and out-of-range codepoints are refused.
+// string has no codepoint, and out-of-range codepoints are declined.
 func TestBinaryWave4OrdChr(t *testing.T) {
 	r, err := native.DefaultRegistry()
 	if err != nil {

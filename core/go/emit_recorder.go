@@ -96,7 +96,7 @@ type EmitRecorder interface {
 	// §6.5's each-body recovery). bodyID is the body Value's ID — the
 	// latch's identity guard: a nested body's analysis during the outer
 	// unit's compile overwrites the latch, and the mismatched ID makes
-	// the outer bridge decline — refusing instead of pairing
+	// the outer bridge decline — declining instead of pairing
 	// against the wrong run. r is the noting registry, for the
 	// module-registry fence. Inactive: plain no-op.
 	MultiRunBodyGuard(r *Registry, bodyID string) func()
@@ -118,7 +118,7 @@ type EmitRecorder interface {
 	RecordTypeInstall(name string, pos SrcPos)
 	FnBodyGuard() func()
 
-	// --- refusal + site accounting --------------------------------------
+	// --- compile failure + site accounting --------------------------------------
 	MarkUncompilable(reason string)
 	Sites() map[string]int
 
@@ -132,7 +132,7 @@ type EmitRecorder interface {
 	// entry, so a closure unit opened INSIDE the region (a `do` body in a
 	// case arm — bracketed at run time by the VM's enterBodyUnit) is not
 	// attributed to the region while it records. The compiler's dispatch
-	// recorder uses the bracket to refuse a `context` read recorded inline
+	// recorder uses the bracket to decline a `context` read recorded inline
 	// inside a region — the handle would denote the region's own layer,
 	// which has no compiled twin, so every layer-distinguishing consumption
 	// (a write, an alias, an identity probe) would diverge (NUR054).
@@ -150,7 +150,7 @@ type EmitRecorder interface {
 	// consume it keyed to the CompileFallbackBody sig, so it can never leak
 	// onto an unrelated word's event. Plan Phase 5, L-DO. (The mark covers
 	// only the SHRINKING direction; a count that can EXCEED the modeled
-	// seats — await first/any — refuses wholesale instead, NUR067.)
+	// seats — await first/any — declines wholesale instead, NUR067.)
 	SetCatchVariadic(pending bool)
 
 	// --- dispatch / value recording -------------------------------------
@@ -220,7 +220,7 @@ type EmitRecorder interface {
 	// (matched by the body's first token position — one lambda source, one
 	// body), so the check pass's user-fn record site can record the value's
 	// re-step dispatch as the fn-value apply over the closure's producer
-	// operand where a unit call would refuse its construction-scope
+	// operand where a unit call would decline its construction-scope
 	// captures (the twenty-eighth increment).
 	PendingClosureApply(body []Value) (Value, bool)
 	NoteMemberFnRead(id string, member Value)
@@ -291,12 +291,12 @@ type EmitRecorder interface {
 	// gradual Any/Dynamic one) that lowers as a slot push. Noted only when
 	// no pending forward expects a Function at the read (that arrival
 	// delivers the VALUE on both engines). The compiler counts the reads
-	// per unit and refuses any it cannot re-step as a word (NUR123).
+	// per unit and declines any it cannot re-step as a word (NUR123).
 	NoteWordRead(v Value, name string, pos SrcPos)
 	// NoteValRead records a `/v` read of a binding (stepWordVal): the value
 	// spelling, which the interpreter never dispatches. A binding read BOTH
 	// ways in one unit cannot be told apart in the residual (one value ID),
-	// so the compiler refuses the unit rather than guess (NUR123). name is
+	// so the compiler declines the unit rather than guess (NUR123). name is
 	// the binding read: a fn binding's read is a fresh wrap of the
 	// binding (ResolveRef), so the compiler traces it to the bound value
 	// by name (the thirty-first increment).
@@ -319,8 +319,8 @@ type EmitRecorder interface {
 	// Record is the placeable shape — the model generalised the binding's
 	// value in place (GeneraliseSpecUndef, spec_undef.go), so the recorder
 	// places the pop at its site (OpUndefDynScope) and the name's later
-	// reads go live; it still refuses where it cannot place (a suspended
-	// recording, an arm-resident bracket, a carried slot). Refuse is the
+	// reads go live; it still declines where it cannot place (a suspended
+	// recording, an arm-resident bracket, a carried slot). Decline is the
 	// shape the model declined to generalise: a type or fn-family binding,
 	// a frame binding of an enclosing fn.
 	RecordSpeculativeUndef(name string, pos SrcPos)
@@ -331,7 +331,7 @@ type EmitRecorder interface {
 	// the def site's RecordDynBind that follows carries the install, the
 	// family's dispatches route with a live lead, and outer's body
 	// compiles to a unit of its own. False when declined — the caller
-	// keeps its model, and the recorder has refused where that model is
+	// keeps its model, and the recorder has declined where that model is
 	// known wrong. r is the registry the def installs into: a module's
 	// declines (its fns' bodies are the module's to run).
 	RecordSpeculativeFnDef(r *Registry, name string, outer, fn Value, pos SrcPos) bool
@@ -631,7 +631,7 @@ const (
 	FrozenBakeCall
 )
 
-// String names the bake in the refusal a rebind produces, so the diagnostic
+// String names the bake in the compile failure a rebind produces, so the diagnostic
 // says which artifact went stale rather than always saying "its value".
 func (b FrozenBake) String() string {
 	switch b {
