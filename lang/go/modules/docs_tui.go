@@ -6,7 +6,7 @@ func init() {
 		"close":          "Restore the terminal and release the handle; idempotent.",
 		"dims":           "The terminal's current dimensions, as {cols rows}.",
 		"read-event":     "The next decoded input event as a tagged map; with {within: ms}, None on deadline.",
-		"deliver-events": "Deliver decoded input events to a process mailbox instead of pulling: the Tier-1 active mode (one delivery per terminal; read-event declines while it owns the stream).",
+		"deliver-events": "Deliver decoded input events to a process mailbox instead of pulling: the Tier-1 active mode (one delivery per terminal; read-event refuses while it owns the stream).",
 		"print-at":       "Write styled text into the offscreen grid at cell (x, y), clipping at the edges.",
 		"clear":          "Clear the offscreen grid.",
 		"show":           "Present the offscreen grid to the terminal (the backend diffs).",

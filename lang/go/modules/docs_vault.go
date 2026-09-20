@@ -40,7 +40,7 @@ func init() {
 		},
 		"lock": {
 			`Vault.lock`,
-			`Vault.locked                                     ;# true — reveal and friends now decline`,
+			`Vault.locked                                     ;# true — reveal and friends now refuse`,
 			`Vault.unlock`,
 		},
 		"verify": {`Vault.verify {}                                  ;# {text ok}; {prune: true} also prunes`},

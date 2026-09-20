@@ -329,13 +329,18 @@ func TestCheckPassIsEffectFree(t *testing.T) {
 		`def xs [1 2 3] xs each [dup mul]`,
 	} {
 		a := mustNew(t)
-		var out bytes.Buffer
+		var out, errOut bytes.Buffer
 		a.SetOutput(&out)
+		// BOTH writers, because the fence this replaces wrapped both: a
+		// check-pass write to ErrOutput escaped just as visibly as one to
+		// Output, and capturing only Output would let it through while this
+		// gate still passed.
+		a.registry.ErrOutput = &errOut
 		// The writer fence that used to make a PRINT count is gone with the
 		// arms it gated, so the print class is asserted where it is actually
-		// observable — the output buffer — and the ledger covers the rest
-		// (file writes, network sends). Strictly stronger than the counter:
-		// it reads the bytes a user would have seen.
+		// observable — the buffers — and the ledger covers the rest (file
+		// writes, network sends). Strictly stronger than the counter: it
+		// reads the bytes a user would have seen.
 		before := a.registry.Effects.Count()
 		_, _, _, err := a.CompileCheck(src)
 		after := a.registry.Effects.Count()
@@ -347,7 +352,10 @@ func TestCheckPassIsEffectFree(t *testing.T) {
 			t.Errorf("check pass over %q emitted %d observable effect(s) — the check pass must be effect-free (O1)", src, after-before)
 		}
 		if out.Len() != 0 {
-			t.Errorf("check pass over %q printed %q — the check pass must be effect-free (O1)", src, out.String())
+			t.Errorf("check pass over %q printed %q to stdout — the check pass must be effect-free (O1)", src, out.String())
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("check pass over %q printed %q to stderr — the check pass must be effect-free (O1)", src, errOut.String())
 		}
 	}
 }

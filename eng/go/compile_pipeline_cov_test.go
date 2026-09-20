@@ -438,10 +438,16 @@ func runErrParity(t *testing.T, extra func(*core.Registry), tokens func() []core
 	// where the interpreter raises the program's own return-count error. The
 	// fix is a DeferAlt at that site (the "trap that raises the interpreter's
 	// own error at the same moment" disposition, design/SESSION-HANDOVER.0.md);
-	// until it lands this is a ceiling of ONE, pinned to the site's own text so
-	// a bail anywhere else fails here instead of being absorbed.
+	// until it lands this is a ceiling of ONE.
+	//
+	// Matched on the POLY site's own opening words. "result count … differs
+	// from the recorded claim" alone is not that site: vm_generic.go's
+	// `vm:generic-nout-drift` says the same of the live handler, and vmDefer
+	// records the site only through the bail hook — it is not in the returned
+	// error — so the looser predicate would absorb a generic-dispatch
+	// divergence as this known one.
 	if strings.Contains(cErr.Error(), "internal_error") &&
-		strings.Contains(cErr.Error(), "result count") &&
+		strings.Contains(cErr.Error(), "poly dispatch") &&
 		strings.Contains(cErr.Error(), "differs from the recorded claim") {
 		t.Logf("known compiler defect (vm:poly-nout-drift): %v", cErr)
 		return
