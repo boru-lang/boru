@@ -572,11 +572,95 @@ to every def-read name was already tried and backfired — "poisons
 quoted interp-body def declined 'unknown provenance')". So the admission must
 be scoped to the arm-bound case, never blanket.
 
-Still NOT read, and must be before any patch: what `dynScopeNames` membership
-costs a name that did not need it — `unitBindsDynScope` (`emit.go:11481`) uses
-it to DISABLE tail calls, so admitting a name here may silently cost a tail
-call elsewhere in the same unit. **Open that level before claiming anything
-about it.**
+#### That level opened too — the dyn-scope route is RULED OUT, and by measurement
+
+The note above said to open what `dynScopeNames` membership costs before
+claiming the admission is free. Opened. **It is not free, and the cost rules
+the route out.**
+
+`dynScopeNames` is a PROGRAM-WIDE, BY-NAME commitment — not a per-read one.
+Its own declaration says so (`emit.go:1030`): the Finalize pass "installs an
+`OpBindDynScope` twin in **every unit** (params and body-local defs) and at
+**every top-level def** that binds one of these names".
+
+Measured, by disassembling two programs that differ only in whether a second,
+unrelated pair of functions forces the name in:
+
+```
+def k fn [[s:String] [String] [s]]
+def h fn [[] [String] [def tag 'plain' end k tag]]     <- h is IDENTICAL in both
+def g fn [[] [String] [tag]]                           <- only in the second
+def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end g]]
+```
+
+| | BIND_DYN_SCOPE | LOOKUP_DYN_SCOPE |
+|---|---:|---:|
+| without `f`/`g` | 0 | 0 |
+| with `f`/`g` | **3** | 1 |
+
+**Three binds to serve one lookup**, and the third lands in `h`:
+
+```
+fn f2 h/0 (locals=0):
+0000 PUSH_CONST  k8   ; 'plain'
+0001 BIND_DYN_SCOPE k9   ; 'tag'      <- serves nobody
+0002 PUSH_CONST  k3   ; 'plain'       <- h's own read still folds to a const
+0003 CALL_USER   f3   ; k/1
+```
+
+`h` never reads `tag` dynamically, nobody reads `h`'s `tag`, and `h`'s own read
+still resolves statically — yet `h` carries an instruction that serves nothing,
+and becomes `bindsDyn`, which costs it tail-call eligibility
+(`unitBindsDynScope`, `emit.go:11481`, consumed at `emit.go:11808`).
+
+So the cost scales with **how common the name is across the whole program** —
+and `tag`, `r`, `x`, `acc` are exactly the names people give an arm-bound local.
+Trading 17 compile failures for a program-wide lowering change on every
+occurrence of a common name is the wrong bargain. This is also precisely what
+the recorded warning at `emit.go:8913` meant by "poisons `dynScopeNames`".
+
+**The dyn-scope route WORKS and is RULED OUT.** Both halves matter: the earlier
+experiment proves the runtime semantics are right, so the mechanism is a
+correct reference for what the lowering must achieve — it is the program-wide
+blast radius, not the semantics, that disqualifies it.
+
+#### What replaces it: a per-NAME frame slot, local to the unit
+
+The frame-slot option dismissed earlier is the right answer, now for a measured
+reason rather than a guess: it is local to the unit, costs nothing
+program-wide, and never touches tail calls.
+
+The existing promotion machinery is close but not sufficient, and the gap is
+exact. `planValueDefLocals` (`lower.go:1750`) already promotes a value produced
+inside an arm and referenced from outside — its own comment: "a reference
+reaching UP OUT of a branch / loop arm cannot see the parent stack at all, so
+any such use is treated as buried". But `promoted` is `map[int]int`, keyed
+**event seq → slot**: one slot per PRODUCING EVENT. The arm-binding case needs
+the inverse — **one slot per NAME**, written by every arm that binds it, so the
+post-merge read has one home whichever path ran.
+
+Three obligations the witnesses impose, and the third is the one a careless
+implementation gets wrong:
+
+1. Allocate one slot for the NAME (not per producer), for a name bound in at
+   least one arm of a branch and read after the merge.
+2. Every arm that binds the name stores to that slot.
+3. **The slot must already hold the incoming binding before the branch runs**,
+   so an arm that does NOT bind leaves the right value. This is exactly what
+   `fn-locals-scope.tsv` L172/L174/L181 demand — the empty-arm rows — and it is
+   the direction a then-arm-always lowering gets wrong.
+
+And one case the design must DECLINE rather than miscompile: a name with no
+incoming binding, bound in only one arm, read after the merge. On the path that
+skips the arm the interpreter raises `undefined_word`, so the slot has no
+correct seed value. No current corpus row has that shape (L167/L168 bind in
+both arms; L171/L173/L180 carry an incoming `def`), which means **it needs a
+witness of its own before the implementation can claim to handle it.**
+
+NOT yet read: how `planValueDefLocals`' slot assignment interacts with
+`forceOrder` and `collectDynBindSources`, and whether a name-keyed slot can
+ride the same `promoted` map or needs its own. **Open that level before
+claiming anything about it.**
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
@@ -938,3 +1022,131 @@ The first is the one that cost the most, four times in one session:
   kept on a package-global stack (2026-09-18; the parallel corpus walks
   found the race); `TestUnifyRegistryArmedConcurrentNoRace` pins it and
   CI's race gates run it. NUR157 is the one oddity that threading kept.
+
+## A LIVE MISCOMPILE, found and NOT yet fixed (2026-09-21)
+
+Found while reading ahead for the arm-binding join. **It is still open on
+`main`.** It is recorded here because a known miscompile is worth more than an
+unknown one, and because the fix was attempted, measured, and withdrawn — the
+attempt's failures are the useful part.
+
+### The bug
+
+A name bound in ONE arm of a branch, read after the merge, bakes the arm's
+value as though the arm always runs:
+
+```
+def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false
+```
+
+The interpreter raises `undefined_word: z` — the arm never ran, so the name was
+never bound. **The compiler answers 9.** Six shapes, all measured:
+
+| program | interpreter | compiler |
+|---|---|---|
+| `if b [def z 9] [] end z`, `b=false` | raises | `9` |
+| `if b [] [def z 9] end z`, `b=true` | raises | `9` |
+| `if false [def op 1] [0] end op` (top level) | raises | `[0 1]` |
+| `if false [def op 1] [] end op` | raises | `[1]` |
+| `if false [def op 1] [0] end typeof op` | raises | `[0 Integer]` |
+| `…[def z (1 add 8)]…` (computed bind) | raises | leaks a nil: `expected Integer, got <nil>` |
+
+Two of those return the wrong RESIDUAL SHAPE, not just the wrong value. Three
+of them are already programs in `lang/go`'s own test suite, passing.
+
+**Why**: the check pass runs BOTH arms to type them, so a name bound in one arm
+is bound in the model afterwards. A concrete literal then reaches
+`resolveOperand` as an ordinary inert const and bakes. The existing
+arm-binding cluster escapes only by accident of shape — with an incoming `def`
+or a second arm, check produces a JOINED carrier with no payload, which fails
+to materialise and declines "unknown provenance". One bind and no incoming
+binding leaves the arm's own value.
+
+### The attempted fix, and the three ways it was wrong
+
+A "conditional-bind screen": poison a read whose name has no binding the read
+can see, then decline in `resolveOperand` (and in `resolveResidualOperands`,
+which never calls it). No new `MarkUncompilable` site — that census only falls.
+
+Each revision was corrected by a test, never by reasoning, and **each failure
+was the same mistake about KEYS**:
+
+1. **Keyed on fragment nesting** — broke 10 tests. A `do` body and a `for` loop
+   open fragments too; `do [def z 1] z` binds unconditionally. Fragment
+   nesting is not conditionality.
+2. **Branch-scoped but keyed on NAME** — broke `cli.boru`'s `cli-finish-st`. A
+   fn body opens its own fragment, so "bound at the root" never held inside
+   one, and an unrelated `def c` was poisoned because some OTHER function bound
+   `c` in an arm.
+3. **Read-local, keyed on the binding's fragment** — passed `compiler/go`,
+   `lang/go`, `core`, `check`, `eng`, and every hand-written witness. **It
+   still took out 65 rows of `module-sift.tsv` and 31 of 62 real programs**,
+   and the corpus compile-failure gate went 68 → 134.
+
+Revision 3's measurement is the one to keep:
+
+```
+POISON name="ln" binds=[89 258 355 495]
+       open=[1 2 57 66 244 341 481 482 483 520 522 524 525 526]
+```
+
+`ln` has four binds, at four fragments, from four separate analysis rounds of
+the same module. **Fragment ids are not comparable across units or across
+re-analysis rounds**, and `condBindFrags` accumulated program-wide. A bind
+inside function A on round 1 decided the fate of a read in function B on round
+4. The premise — compare the read's open fragment stack against every recorded
+bind of the name — is unsound the moment analysis re-enters a body.
+
+> Three revisions, three keys, one lesson: **a name is the wrong key for a fact
+> about one binding site, and a fragment id is the wrong key for a fact that
+> must survive re-analysis.** Before keying a screen on anything, ask what
+> scope that key is unique in, and whether the reader and the writer are
+> guaranteed to be in it together.
+
+### What the next attempt needs, before any code
+
+- A scope in which the bind and the read are provably comparable. Per-unit is
+  not enough: the sift measurement shows the same unit re-analysed with fresh
+  fragment ids. Establish how many rounds a body gets and what survives them.
+- `module-sift.tsv` (65 rows) and `TestRealProgramsCompile` (62 programs) are
+  the load-bearing regression signal here. Neither is in the fast lane, and
+  BOTH were green through the unit suites that passed. **Run the full corpus
+  before believing a screen of this kind.**
+- The six witnesses above are written and measured; they cannot land in the
+  corpus until the fix does, because a corpus row that miscompiles fails the
+  differential.
+
+### Three more holes, from the Codex review of the withdrawn screen
+
+All three were verified against the source and all three are REAL. Two of them
+are failure modes the corpus never showed, because they make the screen MISS
+rather than over-fire — the corpus only catches the loud direction.
+
+1. **`RecordDynBind` filters names before any bookkeeping.** It returns early
+   for a capitalised name (`emit.go:8715`) and for one starting with `_` or
+   `$` (`emit.go:8730`), both BEFORE the point the screen recorded its
+   conditional-bind fact. So `if b [def _z 9] [] end _z` with `b=false` still
+   bakes 9. The safety fact has to be recorded ahead of the event-lowering
+   filter: it is needed even where no `evDynBind` is emitted at all.
+2. **The early return on a non-arm bind is not unit-scoped.** The screen
+   returned "visible, do not poison" on ANY bind outside a conditional arm —
+   but `condBindFrags` is program-wide, so an unrelated earlier
+   `def h fn [[] [Integer] [def z 1 end z]]` disables the screen for a LATER
+   `f` whose `z` is genuinely conditional. `h`'s frame is long gone at that
+   point. The visibility test must be restricted to bindings the READING unit
+   could actually see.
+3. **A const-condition branch captures only ONE arm, and stores it in
+   `Then`.** `BranchRecord.ConstCond`'s own comment says so: "statically-known
+   condition: only Then captured". The withdrawn screen read `ConstCond` as
+   "both arms captured, mark the one not taken", so for a false const
+   condition it marked the CAPTURED (taken) body as dead —
+   `if false [0] [def z 9 end 1] end drop z` would have had a perfectly
+   ordinary read poisoned. A `ConstCond` branch has no dead arm to mark and
+   must be left alone; only a condition folded to a concrete value has both
+   fragments to choose between.
+
+Together with the sift measurement, that is FIVE distinct ways this screen was
+wrong, in three revisions plus a review. It is a strong signal that the
+mechanism wants designing rather than patching: enumerate where a bind can be
+recorded, which of those sites the filters skip, and what scope makes a bind
+and a read comparable — and only then write the test.
