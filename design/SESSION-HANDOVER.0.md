@@ -519,11 +519,64 @@ Read before designing it; each of these is a file and a line, not a guess.
   case — it runs exactly once or not at all — so a join belongs beside that
   map, never inside it.
 
-What is NOT yet read, and must be before any patch: how `lowerFragment`
-(`emit.go:10789`, the `evBranch` arm) emits the arms, and whether a merged
-binding needs a runtime home (a frame slot written by both arms) or can ride
-the existing operand merge. **Open that level before claiming anything about
-it.**
+#### That level, opened — and the answer is neither option above
+
+The question just posed was a false dichotomy (frame slot vs. riding the
+operand merge). Reading `lowerArms` (`compiler/go/lower.go:3848`) and
+`lowerDynBind` (`compiler/go/lower.go:286`) gives a third answer, and an
+experiment confirms it.
+
+`lowerArms` lowers the arms as straight-line code with jumps and merges their
+RESULT into one VM stack slot. There is no phi. And `lowerDynBind`'s own
+comment says what happens to a `def` inside an arm:
+
+> A def of any other name lowers to nothing here — its value flows by
+> provenance exactly as before.
+
+So an ordinary arm `def` emits **no instruction at all**: the binding is a
+compile-time fact, and a later read resolves statically through the producing
+event — which sits on one of two mutually exclusive paths. That is exactly why
+`resolveOperand` cannot place it.
+
+**The runtime mechanism that WOULD carry it already exists, and already
+works.** A name in `dynScopeNames` makes each arm's def lower to a real
+`OpBindDynScope` (`lower.go:334`, `needDyn`), and a read lowers to
+`OpLookupDynScope`. Three programs, measured:
+
+| program | compiles? |
+|---|---|
+| `if (n gt 0) [def tag 'big'] [def tag 'small'] end tag` — read directly | fails |
+| the same, but read through a dyn-scope callee `g` instead | **compiles, answers `'big'`** |
+| the same, with a dyn-scope callee `g` AND a direct read after it | fails |
+
+The middle row is the whole finding: **the bind side is built, correct, and
+exercised today.** The third row isolates the rest — in that program `tag` IS
+in `dynScopeNames` (because `g` reads it), so both arms DO lower to
+`OpBindDynScope`; only the direct same-frame read is still refused.
+
+The refusal is `dynScopeRescue` (`compiler/go/emit.go:8881`), which inside a
+unit admits a read only when the name is an ENCLOSING binding or
+`DynamicScopeReachable(name, reader)` — i.e. reachable from another frame. A
+name this frame bound in its own `if` arm is neither, so the read is refused
+while the machinery to serve it stands installed beside it.
+
+**So the increment is a READ-side admission, not a join to build**: admit a
+same-frame read of a name bound in an `if` arm, and let the existing
+bind/lookup pair carry it. The empty-arm case then works for free — no bind in
+that arm means the outer binding stands and the lookup reads it, which is
+exactly what L172/L174/L181 demand.
+
+**One recorded warning applies directly** (`emit.go:8913`): widening this arm
+to every def-read name was already tried and backfired — "poisons
+`dynScopeNames` for defs whose bind then cannot lower (probe-pinned: the
+quoted interp-body def declined 'unknown provenance')". So the admission must
+be scoped to the arm-bound case, never blanket.
+
+Still NOT read, and must be before any patch: what `dynScopeNames` membership
+costs a name that did not need it — `unitBindsDynScope` (`emit.go:11481`) uses
+it to DISABLE tail calls, so admitting a name here may silently cost a tail
+call elsewhere in the same unit. **Open that level before claiming anything
+about it.**
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
