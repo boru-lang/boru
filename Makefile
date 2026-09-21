@@ -141,7 +141,7 @@ test:
 # ledger (test/go/langspec/compile_failures.tsv) asserts on every selected
 # file, so a compile regression in the family fails the filtered run.
 LANGSPEC_DIR := test/go/langspec
-DIRECTION_TESTS := TestCompiledCoverage|TestRefusalsAreFailures|TestOnlyMetaFallsBack|TestSpecCompiledOrFallback|TestSpecCompiledDifferential|TestRegionCollectOracle|TestInterpEntryCensus|TestCheckTypeSoundness|TestDiagnosticParityAcrossPasses|TestDiagnosticSurfaceParity
+DIRECTION_TESTS := TestCompiledCoverage|TestCompileFailuresAreBugs|TestOnlyMetaFallsBack|TestSpecCompiledOrFallback|TestSpecCompiledDifferential|TestRegionCollectOracle|TestInterpEntryCensus|TestCheckTypeSoundness|TestDiagnosticParityAcrossPasses|TestDiagnosticSurfaceParity
 
 langspec-shard-count:
 	@awk -F'\t' '!/^#/ && NF==2 {if ($$1+0 > n) n = $$1+0} END {print n+0}' $(LANGSPEC_DIR)/shards.tsv

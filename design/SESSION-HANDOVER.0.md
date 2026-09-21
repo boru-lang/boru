@@ -363,8 +363,9 @@ probe over `RunCompiledReason` and got different numbers; a Codex review of PR
 | 1 each | eleven more, including `code-body word (NoEvalArgs)` |
 
 Provenance is still the largest bucket. **Within it, the arm-binding shape is
-eight rows: `fn-locals-scope.tsv:L167–L174`** — a `def` inside an `if` arm,
-read after the `if`:
+seventeen rows: `fn-locals-scope.tsv:L167–L183`** — eight shapes, each now
+PAIRED with its false-path twin (see the subsection below) — a `def` inside an
+`if` arm, read after the `if`:
 
 ```
 def f fn [[n:Integer] [String] [
@@ -379,7 +380,7 @@ body result.
 
 **Three rows the first version of this section wrongly folded in:**
 
-- `fn-locals-scope.tsv:L175` has NO `def` in either arm. `pick2` returns a
+- `fn-locals-scope.tsv:L184` has NO `def` in either arm. `pick2` returns a
   closure directly from an arm and fails `if: then-branch result of unknown
   provenance`. An arm-binding join cannot clear it; it belongs with the
   function-valued branch-result work.
@@ -399,20 +400,39 @@ a function's `if` arm never reaches that path at all, so the absence of that
 decline says nothing about whether the arms bind. Establish the bind side by
 measurement before designing the read side.
 
-**The cluster cannot validate a join as it stands.** Every one of L167–L174
-executes the THEN/rebind path (`f 5`, literal `true`, `f true`, `f 3`, `f 8`).
-A lowering that always selected the then-arm value, or that lost the incoming
-binding through an empty else, would retire all eight and still miscompile the
-opposite condition. The false paths are addable and genuine — measured, both
-fail today with the same decline:
+**The cluster could not validate a join as it stood — now it can (2026-09-21).**
+Every one of the eight original rows executed the THEN/rebind path (`f 5`,
+literal `true`, `f true`, `f 3`, `f 8`). A lowering that always selected the
+then-arm value, or that lost the incoming binding through an empty else, would
+have retired all eight and still miscompiled the opposite condition. The
+cluster proved the wrong thing, confidently.
 
-```
-def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r]]  f 0   -> 2
-def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f                       -> 1
-```
+**Nine paired FALSE-PATH witnesses are now interleaved** — one per shape, two
+for the nested row (outer-else and inner-else). Each was measured before it was
+written down: the interpreter answers as the row states, and the compiler
+declines exactly as the row's twin does.
 
-**Add paired false-path witnesses before using this cluster to prove
-anything.**
+| new row | the pair it completes | interp | today's decline |
+|---|---|---|---|
+| L168 | L167, both arms bind, ELSE taken | `'small'` | `fn f: body result of unknown provenance` |
+| L170 | L169, pre-bound name, ELSE taken | `'small'` | same |
+| L172 | L171, one-sided, FALSE — the EMPTY arm must carry the binding through | `1` | same |
+| L174 | L173, the explicit-`end` spelling, FALSE | `1` | same |
+| L176 | L175, nested, OUTER else | `3` | same |
+| L177 | L175, nested, outer then + INNER else | `2` | same |
+| L179 | L178, the operand spelling, ELSE | `12` | `operand of unknown provenance … at add` |
+| L181 | L180, one-sided operand, FALSE | `10` | `… at mul` |
+| L183 | L182, local-helper rebind, condition FALSE | `1` | `fn f: body result of unknown provenance` |
+
+Three of the nine (L172, L174, L181) are the shape a then-arm-always lowering
+gets wrong in the OTHER direction: the arm is EMPTY on the taken path, so the
+join must carry the binding that arrived from BEFORE the branch, not synthesise
+one from the arm that did not run.
+
+The per-file ledger moved `10 -> 19` and the corpus sum `53 -> 62`. **That is
+debt written down, not debt added** — the bug was always this big; the corpus
+merely could not see it. `compile_failures.tsv` records the move with that
+reasoning in its third column.
 
 ### The bind side, measured TWICE — the arms bind; only the JOIN is missing
 
@@ -465,8 +485,45 @@ past the merge so a later read resolves to it. The type side is already
 correct (the read arrives as a joined `ProperString` carrier) and the read end
 already knows the name (`defReads` maps its value ID to `tag`).
 
-**Still do the false-path witnesses first** (above): all eight cluster rows run
-the THEN path and cannot tell a real join from a then-arm-always lowering.
+**The false-path witnesses are in** (above), so the cluster can now hold a join
+to account in both directions. The next increment is the join itself: carry an
+arm's binding past the merge point so a later read resolves to it. Read the
+counts from `COMPILED_STATUS.md` when it lands — not from an ad-hoc probe.
+
+#### Where the join seats — the code read, 2026-09-21
+
+Read before designing it; each of these is a file and a line, not a guess.
+
+- **The decline is `resolveOperand` returning `ok=false`**, surfaced by
+  `residualStands` (`compiler/go/unit_memo.go:562`). The read after the merge
+  has no `producedBy[v.ID]` entry, because the only events that could produce
+  it — the arms' `evDynBind` for the name — live inside the arm fragments.
+- **`RecordBranch` (`compiler/go/emit.go:4208`) merges RESULTS and nothing
+  else.** Its `resolveArm` closure resolves each arm's top-of-stack into a
+  merge operand; there is no corresponding pass over names the arms BOUND. The
+  merge point is where a join would seat, next to `resolveArm`.
+- **The recursive walk already exists.** `eventsBindDynScope`
+  (`compiler/go/emit.go:11444`) descends `condFrag`, `then`, `els`,
+  `loop.cond` and `loop.body` looking for an `evDynBind` of a named set —
+  exactly the traversal a per-arm bind collection needs, in the same shape.
+- **The fragment nesting is already addressable.** `es.fragIDs` / `curFrag()`
+  (`compiler/go/unit_memo.go:449`) give each open fragment an id, and
+  `fragReads` / `noteBindHazard` already key read-vs-bind facts by
+  `(name, fragID)`. An arm's bind and the post-merge read differ precisely by
+  that id.
+- **`armBoundNames` is NOT this mechanism and must not be reused for it.** It
+  is multi-run-body poison (`emit.go:805`): a name bound only by arm-resident
+  installs under `BodyMultiRunKeepsDefs`, whose very definedness is
+  iteration-count-dependent. `NoteDefRead` (`emit.go:8515`) turns a read of
+  such a name into a compile failure on purpose. An `if` arm is the opposite
+  case — it runs exactly once or not at all — so a join belongs beside that
+  map, never inside it.
+
+What is NOT yet read, and must be before any patch: how `lowerFragment`
+(`emit.go:10789`, the `evBranch` arm) emits the arms, and whether a merged
+binding needs a runtime home (a frame slot written by both arms) or can ride
+the existing operand merge. **Open that level before claiming anything about
+it.**
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
