@@ -1115,3 +1115,38 @@ bind of the name — is unsound the moment analysis re-enters a body.
 - The six witnesses above are written and measured; they cannot land in the
   corpus until the fix does, because a corpus row that miscompiles fails the
   differential.
+
+### Three more holes, from the Codex review of the withdrawn screen
+
+All three were verified against the source and all three are REAL. Two of them
+are failure modes the corpus never showed, because they make the screen MISS
+rather than over-fire — the corpus only catches the loud direction.
+
+1. **`RecordDynBind` filters names before any bookkeeping.** It returns early
+   for a capitalised name (`emit.go:8715`) and for one starting with `_` or
+   `$` (`emit.go:8730`), both BEFORE the point the screen recorded its
+   conditional-bind fact. So `if b [def _z 9] [] end _z` with `b=false` still
+   bakes 9. The safety fact has to be recorded ahead of the event-lowering
+   filter: it is needed even where no `evDynBind` is emitted at all.
+2. **The early return on a non-arm bind is not unit-scoped.** The screen
+   returned "visible, do not poison" on ANY bind outside a conditional arm —
+   but `condBindFrags` is program-wide, so an unrelated earlier
+   `def h fn [[] [Integer] [def z 1 end z]]` disables the screen for a LATER
+   `f` whose `z` is genuinely conditional. `h`'s frame is long gone at that
+   point. The visibility test must be restricted to bindings the READING unit
+   could actually see.
+3. **A const-condition branch captures only ONE arm, and stores it in
+   `Then`.** `BranchRecord.ConstCond`'s own comment says so: "statically-known
+   condition: only Then captured". The withdrawn screen read `ConstCond` as
+   "both arms captured, mark the one not taken", so for a false const
+   condition it marked the CAPTURED (taken) body as dead —
+   `if false [0] [def z 9 end 1] end drop z` would have had a perfectly
+   ordinary read poisoned. A `ConstCond` branch has no dead arm to mark and
+   must be left alone; only a condition folded to a concrete value has both
+   fragments to choose between.
+
+Together with the sift measurement, that is FIVE distinct ways this screen was
+wrong, in three revisions plus a review. It is a strong signal that the
+mechanism wants designing rather than patching: enumerate where a bind can be
+recorded, which of those sites the filters skip, and what scope makes a bind
+and a read comparable — and only then write the test.
