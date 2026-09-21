@@ -1096,18 +1096,9 @@ type EmitState struct {
 	// emitCheckpoint and Rollback: a retained entry can only over-decline,
 	// and the miscompile direction is a missing one, which Rollback
 	// structurally cannot produce.
-	// condBindFrags records, per def'd NAME, the fragment id each of its binds
-	// was recorded in (0 = the unit root, outside any branch arm or loop body).
-	// condReadIDs then holds the value IDs of reads that can see NO binding:
-	// every bind of the name sits in a fragment the read is OUTSIDE of, so on
-	// the path where that arm did not run the name is UNBOUND and the
-	// interpreter raises undefined_word. See noteCondBoundRead.
-	condBindFrags map[string][]int
-	condArmFrags  map[int]bool
-	condReadIDs   map[string]bool
-	fragReads     map[readKey]bool
-	bindHazard    map[readKey]bool
-	storeHazard   map[slotKey]bool
+	fragReads   map[readKey]bool
+	bindHazard  map[readKey]bool
+	storeHazard map[slotKey]bool
 
 	// storedBodyFnResidual records, for the ONE dispatch whose operands are
 	// being built, whether any STORE-BODY-LIST element can leave a CALLABLE
@@ -1792,18 +1783,6 @@ func (es *EmitState) forkForProbe() *EmitState {
 	p.fragSeq = es.fragSeq
 	p.fragIDs = append([]int(nil), es.fragIDs...)
 	p.fragUnits = append([]int(nil), es.fragUnits...)
-	p.condBindFrags = make(map[string][]int, len(es.condBindFrags))
-	for k, v := range es.condBindFrags {
-		p.condBindFrags[k] = append([]int(nil), v...)
-	}
-	p.condArmFrags = make(map[int]bool, len(es.condArmFrags))
-	for k, v := range es.condArmFrags {
-		p.condArmFrags[k] = v
-	}
-	p.condReadIDs = make(map[string]bool, len(es.condReadIDs))
-	for k, v := range es.condReadIDs {
-		p.condReadIDs[k] = v
-	}
 	p.fragReads = make(map[readKey]bool, len(es.fragReads))
 	for k, v := range es.fragReads {
 		p.fragReads[k] = v
@@ -2728,13 +2707,6 @@ func (es *EmitState) producedInCurrentUnit(id string) bool {
 }
 
 func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
-	// A read of a name bound ONLY inside a branch arm this read sits outside
-	// of has no value on the path that skipped the arm — the interpreter
-	// raises undefined_word there. Decline before any const bake can seat the
-	// arm's value as though the arm always runs (noteCondBoundRead).
-	if es.condReadIDs[v.ID] {
-		return EmitOperand{}, false
-	}
 	// A `/v` read of a def-bound capturing fn literal (readOps) is the
 	// literal's closure operand, before any other resolution.
 	if op, ok := es.readOps[v.ID]; ok {
@@ -4249,11 +4221,6 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	// both-arms-net-zero → zeroOut marking cascade through nested guards.
 	b.ThenStk = es.stripZeroOutPhantoms(b.ThenStk)
 	b.ElsStk = es.stripZeroOutPhantoms(b.ElsStk)
-	// A name bound ONLY inside these arms, under a condition that is not
-	// statically known, has no value on the path the arm did not take. Mark it
-	// before any early return below: the marking is a fact about the source,
-	// owed whether or not this branch goes on to record.
-	es.markCondBoundArms(b, bThen, bEls)
 	ev := EmitEvent{kind: evBranch, br: &emitBranch{
 		constCond: b.ConstCond, hasElse: b.HasElse, pos: b.Pos,
 	}}
@@ -8568,7 +8535,6 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		}
 		return
 	}
-	es.noteCondBoundRead(id, name)
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
@@ -8895,10 +8861,6 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		specFn, replace = true, p.replace
 		es.pendingSpecFn = nil
 	}
-	if es.condBindFrags == nil {
-		es.condBindFrags = map[string][]int{}
-	}
-	es.condBindFrags[name] = append(es.condBindFrags[name], es.curFrag())
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
@@ -9005,178 +8967,6 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 	}
 	es.dynScopeNames[name] = true
 	return dynScopeOperand(es.intern(core.NewString(name))), true
-}
-
-// noteCondBoundRead poisons a read of a name that is CONDITIONALLY BOUND:
-// every recorded bind of it sits in an arm of a branch whose condition is not
-// statically known, and the read is outside that branch. On the path where
-// the arm did not run the name is simply UNBOUND and the interpreter raises
-// undefined_word — but the check model runs both arms to type them, so it
-// holds the arm's value regardless. A concrete literal bound in one arm
-// therefore reached resolveOperand as an ordinary inert const and BAKED, the
-// compiled program answering the arm's value where the interpreter raises.
-//
-// Measured before the fix, six shapes, every one silently wrong:
-//
-//	def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false   -> 9
-//	def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true    -> 9
-//	if false [def z 9] [] end z                                          -> 9
-//	…the read feeding a word (-> 10), a String local (-> 'hi'), and a
-//	computed bind, which leaked a nil as `expected Integer, got <nil>`.
-//
-// This is the BRANCH twin of armBoundNames (the multi-run-body poison, whose
-// own comment names `[] each [def x 5] x` — a zero-iteration body binding
-// nothing). The two are complementary and must stay separate: a loop body or
-// a `do` body opens a fragment too, and `for 2 [def acc …] acc` or
-// `do [def z 1] z` bind unconditionally. Scoping to branch arms is why this
-// screen keys off markCondBoundArms, called from RecordBranch where the
-// condition's constness is known, rather than off fragment nesting alone.
-func (es *EmitState) noteCondBoundRead(id, name string) {
-	frags, ok := es.condBindFrags[name]
-	if !ok || len(frags) == 0 {
-		return
-	}
-	for _, f := range frags {
-		// A bind outside every conditional arm — a fn-body root, a `do` or loop
-		// body, a module scope — is live on every path reaching this read.
-		if !es.condArmFrags[f] {
-			return
-		}
-		// The arm is still OPEN around this read, so the read is inside the
-		// very arm that bound it (`if c [def tag 'big' tag] [...]`).
-		for _, open := range es.fragIDs {
-			if open == f {
-				return
-			}
-		}
-	}
-	if es.condReadIDs == nil {
-		es.condReadIDs = map[string]bool{}
-	}
-	es.condReadIDs[id] = true
-}
-
-// markCondBoundArms is called from RecordBranch once both arms are recorded:
-// it records which fragment ids are arms of a branch whose condition is NOT
-// statically known. A const condition picks one arm, so its binds execute
-// unconditionally and it is deliberately not marked.
-//
-// Recording the FRAGMENTS, not the names, is what keeps this read-local. An
-// earlier revision marked names globally and was measurably wrong: a fn body
-// opens its own fragment, so "bound at the root" never held inside one, and
-// an unrelated `def c` in lang/go/modules/cli.boru's cli-finish-st was
-// poisoned because some other function bound `c` in an arm. A name is the
-// wrong key for a fact about one binding site — the same lesson dynScopeNames
-// teaches at program scale.
-func (es *EmitState) markCondBoundArms(b core.BranchRecord, bThen, bEls *EmitFragment) {
-	arms := []*EmitFragment{bThen, bEls}
-	if taken, static := branchTakenArm(b); static {
-		// The pass DECIDED this branch. The taken arm's binds are
-		// unconditional; the OTHER arm never runs at all, so a bind in it is
-		// dead and a read of that name after the branch is undefined on every
-		// path — `if false [def z 9] [] end z` answered 9 at top level, where
-		// the fn-body spelling of the same program is caught by the check
-		// pass. Skipping BOTH arms here is what let that one through.
-		switch {
-		case taken && bEls != nil:
-			arms = []*EmitFragment{bEls}
-		case !taken && bThen != nil:
-			arms = []*EmitFragment{bThen}
-		default:
-			return
-		}
-	}
-	for _, f := range arms {
-		if f == nil {
-			continue
-		}
-		if es.condArmFrags == nil {
-			es.condArmFrags = map[int]bool{}
-		}
-		es.condArmFrags[f.id] = true
-		for _, nested := range nestedFragIDs(f) {
-			es.condArmFrags[nested] = true
-		}
-	}
-}
-
-// branchTakenArm reports which arm the pass DECIDED runs, and whether it
-// decided at all. It decided when it captured only one arm (ConstCond) or the
-// condition arrived as a CONCRETE value rather than a carrier. The second half
-// matters both ways: `def n 5 … if (n eq 0) […] […]` leaves ConstCond nil (the
-// condition is a computed paren, not a literal) yet the pass folded it to a
-// concrete `false`, so the ELSE arm's binds are unconditional — and the THEN
-// arm's are DEAD. A genuinely runtime condition arrives as a Boolean CARRIER,
-// with no payload, and neither arm is decided. Measured on both shapes: the
-// folded one reports cond=false concrete=true, the param one cond=Boolean
-// concrete=false.
-func branchTakenArm(b core.BranchRecord) (taken, static bool) {
-	if b.ConstCond != nil {
-		// Only the taken arm was captured, so there is no dead arm to mark.
-		return *b.ConstCond, true
-	}
-	cond := b.Cond
-	if len(b.CondStk) > 0 {
-		cond = b.CondStk[len(b.CondStk)-1]
-	}
-	if !core.IsConcrete(cond) {
-		return false, false
-	}
-	v, err := core.AsBoolean(cond)
-	if err != nil {
-		return false, false
-	}
-	return v, true
-}
-
-// nestedFragIDs collects the ids of every fragment nested inside f — an inner
-// branch's arms, a loop body — so a name bound at any depth inside a
-// conditional arm is screened, not just one bound at its top level.
-func nestedFragIDs(f *EmitFragment) []int {
-	if f == nil {
-		return nil
-	}
-	var out []int
-	var walk func(g *EmitFragment)
-	walk = func(g *EmitFragment) {
-		if g == nil {
-			return
-		}
-		out = append(out, g.id)
-		for i := range g.events {
-			ev := &g.events[i]
-			switch ev.kind {
-			case evBranch:
-				if ev.br != nil {
-					walk(ev.br.condFrag)
-					walk(ev.br.then)
-					walk(ev.br.els)
-				}
-			case evLoop:
-				if ev.loop != nil {
-					walk(ev.loop.cond)
-					walk(ev.loop.body)
-				}
-			}
-		}
-	}
-	for i := range f.events {
-		ev := &f.events[i]
-		switch ev.kind {
-		case evBranch:
-			if ev.br != nil {
-				walk(ev.br.condFrag)
-				walk(ev.br.then)
-				walk(ev.br.els)
-			}
-		case evLoop:
-			if ev.loop != nil {
-				walk(ev.loop.cond)
-				walk(ev.loop.body)
-			}
-		}
-	}
-	return out
 }
 
 func (es *EmitState) NoteShapedRead(id string) {
@@ -11553,15 +11343,6 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 	}
 	ops := make([]EmitOperand, 0, len(residual))
 	for _, rv := range residual {
-		// The top-level twin of resolveOperand's conditional-bind screen: this
-		// path never calls it, so a name bound only inside a branch arm would
-		// otherwise bake its literal straight into the program residual
-		// (`if false [def z 9] [] end z` answered 9 where the interpreter
-		// raises undefined_word). Same reason string as the miss below — the
-		// provenance genuinely is unknown on the path that skipped the arm.
-		if es.condReadIDs[rv.ID] {
-			return nil, "residual value of unknown provenance"
-		}
 		if pr, ok := es.producedBy[rv.ID]; ok {
 			if es.eventInfo[pr.seq].zeroOut {
 				continue

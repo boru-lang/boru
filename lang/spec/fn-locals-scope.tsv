@@ -183,20 +183,6 @@ def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] d
 def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 2	1	DOES NOT COMPILE: …the local-helper rebind with the condition FALSE — q survives the branch unrebound
 def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	DOES NOT COMPILE: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
 #
-# §6b  CONDITIONALLY BOUND — the name exists only if the arm ran. Every row
-#      here MISCOMPILED before 2026-09-21: the check pass runs both arms to
-#      type them, so a literal bound in one arm looked unconditional and BAKED,
-#      and the compiled program answered the arm's value where the interpreter
-#      raises. They are ERROR rows because the program IS wrong on that path;
-#      what was wrong was the compiler agreeing with it.
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false	ERROR:undefined_word	DOES NOT COMPILE: the then-arm never ran, so `z` is unbound — answered 9 before the conditional-bind screen
-def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true	ERROR:undefined_word	DOES NOT COMPILE: …the ELSE-arm spelling, condition true — also answered 9
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z add 1]]  f false	ERROR:undefined_word	DOES NOT COMPILE: …the unbound read feeding an operator — answered 10
-def f fn [[b:Boolean] [String] [if b [def z 'hi'] [] end z]]  f false	ERROR:undefined_word	DOES NOT COMPILE: …a String local — answered 'hi'; any inert literal bakes, not just numbers
-def f fn [[b:Boolean] [Integer] [if b [def z (1 add 8)] [] end z]]  f false	ERROR:undefined_word	DOES NOT COMPILE: …a COMPUTED bind — leaked a nil as `expected Integer, got <nil>` rather than a value
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true	9	DOES NOT COMPILE: the TRUE path of the same program — correct at run time, but the compiler cannot know `b`, so it declines the program rather than bake the arm
-def f fn [[b:Boolean] [String] [if b [def tag 'big' tag] [def tag 'small' tag] end]]  f true	'big'	…and the read INSIDE the arm still compiles: the binding is live exactly where it was made
-#
 # §7  DYNAMIC-SCOPE reads — a callee sees the CALLER frame's bindings
 def f fn [[] [Integer] [def a 5 end g add 1]] def g fn [[] [Integer] [a mul 2]]  f	11	a module-level callee reads the CALLER's body-local (dynamic scope, no capture)
 def f fn [[x:Integer] [Integer] [g]] def g fn [[] [Integer] [x add 1]]  f 41	42	…and reads the caller's PARAM the same way

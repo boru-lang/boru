@@ -1022,3 +1022,96 @@ The first is the one that cost the most, four times in one session:
   kept on a package-global stack (2026-09-18; the parallel corpus walks
   found the race); `TestUnifyRegistryArmedConcurrentNoRace` pins it and
   CI's race gates run it. NUR157 is the one oddity that threading kept.
+
+## A LIVE MISCOMPILE, found and NOT yet fixed (2026-09-21)
+
+Found while reading ahead for the arm-binding join. **It is still open on
+`main`.** It is recorded here because a known miscompile is worth more than an
+unknown one, and because the fix was attempted, measured, and withdrawn — the
+attempt's failures are the useful part.
+
+### The bug
+
+A name bound in ONE arm of a branch, read after the merge, bakes the arm's
+value as though the arm always runs:
+
+```
+def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false
+```
+
+The interpreter raises `undefined_word: z` — the arm never ran, so the name was
+never bound. **The compiler answers 9.** Six shapes, all measured:
+
+| program | interpreter | compiler |
+|---|---|---|
+| `if b [def z 9] [] end z`, `b=false` | raises | `9` |
+| `if b [] [def z 9] end z`, `b=true` | raises | `9` |
+| `if false [def op 1] [0] end op` (top level) | raises | `[0 1]` |
+| `if false [def op 1] [] end op` | raises | `[1]` |
+| `if false [def op 1] [0] end typeof op` | raises | `[0 Integer]` |
+| `…[def z (1 add 8)]…` (computed bind) | raises | leaks a nil: `expected Integer, got <nil>` |
+
+Two of those return the wrong RESIDUAL SHAPE, not just the wrong value. Three
+of them are already programs in `lang/go`'s own test suite, passing.
+
+**Why**: the check pass runs BOTH arms to type them, so a name bound in one arm
+is bound in the model afterwards. A concrete literal then reaches
+`resolveOperand` as an ordinary inert const and bakes. The existing
+arm-binding cluster escapes only by accident of shape — with an incoming `def`
+or a second arm, check produces a JOINED carrier with no payload, which fails
+to materialise and declines "unknown provenance". One bind and no incoming
+binding leaves the arm's own value.
+
+### The attempted fix, and the three ways it was wrong
+
+A "conditional-bind screen": poison a read whose name has no binding the read
+can see, then decline in `resolveOperand` (and in `resolveResidualOperands`,
+which never calls it). No new `MarkUncompilable` site — that census only falls.
+
+Each revision was corrected by a test, never by reasoning, and **each failure
+was the same mistake about KEYS**:
+
+1. **Keyed on fragment nesting** — broke 10 tests. A `do` body and a `for` loop
+   open fragments too; `do [def z 1] z` binds unconditionally. Fragment
+   nesting is not conditionality.
+2. **Branch-scoped but keyed on NAME** — broke `cli.boru`'s `cli-finish-st`. A
+   fn body opens its own fragment, so "bound at the root" never held inside
+   one, and an unrelated `def c` was poisoned because some OTHER function bound
+   `c` in an arm.
+3. **Read-local, keyed on the binding's fragment** — passed `compiler/go`,
+   `lang/go`, `core`, `check`, `eng`, and every hand-written witness. **It
+   still took out 65 rows of `module-sift.tsv` and 31 of 62 real programs**,
+   and the corpus compile-failure gate went 68 → 134.
+
+Revision 3's measurement is the one to keep:
+
+```
+POISON name="ln" binds=[89 258 355 495]
+       open=[1 2 57 66 244 341 481 482 483 520 522 524 525 526]
+```
+
+`ln` has four binds, at four fragments, from four separate analysis rounds of
+the same module. **Fragment ids are not comparable across units or across
+re-analysis rounds**, and `condBindFrags` accumulated program-wide. A bind
+inside function A on round 1 decided the fate of a read in function B on round
+4. The premise — compare the read's open fragment stack against every recorded
+bind of the name — is unsound the moment analysis re-enters a body.
+
+> Three revisions, three keys, one lesson: **a name is the wrong key for a fact
+> about one binding site, and a fragment id is the wrong key for a fact that
+> must survive re-analysis.** Before keying a screen on anything, ask what
+> scope that key is unique in, and whether the reader and the writer are
+> guaranteed to be in it together.
+
+### What the next attempt needs, before any code
+
+- A scope in which the bind and the read are provably comparable. Per-unit is
+  not enough: the sift measurement shows the same unit re-analysed with fresh
+  fragment ids. Establish how many rounds a body gets and what survives them.
+- `module-sift.tsv` (65 rows) and `TestRealProgramsCompile` (62 programs) are
+  the load-bearing regression signal here. Neither is in the fast lane, and
+  BOTH were green through the unit suites that passed. **Run the full corpus
+  before believing a screen of this kind.**
+- The six witnesses above are written and measured; they cannot land in the
+  corpus until the fix does, because a corpus row that miscompiles fails the
+  differential.
