@@ -337,23 +337,34 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
-## NEXT: the provenance family, measured — 9 of 17 rows are ONE shape (2026-09-21)
+## NEXT: the provenance family — and the census that already existed (2026-09-21)
 
-Measured on `2aebca4` (the head after #479), by compiling every spec row and
-grouping the declines. Of 345 total declines, 285 are rows the corpus expects
-to fail CHECKING; the compile-failure ledger's 53 are the rest.
+**Read the numbers from `test/go/langspec/COMPILED_STATUS.md`.** It is
+GENERATED and gated (`compiled_status_test.go` fails if the committed copy is
+stale), and it buckets every compile failure by a classifier
+(`compiled_coverage_test.go`) that reads more than the final decline string.
+The first version of this section re-derived the census by hand with an ad-hoc
+probe over `RunCompiledReason` and got different numbers; a Codex review of PR
+#480 caught all of it.
 
-**Provenance is the largest single mechanism in that 53: 17 rows.** And it is
-not one shape — it is four, in very uneven proportions:
+> An authoritative measurement that already exists is not re-derived, it is
+> READ. A hand-rolled probe answers a slightly different question, and the
+> difference is invisible until someone checks both.
 
-| rows | shape | witnesses |
-|---:|---|---|
-| **9** | **a `def` inside an `if` ARM, read after the `if`** | `fn-locals-scope.tsv:L167–L175` |
-| 5 | a loop / `for-each` body accumulating into an ENCLOSING binding | `code-bodies.tsv:L183/L189/L190`, `module-composition.tsv:L92/L93` |
-| 2 | a fn-VALUE call as an `if` arm's result | `callbacks.tsv:L131/L132` |
-| 1 | `args` as the body's residual | `code-bodies.tsv:L174` |
+**What the generated census says** (53 compile failures):
 
-**The nine are the lever.** They are all the same sentence:
+| rows | bucket |
+|---:|---|
+| **16** | **operand provenance** |
+| 7 | function value reaches word (Stage 3) |
+| 3 | apply over a dynamic lead (overload unprovable) |
+| 3 | fn `each$body`: result above a literal (Stage 3) |
+| 2 each | dispatch recovery, function-valued operand, computed closure at an argument slot, unapplied fn-value in a body residual, fn-value apply bounded by a paren, loop results as a branch result, twin-regime bind placement |
+| 1 each | eleven more, including `code-body word (NoEvalArgs)` |
+
+Provenance is still the largest bucket. **Within it, the arm-binding shape is
+eight rows: `fn-locals-scope.tsv:L167–L174`** — a `def` inside an `if` arm,
+read after the `if`:
 
 ```
 def f fn [[n:Integer] [String] [
@@ -362,29 +373,46 @@ def f fn [[n:Integer] [String] [
 ]]
 ```
 
-and its variants — with a prior `def tag 'none'`, with an empty else arm, with
-a nested `if` in one arm, with the read feeding a word (`r add 10`) instead of
-standing as the body result. The read after the `if` needs the JOIN of the two
-arms' bindings, and nothing publishes it.
+with variants: a prior `def tag 'none'`, an empty else arm, a nested `if` in
+one arm, and the read feeding a word (`r add 10`) rather than standing as the
+body result.
 
-The bind side already exists: `lower.go`'s `ResidentBinds` / `OpBindResident`
-carries an arm-resident `def`, and its own decline (`arm-resident def X of
-unknown provenance`) appears in NONE of the 17. So the arms bind; it is the
-READ after the join that cannot resolve.
+**Three rows the first version of this section wrongly folded in:**
 
-**Two things measured that are worth not re-deriving:**
+- `fn-locals-scope.tsv:L175` has NO `def` in either arm. `pick2` returns a
+  closure directly from an arm and fails `if: then-branch result of unknown
+  provenance`. An arm-binding join cannot clear it; it belongs with the
+  function-valued branch-result work.
+- `code-bodies.tsv:L189` reports a provenance reason through
+  `RunCompiledReason`, but the census BUCKETS it as a code-body word row — its
+  `each` body is a separate, earlier blocker. A join will not compile it.
+- `callbacks.tsv:L131/L132` are `if (n lte 0) [0] [(f n)]` — a fn-VALUE call as
+  an arm's result, Stage 3, not S5.
 
-- `args` is narrower than it looks. `args.0` compiles, and a 0-param fn's
-  `args` compiles (it folds to a const `[]`). Only `args` standing as the
-  residual of a fn with parameters fails — the list is built from
-  `locals[0:NArgs]` at run time, which is statically known, so this one looks
-  self-contained.
-- The two `callbacks.tsv` rows are NOT the arm-binding shape. They are
-  `if (n lte 0) [0] [(f n)]` — a fn-VALUE call as the else arm's result — and
-  belong with the Stage 3 fn-value line, not with S5.
+**Where the work sits is OPEN — do not assume the bind side is done.** The
+first version claimed the arms already bind because no row declines
+`arm-resident def X of unknown provenance`. That does not follow:
+`OpBindResident` is stamped by `AdoptResidentTwins`, which
+`recordClosureDispatch` invokes ONLY under `spec.BodyMultiRunKeepsDefs`
+(`callable_words.go`) — per-element `each`-body recovery. An ordinary `def` in
+a function's `if` arm never reaches that path at all, so the absence of that
+decline says nothing about whether the arms bind. Establish the bind side by
+measurement before designing the read side.
 
-Everything else in the 53 is a long tail: no other reason exceeds 5 rows, and
-20 of the 34 distinct reasons carry exactly one row each.
+**The cluster cannot validate a join as it stands.** Every one of L167–L174
+executes the THEN/rebind path (`f 5`, literal `true`, `f true`, `f 3`, `f 8`).
+A lowering that always selected the then-arm value, or that lost the incoming
+binding through an empty else, would retire all eight and still miscompile the
+opposite condition. The false paths are addable and genuine — measured, both
+fail today with the same decline:
+
+```
+def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r]]  f 0   -> 2
+def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f                       -> 1
+```
+
+**Add paired false-path witnesses before using this cluster to prove
+anything.**
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
