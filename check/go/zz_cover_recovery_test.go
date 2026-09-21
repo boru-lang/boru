@@ -996,14 +996,16 @@ func TestZZCoverSurfaceShapeDeclinesNonFnsigShape(t *testing.T) {
 	}
 }
 
-// --- noteReStepLanding (NUR173) ---------------------------------------------
+// --- noteReStepLanding (NUR173, widened by NUR174) --------------------------
 
 // The landing NOTES and nothing more — it consumes nothing, splices nothing
 // and declines nothing, which is what lets it sit last in stepLiteral's model
 // chain without disturbing the three above it. The gates each leave it
 // unrecorded: a suspended recorder, a quoted / id-less / concrete value, a
-// value the collapse never recorded, and a collectable token written after the
-// survivor (which the alone-island could not have taken).
+// NON-CALLABLE carrier the re-step could never apply, a collectable token
+// written after the survivor (which the alone-island could not have taken), a
+// DISPATCH MODIFIER stating data intent, and a value still sitting alone
+// inside a LIVE reach group, where execFnDefLiteral defers rather than calls.
 func TestZZCoverReStepLandingGates(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
 	v.ID = "zzland2"
@@ -1011,29 +1013,30 @@ func TestZZCoverReStepLandingGates(t *testing.T) {
 	quoted.Quoted = true
 	noID := core.NewDynamicCarrier(core.TAny)
 	noID.ID = ""
+	reachOpen := core.NewOpenParen()
+	reachOpen.ReachGroup = true
 	for _, tc := range []struct {
 		name    string
 		tape    []core.Value
-		record  bool
+		at      int
 		suspend bool
 	}{
-		{"suspended", []core.Value{v}, true, true},
-		{"quoted", []core.Value{quoted}, true, false},
-		{"no id", []core.Value{noID}, true, false},
-		{"concrete", []core.Value{core.NewInteger(7)}, true, false},
-		{"unrecorded", []core.Value{v}, false, false},
-		{"a collectable token follows", []core.Value{v, core.NewInteger(1)}, true, false},
-		{"a word follows — a barrier, so it lands", []core.Value{v, core.NewWord("zzeq")}, true, false},
-		{"a boundary follows — it lands", []core.Value{v, core.NewCloseParen()}, true, false},
+		{"suspended", []core.Value{v}, 0, true},
+		{"quoted", []core.Value{quoted}, 0, false},
+		{"no id", []core.Value{noID}, 0, false},
+		{"concrete", []core.Value{core.NewInteger(7)}, 0, false},
+		{"a non-callable carrier", []core.Value{core.NewCarrier(core.TInteger)}, 0, false},
+		{"a collectable token follows", []core.Value{v, core.NewInteger(1)}, 0, false},
+		{"a word follows — a barrier, so it lands", []core.Value{v, core.NewWord("zzeq")}, 0, false},
+		{"a boundary follows — it lands", []core.Value{v, core.NewCloseParen()}, 0, false},
+		{"the tape ends — it lands", []core.Value{v}, 0, false},
+		{"alone in a LIVE reach group", []core.Value{reachOpen, v, core.NewCloseParen()}, 1, false},
 	} {
 		e, es, fin := zzDriftEng(t, tc.tape, 0)
-		if tc.record && tc.tape[0].ID != "" {
-			e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{tc.tape[0].ID: true}
-		}
 		if tc.suspend {
 			es.Suspend()
 		}
-		noteReStepLanding(e, 0)
+		noteReStepLanding(e, tc.at)
 		if len(es.uncomp) != 0 {
 			t.Errorf("%s must never decline, marks = %v", tc.name, es.uncomp)
 		}
@@ -1041,16 +1044,45 @@ func TestZZCoverReStepLandingGates(t *testing.T) {
 	}
 }
 
-// The recorded fact is SPENT by the landing that takes it: a second note over
-// the same value would hang a second op on the same event.
-func TestZZCoverReStepLandingSpendsTheFact(t *testing.T) {
+// A DISPATCH MODIFIER after the value is DATA intent, and execFnDefLiteral
+// honours it by quoting rather than calling. It is a Word by kind, so without
+// its own rung nothingToCollectAfter reads it as "nothing to collect" and the
+// landing calls the one read written specifically not to be one.
+func TestZZCoverReStepLandingDeclinesADispatchModifier(t *testing.T) {
 	v := core.NewDynamicCarrier(core.TAny)
-	v.ID = "zzland3"
-	e, _, fin := zzDriftEng(t, []core.Value{v}, 0)
+	v.ID = "zzland4"
+	mod := core.Value{Parent: core.TDispatchMod, Data: core.DispatchModInfo{}}
+	e, _, fin := zzDriftEng(t, []core.Value{v, mod}, 0)
 	defer fin()
-	e.Registry.Check.ReachReSteppedFnIDs = map[string]bool{v.ID: true}
-	noteReStepLanding(e, 0)
-	if e.Registry.Check.ReachReSteppedFnIDs[v.ID] {
-		t.Error("the fact must be spent once the landing has been taken")
+	if nothingToCollectAfter(e, 0) {
+		t.Error("a dispatch modifier must stop the landing: it states DATA intent")
+	}
+}
+
+// aloneInLiveReachGroup is the O(1) shape test execFnDefLiteral makes at the
+// same index: only a REACH-written group's markers either side count, so a
+// user's own paren — whose call IS the user's — still lands.
+func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "zzland5"
+	reachOpen := core.NewOpenParen()
+	reachOpen.ReachGroup = true
+	for _, tc := range []struct {
+		name string
+		tape []core.Value
+		at   int
+		want bool
+	}{
+		{"a reach group's lone token", []core.Value{reachOpen, v, core.NewCloseParen()}, 1, true},
+		{"a USER paren's lone token", []core.Value{core.NewOpenParen(), v, core.NewCloseParen()}, 1, false},
+		{"a reach group with more to come", []core.Value{reachOpen, v, core.NewInteger(1)}, 1, false},
+		{"at index 0 — nothing before it", []core.Value{v, core.NewCloseParen()}, 0, false},
+		{"at the tape end — nothing after it", []core.Value{reachOpen, v}, 1, false},
+	} {
+		e, _, fin := zzDriftEng(t, tc.tape, 0)
+		if got := aloneInLiveReachGroup(e, tc.at); got != tc.want {
+			t.Errorf("%s: aloneInLiveReachGroup = %v, want %v", tc.name, got, tc.want)
+		}
+		fin()
 	}
 }

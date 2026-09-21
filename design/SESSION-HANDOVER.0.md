@@ -337,9 +337,93 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
+## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
+
+A Codex review of PR #479 posted three P1 findings against the widened gate.
+All three were REAL, and all three were ALREADY on `main` through the reach
+spelling — the widening would have carried them to `get` as well, where the
+residual apply had been answering them correctly.
+
+`OpReStepLanding` applies over an EMPTY window; `execFnDefLiteral`, the step it
+models, matches over the LIVE TAPE and the LIVE STACK. The op has neither and
+cannot be given them: the tokens after the read compiled into LATER ops, and
+consuming a stack operand would leave the stack shallower than the lowering
+predicted.
+
+| witness | interpreted | landed (before the fix) |
+|---|---|---|
+| `h` = `[] -> 42` and `[n:Integer] -> n add 1`; `5 m.f` | `6` | `5 42` |
+| `h` = `[] -> 42` and `[x:Atom/q] -> x`; `m.f z` | `z/q` | `42 z` |
+| `h` = `def h fn [[] [] []] end`; `5 m.f` | `5` | internal_error |
+
+The corpus could not catch them: every fn-value witness it carried had a member
+with exactly one 0-arg signature and one return.
+
+> A fix that widens a model widens its holes with it. The measurement that
+> shows the fix works does not show what the model was previously standing
+> aside from.
+
+**Fixed by two screens on the RUNTIME VALUE** in `reStepLanding` —
+`FnValueOnlyZeroArgSigs` (settles the stack operand and the `/q` capture at
+once) and exactly one declared return. Standing aside costs nothing: the read
+keeps today's residual apply. Six new rows in `lang/spec/fn-value.tsv` §10.
+
+Still a stand-aside, unchanged from `main`: a mixed-overload member read with
+nothing after it and nothing on the stack (`m get 'f'`) is 42 interpreted and
+`fn h(Integer)` compiled.
+
+## NUR174: the landing's SEAT, corrected — read this first (2026-09-20)
+
+The section below describes NUR173's fix as merged in #478. Its mechanism
+stands; **its recording site does not**, and [NUR174](../NUR.md#nur174)
+replaced it the same day.
+
+NUR173 recorded the landing at the REACH-GROUP COLLAPSE. That made the model a
+**whitelist of producers**, and `m get 'f'` — the same member read written as a
+word call — had no collapse to see it, so it answered 42 interpreted and `fn h`
+compiled exactly as `m.f` had.
+
+The fix was not a second recording site. `noteReStepLanding` is called FROM
+`stepLiteral`, in the branch whose next act is `execFnDefLiteral`, and a value
+the loop PARKED never reaches it — so the model was already standing where the
+interpreter decides. The gate is now the value's own callability;
+`CheckState.ReachReSteppedFnIDs`, `recordReachGroupReStep` and the core-side
+plumbing are DELETED.
+
+> A model that stands where the decision is made does not need to be told who
+> brought the value.
+
+A narrower alternative WAS built before this was believed — recording at
+`spliceMatchResults`, the site NUR173 itself predicted — and measured at 20,495
+landing ops against the broad gate's 20,710, over one compile of every spec
+row (the reach-only gate emitted 4,363). A 1% saving, because nearly every fn-typed
+carrier the pass steps arrived from a dispatch splice. The economy argument
+evaporated on measurement.
+
+**Three rungs of `execFnDefLiteral` came with it**, each found by a probe
+written against the interpreter's source rather than by running the corpus, and
+each a wrong answer on its own: the ANONYMOUS-0-ARG PARK (a lambda value that
+matched nothing is data — `module-fn.tsv:L47`), a DISPATCH MODIFIER (`m.f/v`
+answered 42 against `fn h`), and a value still ALONE INSIDE A LIVE REACH GROUP
+(where the group's job is to produce the value, not call it — NUR035). The
+first was reproduced under the NARROW gate too, which is what settled the
+design: a producer list protected against none of them.
+
+**Engine entries end where they started, 422** — the park takes two
+curried-chain rows off the interpreter (`bytecode-migrated.tsv:L285`,
+`callbacks.tsv:L150`, which were paying a `RunResolved` entry to reach the same
+"stays data"), and NUR175's two 0-RETURN witnesses add two back, because the
+landing stands aside from those and their residual apply islands. Every other
+gate is at its ceiling and the sweep did not move. Eighteen new rows in
+`lang/spec/fn-value.tsv` §9 and §10 prove both increments.
+
+Still open from NUR173's list: a collectable token after the survivor, a
+variadic producer's region top, the sweep's two `def container` CRASH cells.
+
 ## NUR173 is FIXED, and this page's own first account of it was wrong (2026-09-20)
 
-Read this before picking up the fn-value line.
+Read this before picking up the fn-value line. Its RECORDING SITE is superseded
+by NUR174 above; everything else below stands.
 
 **The defect.** `m.f` is not a dot operator at the tape level: it lowers to the
 REACH GROUP `( m dot f )`. That collapse never parks — an unmarked dot-read of
@@ -370,7 +454,8 @@ receiver whose member type still admits a Function — was built and measured at
 **53 -> 282** compile failures: nearly every computed container is `Map`-of-
 `Any` to the check pass, so there is no static answer. The decision belongs to
 the value, so the collapse records what it alone knows
-(`CheckState.ReachReSteppedFnIDs`), `check`'s `noteReStepLanding` NOTES the
+(`CheckState.ReachReSteppedFnIDs` — the part NUR174 replaced), `check`'s
+`noteReStepLanding` NOTES the
 producing event as owing a landing, and `OpReStepLanding` — emitted right after
 that event's own op — islands an unquoted appliable value ALONE. `Run` over one
 token IS `stepLiteral`'s re-step, so a matching signature runs and a

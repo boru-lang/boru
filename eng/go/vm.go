@@ -1073,7 +1073,7 @@ func (vc *vmContext) callDynamicOp(reg *core.Registry, op compiler.Opcode, arg i
 // cannot take — a detached ref, a shape whose params do not match the unit.
 func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	top := len(stack) - 1
-	if top < 0 { //covergate:allow compiler/VM defensive arm; the op is emitted only where the producing event just left its single result (§compiler)
+	if top < 0 {
 		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING stack underflow")
 	}
 	v := stack[top]
@@ -1081,6 +1081,20 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		return stack, nil, nil // data on both lanes — stepLiteral pushes it
 	}
 	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
+		// The interpreter's ANONYMOUS-0-ARG PARK in its closure representation.
+		// A fn-VALUE closure IS a `fn` / `=>` literal's value (ClosureIsFnValue
+		// asks the unit's own Lambda flag, the flag closureFnDef reads
+		// FnDefInfo.Anonymous off for the interpreter), and execFnDefLiteral
+		// leaves such a value as DATA at an empty window — which is what makes
+		// `def f ([] => [body])` bind the function and not the body's result.
+		// Applying it here spent the wrapper before the user's own paren could
+		// call it (module-fn.tsv:L47), and on a curried chain it also bought an
+		// interpreter entry for nothing: invokeFnValueClosure declines a
+		// parameterised unit and RunResolved steps the body to the same answer
+		// (bytecode-migrated.tsv:L285, callbacks.tsv:L150).
+		if compiler.ClosureIsFnValue(v) {
+			return stack, nil, nil
+		}
 		results, err := vc.invokeClosure(vc.r, v, nil)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -1096,6 +1110,47 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		// skipped anyway, where a wrong "yes" costs an interpreter entry on
 		// every read of one (module-rand.tsv:L16, `[10 20 30] r.one-of`).
 		if len(fnDef.OwnSigs()) > 0 && core.MatchFnSig(v, nil) == nil {
+			return stack, nil, nil
+		}
+		// The interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral): a lambda
+		// or macro VALUE that matched nothing — no forward args, no stack args
+		// — is DATA, so `def f ([] => [body])` binds the function and not the
+		// body's result. A NAMED 0-arg fn is the opposite: its only call form
+		// IS nullary, so it dispatches. ADR-016 forbids letting ORIGIN decide
+		// anything else, and the landing is a 0-arg window by construction, so
+		// the gate reads here exactly as it reads there. Applied is the one
+		// exception in both places — `f/v apply` asked for the application.
+		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
+			return stack, nil, nil
+		}
+		// THE LANDING APPLIES OVER AN EMPTY WINDOW, so it is faithful only
+		// where the interpreter's own match at this point would also be empty.
+		// execFnDefLiteral matches over the LIVE TAPE and the LIVE STACK; the
+		// op has neither — the tokens after the read compiled into later ops,
+		// and consuming a stack operand would leave the stack shallower than
+		// the lowering predicted. A value with ANY arg-taking overload can
+		// therefore be matched differently there than here (NUR175):
+		//
+		//	h = [] -> 42 and [n:Integer] -> n add 1
+		//	5 m.f     interpreted 6 (the unary takes 5 off the stack)
+		//	          landed      5 42 (the nullary fired over nothing)
+		//	h = [] -> 42 and [x:Atom/q] -> x
+		//	m.f z     interpreted z (the /q slot CAPTURES the word)
+		//	          landed      42 z (the nullary fired one token early)
+		//
+		// Only-0-arg settles both: no overload can take the stack operand, and
+		// none can quote-capture the following word. Standing aside costs
+		// nothing — the read keeps today's residual apply, which is what
+		// answered these correctly before the landing existed.
+		if !core.FnValueOnlyZeroArgSigs(fnDef) {
+			return stack, nil, nil
+		}
+		// ONE result, because that is what the recorded landing claims and the
+		// stack shape the lowering predicted. A 0-return member (`def h fn
+		// [[] [] []] end`) is applied by the interpreter for its effect and
+		// leaves the stack as it found it; the landing cannot express that, so
+		// it stands aside here rather than failing the run at landingResults.
+		if sig := core.MatchFnSig(v, nil); sig == nil || len(sig.Returns) != 1 {
 			return stack, nil, nil
 		}
 		if vmNativeApplicable(vc.r, fnDef) {
