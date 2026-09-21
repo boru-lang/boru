@@ -161,6 +161,24 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	}
 }
 
+// TestReStepLandingDriftDefers: the recorded landing claims ONE value, so a
+// member whose apply nets another count is a claim failure — loud, at the
+// landing, rather than a stack the caller cannot reconcile.
+//
+// The fixture declares ONE return and hands back TWO, which is the only way to
+// reach this arm now that NUR175 screens on the DECLARED count before applying:
+// a member whose signature admits a count other than one stands aside earlier
+// and never gets here. Drift is what is left — the handler disagreeing with its
+// own signature — and that is a fault, not a shape to stand aside from.
+func TestReStepLandingDriftDefers(t *testing.T) {
+	r, fn := landingNativeReg(t, "zz-landing-two", func() ([]core.Value, error) {
+		return []core.Value{core.NewInteger(1), core.NewInteger(2)}, nil
+	})
+	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	_, _, err := vc.reStepLanding(r, []core.Value{fn}, seam7Dbg, 0)
+	wantInternal(t, err, "recorded landing claims one")
+}
+
 // TestReStepLandingNonFnValueClosureInvokes: the closure rung is NOT the whole
 // closure family. Only a fn-VALUE closure parks (see above); a unit that is not
 // one — a token body, an iteration handler — has no anonymous-value rule to
