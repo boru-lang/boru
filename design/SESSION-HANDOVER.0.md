@@ -414,6 +414,44 @@ def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f            
 **Add paired false-path witnesses before using this cluster to prove
 anything.**
 
+### The bind side, MEASURED (2026-09-21) — the arms do not bind at all
+
+The section above left "where the work sits" open and said to measure the bind
+side before designing the read side. Measured, by instrumenting
+`residualStands`' decline and running the first witness
+(`fn-locals-scope.tsv:L167`):
+
+```
+PROV prefix="fn f: " what="body result" id="S_4844..." parent=ProperString
+     carrier=true hasEvent=false hasReadOp=false armBound=map[]
+PROV bindTwins=1 twinPlaced=[true] defReads=map[S_4844...:tag S_bcb9...:n]
+PROV   twin[0] name="f" kind=def pos={1 5 f}
+PROV   frag.ev[0] kind=1
+PROV   frag.ev[1] kind=2
+```
+
+Four facts, and together they settle the question:
+
+1. **`bindTwins` holds ONE transition, and it is the outer `def f`.** Neither
+   `def tag` inside an arm records anything. The arms do not bind — not "bind
+   but fail to publish".
+2. **`armBoundNames` is empty**, as predicted: it is filled only by
+   `AdoptResidentTwins`, which never runs for an `if` arm.
+3. **The read is already identified.** `defReads` maps the read's value ID to
+   the NAME `tag`. So the compiler knows which binding is being read; what it
+   has is no record of any `def` that could have produced it.
+4. **The CHECK pass did join the types.** The value arrives as a
+   `ProperString` CARRIER — both arms bind a String and the join produced the
+   right type. The type is known; only the value's provenance is missing.
+
+So the split is: **check joins, compile records nothing.** The work is a bind
+transition per arm plus a join at the read, and (4) means the type side is
+already correct — a join does not have to re-derive it.
+
+**Still do the false-path witnesses first** (above): all eight current rows run
+the THEN path, so they cannot distinguish a real join from a lowering that
+always picks the then-arm.
+
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
 A Codex review of PR #479 posted three P1 findings against the widened gate.
