@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-20**.
+Last updated: **2026-09-21**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -18,6 +18,36 @@ The per-increment narrative, every measurement and every lesson live in
 [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md), the
 append-only log, which is the wrong place to look for what is true today.
 This page is kept under 200 lines on purpose.
+
+> **This page is 1150 lines and has been for some time.** The narrative that
+> belongs in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md)
+> accumulated here instead — the merged-and-done accounts (the fallback
+> removal, the 2026-09-20 sweep, NUR173/174/175) are history and should move
+> there. The sections worth keeping are the definition of done, the gate
+> table, what is next, the process rules, the instruments, and the two OPEN
+> items below. Moving the rest is its own change: two ceiling comments in
+> `test/go/langspec/` cite the heading "Where the join seats" by name, so that
+> heading has to survive the move or the citations have to move with it.
+
+## OPEN RIGHT NOW — read these two before picking up work
+
+1. **A live miscompile**, found 2026-09-21 and NOT fixed (§ "A LIVE
+   MISCOMPILE" at the end of this page). `if b [def z 9] [] end z` with
+   `b=false` answers 9 where the interpreter raises `undefined_word`. Six
+   shapes measured, two returning the wrong RESIDUAL SHAPE, three of them
+   already passing programs in `lang/go`'s own suite. A screen for it was
+   built and REVERTED: five distinct failure modes across three revisions and
+   a review, no single signal catching more than two. Every constraint the
+   next attempt must satisfy is recorded there — satisfy them **before**
+   writing code, not after.
+2. **The arm-binding join** (§ "Where the join seats"). The dyn-scope route is
+   ruled out by measurement; the frame-slot design is specified with its three
+   obligations and the case it must decline. One level is still unread and
+   named as such.
+
+Both are compile-failure/soundness work on the same mechanism — a `def` inside
+an `if` arm — and the seventeen paired witnesses in `fn-locals-scope.tsv` §6
+exist to hold a fix to account in both directions.
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 
@@ -839,28 +869,57 @@ every run's summary) — and a REGRESSION ceiling, the last merged value,
 which only falls and which the default lane asserts.
 `make gate-status` prints both for every gate, refreshes
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
-and appends the instant censuses. The values on 2026-09-19, head of the S1b-2
-change (2026-09-17's values, head of PR #471, in the history column;
-increments 1–73, P0 and S0 are on `main`; S1a and S1b-1 on PR #474):
+and appends the instant censuses. **That generated file is the authority; this
+table is a copy and goes stale** — it sat at 2026-09-19's values for two days
+while four ceilings moved. The values below are `main` at 49354a6 (PR #483),
+2026-09-21, and the whole table reads **0 regressions, 11 open, 2 at end
+state**:
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 53 | 0 | 113 at the corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since 2026-09-18 (P0) the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 on 2026-09-19 (S1a: each/fold/scan/filter declare CompileDynBody); 60 → 53 the same day (S1b-2: a computed fn value def-bound at the top level resolves at a forward slot and at a `/v` read — the collection seat and stepWordVal consult the fn-carrier side table, so the dispatch matches instead of failing at "unmatched dispatch recovered") |
-| the generated sweep (S0): cells failing to compile / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | the sweep's first run, 2026-09-18: 53 words × the operand kinds, 305 cells, 138 passing, 115 n/a; 1932 call-form variants, 200 failing and 2 panicking. `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned. 44 / 5 → 36 / 2 on 2026-09-19 (S1a); 149 cells pass, 2086 variants with 206 failing — the six new failures are variants of cells S1a released |
-| compute gaps | 49 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 at S1a; 56 → 49 at S1b-2, the seven newly-compiling rows |
-| interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a (the fn-value callbacks now lower to a poly re-match) |
-| interp-entry census rows | 78 | 0 | 54 at the expansion (fn-value islands 23, raw-token code bodies 14, `boru:test` quotation bodies 8, round trips 6, repl 3); two fell when NUR153 closed; 52 → 102 at S1a — the fifty-one rows the ambiguity gate released run compiled and enter the interpreter once through the RunResolved seam (the G-lane-first landing), measured row by row against `main`; 102 → 77 at S1b-1 — the fn-value seam made native, twenty-five fn-value callback rows leave, the token-body rows stay for S3; 77 → 78 at S1b-2, ONE row entering and none leaving (callbacks.tsv:L154, `FnUtil.compose`'s wrapper — a row that FAILED TO COMPILE before, so the walk reaches it for the first time; the other six rows the increment compiles enter nothing) |
-| engine entries / runtime defers | 422 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 at S1a, the same rows as the census (Engine.Run×489, RunResolved×179); 489 → 419 at S1b-1 (RunResolved×109); 419 → 422 at S1b-2, the three elements of that one newly-compiling wrapper row |
-| known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
+| compile failures | 62 | 0 | 113 at the 2026-09-17 corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since P0 the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 (S1a) → 53 (S1b-2) on 2026-09-19; **53 → 62 on 2026-09-21 (PR #482)** — nine paired FALSE-PATH witnesses for the `fn-locals-scope` §6 arm-binding cluster. DEBT WRITTEN DOWN: all eight of that cluster's rows ran the THEN path, so it could not tell a real join from a then-arm-always lowering |
+| compute gaps | 58 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 (S1a); 56 → 49 (S1b-2); **49 → 58 on 2026-09-21**, the same nine witnesses |
+| diagnostic parity / armed-only | 353 / 13 | 0 / 0 | checker debt the expansion exposed; both fell at S1b-2; **351 → 353 and 11 → 13 on 2026-09-21** — exactly TWO of the nine witnesses diverge, measured not assumed: L179 and L181, the two OPERAND-spelling rows, each mirroring a pre-existing armed-only twin (L178, L180) diagnostic for diagnostic |
+| interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a. **At end state** |
+| interpreter-only rows | 0 | 0 (ceiling 3) | **at end state**; the ceiling keeps headroom for a genuine irreducibility claim |
+| interp-entry census rows | 80 | 0 | 54 at the expansion; 52 → 102 (S1a, the G-lane-first landing); 102 → 77 (S1b-1); 77 → 78 (S1b-2); 78 → 80 on 2026-09-21 (PR #481, the two 0-RETURN `fn-value.tsv` witnesses standing aside onto the residual apply) |
+| engine entries / runtime defers | 422 / 8 | 0 / 0 | 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 (S1a); 489 → 419 (S1b-1); 419 → 422 (S1b-2). Unchanged since |
+| locally-resolved defers | 1 | 0 | `vm:poly-no-match×1` — a caller's own fallback absorbed, the program staying compiled |
+| reducible (tier-2) rows | 3 | 0 | word-class gaps the compiler does not model |
+| correct-error compile failures | 1 | 0 | a known-to-error row must compile an OpTrap / RET error path |
 | type-soundness violations | 5 | 0 | checker debt the expansion exposed |
-| diagnostic parity / armed-only | 351 / 11 | 0 / 0 | checker debt the expansion exposed; both fell at S1b-2 on the seven rows it compiles — parity by seven (both passes type them alike now), armed-only by the five `boru check` called clean while compiling refused |
-| `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25; handlers 114 → 94 on the migration line |
+| known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
+| `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25 and the count ONLY FALLS — a new compile-failure site is new debt, which is why a screen must decline through an existing site rather than latch its own; handlers 114 → 94 on the migration line |
+| the generated sweep (S0): cells failing / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |
+
+**Two ledgers the gate table does not show, and a third that is easy to miss:**
+`lang/go/compile_defect_test.go` (`compileDefectCeiling` 284, `bailDefectCeiling`
+32) and `lang/go/test/compile_defect_test.go` count programs in the UNIT suites
+that do not compile, or compile and then bail. Their report prints only on
+failure or under `-v`, so a passing run shows nothing. A change can be green
+across every `langspec` gate and still move these.
 
 The forecast and the probabilities are the review's §2.3; refresh them at
 the end of each step of §5, not each increment.
 
 ## What is next
+
+**The immediate two are the OPEN items at the top of this page**: the live
+miscompile (unfixed, with five recorded constraints on any fix) and the
+arm-binding join (designed, dyn-scope route ruled out by measurement). They are
+the same mechanism and the seventeen paired witnesses exist to judge a fix in
+both directions. Everything below is the standing programme they sit inside.
+
+**One lesson from 2026-09-21 that applies to every increment on this line**,
+because it cost a full revert: `module-sift.tsv` (65 rows) and
+`TestRealProgramsCompile` (62 programs) are the load-bearing regression signals
+for anything touching operand resolution, and NEITHER is in the commit gate's
+fast lane. A screen can pass `compiler/go`, `lang/go`, `core`, `check`, `eng`
+and every hand-written witness and still destroy both. **Run the full
+unfiltered corpus (`-timeout 40m`; the default 10m kills it mid-run and the
+goroutine dump looks like a failure it is not) before believing a change of
+that kind, and before pushing it.**
 
 > **Read [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md)
 > first (2026-09-18).** It re-estimates the remainder at **75–130
