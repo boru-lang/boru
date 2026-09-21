@@ -11166,13 +11166,16 @@ because `ClosureIsFnValue` already implies `Lambda`. Keeping both would have
 left dead code sitting behind a correct answer.
 
 **Cost.** Zero regressions: the four ledgers (53 / 284 / 32 / 111 / 52),
-diagnostic parity 351, runtime defers 8, interp-entry rows 78, and the sweep
-diffed against a pre-change baseline with no cell moved. **Engine entries
-TIGHTENED 422 -> 420** — the park takes `bytecode-migrated.tsv:L285` and
-`callbacks.tsv:L150` off the interpreter, two curried chains whose 1-param
+diagnostic parity 351, runtime defers 8, and the sweep diffed against a
+pre-change baseline with no cell moved. **Engine entries end where they
+started, 422.** The park takes `bytecode-migrated.tsv:L285` and
+`callbacks.tsv:L150` off the interpreter — two curried chains whose 1-param
 wrapper the landing invoked, had `invokeFnValueClosure` decline, and paid a
-`RunResolved` entry to step the body to the same "stays data". They already
-compiled correctly. That is `module-rand.tsv:L16`'s trade one increment on.
+`RunResolved` entry to step the body to the same "stays data" (that is
+`module-rand.tsv:L16`'s trade one increment on) — and NUR175's two 0-RETURN
+witnesses add two back, because the landing stands aside from those and their
+residual apply islands. The ceiling touched 420 inside the branch and never
+merged there.
 
 Twelve new rows in `lang/spec/fn-value.tsv` §9 prove it — nine for the
 `get`-word family at every arity, one per rung.
@@ -11183,3 +11186,76 @@ CRASH cells. Also measured and deliberately NOT widened into: a container
 member that is an ANONYMOUS lambda declines with "0-arg landing not modelable
 at fn value" on both spellings (`def ml {f: ([] => [9])} end ml.f`) — identical
 at `b39be40`, and the shaped-method guard's decline rather than the landing's.
+
+
+## NUR175 — the landing's window, and what a Codex review caught (2026-09-21)
+
+The section above widened NUR174's gate so `m get 'f'` reaches the landing. A
+Codex review of PR #479 posted three P1 findings against that commit, all on
+the same line, and all three were REAL — verified by probe against the commit
+AND against its parent before anything was changed.
+
+**What they said, and what the parent said back.**
+
+| witness | parent `b39be40` | the widened commit |
+|---|---|---|
+| 0-return member, `5 m.f` | internal_error | internal_error |
+| 0-return member, `5 m get 'f'` | **`5` (correct)** | internal_error |
+| overload + stack operand, `5 m.f` | `5 42` | `5 42` |
+| overload + stack operand, `5 m get 'f'` | **`6` (correct)** | `5 42` |
+| `/q` capture, `m.f z` | `42 z` | `42 z` |
+| `/q` capture, `m get 'f' z` | **`z/q` (correct)** | `42 z` |
+
+So all three holes were ALREADY in the landing, through the reach spelling —
+and the widening dragged the `get` family into them, trading one silent wrong
+answer for three. The residual apply had been answering all three correctly.
+
+> A fix that widens a model widens its holes with it. The measurement that
+> shows the fix works does not show what the model was previously standing
+> aside from.
+
+**Why the corpus missed them.** Every fn-value witness it carried had a member
+with exactly one 0-arg signature and one return, so no row could tell the
+difference. The same shape of miss as `m.f/v` one section up: the probe that
+finds these is written against `execFnDefLiteral`'s own source, not against
+the corpus.
+
+**The mechanism.** `OpReStepLanding` applies over an EMPTY window; the step it
+models matches over the LIVE TAPE and the LIVE STACK. It has neither and
+cannot be given them — the tokens after the read compiled into LATER ops, and
+consuming a stack operand would leave the stack shallower than the lowering
+predicted. So it is faithful only where the interpreter's match would also be
+empty, which is a property of the RUNTIME VALUE.
+
+**The fix**, both screens in `reStepLanding`:
+
+1. `FnValueOnlyZeroArgSigs` — no overload can take the stack operand, and none
+   can quote-capture the following word. Settles the first two at once.
+2. the matched signature declares exactly ONE return — a 0-return member is
+   applied for its effect, which the landing's one-result claim cannot say.
+
+Standing aside costs nothing and adds no compile failure: the read keeps
+today's residual apply. Measured: all ledgers, parity, defers and the sweep
+unchanged.
+
+**It also fixes the reach spelling**, which was wrong on `main` for all three.
+Six new rows in `lang/spec/fn-value.tsv` §10, one per witness on each spelling.
+
+**What it does not reach** (a stand-aside, unchanged from `main`): a mixed-
+overload member read with nothing after it and nothing on the stack — `m get
+'f'` where `h` is `[] -> 42` and `[n:Integer] -> n add 1` — is 42 interpreted
+and `fn h(Integer)` compiled. The landing declines because it cannot rule the
+unary out.
+
+**The ratchets rose 2, named.** The two 0-RETURN witnesses
+(`fn-value.tsv:L319/L320`) stand aside onto the residual apply, which islands:
+engine entries 420 -> 422 and interp-entry rows 78 -> 80, a KNOWN seam
+carrying new rows rather than a new route, which is the one rise those
+ceilings' own rules allow. Net against `main`, engine entries are unchanged.
+
+**The merged ADR-008 gate** ran clean at 100.0% (76533/76547) — the 13
+pre-existing uncovered statements at `b39be40` are gone — and failed on one
+thing only: `eng/go/vm.go:1076` carried a `//covergate:allow` pragma that the
+widening made REACHABLE. An allowlisted guard something reaches is a lie the
+gate is right to reject; the pragma is removed and the arm asserted
+(`TestReStepLandingUnderflow`).

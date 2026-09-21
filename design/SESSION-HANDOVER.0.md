@@ -337,6 +337,41 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
+## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
+
+A Codex review of PR #479 posted three P1 findings against the widened gate.
+All three were REAL, and all three were ALREADY on `main` through the reach
+spelling — the widening would have carried them to `get` as well, where the
+residual apply had been answering them correctly.
+
+`OpReStepLanding` applies over an EMPTY window; `execFnDefLiteral`, the step it
+models, matches over the LIVE TAPE and the LIVE STACK. The op has neither and
+cannot be given them: the tokens after the read compiled into LATER ops, and
+consuming a stack operand would leave the stack shallower than the lowering
+predicted.
+
+| witness | interpreted | landed (before the fix) |
+|---|---|---|
+| `h` = `[] -> 42` and `[n:Integer] -> n add 1`; `5 m.f` | `6` | `5 42` |
+| `h` = `[] -> 42` and `[x:Atom/q] -> x`; `m.f z` | `z/q` | `42 z` |
+| `h` = `def h fn [[] [] []] end`; `5 m.f` | `5` | internal_error |
+
+The corpus could not catch them: every fn-value witness it carried had a member
+with exactly one 0-arg signature and one return.
+
+> A fix that widens a model widens its holes with it. The measurement that
+> shows the fix works does not show what the model was previously standing
+> aside from.
+
+**Fixed by two screens on the RUNTIME VALUE** in `reStepLanding` —
+`FnValueOnlyZeroArgSigs` (settles the stack operand and the `/q` capture at
+once) and exactly one declared return. Standing aside costs nothing: the read
+keeps today's residual apply. Six new rows in `lang/spec/fn-value.tsv` §10.
+
+Still a stand-aside, unchanged from `main`: a mixed-overload member read with
+nothing after it and nothing on the stack (`m get 'f'`) is 42 interpreted and
+`fn h(Integer)` compiled.
+
 ## NUR174: the landing's SEAT, corrected — read this first (2026-09-20)
 
 The section below describes NUR173's fix as merged in #478. Its mechanism
@@ -374,10 +409,13 @@ answered 42 against `fn h`), and a value still ALONE INSIDE A LIVE REACH GROUP
 first was reproduced under the NARROW gate too, which is what settled the
 design: a producer list protected against none of them.
 
-**Engine entries TIGHTENED 422 -> 420** — the park takes two curried-chain rows
-off the interpreter that were paying a `RunResolved` entry to reach the same
-"stays data". Every other gate is at its ceiling and the sweep did not move.
-Twelve new rows in `lang/spec/fn-value.tsv` §9 prove it.
+**Engine entries end where they started, 422** — the park takes two
+curried-chain rows off the interpreter (`bytecode-migrated.tsv:L285`,
+`callbacks.tsv:L150`, which were paying a `RunResolved` entry to reach the same
+"stays data"), and NUR175's two 0-RETURN witnesses add two back, because the
+landing stands aside from those and their residual apply islands. Every other
+gate is at its ceiling and the sweep did not move. Eighteen new rows in
+`lang/spec/fn-value.tsv` §9 and §10 prove both increments.
 
 Still open from NUR173's list: a collectable token after the survivor, a
 variadic producer's region top, the sweep's two `def container` CRASH cells.

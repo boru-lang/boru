@@ -260,6 +260,20 @@ func TestReStepLandingIslandArm(t *testing.T) {
 	}
 }
 
+// TestReStepLandingUnderflow: the landing reads the value the producing event
+// just left, so an empty stack is a bytecode-level fault rather than a shape
+// the op can answer. It carried a //covergate:allow pragma claiming to be
+// unreachable until the merged ADR-008 gate reported it COVERED — an
+// allowlisted guard that something reaches is a claim the gate is right to
+// reject, so the arm is asserted here instead of excused.
+func TestReStepLandingUnderflow(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	if _, _, err := vc.reStepLanding(r, nil, seam7Dbg, 0); err == nil {
+		t.Error("an empty stack at the landing must error, not answer")
+	}
+}
+
 // TestReStepLandingErrorArms: a raise from inside the applied member is the
 // member's own error and surfaces stamped at the landing, on every rung that
 // can run code. The interpreter raises the same at the same point, prior side

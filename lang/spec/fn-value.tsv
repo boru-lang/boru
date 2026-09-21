@@ -299,3 +299,22 @@ def mki fn [[] [Map] [{x: 7}]] end def m (mki) end m get 'x' add 1	8	an ordinary
 def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/v	Function	a DISPATCH MODIFIER states data intent — the landing declines where execFnDefLiteral quotes
 def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end typeof m.f/q	Function	…the quoting modifier likewise
 def f x:Integer => [add 1 x] end def mkp fn [[g:Function] [Function] [([] => [(g 10)])]] end def p (mkp f/v) end (p)	11	an ANONYMOUS 0-arg value is DATA at a landing (the interpreter's anonymous-0-arg park), so `def p` binds the WRAPPER and the user's own paren is what calls it
+#
+# §10  THE LANDING APPLIES OVER AN EMPTY WINDOW, so it is faithful only where
+#      the interpreter's own match would also be empty (NUR175). It has
+#      neither the live tape nor a way to consume a stack operand: the tokens
+#      after the read compiled into later ops, and taking a stack value would
+#      leave the stack shallower than the lowering predicted. A member with
+#      ANY arg-taking overload can therefore be matched differently there than
+#      here, so ONLY-0-ARG settles it — and a 0-return member is applied for
+#      its effect, which the landing's one-result claim cannot express. Both
+#      stand aside onto the residual apply that answered them all along. The
+#      first two rows of each pair answered WRONGLY on the reach spelling
+#      before this, and the `get` spelling reached them only once the gate
+#      widened.
+def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	6	a stack operand selects the UNARY overload, as the interpreter's own match does
+def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	6	…and the same through `get`
+def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f z	z/q	a `/q` slot CAPTURES the following word: a word is not always a collection barrier
+def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f' z	z/q	…and the same through `get`
+def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	5	a 0-RETURN member is applied for its effect and leaves the stack as it found it
+def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	5	…and the same through `get`

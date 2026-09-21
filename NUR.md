@@ -97,6 +97,7 @@ keep the two in sync in the same commit.
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
 | [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
 | [NUR168](#nur168) | A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
+| [NUR175](#nur175) | The re-step landing applies over an EMPTY WINDOW, but `execFnDefLiteral` matches over the LIVE TAPE and the LIVE STACK, so any member with an ARG-TAKING overload can be matched differently there than at the landing. Three divergences, all present on `main` via the reach spelling and all caught by a Codex review of PR #479 before NUR174's widening could carry them to the `get` spelling: a stack operand selecting a unary overload (`5 m.f` = 6 interpreted, `5 42` landed), a `/q` slot CAPTURING the following word (`m.f z` = `z/q` interpreted, `42 z` landed — a word is not always a collection barrier), and a 0-RETURN member whose effect-only apply the landing's one-result claim cannot express (an internal_error). FIXED 2026-09-21 by screening on the RUNTIME value: only-0-arg signatures and exactly one declared return, standing aside onto the residual apply otherwise | a Codex review of PR #479, 2026-09-21 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7022,6 +7023,71 @@ crash is what this record is for.
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
 
+## NUR175 — the landing matches an empty window where the interpreter matches the tape and the stack {#nur175}
+
+**Status:** FIXED 2026-09-21. **Found by a Codex review of PR #479**, on the
+commit that widened NUR174's gate — before the widening could reach `main`.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**The defect, in one sentence.** `OpReStepLanding` applies the runtime value
+over an EMPTY argument window, but the step it models — `execFnDefLiteral` —
+matches over the LIVE TAPE and the LIVE STACK, so a member with any arg-taking
+overload can be matched differently in the two places.
+
+It has neither, and cannot be given them: the tokens written after the read
+compiled into LATER OPS, and consuming a stack operand would leave the stack
+shallower than the lowering predicted. So the landing is faithful only where
+the interpreter's own match at that point would ALSO be empty.
+
+**Three divergences, each measured on both spellings:**
+
+| witness | interpreted | landed |
+|---|---|---|
+| `h` = `[] -> 42` and `[n:Integer] -> n add 1`; `5 m.f` | `6` — the unary takes 5 off the stack | `5 42` — the nullary fired over nothing |
+| `h` = `[] -> 42` and `[x:Atom/q] -> x`; `m.f z` | `z/q` — the `/q` slot CAPTURES the word | `42 z` — the nullary fired one token early |
+| `h` = `def h fn [[] [] []] end`; `5 m.f` | `5` — applied for its EFFECT | `internal_error`: "returned 0 values where the read's recorded landing claims one" |
+
+**All three are on `main` today**, through the reach spelling, and were
+introduced with NUR173's landing. NUR174's widening would have carried each to
+the `get` spelling as well — where the residual apply had been answering them
+CORRECTLY all along. That is the part worth keeping:
+
+> A fix that widens a model widens its holes with it. The measurement that
+> shows the fix works does not show what the model was previously standing
+> aside from.
+
+The corpus did not catch them: every fn-value witness it carried had a member
+with exactly one 0-arg signature and one return, so the three holes had no row
+that could tell the difference. `m.f/v` was the same shape of miss in NUR174.
+
+**The fix, and why it belongs in the VM.** Both screens are properties of the
+RUNTIME VALUE, which is the only thing that knows its own overload set:
+
+1. `FnValueOnlyZeroArgSigs` — no overload can take the stack operand, and none
+   can quote-capture the following word. This settles the first two at once.
+2. the matched signature declares exactly ONE return — a 0-return member is
+   applied for its effect and leaves the stack as it found it, which the
+   landing's one-result claim cannot express.
+
+Standing aside costs nothing: the read keeps today's RESIDUAL APPLY, which is
+what answered all three correctly before the landing existed. No compile
+failure is added and no ledger moves.
+
+**What it does NOT reach**, and this is a stand-aside rather than a fix: a
+member with mixed overloads read with nothing after it and nothing on the
+stack (`m get 'f'` where `h` is `[] -> 42` and `[n:Integer] -> n add 1`) is
+`42` interpreted and `fn h(Integer)` compiled. Identical on `main`; the
+landing declines it because it cannot rule the unary out, and the residual
+apply leaves it as data.
+
+**Measured.** All four corpus ledgers, diagnostic parity, runtime defers and
+the generated sweep unchanged. Six new rows in `lang/spec/fn-value.tsv` §10 —
+one per witness on each spelling — and two of them cost an interpreter entry
+each, because the 0-return stand-aside islands: the ratchets rise 2 with the
+rows that moved them, both named, on a seam the census already carries.
+
+
 ## NUR174 — the re-step landing was recorded per PRODUCER, so the same read written as a word call was never seen {#nur174}
 
 **Status:** FIXED 2026-09-20. **Corrects the SEAT of** [NUR173](#nur173)'s fix,
@@ -7097,13 +7163,16 @@ the four corpus ledgers (53 / 284 / 32 / 111 / 52), diagnostic parity at 351,
 runtime defers at 8, the interp-entry census at 78, and the generated sweep
 diffed against a pre-change baseline with no cell moved.
 
-**Engine entries TIGHTENED, 422 -> 420.** The park takes two rows off the
-interpreter that were paying for nothing: `bytecode-migrated.tsv:L285` and
-`callbacks.tsv:L150`, hand-written curried chains whose 1-param wrapper the
-landing invoked, had `invokeFnValueClosure` decline, and paid a `RunResolved`
-entry to step the body to the same "stays data". They already compiled
-correctly. That is `module-rand.tsv:L16`'s trade one increment on, and the
-ceiling falls with it.
+**Engine entries: the park removes two, and NUR175's witnesses add two back.**
+The park takes `bytecode-migrated.tsv:L285` and `callbacks.tsv:L150` off the
+interpreter — curried chains whose 1-param wrapper the landing invoked, had
+`invokeFnValueClosure` decline, and paid a `RunResolved` entry to step the body
+to the same "stays data". They already compiled correctly: `module-rand.tsv:
+L16`'s trade one increment on. The ceiling touched 420 inside the branch and
+came back to 422 when NUR175's two 0-RETURN witnesses were added, because the
+landing stands aside from those and their residual apply islands. Net against
+`main`: unchanged at 422, with two rows of interpretation swapped for two rows
+of proof.
 
 What proves the fix is **twelve new rows in `lang/spec/fn-value.tsv` §9** —
 nine covering the `get`-word family at every arity, and one per rung above.
