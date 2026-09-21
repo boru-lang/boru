@@ -337,6 +337,83 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
+## NEXT: the provenance family — and the census that already existed (2026-09-21)
+
+**Read the numbers from `test/go/langspec/COMPILED_STATUS.md`.** It is
+GENERATED and gated (`compiled_status_test.go` fails if the committed copy is
+stale), and it buckets every compile failure by a classifier
+(`compiled_coverage_test.go`) that reads more than the final decline string.
+The first version of this section re-derived the census by hand with an ad-hoc
+probe over `RunCompiledReason` and got different numbers; a Codex review of PR
+#480 caught all of it.
+
+> An authoritative measurement that already exists is not re-derived, it is
+> READ. A hand-rolled probe answers a slightly different question, and the
+> difference is invisible until someone checks both.
+
+**What the generated census says** (53 compile failures):
+
+| rows | bucket |
+|---:|---|
+| **16** | **operand provenance** |
+| 7 | function value reaches word (Stage 3) |
+| 3 | apply over a dynamic lead (overload unprovable) |
+| 3 | fn `each$body`: result above a literal (Stage 3) |
+| 2 each | dispatch recovery, function-valued operand, computed closure at an argument slot, unapplied fn-value in a body residual, fn-value apply bounded by a paren, loop results as a branch result, twin-regime bind placement |
+| 1 each | eleven more, including `code-body word (NoEvalArgs)` |
+
+Provenance is still the largest bucket. **Within it, the arm-binding shape is
+eight rows: `fn-locals-scope.tsv:L167–L174`** — a `def` inside an `if` arm,
+read after the `if`:
+
+```
+def f fn [[n:Integer] [String] [
+  if (n gt 0) [def tag 'big'] [def tag 'small'] end
+  tag                         <- "fn f: body result of unknown provenance"
+]]
+```
+
+with variants: a prior `def tag 'none'`, an empty else arm, a nested `if` in
+one arm, and the read feeding a word (`r add 10`) rather than standing as the
+body result.
+
+**Three rows the first version of this section wrongly folded in:**
+
+- `fn-locals-scope.tsv:L175` has NO `def` in either arm. `pick2` returns a
+  closure directly from an arm and fails `if: then-branch result of unknown
+  provenance`. An arm-binding join cannot clear it; it belongs with the
+  function-valued branch-result work.
+- `code-bodies.tsv:L189` reports a provenance reason through
+  `RunCompiledReason`, but the census BUCKETS it as a code-body word row — its
+  `each` body is a separate, earlier blocker. A join will not compile it.
+- `callbacks.tsv:L131/L132` are `if (n lte 0) [0] [(f n)]` — a fn-VALUE call as
+  an arm's result, Stage 3, not S5.
+
+**Where the work sits is OPEN — do not assume the bind side is done.** The
+first version claimed the arms already bind because no row declines
+`arm-resident def X of unknown provenance`. That does not follow:
+`OpBindResident` is stamped by `AdoptResidentTwins`, which
+`recordClosureDispatch` invokes ONLY under `spec.BodyMultiRunKeepsDefs`
+(`callable_words.go`) — per-element `each`-body recovery. An ordinary `def` in
+a function's `if` arm never reaches that path at all, so the absence of that
+decline says nothing about whether the arms bind. Establish the bind side by
+measurement before designing the read side.
+
+**The cluster cannot validate a join as it stands.** Every one of L167–L174
+executes the THEN/rebind path (`f 5`, literal `true`, `f true`, `f 3`, `f 8`).
+A lowering that always selected the then-arm value, or that lost the incoming
+binding through an empty else, would retire all eight and still miscompile the
+opposite condition. The false paths are addable and genuine — measured, both
+fail today with the same decline:
+
+```
+def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r]]  f 0   -> 2
+def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f                       -> 1
+```
+
+**Add paired false-path witnesses before using this cluster to prove
+anything.**
+
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
 A Codex review of PR #479 posted three P1 findings against the widened gate.
