@@ -165,13 +165,22 @@ def f fn [[] [Integer] [def a 1 end if (a gt 0) [def b 2 end def c (b mul 3) end
 def f fn [[] [Integer] [def a 1 end def r (if true [def b 2 end b] [0]) end r add a]]  f	3	a branch-local def escaping as the `if` EXPRESSION's value
 def f fn [[n:Integer] [Integer] [if (n gt 0) [def s 'pos' end s size] [def s 'neg' end s size]]]  f 1	3	a String branch-local measured inside the branch
 def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: a def in EACH branch, read AFTER the if — force-compile: fn f: body result of unknown provenance
+def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 0	'small'	DOES NOT COMPILE: …the SAME row on the ELSE path — the pair that a then-arm-always lowering would miscompile
 def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: …even with the name pre-bound before the branch — same reason
+def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 0	'small'	DOES NOT COMPILE: …pre-bound, ELSE path — the join must beat the pre-bind, not fall back to it
 def f fn [[] [Integer] [def x 1 end if true [def x 9] [] end x]]  f	9	DOES NOT COMPILE: a ONE-sided conditional redefinition — same reason
+def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f	1	DOES NOT COMPILE: …one-sided on the FALSE path — the EMPTY arm must carry the incoming binding through
 def f fn [[] [Integer] [def a 1 end if true [def a 2 end] [] end a]]  f	2	DOES NOT COMPILE: …and with an explicit `end` closing the branch body
+def f fn [[] [Integer] [def a 1 end if false [def a 2 end] [] end a]]  f	1	DOES NOT COMPILE: …the explicit-`end` spelling on the FALSE path
 def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f true	1	DOES NOT COMPILE: NESTED conditional defs read after the outer if — same reason
+def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f false	3	DOES NOT COMPILE: …nested, OUTER else taken — the outer join reads an arm the inner if never entered
+def f fn [[b:Boolean] [Integer] [def r 0 end if b [if false [def r 1] [def r 2]] [def r 3] end r]]  f true	2	DOES NOT COMPILE: …nested, outer then and INNER else — the inner join feeds the outer one
 def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 3	11	DOES NOT COMPILE: the conditionally-def'd local feeding an operator — force-compile: operand of unknown provenance or not statically materialisable at add
+def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 0	12	DOES NOT COMPILE: …the operand spelling on the ELSE path — force-compile: operand of unknown provenance or not statically materialisable at add
 def f fn [[] [Integer] [def a 1 end if true [def a 2] [] end a mul 10]]  f	20	DOES NOT COMPILE: …the one-sided spelling of the same operand compile failure, at mul
+def f fn [[] [Integer] [def a 1 end if false [def a 2] [] end a mul 10]]  f	10	DOES NOT COMPILE: …one-sided operand, FALSE path — the empty arm's carry-through feeding mul
 def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8	2	DOES NOT COMPILE: a local helper plus a conditional REBIND of a local — the combined real-code shape
+def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 2	1	DOES NOT COMPILE: …the local-helper rebind with the condition FALSE — q survives the branch unrebound
 def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	DOES NOT COMPILE: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
 #
 # §7  DYNAMIC-SCOPE reads — a callee sees the CALLER frame's bindings

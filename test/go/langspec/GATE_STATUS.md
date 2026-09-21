@@ -1,8 +1,8 @@
-| armed-only diagnostics | 11 | 0 | 11 | open | programs `boru check` calls clean and compiling FAILS — a user cannot diagnose them (NUR103) |
-| compile failures | 53 | 0 | 53 | open | corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv |
-| compute gaps | 49 | 0 | 49 | open | real-compute rows that fail to compile |
+| armed-only diagnostics | 13 | 0 | 13 | open | programs `boru check` calls clean and compiling FAILS — a user cannot diagnose them (NUR103) |
+| compile failures | 62 | 0 | 62 | open | corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv |
+| compute gaps | 58 | 0 | 58 | open | real-compute rows that fail to compile |
 | correct-error compile failures | 1 | 0 | 1 | open | a known-to-error row must compile an OpTrap / RET error path; failing to compile it is a bug |
-| diagnostic parity divergences | 351 | 0 | 351 | open | rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes:   95x  plain=unreachable_branch/if armed=;   32x  plain=no_signature/add armed=;   29x  plain=no_signature/g armed= |
+| diagnostic parity divergences | 353 | 0 | 353 | open | rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes:   95x  plain=unreachable_branch/if armed=;   32x  plain=no_signature/add armed=;   29x  plain=no_signature/g armed= |
 | engine entries | 422 | 0 | 422 | open | unattributed interpreter runs on the compiled path, by seam: Engine.Run×422, CallBoru×241, RunResolved×112, runPooledSub×26, vm:island×13, vm:island-resolved×9, InvokeCallback:callboru×7 |
 | interp-entry census rows | 80 | 0 | 80 | open | corpus rows that run compiled and still enter the interpreter through an unattributed seam — the OpFallback island ceiling cannot see this (it counts disassembly spans, not a CallBoru inside a handler) |
 | interpreter islands | 0 | 0 | 0 | at end state | compiled programs with an OpFallback span — an uncompiled region inside something called compiled |
