@@ -414,43 +414,59 @@ def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f            
 **Add paired false-path witnesses before using this cluster to prove
 anything.**
 
-### The bind side, MEASURED (2026-09-21) — the arms do not bind at all
+### The bind side, measured TWICE — the arms bind; only the JOIN is missing
 
-The section above left "where the work sits" open and said to measure the bind
-side before designing the read side. Measured, by instrumenting
-`residualStands`' decline and running the first witness
-(`fn-locals-scope.tsv:L167`):
+**The first version of this subsection was wrong, and wrong by the same method
+error a Codex review of PR #482 named.** It dumped `frag.events` for the
+FUNCTION fragment, saw two events and no dyn-bind, and concluded "the arms do
+not bind at all". But the fn fragment's second event IS the branch, and each
+arm is a NESTED fragment with its own event list — never opened. Walking into
+them:
 
 ```
-PROV prefix="fn f: " what="body result" id="S_4844..." parent=ProperString
-     carrier=true hasEvent=false hasReadOp=false armBound=map[]
-PROV bindTwins=1 twinPlaced=[true] defReads=map[S_4844...:tag S_bcb9...:n]
-PROV   twin[0] name="f" kind=def pos={1 5 f}
-PROV   frag.ev[0] kind=1
-PROV   frag.ev[1] kind=2
+PROV DECLINE prefix="fn f: " what="body result" bindTwins=1
+PROV   fn-frag: 2 events
+PROV     ev[0] kind=1
+PROV     ev[1] kind=2            <- evBranch
+PROV       THEN: 1 events
+PROV         ev[0] kind=10 name="tag" residentTwin=-1 srcSeq=-1
+PROV       ELSE: 1 events
+PROV         ev[0] kind=10 name="tag" residentTwin=-1 srcSeq=-1
 ```
 
-Four facts, and together they settle the question:
+**Both arms record an `evDynBind` for `tag`.** `residentTwin=-1` means only
+that `AdoptResidentTwins` never stamped them, and the empty `bindTwins` is the
+ledger's deliberate suppression inside fn and rolled-back bodies — not an
+absence of records. The prescription that followed ("add a bind transition per
+arm") is WITHDRAWN: it would duplicate records that already exist.
 
-1. **`bindTwins` holds ONE transition, and it is the outer `def f`.** Neither
-   `def tag` inside an arm records anything. The arms do not bind — not "bind
-   but fail to publish".
-2. **`armBoundNames` is empty**, as predicted: it is filled only by
-   `AdoptResidentTwins`, which never runs for an `if` arm.
-3. **The read is already identified.** `defReads` maps the read's value ID to
-   the NAME `tag`. So the compiler knows which binding is being read; what it
-   has is no record of any `def` that could have produced it.
-4. **The CHECK pass did join the types.** The value arrives as a
-   `ProperString` CARRIER — both arms bind a String and the join produced the
-   right type. The type is known; only the value's provenance is missing.
+> Reading one level of a nested structure and concluding about another is the
+> same error three times over on this line: a contiguous line range is not a
+> cluster, an ad-hoc probe is not the census, and the outer fragment is not the
+> branch's fragments. Open the level you are about to make a claim about.
 
-So the split is: **check joins, compile records nothing.** The work is a bind
-transition per arm plus a join at the read, and (4) means the type side is
-already correct — a join does not have to re-derive it.
+**What IS measured**, by compiling five shapes and comparing:
 
-**Still do the false-path witnesses first** (above): all eight current rows run
-the THEN path, so they cannot distinguish a real join from a lowering that
-always picks the then-arm.
+| shape | result |
+|---|---|
+| `def tag 'big' end tag` (plain, in a fn body) | **compiles** |
+| `def tag 'a' end def tag 'b' end tag` (rebind) | **compiles** |
+| `if c [def tag 'big' tag] [def tag 'small' tag] end` — read INSIDE the arm | **compiles** |
+| `if c [def tag 'big'] [def tag 'small'] end tag` — read AFTER | fails |
+| the same at TOP LEVEL, no fn at all | fails identically |
+
+So the arms bind, and the binding is readable WITHIN the arm. What fails is
+only the read past the branch's merge point, and it is not fn-specific — the
+top-level spelling fails the same way, with `residual value of unknown
+provenance` instead of `fn f: body result`.
+
+**The gap is therefore the JOIN and nothing else**: carrying an arm's binding
+past the merge so a later read resolves to it. The type side is already
+correct (the read arrives as a joined `ProperString` carrier) and the read end
+already knows the name (`defReads` maps its value ID to `tag`).
+
+**Still do the false-path witnesses first** (above): all eight cluster rows run
+the THEN path and cannot tell a real join from a then-arm-always lowering.
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
