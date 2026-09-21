@@ -337,6 +337,55 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
+## NEXT: the provenance family, measured — 9 of 17 rows are ONE shape (2026-09-21)
+
+Measured on `2aebca4` (the head after #479), by compiling every spec row and
+grouping the declines. Of 345 total declines, 285 are rows the corpus expects
+to fail CHECKING; the compile-failure ledger's 53 are the rest.
+
+**Provenance is the largest single mechanism in that 53: 17 rows.** And it is
+not one shape — it is four, in very uneven proportions:
+
+| rows | shape | witnesses |
+|---:|---|---|
+| **9** | **a `def` inside an `if` ARM, read after the `if`** | `fn-locals-scope.tsv:L167–L175` |
+| 5 | a loop / `for-each` body accumulating into an ENCLOSING binding | `code-bodies.tsv:L183/L189/L190`, `module-composition.tsv:L92/L93` |
+| 2 | a fn-VALUE call as an `if` arm's result | `callbacks.tsv:L131/L132` |
+| 1 | `args` as the body's residual | `code-bodies.tsv:L174` |
+
+**The nine are the lever.** They are all the same sentence:
+
+```
+def f fn [[n:Integer] [String] [
+  if (n gt 0) [def tag 'big'] [def tag 'small'] end
+  tag                         <- "fn f: body result of unknown provenance"
+]]
+```
+
+and its variants — with a prior `def tag 'none'`, with an empty else arm, with
+a nested `if` in one arm, with the read feeding a word (`r add 10`) instead of
+standing as the body result. The read after the `if` needs the JOIN of the two
+arms' bindings, and nothing publishes it.
+
+The bind side already exists: `lower.go`'s `ResidentBinds` / `OpBindResident`
+carries an arm-resident `def`, and its own decline (`arm-resident def X of
+unknown provenance`) appears in NONE of the 17. So the arms bind; it is the
+READ after the join that cannot resolve.
+
+**Two things measured that are worth not re-deriving:**
+
+- `args` is narrower than it looks. `args.0` compiles, and a 0-param fn's
+  `args` compiles (it folds to a const `[]`). Only `args` standing as the
+  residual of a fn with parameters fails — the list is built from
+  `locals[0:NArgs]` at run time, which is statically known, so this one looks
+  self-contained.
+- The two `callbacks.tsv` rows are NOT the arm-binding shape. They are
+  `if (n lte 0) [0] [(f n)]` — a fn-VALUE call as the else arm's result — and
+  belong with the Stage 3 fn-value line, not with S5.
+
+Everything else in the 53 is a long tail: no other reason exceeds 5 rows, and
+20 of the 34 distinct reasons carry exactly one row each.
+
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
 A Codex review of PR #479 posted three P1 findings against the widened gate.
