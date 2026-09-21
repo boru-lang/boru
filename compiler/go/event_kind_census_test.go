@@ -41,6 +41,7 @@ var eventKindSites = map[string]string{
 	"eventPos":                "emit.go  — the event's source position (no default; an unnamed kind reports 0:0 — see NUR130 on what a wrong position costs)",
 	"eventDivergesDeep":       "emit.go  — does this event never return past itself? (no default)",
 	"eventsBindDynScope":      "emit.go  — does this event bind a registry-visible name? (no default)",
+	"nestedFragIDs":           "emit.go  — every fragment nested inside a conditional branch arm, for the conditional-bind screen (no default; an unnamed kind that can CARRY a nested fragment must be added, or a name bound inside it is missed and a read of it may bake the arm value unconditionally — the miscompile this screen closed)",
 	"callResultPlacedIn":      "emit.go  — where a call's result lands",
 	"forEachOperand":          "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
 	"forEachFragmentOperand":  "lower.go — the same walk over a fragment's own events",

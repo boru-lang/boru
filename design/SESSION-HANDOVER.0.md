@@ -572,11 +572,95 @@ to every def-read name was already tried and backfired — "poisons
 quoted interp-body def declined 'unknown provenance')". So the admission must
 be scoped to the arm-bound case, never blanket.
 
-Still NOT read, and must be before any patch: what `dynScopeNames` membership
-costs a name that did not need it — `unitBindsDynScope` (`emit.go:11481`) uses
-it to DISABLE tail calls, so admitting a name here may silently cost a tail
-call elsewhere in the same unit. **Open that level before claiming anything
-about it.**
+#### That level opened too — the dyn-scope route is RULED OUT, and by measurement
+
+The note above said to open what `dynScopeNames` membership costs before
+claiming the admission is free. Opened. **It is not free, and the cost rules
+the route out.**
+
+`dynScopeNames` is a PROGRAM-WIDE, BY-NAME commitment — not a per-read one.
+Its own declaration says so (`emit.go:1030`): the Finalize pass "installs an
+`OpBindDynScope` twin in **every unit** (params and body-local defs) and at
+**every top-level def** that binds one of these names".
+
+Measured, by disassembling two programs that differ only in whether a second,
+unrelated pair of functions forces the name in:
+
+```
+def k fn [[s:String] [String] [s]]
+def h fn [[] [String] [def tag 'plain' end k tag]]     <- h is IDENTICAL in both
+def g fn [[] [String] [tag]]                           <- only in the second
+def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end g]]
+```
+
+| | BIND_DYN_SCOPE | LOOKUP_DYN_SCOPE |
+|---|---:|---:|
+| without `f`/`g` | 0 | 0 |
+| with `f`/`g` | **3** | 1 |
+
+**Three binds to serve one lookup**, and the third lands in `h`:
+
+```
+fn f2 h/0 (locals=0):
+0000 PUSH_CONST  k8   ; 'plain'
+0001 BIND_DYN_SCOPE k9   ; 'tag'      <- serves nobody
+0002 PUSH_CONST  k3   ; 'plain'       <- h's own read still folds to a const
+0003 CALL_USER   f3   ; k/1
+```
+
+`h` never reads `tag` dynamically, nobody reads `h`'s `tag`, and `h`'s own read
+still resolves statically — yet `h` carries an instruction that serves nothing,
+and becomes `bindsDyn`, which costs it tail-call eligibility
+(`unitBindsDynScope`, `emit.go:11481`, consumed at `emit.go:11808`).
+
+So the cost scales with **how common the name is across the whole program** —
+and `tag`, `r`, `x`, `acc` are exactly the names people give an arm-bound local.
+Trading 17 compile failures for a program-wide lowering change on every
+occurrence of a common name is the wrong bargain. This is also precisely what
+the recorded warning at `emit.go:8913` meant by "poisons `dynScopeNames`".
+
+**The dyn-scope route WORKS and is RULED OUT.** Both halves matter: the earlier
+experiment proves the runtime semantics are right, so the mechanism is a
+correct reference for what the lowering must achieve — it is the program-wide
+blast radius, not the semantics, that disqualifies it.
+
+#### What replaces it: a per-NAME frame slot, local to the unit
+
+The frame-slot option dismissed earlier is the right answer, now for a measured
+reason rather than a guess: it is local to the unit, costs nothing
+program-wide, and never touches tail calls.
+
+The existing promotion machinery is close but not sufficient, and the gap is
+exact. `planValueDefLocals` (`lower.go:1750`) already promotes a value produced
+inside an arm and referenced from outside — its own comment: "a reference
+reaching UP OUT of a branch / loop arm cannot see the parent stack at all, so
+any such use is treated as buried". But `promoted` is `map[int]int`, keyed
+**event seq → slot**: one slot per PRODUCING EVENT. The arm-binding case needs
+the inverse — **one slot per NAME**, written by every arm that binds it, so the
+post-merge read has one home whichever path ran.
+
+Three obligations the witnesses impose, and the third is the one a careless
+implementation gets wrong:
+
+1. Allocate one slot for the NAME (not per producer), for a name bound in at
+   least one arm of a branch and read after the merge.
+2. Every arm that binds the name stores to that slot.
+3. **The slot must already hold the incoming binding before the branch runs**,
+   so an arm that does NOT bind leaves the right value. This is exactly what
+   `fn-locals-scope.tsv` L172/L174/L181 demand — the empty-arm rows — and it is
+   the direction a then-arm-always lowering gets wrong.
+
+And one case the design must DECLINE rather than miscompile: a name with no
+incoming binding, bound in only one arm, read after the merge. On the path that
+skips the arm the interpreter raises `undefined_word`, so the slot has no
+correct seed value. No current corpus row has that shape (L167/L168 bind in
+both arms; L171/L173/L180 carry an incoming `def`), which means **it needs a
+witness of its own before the implementation can claim to handle it.**
+
+NOT yet read: how `planValueDefLocals`' slot assignment interacts with
+`forceOrder` and `collectDynBindSources`, and whether a name-keyed slot can
+ride the same `promoted` map or needs its own. **Open that level before
+claiming anything about it.**
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
