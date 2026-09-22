@@ -32,6 +32,11 @@ func TestLiteralReadParity(t *testing.T) {
 		{`def w n:Integer => [def kk (fn r:Integer Any [mul n r]) kk/v] end (w 5) 4`, "fn kk(Integer) 4 — parked with a token after it"},
 		{`def w n:Integer => [def kk (fn r:Integer Any [mul n r]) 3 kk/v apply] end (w 5)`, "15 — the read applied by the apply word inside the body"},
 		{`def g f:Function => [(f 3)] end def n 5 end def kk (fn r:Integer Any [mul n r]) end (g kk/v)`, "15 — the main program's read of a top-level capturing literal"},
+		// the read inside a branch arm, called twice: S1b's apply shapes
+		// (2026-09-22) record g's own `(f 3)` window under the arm's nesting,
+		// so the arm's result has a producer; and the two calls of the
+		// lambda-bodied w each seat their own result (freshResidual, NUR177)
+		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)`, "15 0 — the read inside a branch arm, the fn called twice"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -61,9 +66,6 @@ func TestLiteralReadSoundCompileFailures(t *testing.T) {
 		// the literal redefined by another capturing literal: installDef's
 		// fn-body compile failure (the thirty-first increment)
 		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) def kk (fn r:Integer Any [add n r]) (g kk/v)] end (w 5)`, "redefined inside a fn body", "[8]"},
-		// the read inside a branch arm: the arm's gradual result may be a fn
-		// the interpreter re-steps (residualLeadReStepped), a separate hold
-		{`def g f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)`, "then-branch result of unknown provenance", "[15 0]"},
 	}
 	for _, c := range rows {
 		a, err := New()

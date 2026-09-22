@@ -65,6 +65,7 @@ var eventKindSites = map[string]string{
 var operandKindSites = map[string]bool{
 	"appendResidualSeqs":    true,
 	"callResultRenderKnown": true,
+	"unitRenderKnown":       true,
 	"closureOpShape":        true,
 	"computedArmCondOK":     true,
 	"deoptDeferred":         true,

@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8224** compilable, 339 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8179 |
+| compiled natively (fallback-free) | 8192 |
 | compiled with an interpreter island | 0 |
-| does not compile | 45 |
+| does not compile | 32 |
 | static check-error (invalid in both engines) | 339 |
 
-**8179 / 8224** compilable rows produce a Program (99% — 8179 of those fully native).
+**8192 / 8224** compilable rows produce a Program (99% — 8192 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,28 +22,25 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 45 | 45 | → 0 |
+| compile failures | 32 | 32 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
-| tier 2 reducible | 3 | 3 | → 0 |
-| compute frontier | 41 | 41 | → 0 |
+| tier 2 reducible | 4 | 4 | → 0 |
+| compute frontier | 27 | 27 | → 0 |
 
 ## Compile failures by reason
 
 | count | bucket | root cause |
 | ---: | --- | --- |
-| 8 | operand provenance | soundness |
-| 7 | function value reaches word (Stage 3) | soundness |
+| 6 | operand provenance | soundness |
 | 3 | other: apply over a dynamic lead (overload unprovable) | coverage |
 | 3 | other: fn each$body: result above a literal (Stage 3) | coverage |
-| 2 | dispatch recovery (best guess) | soundness |
-| 2 | function-valued operand (Stage 3) | coverage |
+| 3 | other: fn-value application bounded by a paren (dynamic value precedes args) | coverage |
 | 2 | other: computed closure at a word's argument slot (its apply did not collapse — Stage 2) | coverage |
-| 2 | other: fn hof2: unapplied fn-value in body residual (dynamic apply not compiled in a fn body) | coverage |
-| 2 | other: fn-value application bounded by a paren (dynamic value precedes args) | coverage |
 | 2 | other: loop results as a branch/body result (Stage 2) | coverage |
 | 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it | coverage |
 | 1 | code-body word (NoEvalArgs) | coverage |
+| 1 | dispatch recovery (best guess) | soundness |
 | 1 | dynamic/opaque output | soundness |
 | 1 | other: dynamic-scope def `i` of unpromoted computed value | coverage |
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) | coverage |
@@ -57,14 +54,14 @@ The compiler is interpreter-independent once compile failures and islands both r
 | root cause | compile failures |
 | --- | ---: |
 | correct-error | 1 |
-| soundness | 18 |
+| soundness | 8 |
 | scheduling | 0 |
 | opcode | 0 |
-| coverage | 26 |
+| coverage | 23 |
 
 ## Re-scoped P7 partition
 
-Over the 45 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **3** reducible (tier 2, TODO), **1** allowlisted error rows, **41** compute-frontier gaps.
+Over the 32 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **27** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -76,22 +73,20 @@ _None._
 | ---: | --- |
 | 2 | quote |
 | 1 | canon |
+| 1 | flex |
 
 ### compute frontier by reason
 
 | count | reason |
 | ---: | --- |
-| 8 | operand provenance |
-| 7 | function value reaches word (Stage 3) |
+| 6 | operand provenance |
 | 3 | other: apply over a dynamic lead (overload unprovable) |
 | 3 | other: fn each$body: result above a literal (Stage 3) |
-| 2 | dispatch recovery (best guess) |
-| 2 | function-valued operand (Stage 3) |
 | 2 | other: computed closure at a word's argument slot (its apply did not collapse — Stage 2) |
-| 2 | other: fn hof2: unapplied fn-value in body residual (dynamic apply not compiled in a fn body) |
 | 2 | other: fn-value application bounded by a paren (dynamic value precedes args) |
 | 2 | other: loop results as a branch/body result (Stage 2) |
 | 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it |
+| 1 | dispatch recovery (best guess) |
 | 1 | dynamic/opaque output |
 | 1 | other: dynamic-scope def `i` of unpromoted computed value |
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) |

@@ -17,6 +17,7 @@
 package langspec
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -185,6 +186,15 @@ func TestCompiledCoverage(t *testing.T) {
 		rows, compiled, islanded, checkErr, declined)
 	for _, h := range hist {
 		t.Logf("  failure %4d  %s  [%s]", h.n, h.reason, rootCause(h.reason))
+	}
+	// BORU_LOG_FAIL_ROWS=1 names every row that fails to compile, in corpus
+	// order, with its LIVE reason — the spec files' `DOES NOT COMPILE:`
+	// descriptions are the reasons at the time the row was written and go
+	// stale as rows start compiling, so this is the list to work from.
+	if os.Getenv("BORU_LOG_FAIL_ROWS") != "" {
+		for _, fr := range c.failedRows {
+			t.Logf("  FAILROW %s:L%d  %s  <- %s", fr.file, fr.line, fr.reason, fr.input)
+		}
 	}
 
 	// Second axis: bucket the compile failures by ROOT CAUSE so a future session can see

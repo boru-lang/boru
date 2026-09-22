@@ -212,6 +212,17 @@ type EmitRecorder interface {
 	// suffix of the window and leave the rest on the tape. consumed is
 	// meaningful only when ok is true.
 	RecordDynApply(args []Value, fn, out Value, pos SrcPos) (consumed int, ok bool)
+	// RecordDynApplyLead records the LEADING one-arg window `(g x)` the
+	// paren-lead classifier admitted (parenLeadFnApplyIdx) through the same
+	// event: the lead g is a Function-typed slot of the recording unit and x
+	// the one value it collects. It differs from the trailing record in one
+	// admission: x may itself be a fn VALUE (`(f g/v)`, `(f ([n] => …))`) —
+	// inside a leading window such a value arrived inert, a bare fn word
+	// would have dispatched or raised before the collapse, so the lead binds
+	// it to a Function param exactly as the interpreter's collection does,
+	// where the trailing window keeps declining it (there the value was a
+	// token the interpreter stepped).
+	RecordDynApplyLead(args []Value, fn, out Value, pos SrcPos) (consumed int, ok bool)
 	// RecordDynApplyName is RecordDynApply with the fn resolved through
 	// the NAME's recorded def-site operand (its evDynBind event) — the
 	// §4.3 capture fallback for calls of installed factory closures whose
@@ -511,6 +522,9 @@ func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImp
 }
 func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
 func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
+func (inactiveEmit) RecordDynApplyLead([]Value, Value, Value, SrcPos) (int, bool) {
+	return 0, false
+}
 func (inactiveEmit) RecordDynApplyName(string, []Value, Value, Value, SrcPos) bool {
 	return false
 }

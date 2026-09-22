@@ -1440,13 +1440,16 @@ func TestDynApplyLeadEligible(t *testing.T) {
 		return u
 	}
 
-	// A native code-body CLOSURE unit declines (its analysis frame is the
-	// CallableSpec inputs, not a per-call named frame).
+	// A native code-body CLOSURE unit with a NAMED frame (a callback lambda,
+	// each/fold$body) is ADMITTED for its own slot — S1b's apply shapes,
+	// 2026-09-22: the former exclusion left `(f e)` inside a fold lambda
+	// unrecorded and the body bailed at run time. The nUnnamed guard below
+	// still keeps a bare-type-param closure out.
 	es = NewEmitState()
 	u := openUnit(es, &fnUnitRec{closure: true})
 	u.localByID["g1"] = 0
-	if es.DynApplyLeadEligible(fnCarrier("g1")) {
-		t.Error("a native code-body closure unit must decline")
+	if !es.DynApplyLeadEligible(fnCarrier("g1")) {
+		t.Error("a named-frame native closure unit's own slot must be admitted")
 	}
 
 	// The Stage 2 closure-flag split: a LAMBDA unit ("fnval" — a returned

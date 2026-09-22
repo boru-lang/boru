@@ -6382,8 +6382,10 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 //     trailing model records (`(args.0 args.1)` over a two-arg runtime fn
 //     nets 28 interpreted where the trailing model no-matches) — those
 //     frames keep the whole-frame replay;
-//   - a CLOSURE unit's analysis frame is the CallableSpec inputs, not a
-//     per-call named frame — outside the probe evidence, so it declines;
+//   - a CLOSURE unit with a NAMED frame (a callback lambda) is admitted for
+//     its own slots — a param or a capture — since S1b's apply shapes
+//     (2026-09-22); the former exclusion left a fold lambda's `(f e)`
+//     unrecorded and the body bailed at run time;
 //   - an EVENT-provenance lead (a direct call result, `((mk 1) 2)`) keeps
 //     the curried/auto-dispatch machinery — RecordDynApply hard-declines an
 //     event fn (runtime quote state unknown), so admitting one here would
@@ -6400,20 +6402,21 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 	if !es.Active() || len(es.openUnitRecs) == 0 {
 		return false
 	}
-	// The Stage 2 closure-flag split's consumer half: a native code-body
-	// closure unit (each/do$body — its analysis frame is the CallableSpec
-	// inputs) still declines, but a LAMBDA unit ("fnval" — a returned
-	// lambda's own body, a real named-param frame with capture slots) is
-	// admitted: the witness is the factory's inner apply-the-capture body
-	// (`def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer]
-	// [(g v)]] )]]` — without the admission the [g, v] residual
-	// count-declines the fnval probe and the whole factory declines "body
-	// result of unknown provenance"). The nUnnamed guard below still
-	// excludes bare-type params.
+	// Every unit with a NAMED frame is eligible — a fn body, a LAMBDA unit
+	// ("fnval" — a returned lambda's own body, a real named-param frame with
+	// capture slots; the witness is the factory's inner apply-the-capture
+	// body `def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer]
+	// [(g v)]] )]]`), and a native code-body closure unit (each/fold$body)
+	// whose lambda names its params: the lead must be one of the unit's own
+	// slots (the localByID test below), and a closure unit carries its
+	// captures as slots of its own. The native closure unit used to be
+	// excluded ("its analysis frame is the CallableSpec inputs, not a
+	// per-call named frame"), and the exclusion was measured a miscompile
+	// (2026-09-22, S1b's apply shapes): `0 fold ([a e] => [a add (f e)])
+	// xs` recorded no apply for `(f e)`, the window's two values survived
+	// into the compiled body, and `add` no-matched at run time. The nUnnamed
+	// guard below still excludes bare-type params.
 	innermost := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
-	if innermost.closure && !innermost.lambdaUnit {
-		return false
-	}
 	if innermost.nUnnamed > 0 {
 		return false
 	}
@@ -6488,6 +6491,27 @@ func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
 }
 
 func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+	return es.recordDynApply(args, fn, out, pos, false)
+}
+
+// RecordDynApplyLead records the classified LEADING one-arg window `(g x)`
+// (core.EmitRecorder) through the same event as the trailing spelling,
+// with the one admission the leading window earns: a fn-VALUED argument.
+// Inside a leading window the argument arrived inert — a `/v` read, a
+// lambda literal, a quote — since a bare fn word would have dispatched or
+// raised before the collapse, so the lead collects it as a value exactly
+// as the interpreter's forward collection does (`(f g/v)` binds g to f's
+// Function param; `(f ([n:Integer] => [n add 1]))` the lambda). The
+// trailing window keeps declining such an argument: there the value was a
+// token the interpreter stepped, and nothing established it is not an
+// applicable of its own.
+func (es *EmitState) RecordDynApplyLead(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+	return es.recordDynApply(args, fn, out, pos, true)
+}
+
+// recordDynApply is the body of RecordDynApply and RecordDynApplyLead; lead
+// selects the leading window's fn-valued-argument admission.
+func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos, lead bool) (int, bool) {
 	if !es.Active() {
 		return 0, false
 	}
@@ -6589,14 +6613,15 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	// matched it against the closure's own signature (`kk/v (ss kk/v)
 	// apply` binds kk to the g:Function param), and a fn-typed carrier
 	// lead's re-step binds it the same way (`(n/v f/v apply)` hands the
-	// numeral to f — the thirty-second increment). A paren window with no
-	// apply word keeps declining a fn-valued arg: inside the paren that
-	// value was a TOKEN the interpreter stepped, and nothing has established
-	// it is not an applicable of its own.
+	// numeral to f — the thirty-second increment). A LEADING window's
+	// argument is data for the same reason (RecordDynApplyLead). A TRAILING
+	// paren window with no apply word keeps declining a fn-valued arg:
+	// inside the paren that value was a TOKEN the interpreter stepped, and
+	// nothing has established it is not an applicable of its own.
 	ops := make([]EmitOperand, 0, len(args)+1)
 	ops = append(ops, fnOp)
 	for i := len(args) - 1; i >= 0; i-- {
-		if core.IsFnValueResidual(args[i]) && applyIdx < 0 {
+		if core.IsFnValueResidual(args[i]) && applyIdx < 0 && !lead {
 			return 0, false
 		}
 		op, ok := es.resolveOperand(args[i])
@@ -14106,10 +14131,30 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		return false
 	}
 	ev := es.eventBySeq(pr.seq)
-	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil || ev.uc.unit < 0 || ev.uc.unit >= len(es.fnRecs) {
+	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil {
 		return false
 	}
-	rec := es.fnRecs[ev.uc.unit]
+	return es.unitRenderKnown(ev.uc.unit, 0)
+}
+
+// unitRenderKnown is callResultRenderKnown's question of one UNIT: does its
+// single out operand render byte-identically on both lanes? A returned
+// compiled closure with its render string does, a capture-free lambda
+// literal baked as a const does, and — transitively — the single result of
+// ANOTHER user call whose unit's does: a fn whose body is `(mk)` returns
+// mk's closure, and the interpreter parks it under mk's own render exactly
+// as it parks mk's. The generated sweep's `afn` factory seed (`def f
+// ([x:Integer] afn (mk)) end f 5`) passed this gate only by an accident of
+// identity — the memoised body residual carried the INNER call's value ID
+// out to the program residual, and with it the placement fact the inner
+// paren had recorded — until NUR177's fix gave each call its own results
+// (2026-09-22); the transitive arm is the fact stated on its own. depth
+// bounds a body that returns its own call.
+func (es *EmitState) unitRenderKnown(unit, depth int) bool {
+	if depth > 8 || unit < 0 || unit >= len(es.fnRecs) {
+		return false
+	}
+	rec := es.fnRecs[unit]
 	if rec == nil || len(rec.outOps) != 1 {
 		return false
 	}
@@ -14127,6 +14172,22 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		}
 		_, isFn := es.consts[out.idx].Data.(core.FnDefInfo)
 		return isFn
+	case opEvent:
+		// The body returns another call's single result: the event lives in
+		// the unit's own captured fragment.
+		if rec.frag == nil || out.resIdx != 0 {
+			return false
+		}
+		for i := range rec.frag.events {
+			inner := &rec.frag.events[i]
+			if inner.seq != out.idx {
+				continue
+			}
+			if inner.kind != evCallUser || inner.uc.poly != nil || inner.uc.nout != 1 {
+				return false
+			}
+			return es.unitRenderKnown(inner.uc.unit, depth+1)
+		}
 	}
 	return false
 }

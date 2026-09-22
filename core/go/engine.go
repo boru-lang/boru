@@ -7954,7 +7954,9 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 // mismatched arity no-matches identically in both), and the shape may
 // record through the SAME RecordDynApply event `(x g)` would. Returns the
 // lead's tape index only when the window is exactly [eligible lead, one
-// non-fn argument]; -1 keeps every other shape on its own machinery: a
+// argument the lead collects — a non-fn value, a gradual value whose declared
+// bound excludes Function, or an inert fn value]; -1 keeps every other shape
+// on its own machinery: a
 // DYNAMIC lead recordParenLeadingApply's guarded method path, a CONCRETE
 // fn the auto-dispatch paths (it applied for real during the check step),
 // an EVENT lead the curried paths (DynApplyLeadEligible declines it —
@@ -7968,40 +7970,42 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 	if count != 2 {
 		return -1
 	}
-	// A NESTED BODY declines, for the same reason the fn-carrier read
-	// substitution does (stepWord): the admission models the window as
-	// the trailing spelling's event, and inside a branch / loop /
-	// quotation body the compiled body does not carry the bindings that
-	// model needs — `def mkg g:Function => [v:Integer => [(g v)]]  def h
-	// (mkg …)  do [(h 1)]` compiled to an island that raised `undefined
-	// word: g` (the factory's captured param) where the interpreter
-	// answers 8. The proven operand contexts, where §9/§9b live, are
-	// unaffected.
-	if e.Registry != nil && e.Registry.Check.NestedBodyDepth > 0 {
-		return -1
-	}
+	// A NESTED BODY used to decline here outright, from the island era:
+	// "inside a branch / loop / quotation body the compiled body does not
+	// carry the bindings that model needs" — `do [(h 1)]` compiled to an
+	// ISLAND that raised `undefined word: g`. The bindings question is the
+	// lead's home, and DynApplyLeadEligible asks it directly: the lead must
+	// be a LOCAL SLOT of the unit the recorder is currently recording into —
+	// a branch arm or loop body lowers inline in its unit's frame, a
+	// closure unit carries the lead as its own param or capture slot, and a
+	// body analysed under a suspended recorder is not Active and records
+	// nothing. Measured 2026-09-22 (S1b's apply shapes): with the depth gate
+	// in place an apply inside a fold lambda's body was NOT recorded, the
+	// two window values survived into the compiled body, and `a add (f e)`
+	// bailed at run time with a no-match on `add` — a decline that was not
+	// a decline.
 	last := e.Tape.At(lastIdx)
-	// The ARGUMENT gate, and it is load-bearing in BOTH clauses. The two
-	// spellings converge only while the argument is not a function: a
-	// FUNCTION-valued argument is never applied by the interpreter, whose
-	// leading collection meets a function word — a barrier that never
-	// feeds forward collection — and RAISES, where the trailing model
-	// binds and applies. A statically-known fn argument is excluded
-	// outright; a GRADUAL one (`x:Any`) is excluded because nothing here
-	// can prove it will not be a function at run time.
-	//
-	// This cannot be repaired by resolving it at run time. The
-	// interpreter's raise is a property of WORD dispatch, not of the
-	// values: an island over the resolved window `[lead, fnArg]` leaves
-	// both inert (probe: the pair comes back as the residual `fn (Integer)
-	// fn (Integer)`, no apply and no error), while the word-read spelling
-	// raises — and it raises with one of TWO texts (the stranded-forward
-	// barrier when the lead parked a forward, the lead's own no-match when
-	// no overload could), selected by engine-internal collection state the
-	// window does not carry. So there is no faithful lowering to admit the
-	// shape with, and the compile failure stands (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore
-	// §5.8; pinned by TestS5BParenLeadFnApplyIdxGradualArgDeclines).
-	if last.Dynamic || IsFnValueResidual(last) {
+	// The ARGUMENT gate. The two spellings converge only while the
+	// argument is a value the lead COLLECTS: a bare fn WORD token is never
+	// one — the interpreter's leading collection meets a function word, a
+	// barrier that never feeds forward collection, and RAISES with one of
+	// two texts engine-internal collection state selects — and a GRADUAL
+	// argument that MAY be a function at run time is excluded because
+	// nothing here can prove it is not (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore
+	// §5.8; pinned by TestS5BParenLeadFnApplyIdxGradualArgDeclines). Two
+	// refinements, both measured (2026-09-22):
+	//   - a gradual carrier whose DECLARED bound excludes Function — a
+	//     callback lambda's `e:Integer` param over an untyped collection is
+	//     Dynamic in the model but Integer at every call — cannot be a fn
+	//     at run time, so it is admitted (parenLeadArgTypedNonFn);
+	//   - a fn VALUE standing at the argument position after the collapse
+	//     arrived INERT — a `/v` read, a lambda literal, a quote: a bare fn
+	//     word would have dispatched or raised before the collapse — so the
+	//     lead collects it as a value exactly as the interpreter does
+	//     (`(f g/v)`, `(f ([n:Integer] => [n add 1]))`), and the leading
+	//     record admits it (RecordDynApplyLead binds it to the lead's
+	//     Function param, never applying it).
+	if last.Dynamic && !parenLeadArgTypedNonFn(last) {
 		return -1
 	}
 	for i := openIdx + 1; i < closeIdx; i++ {
@@ -8020,6 +8024,17 @@ func (e *Engine) parenLeadFnApplyIdx(es EmitRecorder, openIdx, closeIdx, count, 
 	return -1
 }
 
+// parenLeadArgTypedNonFn reports whether a gradual argument carrier's
+// declared bound rules a runtime function out: a concrete, non-disjunct
+// type that neither is nor contains Function — an `e:Integer` param, not
+// `x:Any`, not `Function`, not an alternative set.
+func parenLeadArgTypedNonFn(v Value) bool {
+	if v.Parent == nil || IsDisjunct(v) || v.Parent.Equal(TAny) {
+		return false
+	}
+	return !v.Parent.ConformsTo(TFunction) && !TFunction.ConformsTo(v.Parent)
+}
+
 // recordParenLeadFnApply records the classified [lead, arg] window
 // (parenLeadFnApplyIdx) as the trailing spelling's RecordDynApply event —
 // the compiled artifact is literally `(x g)`'s, so parity holds by
@@ -8036,7 +8051,7 @@ func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeI
 	out.pos = lead.pos
 	// A one-value window: the callee either consumes it or the record
 	// declines, so there is no partial-consumption case to thread here.
-	if _, ok := es.RecordDynApply([]Value{e.Tape.At(lastIdx)}, lead, out, lead.Pos()); ok {
+	if _, ok := es.RecordDynApplyLead([]Value{e.Tape.At(lastIdx)}, lead, out, lead.Pos()); ok {
 		e.Tape.Set(leadFn, out)
 		e.Tape.Remove(lastIdx)
 		closeIdx--
@@ -8314,7 +8329,21 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 		if lastIdx >= 0 {
 			last = e.Tape.At(lastIdx)
 		}
+		// A window BOTH classifiers admit — an eligible fn-carrier lead over
+		// one fn VALUE, `(k inc/v)` — is the LEAD's: the interpreter steps
+		// the lead first, and its forward collection takes the value (a
+		// Function or Any param binds it) or raises; the value applies as
+		// a trailing fn only under a 0-arg lead, which dispatched before
+		// the value was stepped. The one exception is a tail the `apply`
+		// WORD owns (`(k r apply)`), which stays the trailing record's.
+		leadWins := leadFn >= 0 && !es.ApplyPending(last.ID)
 		switch {
+		case leadWins:
+			// LEADING one-arg fn-carrier apply (the Stage-G increment) —
+			// classified by parenLeadFnApplyIdx, recorded by
+			// recordParenLeadFnApply (both extracted for the stepCloseParen
+			// complexity cap).
+			closeIdx = e.recordParenLeadFnApply(es, leadFn, lastIdx, closeIdx)
 		case parenTrailingFnApply(es, last, count, lastIdx):
 			// TRAILING fn-value apply (`(a b comp)`): record it as an EVENT producing
 			// ONE carrier and COLLAPSE the [args…, fn] tape residual to that carrier —
@@ -8365,12 +8394,6 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			} else {
 				es.RegisterTrailingApply(last.ID, count-1)
 			}
-		case leadFn >= 0:
-			// LEADING one-arg fn-carrier apply (the Stage-G increment) —
-			// classified by parenLeadFnApplyIdx, recorded by
-			// recordParenLeadFnApply (both extracted for the stepCloseParen
-			// complexity cap).
-			closeIdx = e.recordParenLeadFnApply(es, leadFn, lastIdx, closeIdx)
 		case first >= 0 && count >= 2:
 			// LEADING dynamic apply (COMPILE FAILURE-CLOSURE §9.2e) — extracted to
 			// recordParenLeadingApply for the stepCloseParen complexity cap.

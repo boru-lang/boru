@@ -63,6 +63,12 @@ func (s *s5bEmit) RecordDynApply(args []Value, fn, out Value, pos SrcPos) (int, 
 	}
 	return len(args), s.dynApplyOK
 }
+
+// RecordDynApplyLead tallies with the trailing record: the stub's tests
+// assert the count of apply records, whichever spelling seated them.
+func (s *s5bEmit) RecordDynApplyLead(args []Value, fn, out Value, pos SrcPos) (int, bool) {
+	return s.RecordDynApply(args, fn, out, pos)
+}
 func (s *s5bEmit) DynApplyLeadEligible(Value) bool { return s.leadEligible }
 func (s *s5bEmit) RegisterTrailingApply(id string, arity int) {
 	s.trailing = append(s.trailing, id)
@@ -858,17 +864,17 @@ func TestS5BParenLeadFnApplyIdxArity(t *testing.T) {
 
 // TestS5BParenLeadFnApplyIdxGradualArgDeclines pins the classifier's
 // ARGUMENT gate — the one that keeps the Church-chain family declined
-// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.8). Dropping either clause
-// compiles `def app f:Function => [x:Any => [(f x)]]` and its whole
-// family, which LOOKS like a graduation and is a miscompile waiting on a
-// function-valued argument: the interpreter never applies one — its
-// leading collection meets a function word, a barrier that never feeds
-// forward collection, and raises — where the trailing model the window
-// records binds and applies. There is no runtime repair: the raise is a
-// property of WORD dispatch, so an island over the resolved window leaves
-// both values inert instead of raising, and the two possible texts (the
-// stranded-forward barrier, or the lead's own no-match) are selected by
-// collection state the window does not carry.
+// (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.8). A GRADUAL argument
+// whose runtime value may be a function declines: `def app f:Function =>
+// [x:Any => [(f x)]]` and its whole family LOOKS like a graduation and is a
+// miscompile waiting on a function-valued argument the lead's collection
+// would meet as a function word. Two refinements are admitted (S1b's apply
+// shapes, 2026-09-22), each with its arm here: a gradual carrier whose
+// DECLARED bound excludes Function (a callback lambda's `e:Integer` param —
+// Dynamic in the model, an Integer at every call), and a fn VALUE standing
+// inert at the argument position (`(f g/v)`, a lambda literal), which the
+// lead collects as a value exactly as the interpreter does and
+// RecordDynApplyLead binds to its Function param.
 func TestS5BParenLeadFnApplyIdxGradualArgDeclines(t *testing.T) {
 	r := covRegistry(t, nil)
 	es := newS5BEmit()
@@ -884,33 +890,61 @@ func TestS5BParenLeadFnApplyIdxGradualArgDeclines(t *testing.T) {
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
 		t.Errorf("a gradual argument must decline the lead window, got %d", got)
 	}
-
-	// A STATICALLY-known fn argument: the divergence is certain.
-	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewCarrier(TFunction), NewCloseParen()}, StackHeadroom)
+	// A gradual argument DECLARED a function stays declined.
+	gradualFn := NewCarrier(TFunction)
+	gradualFn.Dynamic = true
+	e.Tape = NewTape([]Value{NewOpenParen(), lead, gradualFn, NewCloseParen()}, StackHeadroom)
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
-		t.Errorf("an fn-valued argument must decline the lead window, got %d", got)
+		t.Errorf("a gradual Function-typed argument must decline the lead window, got %d", got)
 	}
-
-	// The admitted shape, for contrast: a concrete non-fn argument.
+	// A gradual argument whose declared bound EXCLUDES Function is admitted.
+	gradualInt := NewCarrier(TInteger)
+	gradualInt.Dynamic = true
+	e.Tape = NewTape([]Value{NewOpenParen(), lead, gradualInt, NewCloseParen()}, StackHeadroom)
+	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
+		t.Errorf("a gradual Integer-typed argument must admit the lead window, got %d", got)
+	}
+	// A STATICALLY-known fn argument arrived inert: the lead binds it.
+	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewCarrier(TFunction), NewCloseParen()}, StackHeadroom)
+	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
+		t.Errorf("an fn-valued argument must admit the lead window, got %d", got)
+	}
+	// The original admitted shape: a concrete non-fn argument.
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(5), NewCloseParen()}, StackHeadroom)
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
 		t.Errorf("a non-fn argument must admit the lead window, got %d", got)
 	}
 }
 
-// TestS5BParenLeadFnApplyIdxNestedBodyDeclines pins the classifier's
-// NESTING gate (§9f). Inside a branch / loop / quotation body the
-// compiled body does not carry the bindings the trailing-event model
-// needs, so the window must decline there however eligible it looks:
-// `def mkg g:Function => [v:Integer => [(g v)]]  def h (mkg …)
-// do [(h 1)]` compiled to an island that raised `undefined word: g` —
-// the factory's captured param — where the interpreter answers 8.
-//
-// Pinned HERE, in core's own suite, deliberately: the merged ADR-008
-// profile credits this branch from the cmd / lang / test suites, so
-// only `make cover-gate-core` — core measured by core alone — catches
-// it going unexercised, and that is the gate CI runs.
-func TestS5BParenLeadFnApplyIdxNestedBodyDeclines(t *testing.T) {
+// TestParenLeadArgTypedNonFn pins the declared-bound refinement's own
+// arms: no parent, Any and Function answer false (nothing rules a runtime
+// function out), a concrete non-fn type answers true.
+func TestParenLeadArgTypedNonFn(t *testing.T) {
+	if parenLeadArgTypedNonFn(Value{}) {
+		t.Error("a value with no parent must not be typed non-fn")
+	}
+	if parenLeadArgTypedNonFn(NewCarrier(TAny)) {
+		t.Error("an Any carrier must not be typed non-fn")
+	}
+	if parenLeadArgTypedNonFn(NewCarrier(TFunction)) {
+		t.Error("a Function carrier must not be typed non-fn")
+	}
+	if !parenLeadArgTypedNonFn(NewCarrier(TInteger)) {
+		t.Error("an Integer carrier must be typed non-fn")
+	}
+}
+
+// TestS5BParenLeadFnApplyIdxNestedBodyAdmits pins that NESTING no longer
+// gates the classifier (S1b's apply shapes, 2026-09-22). The former gate
+// (§9f) declined every window inside a branch / loop / quotation body
+// because the island-era compiled body did not carry the bindings the
+// trailing-event model needs; the bindings question is now the lead's, asked
+// by DynApplyLeadEligible (the lead must be a slot of the recording unit),
+// and a branch arm or loop body lowers inline in its unit's frame. With the
+// gate in place an apply inside a fold lambda's body was not recorded at
+// all, and `a add (f e)` bailed at run time — a decline that was not a
+// decline.
+func TestS5BParenLeadFnApplyIdxNestedBodyAdmits(t *testing.T) {
 	r := covRegistry(t, nil)
 	es := newS5BEmit()
 	es.dynApplyOK = true
@@ -919,14 +953,12 @@ func TestS5BParenLeadFnApplyIdxNestedBodyDeclines(t *testing.T) {
 	lead := NewCarrier(TFunction)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(5), NewCloseParen()}, StackHeadroom)
 
-	// At top level the window is admitted (the contrast arm).
 	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
 		t.Fatalf("an unnested window must admit, got %d", got)
 	}
-	// Inside ANY nested body it declines.
 	r.Check.NestedBodyDepth = 1
-	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != -1 {
-		t.Errorf("a nested-body window must decline, got %d", got)
+	if got := e.parenLeadFnApplyIdx(es, 0, 3, 2, 2); got != 1 {
+		t.Errorf("a nested-body window must admit too, got %d", got)
 	}
 	r.Check.NestedBodyDepth = 0
 }

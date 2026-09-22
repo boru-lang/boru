@@ -114,7 +114,7 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 	"compiler/go/emit.go:RecordUserCall#1":                            {dispGeneric, 5, "a call operand of unknown provenance: a region"},
 	"compiler/go/emit.go:RecordUserCall#2":                            {dispGeneric, 3, "a capture unreachable at a call site: the capture resolves from the live frame"},
 	"compiler/go/emit.go:RecordUserPolyCall#1":                        {dispGeneric, 5, "as RecordUserCall#1, for the poly call"},
-	"compiler/go/emit.go:RecordDynApply#1":                            {dispGeneric, 3, "the dynamic-apply record's declines: the Apply kernel"},
+	"compiler/go/emit.go:recordDynApply#1":                            {dispGeneric, 3, "the dynamic-apply record's declines: the Apply kernel"},
 	"compiler/go/emit.go:RecordLoop#1":                                {dispGeneric, 5, "a range of unknown provenance: FOR_SETUP over live values"},
 	"compiler/go/emit.go:RecordLoop#2":                                {dispGeneric, 5, "a computed range start or step: FOR_SETUP over live values"},
 	"compiler/go/emit.go:recordLoopEvent#1":                           {dispGeneric, 5, "a loop caller's own compile failure (the while condition shapes): regions"},

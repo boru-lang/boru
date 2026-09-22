@@ -6,7 +6,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
-| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 8/14 | ✓ 10/14 | n/a | ✓ 13/14 |
+| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 9/14 | ✓ 11/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | F | D! | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
@@ -126,15 +126,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `afn` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `afn` factory · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `afn` factory · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` container · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` container · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
-- `afn` container · suffix-def — **declined** — member fn value auto-applies mid-expression (fn-value-call boundary, Stage 3)
-- `afn` container · prefix-stack — **DIVERGED** — value divergence: compiled [8] vs interp [7 fn (Integer)]
+- `afn` container · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` factory · fn-body — **declined** — fn zzvfn: result above a literal (Stage 3)
+- `apply` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
 - `apply` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -160,7 +158,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` container · if-else — **declined** — if: else-branch result of unknown provenance
 - `def` container · for-body — **declined** — for: body nets multiple values per iteration
 - `def` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · module-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: SWAP underflow (pc=2, src 1:87)   --> 1:87   = not…
+- `def` container · module-body — **declined** — fn-value application bounded by a paren (dynamic value precedes args)
 - `def` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload

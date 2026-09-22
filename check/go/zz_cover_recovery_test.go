@@ -273,6 +273,31 @@ func TestZZCoverParenFnCollapseLeadingOneArg(t *testing.T) {
 	}
 }
 
+func TestZZCoverParenFnCollapseLeadingFnValueArg(t *testing.T) {
+	// `( g inc/v )` — a leading fn carrier over an INERT fn value collapses
+	// (S1b's apply shapes, 2026-09-22): the lead collects the value, one
+	// call on both engines. A GRADUAL fn-typed argument does not — it may
+	// be a bare fn word at run time.
+	fnVal := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "inc"}}
+	e, fin := zzCollapseEng(t, true,
+		core.NewOpenParen(), zzFnCarrier(), fnVal, core.NewCloseParen())
+	defer fin()
+	if got := checkModeParenFnCollapse(e, 0, 3); got != 2 {
+		t.Fatalf("closeIdx = %d, want 2 (an inert fn value collapses under the lead)", got)
+	}
+	if out := e.Tape.At(1); !out.Carrier || !out.Dynamic || !out.Parent.Equal(core.TAny) {
+		t.Errorf("leading apply over a fn value must collapse to one dynamic Any carrier, got %#v", out)
+	}
+	gradual := core.NewCarrier(core.TFunction)
+	gradual.Dynamic = true
+	e2, fin2 := zzCollapseEng(t, true,
+		core.NewOpenParen(), zzFnCarrier(), gradual, core.NewCloseParen())
+	defer fin2()
+	if got := checkModeParenFnCollapse(e2, 0, 3); got != 3 {
+		t.Errorf("closeIdx = %d, want 3 (a gradual fn-typed argument stays un-collapsed)", got)
+	}
+}
+
 func TestZZCoverParenFnCollapseNeitherShape(t *testing.T) {
 	// Two plain values: no fn carrier in either admission position, the
 	// window stays as the interpreter leaves it.

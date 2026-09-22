@@ -619,8 +619,17 @@ func noteSpeculativeBarrierCommit(e *core.Engine, fwd core.ForwardInfo) {
 // `boru run` decline a program both engines run correctly. A dynamic
 // argument makes the RESULT no less knowable than a static one — the
 // window collapses to dynamic(Any) either way — so the restriction bought
-// no soundness. `IsFnValueResidual` still excludes a trailing fn VALUE
-// (a curried chain, where the window is not one call).
+// no soundness. `IsFnValueResidual` excluded a trailing fn VALUE until
+// 2026-09-22 (S1b's apply shapes): an INERT fn value at the argument
+// position — a `/v` read, a lambda literal — is a value the lead COLLECTS
+// (a Function or Any param binds it, any other no-matches), one call on
+// both engines, and leaving the window un-collapsed flagged a false
+// `type_error` on `def hof2 fn [[f:Function][Integer][(f ([n:Integer] =>
+// [n add 1]))]]` ("return value 1: expected Integer, got Function") that
+// the compile-armed pass, which records the window (RecordDynApplyLead),
+// did not — the one new diagnostic-parity divergence the landing made. A
+// gradual (Dynamic) fn-typed argument is still not collapsed: it may be a
+// bare fn WORD at run time, which the lead's collection meets as a barrier.
 func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 	if !e.Registry.Check.Mode {
 		return closeIdx
@@ -642,7 +651,7 @@ func checkModeParenFnCollapse(e *core.Engine, openIdx, closeIdx int) int {
 	}
 	last := e.Tape.At(lastIdx)
 	trailing := !last.Dynamic && !last.Quoted && core.IsFnTypedCarrier(last)
-	leading := leadIdx >= 0 && count == 2 && !core.IsFnValueResidual(last)
+	leading := leadIdx >= 0 && count == 2 && (!core.IsFnValueResidual(last) || !last.Dynamic)
 	if !trailing && !leading {
 		return closeIdx
 	}

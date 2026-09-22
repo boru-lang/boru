@@ -333,7 +333,20 @@ user still gets an answer while the case is open:
   collection converge inside a sealed named frame, at every runtime arity
   — so `compose`, `twice`, and mid-body `(g x) add 100` compile NATIVELY
   (`EmitState.DynApplyLeadEligible` gates the admission; rows in
-  `lang/spec/fn-value.tsv` §8). The def-split spelling
+  `lang/spec/fn-value.tsv` §8). Widened 2026-09-22 (S1b's apply shapes):
+  the window records wherever the lead is a slot of the RECORDING UNIT —
+  inside a branch arm, a loop body, a `do` body, a callback lambda
+  (`each$body` / `fold$body`; the former nesting and closure-unit
+  exclusions are gone) — and its one argument may be a gradual value
+  whose DECLARED bound excludes Function (a callback lambda's `e:Integer`
+  param, narrowed from the callback's Any element carrier by
+  `narrowLambdaInputs`) or an INERT fn value (`(f g/v)`, a lambda
+  literal: `RecordDynApplyLead` binds it to the lead's Function param as
+  the interpreter's forward collection does; a bare fn WORD still
+  declines — NUR123's word dispatch). What still declines: a gradual
+  `x:Any` argument (the Church-chain family, §5.8 of the legacy HOF note),
+  and a 0-arg runtime lead is NUR176 (loud on both lanes, a value only on
+  the interpreter). Pinned by `TestApplyShapesParity`. The def-split spelling
   (`def r (f x) f r`) graduated the same day: `checkModeParenFnCollapse`
   killed its checker false positive on the plain surface, and
   `replayIsBodyTail`'s `windowReadsID` arm (a dyn-bind of a value the

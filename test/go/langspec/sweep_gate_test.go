@@ -41,7 +41,7 @@ const (
 	sweepFailureCeiling        = 31  // valid seeds that FAIL to compile or hard-error in CompileCheck — every one a BUG. 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match. 36 -> 31 on 2026-09-19 (the fallback removal): five seeds that used to be classified as failures now compile and RUN — the classifier read the try-mode fallback's error as a compile failure, and with one outcome it reads the real one
 	sweepIslandCeiling         = 2   // valid seeds that compile with an interpreter island: inner ×2. 5 -> 2 on 2026-09-19 (S1a): scan × lambda, named-fn and module-export lower to a poly re-match instead of an island
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow compile failure), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
+	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 = 200 on 2026-09-22 (S1b's apply shapes + NUR177): two variants PASS (afn factory · module-body — the transitive render rule, unitRenderKnown; afn container · suffix-def) and two DIVERGED variants became loud declines (afn container · prefix-stack — NUR161, closed as a side effect of NUR177's fresh residual identities; def container · module-body — the SWAP-underflow internal_error, now "fn-value application bounded by a paren"), so the count is unchanged and the silent divergences are gone. Before: 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow compile failure), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
 	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 
@@ -75,9 +75,6 @@ var sweepKnownMiscompiles = map[string]sweepPin{
 	`7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply`: {
 		"NUR160 — the apply of a factory-built fn value does not fire on the compiled lane when a value sits below it on the stack; the clean-stack form agrees",
 		"value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]"},
-	`7 def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5`: {
-		"NUR161 — an afn whose body is a fn value read from a container: the interpreter returns the value, the compiled lane applies it, only with a value below on the stack",
-		"value divergence: compiled [8] vs interp [7 fn (Integer)]"},
 }
 
 // sweepInventory is the matrix's rows: every declaration-relevant word of
