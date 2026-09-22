@@ -418,6 +418,14 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 func applyReturns(args []Value, r *Registry) []Value {
 	out := ReturnsIdentity(0)(args, r)
 	if len(out) == 1 {
+		// The handler hands the value back UNQUOTED (applyHandler below), and
+		// the model must too: a `/v`-marked reach group (`M.inc/v`) arrives
+		// Quoted from the marker's consumption at the group's collapse, and
+		// a quoted CONCRETE lead parks on the check pass — the re-step
+		// dispatches nothing, records nothing, and `5 M.inc/v apply`
+		// compiled to `[5 fn]` for the interpreter's 6 (NUR156). A word's
+		// own `/v` read (`inc/v`) is delivered unquoted and never met this.
+		out[0].Quoted = false
 		out[0] = markApplied(out[0])
 	}
 	return out

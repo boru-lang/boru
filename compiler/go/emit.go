@@ -12746,7 +12746,16 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	if es.placedNotReStepped(top) || es.callResultPlacedIn(top, rec.frag) {
 		return
 	}
-	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) || es.isDefRead(top) {
+	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) {
+		return
+	}
+	// A DEF-READ of the tagged member (`def f tbl.inc end each [f] xs`,
+	// NUR156) arms only under its binding NAME (NoteWordRead's def-read
+	// arm): the read is the interpreter's WORD dispatch, whose no-match
+	// raises `cannot call `f`` where a value replay would park, so the
+	// window must carry the word for the VM's word island. A def read with
+	// no name (a `/v` read, a pending apply) is the read model's as before.
+	if es.isDefRead(top) && es.wordReadName(rec, top) == "" {
 		return
 	}
 	if mv, ok := es.MemberFnReadValue(top.ID); ok {
@@ -12767,6 +12776,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		return
 	}
 	u := es.units[len(es.units)-1]
+	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
 	if _, isLocal := u.localByID[v.ID]; !isLocal {
 		// A body-local `def` bound to a value an event of THIS unit
 		// produced (`def j (m get "f")  j`) resolves through its producing
@@ -12774,22 +12784,24 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		// this unit's read all the same; an ENCLOSING-scope binding's
 		// value (enclosingBindIDs, resolveOperand's own test) is not.
 		if _, produced := es.producedBy[v.ID]; !produced || u.enclosingBindIDs[v.ID] {
+			// A DEF-BOUND binding of an enclosing scope — a module-scope
+			// `def f tbl.inc` read inside an each body (NUR156, the
+			// quotation-body def reads) — is the interpreter's WORD dispatch
+			// in every unit that reads it bare (stepWord never substitutes a
+			// binding holding a fn), where the unit captured the VALUE. Its
+			// NAME is recorded so the replay's word table can re-step the
+			// entry as the word (a match applies natively, a no-match raises
+			// `cannot call `f`` through the island); the strict count is not
+			// — the value is not this unit's to seat, and an unreached
+			// consumption keeps the slot push it has today rather than
+			// declining a unit whose value semantics may still agree.
+			if es.isDefRead(v) {
+				rec.noteWordReadName(v.ID, name, pos)
+			}
 			return
 		}
 	}
-	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
-	if rec.wordReadNames == nil {
-		rec.wordReadNames = map[string]string{}
-		rec.wordReadPos = map[string]core.SrcPos{}
-	}
-	rec.wordReadNames[v.ID] = name
-	rec.wordReadPos[v.ID] = pos
-	if rec.wordReadFirst == nil {
-		rec.wordReadFirst = map[string]core.SrcPos{}
-	}
-	if _, seen := rec.wordReadFirst[v.ID]; !seen {
-		rec.wordReadFirst[v.ID] = pos
-	}
+	rec.noteWordReadName(v.ID, name, pos)
 	// Only a FN-TYPED read is accounted strictly: the interpreter
 	// dispatches it whatever the call passed. A GRADUAL read (an `x:Any`
 	// param, a Dynamic local) dispatches only when the runtime value is a
@@ -12801,6 +12813,24 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 			rec.wordReads = map[string]int{}
 		}
 		rec.wordReads[v.ID]++
+	}
+}
+
+// noteWordReadName records a bare read's binding NAME and position on the
+// unit — the replay's word table (dynFrameWordsFor) and the trailing apply's
+// head name read them. The strict count (wordReads) is the caller's call.
+func (rec *fnUnitRec) noteWordReadName(id, name string, pos core.SrcPos) {
+	if rec.wordReadNames == nil {
+		rec.wordReadNames = map[string]string{}
+		rec.wordReadPos = map[string]core.SrcPos{}
+	}
+	rec.wordReadNames[id] = name
+	rec.wordReadPos[id] = pos
+	if rec.wordReadFirst == nil {
+		rec.wordReadFirst = map[string]core.SrcPos{}
+	}
+	if _, seen := rec.wordReadFirst[id]; !seen {
+		rec.wordReadFirst[id] = pos
 	}
 }
 
@@ -14079,9 +14109,12 @@ func (es *EmitState) noteWordReadReplay(u *emitUnit, rec *fnUnitRec, vals []core
 	// A replay that cannot seat declines only a FN-TYPED read (the
 	// interpreter dispatches it unconditionally); a gradual read keeps the
 	// slot push it always had — best effort, never a new failure.
+	// Strict is the strict COUNT (NoteWordRead accounts a fn-typed LOCAL's
+	// read there), not a name: a module-scope def read carries a name for
+	// the word table and no count, and stays best-effort.
 	strict := false
 	for i, v := range vals {
-		if all[i].Name != "" && core.IsFnTypedCarrier(v) {
+		if all[i].Name != "" && rec.wordReads[v.ID] > 0 {
 			strict = true
 		}
 	}

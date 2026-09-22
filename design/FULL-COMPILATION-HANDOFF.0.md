@@ -12085,3 +12085,133 @@ final code — an earlier run built before the probe-stamp undo landed read
 | generated sweep: seeds / call-form variants | 30 / 194 | 30 / 194 | unchanged; two `apply` factory cells (fn-body, module-body) now decline at the residual layout ("result above a literal") instead of the carrier render and the trailing-apply gate — the pending apply registers, the layout declines the literal beneath, as the lambda-body cell's story above says |
 | diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 280 / 34 | 279 / 34 | `TestEdgeFindingDynamicFnValueApplyBodyTail`'s mid-body row graduated to a parity check |
+
+## S1b — the quotation-body def reads: NUR156's three rows, and the two defects they were (2026-09-22)
+
+**The measurement first.** NUR156 recorded three rows of
+`lang/spec/module-composition.tsv` as one defect — "the apply of a
+MODULE-HOMED fn value does not fire on the compiled lane" — and pinned
+them in `knownDivergences`, silent on `main`:
+
+| row | source | interpreted | compiled (before) |
+|---|---|---|---|
+| L102 | `… 5 M.inc/v apply` | `6` | `[5 fn inc(Integer)]` |
+| L103 | `… def f M.tbl.inc end each [f] [1 2 3]` | `[2 3 4]` | three fn values |
+| L104 | `… while [i lt 3] [def i (i M.inc/v apply)] end i` | `3` | `tape_exhausted` |
+
+The neighbours said the module was not the cause. `5 (M.inc) apply` — the
+same export without the `/v` — compiled to `CALL_USER inc/1` and agreed;
+`5 (M 'inc' get) apply` and `def f M.inc/v end 5 f/v apply` agreed; and the
+LOCAL twin of L103, `def h1 … def tbl {inc: h1/v} end def f tbl.inc end
+each [f] [1 2 3]`, returned three fn values exactly as the module row did.
+Two defects, then, and neither of them module-homed.
+
+**The `/v`-marked reach group under `apply`** (lang/go/native,
+`applyReturns`). The parser emits a `/v` on a paren or dotted-path result
+as a Word/__DM marker AFTER the group; `execFnDefLiteral` consumes it at
+the group's collapse and marks the value QUOTED. The runtime `applyHandler`
+clears the quote and hands the value back, and the ordinary re-step
+dispatches it. The check-mode model was `ReturnsIdentity(0)` plus the
+0-arg mark — the quote stayed — so on the pass the concrete lead PARKED,
+the re-step dispatched nothing, nothing was recorded, and
+`recordCallElided`'s "apply of a fn VALUE: the re-step records it" arm
+elided the apply itself; the program was `PUSH_CONST 5; PUSH_CONST fn`.
+A word's own `/v` read (`inc/v`) is delivered unquoted by `deliverValRead`
+and never met this, and a gradual member (`m.f/v`) takes the pending-apply
+event, which is why the dynamic-lead group's rows compiled around it. The
+model now delivers the value unquoted, as the handler does — one line — and
+the re-step records the foreign-home fn at home, exactly as the unmarked
+group did. `TestCheckTypeSoundness` had read L102 as type-unsound for the
+same reason, from the checker's side.
+
+**The def-bound member read** (compiler/go/emit.go, eng/go/vm_dyn_words.go).
+`stepWord` never substitutes a binding whose value is a fn — "goes through
+normal Lookup" — so a bare read of `f` is a WORD dispatch under the name:
+a 1-arg fn takes the element beneath it, a no-match raises `cannot call
+`f``, and a named-param lambda body `([e:Integer] => [f])` with nothing
+beneath raises the same. The check pass binds the def to the CARRIER the
+member read produced (tagged NoteMemberFnRead), the closure unit captured
+that value into a slot, and its body lowered to `PUSH_LOCAL ×2; RET`.
+`NoteWordRead` had deliberately declined to count a read of an
+ENCLOSING-scope binding ("not this unit's to seat; the closure paths
+decline fn-typed carriers on their own gates") — which was the rule that
+kept the unit from arming a replay and also what let the value ride out as
+data. Three changes:
+
+- *The recorder names the read.* A read of an enclosing-scope binding
+  that is a DEF-TABLE read (`NoteDefRead` precedes it in stepWord) now
+  records its binding NAME and position on the unit (`noteWordReadName`),
+  never the strict count: the value is still not this unit's to seat, and
+  an unreached consumption keeps the slot push it has today rather than
+  declining a unit whose value semantics may still agree. The word-read
+  replay's strictness keys on the COUNT now (`rec.wordReads`), not on a
+  name, which is behaviour-preserving for a local (a fn-typed local's read
+  is counted where it is named) and best-effort for the new entries.
+- *The closure-body trigger admits a named def read.* The previous
+  increment excluded a def read outright because arming it fixed the VALUE
+  case through the island (the census caught L103 entering). It arms now
+  only under the binding name, so the window carries the word table
+  (`dynFrameWords`): the VM's lone-token path applies a match natively (a
+  match is a match under either semantics), and a no-match or a
+  nothing-beneath shape falls to the word island, which re-steps the WORD
+  and raises the interpreter's own error.
+- *The word island dispatches through the registry's own binding.* It
+  used to install the captured value as a frame binding under the name
+  before re-stepping; for a module-scope def that stacked a second,
+  identical overload on top of the def, and the no-match listed every
+  candidate twice (`TestQuotationBodyDefReadNoMatchParity` caught it).
+  A name the registry already binds to a fn is dispatched through that
+  binding, with no install; the freeze discipline (`NotifyNameRebound`)
+  is what guarantees the binding still holds the value the unit captured.
+
+**What it reaches.** L102 and L103 with parity, and the family: the `/v`
+group inside a paren, under a later word (`5 M.inc/v apply add 10`, which
+compiled to `cannot call `add`` before), def-bound, over a 0-arg named
+export (`[5 7]`), over a value its param rejects (`uncalled_function` on
+both lanes); the def read over a duplicated element, in a `do` body, over
+a String element (`cannot call `f`` on both lanes, the candidate listed
+once), in a named-param lambda (the same error). The sweep's `apply` ×
+module-export seed graduated from DIVERGED to passing (13 of 14 call
+forms); its each-body variant declines in the twin-regime family, an
+existing decline the seed's fourteen forms were never counted against
+before (call-form ceiling 194 → 195, named).
+
+**L104, the S1a trade.** The while row compiled to a runaway loop ONLY
+because the apply inside its body never fired. With the apply recorded it
+declines "dynamic-scope def `i` of unpromoted computed value" — where its
+local twin `def i (i inc/v apply)` always did, the dynamic-scope def
+family's own gate (three corpus rows already). It moved from the
+known-divergence ledger to the compile-failure ledger (module-composition
+2 → 3, corpus 20 → 21): a loud failure for a silent miscompile.
+
+**What it does not reach**, pinned to fail when it moves
+(`TestDefReadWordDispatchPending`): the same def read where no replay
+window exists — at the MAIN program (`def f tbl.inc end 5 f` is `[5 fn]`
+for the interpreter's 6; the main code carries no word table) and inside
+a NAMED fn unit (`def g fn [[Integer][Any][f]] end g 5` bails as a
+dynamic-scope read of a dispatching binding). Both are NUR123's open
+points, the read model's; the main-program one wants the residual replay
+the program unit does not have.
+
+**Pins.** `quotation_body_def_read_test.go` (lang/go):
+`TestQuotationBodyDefReadParity` (fourteen rows),
+`TestQuotationBodyDefReadNoMatchParity`,
+`TestQuotationBodyDefReadSoundCompileFailures`,
+`TestDefReadWordDispatchPending`; compiler `TestNoteWordReadDefReadName`,
+`TestNoteClosureBodyReplayDefRead`; eng `TestCallDynFrameWordsArms`'
+bound-name arm. Retired: the three `knownDivergences` entries and the
+`sweepKnownMiscompiles` pin for NUR156.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 20 | 21 | module-composition 2 → 3: L104 graduated from the known-divergence ledger to a loud decline (the dynamic-scope def family) — the S1a trade |
+| compute gaps / reducible | 15 / 4 | 16 / 4 | L104, the same row |
+| known divergences (`knownDivergences`) | 5 | 2 | L102 and L103 agree, L104 declines; NUR154 and NUR155 remain |
+| type-soundness violations | 5 | 4 | L102: the checked residual is the apply's result now |
+| interp-entry rows / engine entries / defers | 74 / 406 / 8 | 74 / 406 / 8 | unchanged, row sets identical against the previous commit: L102 and L103 run native (the lone-token path), no row entered |
+| generated sweep: seeds failing / islanded / diverged; call-form variants | 30 / 2 / 8; 194 | 30 / 2 / 7; 195 | the `apply` × module-export seed graduated (13 of 14 forms); its each-body variant is counted for the first time and declines in the twin-regime family |
+| diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | the new witnesses assert outside the ledger |

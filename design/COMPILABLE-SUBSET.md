@@ -412,6 +412,21 @@ user still gets an answer while the case is open:
   inside a fold body (`0 fold [add ops.inc] xs`). Pinned by
   `quotation_body_member_read_test.go`.
 
+  A module-scope DEF bound to such a member, read BARE inside a code body
+  (`def f tbl.inc end each [f] xs`, `each [dup f] xs`, `do [5 f]`), and a
+  `/v`-MARKED reach group under the `apply` word (`5 M.inc/v apply`,
+  `"s" M.inc/v apply`) compile since the quotation-body def reads
+  (2026-09-22, NUR156): the def read is the interpreter's WORD dispatch
+  under the binding name — the replay carries the name, a match applies
+  natively, a no-match raises `cannot call `f`` through the word island,
+  which dispatches a name the registry already binds through that
+  binding — and the check model of `apply` delivers its value unquoted,
+  as the runtime handler does. What still declines or diverges: the
+  same def read at the MAIN program (`5 f`) and inside a named fn unit
+  (NUR123's open points, pinned), and a dynamic-scope def of the apply's
+  result inside a loop body (`while […] [def i (i M.inc/v apply)]`, the
+  dynamic-scope def family). Pinned by `quotation_body_def_read_test.go`.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.

@@ -128,6 +128,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	prefix := append([]core.Value(nil), stack[frameBase:base]...)
 	tokens := append([]core.Value(nil), region...)
 	var installed []string
+	converted := 0
 	var lead core.Value
 	for i, w := range words {
 		// A QUOTED fn is data to a value re-step, but a word read dispatches
@@ -140,18 +141,37 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 		if !ok {
 			continue
 		}
+		// A name the registry already binds to a fn — a MODULE-SCOPE def
+		// read bare inside the body (`def f tbl.inc end each [f] xs`,
+		// NUR156) — dispatches through that binding, as the interpreter's
+		// own read does: installing the captured value on top would stack
+		// a second, identical overload under the name, and the no-match
+		// would list every candidate twice. The freeze discipline
+		// (NotifyNameRebound) is what guarantees the binding still holds
+		// the value the unit captured.
+		if top, bound := reg.Defs.Top(w.Name); bound {
+			if _, isFn := top.Data.(core.FnDefInfo); isFn {
+				if i == 0 {
+					lead = top
+				}
+				tokens[i] = core.WithPosAt(core.NewWord(w.Name), w.Pos)
+				converted++
+				continue
+			}
+		}
 		// The interpreter's Function-slot arrival delivers a quoted fn
 		// UNQUOTED into the frame binding (stepWordVal's arrival path); the
 		// VM's CALL_USER binds the slot as delivered, so strip it here.
 		fnv.Quoted = false
 		core.InstallFrameBinding(reg, w.Name, fnv)
 		installed = append(installed, w.Name)
+		converted++
 		if i == 0 {
 			lead = fnv
 		}
 		tokens[i] = core.WithPosAt(core.NewWord(w.Name), w.Pos)
 	}
-	if len(installed) == 0 {
+	if converted == 0 {
 		return nil, false, nil
 	}
 	// The frame bindings live for the island run only: popped in reverse,
@@ -175,7 +195,7 @@ func (vc *vmContext) callDynFrameWords(reg *core.Registry, words []compiler.DynF
 	// value's signatures (compileFnDef resolves BarrierAllForward to the
 	// param count), and the no-match's "group the call in parens" help
 	// keys on that compiled barrier — a raw FnDefInfo would lose the line.
-	if len(installed) == 1 && words[0].Name != "" && len(prefix) == 0 && dynFrameSimpleWindow(region) {
+	if converted == 1 && words[0].Name != "" && len(prefix) == 0 && dynFrameSimpleWindow(region) {
 		if fd := reg.Lookup(words[0].Name); fd != nil && wordLeadNoMatch(lead, region[1:]) {
 			args := append([]core.Value(nil), region[1:]...)
 			// Only the tokens the interpreter's forward window consumed reach

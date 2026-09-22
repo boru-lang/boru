@@ -71,8 +71,20 @@ branch-carried def"**; the re-estimate is
    member read at its tail — each-variants L205, fold-map-filter L215,
    module-composition L98; 23 → 20 — and closed NUR182, the fn-unit replay
    re-stepping a paren-placed value, and NUR183, `each [dup ops.inc]`
-   compiling the member as data, both silent on `main`). What is left of
-   the family, each declining where it declined before: a member read in
+   compiling the member as data, both silent on `main`). NUR156 closed
+   after that (the handoff log's "the quotation-body def reads" entry:
+   the check model of `apply` kept a `/v`-marked reach group's quote, so
+   `5 M.inc/v apply` parked on the pass; and a module-scope def bound to
+   a fn-valued member read bare in a code body — `def f tbl.inc end each
+   [f] xs` — is the interpreter's WORD dispatch, now armed under its name
+   through the closure-body replay and the VM's word island;
+   module-composition L102 and L103 agree, L104 declines loudly in the
+   dynamic-scope def family where its local twin always did — 20 → 21,
+   the S1a trade; the sweep's `apply` × module-export seed graduated).
+   What is left of the family, each declining where it declined before:
+   the same def read at the MAIN program (`5 f` is `[5 fn]`) and inside
+   a named fn unit (a dynamic-scope-read bail) — NUR123's open points,
+   pinned by `TestDefReadWordDispatchPending`; a member read in
    a WORD's forward slot inside a fold body (`0 fold [add ops.inc] xs`),
    `do [5 (ops.inc)]` (the caller's re-step over a sibling result),
    `((reg.cb) 5)` (L61 —
@@ -247,7 +259,7 @@ same direction — claiming the compiler's failure as the program's verdict:
 
 | ledger | counts | at |
 |---|---|---:|
-| `test/go/langspec/compile_failures.tsv` | corpus rows that do not compile, per spec file | 20 |
+| `test/go/langspec/compile_failures.tsv` | corpus rows that do not compile, per spec file | 21 |
 | `lang/go/compile_defect_test.go` | unit-test programs: do not compile / compile then bail | 279 / 34 |
 | `lang/go/test/compile_defect_test.go` | language tests answered on the reference engine | 111 |
 | `test/go/langspec/compiled_defect_test.go` | corpus rows that compile and then bail | 52 |
@@ -629,8 +641,8 @@ state**:
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 20 | 0 | **23 → 20 on 2026-09-22** (the container reads inside quotation bodies: a code-body closure unit takes the whole-frame replay for a fn-valued member read at its tail — each-variants L205, fold-map-filter L215, module-composition L98; NUR182 and NUR183 closed on the way). Before: **24 → 23 on 2026-09-22** (the curried chain: a paren over a produced closure records its re-stepped lead's apply at the collapse — callbacks L151; NUR178 and NUR179 closed on the way). Before: **27 → 24 on 2026-09-22** (the container-member calls: `(fs.b 10)` over a produced closure — callbacks L60/L73, module-composition L96). Before: **32 → 27 on 2026-09-22** (the dynamic-lead group: the `apply` word at the main program over a gradual lead or a produced fn-typed carrier — callbacks L40/L41/L50/L51, module-composition L100). Before: **45 → 39 → 32 on 2026-09-22** (S1b-3 re-landed: a fn value stored in a container — set/push/unshift/append declare CompileStoresFn; then S1b's apply shapes: the leading one-arg fn-carrier window records inside a branch arm, a loop body and a callback lambda, over a typed gradual or an inert fn-valued argument — callbacks 17 → 10). Before: 113 at the 2026-09-17 corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since P0 the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 (S1a) → 53 (S1b-2) on 2026-09-19; 53 → 62 on 2026-09-21 (PR #482) — nine paired FALSE-PATH witnesses for the `fn-locals-scope` §6 arm-binding cluster, debt written down; **62 → 45 on 2026-09-22 (S5's first slice, the branch-carried def)** — the seventeen §6 rows compile with parity on BOTH paths, and twelve new witness rows (§6b, §6c) compile too |
-| compute gaps | 15 | 0 | **18 → 15 on 2026-09-22** (the container reads inside quotation bodies: each-variants L205, fold-map-filter L215, module-composition L98). Before: **19 → 18 on 2026-09-22** (the curried chain: callbacks L151). Before: **22 → 19 on 2026-09-22** (the same three rows). Before: **27 → 22 on 2026-09-22** (the same five rows). Before: **41 → 27 on 2026-09-22** (the same two landings: seven stored-fn rows, six apply-shape rows, and callbacks L61 moved to the reducible bucket — 3 → 4 there, a partition move). Before: 107 at the expansion; three fell when NUR153 closed; 104 → 56 (S1a); 56 → 49 (S1b-2); 49 → 58 on 2026-09-21, the same nine witnesses; **58 → 41 on 2026-09-22**, the seventeen leaving together |
+| compile failures | 21 | 0 | **20 → 21 on 2026-09-22** (NUR156: module-composition L104 GRADUATED from the known-divergence ledger — a runaway loop because its apply never fired — to a loud decline in the dynamic-scope def family, the S1a trade). Before: **23 → 20 on 2026-09-22** (the container reads inside quotation bodies: a code-body closure unit takes the whole-frame replay for a fn-valued member read at its tail — each-variants L205, fold-map-filter L215, module-composition L98; NUR182 and NUR183 closed on the way). Before: **24 → 23 on 2026-09-22** (the curried chain: a paren over a produced closure records its re-stepped lead's apply at the collapse — callbacks L151; NUR178 and NUR179 closed on the way). Before: **27 → 24 on 2026-09-22** (the container-member calls: `(fs.b 10)` over a produced closure — callbacks L60/L73, module-composition L96). Before: **32 → 27 on 2026-09-22** (the dynamic-lead group: the `apply` word at the main program over a gradual lead or a produced fn-typed carrier — callbacks L40/L41/L50/L51, module-composition L100). Before: **45 → 39 → 32 on 2026-09-22** (S1b-3 re-landed: a fn value stored in a container — set/push/unshift/append declare CompileStoresFn; then S1b's apply shapes: the leading one-arg fn-carrier window records inside a branch arm, a loop body and a callback lambda, over a typed gradual or an inert fn-valued argument — callbacks 17 → 10). Before: 113 at the 2026-09-17 corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since P0 the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 (S1a) → 53 (S1b-2) on 2026-09-19; 53 → 62 on 2026-09-21 (PR #482) — nine paired FALSE-PATH witnesses for the `fn-locals-scope` §6 arm-binding cluster, debt written down; **62 → 45 on 2026-09-22 (S5's first slice, the branch-carried def)** — the seventeen §6 rows compile with parity on BOTH paths, and twelve new witness rows (§6b, §6c) compile too |
+| compute gaps | 16 | 0 | **15 → 16 on 2026-09-22** (NUR156: L104, the same graduated row). Before: **18 → 15 on 2026-09-22** (the container reads inside quotation bodies: each-variants L205, fold-map-filter L215, module-composition L98). Before: **19 → 18 on 2026-09-22** (the curried chain: callbacks L151). Before: **22 → 19 on 2026-09-22** (the same three rows). Before: **27 → 22 on 2026-09-22** (the same five rows). Before: **41 → 27 on 2026-09-22** (the same two landings: seven stored-fn rows, six apply-shape rows, and callbacks L61 moved to the reducible bucket — 3 → 4 there, a partition move). Before: 107 at the expansion; three fell when NUR153 closed; 104 → 56 (S1a); 56 → 49 (S1b-2); 49 → 58 on 2026-09-21, the same nine witnesses; **58 → 41 on 2026-09-22**, the seventeen leaving together |
 | diagnostic parity / armed-only | 349 / 9 | 0 / 0 | unchanged on 2026-09-22, row for row — callbacks L139 diverged for one measurement (a plain-check false positive on a fn-carrier window over a lambda literal) and the plain surface was fixed the same day. Before: checker debt the expansion exposed; both fell at S1b-2; 351 → 353 and 11 → 13 on 2026-09-21 — exactly TWO of the nine witnesses diverge, measured not assumed: L179 and L181, the two OPERAND-spelling rows, each mirroring a pre-existing armed-only twin (L178, L180) diagnostic for diagnostic; **353 → 349 and 13 → 9 on 2026-09-22** — those four rows compile, and leave both ledgers together as predicted |
 | interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a. **At end state** |
 | interpreter-only rows | 0 | 0 (ceiling 3) | **at end state**; the ceiling keeps headroom for a genuine irreducibility claim |
@@ -639,10 +651,10 @@ state**:
 | locally-resolved defers | 1 | 0 | `vm:poly-no-match×1` — a caller's own fallback absorbed, the program staying compiled |
 | reducible (tier-2) rows | 3 | 0 | word-class gaps the compiler does not model |
 | correct-error compile failures | 1 | 0 | a known-to-error row must compile an OpTrap / RET error path |
-| type-soundness violations | 5 | 0 | checker debt the expansion exposed |
-| known divergences (`knownDivergences`) | 5 | 0 | NUR154, NUR155, NUR156 ×3 — the ledger is pinned both ways |
+| type-soundness violations | 4 | 0 | checker debt the expansion exposed; 5 → 4 on 2026-09-22 (NUR156: L102 is sound once the `apply` model unquotes its lead) |
+| known divergences (`knownDivergences`) | 2 | 0 | NUR154, NUR155 — the ledger is pinned both ways; NUR156's three rows left it on 2026-09-22 (two agree, one declines loudly) |
 | `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25 and the count ONLY FALLS — a new compile-failure site is new debt, which is why a screen must decline through an existing site rather than latch its own; handlers 114 → 94 on the migration line |
-| the generated sweep (S0): cells failing / islanded / diverged | 36 / 2 / 3 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR156, NUR159–161, pinned |
+| the generated sweep (S0): seeds failing / islanded / diverged | 30 / 2 / 7 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR159–161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22 |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |
 
 **Two ledgers the gate table does not show, and a third that is easy to miss:**

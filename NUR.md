@@ -88,7 +88,7 @@ keep the two in sync in the same commit.
 |---|-------|--------------------------|
 | [NUR154](#nur154) | A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR155](#nur155) | A TYPED callback over a HETEROGENEOUS collection is applied to every element compiled where the interpreter applies it only to the matching ones: `each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]` is `[Integer fn… fn… fn… fn… fn…]` interpreted (a non-matching element leaves the fn VALUE as data, no_signature swallowed) and `[Integer ProperString List Map Boolean None]` compiled. The compiled callback dispatch drops the per-element signature match the interpreter performs; it must keep it, or refuse a collection it cannot prove homogeneous. Row `lang/spec/each-variants.tsv:L215` | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
-| [NUR156](#nur156) | A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR156](#nur156) | FIXED 2026-09-22 (the quotation-body def reads — the handoff log's entry of that date): two defects, neither module-specific. The check-mode model of `apply` kept a `/v`-marked reach group's QUOTE (the runtime handler clears it), so a quoted concrete lead parked on the pass and the re-step recorded nothing — the model now delivers the value unquoted; and a bare read of a module-scope def bound to a fn-valued member is the interpreter's WORD dispatch in every unit that reads it, where the closure unit captured the VALUE — NoteWordRead names the read on the unit, the closure-body replay arms on a named def read of a tagged member, and the VM's word island dispatches through the registry's own binding. L102 and L103 agree with parity; L104 now DECLINES loudly in the dynamic-scope def family, where its local twin always did. Still open, pinned (`TestDefReadWordDispatchPending`): the same def read at the MAIN program (`5 f` is `[5 fn]`) and inside a named fn unit (a dynamic-scope-read bail). The original text: A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
 | [NUR158](#nur158) | A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
 | [NUR159](#nur159) | A NAMED fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: `def one fn [[][Integer][1]] end if true one/v [2]` is `1` interpreted and `fn one` compiled; the factory (`if true (mk) [2]`) and module-export (`if true M.one [2]`) forms of the same cell agree on both lanes, the lambda and container forms fail to compile | the generated sweep (design/FULL-COMPILATION-REPLAN.0.md S0, 2026-09-18), cell `if` × named-fn |
@@ -6816,9 +6816,81 @@ main corpus.
 
 ## NUR156 — a module-export fn value is not applied by the compiled lane {#nur156}
 
-**Status:** Pending (recorded 2026-09-17).
+**Status:** FIXED 2026-09-22 (the quotation-body def reads — the handoff
+log's entry of that date) for rows 1 and 2, with their local twins; row 3
+now DECLINES loudly (see below). Recorded 2026-09-17.
 **Found:** the corpus expansion in #471 (`lang/spec/module-composition.tsv:L102–L104`);
 flagged by the Codex review of that PR.
+
+**What it was — two defects, neither of them module-specific.** The
+neighbours said so before any code was read: `5 (M.inc) apply` (the
+unmarked group) compiled to `CALL_USER inc/1` and agreed, and the LOCAL
+twin of row 2, `def h1 … def tbl {inc: h1/v} end def f tbl.inc end each
+[f] [1 2 3]`, returned three fn values exactly as the module row did.
+
+1. *The `/v`-marked reach group under `apply`.* The parser emits a
+   `/v` on a paren or dotted-path result as a Word/__DM marker after the
+   group; `execFnDefLiteral` consumes it at the collapse and marks the
+   value QUOTED (core/go/engine.go, the marker peek). The runtime
+   `applyHandler` clears the quote and hands the value back, and the
+   re-step dispatches it. The check-mode model, `applyReturns`, was
+   `ReturnsIdentity(0)` plus the 0-arg mark — the quote stayed — so on the
+   pass the concrete lead PARKED as data, the re-step dispatched nothing,
+   nothing was recorded, and `recordCallElided`'s "apply of a fn VALUE:
+   the re-step records it" arm elided the apply itself: the program was
+   `PUSH_CONST 5; PUSH_CONST fn`. A word's own `/v` read (`inc/v`) is
+   delivered unquoted (`deliverValRead`) and never met this; a gradual
+   member (`m.f/v`) takes the pending-apply event instead. The model now
+   clears the quote as the handler does. `TestCheckTypeSoundness` read
+   row 1 as type-unsound for the same reason, from the checker's side.
+2. *A module-scope def bound to a fn-valued member, read bare in a code
+   body.* `stepWord` never substitutes a binding whose value is a fn
+   ("goes through normal Lookup"): the read is a WORD dispatch under the
+   binding name — a 1-arg fn takes the element beneath it, a no-match
+   raises `cannot call `f``, a named-param lambda with nothing beneath
+   raises the same. The check pass binds the def to the CARRIER the
+   member read produced (tagged NoteMemberFnRead), the closure unit
+   captured that value into a slot, and its body was `PUSH_LOCAL ×2;
+   RET`. `NoteWordRead` had deliberately not counted a read of an
+   enclosing-scope binding ("not this unit's to seat"); it now records
+   such a read's NAME when it is a def-table read (never the strict
+   count — an unreached consumption keeps the slot push it has today
+   rather than declining), `noteClosureBodyReplay` arms on a named def
+   read of a tagged member with the word table, and the VM's word
+   island (`callDynFrameWords`) dispatches a name the registry already
+   binds to a fn THROUGH that binding rather than installing the
+   captured value on top of it — installing it stacked a second,
+   identical overload under the name and the no-match listed every
+   candidate twice. A match runs native through the lone-token path
+   (`invokeLoneToken`); the island takes the no-match and the
+   nothing-beneath shapes and raises the interpreter's own error.
+
+**Row 3.** `while [i lt 3] [def i (i M.inc/v apply)]` compiled to a
+runaway loop ONLY because the apply inside its body never fired; with the
+apply recorded it declines "dynamic-scope def `i` of unpromoted computed
+value", where its local twin `def i (i inc/v apply)` always did — the
+dynamic-scope def family's own gate, three corpus rows before this one.
+It moved from the known-divergence ledger to the compile-failure ledger
+(module-composition 2 → 3, corpus 20 → 21): the S1a trade, a loud failure
+for a silent miscompile.
+
+**What remains, pinned to fail when it moves**
+(`TestDefReadWordDispatchPending`, lang/go): the same def read where no
+replay window exists yet — at the MAIN program (`def f tbl.inc end 5 f`
+is `[5 fn]` for the interpreter's 6) and inside a NAMED fn unit (`def g
+fn [[Integer][Any][f]] end g 5` bails as a dynamic-scope read of a
+dispatching binding). Both are NUR123's open points, the read model's.
+
+**Pins.** `quotation_body_def_read_test.go` (lang/go):
+`TestQuotationBodyDefReadParity` (fourteen rows),
+`TestQuotationBodyDefReadNoMatchParity`,
+`TestQuotationBodyDefReadSoundCompileFailures`; compiler
+`TestNoteWordReadDefReadName`, `TestNoteClosureBodyReplayDefRead`; eng
+`TestCallDynFrameWordsArms`' bound-name arm. The sweep's `apply` ×
+module-export seed graduated from DIVERGED to passing (13 of 14 call
+forms; the each-body variant declines in the twin-regime family).
+
+**The original record follows.**
 
 **Rule:** a compiled program answers as the interpreter does.
 
@@ -7013,8 +7085,9 @@ form of the sweep (a fn body, a lambda body, `do`, the branch arms, a
 loop body, a module body, a def before or after, a splice) compiles with
 parity, so the dirty stack is the trigger, not the factory: the lowering
 that seats the apply's operands reads a stack position the extra value
-shifts. NUR156 is the module-export sibling (the apply of `M.inc/v` never
-fires, clean stack or not).
+shifts. NUR156 was the module-export sibling (the apply of `M.inc/v` never
+fired, clean stack or not — a quoted lead the check model kept quoted;
+FIXED 2026-09-22).
 
 **Where it belongs:** S1 (the Apply kernel's first branch); pinned in
 `sweepKnownMiscompiles` until then.
@@ -7855,7 +7928,7 @@ internal expansion and LOWER the apply; narrowing the gate instead is at
 best scaffolding to stop the bleeding while that is built.
 
 **Where it belongs:** the fn-value lowering half S1b owes — the same
-family as NUR156, an apply that does not fire. It is what must land before
+family as NUR156 (an apply that did not fire; fixed 2026-09-22). It is what must land before
 `set` / `push` / `unshift` / `append` can declare CompileStoresFn, which
 is worth six corpus rows (compile failures 53 → 47, compute gaps 49 → 42)
 and is otherwise sound: the declaration itself is right, a word that

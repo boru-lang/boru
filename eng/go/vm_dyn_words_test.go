@@ -134,6 +134,28 @@ func TestCallDynFrameWordsArms(t *testing.T) {
 	if r.Defs.Depth("g") != 0 {
 		t.Error("the frame binding is popped on the error path too")
 	}
+	// A name the registry ALREADY binds to a fn — a module-scope def read
+	// bare inside the body (NUR156) — dispatches through that binding: no
+	// frame install (the depth stays the def's), and a no-match lists the
+	// binding's candidates ONCE, as the interpreter's own read does.
+	r.Defs.Push("g", inc)
+	st, handled, err = vc.callDynFrameWords(r, words, 0, 0, []core.Value{five, inc}, seam7Dbg, 0)
+	if err != nil || !handled || len(st) != 1 {
+		t.Fatalf("`5 g` through the registry's own binding: got %v %v %v", st, handled, err)
+	}
+	if n, _ := core.AsInteger(st[0]); n != 6 {
+		t.Errorf("the bound word collects its argument from the region: %v", st[0])
+	}
+	if r.Defs.Depth("g") != 1 {
+		t.Errorf("a bound name installs no frame binding: depth %d", r.Defs.Depth("g"))
+	}
+	_, handled, err = vc.callDynFrameWords(r, []compiler.DynFrameWord{{Name: "g", Pos: core.SrcPos{Row: 1, Col: 4}}}, 0, 0, []core.Value{inc}, seam7Dbg, 0)
+	if !handled || err == nil || !strings.Contains(err.Error(), "cannot call `g`") {
+		t.Errorf("a no-match through the bound name raises the named dispatch error: %v %v", handled, err)
+	} else if n := strings.Count(err.Error(), "candidate `g"); n != 1 {
+		t.Errorf("the bound name's candidates are listed once, got %d:\n%v", n, err)
+	}
+	r.Defs.Pop("g")
 }
 
 // TestClosureAsWordDeclines pins the bridge's arms: a FnDefInfo passes

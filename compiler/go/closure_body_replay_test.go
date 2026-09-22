@@ -215,3 +215,54 @@ func TestUndoProbeStamps(t *testing.T) {
 	}
 	es.undoProbeStamps() // idempotent on an empty table
 }
+
+// TestNoteWordReadDefReadName pins NUR156's recorder arm: a bare read of an
+// ENCLOSING-scope binding names itself on the unit only when it is a
+// def-table read (NoteDefRead), and never counts strictly — the value is not
+// this unit's to seat. A non-def enclosing read still records nothing.
+func TestNoteWordReadDefReadName(t *testing.T) {
+	es, _, rec, _ := closureBodyUnit(t)
+	outer := core.NewCarrier(core.TFunction)
+	outer.ID = "T_outer_fn"
+	pos := core.SrcPos{Row: 1, Col: 7}
+	es.NoteWordRead(outer, "f", pos)
+	if rec.wordReadNames[outer.ID] != "" || rec.wordReads[outer.ID] != 0 {
+		t.Errorf("an enclosing-scope read that is no def read records nothing: %q %d", rec.wordReadNames[outer.ID], rec.wordReads[outer.ID])
+	}
+	es.NoteDefRead(outer.ID, "f")
+	es.NoteWordRead(outer, "f", pos)
+	if rec.wordReadNames[outer.ID] != "f" || rec.wordReadPos[outer.ID] != pos || rec.wordReadFirst[outer.ID] != pos {
+		t.Errorf("a def read names itself at the read: %q %v %v", rec.wordReadNames[outer.ID], rec.wordReadPos[outer.ID], rec.wordReadFirst[outer.ID])
+	}
+	if rec.wordReads[outer.ID] != 0 {
+		t.Errorf("a def read is never accounted strictly: %d", rec.wordReads[outer.ID])
+	}
+	// A second read keeps the FIRST position.
+	es.NoteWordRead(outer, "f", core.SrcPos{Row: 2, Col: 1})
+	if rec.wordReadFirst[outer.ID] != pos {
+		t.Errorf("wordReadFirst keeps the first read: %v", rec.wordReadFirst[outer.ID])
+	}
+}
+
+// TestNoteClosureBodyReplayDefRead pins the trigger's def-read arm: a
+// tagged member read that arrived through a def-table read arms only under
+// its binding NAME, and the window then carries the word table (the VM
+// re-steps the entry as the word: `cannot call `f“ on a no-match).
+func TestNoteClosureBodyReplayDefRead(t *testing.T) {
+	inc := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, Returns: []*core.Type{core.TInteger}}}})
+	es, u, rec, elem := closureBodyUnit(t)
+	top := memberRead(es, inc)
+	es.NoteDefRead(top.ID, "f")
+	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
+	if rec.dynFrameW != 0 || rec.retReplay {
+		t.Errorf("a def read with no word name is the read model's: must not arm (w=%d)", rec.dynFrameW)
+	}
+	es.NoteWordRead(top, "f", core.SrcPos{Row: 1, Col: 3})
+	es.noteClosureBodyReplay(u, rec, []core.Value{elem, top})
+	if rec.dynFrameW != 1 || !rec.retReplay {
+		t.Fatalf("a NAMED def read of a tagged member arms the replay: w=%d replay=%v", rec.dynFrameW, rec.retReplay)
+	}
+	if len(rec.dynFrameWords) != 1 || rec.dynFrameWords[0].Name != "f" {
+		t.Errorf("the window carries the word table under the binding name: %+v", rec.dynFrameWords)
+	}
+}

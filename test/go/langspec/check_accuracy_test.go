@@ -506,7 +506,7 @@ func checkFlagsError(t testing.TB, input string) bool {
 // whose runtime result type is NOT covered by the checked carrier (a wrong-TYPE
 // checker bug the value-pinning ratchet can't see). Held at zero. History:
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "Type-soundness violations").
-const pinnedTypeSoundnessViolations = 5 // the REGRESSION ceiling (lanes_test.go; end state 0): 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it
+const pinnedTypeSoundnessViolations = 4 // the REGRESSION ceiling (lanes_test.go; end state 0): 5 -> 4 on 2026-09-22 — NUR156: module-composition.tsv:L102 (`5 M.inc/v apply`) is sound now that the check model of `apply` delivers a `/v`-marked reach group unquoted and the re-step dispatches it on the pass. Before: 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it
 
 func TestCheckTypeSoundness(t *testing.T) {
 	t.Parallel()
