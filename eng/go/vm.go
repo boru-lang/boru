@@ -2407,6 +2407,23 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			stack = append(stack, seatConstLocal(p, locals, p.ConstLocals[in.Arg]))
 		case compiler.OpPushLocal:
 			stack = append(stack, locals[in.Arg])
+		case compiler.OpPushLocalBound:
+			// A branch-carried binding read past its merge (bytecode.go): the
+			// zero slot is the arm that did not run, and the read raises the
+			// interpreter's undefined_word for the name seated at this pc.
+			if v := locals[in.Arg]; v.IsUnboundSlot() {
+				name, _ := storeNameAt(p, curUnit, pc)
+				var extra []string
+				if curUnit >= 0 && curUnit < len(p.Fns) {
+					for _, ln := range p.Fns[curUnit].LocalNames {
+						if ln != "" {
+							extra = append(extra, ln)
+						}
+					}
+				}
+				return nil, stampAt(core.UndefinedWordDiagWith(curReg, curReg.Source, name, debugPosAt(curDebug, pc), extra), curDebug, pc, curReg)
+			}
+			stack = append(stack, locals[in.Arg])
 		case compiler.OpStoreLocal:
 			// Pop the producing event's single result into a frame local;
 			// each reference re-pushes it via PUSH_LOCAL (value-def locals).

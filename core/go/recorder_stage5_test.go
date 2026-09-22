@@ -69,6 +69,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if n, ok := e.RecordDynApply(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
 		t.Fatal("inactive RecordDynApply must decline with no consumed args")
 	}
+	if n, ok := e.RecordDynApplyLead(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
+		t.Fatal("inactive RecordDynApplyLead must decline with no consumed args")
+	}
 	if e.RecordDynApplyName("h", nil, Value{}, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordDynApplyName must decline")
 	}

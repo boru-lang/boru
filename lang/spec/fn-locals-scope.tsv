@@ -182,7 +182,6 @@ def f fn [[] [Integer] [def a 1 end if false [def a 2] [] end a mul 10]]  f	10	D
 def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8	2	DOES NOT COMPILE: a local helper plus a conditional REBIND of a local — the combined real-code shape
 def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 2	1	DOES NOT COMPILE: …the local-helper rebind with the condition FALSE — q survives the branch unrebound
 def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	DOES NOT COMPILE: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
-#
 # §7  DYNAMIC-SCOPE reads — a callee sees the CALLER frame's bindings
 def f fn [[] [Integer] [def a 5 end g add 1]] def g fn [[] [Integer] [a mul 2]]  f	11	a module-level callee reads the CALLER's body-local (dynamic scope, no capture)
 def f fn [[x:Integer] [Integer] [g]] def g fn [[] [Integer] [x add 1]]  f 41	42	…and reads the caller's PARAM the same way
@@ -238,3 +237,18 @@ def f fn [[] [Integer] [def g fn [[] [Integer] [1]] g]]  f end g 1	ERROR:undefin
 def f fn [[x:Integer] [Integer] [def x 9 end x]]  f 5 end x	ERROR:undefined_word	…nor does a local that shadowed a param
 def f fn [[] [Integer] [def a 1 end undef a end a]]  f	ERROR:undefined_word	undef inside a body really removes the local
 def f fn [[] [Integer] [def a 1 end def g fn [[] [Integer] [a]] undef a end g]]  f	1	…but a capture taken BEFORE the undef still answers
+#
+# §6b  a def in an arm with NO binding before the branch — bound only on the path that ran the arm (NUR110, closed 2026-09-22 by the branch-carried def)
+def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true	9	a name bound in ONE arm, no prior binding, the arm RAN — the read after the merge loads it
+def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false	ERROR:undefined_word	…the arm did NOT run: the name was never bound — the read raises exactly as the interpreter does (a def runs when its branch runs)
+def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true	ERROR:undefined_word	…the else-arm twin, then taken: unbound
+def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f false	9	…the else-arm twin, else taken: bound
+def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 9) [def op 1] [0] end op	1	the TOP-LEVEL spelling with a condition the checker cannot fold, arm taken
+def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 1) [def op 1] [0] end op	ERROR:undefined_word	…arm not taken: unbound, on both lanes (the shape NUR110 measured as a silent wrong answer)
+def f fn [[b:Boolean] [Integer] [if b [def z (1 add 8)] [] end z]]  f false	ERROR:undefined_word	…a COMPUTED arm value, arm not taken: still unbound, never a leaked nil
+def f fn [[] [Integer] [def out (if (3 gt 1) [def t2 5 end t2 add 1] [0]) end out]]  f	6	an arm's own local escaping as the arm's RESULT is the branch value, not a read of the name — both lanes 6
+# §6c  the slot means "bound since this frame started": an arm's binding made in one loop iteration is still read in the next
+for 2 [if (i eq 0) [def z 9] [] end z]	9 9	a name bound by an arm in iteration 0 is read in iteration 1, where the arm does not run
+def z 0 end for 2 [if (i eq 0) [def z 9] [] end z]	9 9	…and with a pre-loop binding: the loop-carried and the branch-carried name share one cell
+def acc 0 end for 3 [if (i eq 1) [def acc (acc add 10)] [def acc (acc add 1)]] end acc	12	both arms rebind a loop-carried accumulator, read after the loop
+#

@@ -24,6 +24,7 @@ import (
 // *Type aliases — every exported type from core is re-exported here.
 type (
 	BranchRecord       = core.BranchRecord
+	BranchJoin         = core.BranchJoin
 	CodeEffectInfo     = core.CodeEffectInfo
 	EmitRecorder       = core.EmitRecorder
 	DeqIndex           = core.DeqIndex
@@ -480,6 +481,7 @@ var (
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
+	InstallTakenArmDefs      = core.InstallTakenArmDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop

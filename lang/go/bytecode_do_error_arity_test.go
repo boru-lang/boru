@@ -143,44 +143,58 @@ func TestLeadApplyNoMatchTwoReturnParity(t *testing.T) {
 	}
 }
 
-// TestCondBodyFreshDefBindsCompiledOnly pins NUR110 as measured: a FRESH `def`
-// inside a branch that did not run binds the name in the compiled lane and not
-// in the interpreter.
+// TestCondBodyFreshDefRaisesLikeInterpreter is NUR110 CLOSED: a FRESH `def`
+// inside a branch that did not run binds nothing afterwards, on both lanes.
 //
-// The interpreter is right — a `def` runs when its branch runs — and both lanes
-// already agree on the same question for a zero-iteration loop, which is why
-// the machinery to get this right demonstrably exists.
-//
-// Family L's CondBodyDepth gate declines the SHADOW case (a redefinition whose
-// overlap-removal drops an enclosing overload, which the depth-based rollback
-// cannot revert). It is reached only when something is actually dropped, so a
-// fresh definition slips past it: the gate covers redefinition, not definition.
-//
-// Pinned as the measured divergence so it fails loudly when closed. The fix is
-// compiler-side and DECLINING counts — both siblings decline, a compile failure runs the
-// program correctly on the interpreter, and a silent wrong binding does not.
-func TestCondBodyFreshDefBindsCompiledOnly(t *testing.T) {
-	for _, tc := range []struct{ src, wantCompiled string }{
-		{`if false [def op 1] [0]  end  op`, "[0 1]"},
-		{`if false [def op 1] []   end  op`, "[1]"},
-		{`if false [def op 1] [0]  end  typeof op`, "[0 Integer]"},
+// The compiled lane used to bind it anyway — `if false [def op 1] [0] end op`
+// answered `0 1` where the interpreter raises undefined_word — because the
+// join folded the arm's own value back as a definite binding and a later read
+// baked it. The branch-carried def (compiler/go/branch_carried.go) seats the
+// name in a frame slot instead: the arm's def stores into it when the arm
+// runs, and a read past the merge is BOUND-CHECKED (OpPushLocalBound) — the
+// zero slot is the arm that did not run, and the read raises the
+// interpreter's own undefined_word. Both lanes now agree, and the fn-body
+// shapes the miscompile record measured (design/SESSION-HANDOVER.0.md,
+// 2026-09-21) are pinned beside the record's own three.
+func TestCondBodyFreshDefRaisesLikeInterpreter(t *testing.T) {
+	for _, src := range []string{
+		`if false [def op 1] [0]  end  op`,
+		`if false [def op 1] []   end  op`,
+		`if false [def op 1] [0]  end  typeof op`,
+		`if false [def z (1 add 8)] [] end z`,
+		`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false`,
+		`def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true`,
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
-		gotI, errI := mustNew(t).RunInterp(tc.src)
-		if noteCompileDefect(t, tc.src, gotC, errC) {
+		gotC, compiled, errC := mustNew(t).RunCompiled(src)
+		gotI, errI := mustNew(t).RunInterp(src)
+		if noteCompileDefect(t, src, gotC, errC) {
 			continue
 		}
 		if !compiled {
-			t.Fatalf("%s: did not run compiled (%v)", tc.src, errC)
+			t.Fatalf("%s: did not run compiled (%v)", src, errC)
 		}
 		if codeOf(errI) != "undefined_word" {
 			t.Errorf("%s: interpreted err=[%s] got=%v, want undefined_word — the oracle moved, "+
-				"re-derive this fence", tc.src, codeOf(errI), gotI)
+				"re-derive this pin", src, codeOf(errI), gotI)
 		}
-		if errC != nil || fmt.Sprint(gotC) != tc.wantCompiled {
-			t.Errorf("%s: compiled err=%v got=%v, want %s — if the compiled lane now RAISES or "+
-				"DECLINES, NUR110 is CLOSED: delete this fence and assert parity",
-				tc.src, errC, gotC, tc.wantCompiled)
+		if codeOf(errC) != "undefined_word" || len(gotC) != 0 {
+			t.Errorf("%s: compiled err=[%s] got=%v, want undefined_word and no result — "+
+				"a def in an untaken arm must not bind (NUR110)", src, codeOf(errC), gotC)
+		}
+	}
+	// The taken path of the same shapes answers the arm's value on both
+	// lanes — the bound check costs nothing when the arm ran.
+	for _, tc := range []struct{ src, want string }{
+		{`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true`, "[9]"},
+		{`def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f false`, "[9]"},
+		{`def c true  if c [def op 1] [0]  end  op`, "[1]"},
+	} {
+		gotC, _, errC := mustNew(t).RunCompiled(tc.src)
+		if noteCompileDefect(t, tc.src, gotC, errC) {
+			continue
+		}
+		if errC != nil || fmt.Sprint(gotC) != tc.want {
+			t.Errorf("%s: compiled err=%v got=%v, want %s", tc.src, errC, gotC, tc.want)
 		}
 	}
 }

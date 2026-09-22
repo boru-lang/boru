@@ -99,8 +99,11 @@ func TestApplyDataReceiverSoundCompileFailures(t *testing.T) {
 		// before the accounting ran there)
 		{adrNum + `def csucc n:Function => [f:Function => [x:Any => [(x (n f/v apply) apply) f/v apply]]] end def toint n:Function => [0 ((k:Integer => [add k 1]) n/v apply) apply] end def c1 (csucc czero/v) end def c2 (csucc c1/v) end def c3 (csucc c2/v) end (toint c3/v)`, "unknown provenance", "[3]"},
 		{adrNum + `def s n:Function => [f:Function => [x:Any => [(n f/v apply)]]] end (s czero/v)`, "unknown provenance", "[fn (Function)]"},
-		// a fn value beneath a paren window with NO apply word keeps declining
-		{`def ap p:Function => [q:Function => [(q/v p/v)]] end def fst a:Any => [b:Any => [a/v]] end def k (x:Any => [x/v]) end ((ap fst/v) k/v apply)`, "unknown provenance", "[fn x(Function)]"},
+		// a fn value beneath a paren window with NO apply word: the inner
+		// window `(q/v p/v)` is the LEAD's since S1b's apply shapes (q binds
+		// p as the interpreter's collection does), and the outer curried
+		// apply keeps declining at its own gate
+		{`def ap p:Function => [q:Function => [(q/v p/v)]] end def fst a:Any => [b:Any => [a/v]] end def k (x:Any => [x/v]) end ((ap fst/v) k/v apply)`, "computed closure at a word's argument slot", "[fn x(Function)]"},
 	}
 	for _, c := range rows {
 		a, err := New()

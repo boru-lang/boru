@@ -11259,3 +11259,336 @@ thing only: `eng/go/vm.go:1076` carried a `//covergate:allow` pragma that the
 widening made REACHABLE. An allowlisted guard something reaches is a lie the
 gate is right to reject; the pragma is removed and the arm asserted
 (`TestReStepLandingUnderflow`).
+
+## S5 — the branch-carried def: the arm-binding join, and NUR110 closed by the same mechanism (2026-09-22)
+
+The two OPEN items the handover page led with — the seventeen-row
+`fn-locals-scope` §6 arm-binding cluster and the live miscompile of
+2026-09-21 — were one defect, and the miscompile was not new: it is NUR110
+(recorded 2026-08-28), pinned by `TestCondBodyFreshDefBindsCompiledOnly`
+with an invitation to close it. Both sit at `InstallJoinedDefs`, the branch
+join: a name bound in an arm is pushed after the merge either as a joined
+carrier with a fresh identity and no home (both arms bind, or a pre binding
+stands — the cluster's "unknown provenance"), or, with no pre binding and
+one binding arm, as the arm's own value, which a later read bakes as though
+the arm always ran (NUR110). And the mechanism the fix needed already
+existed: the LOOP-CARRIED def (`NoteLoopCarried`) is a frame slot per name,
+a store at every rebind site, and the pre-loop value seeded before the loop
+— the design the handover page's frame-slot section had specified from
+scratch, built two months earlier for the loop and never pointed at the
+branch.
+
+**What lands** (`compiler/go/branch_carried.go`, seated from
+`RecordBranch`; `core.BranchRecord.Joins` carries what `InstallJoinedDefs`
+pushed, per name):
+
+- ONE frame slot per NAME per unit (`emitUnit.nameSlots`), shared by every
+  loop and branch carrying the name, so nesting composes: an inner branch's
+  stores are what the outer join reads, and a branch inside a loop over a
+  loop-carried name stores into the loop's own cell.
+- Every arm def of the name a STORE into the slot at its own site
+  (`emitDynBind.armCarried`, lowered first in `lowerDynBind`), so the
+  store runs exactly when the arm runs; a value the planner promoted is
+  re-pushed from its local, one on the stack top is CONSUMED when
+  refcount-dead (its producer's drop suppressed through the existing
+  `bindConsumes` discipline) and COPIED otherwise.
+- The pre-branch binding SEEDED into the slot before the branch
+  (`emitBranch.carried`, lowered at the top of `lowerBranch`; an
+  event-sourced seed is force-promoted), skipped when the pre binding
+  already lives in the slot — which is why the empty-arm rows carry the
+  incoming binding through.
+- The joined carrier's identity aliased to the slot (`localByID`), so a read
+  past the merge — a body result, an operator's operand, a residual — loads
+  whichever arm ran.
+- A name with NO pre binding, bound in one arm only, read through a
+  BOUND-CHECKED load: `OpPushLocalBound`, the one new opcode, raises the
+  interpreter's `undefined_word` on the zero slot (a frame's locals begin
+  as the zero Value, and `Value.IsUnboundSlot` is exact — no engine value is
+  zero), at the read's own position (`EmitState.readPos`, from
+  `NoteLocalRead`), with the frame's local names among the did-you-mean
+  candidates (`core.UndefinedWordDiagWith`), so the compiled diagnostic is
+  the interpreter's payload for payload.
+- `InstallJoinedDefs` pushes a payload-less carrier (`condBoundCarrier`)
+  for the no-pre one-arm case under a compile pass, so nothing can bake the
+  arm's value even where the slot is not seated; a plain check keeps the
+  value.
+
+**The one measurement that decided the design.** The slot means "bound
+since this frame started", never "bound by this execution of the branch":
+`for 2 [if (i eq 0) [def z 9] [] end z]` is `9 9` on the interpreter — an
+arm's binding from iteration 0 is read in iteration 1, where the arm does
+not run. A sentinel seeded before each branch execution would have raised
+where the interpreter answers. Measured before a line of the store was
+written; the unit test and the corpus rows carry it.
+
+**Measured.** `fn-locals-scope.tsv` compile failures 19 -> 2 (the two left,
+L184 and its kin, are fn-VALUE branch results — Stage 3), the corpus sum
+62 -> 45, the unit-suite ledger 284 -> 283; every one of the seventeen
+§6 rows answers with parity on BOTH paths; NUR110's six shapes and their
+taken-path twins raise or answer exactly as the interpreter; twelve new
+witness rows (§6b, §6c) at the end of the file — at the END because the
+checker-accuracy ratchet pins false positives by file:line, and an
+interleaved row shifts every pin below it. `TestBranchCarriedDefParity`
+holds twenty-four shapes; the generated sweep, the real programs, the
+variation differential and every other corpus gate are unchanged. The
+remaining ceilings are in the handover page's table, refreshed from
+`make gate-status`.
+
+**Four regressions found and fixed on the way, each a rule now written
+into the code:**
+
+1. **A program-wide by-name set is the wrong home for a branch-carried
+   fact.** The first cut added carried names to `es.carriedNames`, the
+   loop-carried name's hazard flag, which the undef handler reads by name
+   for EVERY undef — `kg/main.boru` stopped compiling on a `var [[p] …]`
+   splice's own cleanup undef of `p`, because some unrelated branch carried
+   a `p`. Branch-carried names are as common as `p`; the undef hazard is
+   unit-scoped and reads the unit's `nameSlots`, and the routed-read guard
+   is not owed (an arm def a routed dispatch reads keeps its registry twin).
+2. **A seed must never come from ANOTHER FRAME's binding.** In
+   `utils/sort.boru` the recursive callee's arm-local `k` met the caller's
+   `k` as its pre binding; resolving it went through `dynScopeRescue`, whose
+   commitment is program-wide by name, and every other fn binding a `k`
+   (`sort-pair`) then had to lower a dyn-scope install it could not. Such a
+   name is left unseated — its read declines as before — and a resolution
+   that lands on a dyn-scope operand is undone.
+3. **Storability is decided at the join, not at the lowering.** A `word`
+   value bound in an arm cannot be stored; declining the store at lowering
+   took eight generated-sweep call-form variants that had compiled, because
+   nothing read the name past the merge. `dynBindStorable` decides at the
+   join, and an unstorable name is simply not carried.
+4. **A store that pops steals from the consumer that follows.** The first
+   store popped its computed source; a root def's write-back
+   (`OpBindGlobal`'s peek fast path) then found nothing on top — the
+   variation differential's `if true [def f (flex []) …]` variant. Copy
+   unless dead; when dead, consume through `bindConsumes`, exactly the root
+   write-back's own discipline.
+
+A fifth, found by the same ledger moving under the change and fixed on
+main's own defect: `collectDynBindSources`, the collector that
+force-promotes a dyn-bound def's computed source for its registry
+install, walked only a unit's TOP-LEVEL events, so a dyn-bound def inside
+an arm (`[def acc3 (n add 1) f (n sub 1)]`, read by the recursive callee's
+other arm) was left refcount-dead and declined "unpromoted computed value".
+The first cut of the branch-carried def compiled that program by the
+accident of an extra reference; once the reference was scoped correctly
+it declined again, and the collector now walks every nested fragment —
+one more unit-suite program compiles, with parity.
+
+And two the review of the withdrawn 2026-09-21 screen predicted, now
+answered by construction: the `t2` false positive (an arm's own local
+escaping as the arm's RESULT) cannot occur, because the arm's reads resolve
+to the arm's value and only the JOINED identity is aliased; and
+`RecordDynBind`'s `_`/`$`-name filter (a def it never records) leaves such
+a name uncarried — it now declines "unknown provenance" instead of baking,
+a contained compile failure still owed its seat.
+
+**What this does not reach.** A name bound in an arm through a computed
+`do` body (its def lives in the do's own unit); a pre binding from another
+frame (rule 2); a `_`-prefixed name; a fn value, a type node or a module
+value bound in an arm (family L's territory). Each declines where it
+declined before, through an existing site — `compileFailureSiteCeiling`
+stays at 92.
+
+**The checker's half.** `boru check` binds the name after an undecided
+branch — its model has no third state — so the four `ERROR:undefined_word`
+witnesses are runtime-only errors it cannot flag; they are pinned in
+`unflaggedPins` as the checker's T4 debt (the maintainer's open question
+2), not the rows'.
+
+## S1b — a fn value stored in a container, RE-LANDED (2026-09-22)
+
+The 2026-09-19 landing (the entry "built, measured, REVERTED" above) is
+back, unchanged in substance: every `set` signature (all nineteen), `push`,
+`unshift` and `append`'s element form declare `CompileStoresFn` — a word
+that STORES what it is handed never steps it, so a fn-valued operand is
+inert to the recorder and the program compiles. What changed is the ground
+under it. The revert was forced by NUR169 — a one-value paren netting a
+function, applied by the interpreter and pushed as data compiled — which the
+first landing had unmasked; NUR173 closed that on 2026-09-20 with the guarded
+re-step landing, so the review's first witness, `def h fn [[] [Integer]
+[42]] end def m ({} set 'f' h/v) end (m.f)`, answers 42 on both lanes. The
+second witness — closures pushed from a loop body and applied through a
+lambda — is a loud failure on both lanes today: the lambda reads the loop
+iterator `i` AFTER the loop, the interpreter raises `undefined_word` on that
+read (the `[0 1]` the revert recorded was an earlier oracle), and the
+compiled lane fails to compile at the same read. What the revert forbade was
+compiling and answering `[fn g fn g]`; neither lane does.
+
+**Measured.** Compile failures 45 → 39: callbacks 18 → 17 (L62, a stored
+callback's type read back; L61 `((reg.cb) 5)` moves to the paren-apply gate),
+fold-map-filter 4 → 2, module-composition 6 → 5, and fn-locals-scope leaves
+the ledger (its last two rows: a body-local fn pushed into a list). The
+lang/go unit ledger rises 283 → 284 for ONE NEW program, the second
+witness, added as a pin that fails loudly at the check — not a regression,
+and named in the constant's comment. `TestStoredFnValueParity` runs nine
+shapes on both lanes (set / push / unshift / append, flex and plain, a
+module export stored in a flex registry); `TestStoredFnValueNeverSilentlyWrong`
+holds the loud-failure bar on the second witness and re-opens if the oracle
+moves. One instrument added: `BORU_LOG_FAIL_ROWS=1` makes the corpus census
+list every live failing row (`FAILROW file:Lline reason <- input`), which is
+how the next entry's family was measured.
+
+## S1b — the apply shapes: the leading window wherever the lead is a slot (2026-09-22)
+
+**The measurement first.** With `BORU_LOG_FAIL_ROWS=1` the 39 live failing
+rows were listed and grouped. One family — eight callbacks rows, L125 and
+L129–L133, L139, L140 — was a Function PARAM applied inside a body the
+Stage-G leading window `(g x)` did not reach, and reading each row against
+`parenLeadFnApplyIdx` / `DynApplyLeadEligible` gave four gates:
+
+1. the NESTED-BODY gate — the window declined inside any branch, loop or
+   quotation body, from the island era ("the compiled body does not carry
+   the bindings the model needs");
+2. `DynApplyLeadEligible` refused every native code-body closure unit
+   (`each$body`, `fold$body`), keeping only fn bodies and lambda VALUE
+   units — and this one was a live miscompile waiting to be measured:
+   `0 fold ([a:Integer e:Integer] => [a add (f e)]) xs` recorded NO apply
+   for `(f e)`, the window's two values survived into the compiled body,
+   and `add` no-matched at run time (`CALL_NATIVE_POLY no match`) — a
+   decline that was not a decline;
+3. a gradual argument DECLARED a non-fn type (`e:Integer`) was excluded
+   with every other Dynamic value, because the callback's element carrier
+   is `dynamic(Any)` whatever the lambda declares;
+4. a fn-VALUED argument (`(f g/v)`, `(f ([n:Integer] => …))`) was excluded
+   outright, by the rule that keeps the Church-chain family declined.
+
+**The changes, one per gate, and one the fourth needed.**
+
+- `core.parenLeadFnApplyIdx` loses the nesting gate: the bindings question
+  is the lead's, and `DynApplyLeadEligible` asks it directly (the lead must
+  be a slot of the recording unit — an arm or loop body lowers inline in its
+  unit's frame, a closure unit carries its captures as slots). The argument
+  gate becomes `last.Dynamic && !parenLeadArgTypedNonFn(last)`: a gradual
+  carrier whose declared bound excludes Function cannot be a fn at run time
+  and is admitted; a fn VALUE at the argument position is admitted — inside
+  a leading window it arrived inert (a `/v` read, a lambda literal, a
+  quote), a bare fn word would have dispatched or raised before the
+  collapse, so the lead collects it as the interpreter's forward collection
+  does.
+- `RecordDynApplyLead` joins `core.EmitRecorder`: the leading window's
+  record, `recordDynApply(lead=true)` in the compiler, which admits the
+  fn-valued argument the trailing record keeps declining (there the value
+  was a token the interpreter stepped). `stepCloseParen` lets the lead win a
+  window BOTH classifiers admit (`(k inc/v)`: an eligible lead over a
+  concrete fn value) unless the `apply` word owns the tail — the interpreter
+  steps the lead first.
+- `DynApplyLeadEligible` admits a native closure unit with a named frame;
+  the `nUnnamed` guard still keeps bare-type-param closures out.
+- `narrowLambdaInputs` (callable_words.go): a callback lambda's DECLARED
+  param types narrow the callback's `Any` element carrier before the body
+  compiles. The interpreter matches the runtime element against the declared
+  type at every call and no-matches otherwise, and the VM's closure entry
+  enforces the same contract (`SetUnitParamTypes`), so inside the body the
+  param IS that type — what a fn value's own unit already saw through
+  `fnValueInputs`. The fold twin compiled before this only because the
+  accumulator carried the seed's Integer.
+
+Seven of the eight rows compile with parity (callbacks 17 → 10). L125 —
+`x f/v apply f/v apply`, two pending `apply`-word applies in one body — is
+design-bound and stays.
+
+**What the landing found, and what it cost.**
+
+*NUR177, a pre-existing silent miscompile.* The literal-read pin `def g
+f:Function => [(f 3)] end def w n:Integer => [def kk (fn r:Integer Any [mul n
+r]) if (n gt 0) [(g kk/v)] [0]] end (w 5) (w 0)` graduated from
+"then-branch result of unknown provenance" (g's own `(f 3)` is analysed under
+the arm's nesting when g is called from it) and answered `[0 0]` for `[15
+0]`. Reduced on a worktree at the previous commit to `def g x:Integer => [x
+add 3] end def w n:Integer => [(g n)] end (w 5) (w 0)` — `[3 3]` for `[8 3]`,
+on `main`, default lane, exit 0, no fn value in it: the undeclared-return
+branch of `BuildFnBodyReturnsFn` hands `AnalyseFnBody`'s MEMOISED residual
+to `RecordUserCall` as every call's outs, the recorder keys producers by
+value ID, so both calls seated one local and the residual pushed it twice.
+`freshResidual` gives each call its own result identities. The declared-
+return branch always minted its own carriers, which is why the corpus's
+verbose `fn [[…] [T] …]` spelling never showed it.
+
+*The identity accident it removed.* Two generated-sweep cells had been
+passing on the leaked identity: the afn factory seed `def f ([x:Integer] afn
+(mk)) end f 5` reached the residual render gate with the INNER `(mk)` call's
+value ID, and with it the placement fact the inner paren had recorded. With
+per-call identities the gate saw a call result whose render it could not
+prove and declined the seed (31 → 32 sweep failures). The fact stated on its
+own is `unitRenderKnown`'s transitive arm: a unit returning ANOTHER user
+call's single result renders as that callee does. Seed and its variants are
+back, and two more variants pass with it. On the same identity, NUR161
+(`7 f 5` over an afn whose body is a container read: compiled [8] for
+`[7 fn (Integer)]`) stops diverging — the residual can no longer re-step the
+container read's identity — and is a loud "call result above a literal";
+the sweep's `def container · module-body` SWAP-underflow internal_error
+becomes a loud decline the same way. The call-form ceiling stays at 200:
+two passes gained, two divergences turned into declines.
+
+*NUR176, recorded.* A 0-ARG runtime lead under the one-arg window: the
+interpreter fires it with nothing and steps the argument on its own — a fn
+value then applies to the result (`(k inc/v)` with k = `[] -> 7` is 8), a
+literal fails the frame's return count (`type_error`) — where the compiled
+window no-matches (`signature_error`). Loud on both lanes, never a value of
+its own compiled; the literal rows are pre-existing (the window compiled
+before), the fn-valued row arrived with gate 4. `TestApplyShapesZeroArgLeadIsLoud`
+pins all three and re-opens the record if the oracle moves. The fix is one
+change to the window op (the `FnValueOnlyZeroArgSigs` screen the landing
+already uses, then the interpreter's residual semantics), owed as such and
+not as an arity exception at the record (ADR-016).
+
+**Pins.** `TestApplyShapesParity` (lang/go, eighteen shapes on both lanes:
+the arm taken and not, a loop body, the island-era `do [(h 1)]` witness,
+fold and each with typed lambda params over an untyped list, `/v` reads,
+lambda literals, a captured param's `/v`, the Any-typed lead, the event as an
+operand and a def-local, the chained `(f (f x))`, and the no-match rows for
+a 1-arg, a 2-arg and a quoted-word argument);
+`TestApplyShapesBareFnWordArgDeclines` (a bare fn word, global or a
+Function param, at the argument position still declines — NUR123's word
+dispatch); `TestUndeclaredFnRepeatedCallsParity` (NUR177, six shapes); the
+core S5B pins rewritten to the new admissions (nested bodies admit,
+fn-valued and typed-gradual arguments admit, `TestParenLeadArgTypedNonFn`);
+the compiler's `TestDynApplyLeadEligible` closure arm flipped;
+`TestCallResultRenderKnown`'s transitive arms; the literal-read row moved
+from the sound-failure pin to the parity pin; the apply-data-receiver row's
+reason moved to the outer curried gate; the disposition census re-keyed to
+`recordDynApply#1`.
+
+**What it does not reach**, each declining where it declined before: the
+dynamic-lead group (callbacks L40/L41/L50/L51, module-composition L100 —
+"apply over a dynamic lead"), calls through container members (`(fs.b 10)`
+L60, L73, module-composition L96), the curried chain L151, container reads
+inside quotation bodies (each-variants L205, fold-map-filter L215,
+module-composition L98), `((reg.cb) 5)` at the paren-apply gate (L61),
+L125's two pending applies, and NUR176's 0-arg lead.
+
+**Rules this landing adds to the ones above.**
+
+1. **A classifier's -1 must land on a path that DECLINES.** The closure-unit
+   exclusion in `DynApplyLeadEligible` returned false and nothing downstream
+   marked the program: the window's values survived into a compiled body
+   and failed at run time. Every "not admitted" needs a named decline site
+   or a proof the shape is handled elsewhere.
+2. **Widen the model's facts, not its accidents.** A memoised residual's
+   identity leaking across frames carried a placement fact that made two
+   sweep cells pass. Making the identity honest (NUR177) removed the
+   accident; the fact had to be re-derived from structure (the transitive
+   render rule). When a fix makes a passing cell decline, ask what fact the
+   cell was passing on — it is usually one the model should state.
+3. **The corpus spells fns verbosely; the unit suite's lambda defs are the
+   other oracle.** NUR177 lived in every `def name (lambda)` called twice
+   and no corpus row had one; the literal-read pin found it the day its
+   shape graduated. A graduated pin is a measurement, not a cleanup.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, after this landing,
+with the S1b-3 re-land in the same tree):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 45 | 32 | 45 → 39 the re-land; 39 → 32 the apply shapes (callbacks 17 → 10: L129–L133, L139, L140) |
+| compute gaps / reducible | 41 / 3 | 27 / 4 | fourteen rows out of the compute bucket; L61 moved to the reducible bucket (a partition move, not new debt) |
+| diagnostic parity / armed-only | 349 / 9 | 349 / 9 | row for row identical; L139 diverged for one measurement until the plain surface's collapse admitted the inert fn value |
+| interp-entry census rows | 80 | 77 | callbacks L54, L105 and fold-map-filter L200: `each ([f:Function] => [(f n)]) fs` compiles its callback as a closure unit |
+| engine entries / runtime defers | 422 / 8 | 416 / 8 | the same three rows, six entries (Engine.Run ×3, RunResolved ×3); nothing entered |
+| generated sweep: seeds / call-form variants | 31 / 200 | 31 / 200 | two variants pass, two DIVERGED variants became loud declines (NUR161, the SWAP underflow) |
+| lang/go unit ledger: fail / bail | 283 / 32 | 284 / 32 | +1 the re-land's loud witness (a new program); the apply shapes graduated one and NUR177's fix none |
+| real programs, variation differential, bail defects (52), correct-error (1) | — | unchanged | — |
+
+`make status` and `make gate-status` regenerated `COMPILED_STATUS.md` and
+`GATE_STATUS.md`; `make sweep-status` regenerated `SWEEP_STATUS.md`.

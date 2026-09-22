@@ -413,6 +413,7 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if !ok {
 		return false
 	}
+	inputs = narrowLambdaInputs(inputs, lam)
 	names := make([]string, len(lam.Params))
 	for i := range lam.Params {
 		names[i] = lam.Params[i].Name
@@ -638,6 +639,37 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		}
 	}
 	return lam, true
+}
+
+// narrowLambdaInputs binds each GRADUAL Any callback input to the lambda's
+// DECLARED param type where one is declared. The interpreter matches the
+// runtime element against that type at every call and no-matches otherwise,
+// and the VM's closure entry enforces the same contract (SetUnitParamTypes),
+// so inside the body the param IS that type — exactly what a fn value's own
+// unit sees (fnValueInputs → ParamInputCarrier). Measured 2026-09-22 (S1b's
+// apply shapes): `each ([e:Integer] => [(f e)]) xs` over an untyped List
+// analysed e as a gradual Any, whose runtime value nothing could prove not a
+// function, so the paren-lead window declined and the callback fell to
+// "function-valued operand at each (Stage 3)" — while the same lambda under
+// a seeded fold compiled, its accumulator carrying the seed's Integer. A
+// typed element, a KeyVal entry and an undeclared (Any) param are left as
+// they are; inputs is not mutated.
+func narrowLambdaInputs(inputs []core.Value, lam *core.Signature) []core.Value {
+	out := inputs
+	for i := range lam.Params {
+		if i >= len(inputs) {
+			break
+		}
+		pt, in := lam.Params[i].Type, inputs[i]
+		if pt == nil || pt.Equal(core.TAny) || !in.Dynamic || !in.Parent.Equal(core.TAny) {
+			continue
+		}
+		if &out[0] == &inputs[0] {
+			out = append([]core.Value(nil), inputs...)
+		}
+		out[i] = check.ParamInputCarrier(pt)
+	}
+	return out
 }
 
 // fnValueRetSpec is the callback fn value's return contract, or nil when there

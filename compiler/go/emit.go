@@ -106,6 +106,14 @@ type EmitOperand struct {
 	// pushed closure VALUE (core.ClosurePayload) rather than to the shared
 	// unit — see that type's field comment for why the unit is the wrong home.
 	closureRet *ClosureRetSpec
+	// bound names the binding a LOCAL operand reads when its slot may never
+	// have been stored in this frame — a branch-carried def with no
+	// pre-branch binding, bound in one arm only (branch_carried.go). The
+	// push lowers to OpPushLocalBound, which raises the interpreter's
+	// undefined_word on the zero slot. Empty for every other local. boundPos
+	// is the read's own source position, the one that raise names.
+	bound    string
+	boundPos core.SrcPos
 }
 
 // ConstOperand / EventOperand / localOperand / typeOperand build the indexed
@@ -122,7 +130,10 @@ func EventOperand(seq, resIdx int) EmitOperand {
 	return EmitOperand{kind: opEvent, idx: seq, resIdx: resIdx}
 }
 func localOperand(slot int) EmitOperand { return EmitOperand{kind: opLocal, idx: slot} }
-func typeOperand(idx int) EmitOperand   { return EmitOperand{kind: opType, idx: idx} }
+func (es *EmitState) boundLocalOperand(slot int, name, id string) EmitOperand {
+	return EmitOperand{kind: opLocal, idx: slot, bound: name, boundPos: es.readPos[id]}
+}
+func typeOperand(idx int) EmitOperand { return EmitOperand{kind: opType, idx: idx} }
 
 // producer locates a recorded value: the producing event's seq and which of
 // that event's results it is (idx 0 for the common single-result case). P5
@@ -294,6 +305,13 @@ type emitBranch struct {
 	elsVal                EmitOperand // the value-else operand (const/local/type, OR a COMPUTED event when elsComputed) when elsIsVal
 	elsComputed           bool        // else value is a COMPUTED event eagerly on the stack below the cond (`if c [t] (expr)`): SWAP cond up, DROP it on the taken path
 	pos                   core.SrcPos
+	// carried seeds the branch-carried def slots (a name an arm rebinds,
+	// read after the merge — branch_carried.go) with the PRE-branch binding,
+	// lowered at the top of lowerBranch so an arm that does not bind leaves
+	// the incoming binding in the cell. carriedNames is every name this
+	// branch carries into its slot, on every path through it.
+	carried      []carriedInit
+	carriedNames map[string]bool
 }
 
 // armKind classifies one `if` arm, collapsing the emitBranch boolean flags
@@ -370,6 +388,10 @@ type emitLoop struct {
 	// FOR_NEXT, so a zero-iteration loop leaves each cell at its pre-loop
 	// value. See NoteLoopCarried.
 	carried []carriedInit
+	// carriedNames is every name the loop carries in a frame slot (its
+	// scope's slots at EndLoopCarried) — a nested branch carrying the same
+	// name reads it to trust the cell (branch_carried.go, fragCanCarry).
+	carriedNames map[string]bool
 }
 
 // carriedInit seeds one loop-carried def slot: the unit frame slot and the
@@ -598,6 +620,19 @@ type emitDynBind struct {
 	// drops the standing overload as installDef's filter does.
 	specFn  bool
 	replace bool
+	// armCarried marks a BRANCH-CARRIED def (branch_carried.go): the bound
+	// value is stored into frame slot armSlot at the def's own site, so a
+	// read after the branch's merge loads whichever arm ran. The zero value
+	// is every other def, so an event built without the field is a plain
+	// one. armSrcOuter marks a computed source produced OUTSIDE the arm
+	// (below the fragment's floor): the store is then a cross-floor
+	// reference the planner must promote, so forEachOperand counts it; a
+	// source produced inside the arm is not counted, so its dead-ness is
+	// the ordinary refcount's and the store consumes it (bindConsumes) or
+	// copies it for its other consumers.
+	armCarried  bool
+	armSlot     int
+	armSrcOuter bool
 }
 
 // bindsValue reports whether this def-site event installs a RUNTIME value
@@ -1161,6 +1196,12 @@ type EmitState struct {
 	// pendingCarried is the just-closed loop analysis's carried-slot init
 	// list (EndLoopCarried), consumed by the RecordLoop that follows.
 	pendingCarried []carriedInit
+	// pendingCarriedNames is the just-closed loop analysis's carried NAMES,
+	// consumed with pendingCarried (emitLoop.carriedNames).
+	pendingCarriedNames map[string]bool
+	// readPos is the last recorded read position per value ID (NoteLocalRead)
+	// — the position a bound-checked local load raises at (branch_carried.go).
+	readPos map[string]core.SrcPos
 	// carriedNames is every name an armed loop has carried so far (found on
 	// the sixty-fifth increment's tree, off the corpus). A loop-carried name
 	// lives in a FRAME SLOT for the rest of the run — its rebinds are
@@ -1247,6 +1288,19 @@ type loopCarriedScope struct {
 type emitUnit struct {
 	localByID map[string]int
 	numLocals int
+	// nameSlots is the unit's frame slot per CARRIED NAME — a def a loop
+	// body or a branch arm rebinds, read after the loop or the merge
+	// (NoteLoopCarried, branch_carried.go). One cell per name, shared by
+	// every loop and branch carrying it, so nesting composes: an inner
+	// branch's stores are what the outer join reads. Nil until first use.
+	nameSlots map[string]int
+	// boundLocals maps a carried binding's identity (a branch join's joined
+	// carrier) to its NAME when the slot may never have been stored on some
+	// path — a name with no pre-branch binding, bound in one arm only. A read
+	// of such an identity lowers to a bound-checked local push
+	// (OpPushLocalBound), which raises undefined_word on the zero slot, the
+	// interpreter's answer on the path that skipped the arm (NUR110).
+	boundLocals map[string]string
 	// reg is the compiled fn's OWNING registry (a module sub-registry for a
 	// module-preamble fn; the main registry otherwise). Finalize stamps it
 	// on the CompiledFn when it differs from the check registry, and the VM
@@ -2763,6 +2817,9 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 		}
 	}
 	if slot, ok := es.units[len(es.units)-1].localByID[v.ID]; ok {
+		if name := es.units[len(es.units)-1].boundLocals[v.ID]; name != "" {
+			return es.boundLocalOperand(slot, name, v.ID), true
+		}
 		return localOperand(slot), true
 	}
 	// A bare type node is a TYPE operand: it must reach the runtime
@@ -4412,6 +4469,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	seq := es.appendEvent(ev)
 	es.SiteCounts[SiteMono]++
 	es.setProduced(b.Out, seq)
+	es.carryBranchJoins(&ev, b)
 	if zeroOut {
 		// The if produces 0 runtime values; its registered (None) result is a
 		// phantom. Mark the seq so Finalize's residual reconciliation skips it
@@ -4569,6 +4627,12 @@ func (es *EmitState) EndLoopCarried() {
 	top := es.loopCarried[len(es.loopCarried)-1]
 	es.loopCarried = es.loopCarried[:len(es.loopCarried)-1]
 	es.pendingCarried = append(es.pendingCarried, top.inits...)
+	for name := range top.slots {
+		if es.pendingCarriedNames == nil {
+			es.pendingCarriedNames = map[string]bool{}
+		}
+		es.pendingCarriedNames[name] = true
+	}
 }
 
 // NoteLoopCarried registers one loop-body REBIND of a pre-existing def as
@@ -4621,9 +4685,20 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 			if !ok {
 				return
 			}
-			slot = u.numLocals
-			u.numLocals++
-			scope.inits = append(scope.inits, carriedInit{slot: slot, init: init})
+			// The unit's cell for the name, when a branch (or an earlier
+			// loop) already carries it — one cell per name per unit
+			// (branch_carried.go). The init is still recorded, unless the
+			// pre-loop binding already lives in that very cell.
+			if s, ok := u.nameSlots[name]; ok {
+				slot = s
+			} else {
+				slot = u.numLocals
+				u.numLocals++
+				u.setNameSlot(name, slot)
+			}
+			if !(init.kind == opLocal && init.idx == slot) {
+				scope.inits = append(scope.inits, carriedInit{slot: slot, init: init})
+			}
 		}
 		scope.slots[name] = slot
 	} else {
@@ -4646,6 +4721,12 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 		}
 	}
 	u.localByID[joined.ID] = slot
+	// A loop may run zero times, so a pre binding that is itself possibly
+	// unbound (a branch-carried name with no pre of its own) leaves the
+	// post-loop binding possibly unbound too.
+	if bname := u.boundLocals[pre.ID]; bname != "" {
+		u.boundLocals[joined.ID] = bname
+	}
 }
 
 // RecordBindTwin appends one bind-ledger transition to the pass's twin table
@@ -5605,6 +5686,12 @@ func (es *EmitState) nameCarried(name string) bool {
 	if es.carriedNames[name] {
 		return true
 	}
+	if n := len(es.units); n > 0 && es.units[n-1] != nil {
+		if _, ok := es.units[n-1].nameSlots[name]; ok {
+
+			return true
+		}
+	}
 	for i := len(es.loopCarried) - 1; i >= 0; i-- {
 		if _, ok := es.loopCarried[i].slots[name]; ok {
 			return true
@@ -6295,8 +6382,10 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 //     trailing model records (`(args.0 args.1)` over a two-arg runtime fn
 //     nets 28 interpreted where the trailing model no-matches) — those
 //     frames keep the whole-frame replay;
-//   - a CLOSURE unit's analysis frame is the CallableSpec inputs, not a
-//     per-call named frame — outside the probe evidence, so it declines;
+//   - a CLOSURE unit with a NAMED frame (a callback lambda) is admitted for
+//     its own slots — a param or a capture — since S1b's apply shapes
+//     (2026-09-22); the former exclusion left a fold lambda's `(f e)`
+//     unrecorded and the body bailed at run time;
 //   - an EVENT-provenance lead (a direct call result, `((mk 1) 2)`) keeps
 //     the curried/auto-dispatch machinery — RecordDynApply hard-declines an
 //     event fn (runtime quote state unknown), so admitting one here would
@@ -6313,20 +6402,21 @@ func (es *EmitState) DynApplyLeadEligible(v core.Value) bool {
 	if !es.Active() || len(es.openUnitRecs) == 0 {
 		return false
 	}
-	// The Stage 2 closure-flag split's consumer half: a native code-body
-	// closure unit (each/do$body — its analysis frame is the CallableSpec
-	// inputs) still declines, but a LAMBDA unit ("fnval" — a returned
-	// lambda's own body, a real named-param frame with capture slots) is
-	// admitted: the witness is the factory's inner apply-the-capture body
-	// (`def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer]
-	// [(g v)]] )]]` — without the admission the [g, v] residual
-	// count-declines the fnval probe and the whole factory declines "body
-	// result of unknown provenance"). The nUnnamed guard below still
-	// excludes bare-type params.
+	// Every unit with a NAMED frame is eligible — a fn body, a LAMBDA unit
+	// ("fnval" — a returned lambda's own body, a real named-param frame with
+	// capture slots; the witness is the factory's inner apply-the-capture
+	// body `def mkc2 fn [[g:Function][Function][( fn [[v:Integer][Integer]
+	// [(g v)]] )]]`), and a native code-body closure unit (each/fold$body)
+	// whose lambda names its params: the lead must be one of the unit's own
+	// slots (the localByID test below), and a closure unit carries its
+	// captures as slots of its own. The native closure unit used to be
+	// excluded ("its analysis frame is the CallableSpec inputs, not a
+	// per-call named frame"), and the exclusion was measured a miscompile
+	// (2026-09-22, S1b's apply shapes): `0 fold ([a e] => [a add (f e)])
+	// xs` recorded no apply for `(f e)`, the window's two values survived
+	// into the compiled body, and `add` no-matched at run time. The nUnnamed
+	// guard below still excludes bare-type params.
 	innermost := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
-	if innermost.closure && !innermost.lambdaUnit {
-		return false
-	}
 	if innermost.nUnnamed > 0 {
 		return false
 	}
@@ -6401,6 +6491,27 @@ func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
 }
 
 func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+	return es.recordDynApply(args, fn, out, pos, false)
+}
+
+// RecordDynApplyLead records the classified LEADING one-arg window `(g x)`
+// (core.EmitRecorder) through the same event as the trailing spelling,
+// with the one admission the leading window earns: a fn-VALUED argument.
+// Inside a leading window the argument arrived inert — a `/v` read, a
+// lambda literal, a quote — since a bare fn word would have dispatched or
+// raised before the collapse, so the lead collects it as a value exactly
+// as the interpreter's forward collection does (`(f g/v)` binds g to f's
+// Function param; `(f ([n:Integer] => [n add 1]))` the lambda). The
+// trailing window keeps declining such an argument: there the value was a
+// token the interpreter stepped, and nothing established it is not an
+// applicable of its own.
+func (es *EmitState) RecordDynApplyLead(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
+	return es.recordDynApply(args, fn, out, pos, true)
+}
+
+// recordDynApply is the body of RecordDynApply and RecordDynApplyLead; lead
+// selects the leading window's fn-valued-argument admission.
+func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos, lead bool) (int, bool) {
 	if !es.Active() {
 		return 0, false
 	}
@@ -6502,14 +6613,15 @@ func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos c
 	// matched it against the closure's own signature (`kk/v (ss kk/v)
 	// apply` binds kk to the g:Function param), and a fn-typed carrier
 	// lead's re-step binds it the same way (`(n/v f/v apply)` hands the
-	// numeral to f — the thirty-second increment). A paren window with no
-	// apply word keeps declining a fn-valued arg: inside the paren that
-	// value was a TOKEN the interpreter stepped, and nothing has established
-	// it is not an applicable of its own.
+	// numeral to f — the thirty-second increment). A LEADING window's
+	// argument is data for the same reason (RecordDynApplyLead). A TRAILING
+	// paren window with no apply word keeps declining a fn-valued arg:
+	// inside the paren that value was a TOKEN the interpreter stepped, and
+	// nothing has established it is not an applicable of its own.
 	ops := make([]EmitOperand, 0, len(args)+1)
 	ops = append(ops, fnOp)
 	for i := len(args) - 1; i >= 0; i-- {
-		if core.IsFnValueResidual(args[i]) && applyIdx < 0 {
+		if core.IsFnValueResidual(args[i]) && applyIdx < 0 && !lead {
 			return 0, false
 		}
 		op, ok := es.resolveOperand(args[i])
@@ -6657,8 +6769,8 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 	}
 	// Claim the just-closed analysis's carried-def slot inits (EndLoopCarried)
 	// up front so an early failure below never leaks them to a LATER loop.
-	carried := es.pendingCarried
-	es.pendingCarried = nil
+	carried, carriedNames := es.pendingCarried, es.pendingCarriedNames
+	es.pendingCarried, es.pendingCarriedNames = nil, nil
 	if body == nil {
 		es.recordLoopEvent("for", nil, nil, nil, iterID, out, 0, "body not captured")
 		return
@@ -6679,7 +6791,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 		es.MarkUncompilable("for: computed range start/step (Stage 2 follow-on)")
 		return
 	}
-	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, pos: pos, carried: carried}
+	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, pos: pos, carried: carried, carriedNames: carriedNames}
 	es.recordLoopEvent("for", lp, body, bodyStk, iterID, out, regionN, "")
 }
 
@@ -6699,9 +6811,9 @@ func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk,
 	if !es.Active() {
 		return
 	}
-	carried := es.pendingCarried
-	es.pendingCarried = nil
-	lp := &emitLoop{iterSlot: -1, pos: pos, carried: carried, cond: cond}
+	carried, carriedNames := es.pendingCarried, es.pendingCarriedNames
+	es.pendingCarried, es.pendingCarriedNames = nil, nil
+	lp := &emitLoop{iterSlot: -1, pos: pos, carried: carried, carriedNames: carriedNames, cond: cond}
 	failure := ""
 	if cond == nil || body == nil {
 		failure = "body not captured"
@@ -11360,6 +11472,10 @@ func (es *EmitState) resolveResidualOperands(lw *lowerer, residual []core.Value)
 		// module-scope rebind resolves the joined binding to its cell). Events
 		// first, mirroring resolveOperand's precedence.
 		if slot, okLoc := es.units[0].localByID[rv.ID]; okLoc {
+			if name := es.units[0].boundLocals[rv.ID]; name != "" {
+				ops = append(ops, es.boundLocalOperand(slot, name, rv.ID))
+				continue
+			}
 			ops = append(ops, localOperand(slot))
 			continue
 		}
@@ -11697,7 +11813,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	}
 	es.excusePrefixRegion(residual, forceOrder)
 	lw.promoted, lw.dead = es.planValueDefLocals(es.units[0], es.frames[0], residualSeqs, forceOrder)
-	lw.bindConsumes = collectRootBindConsumes(es.frames[0], lw.dead)
+	lw.bindConsumes = mergeBindConsumes(collectRootBindConsumes(es.frames[0], lw.dead), collectArmBindConsumes(es.frames[0], lw.dead))
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
 	// Mark-window plan (L-DO part 2b): see planMarkWindow.
 	es.planMarkWindow(lw, residual)
@@ -11847,7 +11963,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: collectResidentBindConsumes(rec.frag.events, rec.dead), isFnUnit: true}
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -12201,7 +12317,18 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // comes after it is a value the interpreter's stack holds at the
 // statement and the compiled stack does not yet.
 func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
-	if !es.Active() || id == "" || pos.Row == 0 || len(es.openUnitRecs) == 0 {
+	if !es.Active() || id == "" || pos.Row == 0 {
+		return
+	}
+	// The read's own position, by the value read — the bound-checked local
+	// load stamps its undefined_word here (branch_carried.go), where the
+	// interpreter raises. Last read wins; every read of one binding raises
+	// the same error, so the site named is the one that ran.
+	if es.readPos == nil {
+		es.readPos = map[string]core.SrcPos{}
+	}
+	es.readPos[id] = pos
+	if len(es.openUnitRecs) == 0 {
 		return
 	}
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
@@ -14004,10 +14131,30 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		return false
 	}
 	ev := es.eventBySeq(pr.seq)
-	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil || ev.uc.unit < 0 || ev.uc.unit >= len(es.fnRecs) {
+	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil {
 		return false
 	}
-	rec := es.fnRecs[ev.uc.unit]
+	return es.unitRenderKnown(ev.uc.unit, 0)
+}
+
+// unitRenderKnown is callResultRenderKnown's question of one UNIT: does its
+// single out operand render byte-identically on both lanes? A returned
+// compiled closure with its render string does, a capture-free lambda
+// literal baked as a const does, and — transitively — the single result of
+// ANOTHER user call whose unit's does: a fn whose body is `(mk)` returns
+// mk's closure, and the interpreter parks it under mk's own render exactly
+// as it parks mk's. The generated sweep's `afn` factory seed (`def f
+// ([x:Integer] afn (mk)) end f 5`) passed this gate only by an accident of
+// identity — the memoised body residual carried the INNER call's value ID
+// out to the program residual, and with it the placement fact the inner
+// paren had recorded — until NUR177's fix gave each call its own results
+// (2026-09-22); the transitive arm is the fact stated on its own. depth
+// bounds a body that returns its own call.
+func (es *EmitState) unitRenderKnown(unit, depth int) bool {
+	if depth > 8 || unit < 0 || unit >= len(es.fnRecs) {
+		return false
+	}
+	rec := es.fnRecs[unit]
 	if rec == nil || len(rec.outOps) != 1 {
 		return false
 	}
@@ -14025,6 +14172,22 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		}
 		_, isFn := es.consts[out.idx].Data.(core.FnDefInfo)
 		return isFn
+	case opEvent:
+		// The body returns another call's single result: the event lives in
+		// the unit's own captured fragment.
+		if rec.frag == nil || out.resIdx != 0 {
+			return false
+		}
+		for i := range rec.frag.events {
+			inner := &rec.frag.events[i]
+			if inner.seq != out.idx {
+				continue
+			}
+			if inner.kind != evCallUser || inner.uc.poly != nil || inner.uc.nout != 1 {
+				return false
+			}
+			return es.unitRenderKnown(inner.uc.unit, depth+1)
+		}
 	}
 	return false
 }

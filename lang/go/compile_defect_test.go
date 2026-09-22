@@ -48,7 +48,7 @@ const (
 	// Set 2026-09-19, the change that removed the interpreter fallbacks.
 	// These are not new bugs: every one of them was already there, answered
 	// by a silent re-run on the interpreter and counted by nothing.
-	compileDefectCeiling = 284
+	compileDefectCeiling = 284 // 283 -> 284 on 2026-09-22 (S1b-3 re-landed): one NEW unit-suite program that fails to compile loudly at the check — TestStoredFnValueNeverSilentlyWrong's witness, a stored closure reading the loop iterator `i` after the loop (the interpreter raises undefined_word on the same read) — added as a pin, not a regression; on the same day S1b's apply shapes graduated one program (the literal-read row inside a branch arm) and NUR177's fix none. Before: 284 -> 283 on 2026-09-22: the branch-carried def (compiler/go/branch_carried.go) — a name an `if` arm binds, read after the merge, loads from a frame slot; one unit-suite program that declined on that read compiles
 	bailDefectCeiling    = 32
 )
 

@@ -66,6 +66,9 @@ func TestInactiveEmitMethods(t *testing.T) {
 	if _, ok := e.RecordDynApply(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
 		t.Fatal("inactive RecordDynApply should decline")
 	}
+	if _, ok := e.RecordDynApplyLead(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+		t.Fatal("inactive RecordDynApplyLead should decline")
+	}
 	if e.RecordDynMethod(core.Value{}, nil, nil, "w", core.SrcPos{}) {
 		t.Fatal("inactive RecordDynMethod should decline")
 	}

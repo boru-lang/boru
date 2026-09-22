@@ -204,4 +204,48 @@ func TestCallResultRenderKnown(t *testing.T) {
 	if !es.callResultRenderKnown(v) {
 		t.Error("a const fn value renders as the interpreter formats it")
 	}
+	// TRANSITIVE: a unit returning another user call's single result is known
+	// when that callee's is (`def f ([x:Integer] afn (mk))`, NUR177's fix
+	// removed the identity accident that used to pass this shape).
+	es.fnRecs = []*fnUnitRec{{name: "f"}, {name: "fnval$body", render: "fn (Integer)"}, {name: "mk"}}
+	es.fnRecs[0].outOps = []EmitOperand{EventOperand(3, 0)}
+	if es.callResultRenderKnown(v) {
+		t.Error("an event operand with no captured fragment is unknown")
+	}
+	es.fnRecs[0].frag = &EmitFragment{events: []EmitEvent{{seq: 2, kind: evCall}, {seq: 3, kind: evCall, call: emitCall{word: "w", nout: 1}}}}
+	if es.callResultRenderKnown(v) {
+		t.Error("an inner native call's result is unknown")
+	}
+	es.fnRecs[0].frag.events[1] = EmitEvent{seq: 3, kind: evCallUser, uc: emitUserCall{unit: 2, nout: 1}}
+	if es.callResultRenderKnown(v) {
+		t.Error("an inner user call to a unit returning no closure is unknown")
+	}
+	es.fnRecs[2].outOps = []EmitOperand{{kind: opClosure, closureUnit: 1}}
+	if !es.callResultRenderKnown(v) {
+		t.Error("an inner user call returning a rendered closure is known transitively")
+	}
+	es.fnRecs[0].outOps = []EmitOperand{EventOperand(3, 1)}
+	if es.callResultRenderKnown(v) {
+		t.Error("a second result index is not the single out")
+	}
+	es.fnRecs[0].outOps = []EmitOperand{EventOperand(4, 0)}
+	if es.callResultRenderKnown(v) {
+		t.Error("an event the fragment does not hold is unknown")
+	}
+	es.fnRecs[0].outOps = []EmitOperand{EventOperand(3, 0)}
+	es.fnRecs[0].frag.events[1].uc.nout = 2
+	if es.callResultRenderKnown(v) {
+		t.Error("a multi-output inner call is unknown")
+	}
+	es.fnRecs[0].frag.events[1].uc.nout = 1
+	es.fnRecs[0].frag.events[1].uc.poly = &emitUserPolySpec{}
+	if es.callResultRenderKnown(v) {
+		t.Error("a poly inner call is unknown")
+	}
+	// A body that returns its own call bottoms out at the depth bound.
+	es.fnRecs[0].frag.events[1].uc.poly = nil
+	es.fnRecs[0].frag.events[1].uc.unit = 0
+	if es.callResultRenderKnown(v) {
+		t.Error("a self-returning unit is unknown at the depth bound")
+	}
 }

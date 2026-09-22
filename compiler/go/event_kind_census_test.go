@@ -56,6 +56,7 @@ var eventKindSites = map[string]string{
 	"fragmentResultSeqs":      "lower.go — the seqs a fragment's results come from",
 	"markTailCalls":           "lower.go — marks a body's tail call",
 	"computeLeaverPrefix":     "lower.go — the prefix a diverging arm leaves",
+	"fragCanCarry":            "branch_carried.go — does the arm carry a name's binding out on every path? (default: an unnamed kind neither binds nor carries, so the name is NOT seated and its read declines as before — sound, never a stale slot)",
 }
 
 // operandKindSites key on OPERAND kind (opConst / opLocal / opEvent / …), a
@@ -64,6 +65,7 @@ var eventKindSites = map[string]string{
 var operandKindSites = map[string]bool{
 	"appendResidualSeqs":    true,
 	"callResultRenderKnown": true,
+	"unitRenderKnown":       true,
 	"closureOpShape":        true,
 	"computedArmCondOK":     true,
 	"deoptDeferred":         true,

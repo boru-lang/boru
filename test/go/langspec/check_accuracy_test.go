@@ -61,6 +61,17 @@ const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus 
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	// fn-locals-scope.tsv: 4 ERROR rows, added 2026-09-22 with the
+	// branch-carried def (compiler/go/branch_carried.go), NUR110's closure —
+	// a name bound inside ONE arm of a branch the checker cannot decide,
+	// read after the merge, on the path that skipped the arm: the
+	// interpreter and the compiled program both raise undefined_word at the
+	// read (the compiled lane used to bake the arm's value). The checker
+	// binds the name after the branch — its model has no third state
+	// between bound and unbound (design/SESSION-HANDOVER.0.md, NUR110's
+	// record) — so it cannot flag the read; that is the checker's T4 debt,
+	// not the rows'. Falls when the checker learns a conditional binding.
+	"fn-locals-scope.tsv": 4,
 	// fold-map-filter.tsv: 2 ERROR rows the checker cannot statically flag,
 	// added 2026-09-17 with the corpus expansion. Both are RUNTIME-only
 	// failures of a callback the checker cannot resolve statically — the

@@ -660,20 +660,21 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		EmitUnreachableBranch(r, lit, branch)
 		var stk []Value
 		var defs map[string]Value
+		var joins []BranchJoin
 		if lit {
 			restoreThen := ApplyGuardNarrowing(r, args[0])
 			es.Recorder().ArmBranchCapture()
 			stk, defs = RunCarrierBodyWithDefs(r, args[1])
 			stk = es.Recorder().ArmTailApply(stk)
 			restoreThen()
-			InstallJoinedDefs(r, defs, nil)
+			joins = InstallTakenArmDefs(r, defs, nil)
 		} else {
 			restoreElse := ApplyComplementNarrowing(r, args[0])
 			es.Recorder().ArmBranchCapture()
 			stk, defs = RunCarrierBodyWithDefs(r, args[2])
 			stk = es.Recorder().ArmTailApply(stk)
 			restoreElse()
-			InstallJoinedDefs(r, nil, defs)
+			joins = InstallTakenArmDefs(r, nil, defs)
 		}
 		frag := recorderState(es).TakeFragment()
 		if len(stk) == 0 { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
@@ -684,7 +685,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		taken := lit
 		recorderState(es).RecordBranch(BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(),
+			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(), Joins: joins,
 		})
 		return []Value{out}
 	}
@@ -779,7 +780,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		elseValue = &v
 		elseStk = []Value{v}
 	}
-	InstallJoinedDefs(r, thenDefs, elseDefs)
+	joins := InstallJoinedDefs(r, thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
@@ -792,7 +793,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		recorderState(es).RecordBranch(BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(), Joins: joins,
 		})
 		// The phantom None is only meaningful while bytecode recording is
 		// live (the lowering tracks the zeroOut slot and the top-level
@@ -818,7 +819,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	recorderState(es).RecordBranch(BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(),
+		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(), Joins: joins,
 	})
 	return []Value{out}
 }
@@ -928,12 +929,12 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 		restore := ApplyGuardNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallJoinedDefs(r, defs, nil)
+		InstallTakenArmDefs(r, defs, nil)
 	} else {
 		restore := ApplyComplementNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallJoinedDefs(r, nil, defs)
+		InstallTakenArmDefs(r, nil, defs)
 	}
 	return stk
 }
@@ -975,7 +976,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
-	InstallJoinedDefs(r, thenDefs, nil)
+	joins := InstallJoinedDefs(r, thenDefs, nil)
 	var out Value
 	zeroGuard := len(thenStk) == 0
 	if zeroGuard {
@@ -988,7 +989,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// guard — RecordBranch lowers that with no merge slot.
 	recorderState(es).RecordBranch(BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
-		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: args[0].Pos(),
+		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: args[0].Pos(), Joins: joins,
 	})
 	// A 0-value statement guard's phantom None only belongs on the carrier
 	// stack while recording is live (mirrors if3ReturnsFn): a plain or

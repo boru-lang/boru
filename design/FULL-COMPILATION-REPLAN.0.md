@@ -318,3 +318,94 @@ what keeps the numbers honest:
 - A ceiling is a ratchet on a BUG COUNT, never a budget. Lowering one by
   deleting a corpus row rather than by compiling it is never allowed.
 - A program that does not compile has hit a bug. It is not a "refusal".
+
+## 11. Re-estimated 2026-09-22, after S5's first slice (the branch-carried def)
+
+**Measured on this branch, at the head that closes NUR110.** Three
+session-days since the 2026-09-19 column of §6: 09-20 (F3, the vocabulary
+finish; NUR173), 09-21 (NUR174/175; the nine false-path witnesses; the
+handover made current), 09-22 (S5's first slice — the seventeen-row
+arm-binding cluster and NUR110, one mechanism, one day). Of those, the
+F-line and NUR173–175 were not in §6's table at all: the maintainer's
+fallback ruling and three fn-value-seam miscompiles found while reading
+ahead. That is the shape §9 predicted — the instruments raise the bill
+before they lower it — and it is the reason the total below barely moves
+while three days were spent.
+
+**Where the debt stands** (the generated census, `COMPILED_STATUS.md`,
+not re-derived):
+
+| measure | 09-17 | 09-19 | 09-21 | **09-22** |
+|---|---:|---:|---:|---:|
+| corpus rows that fail to compile | 113 | 53 | 62 | **45** |
+| of which operand provenance (S5) | 15 | 16 | 25 | **8** |
+| of which the fn-value family (S1b: value reaches word, apply shapes, hof2, curried, function-valued operand) | ~40 | ~28 | ~23 | **~23** |
+| compute gaps | 107 | 49 | 58 | **41** |
+| unit-suite programs that do not compile (`lang/go`) | — | 284 | 284 | **283** |
+| language tests answered on the reference engine (`lang/go/test`) | — | 111 | 111 | 111 |
+| engine entries / interp-entry rows (T2) | 379 / 54 | 422 / 78 | 422 / 80 | 422 / 80 |
+| real programs compiling | 31/62 | 34/62 | 34/62 | 34/62 |
+| known miscompiles open on `main` (T3) | 5 | 0 | 1 (NUR110, live) | **0** |
+
+The 45 that remain, by mechanism: the fn-value family ~23 (S1b — the
+apply shapes, a fn value reaching a word or an operand slot, hof2, the
+curried chain), provenance 8 (S5 — the rest of Stage 5's generality: inert
+values on both sides of a run, non-adjacent consumers), dispatch recovery
+2, the twin regime's unplaced transitions 2, loop results as a branch
+result 2, a dynamic-scope def of an unpromoted computed value 3, and five
+singletons (a code-body word, a quoted-operand word, an uncaptured `for`
+body, opaque output, the one correct-error row).
+
+**Two numbers the corpus count does not show, and which now dominate.**
+The two unit-suite ledgers (283 programs that do not compile, 111 answered
+on the reference engine) are larger than the corpus's 45 and are not in
+§6's table; and T2's engine-entry census (422) has not moved since S1b's
+second increment. Reaching 0 on the corpus is "corpus-native", the review's
+first package; T1 is every program, and T2 is the seam census. The
+estimate below is against the ruled end state (T1 + T2), as §7 was.
+
+**The re-estimate, per step** (the 09-19 column, and what moved it):
+
+| step | 09-19 | **09-22** | why |
+|---|---:|---:|---|
+| S0 | 2–4 | **2–4** | untouched: the module exports as rows, signature-level cells, the ratchets re-based on the sweep |
+| S1b | 9–15 | **8–14** | NUR173–175 landed the fn-value seam's landing model on the way (three miscompiles, none in the table); the ~23 fn-value rows, the 80 census rows and the 422 entries are its owed half and are design-bound — a modest cut |
+| S2a | 3–5 | **3–5** | no evidence since |
+| S2b | 9–15 | **9–15** | 12 of the 28 real programs fail on `test-describe`/`test-cover`, code-body words on units; unchanged |
+| S3 | 8–16 | **8–16** | the 21 code-body census rows; unchanged |
+| S4 | 18–30 | **18–30** | design-bound and unchanged — and now on a second critical path: the knowledge-graph generator dies at `DISPATCH_GENERIC at ev`, the evaluating host, and the kg gate is off until it lands |
+| S5 | 8–13 | **3–6** | the frame-slot mechanism landed and took 17 of the 25 provenance rows; 8 remain, on the same seat |
+| S6 | 4–8 | **4–8** | the four `undefined_word` witnesses the checker cannot flag are the T4 shape made concrete; unchanged |
+| S7 | 5–10 | **5–10** | unchanged |
+| | **66–116** | **60–108** | |
+
+**Calendar and probability.** At five session-days a week from 2026-09-22:
+
+| | session-days | finishes |
+|---|---:|---|
+| low | 60 | around 15 December 2026 |
+| midpoint | 84 | around 20 January 2027 |
+| high | 108 | around 18 February 2027 |
+
+Year end is about 71 session-days away, so the low end reaches it with two
+weeks' margin and the midpoint misses it by about three. T1 + T2 by year
+end: **about 30%**, unchanged from §7's refresh — the low end came in by
+six days and the width did not, because the width lives in S4 and S1b, and
+neither moved. By the end of February 2027: about 65%; by the end of March
+2027: about 80%.
+
+**What would move it, in order of leverage.** (1) S1b's apply shapes as one
+mechanism — 23 rows and most of the 80 census rows are one family, and the
+seam's landing model is now in place. (2) The evaluating host (S4): it is
+the only thing that restores the kg gate, and it is where the generic lane's
+parity risk lives; starting it early is cheaper than starting it last.
+(3) A second session on S2a/S2b, the one line that does not contend for
+`compiler/go`. (4) The unit-suite ledgers need the same per-family census
+the corpus has (`COMPILED_STATUS.md`'s buckets over `lang/go`'s 283), or
+their number will be re-measured upward the way the corpus's was.
+
+**Calibration.** S5's first slice: one session-day, seventeen rows, a
+recorded miscompile closed, one new opcode, four regressions found and
+fixed by the corpus gates on the way (each now a rule in the code). The
+family-level rate the handover page's process rule 9 names — ten to twenty
+rows per family increment — held; the row-level rate did not apply.

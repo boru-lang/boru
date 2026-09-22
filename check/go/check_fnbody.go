@@ -804,10 +804,32 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
 		if fnUnit >= 0 {
-			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, stk)
+			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, freshResidual(stk))
 		}
 		return stk
 	}
+}
+
+// freshResidual re-mints every value of an analysed body residual under its
+// own ID, for the record of ONE call. AnalyseFnBody memoises a body's
+// residual per (fn, arg-shape) key and hands the SAME values to every call of
+// that shape, and the recorder keys a value's producer by its ID: two calls of
+// an undeclared (lambda-bodied) fn in one program seated one producer for
+// both results and the residual pushed that local twice — `def w n:Integer
+// => [(g n)] end (w 5) (w 0)` answered [3 3] for the interpreter's [8 3], and
+// `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` [0 0] for
+// [8 0] (measured 2026-09-22, NUR177). The declared-return path above mints
+// its carriers per call already; this is the undeclared path's equivalent,
+// and it is a shallow copy — a payload is the same value on every call, only
+// the identity is the call's own.
+func freshResidual(stk []core.Value) []core.Value {
+	out := make([]core.Value, len(stk))
+	for i, v := range stk {
+		c := v
+		c.ID = core.GenerateID(core.IDPrefixForType(c.Parent))
+		out[i] = c
+	}
+	return out
 }
 
 // collapseTailApply mirrors, on the call site's analysed residual, the

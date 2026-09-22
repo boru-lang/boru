@@ -24,21 +24,36 @@ import (
 // dispatch wiring.
 var storageNatives = []NativeFunc{
 	{
+		// Every `set` signature declares CompileStoresFn: `set` WRITES its
+		// value operand into the container and never puts it back on the
+		// tape, so a fn-valued operand is inert to the bytecode recorder
+		// (RecordCallOperands' "function value reaches set (Stage 3)" gate
+		// is the guard against a handler re-STEPPING a fn the VM has no
+		// tape for, and this word never does). The rule, stated once here
+		// and followed by push, unshift and append's element form: a word
+		// that STORES what it is handed declares it; a word that INVOKES
+		// what it is handed keeps the gate. The stored fn is invoked LATER,
+		// from the container — through the re-step landing (NUR173) or a
+		// callback seam — which is why CompileStoresFn and not a per-slot
+		// FnInertArgs: only a pure fn literal bakes, a capturing fn keeps its
+		// real binding (S1b, 2026-09-19; re-landed 2026-09-22 once NUR169 —
+		// the one-value paren that did not apply — was fixed by NUR173).
 		Name: "set",
 
 		Signatures: []Signature{
 			// Store (copy-on-write)
 
 			{
-				Args:      []*Type{TString, TAny, TStore},
-				Impl:      Go(setStoreHandler),
-				Returns:   []*Type{},
-				ReturnsFn: setStoreReturnsFn, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TStore},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setStoreHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     setStoreReturnsFn, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TStore},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setStoreHandler),
 				Returns:       []*Type{},
 				ReturnsFn:     setStoreReturnsFn, BarrierPos: -1,
@@ -49,15 +64,16 @@ var storageNatives = []NativeFunc{
 			// a NEW map with the key bound and leaves the receiver
 			// untouched — the same contract as push / StructUtil.setpath.
 			{
-				Args:      []*Type{TString, TAny, TMap},
-				Impl:      Go(setMapHandler),
-				Returns:   []*Type{TMap},
-				ReturnsFn: setMapTypedReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TMap},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setMapHandler),
+				Returns:       []*Type{TMap},
+				ReturnsFn:     setMapTypedReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setMapHandler),
 				Returns:       []*Type{TMap},
 				ReturnsFn:     setMapTypedReturns, BarrierPos: -1,
@@ -69,9 +85,10 @@ var storageNatives = []NativeFunc{
 			// provably out-of-range index over a known length is flagged
 			// at check time (setListIndexReturns → CheckListIndex).
 			{
-				Args:    []*Type{TInteger, TAny, TList},
-				Impl:    Go(setListHandler),
-				Returns: []*Type{TList}, ReturnsFn: setListIndexReturns, BarrierPos: -1,
+				Args:          []*Type{TInteger, TAny, TList},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setListHandler),
+				Returns:       []*Type{TList}, ReturnsFn: setListIndexReturns, BarrierPos: -1,
 			},
 
 			// Class instance (in-place, SEALED): a declared field
@@ -82,29 +99,31 @@ var storageNatives = []NativeFunc{
 			// same MakeClassFieldValue check the write runs) is flagged
 			// at check time (setClassInstanceReturns).
 			{
-				Args:    []*Type{TString, TAny, TClass},
-				Impl:    Go(setClassInstanceHandler),
-				Returns: []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TClass},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setClassInstanceHandler),
+				Returns:       []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TClass},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setClassInstanceHandler),
 				Returns:       []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 
 			// FlexMap (in-place key set; returns the node for chaining)
 			{
-				Args:      []*Type{TString, TAny, TFlexMap},
-				Impl:      Go(setFlexMapHandler),
-				Returns:   []*Type{TFlexMap},
-				ReturnsFn: setFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TFlexMap},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setFlexMapHandler),
+				Returns:       []*Type{TFlexMap},
+				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setFlexMapHandler),
 				Returns:       []*Type{TFlexMap},
 				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
@@ -113,23 +132,25 @@ var storageNatives = []NativeFunc{
 			// FlexList (in-place index set; 0..len-1 only — sparse is
 			// an error, growth is append's job)
 			{
-				Args:      []*Type{TInteger, TAny, TFlexList},
-				Impl:      Go(setFlexListHandler),
-				Returns:   []*Type{TFlexList},
-				ReturnsFn: setFlexListReturns, BarrierPos: -1,
+				Args:          []*Type{TInteger, TAny, TFlexList},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setFlexListHandler),
+				Returns:       []*Type{TFlexList},
+				ReturnsFn:     setFlexListReturns, BarrierPos: -1,
 			},
 
 			// FlexXml (in-place attribute set; name → value, like the DOM
 			// setAttribute. Children grow via `append`.)
 			{
-				Args:    []*Type{TString, TAny, TFlexXml},
-				Impl:    Go(setFlexXmlHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TFlexXml},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setFlexXmlHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TFlexXml},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setFlexXmlHandler),
 				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
@@ -141,15 +162,16 @@ var storageNatives = []NativeFunc{
 			// the inherited FlexMap handler's AsMutableMap declines the
 			// weak payload, by design.)
 			{
-				Args:      []*Type{TString, TAny, TWeakFlexMap},
-				Impl:      Go(setWeakFlexMapHandler),
-				Returns:   []*Type{TWeakFlexMap},
-				ReturnsFn: weakSetMapReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TWeakFlexMap},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setWeakFlexMapHandler),
+				Returns:       []*Type{TWeakFlexMap},
+				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TWeakFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setWeakFlexMapHandler),
 				Returns:       []*Type{TWeakFlexMap},
 				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
@@ -158,23 +180,25 @@ var storageNatives = []NativeFunc{
 			// WeakFlexList (in-place index set over the post-sweep
 			// view; same value domain as WeakFlexMap).
 			{
-				Args:      []*Type{TInteger, TAny, TWeakFlexList},
-				Impl:      Go(setWeakFlexListHandler),
-				Returns:   []*Type{TWeakFlexList},
-				ReturnsFn: weakSetListReturns, BarrierPos: -1,
+				Args:          []*Type{TInteger, TAny, TWeakFlexList},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setWeakFlexListHandler),
+				Returns:       []*Type{TWeakFlexList},
+				ReturnsFn:     weakSetListReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexXml (in-place attribute set; attributes are part
 			// of the element and always store strongly).
 			{
-				Args:    []*Type{TString, TAny, TWeakFlexXml},
-				Impl:    Go(setWeakFlexXmlHandler),
-				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TWeakFlexXml},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setWeakFlexXmlHandler),
+				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TWeakFlexXml},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setWeakFlexXmlHandler),
 				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
@@ -185,15 +209,16 @@ var storageNatives = []NativeFunc{
 			// isInertConst's MicronPayload arm relies on this staying
 			// an error — see eng/go/emit.go.
 			{
-				Args:      []*Type{TString, TAny, TMicron},
-				Impl:      Go(setMicronHandler),
-				Returns:   []*Type{},
-				ReturnsFn: setMicronReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TAny, TMicron},
+				CompileEffect: CompileStoresFn,
+				Impl:          Go(setMicronHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     setMicronReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TMicron},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileStoresFn,
 				Impl:          Go(setMicronHandler),
 				Returns:       []*Type{},
 				ReturnsFn:     setMicronReturns, BarrierPos: -1,
