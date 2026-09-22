@@ -1406,8 +1406,25 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		// it whole sent every capturing closure — `99 (kk 7) apply`, the
 		// twenty-eighth increment's whole family — to the island (the
 		// interp-entry census caught it, 40 over its ceiling of 33).
-		if fn, known := vc.closureUnit(cl); !known || fn.NParams-fn.NCaptures == n {
+		fn, known := vc.closureUnit(cl)
+		if !known || fn.NParams-fn.NCaptures == n {
 			return commit(vc.invokeClosure(vc.r, fnVal, args))
+		}
+		// A 0-ARG closure under the apply WORD fires over nothing and its
+		// result lands ABOVE the untouched window — applyHandler's
+		// MarkApplied, which the interpreter applies to a fn VALUE and the
+		// re-step island below cannot see through a closure payload (the
+		// bridged lambda stays an anonymous 0-arg VALUE there and parks:
+		// `5 (mk0 1)/v apply` compiled to `[5 fn]` for the interpreter's
+		// `[5 1]`, the dynamic-lead group, 2026-09-22). The event form's
+		// one-result discipline still holds: two values are not the one
+		// the model committed, so it defers as any other count does.
+		if !one && fn.NParams-fn.NCaptures == 0 {
+			results, err := vc.invokeClosure(vc.r, fnVal, nil)
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return append(stack[:top], results...), nil, nil
 		}
 		return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
 	}

@@ -89,10 +89,22 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		t.Fatal("apply's two-arg overload over a produced closure must decline")
 	}
 	es.Compilable, es.Reason = true, ""
+	// A produced fn-typed CARRIER under apply's one-arg overload — a
+	// declared-Function factory's result, `5 (mk 1)/v apply` — is APPLIED
+	// by the word, not stranded (the dynamic-lead group, 2026-09-22): it
+	// takes the pending-apply path, so the guard stands aside here too.
 	carrier := core.NewCarrier(core.TFunction)
 	es.producedBy[carrier.ID] = producer{seq: 0}
-	if !es.argIsProducedClosure("apply", nil, []core.Value{carrier}) {
-		t.Fatal("apply over a produced fn-typed carrier must keep the compile failure")
+	if es.argIsProducedClosure("apply", nil, []core.Value{carrier}) {
+		t.Fatal("apply over a produced fn-typed carrier is the pending apply's, not this compile failure")
+	}
+	if !es.Compilable {
+		t.Fatal("the carrier exemption must leave the program compilable")
+	}
+	// The same carrier at apply's two-arg overload, or one NOT produced by
+	// a returned-closure unit, keeps the compile failure.
+	if !es.argIsProducedClosure("apply", nil, []core.Value{core.NewInteger(1), carrier}) {
+		t.Fatal("apply's two-arg overload over a produced carrier must decline")
 	}
 	es.Compilable, es.Reason = true, ""
 	// A slot DECLARED Function binds the closure as data (the thirtieth
@@ -111,11 +123,12 @@ func TestArgIsProducedClosureArms(t *testing.T) {
 		t.Fatal("a produced closure at an Any slot keeps the compile failure")
 	}
 	es.Compilable, es.Reason = true, ""
-	// The apply word's own Function slot is not the exception: a produced
-	// fn-typed CARRIER under apply keeps the compile failure whatever apply declares.
+	// The apply word's one-arg overload over the produced CARRIER stands
+	// aside with or without its signature in hand (the pending apply's
+	// shape is decided by the value, not the slot).
 	applySig := &core.Signature{Args: []*core.Type{core.TFunction}}
-	if !es.argIsProducedClosure("apply", applySig, []core.Value{carrier}) {
-		t.Fatal("apply's declared Function slot does not lift the carrier compile failure")
+	if es.argIsProducedClosure("apply", applySig, []core.Value{carrier}) {
+		t.Fatal("apply's one-arg overload over a produced carrier is the pending apply's")
 	}
 	es.Compilable, es.Reason = true, ""
 	if !es.argIsProducedClosure("w", nil, []core.Value{core.NewInteger(1), fn}) {

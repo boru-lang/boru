@@ -7678,6 +7678,25 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
 			return true
 		}
+		// The same closure as a fn-typed CARRIER — a declared-Function
+		// factory's result on the compile pass (`5 (mk 1)/v apply`, the
+		// dynamic-lead group, 2026-09-22): the check engine cannot re-step
+		// a carrier, so no dispatch will consume the entry; it is the
+		// PENDING apply the unit's finish (dynTrail) or Finalize
+		// (programPendingApply) lowers as the whole-residual
+		// OpCallDynApplyTop — the apply WORD's semantics over every value
+		// beneath, which fires a 0-arg closure and under-applies a wider
+		// one exactly as applyHandler does. Resolved here, before the
+		// registered-output arm, for the same reason as the concrete form:
+		// that arm would elide the identity result silently and leave the
+		// carrier to the paren-shaped residual arms, which PARK a closure of
+		// another arity (`5 (mk0 1)/v apply` compiled to `[5 fn]` for the
+		// interpreter's `[5 1]`).
+		if core.IsFnTypedCarrier(args[0]) {
+			u := es.units[len(es.units)-1]
+			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			return true
+		}
 	}
 	// A dispatch whose output is already registered was recorded by a
 	// structured hook (RecordBranch owns the `if` dispatch; a user-fn
@@ -7723,10 +7742,13 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// either lowers it as the whole-residual OpCallDynTrailTop (the fn
 		// applied to every value below it, exactly the interpreter's
 		// applyHandler re-step over the preceding stack) or declines — a pending
-		// apply can never be silently dropped. Top-level applies (len(units)
-		// == 1) keep today's failure: the program residual has no equivalent
-		// single-consumer window.
-		if len(es.units) > 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) {
+		// apply can never be silently dropped. A TOP-LEVEL apply (len(units)
+		// == 1) registers on the program unit the same way since the
+		// dynamic-lead group (2026-09-22): the program residual IS its
+		// single-consumer window, and Finalize's resolveDynamicApply lowers
+		// the one pending apply that sits on the residual's top as the
+		// whole-residual OpCallDynApplyTop, exactly as a unit's finish does.
+		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
 			return true
@@ -8735,6 +8757,14 @@ func (es *EmitState) argIsProducedClosure(word string, sig *core.Signature, args
 		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
 			return false
 		}
+		// A produced fn-typed CARRIER under the apply word — a declared-
+		// Function factory's result, `5 (mk 1)/v apply` — is APPLIED, not
+		// stranded: recordCallElided registers it as the unit's (or the
+		// program's) pending apply and the tail lowering applies it over the
+		// residual beneath (the dynamic-lead group, 2026-09-22).
+		if core.IsFnTypedCarrier(args[0]) && es.producerReturnedClosure(args[0].ID) {
+			return false
+		}
 	}
 	for i := range args {
 		if !core.IsAppliableFn(args[i]) || (word != "apply" && slotDeclaresFunction(sig, i)) {
@@ -9270,7 +9300,13 @@ func (es *EmitState) PendingClosureApply(body []core.Value) (core.Value, bool) {
 // hands cfalse to the applied closure; a lead that is no fn at run time
 // meets the word's own no-match on the top value, exactly as the op does.
 func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
-	if len(es.units) <= 1 || sig == nil || sig.FnFrame() != nil || sig.TotalArgs() != 2 ||
+	// Inside a unit AND at the program level (the dynamic-lead group,
+	// 2026-09-22 — the twenty-seventh increment kept the main program out,
+	// "no single-consumer window", a reason that belongs to the PENDING
+	// form, not to this event over its own two operands: the program's
+	// stack holds the receiver and the lead exactly as a frame's does, and
+	// the op commits one result or defers there too).
+	if len(es.units) < 1 || sig == nil || sig.FnFrame() != nil || sig.TotalArgs() != 2 ||
 		len(args) != 2 || len(outs) != 1 {
 		return false
 	}
@@ -11110,6 +11146,17 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
 		}
 	}
+	// The program unit's pending `apply`-WORD application on the residual's
+	// top (the dynamic-lead group, 2026-09-22): the word's own op over the
+	// whole residual beneath, before any paren-shaped arm can claim the
+	// window — OpCallDynamicTrailing PARKS a closure of another arity where
+	// the apply word fires or under-applies it (`5 (mk0 1)/v apply` is
+	// `[5 1]`, not `[5 fn]`), and the trailing-window island steps a
+	// `/v`-parked closure as data where the word unquotes it.
+	if pos, ok := es.programPendingApply(residual); ok {
+		lw.dynOpPos = pos
+		return residual, OpCallDynApplyTop, ""
+	}
 	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
@@ -11702,19 +11749,42 @@ func (es *EmitState) truncateAtTrap() map[int]bool {
 
 // finalizeBlocked reports the reason Finalize cannot deliver a Program
 // before it lays anything out: the pass marked the program uncompilable, or
-// a pending `apply`-word application on the PROGRAM unit that no dispatch
-// consumed (recordCallElided's produced-closure arm) — the interpreter's
-// re-step found no matching arguments beneath the closure and left it as
-// data, a shape nothing here models, so the program declines rather than
-// seat the closure unapplied. A fn unit's finish owns its own entries.
+// (the pending-apply check that used to sit here moved into Finalize, after
+// resolveDynamicApply — programPendingApply consumes the one shape it lowers).
 func (es *EmitState) finalizeBlocked() (string, bool) {
 	if !es.Compilable {
 		return es.Reason, true
 	}
-	if len(es.units[0].pendingApply) > 0 {
-		return "apply of a produced closure the program never dispatched (no matching arguments beneath it)", true
-	}
 	return "", false
+}
+
+// programPendingApply is the program unit's one pending `apply`-word
+// application when it is the residual's TOP value over at least one value
+// beneath it — the whole-residual window a unit's finish lowers as
+// OpCallDynApplyTop (the dynamic-lead group, 2026-09-22: `5 (mk 1)/v apply`,
+// `10 (adder 3) apply`). It consumes the entry and hands back the apply
+// word's position; any other pending shape (a mid-program apply, two
+// applies, nothing beneath the fn) is left for Finalize's decline.
+func (es *EmitState) programPendingApply(residual []core.Value) (core.SrcPos, bool) {
+	if !es.programPendingApplyTop(residual) {
+		return core.SrcPos{}, false
+	}
+	u := es.units[0]
+	pos := u.pendingApply[0].pos
+	u.pendingApply = nil
+	return pos, true
+}
+
+// programPendingApplyTop is programPendingApply's test without the consume:
+// Finalize's promotion pass asks it so the residual's events are seated as
+// frame locals and re-pushed in order beneath the fn (a 2-entry `[5, fn]`
+// residual otherwise declines "call result above a literal").
+func (es *EmitState) programPendingApplyTop(residual []core.Value) bool {
+	if es == nil || len(es.units) == 0 {
+		return false
+	}
+	u := es.units[0]
+	return len(u.pendingApply) == 1 && len(residual) >= 2 && residual[len(residual)-1].ID == u.pendingApply[0].id
 }
 
 func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
@@ -11805,7 +11875,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// the island consumes the window in source order, not the apply-on-top
 	// layout.)
 	_, mixedOK := es.mixedDynamicApplyShape(residual)
-	if mixedOK || es.trailingWindowApplyShape(residual) {
+	if mixedOK || es.trailingWindowApplyShape(residual) || es.programPendingApplyTop(residual) {
 		forceOrder = make(map[int]bool, len(residualSeqs))
 		for _, seq := range residualSeqs {
 			forceOrder[seq] = true
@@ -11841,6 +11911,19 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	residual, dynOp, dynReason := es.resolveDynamicApply(lw, residual)
 	if dynReason != "" {
 		return nil, dynReason, false
+	}
+	dynOpPos := lastPos
+	if dynOp == OpCallDynApplyTop && lw.dynOpPos != (core.SrcPos{}) {
+		dynOpPos = lw.dynOpPos // the op raises where the interpreter's `apply` does
+	}
+	// A pending `apply`-word application on the PROGRAM unit that no
+	// dispatch consumed and the residual does not end in (recordCallElided's
+	// produced-closure and carrier arms) — the interpreter's re-step found
+	// no matching arguments beneath the closure and left it as data, a shape
+	// nothing here models, so the program declines rather than seat the
+	// closure unapplied. A fn unit's finish owns its own entries.
+	if len(es.units[0].pendingApply) > 0 {
+		return nil, "apply of a produced closure the program never dispatched (no matching arguments beneath it)", false
 	}
 	ops, opsReason := es.resolveResidualOperands(lw, residual)
 	if opsReason != "" {
@@ -11882,7 +11965,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		if dynOp == OpCallDynMixedFromMark {
 			arg = 0 // the mark is the boundary; the op takes no count
 		}
-		lw.emit(dynOp, arg, lastPos)
+		lw.emit(dynOp, arg, dynOpPos)
 	}
 
 	// Lower the compiled fn units. Tail positions are marked first so

@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -57,28 +56,7 @@ func TestFunctionSlotParity(t *testing.T) {
 }
 
 // TestFunctionSlotSoundCompileFailures pins the neighbours that still DECLINE.
-func TestFunctionSlotSoundCompileFailures(t *testing.T) {
-	rows := []struct{ src, reason string }{
-		// (the Any-slot row, `typeof (h 5)`, graduated with the thirty-sixth
-		// increment — closure_read_model_test.go)
-		// apply's own Function slot over a fn-typed CARRIER lead
-		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot"},
-	}
-	for _, c := range rows {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: check: %v", c.src, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%q: compiled — expected a compile failure", c.src)
-			continue
-		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
-		}
-	}
-}
+// (TestFunctionSlotSoundCompileFailures pinned apply's own Function slot
+// over a fn-typed CARRIER lead — `1 99 (mk 7) apply` — as a compile failure;
+// the dynamic-lead group compiled it on 2026-09-22 through the program
+// unit's pending apply, and top_level_apply_test.go pins it with parity.)
