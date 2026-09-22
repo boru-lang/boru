@@ -677,6 +677,11 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
+	// dynOpPos is the source position Finalize stamps on the program
+	// residual's OpCallDynApplyTop — the `apply` word's own, seated by
+	// resolveDynamicApply's program-pending arm so a runtime no-match raises
+	// where the interpreter's `apply` does. Zero for every other residual op.
+	dynOpPos core.SrcPos
 	// collectAtSeq is the event seq of the LIST LITERAL that collects a
 	// runtime-variadic region (NUR067's consuming half — planRegionCollect
 	// armed it and put an OpStackMark before the region's own event). 0 = not

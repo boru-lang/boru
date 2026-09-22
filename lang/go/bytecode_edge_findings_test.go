@@ -374,12 +374,13 @@ func TestMemberFnArrivalDeclineFences(t *testing.T) {
 		compiles  bool
 		want      string // interp result (fmt.Sprint)
 	}{
-		// A computed key cannot pinpoint the member: the tag rides bool-only,
-		// the model declines — and the fetched fn reaches `apply` as an
-		// untyped carrier, which the record declines ("apply over a dynamic
-		// lead", the BROAD-era mixed-arity guard) rather than lower an
-		// unprovable overload. A compile failure, and a defect while it stands.
-		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, false, "[true]"},
+		// A computed key cannot pinpoint the member: the tag rides bool-only
+		// and the arrival model declines — but the fetched fn reaches `apply`
+		// as a GRADUAL lead over one receiver, which the record lowers as
+		// the apply EVENT (OpCallDynApplyOne) at the program level since the
+		// dynamic-lead group (2026-09-22; it was "apply over a dynamic lead
+		// (overload unprovable)" — the event was unit-only before).
+		{"computed key", `def d fn [[n:Integer][Integer][n mul 2]] def m {double: d/v} def k (do [double/q]) 21 (m get k) apply eq 42`, true, "[true]"},
 		// A LIST member pinpoints by concrete index — the arrival model fires.
 		{"list member", `def d fn [[n:Integer][Integer][n mul 2]] def lst [d/v] 21 (lst get 0) apply eq 42`, true, "[true]"},
 		// Anonymous lambda member: no name for the model — compile failure.

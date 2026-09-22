@@ -100,12 +100,11 @@ func TestProducedClosureApplySoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, note string }{
 		// nothing beneath the closure: the interpreter leaves it as data
 		{pcaK + `(kk 7) apply`, "never dispatched", "fn (Any) on the interpreter"},
-		// the values beneath match no signature: data again
-		{`def kk x:Integer => [y:Integer => [x add y]] end "s" (kk 7) apply`, "never dispatched", "s fn (Integer)"},
-		// a fn-typed CARRIER lead (a declared [Function] return) keeps the
-		// argument-slot compile failure — lifted, `1 99 (mk 7) apply` seated all
-		// three as data (measured)
-		{`def mk fn [[x:Integer][Function][(fn [[y:Integer][Integer][x add y]])]] end 1 99 (mk 7) apply`, "argument slot", "1 106"},
+		// (`"s" (kk 7) apply` — the values beneath match no signature — and
+		// the fn-typed CARRIER lead `1 99 (mk 7) apply` moved to
+		// top_level_apply_test.go on 2026-09-22: the program unit's pending
+		// apply lowers as the whole-residual OpCallDynApplyTop, which parks
+		// the first as the interpreter does and under-applies the second.)
 		// a produced closure applied over ANOTHER produced closure: the
 		// second dispatches over the first before apply runs
 		{pcaK + `(kk 7) (kk 8) apply`, "argument slot", "8"},

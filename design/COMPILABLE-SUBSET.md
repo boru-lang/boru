@@ -346,7 +346,15 @@ user still gets an answer while the case is open:
   declines — NUR123's word dispatch). What still declines: a gradual
   `x:Any` argument (the Church-chain family, §5.8 of the legacy HOF note),
   and a 0-arg runtime lead is NUR176 (loud on both lanes, a value only on
-  the interpreter). Pinned by `TestApplyShapesParity`. The def-split spelling
+  the interpreter). Pinned by `TestApplyShapesParity`. The `apply` WORD at
+  the MAIN program over a lead the check cannot type compiles since the
+  dynamic-lead group (2026-09-22): a gradual lead over one receiver is the
+  apply EVENT (`OpCallDynApplyOne` — one result or a loud defer), a
+  produced fn-typed carrier is the program unit's pending apply, lowered as
+  the whole-residual `OpCallDynApplyTop` (the word's own semantics: a
+  closure of the window's arity runs VM-native, a 0-arg one fires above
+  the window, a wider one under-applies through the re-step); pinned by
+  `top_level_apply_test.go`. The def-split spelling
   (`def r (f x) f r`) graduated the same day: `checkModeParenFnCollapse`
   killed its checker false positive on the plain surface, and
   `replayIsBodyTail`'s `windowReadsID` arm (a dyn-bind of a value the

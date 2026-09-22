@@ -7,7 +7,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 |---|---|---|---|---|---|---|---|
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 9/14 | ✓ 11/14 | n/a | ✓ 13/14 |
-| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | F | D! | n/a |
+| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | ✓ 14/14 | D! | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
@@ -61,8 +61,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 149
-- failed: 28
+- pass: 150
+- failed: 27
 - islanded: 2
 - DIVERGED: 8
 - PANIC: 0
@@ -75,7 +75,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells that are not green
 
-- `apply` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end 5 m.f/v apply` — apply over a dynamic lead (overload unprovable)
 - `apply` module-export — **DIVERGED**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` — value divergence: compiled [5 fn inc(Integer)] vs interp [6]
 - `behave` literal — **failed**: `def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)` — quoted-operand word behave
 - `behave` named-fn — **failed**: `def Temp refine Integer end def c fn [[t:Temp][String]['T']] end behave canon/q c/v end canon (make Temp 5)` — quoted-operand word behave

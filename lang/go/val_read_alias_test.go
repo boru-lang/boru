@@ -80,8 +80,10 @@ func TestValReadAliasSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// nothing beneath the read: the interpreter parks the value
 		{vraK + `def p (kk 7) end p/v apply`, "never dispatched", "[fn p(Integer)]"},
-		// a no-match beneath
-		{vraK + `def p (kk 7) end 'x' p/v apply`, "never dispatched", "[x fn p(Integer)]"},
+		// (a no-match beneath — `'x' p/v apply` — graduated on 2026-09-22 with
+		// the dynamic-lead group: the program's pending apply lowers as the
+		// whole-residual OpCallDynApplyTop, which parks the value as the
+		// interpreter does; top_level_apply_test.go pins it with parity)
 		// a code body's read of the def-bound closure (Stage 2)
 		{vraK + `def p (kk 7) end [1 2] each [p/v apply]`, "code body reads a def-bound compiled closure", "[[8 9]]"},
 		// a read in another unit: the alias is the binding unit's

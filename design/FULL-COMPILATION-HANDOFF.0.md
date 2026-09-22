@@ -11592,3 +11592,90 @@ with the S1b-3 re-land in the same tree):
 
 `make status` and `make gate-status` regenerated `COMPILED_STATUS.md` and
 `GATE_STATUS.md`; `make sweep-status` regenerated `SWEEP_STATUS.md`.
+
+## S1b — the dynamic-lead group: the `apply` word at the main program (2026-09-22)
+
+**The measurement first.** Five rows, two shapes, one word. `5 m.f/v apply`,
+`5 (m 'f' get) apply` and the module twin (callbacks L50/L51,
+module-composition L100) declined "apply over a dynamic lead (overload
+unprovable)"; `5 (mk 1)/v apply` and `10 (adder 3) apply` (callbacks
+L40/L41) declined "computed closure at a word's argument slot (its apply
+did not collapse — Stage 2)". Every one of them COMPILES inside a fn body:
+the twenty-seventh increment's gradual apply EVENT
+(`recordGradualApplyEvent` → `OpCallDynApplyOne`) and Stage M2a's PENDING
+apply (the fn-typed carrier the unit's finish lowers as the whole-residual
+`OpCallDynApplyTop`) were both unit-only. The main program was kept out on
+one sentence — "the program residual has no equivalent single-consumer
+window" — which is true of the pending form and was never true of the event
+form, whose two operands are its own.
+
+**The changes.**
+
+- `recordGradualApplyEvent` records at the program level too. The
+  receiver and the lead are two values on the program's stack exactly as
+  on a frame's; the op commits one result or defers there too.
+- A produced fn-typed CARRIER under `apply` — a declared-Function
+  factory's result on the compile pass, which the check engine cannot
+  re-step — registers the program unit's pending apply
+  (`recordCallElided`, before the registered-output arm that would elide
+  the identity result silently), and `argIsProducedClosure` stands aside
+  for it: the word applies its value, it is not a stranded closure.
+- `Finalize` lowers that one pending apply, when it is the residual's top
+  over at least one value, as the whole-residual `OpCallDynApplyTop`
+  (`programPendingApply`; the residual's events are promoted beneath it,
+  and the op carries the apply word's own position). Any other pending
+  shape keeps the decline it had, now after `resolveDynamicApply` rather
+  than before it.
+- The VM's apply-word op FIRES a 0-arg closure above the untouched window
+  (`callDynApply`): the bridged lambda stays an anonymous 0-arg VALUE in
+  the re-step island and parked, so `5 (mk0 1)/v apply` compiled to
+  `[5 fn]` for the interpreter's `[5 1]` the moment the shape reached the
+  program level. Inside a unit the same closure raised the frame's
+  one-return `type_error` on both lanes, which is why nothing had measured
+  it. The event form's one-result discipline is untouched (two values
+  defer).
+
+**What it reaches, measured on both lanes.** All five corpus rows; the
+gradual lead with a deeper value beneath (`7 5 m.f/v apply` → `[7 6]`), fed
+to a later word, def-bound; the carrier over a 1-arg, 2-arg and 0-arg
+closure at every window width the apply word reaches (`7 5 (mk 1)/v apply`
+→ `[7 6]`, `7 5 (mk2 1)/v apply` → `13`, `7 5 (mk0 1)/v apply` → `[7 5
+1]`); the no-match parks (`"s" (kk 7) apply` → `[s fn (Integer)]`, `'x'
+p/v apply` → `[x fn p(Integer)]`) that three unit-suite pins had held as
+sound compile failures — graduated to `top_level_apply_test.go`. The
+generated sweep's `apply` × container cell goes from F to 14/14 (31 → 30
+seeds).
+
+**What stays loud, not silent.** A 2-arg fn under a top-level GRADUAL
+lead (`3 5 m.f/v apply`) is the event form's one-result defer — the same
+contract TestGradualApplyDefers pins inside units, now pinned at the
+program level (`TestTopLevelGradualApplyDefers`; the lang/go bail ledger
+rises 32 → 33 for that one new witness). A closure with nothing beneath it
+(`(mk 1)/v apply`) keeps "never dispatched"; a pending apply that is not
+the program's tail (`5 (mk 1)/v apply add 10`) keeps NUR124's decline; a
+def-bound factory result read back (`def p (mk 1) end 5 p/v apply`) keeps
+the read's statement-window decline — the frontier ledger's hof-audit L60
+is re-diagnosed to that reason, since the argument-slot guard no longer
+fires first.
+
+**Pins.** `top_level_apply_test.go` (eighteen parity rows, the no-match,
+the defer, three sound declines); `TestProgramPendingApply` (compiler);
+the produced-closure guard's arms flipped for apply's carrier; the
+computed-key member row of `TestMemberFnArrivalDeclineFences` compiles;
+`TestFunctionSlotSoundCompileFailures` retired (its one row graduated).
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 32 | 27 | callbacks 10 → 6 (L40, L41, L50, L51), module-composition 5 → 4 (L100) |
+| compute gaps / reducible | 27 / 4 | 22 / 4 | the same five rows |
+| interp-entry census rows | 77 | 78 | module-composition L100 enters: its apply of a fetched MODULE export runs through the re-step island (a foreign-home boru fn carries no CompiledRef into the program — the module-fn seam, not this increment's); the four callbacks rows enter nothing |
+| engine entries / runtime defers | 416 / 8 | 418 / 8 | the same row's Engine.Run + CallBoru |
+| diagnostic parity / armed-only | 349 / 9 | 349 / 9 | unchanged |
+| generated sweep: seeds / call-form variants | 31 / 200 | 30 / 200 | `apply` × container compiles, 14/14 variants |
+| lang/go unit ledger: fail / bail | 284 / 32 | 284 / 33 | +1 bail: the new top-level 2-arg gradual-apply defer pin (a witness, not a regression) |
+| corpus bail defects, correct-error | 52 / 1 | 52 / 1 | unchanged |
+
+A compile failure becoming a compiled row with one attributed seam (L100)
+is the S1a trade in miniature, and the two census ceilings name it.
