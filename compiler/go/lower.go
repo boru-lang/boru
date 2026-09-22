@@ -326,6 +326,15 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// fire.
 		return ""
 	}
+	if d.armCarried {
+		// A BRANCH-CARRIED def (branch_carried.go): store the bound value
+		// into the name's frame slot here, at the def's own site, so the
+		// store runs exactly when this arm runs. Independent of, and before,
+		// the dyn-scope / write-back arms below — a name may need both.
+		if reason := lw.storeArmBind(d); reason != "" {
+			return reason
+		}
+	}
 	// This def's twin, taken now — before any early return — so a later def
 	// of the same name pairs with its own; marked below wherever a
 	// write-back is emitted, because the twin's replay must then leave the
@@ -471,6 +480,54 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.vm = lw.vm[:len(lw.vm)-1]
 		}
 	}
+	return ""
+}
+
+// storeArmBind lowers a branch-carried def's store (emitDynBind.armCarried):
+// the bound value into the name's frame slot. A value the promotion planner
+// seated in a local re-pushes from there; a value still on the simulated
+// stack top is stored off it — CONSUMED (popped) when it is refcount-dead
+// and no root write-back follows to pop it (collectArmBindConsumes
+// suppressed its producer's drop for exactly this), otherwise COPIED
+// (stored and pushed back) so its consumers — the arm's merge, a later
+// read, the root write-back's peek — find it where they expect it; a
+// literal bakes unpooled exactly as the dyn-scope install bakes one. Any
+// other layout declines under this def's own reason.
+func (lw *lowerer) storeArmBind(d *emitDynBind) string {
+	src := d.src
+	switch {
+	case d.srcSeq >= 0 && lw.variadic[d.srcSeq]:
+		return "branch-carried def `" + d.name + "` binds loop results (Stage 2)"
+	case d.srcSeq >= 0:
+		if slot, ok := lw.promoted[d.srcSeq]; ok {
+			src = localOperand(slot)
+			break
+		}
+		if len(lw.vm) == 0 || lw.vm[len(lw.vm)-1].seq != d.srcSeq || lw.vm[len(lw.vm)-1].idx != 0 {
+			return "branch-carried def `" + d.name + "` source is not on top of the stack"
+		}
+		lw.emit(OpStoreLocal, d.armSlot, d.pos)
+		consume := lw.dead[d.srcSeq] && lw.bindConsumes[d.srcSeq] && !(lw.es != nil && rootBindWritesBack(d))
+		if consume {
+			lw.vm = lw.vm[:len(lw.vm)-1]
+		} else {
+			lw.emit(OpPushLocal, d.armSlot, d.pos)
+		}
+		lw.note()
+		return ""
+	case src.kind == opNone:
+		// dynBindStorable admitted only an inert literal here.
+		if !core.IsInertConst(d.val) {
+			return "branch-carried def `" + d.name + "` of unknown provenance"
+		}
+		src = ConstOperand(lw.es.internUnpooled(d.val))
+	}
+	lw.binding = true
+	lw.pushOperand(src, d.pos)
+	lw.binding = false
+	lw.note()
+	lw.emit(OpStoreLocal, d.armSlot, d.pos)
+	lw.vm = lw.vm[:len(lw.vm)-1]
 	return ""
 }
 
@@ -793,6 +850,24 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			}
 		}
+		if op.bound != "" {
+			// A branch-carried binding that may never have been stored on
+			// this path (branch_carried.go): the name rides the emission
+			// target's StoreNames table at this pc, for the undefined_word
+			// the VM raises on the zero slot.
+			if lw.storeNames != nil {
+				if *lw.storeNames == nil {
+					*lw.storeNames = map[int]string{}
+				}
+				(*lw.storeNames)[len(*lw.code)] = op.bound
+			}
+			at := pos
+			if op.boundPos.Row != 0 {
+				at = op.boundPos
+			}
+			lw.emit(OpPushLocalBound, op.idx, at)
+			break
+		}
 		lw.emit(OpPushLocal, op.idx, pos)
 	case opType:
 		lw.emit(OpPushType, op.idx, pos)
@@ -937,7 +1012,7 @@ func (lw *lowerer) seatDynApplyName(w DynApplyHead) {
 }
 
 func (lw *lowerer) emit(op Opcode, arg int, pos core.SrcPos) int {
-	if op == OpPushLocal && len(lw.unnamedParams) > 0 {
+	if (op == OpPushLocal || op == OpPushLocalBound) && len(lw.unnamedParams) > 0 {
 		if lw.depth > 0 {
 			if lw.localPushedNested == nil {
 				lw.localPushedNested = map[int]bool{}
@@ -1192,6 +1267,14 @@ func forEachOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		visit(ev.store.src)
 	case evDynBind:
 		visit(ev.dyn.src)
+		if ev.dyn.armCarried && ev.dyn.armSrcOuter {
+			// A branch-carried def whose computed source was produced OUTSIDE
+			// its arm: the store is a cross-floor reference the planner must
+			// promote to a frame local, so it is counted. A source produced
+			// inside the arm is not — its dead-ness stays the ordinary
+			// refcount's, and the store consumes or copies it (storeArmBind).
+			visit(EventOperand(ev.dyn.srcSeq, 0))
+		}
 	case evBindTwin:
 		// no operands — the twin references nothing and produces nothing
 	case evBranch:
@@ -1209,6 +1292,9 @@ func forEachOperand(ev *EmitEvent, fn func(EmitOperand)) {
 		visit(ev.br.elsOut)
 		visit(ev.br.thenVal)
 		visit(ev.br.elsVal)
+		for _, c := range ev.br.carried {
+			visit(c.init)
+		}
 	default:
 		// A kind this walk does not name contributes NO operands, and that is
 		// not a safe silence: an unvisited operand is an unreferenced one, so
@@ -1428,6 +1514,9 @@ func RewritePromotedRefs(ev *EmitEvent, promoted map[int]int) {
 		// result.)
 		promoteOperand(&ev.br.thenVal, promoted)
 		promoteOperand(&ev.br.elsVal, promoted)
+		for i := range ev.br.carried {
+			promoteOperand(&ev.br.carried[i].init, promoted)
+		}
 	case evLoop:
 		promoteOperand(&ev.loop.end, promoted)
 		for i := range ev.loop.carried {
@@ -1770,6 +1859,16 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		for k := range dynBindSrc {
 			merged[k] = true
 		}
+		forceOrder = merged
+	}
+	// A branch-carried def's SEED (the pre-branch binding stored into the
+	// name's slot before the branch — branch_carried.go) is re-pushed at
+	// lowerBranch, so an event-sourced seed needs the same store-once /
+	// re-push-per-use promotion as a dyn-bound source.
+	if brSrc := collectBranchCarriedSources(events); len(brSrc) > 0 {
+		merged := make(map[int]bool, len(forceOrder)+len(brSrc))
+		maps.Copy(merged, forceOrder)
+		maps.Copy(merged, brSrc)
 		forceOrder = merged
 	}
 	// A producer consumed MID-BODY as an operand of a later event needs a frame
@@ -2523,6 +2622,40 @@ func collectResidentBindConsumes(events []EmitEvent, dead map[int]bool) map[int]
 	return out
 }
 
+// collectArmBindConsumes is the BRANCH-CARRIED twin (branch_carried.go): a
+// carried def whose computed source is refcount-DEAD — bound, stored, and
+// read nowhere else — consumes the value off the stack with its STORE_LOCAL,
+// so the producer's dead-drop is suppressed exactly as for a root
+// write-back. A live source is copied (stored and pushed back) and keeps
+// its own drop discipline.
+func collectArmBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool {
+	all, _, _ := collectPromotableEvents(events)
+	out := map[int]bool{}
+	for _, ev := range all {
+		if ev.kind != evDynBind || ev.dyn == nil {
+			continue
+		}
+		if d := ev.dyn; d.armCarried && d.srcSeq >= 0 && dead[d.srcSeq] {
+			out[d.srcSeq] = true
+		}
+	}
+	return out
+}
+
+// mergeBindConsumes unions bind-consumes sets (nil-safe).
+func mergeBindConsumes(a, b map[int]bool) map[int]bool {
+	if len(b) == 0 {
+		return a
+	}
+	if a == nil {
+		a = map[int]bool{}
+	}
+	for k := range b {
+		a[k] = true
+	}
+	return a
+}
+
 func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool {
 	all, _, _ := collectPromotableEvents(events)
 	out := map[int]bool{}
@@ -2546,8 +2679,16 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 // install.
 func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[string]bool) map[int]bool {
 	dynBindSrc := map[int]bool{}
-	for i := range events {
-		if events[i].kind != evDynBind || events[i].dyn == nil || events[i].dyn.srcSeq < 0 {
+	// Every event of the unit, the arms and loop bodies included: a
+	// dyn-bound def INSIDE an `if` arm (`[def acc3 (n add 1) f (n sub 1)]`,
+	// read by the recursive callee's other arm) installs from its arm and
+	// needs its source promoted exactly as a top-level one does — walking
+	// only the top level left such a source refcount-dead and its install
+	// declining "unpromoted computed value" (2026-09-22, found by the
+	// unit-suite ledger moving under the branch-carried def).
+	all, _, _ := collectPromotableEvents(events)
+	for _, ev := range all {
+		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.srcSeq < 0 {
 			continue
 		}
 		// A def's computed source is promoted for its OpBindDynScope install
@@ -2560,7 +2701,7 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// event, so the peek fast path reads the live top and every lowering
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
-		if es.dynEnv || deoptNames[events[i].dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[events[i].dyn.name]) || es.routedBindsDyn(events[i].dyn) ||
+		if es.dynEnv || deoptNames[ev.dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
 			// An ARM-RESIDENT body compile (the each-unit bracket, regime
 			// only): every def's computed source is force-promoted so the
 			// resident install can re-push it from a frame slot — a body
@@ -2570,10 +2711,30 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 			// store-once / re-push-per-use discipline as the dyn-bound
 			// sources above.
 			es.armResidentDepth > 0 {
-			dynBindSrc[events[i].dyn.srcSeq] = true
+			dynBindSrc[ev.dyn.srcSeq] = true
 		}
 	}
 	return dynBindSrc
+}
+
+// collectBranchCarriedSources returns the producing seqs of every
+// event-sourced branch-carried seed (emitBranch.carried) in events and every
+// fragment nested in them — the promotion set that makes each seed a
+// re-pushable local by the time lowerBranch stores it.
+func collectBranchCarriedSources(events []EmitEvent) map[int]bool {
+	all, _, _ := collectPromotableEvents(events)
+	out := map[int]bool{}
+	for _, ev := range all {
+		if ev.kind != evBranch || ev.br == nil {
+			continue
+		}
+		for _, c := range ev.br.carried {
+			if c.init.kind == opEvent && c.init.resIdx == 0 {
+				out[c.init.idx] = true
+			}
+		}
+	}
+	return out
 }
 
 // singleOutputCall reports whether ev is a single-result native or user call —
@@ -3683,6 +3844,21 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 
 func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	br := ev.br
+	// Seed the branch-carried def slots with their PRE-branch bindings —
+	// once, before the condition, so an arm that does not bind leaves the
+	// incoming binding in the cell (branch_carried.go). Every init is a
+	// re-pushable operand: an event-sourced one was force-promoted to a
+	// frame local by planValueDefLocals (collectBranchCarriedSources); one
+	// that still reads as an event declines here.
+	for _, c := range br.carried {
+		if c.init.kind == opEvent {
+			return "if: carried def seed is not a re-pushable value (Stage 2)"
+		}
+		lw.pushOperand(c.init, br.pos)
+		lw.note()
+		lw.emit(OpStoreLocal, c.slot, br.pos)
+		lw.vm = lw.vm[:len(lw.vm)-1]
+	}
 	if br.constCond != nil {
 		// Statically-taken branch: inline the taken fragment (always a body in
 		// const-cond form — never a value-then).

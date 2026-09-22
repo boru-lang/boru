@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-21**.
+Last updated: **2026-09-22**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -19,35 +19,47 @@ The per-increment narrative, every measurement and every lesson live in
 append-only log, which is the wrong place to look for what is true today.
 This page is kept under 200 lines on purpose.
 
-> **This page is 1150 lines and has been for some time.** The narrative that
-> belongs in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md)
-> accumulated here instead — the merged-and-done accounts (the fallback
-> removal, the 2026-09-20 sweep, NUR173/174/175) are history and should move
-> there. The sections worth keeping are the definition of done, the gate
-> table, what is next, the process rules, the instruments, and the two OPEN
-> items below. Moving the rest is its own change: two ceiling comments in
-> `test/go/langspec/` cite the heading "Where the join seats" by name, so that
-> heading has to survive the move or the citations have to move with it.
+> **This page is about 800 lines** (1150 on 2026-09-21; the arm-binding
+> narrative and the live-miscompile record moved to the handoff log on
+> 2026-09-22 when both closed). The merged-and-done accounts still here —
+> the fallback removal, the 2026-09-20 sweep, NUR173/174/175 — are history
+> and should move there too. The sections worth keeping are the definition
+> of done, the gate table, what is next, the process rules and the
+> instruments. Two ceiling comments in `test/go/langspec/` cite the heading
+> "Where the join seats" by name, so that heading survives every move.
 
-## OPEN RIGHT NOW — read these two before picking up work
+## OPEN RIGHT NOW — read this before picking up work
 
-1. **A live miscompile**, found 2026-09-21 and NOT fixed (§ "A LIVE
-   MISCOMPILE" at the end of this page). `if b [def z 9] [] end z` with
-   `b=false` answers 9 where the interpreter raises `undefined_word`. Six
-   shapes measured, two returning the wrong RESIDUAL SHAPE, three of them
-   already passing programs in `lang/go`'s own suite. A screen for it was
-   built and REVERTED: five distinct failure modes across three revisions and
-   a review, no single signal catching more than two. Every constraint the
-   next attempt must satisfy is recorded there — satisfy them **before**
-   writing code, not after.
-2. **The arm-binding join** (§ "Where the join seats"). The dyn-scope route is
-   ruled out by measurement; the frame-slot design is specified with its three
-   obligations and the case it must decline. One level is still unread and
-   named as such.
+The two items this section led with on 2026-09-21 — the live miscompile
+and the arm-binding join — were ONE defect at the branch join
+(`InstallJoinedDefs`), the miscompile was NUR110 (recorded 2026-08-28), and
+both are CLOSED on 2026-09-22 by the **branch-carried def**
+(`compiler/go/branch_carried.go`): the loop-carried def's own frame-slot
+mechanism, seated at `RecordBranch`. The `fn-locals-scope` §6 cluster
+compiles with parity on both paths (19 → 2 in the per-file ledger; the two
+left are fn-VALUE branch results, Stage 3), and `if false [def op 1] [0] end
+op` raises `undefined_word` compiled, at the read, as the interpreter does.
+The account, the four regressions the corpus gates caught on the way and
+the rules they became are in the handoff log under **"S5 — the
+branch-carried def"**; the re-estimate is
+[FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md) §11.
 
-Both are compile-failure/soundness work on the same mechanism — a `def` inside
-an `if` arm — and the seventeen paired witnesses in `fn-locals-scope.tsv` §6
-exist to hold a fix to account in both directions.
+**Open now, in the order the re-estimate ranks them:**
+
+1. **S1b's apply shapes as one mechanism** — ~23 of the 45 remaining corpus
+   compile failures (a fn value reaching a word or an operand slot, the
+   paren-bounded apply, hof2, apply-twice, the curried chain) and most of
+   the 80 interp-entry census rows are one family; NUR173–175 put the
+   seam's landing model in place.
+2. **S4's evaluating host** — the knowledge-graph generator dies at
+   `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
+3. **S5's remainder** — 8 provenance rows on the same seat as the join.
+4. **What the branch-carried def does not reach**, each declining where it
+   declined before: a `_`-prefixed arm def (`RecordDynBind` never records
+   it), a pre binding from ANOTHER frame (a recursive callee's arm-local
+   meeting the caller's — never seeded, or it commits the name to dynamic
+   scope program-wide), a `word`/fn/type/module value bound in an arm, an
+   arm def inside a computed `do` body.
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 
@@ -367,330 +379,33 @@ into thinking a doc change owes a rebuild it cannot perform.
   on the defect class restored both ceilings EXACTLY (8 and 1), which is the
   proof that only the bucketing had moved.
 
-## NEXT: the provenance family — and the census that already existed (2026-09-21)
+## The arm-binding join — LANDED 2026-09-22 (the branch-carried def)
 
-**Read the numbers from `test/go/langspec/COMPILED_STATUS.md`.** It is
-GENERATED and gated (`compiled_status_test.go` fails if the committed copy is
-stale), and it buckets every compile failure by a classifier
-(`compiled_coverage_test.go`) that reads more than the final decline string.
-The first version of this section re-derived the census by hand with an ad-hoc
-probe over `RunCompiledReason` and got different numbers; a Codex review of PR
-#480 caught all of it.
+The 2026-09-21 read of this cluster — the census re-derived and then READ,
+the bind side measured twice, the dyn-scope route built and ruled out by
+its program-wide cost, the per-name frame slot specified with its three
+obligations and the case it must decline — is history now and lives in the
+handoff log (its dated entries of 2026-09-21, and "S5 — the branch-carried
+def"). What survives here is the seat, because two ceiling comments in
+`test/go/langspec/` cite it by name.
 
-> An authoritative measurement that already exists is not re-derived, it is
-> READ. A hand-rolled probe answers a slightly different question, and the
-> difference is invisible until someone checks both.
+#### Where the join seats
 
-**What the generated census says** (53 compile failures):
-
-| rows | bucket |
-|---:|---|
-| **16** | **operand provenance** |
-| 7 | function value reaches word (Stage 3) |
-| 3 | apply over a dynamic lead (overload unprovable) |
-| 3 | fn `each$body`: result above a literal (Stage 3) |
-| 2 each | dispatch recovery, function-valued operand, computed closure at an argument slot, unapplied fn-value in a body residual, fn-value apply bounded by a paren, loop results as a branch result, twin-regime bind placement |
-| 1 each | eleven more, including `code-body word (NoEvalArgs)` |
-
-Provenance is still the largest bucket. **Within it, the arm-binding shape is
-seventeen rows: `fn-locals-scope.tsv:L167–L183`** — eight shapes, each now
-PAIRED with its false-path twin (see the subsection below) — a `def` inside an
-`if` arm, read after the `if`:
-
-```
-def f fn [[n:Integer] [String] [
-  if (n gt 0) [def tag 'big'] [def tag 'small'] end
-  tag                         <- "fn f: body result of unknown provenance"
-]]
-```
-
-with variants: a prior `def tag 'none'`, an empty else arm, a nested `if` in
-one arm, and the read feeding a word (`r add 10`) rather than standing as the
-body result.
-
-**Three rows the first version of this section wrongly folded in:**
-
-- `fn-locals-scope.tsv:L184` has NO `def` in either arm. `pick2` returns a
-  closure directly from an arm and fails `if: then-branch result of unknown
-  provenance`. An arm-binding join cannot clear it; it belongs with the
-  function-valued branch-result work.
-- `code-bodies.tsv:L189` reports a provenance reason through
-  `RunCompiledReason`, but the census BUCKETS it as a code-body word row — its
-  `each` body is a separate, earlier blocker. A join will not compile it.
-- `callbacks.tsv:L131/L132` are `if (n lte 0) [0] [(f n)]` — a fn-VALUE call as
-  an arm's result, Stage 3, not S5.
-
-**Where the work sits is OPEN — do not assume the bind side is done.** The
-first version claimed the arms already bind because no row declines
-`arm-resident def X of unknown provenance`. That does not follow:
-`OpBindResident` is stamped by `AdoptResidentTwins`, which
-`recordClosureDispatch` invokes ONLY under `spec.BodyMultiRunKeepsDefs`
-(`callable_words.go`) — per-element `each`-body recovery. An ordinary `def` in
-a function's `if` arm never reaches that path at all, so the absence of that
-decline says nothing about whether the arms bind. Establish the bind side by
-measurement before designing the read side.
-
-**The cluster could not validate a join as it stood — now it can (2026-09-21).**
-Every one of the eight original rows executed the THEN/rebind path (`f 5`,
-literal `true`, `f true`, `f 3`, `f 8`). A lowering that always selected the
-then-arm value, or that lost the incoming binding through an empty else, would
-have retired all eight and still miscompiled the opposite condition. The
-cluster proved the wrong thing, confidently.
-
-**Nine paired FALSE-PATH witnesses are now interleaved** — one per shape, two
-for the nested row (outer-else and inner-else). Each was measured before it was
-written down: the interpreter answers as the row states, and the compiler
-declines exactly as the row's twin does.
-
-| new row | the pair it completes | interp | today's decline |
-|---|---|---|---|
-| L168 | L167, both arms bind, ELSE taken | `'small'` | `fn f: body result of unknown provenance` |
-| L170 | L169, pre-bound name, ELSE taken | `'small'` | same |
-| L172 | L171, one-sided, FALSE — the EMPTY arm must carry the binding through | `1` | same |
-| L174 | L173, the explicit-`end` spelling, FALSE | `1` | same |
-| L176 | L175, nested, OUTER else | `3` | same |
-| L177 | L175, nested, outer then + INNER else | `2` | same |
-| L179 | L178, the operand spelling, ELSE | `12` | `operand of unknown provenance … at add` |
-| L181 | L180, one-sided operand, FALSE | `10` | `… at mul` |
-| L183 | L182, local-helper rebind, condition FALSE | `1` | `fn f: body result of unknown provenance` |
-
-Three of the nine (L172, L174, L181) are the shape a then-arm-always lowering
-gets wrong in the OTHER direction: the arm is EMPTY on the taken path, so the
-join must carry the binding that arrived from BEFORE the branch, not synthesise
-one from the arm that did not run.
-
-The per-file ledger moved `10 -> 19` and the corpus sum `53 -> 62`. **That is
-debt written down, not debt added** — the bug was always this big; the corpus
-merely could not see it. `compile_failures.tsv` records the move with that
-reasoning in its third column.
-
-### The bind side, measured TWICE — the arms bind; only the JOIN is missing
-
-**The first version of this subsection was wrong, and wrong by the same method
-error a Codex review of PR #482 named.** It dumped `frag.events` for the
-FUNCTION fragment, saw two events and no dyn-bind, and concluded "the arms do
-not bind at all". But the fn fragment's second event IS the branch, and each
-arm is a NESTED fragment with its own event list — never opened. Walking into
-them:
-
-```
-PROV DECLINE prefix="fn f: " what="body result" bindTwins=1
-PROV   fn-frag: 2 events
-PROV     ev[0] kind=1
-PROV     ev[1] kind=2            <- evBranch
-PROV       THEN: 1 events
-PROV         ev[0] kind=10 name="tag" residentTwin=-1 srcSeq=-1
-PROV       ELSE: 1 events
-PROV         ev[0] kind=10 name="tag" residentTwin=-1 srcSeq=-1
-```
-
-**Both arms record an `evDynBind` for `tag`.** `residentTwin=-1` means only
-that `AdoptResidentTwins` never stamped them, and the empty `bindTwins` is the
-ledger's deliberate suppression inside fn and rolled-back bodies — not an
-absence of records. The prescription that followed ("add a bind transition per
-arm") is WITHDRAWN: it would duplicate records that already exist.
-
-> Reading one level of a nested structure and concluding about another is the
-> same error three times over on this line: a contiguous line range is not a
-> cluster, an ad-hoc probe is not the census, and the outer fragment is not the
-> branch's fragments. Open the level you are about to make a claim about.
-
-**What IS measured**, by compiling five shapes and comparing:
-
-| shape | result |
-|---|---|
-| `def tag 'big' end tag` (plain, in a fn body) | **compiles** |
-| `def tag 'a' end def tag 'b' end tag` (rebind) | **compiles** |
-| `if c [def tag 'big' tag] [def tag 'small' tag] end` — read INSIDE the arm | **compiles** |
-| `if c [def tag 'big'] [def tag 'small'] end tag` — read AFTER | fails |
-| the same at TOP LEVEL, no fn at all | fails identically |
-
-So the arms bind, and the binding is readable WITHIN the arm. What fails is
-only the read past the branch's merge point, and it is not fn-specific — the
-top-level spelling fails the same way, with `residual value of unknown
-provenance` instead of `fn f: body result`.
-
-**The gap is therefore the JOIN and nothing else**: carrying an arm's binding
-past the merge so a later read resolves to it. The type side is already
-correct (the read arrives as a joined `ProperString` carrier) and the read end
-already knows the name (`defReads` maps its value ID to `tag`).
-
-**The false-path witnesses are in** (above), so the cluster can now hold a join
-to account in both directions. The next increment is the join itself: carry an
-arm's binding past the merge point so a later read resolves to it. Read the
-counts from `COMPILED_STATUS.md` when it lands — not from an ad-hoc probe.
-
-#### Where the join seats — the code read, 2026-09-21
-
-Read before designing it; each of these is a file and a line, not a guess.
-
-- **The decline is `resolveOperand` returning `ok=false`**, surfaced by
-  `residualStands` (`compiler/go/unit_memo.go:562`). The read after the merge
-  has no `producedBy[v.ID]` entry, because the only events that could produce
-  it — the arms' `evDynBind` for the name — live inside the arm fragments.
-- **`RecordBranch` (`compiler/go/emit.go:4208`) merges RESULTS and nothing
-  else.** Its `resolveArm` closure resolves each arm's top-of-stack into a
-  merge operand; there is no corresponding pass over names the arms BOUND. The
-  merge point is where a join would seat, next to `resolveArm`.
-- **The recursive walk already exists.** `eventsBindDynScope`
-  (`compiler/go/emit.go:11444`) descends `condFrag`, `then`, `els`,
-  `loop.cond` and `loop.body` looking for an `evDynBind` of a named set —
-  exactly the traversal a per-arm bind collection needs, in the same shape.
-- **The fragment nesting is already addressable.** `es.fragIDs` / `curFrag()`
-  (`compiler/go/unit_memo.go:449`) give each open fragment an id, and
-  `fragReads` / `noteBindHazard` already key read-vs-bind facts by
-  `(name, fragID)`. An arm's bind and the post-merge read differ precisely by
-  that id.
-- **`armBoundNames` is NOT this mechanism and must not be reused for it.** It
-  is multi-run-body poison (`emit.go:805`): a name bound only by arm-resident
-  installs under `BodyMultiRunKeepsDefs`, whose very definedness is
-  iteration-count-dependent. `NoteDefRead` (`emit.go:8515`) turns a read of
-  such a name into a compile failure on purpose. An `if` arm is the opposite
-  case — it runs exactly once or not at all — so a join belongs beside that
-  map, never inside it.
-
-#### That level, opened — and the answer is neither option above
-
-The question just posed was a false dichotomy (frame slot vs. riding the
-operand merge). Reading `lowerArms` (`compiler/go/lower.go:3848`) and
-`lowerDynBind` (`compiler/go/lower.go:286`) gives a third answer, and an
-experiment confirms it.
-
-`lowerArms` lowers the arms as straight-line code with jumps and merges their
-RESULT into one VM stack slot. There is no phi. And `lowerDynBind`'s own
-comment says what happens to a `def` inside an arm:
-
-> A def of any other name lowers to nothing here — its value flows by
-> provenance exactly as before.
-
-So an ordinary arm `def` emits **no instruction at all**: the binding is a
-compile-time fact, and a later read resolves statically through the producing
-event — which sits on one of two mutually exclusive paths. That is exactly why
-`resolveOperand` cannot place it.
-
-**The runtime mechanism that WOULD carry it already exists, and already
-works.** A name in `dynScopeNames` makes each arm's def lower to a real
-`OpBindDynScope` (`lower.go:334`, `needDyn`), and a read lowers to
-`OpLookupDynScope`. Three programs, measured:
-
-| program | compiles? |
-|---|---|
-| `if (n gt 0) [def tag 'big'] [def tag 'small'] end tag` — read directly | fails |
-| the same, but read through a dyn-scope callee `g` instead | **compiles, answers `'big'`** |
-| the same, with a dyn-scope callee `g` AND a direct read after it | fails |
-
-The middle row is the whole finding: **the bind side is built, correct, and
-exercised today.** The third row isolates the rest — in that program `tag` IS
-in `dynScopeNames` (because `g` reads it), so both arms DO lower to
-`OpBindDynScope`; only the direct same-frame read is still refused.
-
-The refusal is `dynScopeRescue` (`compiler/go/emit.go:8881`), which inside a
-unit admits a read only when the name is an ENCLOSING binding or
-`DynamicScopeReachable(name, reader)` — i.e. reachable from another frame. A
-name this frame bound in its own `if` arm is neither, so the read is refused
-while the machinery to serve it stands installed beside it.
-
-**So the increment is a READ-side admission, not a join to build**: admit a
-same-frame read of a name bound in an `if` arm, and let the existing
-bind/lookup pair carry it. The empty-arm case then works for free — no bind in
-that arm means the outer binding stands and the lookup reads it, which is
-exactly what L172/L174/L181 demand.
-
-**One recorded warning applies directly** (`emit.go:8913`): widening this arm
-to every def-read name was already tried and backfired — "poisons
-`dynScopeNames` for defs whose bind then cannot lower (probe-pinned: the
-quoted interp-body def declined 'unknown provenance')". So the admission must
-be scoped to the arm-bound case, never blanket.
-
-#### That level opened too — the dyn-scope route is RULED OUT, and by measurement
-
-The note above said to open what `dynScopeNames` membership costs before
-claiming the admission is free. Opened. **It is not free, and the cost rules
-the route out.**
-
-`dynScopeNames` is a PROGRAM-WIDE, BY-NAME commitment — not a per-read one.
-Its own declaration says so (`emit.go:1030`): the Finalize pass "installs an
-`OpBindDynScope` twin in **every unit** (params and body-local defs) and at
-**every top-level def** that binds one of these names".
-
-Measured, by disassembling two programs that differ only in whether a second,
-unrelated pair of functions forces the name in:
-
-```
-def k fn [[s:String] [String] [s]]
-def h fn [[] [String] [def tag 'plain' end k tag]]     <- h is IDENTICAL in both
-def g fn [[] [String] [tag]]                           <- only in the second
-def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end g]]
-```
-
-| | BIND_DYN_SCOPE | LOOKUP_DYN_SCOPE |
-|---|---:|---:|
-| without `f`/`g` | 0 | 0 |
-| with `f`/`g` | **3** | 1 |
-
-**Three binds to serve one lookup**, and the third lands in `h`:
-
-```
-fn f2 h/0 (locals=0):
-0000 PUSH_CONST  k8   ; 'plain'
-0001 BIND_DYN_SCOPE k9   ; 'tag'      <- serves nobody
-0002 PUSH_CONST  k3   ; 'plain'       <- h's own read still folds to a const
-0003 CALL_USER   f3   ; k/1
-```
-
-`h` never reads `tag` dynamically, nobody reads `h`'s `tag`, and `h`'s own read
-still resolves statically — yet `h` carries an instruction that serves nothing,
-and becomes `bindsDyn`, which costs it tail-call eligibility
-(`unitBindsDynScope`, `emit.go:11481`, consumed at `emit.go:11808`).
-
-So the cost scales with **how common the name is across the whole program** —
-and `tag`, `r`, `x`, `acc` are exactly the names people give an arm-bound local.
-Trading 17 compile failures for a program-wide lowering change on every
-occurrence of a common name is the wrong bargain. This is also precisely what
-the recorded warning at `emit.go:8913` meant by "poisons `dynScopeNames`".
-
-**The dyn-scope route WORKS and is RULED OUT.** Both halves matter: the earlier
-experiment proves the runtime semantics are right, so the mechanism is a
-correct reference for what the lowering must achieve — it is the program-wide
-blast radius, not the semantics, that disqualifies it.
-
-#### What replaces it: a per-NAME frame slot, local to the unit
-
-The frame-slot option dismissed earlier is the right answer, now for a measured
-reason rather than a guess: it is local to the unit, costs nothing
-program-wide, and never touches tail calls.
-
-The existing promotion machinery is close but not sufficient, and the gap is
-exact. `planValueDefLocals` (`lower.go:1750`) already promotes a value produced
-inside an arm and referenced from outside — its own comment: "a reference
-reaching UP OUT of a branch / loop arm cannot see the parent stack at all, so
-any such use is treated as buried". But `promoted` is `map[int]int`, keyed
-**event seq → slot**: one slot per PRODUCING EVENT. The arm-binding case needs
-the inverse — **one slot per NAME**, written by every arm that binds it, so the
-post-merge read has one home whichever path ran.
-
-Three obligations the witnesses impose, and the third is the one a careless
-implementation gets wrong:
-
-1. Allocate one slot for the NAME (not per producer), for a name bound in at
-   least one arm of a branch and read after the merge.
-2. Every arm that binds the name stores to that slot.
-3. **The slot must already hold the incoming binding before the branch runs**,
-   so an arm that does NOT bind leaves the right value. This is exactly what
-   `fn-locals-scope.tsv` L172/L174/L181 demand — the empty-arm rows — and it is
-   the direction a then-arm-always lowering gets wrong.
-
-And one case the design must DECLINE rather than miscompile: a name with no
-incoming binding, bound in only one arm, read after the merge. On the path that
-skips the arm the interpreter raises `undefined_word`, so the slot has no
-correct seed value. No current corpus row has that shape (L167/L168 bind in
-both arms; L171/L173/L180 carry an incoming `def`), which means **it needs a
-witness of its own before the implementation can claim to handle it.**
-
-NOT yet read: how `planValueDefLocals`' slot assignment interacts with
-`forceOrder` and `collectDynBindSources`, and whether a name-keyed slot can
-ride the same `promoted` map or needs its own. **Open that level before
-claiming anything about it.**
+At `RecordBranch`, on the LOOP-CARRIED def's own mechanism
+(`NoteLoopCarried` — which the 2026-09-21 design had re-specified from
+scratch without noticing it existed): one frame slot per NAME per unit
+(`emitUnit.nameSlots`, shared by every loop and branch carrying the name);
+every arm def a STORE into it at its own site (`emitDynBind.armCarried`,
+first in `lowerDynBind`); the pre-branch binding seeded before the branch
+(`emitBranch.carried`, top of `lowerBranch`) unless it already lives in the
+slot; the joined carrier's identity aliased to the slot (`localByID`); and
+a name with no pre binding bound in one arm only read through
+`OpPushLocalBound`, which raises the interpreter's `undefined_word` on the
+zero slot. The three obligations hold by construction, and the case the
+design said must DECLINE compiles instead and raises where the interpreter
+raises. The one measurement that decided it: a slot means "bound since this
+frame started" — `for 2 [if (i eq 0) [def z 9] [] end z]` is `9 9`
+interpreted — so nothing is ever re-seeded per branch execution.
 
 ## NUR175: the landing's WINDOW — read this before touching OpReStepLanding (2026-09-21)
 
@@ -871,15 +586,16 @@ which only falls and which the default lane asserts.
 [../test/go/langspec/GATE_STATUS.md](../test/go/langspec/GATE_STATUS.md)
 and appends the instant censuses. **That generated file is the authority; this
 table is a copy and goes stale** — it sat at 2026-09-19's values for two days
-while four ceilings moved. The values below are `main` at 49354a6 (PR #483),
-2026-09-21, and the whole table reads **0 regressions, 11 open, 2 at end
+while four ceilings moved. The values below are this branch at the head that
+lands the branch-carried def, 2026-09-22 (`main` at 49354a6 plus S5's first
+slice), and the whole table reads **0 regressions, 11 open, 2 at end
 state**:
 
 | gate | live | end state | what moved it |
 |---|---:|---:|---|
-| compile failures | 62 | 0 | 113 at the 2026-09-17 corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since P0 the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 (S1a) → 53 (S1b-2) on 2026-09-19; **53 → 62 on 2026-09-21 (PR #482)** — nine paired FALSE-PATH witnesses for the `fn-locals-scope` §6 arm-binding cluster. DEBT WRITTEN DOWN: all eight of that cluster's rows ran the THEN path, so it could not tell a real join from a then-arm-always lowering |
-| compute gaps | 58 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 (S1a); 56 → 49 (S1b-2); **49 → 58 on 2026-09-21**, the same nine witnesses |
-| diagnostic parity / armed-only | 353 / 13 | 0 / 0 | checker debt the expansion exposed; both fell at S1b-2; **351 → 353 and 11 → 13 on 2026-09-21** — exactly TWO of the nine witnesses diverge, measured not assumed: L179 and L181, the two OPERAND-spelling rows, each mirroring a pre-existing armed-only twin (L178, L180) diagnostic for diagnostic |
+| compile failures | 45 | 0 | 113 at the 2026-09-17 corpus expansion (+710 rows of ordinary idioms); every one a BUG in COMPILABLE-SUBSET.md §5, not a policy. Since P0 the ceiling is the sum of `test/go/langspec/compile_failures.tsv`, one line per spec file, asserted per file under `BORU_SPEC_FILES` too. 113 → 60 (S1a) → 53 (S1b-2) on 2026-09-19; 53 → 62 on 2026-09-21 (PR #482) — nine paired FALSE-PATH witnesses for the `fn-locals-scope` §6 arm-binding cluster, debt written down; **62 → 45 on 2026-09-22 (S5's first slice, the branch-carried def)** — the seventeen §6 rows compile with parity on BOTH paths, and twelve new witness rows (§6b, §6c) compile too |
+| compute gaps | 41 | 0 | 107 at the expansion; three fell when NUR153 closed; 104 → 56 (S1a); 56 → 49 (S1b-2); 49 → 58 on 2026-09-21, the same nine witnesses; **58 → 41 on 2026-09-22**, the seventeen leaving together |
+| diagnostic parity / armed-only | 349 / 9 | 0 / 0 | checker debt the expansion exposed; both fell at S1b-2; 351 → 353 and 11 → 13 on 2026-09-21 — exactly TWO of the nine witnesses diverge, measured not assumed: L179 and L181, the two OPERAND-spelling rows, each mirroring a pre-existing armed-only twin (L178, L180) diagnostic for diagnostic; **353 → 349 and 13 → 9 on 2026-09-22** — those four rows compile, and leave both ledgers together as predicted |
 | interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a. **At end state** |
 | interpreter-only rows | 0 | 0 (ceiling 3) | **at end state**; the ceiling keeps headroom for a genuine irreducibility claim |
 | interp-entry census rows | 80 | 0 | 54 at the expansion; 52 → 102 (S1a, the G-lane-first landing); 102 → 77 (S1b-1); 77 → 78 (S1b-2); 78 → 80 on 2026-09-21 (PR #481, the two 0-RETURN `fn-value.tsv` witnesses standing aside onto the residual apply) |
@@ -905,11 +621,13 @@ the end of each step of §5, not each increment.
 
 ## What is next
 
-**The immediate two are the OPEN items at the top of this page**: the live
-miscompile (unfixed, with five recorded constraints on any fix) and the
-arm-binding join (designed, dyn-scope route ruled out by measurement). They are
-the same mechanism and the seventeen paired witnesses exist to judge a fix in
-both directions. Everything below is the standing programme they sit inside.
+**The immediate items are listed at the top of this page** (the OPEN RIGHT
+NOW section): S1b's apply shapes as one mechanism, S4's evaluating host,
+S5's eight remaining provenance rows. The two items that led here on
+2026-09-21 closed on 2026-09-22 (the branch-carried def); the re-estimate
+is [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md) §11 —
+**60–108 session-days remaining**, T1 + T2 by year end about 30%.
+Everything below is the standing programme they sit inside.
 
 **One lesson from 2026-09-21 that applies to every increment on this line**,
 because it cost a full revert: `module-sift.tsv` (65 rows) and
@@ -1082,130 +800,20 @@ The first is the one that cost the most, four times in one session:
   found the race); `TestUnifyRegistryArmedConcurrentNoRace` pins it and
   CI's race gates run it. NUR157 is the one oddity that threading kept.
 
-## A LIVE MISCOMPILE, found and NOT yet fixed (2026-09-21)
+## The live miscompile of 2026-09-21 — it was NUR110, and it is CLOSED (2026-09-22)
 
-Found while reading ahead for the arm-binding join. **It is still open on
-`main`.** It is recorded here because a known miscompile is worth more than an
-unknown one, and because the fix was attempted, measured, and withdrawn — the
-attempt's failures are the useful part.
-
-### The bug
-
-A name bound in ONE arm of a branch, read after the merge, bakes the arm's
-value as though the arm always runs:
-
-```
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false
-```
-
-The interpreter raises `undefined_word: z` — the arm never ran, so the name was
-never bound. **The compiler answers 9.** Six shapes, all measured:
-
-| program | interpreter | compiler |
-|---|---|---|
-| `if b [def z 9] [] end z`, `b=false` | raises | `9` |
-| `if b [] [def z 9] end z`, `b=true` | raises | `9` |
-| `if false [def op 1] [0] end op` (top level) | raises | `[0 1]` |
-| `if false [def op 1] [] end op` | raises | `[1]` |
-| `if false [def op 1] [0] end typeof op` | raises | `[0 Integer]` |
-| `…[def z (1 add 8)]…` (computed bind) | raises | leaks a nil: `expected Integer, got <nil>` |
-
-Two of those return the wrong RESIDUAL SHAPE, not just the wrong value. Three
-of them are already programs in `lang/go`'s own test suite, passing.
-
-**Why**: the check pass runs BOTH arms to type them, so a name bound in one arm
-is bound in the model afterwards. A concrete literal then reaches
-`resolveOperand` as an ordinary inert const and bakes. The existing
-arm-binding cluster escapes only by accident of shape — with an incoming `def`
-or a second arm, check produces a JOINED carrier with no payload, which fails
-to materialise and declines "unknown provenance". One bind and no incoming
-binding leaves the arm's own value.
-
-### The attempted fix, and the three ways it was wrong
-
-A "conditional-bind screen": poison a read whose name has no binding the read
-can see, then decline in `resolveOperand` (and in `resolveResidualOperands`,
-which never calls it). No new `MarkUncompilable` site — that census only falls.
-
-Each revision was corrected by a test, never by reasoning, and **each failure
-was the same mistake about KEYS**:
-
-1. **Keyed on fragment nesting** — broke 10 tests. A `do` body and a `for` loop
-   open fragments too; `do [def z 1] z` binds unconditionally. Fragment
-   nesting is not conditionality.
-2. **Branch-scoped but keyed on NAME** — broke `cli.boru`'s `cli-finish-st`. A
-   fn body opens its own fragment, so "bound at the root" never held inside
-   one, and an unrelated `def c` was poisoned because some OTHER function bound
-   `c` in an arm.
-3. **Read-local, keyed on the binding's fragment** — passed `compiler/go`,
-   `lang/go`, `core`, `check`, `eng`, and every hand-written witness. **It
-   still took out 65 rows of `module-sift.tsv` and 31 of 62 real programs**,
-   and the corpus compile-failure gate went 68 → 134.
-
-Revision 3's measurement is the one to keep:
-
-```
-POISON name="ln" binds=[89 258 355 495]
-       open=[1 2 57 66 244 341 481 482 483 520 522 524 525 526]
-```
-
-`ln` has four binds, at four fragments, from four separate analysis rounds of
-the same module. **Fragment ids are not comparable across units or across
-re-analysis rounds**, and `condBindFrags` accumulated program-wide. A bind
-inside function A on round 1 decided the fate of a read in function B on round
-4. The premise — compare the read's open fragment stack against every recorded
-bind of the name — is unsound the moment analysis re-enters a body.
-
-> Three revisions, three keys, one lesson: **a name is the wrong key for a fact
-> about one binding site, and a fragment id is the wrong key for a fact that
-> must survive re-analysis.** Before keying a screen on anything, ask what
-> scope that key is unique in, and whether the reader and the writer are
-> guaranteed to be in it together.
-
-### What the next attempt needs, before any code
-
-- A scope in which the bind and the read are provably comparable. Per-unit is
-  not enough: the sift measurement shows the same unit re-analysed with fresh
-  fragment ids. Establish how many rounds a body gets and what survives them.
-- `module-sift.tsv` (65 rows) and `TestRealProgramsCompile` (62 programs) are
-  the load-bearing regression signal here. Neither is in the fast lane, and
-  BOTH were green through the unit suites that passed. **Run the full corpus
-  before believing a screen of this kind.**
-- The six witnesses above are written and measured; they cannot land in the
-  corpus until the fix does, because a corpus row that miscompiles fails the
-  differential.
-
-### Three more holes, from the Codex review of the withdrawn screen
-
-All three were verified against the source and all three are REAL. Two of them
-are failure modes the corpus never showed, because they make the screen MISS
-rather than over-fire — the corpus only catches the loud direction.
-
-1. **`RecordDynBind` filters names before any bookkeeping.** It returns early
-   for a capitalised name (`emit.go:8715`) and for one starting with `_` or
-   `$` (`emit.go:8730`), both BEFORE the point the screen recorded its
-   conditional-bind fact. So `if b [def _z 9] [] end _z` with `b=false` still
-   bakes 9. The safety fact has to be recorded ahead of the event-lowering
-   filter: it is needed even where no `evDynBind` is emitted at all.
-2. **The early return on a non-arm bind is not unit-scoped.** The screen
-   returned "visible, do not poison" on ANY bind outside a conditional arm —
-   but `condBindFrags` is program-wide, so an unrelated earlier
-   `def h fn [[] [Integer] [def z 1 end z]]` disables the screen for a LATER
-   `f` whose `z` is genuinely conditional. `h`'s frame is long gone at that
-   point. The visibility test must be restricted to bindings the READING unit
-   could actually see.
-3. **A const-condition branch captures only ONE arm, and stores it in
-   `Then`.** `BranchRecord.ConstCond`'s own comment says so: "statically-known
-   condition: only Then captured". The withdrawn screen read `ConstCond` as
-   "both arms captured, mark the one not taken", so for a false const
-   condition it marked the CAPTURED (taken) body as dead —
-   `if false [0] [def z 9 end 1] end drop z` would have had a perfectly
-   ordinary read poisoned. A `ConstCond` branch has no dead arm to mark and
-   must be left alone; only a condition folded to a concrete value has both
-   fragments to choose between.
-
-Together with the sift measurement, that is FIVE distinct ways this screen was
-wrong, in three revisions plus a review. It is a strong signal that the
-mechanism wants designing rather than patching: enumerate where a bind can be
-recorded, which of those sites the filters skip, and what scope makes a bind
-and a read comparable — and only then write the test.
+The six shapes measured on 2026-09-21 (`if b [def z 9] [] end z` with
+`b=false` answering 9; the top-level `[0 1]`, `[1]`, `[0 Integer]`
+residuals; the leaked nil) were [NUR110](../NUR.md#nur110), recorded
+2026-08-28 with a pinned unit test inviting its closure, and the two fixes
+that record had already built and rejected (a refusal at the join: 131
+rows; a refusal at the read: the `t2` false positive) are the reasons the
+fix has the shape it has. The withdrawn 2026-09-21 screen's five failure
+modes are answered the same way: the fix keys on nothing the screen keyed
+on — not a name, not a fragment id — but on the joined carrier's own
+identity, which only a read past the merge ever carries. All six shapes
+now raise `undefined_word` compiled, at the read's position, with the
+interpreter's did-you-mean; `TestCondBodyFreshDefRaisesLikeInterpreter`
+and `TestBranchCarriedDefParity` (twenty-four shapes) pin it, and
+`fn-locals-scope.tsv` §6b/§6c carry the witnesses. The record's closing
+note in NUR.md has the mechanism; the handoff log has the measurements.

@@ -2501,6 +2501,17 @@ func NewPathonVol(volume string, parts []string, abs bool) Value {
 // returns a by-value copy of the node itself: the literal's Parent
 // is the supertype (so typeof is uniformly Parent), its Name is the
 // type's own name, its Data is nil.
+// IsUnboundSlot reports whether v is the ZERO Value — what a compiled frame's
+// local slot holds before anything is stored into it. The VM's bound-checked
+// local read (compiler.OpPushLocalBound) asks this to raise the interpreter's
+// undefined_word for a name bound only inside a branch arm that did not run
+// (the branch-carried def). No value the engine mints is the zero Value: a
+// runtime value carries a Parent, a type node carries its metadata, and a
+// carrier is flagged — so the test is exact, not a heuristic.
+func (v Value) IsUnboundSlot() bool {
+	return v.ID == "" && v.Data == nil && v.Parent == nil && v.tmeta == nil && !v.Carrier && !v.Dynamic
+}
+
 func NewTypeLiteral(t *Type) Value {
 	if t == nil {
 		return Value{}

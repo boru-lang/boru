@@ -2317,7 +2317,9 @@ row was written for is pinned by a handler test instead
 
 ## NUR110 — a def in an untaken branch binds anyway {#nur110}
 
-**Status:** Pending · **Recorded:** 2026-08-28 · **Surfaced by:** checking what
+**Status:** Resolved (2026-09-22, the branch-carried def —
+`compiler/go/branch_carried.go`; see the closing note at the end of this
+record) · **Recorded:** 2026-08-28 · **Surfaced by:** checking what
 NUR109's compiled answer rested on
 
 **Rule:** a `def` runs when its branch runs. A name defined only inside a
@@ -2364,7 +2366,9 @@ refusal is contained (the interpreter still runs the program correctly) where
 a silent wrong binding is not. Full graduation is the same one
 family L already names — "a runtime dispatch respecting the conditional
 binding" — which is Stage 4/5's def-twin work, not Stage 3's. Pinned as
-measured meanwhile by `lang/go`'s `TestCondBodyFreshDefBindsCompiledOnly`.
+measured meanwhile by `lang/go`'s `TestCondBodyFreshDefBindsCompiledOnly`
+(since 2026-09-22 `TestCondBodyFreshDefRaisesLikeInterpreter`, asserting
+parity — see the closing note).
 
 **SHARPENED 2026-08-30, and the diagnosis above is not the one that matters.**
 Three things the record did not have.
@@ -2585,6 +2589,51 @@ payoff-list gates took on 2026-09-02 (design/FULL-COMPILATION-HANDOFF.0.md,
 the registry is, not what is in the bytecode.
 
 ---
+
+**CLOSED 2026-09-22 — by fix, compiler-side, on the loop's own mechanism.**
+The record's verdict named the repair: the machinery that answers the same
+question for a zero-iteration loop. It is the LOOP-CARRIED def
+(NoteLoopCarried: a frame slot per name, a store at each rebind site, the
+pre-loop value seeded before the loop), and the BRANCH-CARRIED def
+(`compiler/go/branch_carried.go`) is the same mechanism seated at
+`RecordBranch`: one frame slot per name per unit — a loop and a branch
+carrying the same name share the cell, so nesting composes — every arm def
+of the name a store into it at its own site, the pre-branch binding seeded
+before the branch when one stands, and the joined carrier's identity
+aliased to the slot so a read after the merge loads whichever arm ran. The
+slot means "bound since this frame started" (a frame's locals begin as the
+zero Value; measured first: `for 2 [if (i eq 0) [def z 9] [] end z]` is
+`9 9` interpreted, so an arm's binding from one iteration is read in the
+next and a seed must never re-run per branch), and a name with NO pre
+binding, bound in one arm only, is read through a BOUND-CHECKED load
+(`OpPushLocalBound`): the zero slot is the arm that did not run, and the
+read raises the interpreter's own `undefined_word`, at the read's own
+position, with the frame's locals among the did-you-mean candidates. Every
+shape in the tables above now agrees on both lanes — `if false [def op 1]
+[0] end op` raises `undefined_word` compiled — and the two shapes the
+withdrawn read-site screen could not separate (`t2` escaping as the arm's
+RESULT) are separated by construction: the arm's own reads keep resolving to
+the arm's value; only the JOINED binding is aliased. `lang/go`'s
+`TestCondBodyFreshDefRaisesLikeInterpreter` asserts parity where the old
+fence pinned the divergence, `TestBranchCarriedDefParity` holds
+twenty-four shapes to account, and `lang/spec/fn-locals-scope.tsv` §6b/§6c
+carry the witnesses.
+
+**What this record's history bought.** Both rejected attempts stand as the
+reasons the fix has the shape it has: a refusal at the JOIN was 131 corpus
+rows because the join cannot know whether anything reads the name (the
+slot is allocated at the join but costs nothing unread — a store and a
+cell); a refusal at the READ could not tell a read of the NAME from the
+arm's VALUE flowing out as its result (the alias is by the joined carrier's
+identity, which the arm's own reads never carry). And InstallJoinedDefs'
+push for the no-pre one-arm case is now a payload-less CARRIER under a
+compile pass (`condBoundCarrier`), so nothing can bake the arm's value even
+where the slot cannot be seated: a `_`-prefixed name (whose def the recorder
+never records) declines "unknown provenance" instead of answering 9 — a
+contained compile failure, still owed its seat.
+
+`each` / `fold`'s leak (the third attempt above) is the interpreter's own
+semantics and is untouched by this.
 
 ## NUR109 — an unbound parser name is two different errors {#nur109}
 

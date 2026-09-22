@@ -246,7 +246,41 @@ func narrowedSameBinding(r *Registry, k string, v Value) bool {
 // add that is only a NARROWING of the enclosing binding (narrowedSameBinding)
 // is neither pushed nor noted — it is the pass's own refinement, not a binding
 // the runtime leaves.
-func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
+//
+// InstallTakenArmDefs is the CONSTANT-condition form: only the taken arm was
+// analysed (handed as then or else_ by the caller) and it always runs, so
+// its binding is unconditionally the post-branch one. Every other call is a branch the
+// model cannot decide, where a name bound in ONE arm with no pre-branch
+// binding is CONDITIONALLY bound: on the path that skipped the arm the
+// interpreter has no binding at all (NUR110). The model has no third state
+// between bound and unbound, and the bare push of the arm's own value used to
+// let a read after the merge bake it — `if false [def op 1] [0] end op`
+// compiled to `0 1` where the interpreter raises undefined_word. Under a
+// compile pass such a name is pushed as a payload-less CARRIER of the arm's
+// value (condBoundCarrier): the same type, a fresh identity, and no value to
+// bake — so the read either resolves through the compiler's frame slot for
+// the name (the branch-carried def, RecordBranch's join seating, which loads
+// whichever arm ran and raises undefined_word when none did) or declines. A
+// plain check keeps the arm's own value: the diagnostics it derives from the
+// payload are the checker's business, not this join's. A fn value, a type
+// node and a module value are never wrapped — their consumers read the
+// payload itself, and their conditional-binding class is family L's.
+//
+// The returned joins describe every name pushed here, for the recorder
+// (core.BranchRecord.Joins); nil when nothing was pushed.
+func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
+	return installJoinedDefs(r, then, else_, false)
+}
+
+// InstallTakenArmDefs is InstallJoinedDefs for a CONSTANT-condition branch:
+// the one analysed arm (handed as then or else_) always runs, so the
+// binding it leaves is unconditionally the post-branch one.
+func InstallTakenArmDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
+	return installJoinedDefs(r, then, else_, true)
+}
+
+func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool) []BranchJoin {
+	var joins []BranchJoin
 	seen := make(map[string]bool)
 	for k, tv := range then {
 		seen[k] = true
@@ -254,7 +288,10 @@ func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
 			if narrowedSameBinding(r, k, tv) && narrowedSameBinding(r, k, ev) {
 				continue
 			}
-			r.Defs.Push(k, joinBranchDef(tv, ev))
+			j := BranchJoin{Name: k, Joined: joinBranchDef(tv, ev), ThenBinds: true, ElseBinds: true, Taken: taken}
+			j.Pre, j.HasPre = r.Defs.Top(k)
+			r.Defs.Push(k, j.Joined)
+			joins = append(joins, j)
 			// The both-arms join is a transition exactly like the one-arm
 			// joins below — this note was MISSING (the doc above claimed
 			// every push noted; a both-arms `def op` left a live binding
@@ -264,17 +301,22 @@ func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
 			continue
 		}
 		// then-only: join with the pre-branch top-of-stack if any.
+		j := BranchJoin{Name: k, ThenBinds: true, Taken: taken}
 		if pre, ok := r.Defs.Top(k); ok {
 			if narrowedSameBinding(r, k, tv) {
 				continue
 			}
-			r.Defs.Push(k, joinBranchDef(tv, pre))
+			j.Pre, j.HasPre = pre, true
+			j.Joined = joinBranchDef(tv, pre)
+			r.Defs.Push(k, j.Joined)
 		} else {
-			r.Defs.Push(k, tv)
+			j.Joined = condBoundCarrier(r, k, tv, taken)
+			r.Defs.Push(k, j.Joined)
 			if specFnJoin(r, k) {
 				continue
 			}
 		}
+		joins = append(joins, j)
 		r.NoteBindTransition(BindDef, k, tv.Pos())
 	}
 	for k, ev := range else_ {
@@ -282,19 +324,41 @@ func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) {
 			continue
 		}
 		// else-only: join with pre-branch top-of-stack.
+		j := BranchJoin{Name: k, ElseBinds: true, Taken: taken}
 		if pre, ok := r.Defs.Top(k); ok {
 			if narrowedSameBinding(r, k, ev) {
 				continue
 			}
-			r.Defs.Push(k, joinBranchDef(ev, pre))
+			j.Pre, j.HasPre = pre, true
+			j.Joined = joinBranchDef(ev, pre)
+			r.Defs.Push(k, j.Joined)
 		} else {
-			r.Defs.Push(k, ev)
+			j.Joined = condBoundCarrier(r, k, ev, taken)
+			r.Defs.Push(k, j.Joined)
 			if specFnJoin(r, k) {
 				continue
 			}
 		}
+		joins = append(joins, j)
 		r.NoteBindTransition(BindDef, k, ev.Pos())
 	}
+	return joins
+}
+
+// condBoundCarrier is the binding InstallJoinedDefs pushes for a name bound
+// in ONE arm of an undecided branch with no pre-branch binding (see there):
+// under a compile pass, a payload-less carrier of the arm's value with a
+// fresh identity; otherwise, and for a taken arm, a fn value, a type node
+// or a module value, the arm's own value exactly as before.
+func condBoundCarrier(r *Registry, name string, v Value, taken bool) Value {
+	if taken || r == nil || r.Check == nil || !r.Check.Recorder().Armed() {
+		return v
+	}
+	if IsCapitalisedName(name) || IsFnValueResidual(v) || IsBareTypeNode(v) || IsModuleFamilyValue(v) ||
+		(v.Parent != nil && v.Parent.ConformsTo(TFunction)) {
+		return v
+	}
+	return JoinCarriers(v, v)
 }
 
 // JoinCarrierStacks folds two carrier result stacks (e.g. produced by

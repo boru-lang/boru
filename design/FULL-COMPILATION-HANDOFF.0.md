@@ -11259,3 +11259,139 @@ thing only: `eng/go/vm.go:1076` carried a `//covergate:allow` pragma that the
 widening made REACHABLE. An allowlisted guard something reaches is a lie the
 gate is right to reject; the pragma is removed and the arm asserted
 (`TestReStepLandingUnderflow`).
+
+## S5 — the branch-carried def: the arm-binding join, and NUR110 closed by the same mechanism (2026-09-22)
+
+The two OPEN items the handover page led with — the seventeen-row
+`fn-locals-scope` §6 arm-binding cluster and the live miscompile of
+2026-09-21 — were one defect, and the miscompile was not new: it is NUR110
+(recorded 2026-08-28), pinned by `TestCondBodyFreshDefBindsCompiledOnly`
+with an invitation to close it. Both sit at `InstallJoinedDefs`, the branch
+join: a name bound in an arm is pushed after the merge either as a joined
+carrier with a fresh identity and no home (both arms bind, or a pre binding
+stands — the cluster's "unknown provenance"), or, with no pre binding and
+one binding arm, as the arm's own value, which a later read bakes as though
+the arm always ran (NUR110). And the mechanism the fix needed already
+existed: the LOOP-CARRIED def (`NoteLoopCarried`) is a frame slot per name,
+a store at every rebind site, and the pre-loop value seeded before the loop
+— the design the handover page's frame-slot section had specified from
+scratch, built two months earlier for the loop and never pointed at the
+branch.
+
+**What lands** (`compiler/go/branch_carried.go`, seated from
+`RecordBranch`; `core.BranchRecord.Joins` carries what `InstallJoinedDefs`
+pushed, per name):
+
+- ONE frame slot per NAME per unit (`emitUnit.nameSlots`), shared by every
+  loop and branch carrying the name, so nesting composes: an inner branch's
+  stores are what the outer join reads, and a branch inside a loop over a
+  loop-carried name stores into the loop's own cell.
+- Every arm def of the name a STORE into the slot at its own site
+  (`emitDynBind.armCarried`, lowered first in `lowerDynBind`), so the
+  store runs exactly when the arm runs; a value the planner promoted is
+  re-pushed from its local, one on the stack top is CONSUMED when
+  refcount-dead (its producer's drop suppressed through the existing
+  `bindConsumes` discipline) and COPIED otherwise.
+- The pre-branch binding SEEDED into the slot before the branch
+  (`emitBranch.carried`, lowered at the top of `lowerBranch`; an
+  event-sourced seed is force-promoted), skipped when the pre binding
+  already lives in the slot — which is why the empty-arm rows carry the
+  incoming binding through.
+- The joined carrier's identity aliased to the slot (`localByID`), so a read
+  past the merge — a body result, an operator's operand, a residual — loads
+  whichever arm ran.
+- A name with NO pre binding, bound in one arm only, read through a
+  BOUND-CHECKED load: `OpPushLocalBound`, the one new opcode, raises the
+  interpreter's `undefined_word` on the zero slot (a frame's locals begin
+  as the zero Value, and `Value.IsUnboundSlot` is exact — no engine value is
+  zero), at the read's own position (`EmitState.readPos`, from
+  `NoteLocalRead`), with the frame's local names among the did-you-mean
+  candidates (`core.UndefinedWordDiagWith`), so the compiled diagnostic is
+  the interpreter's payload for payload.
+- `InstallJoinedDefs` pushes a payload-less carrier (`condBoundCarrier`)
+  for the no-pre one-arm case under a compile pass, so nothing can bake the
+  arm's value even where the slot is not seated; a plain check keeps the
+  value.
+
+**The one measurement that decided the design.** The slot means "bound
+since this frame started", never "bound by this execution of the branch":
+`for 2 [if (i eq 0) [def z 9] [] end z]` is `9 9` on the interpreter — an
+arm's binding from iteration 0 is read in iteration 1, where the arm does
+not run. A sentinel seeded before each branch execution would have raised
+where the interpreter answers. Measured before a line of the store was
+written; the unit test and the corpus rows carry it.
+
+**Measured.** `fn-locals-scope.tsv` compile failures 19 -> 2 (the two left,
+L184 and its kin, are fn-VALUE branch results — Stage 3), the corpus sum
+62 -> 45, the unit-suite ledger 284 -> 283; every one of the seventeen
+§6 rows answers with parity on BOTH paths; NUR110's six shapes and their
+taken-path twins raise or answer exactly as the interpreter; twelve new
+witness rows (§6b, §6c) at the end of the file — at the END because the
+checker-accuracy ratchet pins false positives by file:line, and an
+interleaved row shifts every pin below it. `TestBranchCarriedDefParity`
+holds twenty-four shapes; the generated sweep, the real programs, the
+variation differential and every other corpus gate are unchanged. The
+remaining ceilings are in the handover page's table, refreshed from
+`make gate-status`.
+
+**Four regressions found and fixed on the way, each a rule now written
+into the code:**
+
+1. **A program-wide by-name set is the wrong home for a branch-carried
+   fact.** The first cut added carried names to `es.carriedNames`, the
+   loop-carried name's hazard flag, which the undef handler reads by name
+   for EVERY undef — `kg/main.boru` stopped compiling on a `var [[p] …]`
+   splice's own cleanup undef of `p`, because some unrelated branch carried
+   a `p`. Branch-carried names are as common as `p`; the undef hazard is
+   unit-scoped and reads the unit's `nameSlots`, and the routed-read guard
+   is not owed (an arm def a routed dispatch reads keeps its registry twin).
+2. **A seed must never come from ANOTHER FRAME's binding.** In
+   `utils/sort.boru` the recursive callee's arm-local `k` met the caller's
+   `k` as its pre binding; resolving it went through `dynScopeRescue`, whose
+   commitment is program-wide by name, and every other fn binding a `k`
+   (`sort-pair`) then had to lower a dyn-scope install it could not. Such a
+   name is left unseated — its read declines as before — and a resolution
+   that lands on a dyn-scope operand is undone.
+3. **Storability is decided at the join, not at the lowering.** A `word`
+   value bound in an arm cannot be stored; declining the store at lowering
+   took eight generated-sweep call-form variants that had compiled, because
+   nothing read the name past the merge. `dynBindStorable` decides at the
+   join, and an unstorable name is simply not carried.
+4. **A store that pops steals from the consumer that follows.** The first
+   store popped its computed source; a root def's write-back
+   (`OpBindGlobal`'s peek fast path) then found nothing on top — the
+   variation differential's `if true [def f (flex []) …]` variant. Copy
+   unless dead; when dead, consume through `bindConsumes`, exactly the root
+   write-back's own discipline.
+
+A fifth, found by the same ledger moving under the change and fixed on
+main's own defect: `collectDynBindSources`, the collector that
+force-promotes a dyn-bound def's computed source for its registry
+install, walked only a unit's TOP-LEVEL events, so a dyn-bound def inside
+an arm (`[def acc3 (n add 1) f (n sub 1)]`, read by the recursive callee's
+other arm) was left refcount-dead and declined "unpromoted computed value".
+The first cut of the branch-carried def compiled that program by the
+accident of an extra reference; once the reference was scoped correctly
+it declined again, and the collector now walks every nested fragment —
+one more unit-suite program compiles, with parity.
+
+And two the review of the withdrawn 2026-09-21 screen predicted, now
+answered by construction: the `t2` false positive (an arm's own local
+escaping as the arm's RESULT) cannot occur, because the arm's reads resolve
+to the arm's value and only the JOINED identity is aliased; and
+`RecordDynBind`'s `_`/`$`-name filter (a def it never records) leaves such
+a name uncarried — it now declines "unknown provenance" instead of baking,
+a contained compile failure still owed its seat.
+
+**What this does not reach.** A name bound in an arm through a computed
+`do` body (its def lives in the do's own unit); a pre binding from another
+frame (rule 2); a `_`-prefixed name; a fn value, a type node or a module
+value bound in an arm (family L's territory). Each declines where it
+declined before, through an existing site — `compileFailureSiteCeiling`
+stays at 92.
+
+**The checker's half.** `boru check` binds the name after an undecided
+branch — its model has no third state — so the four `ERROR:undefined_word`
+witnesses are runtime-only errors it cannot flag; they are pinned in
+`unflaggedPins` as the checker's T4 debt (the maintainer's open question
+2), not the rows'.

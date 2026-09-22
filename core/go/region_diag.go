@@ -138,6 +138,15 @@ func DidYouMeanOver(r *Registry, name string) []DiagSuggestion {
 // did-you-mean near-miss. The engine's undefinedWordError puts its two
 // tape-only hints (a pending `def`, a void group) before these.
 func UndefinedWordDiag(r *Registry, src, name string, pos SrcPos) *BoruError {
+	return UndefinedWordDiagWith(r, src, name, pos, nil)
+}
+
+// UndefinedWordDiagWith is UndefinedWordDiag with EXTRA near-miss
+// candidates: the names a compiled frame holds as locals (its params and
+// body-local defs), which the interpreter's frame keeps as registry defs
+// and so offers as did-you-mean matches, where the VM's registry never
+// sees them (compiler.OpPushLocalBound's raise).
+func UndefinedWordDiagWith(r *Registry, src, name string, pos SrcPos, extra []string) *BoruError {
 	ae := &BoruError{
 		Code:       "undefined_word",
 		Detail:     UndefinedWordDetail(name),
@@ -146,6 +155,16 @@ func UndefinedWordDiag(r *Registry, src, name string, pos SrcPos) *BoruError {
 		Col:        pos.Col,
 		FullSource: src,
 	}
-	ae.Suggestions = append(ae.Suggestions, DidYouMeanOver(r, name)...)
+	if len(extra) == 0 {
+		ae.Suggestions = append(ae.Suggestions, DidYouMeanOver(r, name)...)
+		return ae
+	}
+	cands := append(append([]string(nil), r.SuggestionCandidates()...), extra...)
+	if matches := SuggestNames(name, cands); len(matches) > 0 {
+		ae.Suggestions = append(ae.Suggestions, DiagSuggestion{Message: didYouMeanMessage(matches)})
+		if r.IsBuiltinWord(matches[0]) {
+			ae.Suggestions = append(ae.Suggestions, DiagSuggestion{Message: describeSuggestion(matches[0])})
+		}
+	}
 	return ae
 }

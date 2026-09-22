@@ -48,7 +48,7 @@ const (
 	// Set 2026-09-19, the change that removed the interpreter fallbacks.
 	// These are not new bugs: every one of them was already there, answered
 	// by a silent re-run on the interpreter and counted by nothing.
-	compileDefectCeiling = 284
+	compileDefectCeiling = 283 // 284 -> 283 on 2026-09-22: the branch-carried def (compiler/go/branch_carried.go) — a name an `if` arm binds, read after the merge, loads from a frame slot; one unit-suite program that declined on that read compiles
 	bailDefectCeiling    = 32
 )
 

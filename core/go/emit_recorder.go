@@ -26,6 +26,29 @@ type BranchRecord struct {
 	ElsValue        *Value // non-nil: the else arm is this already-evaluated VALUE
 	Out             Value
 	Pos             SrcPos
+	// Joins are the names the branch left bound PAST its merge — what
+	// InstallJoinedDefs handed back for this `if` — so the recorder can seat
+	// each in a frame slot (the compiler's branch-carried def). Nil when no
+	// arm bound a name, or on a plain check.
+	Joins []BranchJoin
+}
+
+// BranchJoin is one name an `if` left bound past its merge, as
+// InstallJoinedDefs pushed it. Joined is the binding a read after the merge
+// resolves — the carrier the join pushed, whose ID is the compiler's key for
+// the name's frame slot. Pre is the binding that stood before the branch
+// (HasPre false: none — the name is bound only if an arm ran). ThenBinds and
+// ElseBinds say which arms rebound the name; on a constant-condition branch
+// only the taken arm was analysed, and Taken says so — that arm always runs,
+// so the joined binding is unconditionally its own.
+type BranchJoin struct {
+	Name      string
+	Joined    Value
+	Pre       Value
+	HasPre    bool
+	ThenBinds bool
+	ElseBinds bool
+	Taken     bool
 }
 
 // EmitRecorder is the checker-side view of the bytecode recording pass —

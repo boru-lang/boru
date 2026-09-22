@@ -620,6 +620,15 @@ const (
 	// both lanes). The recorded landing claims ONE value, so a result count
 	// that differs is a claim failure and defers. Arg is unused.
 	OpReStepLanding
+	// OpPushLocalBound is OpPushLocal for a BRANCH-CARRIED binding that may
+	// never have been stored on the path that reached it — a name bound only
+	// inside an `if` arm, with no binding before the branch, read after the
+	// merge (compiler/go/branch_carried.go). The frame's locals begin as the
+	// zero Value; a zero slot here is the arm that did not run, and the read
+	// raises the interpreter's undefined_word (NUR110) for the name seated
+	// at this pc in the code's StoreNames table. A stored slot pushes exactly
+	// as OpPushLocal does.
+	OpPushLocalBound
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -682,6 +691,7 @@ var opcodeNames = [...]string{
 	OpLookupDynScopeData:   "LOOKUP_DYN_SCOPE_DATA",
 	OpBindTwin:             "BIND_TWIN",
 	OpDeoptIfFn:            "DEOPT_IF_FN",
+	OpPushLocalBound:       "PUSH_LOCAL_BOUND",
 	OpBindResident:         "BIND_RESIDENT",
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
@@ -1640,6 +1650,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " -> %04d", in.Arg)
 		case OpPushLocal, OpForSetup, OpStoreLocal:
 			fmt.Fprintf(sb, " l%d", in.Arg)
+		case OpPushLocalBound:
+			fmt.Fprintf(sb, " l%d ; bound-checked", in.Arg)
 		case OpPushType:
 			fmt.Fprintf(sb, " t%-3d ; %s", in.Arg, p.Types[in.Arg].Name)
 		case OpFallback:
