@@ -78,6 +78,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.DynApplyLeadEligible(Value{}) {
 		t.Fatal("inactive DynApplyLeadEligible must be false")
 	}
+	if _, ok := e.ProducedLeadApplies("x", nil); ok {
+		t.Fatal("inactive ProducedLeadApplies must decline")
+	}
 	if e.RecordDynMethod(Value{}, nil, nil, "w", SrcPos{}) {
 		t.Fatal("inactive RecordDynMethod must decline")
 	}

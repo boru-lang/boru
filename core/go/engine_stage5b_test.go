@@ -43,6 +43,12 @@ type s5bEmit struct {
 	// last RecordDynApply received.
 	pending string
 	lastOut Value
+	// producedRet / producedOK is the one answer the stub gives
+	// ProducedLeadApplies (the curried-chain arm asks it of the lead);
+	// producedArgs records the window it was asked about.
+	producedRet  *Type
+	producedOK   bool
+	producedArgs []Value
 }
 
 func newS5BEmit() *s5bEmit { return &s5bEmit{EmitRecorder: TheInactiveEmit, activeOn: true} }
@@ -70,6 +76,10 @@ func (s *s5bEmit) RecordDynApplyLead(args []Value, fn, out Value, pos SrcPos) (i
 	return s.RecordDynApply(args, fn, out, pos)
 }
 func (s *s5bEmit) DynApplyLeadEligible(Value) bool { return s.leadEligible }
+func (s *s5bEmit) ProducedLeadApplies(_ string, args []Value) (*Type, bool) {
+	s.producedArgs = args
+	return s.producedRet, s.producedOK
+}
 func (s *s5bEmit) RegisterTrailingApply(id string, arity int) {
 	s.trailing = append(s.trailing, id)
 }
@@ -1547,5 +1557,217 @@ func TestS5BArgTypeSummaryPlainValue(t *testing.T) {
 	// The default arm renders the plain Parent leaf (line 8774).
 	if got := ArgTypeSummary([]Value{NewInteger(1)}); got != "Integer" {
 		t.Errorf("ArgTypeSummary = %q", got)
+	}
+}
+
+// producedLeadEngine is a paren window `( lead args… )` over a strict
+// fn-typed carrier lead, closed with the stub answering ProducedLeadApplies
+// as configured — the curried-chain arm's fixture (2026-09-22).
+func producedLeadEngine(t *testing.T, es *s5bEmit, args ...Value) (*Engine, Value) {
+	t.Helper()
+	r := covRegistry(t, nil)
+	installS5BEmit(t, r, es)
+	e := NewTop(r)
+	lead := NewCarrier(TFunction)
+	lead.ID = "T_produced_lead"
+	tape := []Value{NewOpenParen(), lead}
+	tape = append(tape, args...)
+	tape = append(tape, NewCloseParen())
+	e.Tape = NewTape(tape, StackHeadroom)
+	e.Pointer = len(tape) - 1
+	return e, lead
+}
+
+// TestS5BCloseParenProducedLeadApply pins the CURRIED-CHAIN arm
+// (parenProducedLeadApplyIdx / recordParenProducedLeadApply): a strict
+// fn-typed carrier lead the recorder produced, over data arguments its
+// closure provably takes, records the leading apply at the collapse and
+// collapses the window to ONE carrier typed by the recorder's answer.
+func TestS5BCloseParenProducedLeadApply(t *testing.T) {
+	es := newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+	e, _ := producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || len(es.uncompilable) != 0 {
+		t.Fatalf("the produced lead records one apply: applies=%d uncompilable=%v", es.dynApplies, es.uncompilable)
+	}
+	if len(es.producedArgs) != 1 || !es.producedArgs[0].Parent.Equal(TInteger) {
+		t.Errorf("the recorder is asked over the window's arguments, got %v", es.producedArgs)
+	}
+	if e.Tape.Len() != 1 {
+		t.Fatalf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
+	}
+	out := e.Tape.At(0)
+	if !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) || IsFnTypedCarrier(out) {
+		t.Errorf("the out carries the recorder's result type (a strict Integer), got %v dyn=%v", out, out.Dynamic)
+	}
+	if es.lastOut.ID != out.ID || out.ID == "" {
+		t.Errorf("the recorded out is the tape's survivor: recorded %q tape %q", es.lastOut.ID, out.ID)
+	}
+
+	// A chain level: the answer types the out Function, so the next paren
+	// out classifies it as a produced lead again.
+	es = newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TFunction, true
+	e, _ = producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.At(0)) || e.Tape.At(0).Dynamic {
+		t.Errorf("a Function answer types the out as a strict fn-typed carrier: %v", e.Tape.At(0))
+	}
+
+	// No answer: the out is Any.
+	es = newS5BEmit()
+	es.producedOK, es.dynApplyOK = true, true
+	e, _ = producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(TAny) {
+		t.Errorf("a nil result type is Any: %v", e.Tape.At(0))
+	}
+}
+
+// TestS5BCloseParenProducedLeadApplyArgOrder pins the argument order the
+// record binds: the interpreter's re-step fills the closure's params from
+// the forward stack in WRITTEN order, the event's operands are a stack read
+// top-first, so the window is handed over REVERSED.
+func TestS5BCloseParenProducedLeadApplyArgOrder(t *testing.T) {
+	es := newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+	e, _ := producedLeadEngine(t, es, NewInteger(2), NewInteger(3))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || e.Tape.Len() != 1 {
+		t.Fatalf("a two-argument window records one apply and collapses: applies=%d len=%d", es.dynApplies, e.Tape.Len())
+	}
+	if len(es.producedArgs) != 2 {
+		t.Fatalf("both arguments are handed over, got %v", es.producedArgs)
+	}
+	first, _ := es.producedArgs[0].AsConcreteInteger()
+	second, _ := es.producedArgs[1].AsConcreteInteger()
+	if first != 3 || second != 2 {
+		t.Errorf("the window is reversed for the stack-order record (written 2 3 → [3 2]), got [%d %d]", first, second)
+	}
+}
+
+// TestS5BCloseParenProducedLeadApplyDeclines pins every gate that keeps a
+// window OFF the arm: a collapse driven off the main loop (the survivors
+// become a pending collection's arguments, nothing re-steps), a lead the
+// recorder does not vouch for, a record that declines, a Dynamic lead, a
+// lead the `apply` word owns, a gradual argument that may be a fn, and a
+// fn-valued argument. Each leaves the window intact for its own machinery.
+func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
+	// Off the main loop: the recorder is never asked.
+	es := newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+	e, _ := producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(false); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 0 || es.producedArgs != nil || e.Tape.Len() != 2 {
+		t.Errorf("a pending-collection collapse re-steps nothing: applies=%d asked=%v len=%d", es.dynApplies, es.producedArgs != nil, e.Tape.Len())
+	}
+	// The recorder declines the lead.
+	es = newS5BEmit()
+	es.dynApplyOK = true
+	e, _ = producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 0 || len(es.producedArgs) != 1 || e.Tape.Len() != 2 {
+		t.Errorf("an unvouched lead is asked once and left: applies=%d asked=%v len=%d", es.dynApplies, es.producedArgs, e.Tape.Len())
+	}
+	// The record declines: the window stays intact.
+	es = newS5BEmit()
+	es.producedOK, es.producedRet = true, TInteger
+	e, _ = producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || e.Tape.Len() != 2 || !IsFnTypedCarrier(e.Tape.At(0)) {
+		t.Errorf("a declined record leaves the window: applies=%d len=%d", es.dynApplies, e.Tape.Len())
+	}
+	// A lead the apply WORD owns.
+	es = newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+	es.pending = "T_produced_lead"
+	e, _ = producedLeadEngine(t, es, NewInteger(2))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.producedArgs != nil {
+		t.Error("a lead under a pending apply word is the word's, never asked here")
+	}
+	// A gradual Any argument, and a fn-valued argument.
+	for _, arg := range []Value{NewDynamicCarrier(TAny), NewValueRaw(TFunction, FnDefInfo{Name: "g"})} {
+		es = newS5BEmit()
+		es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+		e, _ = producedLeadEngine(t, es, arg)
+		if err := e.stepCloseParen(true); err != nil {
+			t.Fatalf("stepCloseParen: %v", err)
+		}
+		if es.producedArgs != nil {
+			t.Errorf("argument %v is not a data argument: the recorder must not be asked", arg)
+		}
+	}
+	// A gradual argument whose bound excludes Function IS data.
+	es = newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
+	e, _ = producedLeadEngine(t, es, NewDynamicCarrier(TInteger))
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || e.Tape.Len() != 1 {
+		t.Errorf("a typed gradual argument is collected: applies=%d len=%d", es.dynApplies, e.Tape.Len())
+	}
+	// A Dynamic lead is recordParenLeadingApply's (the dyn-method path).
+	es = newS5BEmit()
+	es.producedOK, es.producedRet, es.dynApplyOK, es.dynMethodOK = true, TInteger, true, true
+	r := covRegistry(t, nil)
+	installS5BEmit(t, r, es)
+	e = NewTop(r)
+	lead := NewCarrier(TFunction)
+	lead.Dynamic = true
+	lead.ID = "T_dyn_lead"
+	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.producedArgs != nil || es.dynMethods != 1 {
+		t.Errorf("a Dynamic lead keeps the guarded method path: asked=%v methods=%d", es.producedArgs != nil, es.dynMethods)
+	}
+}
+
+// TestConcreteFnSingleReturn pins the trailing arm's result typing: one
+// declared return every own signature agrees on, for a NAMED concrete fn.
+func TestConcreteFnSingleReturn(t *testing.T) {
+	sig := func(ret ...*Type) Signature { return Signature{Params: []FnParam{{Type: TInteger}}, Returns: ret} }
+	named := func(sigs ...Signature) Value {
+		return NewValueRaw(TFunction, FnDefInfo{Name: "f", Signatures: sigs})
+	}
+	if got := concreteFnSingleReturn(named(sig(TInteger))); got == nil || !got.Equal(TInteger) {
+		t.Errorf("one declared return: got %v", got)
+	}
+	if got := concreteFnSingleReturn(named(sig(TInteger), sig(TInteger))); got == nil || !got.Equal(TInteger) {
+		t.Errorf("overloads that agree: got %v", got)
+	}
+	for name, v := range map[string]Value{
+		"a carrier":         NewCarrier(TFunction),
+		"anonymous":         NewValueRaw(TFunction, FnDefInfo{Anonymous: true, Signatures: []Signature{sig(TInteger)}}),
+		"no signatures":     named(),
+		"undeclared return": named(sig()),
+		"two returns":       named(sig(TInteger, TInteger)),
+		"overloads differ":  named(sig(TInteger), sig(TString)),
+		"nil return":        named(sig(nil)),
+	} {
+		if got := concreteFnSingleReturn(v); got != nil {
+			t.Errorf("%s: got %v, want nil", name, got)
+		}
 	}
 }

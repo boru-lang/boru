@@ -100,6 +100,10 @@ keep the two in sync in the same commit.
 | [NUR175](#nur175) | The re-step landing applies over an EMPTY WINDOW, but `execFnDefLiteral` matches over the LIVE TAPE and the LIVE STACK, so any member with an ARG-TAKING overload can be matched differently there than at the landing. Three divergences, all present on `main` via the reach spelling and all caught by a Codex review of PR #479 before NUR174's widening could carry them to the `get` spelling: a stack operand selecting a unary overload (`5 m.f` = 6 interpreted, `5 42` landed), a `/q` slot CAPTURING the following word (`m.f z` = `z/q` interpreted, `42 z` landed — a word is not always a collection barrier), and a 0-RETURN member whose effect-only apply the landing's one-result claim cannot express (an internal_error). FIXED 2026-09-21 by screening on the RUNTIME value: only-0-arg signatures and exactly one declared return, standing aside onto the residual apply otherwise | a Codex review of PR #479, 2026-09-21 |
 | [NUR176](#nur176) | A 0-ARG runtime lead under the one-arg leading window `(k x)` is dispatched by the interpreter with nothing and its argument is then stepped on its own — a fn VALUE applies to the lead's result (`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v` is `8` interpreted), a literal survives into the frame's return check (`(k 5)` is `type_error`) — where the compiled window no-matches the lead over its one argument (`signature_error`, NUR107's raise). Loud on both lanes, never a value of its own compiled; the literal-argument rows are pre-existing (the window compiled before S1b's apply shapes; `TestLeadApplyArityMismatchParity` pins the PARAM-argument spelling `(g x)`, which the interpreter's stranded-forward barrier raises as signature_error), the fn-valued row arrived with the admission of an inert fn value at the argument position | landing S1b's apply shapes, 2026-09-22 |
 | [NUR177](#nur177) | An UNDECLARED-return fn — a lambda-bodied `def w n:Integer => [...]`, whose result is its analysed body residual — called twice in one program with the same argument shape seats ONE result for both calls: `def g x:Integer => [x add 3] end def w n:Integer => [(g n)] end (w 5) (w 0)` is `[8 3]` interpreted and `[3 3]` compiled, `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` `[8 0]` and `[0 0]` — silent, default lane, exit 0, present on `main`. AnalyseFnBody memoises the residual per arg shape and handed the SAME values to every call, and the recorder keys producers by value ID. FIXED 2026-09-22: `freshResidual` (check_fnbody.go) re-mints each call's result identities at the record; the declared-return path always minted its own, which is why the corpus's `fn [[…] [T] …]` spelling never saw it | S1b's apply shapes graduating a literal-read pin, 2026-09-22 |
+| [NUR178](#nur178) | A paren over a PRODUCED closure — a compiled factory call's result re-stepped by the paren's rewind, `((mk 1) 2)` — left its window on the tape for a LATER word to collect: `((mk 1) 2) mul 10` compiled 21 (mul over 2 and 10, the closure over the product) for the interpreter's 30, `((mk 1) 2.5) mul 2` 6.0 for 7.0 — silent, default lane, exit 0, present on `main`; `add` agreed by arithmetic. The NUR121 hazard mark WAS set, and `hazardLead` exempted the lead on the INNER paren's placed mark whatever the outer paren had done. FIXED 2026-09-22 (the curried chain): the collapse records the re-stepped produced lead's apply as an event (core `parenProducedLeadApplyIdx` over the `ProducedLeadApplies` seam), and a collection made AFTER the re-stepping paren closed is a leak the hazard declines (`hazardAfterReStep`); the leading form's no-match order (`((mk 1) "s")` compiled `[s fn]` for `[fn s]`) is closed in the same landing | the curried chain, callbacks.tsv L151, 2026-09-22 |
+| [NUR179](#nur179) | Every fn-value-call op that hands a compiled fn-VALUE closure its window bound a TWO-param closure's first param to the value farthest from it: `(2 3 (mk2 1))` compiled 24 for the interpreter's 33, `7 5 (mk2 1)/v apply` 76 for 58, `1 2 (kk 7) apply` 19 for 28, a Function param's `(2 3 g)` 24 for 33, a capturing closure MEMBER's `(m.g 2 3)` 33 for 24, and the residual arm's `((mk2 1) 2 3)` 33 for 24 — silent, default lane, present on `main`. The ops build their window POSITIONALLY (args[0] → the first param) and handed it to the token seam, whose fn-value arm (S1b-2, `invokeFnValueClosure`) takes STACK order and reverses it itself; every pin was a one-argument window or a commutative body. FIXED 2026-09-22: `invokeClosurePositional` (eng/go/vm.go) re-stacks a positional window for a fn-value closure | the curried chain's two-argument probes, 2026-09-22 |
+| [NUR180](#nur180) | A trailing paren apply whose result the recorder can only type Any — an event lead (a factory's closure), an anonymous lambda (a count contract) — inside an UNNAMED-param frame (an each or fold body, `fn [[Integer] …]`), consumed by a typed word: `xs each [(2 (mk 1)) mul 10]` compiles `[10 10 10]` for `[30 30 30]`, `0 fold [add (2 (mk 1))] xs` 3 for 6 — silent, present on `main`. The checker's recovery re-matches the word over the frame's gradual input (`mul/2 (poly)` over the element and the result, the written 10 pushed after) instead of the written argument. MITIGATED 2026-09-22: a NAMED concrete lead's declared return types the result (`concreteFnSingleReturn`), so `(2 inc2/v) mul 10` in an each body is 40 on both lanes; the curried-chain arm stands aside in unnamed frames. The Any-result rows stay open, pinned to fail when they agree | the curried chain's each-body probes, 2026-09-22 |
+| [NUR181](#nur181) | A def-bound factory closure applied through the READ model nets a closure the re-step landing applies where the interpreter parks it: `def mk3 … def r ((mk3 1) 2) end r 3` — the def's pending collection takes the paren's survivors as ARGUMENTS, so r is mk3's closure and 2 stays on the stack — is `[2 fn (Integer)]` interpreted (the call result is placed) and 6 compiled (`CALL_DYN_METHOD r/1; RESTEP_LANDING` applies the closure to the 2 beneath) — silent, present on `main`, measured on a worktree at 917ecf0. Not this landing's: recorded and pinned to fail when it moves | probing the def-bound chain, 2026-09-22 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7082,6 +7086,186 @@ crash is what this record is for.
 **Where it belongs:** the recorder (which entry is emitted without a
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
+
+## NUR181 — a def-bound factory closure applied through the read model: the landing re-steps a placed result {#nur181}
+
+**Status:** PENDING, recorded 2026-09-22 while probing the curried chain.
+Not that landing's defect — it neither introduced nor touched it — and
+measured present on `main` (a worktree at 917ecf0).
+
+**Rule:** a compiled program answers as the interpreter does.
+
+| witness | interpreted | compiled |
+|---|---|---|
+| `def mk3 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][a add b add c]] )]] )]]  def r ((mk3 1) 2) end r 3` | `[2 fn (Integer)]` | `[6]` |
+| the same with `(r 3)` | `[2 fn (Integer)]` | `[6]` |
+
+**The mechanism.** `def r ((mk3 1) 2)` does NOT apply the closure: the
+paren closes on behalf of the def's pending forward collection, which takes
+the survivors `[closure, 2]` as its ARGUMENTS — r binds mk3's closure and 2
+stays on the stack (core `stepCloseParen(false)`; the same rule makes
+`def r ((mk 1) 2) end r` answer 3 by applying r to the leftover). `r 3` is
+then a shaped method call (the FnShapes claim, `CALL_DYN_METHOD r/1`) whose
+result is a closure. The interpreter PARKS a call result where it lands
+(`fnReturnPark`, NUR101's "place uniformly"); the compiled lane's
+`RESTEP_LANDING` applies it to the 2 beneath (`CALL_DYNAMIC_TRAILING /1`).
+
+**Where it belongs.** The re-step landing's claim (NUR173–NUR175): a shaped
+method call's closure RESULT is placed, not re-stepped, and the landing
+must not seat over it. Pinned by `TestDefBoundFactoryClosureLandingPending`
+(lang/go), which fails the day the rows agree.
+
+## NUR180 — a trailing paren apply's Any result inside an unnamed-param frame is re-matched over the frame's input {#nur180}
+
+**Status:** MITIGATED 2026-09-22 (the curried chain); the Any-result rows
+stay OPEN. Present on `main` (a worktree at 917ecf0), silent, default lane.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+| witness | interpreted | compiled | after the mitigation |
+|---|---|---|---|
+| `def inc2 fn [[x:Integer][Integer][x add 2]]  def xs [1 2 3]  xs each [(2 inc2/v) mul 10]` | `[[40 40 40]]` | `[[10 10 10]]` | agrees |
+| `def inc2 … def f fn [[Integer][Integer][(2 inc2/v) mul 10]]  f 1` | `[40]` | `[10]` | agrees |
+| `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  def xs [1 2 3]  xs each [(2 (mk 1)) mul 10]` | `[[30 30 30]]` | `[[10 10 10]]` | open |
+| `def xs [1 2 3]  xs each [(2 ([x:Integer] => [x add 2])) mul 10]` | `[[40 40 40]]` | `[[10 10 10]]` | open |
+| `def mk … def xs [1 2 3]  0 fold [add (2 (mk 1))] xs` | `[6]` | `[3]` | open |
+
+The same rows inside a NAMED frame (`def f fn [[a:Integer]…]`, a
+`([e:Integer] => …)` callback) and at the top level agree; only an
+UNNAMED-param frame — an each or fold body, `fn [[Integer] …]` — diverges.
+
+**The mechanism.** The trailing arm's result carrier is a strict Any
+(`recordParenTrailingFnApply`), and a typed word cannot match it
+statically. In a named frame the checker's recovery still lands on the
+written argument. In an unnamed frame the frame's gradual INPUT sits on the
+stack beneath the result, and the recovery re-matches the word over that:
+the disassembly shows `mul/2 (poly)` over `[l0, out]` with the written `10`
+pushed AFTER the call, so each body nets `10`.
+
+**The mitigation.** A NAMED concrete lead's one declared return types the
+result (`concreteFnSingleReturn`, core/go/engine.go): `inc2/v` declares
+Integer, the interpreter enforces it, so `mul` matches statically. An
+ANONYMOUS fn value's declared return is a count contract only
+(`LambdaCountContract`, NUR120) and an event lead's closure unit records
+Any for the same reason, so those results stay Any and the rows stay open;
+the curried-chain arm (NUR178) stands aside inside an unnamed frame for the
+same reason (`ProducedLeadApplies`), which keeps `xs each [((mk 1) 2) mul
+10]` on the whole-frame replay that answers it correctly.
+
+**Where it belongs.** The checker's recovery for a strict Any result under
+an unnamed frame — the arm that admits the frame's input into a window the
+written argument should fill. Pinned by `TestUnnamedFrameApplyResultTyped`
+(the mitigated rows) and `TestUnnamedFrameApplyResultAnyPending` (the open
+rows, which fails the day they agree).
+
+## NUR179 — the fn-value-call ops bound a two-param closure backwards {#nur179}
+
+**Status:** FIXED 2026-09-22 (the curried chain). Present on `main` (a
+worktree at 917ecf0), silent, default lane, exit 0.
+
+**Rule:** a call binds its arguments in signature order — the value stack
+in reverse, top first (CLAUDE.md's one rule).
+
+| witness | interpreted | compiled (before) |
+|---|---|---|
+| `def mk2 fn [[n:Integer][Function][( fn [[x:Integer y:Integer][Integer][(x mul 10) add y add n]] )]]  (2 3 (mk2 1))` | `[33]` | `[24]` |
+| `… 7 5 (mk2 1)/v apply` | `[58]` | `[76]` |
+| `def kk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a mul 10) add b add k])]]  1 2 (kk 7) apply` | `[28]` | `[19]` |
+| `… def f fn [[g:Function][Integer][(2 3 g)]]  f (mk2 1)` | `[33]` | `[24]` |
+| `… ((mk2 1) 2 3)` (the residual arm) | `[24]` | `[33]` |
+| `… def m {g: (mk2 1)}  (m.g 2 3)` (the method op; `m.g 2 3`, `((m 'g' get) 2 3)` and a list element's `(fs.0 2 3)` alike) | `[24]` | `[33]` |
+
+**The defect, in one sentence.** `callDynTrailTop`, `callDynApply`,
+`callDynMethod` and `callDynamic` build their window in POSITIONAL order (args[0] → the first
+param — the trailing ops read the stack top-down, the leading op reads up
+from the fn) and hand it to `invokeClosure`, the TOKEN seam, whose fn-value
+arm (S1b-2, `invokeFnValueClosure`) takes the STACK order a native hands
+it and reverses it itself — so a positional window was reversed twice.
+
+**Why nothing saw it.** Every fn-value-call pin was a one-argument window,
+where the two orders coincide, or a commutative body
+(`TestTopLevelApplyParity`'s `(a add b) add k`).
+
+**The fix.** `invokeClosurePositional` (eng/go/vm.go): for a fn-VALUE
+closure the positional window is re-stacked before the seam reverses it; a
+callback body unit's closure keeps the seam's positional binding as it is.
+The four call sites take it. Pinned by `TestFnValueApplyBindingOrderParity`
+(lang/go, thirteen spellings with an order-sensitive body) and
+`TestInvokeClosurePositional` (eng/go). A capture-FREE lambda member
+(`{g: ([x:Integer y:Integer] => …)}`) never showed it: a const, not a
+closure payload, it never reached the seam.
+
+## NUR178 — a re-stepped produced lead's window leaked to a later dispatch {#nur178}
+
+**Status:** FIXED 2026-09-22 (the curried chain — the handoff log's entry of
+that date). Present on `main` (a worktree at 917ecf0), silent, default lane,
+exit 0, `boru check` clean.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+| witness | interpreted | compiled (before) |
+|---|---|---|
+| `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  ((mk 1) 2) mul 10` | `[30]` | `[21]` |
+| `def mk fn [[n:Integer][Function][( fn [[x:Number][Number][x add n]] )]]  ((mk 1) 2.5) mul 2` | `[7.0]` | `[6.0]` |
+| `… ((mk 1) 2) add 10` | `[13]` | `[13]` — by arithmetic |
+| `… ((mk 1) "s")` | `[fn (Integer) s]` | `[s fn (Integer)]` |
+
+**The defect, in one sentence.** The paren re-step rule
+(design/PAREN-RESTEP-RULE.0.md) applies `(mk 1)`'s closure to 2 at the outer
+paren's close, but the check pass stepped the carrier past as data, `mul`
+then collected the 2, and the residual classifier's leading-carrier arm
+applied the closure over mul's PRODUCT (its arity, one, matched the one
+value after it):
+
+```
+0001 PUSH_CONST  k1   ; 1
+0002 CALL_USER   f0   ; mk/1
+0003 PUSH_CONST  k2   ; 2
+0004 PUSH_CONST  k3   ; 10
+0005 CALL_NATIVE s0   ; mul
+0006 CALL_DYNAMIC /1
+```
+
+NUR121's collection-hazard mark WAS set when `mul` took the 2 — and
+`hazardLead` exempted the lead on the INNER paren's placed mark
+(`parenPlacedMemberFn`), whatever the outer paren had done to it.
+
+**The fix, in two halves.**
+
+- *The record.* The collapse records the re-stepped produced lead's apply
+  as the SAME event the trailing spelling seats (`RecordDynApplyLead`),
+  substituting the event's out for the lead — core's
+  `parenProducedLeadApplyIdx` / `recordParenProducedLeadApply`, over the
+  new `ProducedLeadApplies` seam: the compiler vouches that the closure a
+  produced value holds (a compiled factory's returned closure, or a
+  recorded apply's result — the chain's next level, `eventProducedFnOp`)
+  takes EXACTLY the window's arguments (declared arity, no patterns, each
+  static type conforming), and types the result. The chain `(((mk3 1) 2)
+  3)` (callbacks.tsv L151) is three events. Off the main loop — a collapse
+  on behalf of a pending forward collection, `a add ((mk 1) e)` — nothing
+  re-steps and the arm stands aside (`reStepped`).
+- *The hazard's order.* `NoteCollectionHazard` records whether the lead
+  was ALREADY re-stepped when the collection marked it
+  (`hazardAfterReStep`): a lazy lead's own collection inside the paren
+  (`((mk) 7 add 1)` is 9 on both lanes) stays admitted, a collection past
+  the apply the interpreter already performed declines (NUR121's text).
+
+**The sibling.** The leading form's NO-MATCH: `callDynamic` handed the
+closure to the token seam, whose no-match fallback re-steps the value
+TRAILING and answered `[s fn]` for the interpreter's `[fn s]`; a fn-value
+closure the window does not match is now left as written.
+
+**Pins.** `TestCurriedChainParity` (twenty-seven rows), `TestCurriedChain
+SoundCompileFailures` (the NUR121 decline for a gradual argument, the
+arity mismatch, the def-bound chain's read-model decline),
+`TestCurriedChainPendingCollection`; core `TestS5BCloseParenProducedLead
+Apply*`; compiler `TestProducedLeadApplies`, `TestEventProducedFnOpArms`,
+`TestFnOpContract`, `TestArgConformsStatically`. Three pins graduated:
+`TestCurriedFactoryCompiles`'s three-level fence,
+`TestFnValueAutoApplyCompileFailures`'s nested-factory row and NUR101's
+`[((mk 1) 2)]` list-element fence.
+
+**Measured.** See the handoff log's curried-chain entry (2026-09-22).
 
 ## NUR177 — an undeclared-return fn called twice seats one result for both calls {#nur177}
 

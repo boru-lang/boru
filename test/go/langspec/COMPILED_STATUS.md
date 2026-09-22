@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8224** compilable, 339 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8200 |
+| compiled natively (fallback-free) | 8201 |
 | compiled with an interpreter island | 0 |
-| does not compile | 24 |
+| does not compile | 23 |
 | static check-error (invalid in both engines) | 339 |
 
-**8200 / 8224** compilable rows produce a Program (99% — 8200 of those fully native).
+**8201 / 8224** compilable rows produce a Program (99% — 8201 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,11 +22,11 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 24 | 24 | → 0 |
+| compile failures | 23 | 23 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
 | tier 2 reducible | 4 | 4 | → 0 |
-| compute frontier | 19 | 19 | → 0 |
+| compute frontier | 18 | 18 | → 0 |
 
 ## Compile failures by reason
 
@@ -43,7 +43,6 @@ The compiler is interpreter-independent once compile failures and islands both r
 | 1 | other: fn do$body: dynamic-scope def `i` of unpromoted computed value | coverage |
 | 1 | other: fn do$body: dynamic-scope def `t` of unpromoted computed value | coverage |
 | 1 | other: fn-value application bounded by a paren (dynamic value precedes args) | coverage |
-| 1 | other: fn-value apply arity mismatch — curried chain or partial apply (Stage 3) | coverage |
 | 1 | other: for: body not captured | coverage |
 | 1 | quoted-operand word | coverage |
 | 1 | suppressed runtime error | correct-error |
@@ -54,11 +53,11 @@ The compiler is interpreter-independent once compile failures and islands both r
 | soundness | 7 |
 | scheduling | 0 |
 | opcode | 0 |
-| coverage | 16 |
+| coverage | 15 |
 
 ## Re-scoped P7 partition
 
-Over the 24 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **19** compute-frontier gaps.
+Over the 23 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **18** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -85,5 +84,4 @@ _None._
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) |
 | 1 | other: fn do$body: dynamic-scope def `i` of unpromoted computed value |
 | 1 | other: fn do$body: dynamic-scope def `t` of unpromoted computed value |
-| 1 | other: fn-value apply arity mismatch — curried chain or partial apply (Stage 3) |
 

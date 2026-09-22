@@ -1008,6 +1008,10 @@ type EmitState struct {
 	// collectionHazard marks fn-typed value IDs a later dispatch collected
 	// past while they sat unapplied (NoteCollectionHazard, NUR121).
 	collectionHazard map[string]bool
+	// hazardAfterReStep marks the subset of collectionHazard whose collection
+	// came AFTER an enclosing paren re-stepped the lead (NoteCollectionHazard):
+	// the leak NUR178 names, never the lazy lead's own collection.
+	hazardAfterReStep map[string]bool
 	// reStepNotes marks the events whose results the check pass re-steps
 	// into a dispatch attempt (NoteFnResultReStep, NUR124), by producing
 	// seq: where the interpreter resumes after the results, and whether a
@@ -9186,6 +9190,23 @@ func (es *EmitState) NoteCollectionHazard(id string) {
 		es.collectionHazard = map[string]bool{}
 	}
 	es.collectionHazard[id] = true
+	// The ORDER of the two marks is what tells a leak from a lazy lead. A
+	// paren-placed lead that an enclosing paren re-steps is applied at that
+	// paren's close over whatever survives there, so a collection INSIDE
+	// the paren, before its close, is benign: `((mk) 7 add 1)` applies the
+	// closure to add's 8 on both lanes. A collection AFTER the re-stepping
+	// paren has closed is past the apply the interpreter already performed
+	// — `((mk 1) 2) mul 10`: the closure took 2 before mul ever ran — and a
+	// lowering that applies the lead over the collection's result answers
+	// 21 for 30 (NUR178). The re-step record is taken at the collapse
+	// (recordParenReStep), so a lead already re-stepped when the collection
+	// marks it was collected past its own apply.
+	if es.parenReSteppedFn(core.Value{ID: id}) {
+		if es.hazardAfterReStep == nil {
+			es.hazardAfterReStep = map[string]bool{}
+		}
+		es.hazardAfterReStep[id] = true
+	}
 }
 
 func (es *EmitState) CollectionHazard(id string) bool {
@@ -9227,13 +9248,23 @@ func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
 // call's returned closure is parked where it lands (callResultPlaced) — so
 // `((mk) 7 add 1)` is 9 on both lanes and the apply over add's result IS the
 // interpreter's, hazard mark or not.
+//
+// The placement exclusion does not cover a collection made AFTER the
+// enclosing paren re-stepped the lead (hazardAfterReStep, noted at the
+// collection): `((mk 1) 2) mul 10` marked the lead when `mul` took 2, but
+// the inner paren's placed mark exempted it, and the residual arm applied
+// the closure to the product — 21 for the interpreter's 30, silent
+// (NUR178). With the order consulted the leak is a loud decline wherever
+// the collapse-time record does not claim the window first (core's
+// parenProducedLeadApplyIdx); the lazy lead's own collection, inside the
+// paren before its close, stays admitted.
 func (es *EmitState) hazardLead(v core.Value) bool { return es.hazardLeadIn(v, nil) }
 
 // hazardLeadIn is hazardLead with the fragment whose events produced v (a
 // unit's finish, an arm): the placed-call-result exclusion must find the
 // producing event where it lives.
 func (es *EmitState) hazardLeadIn(v core.Value, frag *EmitFragment) bool {
-	return es.CollectionHazard(v.ID) && !es.parenPlacedMemberFn(v) && !es.callResultPlacedIn(v, frag) && !es.applyPending(v.ID)
+	return es.CollectionHazard(v.ID) && (es.hazardAfterReStep[v.ID] || !es.parenPlacedMemberFn(v)) && !es.callResultPlacedIn(v, frag) && !es.applyPending(v.ID)
 }
 
 // applyPending reports whether the innermost open unit holds a PENDING
@@ -9627,13 +9658,232 @@ func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
 }
 
 // producerReturnedClosureShape is the SHAPE of the fn value a producer's
-// returned out-op builds (closureOpShape), for the claim a def of it writes.
+// returned out-op builds (closureOpShape), for the claim a def of it writes
+// — or, for the result of a recorded fn-value apply, the shape the applied
+// closure RETURNS (eventProducedFnShape's apply arm: the curried chain's
+// next level).
 func (es *EmitState) producerReturnedClosureShape(id string) (core.FnShape, bool) {
-	op, ok := es.producerReturnedOutOp(id)
+	pr, ok := es.producedBy[id]
 	if !ok {
 		return core.FnShape{}, false
 	}
-	return es.closureOpShape(op, 0)
+	return es.eventProducedFnShape(pr.seq, 0)
+}
+
+// eventProducedFnShape is the shape of the fn value the event seq NETS
+// (eventProducedFnOp's out-op through closureOpShape).
+func (es *EmitState) eventProducedFnShape(seq, depth int) (core.FnShape, bool) {
+	op, ok := es.eventProducedFnOp(seq, depth)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	return es.closureOpShape(op, depth)
+}
+
+// eventProducedFnOp is the out-op that BUILDS the fn value the event seq
+// nets: a compiled user call's single returned out-op (the factory
+// pattern), or, for a recorded fn-value apply (a wordDynApply event), the
+// single out-op of the closure UNIT it applies — the closure that closure
+// returns, which is what `((mk3 1) 2)` holds and `(((mk3 1) 2) 3)`
+// applies. The apply's fn operand is its ops[0]: a closure operand names
+// the unit directly, an EVENT operand through the producer it names (the
+// inner apply, or the factory call), so a chain of any depth resolves
+// level by level; depth bounds it as closureOpShape does. A const lambda
+// applied (a capture-free factory result) has no unit to read an out-op
+// from, and anything else — a native result, a multi-output unit, a
+// promoted local — has no fn value here.
+func (es *EmitState) eventProducedFnOp(seq, depth int) (EmitOperand, bool) {
+	if depth > 8 {
+		return EmitOperand{}, false
+	}
+	if op, ok := es.producerReturnedOutOpSeq(seq); ok {
+		return op, true
+	}
+	ev := es.eventInAnyFrame(seq)
+	if ev == nil || ev.kind != evCall || ev.call.word != wordDynApply || ev.call.nout != 1 || len(ev.call.ops) == 0 {
+		return EmitOperand{}, false
+	}
+	applied := ev.call.ops[0]
+	if applied.kind == opEvent {
+		if applied.resIdx != 0 {
+			return EmitOperand{}, false
+		}
+		var ok bool
+		if applied, ok = es.eventProducedFnOp(applied.idx, depth+1); !ok {
+			return EmitOperand{}, false
+		}
+	}
+	if applied.kind != opClosure || applied.closureUnit < 0 || applied.closureUnit >= len(es.fnRecs) {
+		return EmitOperand{}, false
+	}
+	if outs := es.fnRecs[applied.closureUnit].outOps; len(outs) == 1 {
+		return outs[0], true
+	}
+	return EmitOperand{}, false
+}
+
+// eventInAnyFrame finds the event with the given seq in any open frame
+// (nil when absent), the lookup producerReturnedOutOp and producerWord
+// spell inline.
+func (es *EmitState) eventInAnyFrame(seq int) *EmitEvent {
+	for f := range es.frames {
+		for i := range es.frames[f] {
+			if es.frames[f][i].seq == seq {
+				return &es.frames[f][i]
+			}
+		}
+	}
+	return nil
+}
+
+// ProducedLeadApplies is the recorder seam (core.EmitRecorder) the paren
+// collapse's curried-chain arm asks of a leading strict fn-typed carrier
+// over the window's arguments (core's parenProducedLeadApplyIdx): whether
+// the closure a value this pass PRODUCED holds — a compiled factory's
+// returned closure, or a recorded apply's result (eventProducedFnOp) —
+// takes EXACTLY these arguments, and the static type of what it nets.
+//
+// "Takes" is decided statically, and strictly: the closure's declared
+// param count is the window's, no param carries a pattern, and every
+// argument's static type conforms to its param (a Number-typed carrier
+// under an Integer param declines, though the runtime value may match).
+// The strictness is the no-match case: the interpreter's re-step of a fn
+// VALUE that matches nothing leaves the window as it was — lead first —
+// while the recorded event's op leaves the trailing spelling's residual
+// (args first), so a window that might not match must not be recorded.
+//
+// The result type is the closure's one declared return; an undeclared
+// return that provably nets a closure (the unit's single out-op builds one)
+// types the result Function, so the chain's next level classifies; anything
+// else is Any. A def-read binding answers false: its read is a WORD
+// dispatch collecting over the read's statement, modelled at the read
+// (check's tryShapedFnReadArrival) or declined by the residual classifier,
+// never a paren window's re-step.
+func (es *EmitState) ProducedLeadApplies(id string, args []core.Value) (*core.Type, bool) {
+	if !es.Active() || id == "" {
+		return nil, false
+	}
+	// An UNNAMED-param frame — an each or fold body, `fn [[Integer] …]` —
+	// keeps the whole-frame replay it has today: the apply's result is
+	// typed by construction alone (a fn VALUE's declared return is a count
+	// contract, fnValueRetSpec), and a strict Any result above the frame's
+	// gradual input sends a typed consumer to the checker's recovery,
+	// which re-matches it over the input instead of the written argument
+	// (NUR180: `xs each [(2 (mk 1)) mul 10]` compiled 10 for 30). The
+	// replay answers `xs each [((mk 1) 2) mul 10]` correctly; recording
+	// here regressed it to the same 10.
+	if u := es.openUnitRec(); u != nil && u.nUnnamed > 0 {
+		return nil, false
+	}
+	if _, read := es.defReads[id]; read {
+		return nil, false
+	}
+	pr, ok := es.producedBy[id]
+	if !ok {
+		return nil, false
+	}
+	op, ok := es.eventProducedFnOp(pr.seq, 0)
+	if !ok {
+		return nil, false
+	}
+	c, ok := es.fnOpContract(op)
+	if !ok || len(c.params) != len(args) {
+		return nil, false
+	}
+	for i := range args {
+		if c.patterns[i] != nil || !argConformsStatically(args[i], c.params[i]) {
+			return nil, false
+		}
+	}
+	return c.ret, true
+}
+
+// fnOpContract is the declared contract of the fn value an out-op builds,
+// for ProducedLeadApplies: the param types and patterns, and the type of
+// the one value an apply nets.
+type fnOpContract struct {
+	params   []*core.Type
+	patterns []*core.Value
+	ret      *core.Type
+}
+
+func (es *EmitState) fnOpContract(op EmitOperand) (fnOpContract, bool) {
+	switch op.kind {
+	case opClosure:
+		cu := op.closureUnit
+		if cu < 0 || cu >= len(es.fnRecs) {
+			return fnOpContract{}, false
+		}
+		rec := es.fnRecs[cu]
+		// The unit's declared params are seated by SetUnitParamTypes at the
+		// dispatch that compiled it; a unit with none recorded, or one
+		// whose body nets no single value the RET contract vouches for, has
+		// no contract to apply by.
+		if len(rec.paramTypes) != rec.nParams || len(rec.paramPatterns) != rec.nParams {
+			return fnOpContract{}, false
+		}
+		if len(rec.returns) != 1 && len(rec.outOps) != 1 {
+			return fnOpContract{}, false
+		}
+		// The result type: the declared return when it says more than Any
+		// (a fn VALUE unit records its declared `[Function]` as Any — the
+		// value seam's contract — so the declaration alone types nothing
+		// there), else the out-op's own construction — a closure push or a
+		// const lambda IS a Function, whatever the declaration widened to.
+		c := fnOpContract{params: rec.paramTypes, patterns: rec.paramPatterns, ret: core.TAny}
+		switch {
+		case len(rec.returns) == 1 && rec.returns[0] != nil && !rec.returns[0].Equal(core.TAny):
+			c.ret = rec.returns[0]
+		case len(rec.outOps) != 1:
+		case rec.outOps[0].kind == opClosure:
+			c.ret = core.TFunction
+		case rec.outOps[0].kind == opConst:
+			if _, isLambda := constLambdaArity(es.consts, rec.outOps[0].idx); isLambda {
+				c.ret = core.TFunction
+			}
+		}
+		return c, true
+	case opConst:
+		if _, ok := constLambdaArity(es.consts, op.idx); !ok {
+			return fnOpContract{}, false
+		}
+		// A QUOTED lambda const (`quote (fn …)` returned) stays inert on
+		// the interpreter's re-step — `((mk) 2)` is `[fn 2]` — and the
+		// recorded event's op would leave the trailing residual `[2 fn]`.
+		if es.consts[op.idx].Quoted {
+			return fnOpContract{}, false
+		}
+		fd := es.consts[op.idx].Data.(core.FnDefInfo)
+		sig := fd.OwnSigs()[0]
+		c := fnOpContract{ret: core.TAny}
+		for i := range sig.Params {
+			pm := sig.Params[i]
+			if pm.Optional || pm.Quote {
+				return fnOpContract{}, false
+			}
+			c.params = append(c.params, pm.Type)
+			c.patterns = append(c.patterns, pm.Pattern)
+		}
+		if len(sig.Returns) == 1 {
+			c.ret = sig.Returns[0]
+		}
+		return c, true
+	}
+	return fnOpContract{}, false
+}
+
+// argConformsStatically reports whether an argument's STATIC type binds
+// the declared param on every run: an Any (or absent) param takes any data
+// value, otherwise the argument's own concrete, non-disjunct type must
+// conform to the param's.
+func argConformsStatically(a core.Value, p *core.Type) bool {
+	if p == nil || p.Equal(core.TAny) {
+		return true
+	}
+	if a.Parent == nil || core.IsDisjunct(a) {
+		return false
+	}
+	return a.Parent.ConformsTo(p)
 }
 
 // closureOpShape is the shape of the fn value an out-op PRODUCES: a closure
@@ -9717,26 +9967,25 @@ func (es *EmitState) producerReturnedOutOp(id string) (EmitOperand, bool) {
 	if !ok {
 		return EmitOperand{}, false
 	}
-	for _, fr := range es.frames {
-		for i := range fr {
-			if fr[i].seq != pr.seq {
-				continue
-			}
-			if fr[i].kind != evCallUser {
-				return EmitOperand{}, false
-			}
-			unit := fr[i].uc.unit
-			if unit < 0 || unit >= len(es.fnRecs) {
-				return EmitOperand{}, false
-			}
-			rec := es.fnRecs[unit]
-			if len(rec.outOps) != 1 {
-				return EmitOperand{}, false
-			}
-			return rec.outOps[0], true
-		}
+	return es.producerReturnedOutOpSeq(pr.seq)
+}
+
+// producerReturnedOutOpSeq is producerReturnedOutOp by the producing
+// event's seq.
+func (es *EmitState) producerReturnedOutOpSeq(seq int) (EmitOperand, bool) {
+	ev := es.eventInAnyFrame(seq)
+	if ev == nil || ev.kind != evCallUser {
+		return EmitOperand{}, false
 	}
-	return EmitOperand{}, false
+	unit := ev.uc.unit
+	if unit < 0 || unit >= len(es.fnRecs) {
+		return EmitOperand{}, false
+	}
+	rec := es.fnRecs[unit]
+	if len(rec.outOps) != 1 {
+		return EmitOperand{}, false
+	}
+	return rec.outOps[0], true
 }
 
 // producedFnValue reports whether id holds a fn value the compiled program

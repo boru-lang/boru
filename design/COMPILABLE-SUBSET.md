@@ -381,7 +381,20 @@ user still gets an answer while the case is open:
   BOTH admissions (2026-08-02): `lambdaHookCompatible`'s quote arm
   (lambda-value bodies) and `quoteParamCarrierBind` at the user-fn
   dispatch record (token bodies, closure units only). Pinned by
-  `TestQuoteLambdaCallbackParity` + `eng/go/quote_lambda_screen_test.go`.
+  `TestQuoteLambdaCallbackParity` + `eng/go/quote_lambda_screen_test.go`. A paren over a PRODUCED closure — a compiled factory call's result, or
+  an earlier apply's — re-stepped by the paren's rewind over the data
+  arguments its closure provably takes compiles as the same apply event,
+  recorded AT THE COLLAPSE (the curried chain, 2026-09-22: core's
+  `parenProducedLeadApplyIdx` over the recorder's `ProducedLeadApplies`
+  seam, which holds the window to the closure's declared arity and param
+  types and types the result), so `(((mk3 1) 2) 3)` is three events and
+  `((mk 1) 2) mul 10` no longer leaks its window to `mul` (NUR178). It
+  stands aside for a def-read lead (the read model's), inside an
+  unnamed-param frame (NUR180) and for a collapse on behalf of a pending
+  forward collection (nothing re-steps there); a window the closure might
+  not take — wider, narrower, a type that does not conform, a gradual that
+  may be a fn — stays with the residual classifier, which declines it
+  loudly. Pinned by `curried_chain_test.go`.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

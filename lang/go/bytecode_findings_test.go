@@ -3995,9 +3995,10 @@ func TestFnBodyContainerLiteralIdentity(t *testing.T) {
 // FN-VALUE-OPEN-WORK §4): a pinpointed genuine-0-arg member read compiles
 // as an arity-0 OpCallDynMethod — its rows moved to `preserved` below. A
 // 0-arg landing the arrival model cannot claim still DECLINES with the
-// guard's own reason (declineMemberFnArrival), and the nested-factory
-// curried chain declines as before: the interpreter auto-applies per
-// closure arity, which one OpCallDynamic cannot model.
+// guard's own reason (declineMemberFnArrival). The nested-factory curried
+// chain that declined beside them GRADUATED 2026-09-22 (the curried
+// chain: each paren records its re-stepped produced lead's apply at the
+// collapse) — TestCurriedChainParity carries the row.
 func TestFnValueAutoApplyCompileFailures(t *testing.T) {
 	// Legacy compile failure+fallback-parity contract: pins the one-release
 	failures := []struct{ name, src, want string }{
@@ -4010,7 +4011,6 @@ func TestFnValueAutoApplyCompileFailures(t *testing.T) {
 		// landing model owns it and the guard declines — the division of
 		// labour instanceFnMember's own comment states.
 		{"unpinpointable instance key", `def make42 fn [[] [Integer] [42]] def C class {fld:Function} def o (make C {fld:make42/v}) def keyof fn [[n:Integer] [Atom] [if (n gt 0) [fld/q] [other/q]]] (o get (keyof 1))`, "auto-dispatches"},
-		{"nested-factory curried chain", `def mk fn [[a:Integer] [Function] [([b:Integer] => [([c:Integer] => [a add b add c])])]]  (((mk 1) 2) 3)`, "arity mismatch"},
 	}
 	for _, c := range failures {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)

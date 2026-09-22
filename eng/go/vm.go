@@ -523,6 +523,28 @@ func (vc *vmContext) invokeClosure(reg *core.Registry, body core.Value, inputs [
 	return vc.invokeClosureOn(reg, body, inputs)
 }
 
+// invokeClosurePositional runs a closure over args in POSITIONAL order —
+// args[0] the first param — the order the fn-value-call ops build from
+// their stack window (callDynamic's [fn, args…] read up, callDynTrailTop's
+// and callDynApply's window read top-down). The token seam above takes the
+// STACK order a native hands it and matches a fn-VALUE closure top-down
+// itself (S1b-2, invokeFnValueClosure), so a positional window handed to
+// it was reversed TWICE, and a two-param closure bound its first param to
+// the value farthest from it: `(2 3 (mk2 1))` compiled 24 for the
+// interpreter's 33, and `7 5 (mk2 1)/v apply` likewise (NUR179). A closure
+// that is not a fn value keeps the seam's positional binding (applyClosure
+// through shapeInputs) and is handed the args as they are.
+func (vc *vmContext) invokeClosurePositional(reg *core.Registry, fnVal core.Value, args []core.Value) ([]core.Value, error) {
+	if !compiler.ClosureIsFnValue(fnVal) {
+		return vc.invokeClosure(reg, fnVal, args)
+	}
+	rev := make([]core.Value, len(args))
+	for i, v := range args {
+		rev[len(args)-1-i] = v
+	}
+	return vc.invokeClosure(reg, fnVal, rev)
+}
+
 // invokeClosureOn runs a code body for the InvokeBody seam against the
 // CALLING registry: the registry the handler dispatched on (the main
 // registry, a module sub-registry, or a per-connection fork that inherited
@@ -915,10 +937,21 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	fnVal := stack[base]
 	args := stack[base+1:]
 
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// A fn VALUE closure the window does not match under the LEADING
+		// form is left as the interpreter's re-step leaves it: the window
+		// as written, fn first (`((mk 1) "s")` is `[fn s]`). The token
+		// seam's own no-match fallback re-steps the value TRAILING — the
+		// stack-order inputs then the value — and would answer `[s fn]`,
+		// the trailing spelling's residual, silently (NUR178's sibling).
+		if !trailing && compiler.ClosureIsFnValue(fnVal) {
+			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
+				return stack, nil, nil
+			}
+		}
 		// Pass fnVal directly so the payload's InShape rides along (invokeClosure
 		// only fills param slots, but a downstream handler may read the shape).
-		results, err := vc.invokeClosure(vc.r, fnVal, append([]core.Value(nil), args...))
+		results, err := vc.invokeClosurePositional(vc.r, fnVal, append([]core.Value(nil), args...))
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}
@@ -1229,7 +1262,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		args[i] = stack[top-1-i]
 	}
 	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
-		results, err := vc.invokeClosure(vc.r, fnVal, args)
+		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}
@@ -1408,7 +1441,7 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		// interp-entry census caught it, 40 over its ceiling of 33).
 		fn, known := vc.closureUnit(cl)
 		if !known || fn.NParams-fn.NCaptures == n {
-			return commit(vc.invokeClosure(vc.r, fnVal, args))
+			return commit(vc.invokeClosurePositional(vc.r, fnVal, args))
 		}
 		// A 0-ARG closure under the apply WORD fires over nothing and its
 		// result lands ABOVE the untouched window — applyHandler's
@@ -1564,7 +1597,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		return append(stack[:base], results...), nil, nil
 	}
 	if _, ok := fnVal.Data.(core.ClosurePayload); ok && !fnVal.Quoted {
-		results, err := vc.invokeClosure(vc.r, fnVal, args)
+		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}
