@@ -1673,6 +1673,18 @@ func forEachReturnsFn(args []Value, r *Registry) []Value {
 // top-of-stack produces. Pass the concrete data list's element
 // carrier into the body so diagnostics fire against realistic types.
 func eachReturnsFn(args []Value, r *Registry) []Value {
+	// A fn VALUE callback (`each mk/v xs`, the list Function form) types the
+	// result by the fn's ONE declared return: a declared-Function factory
+	// makes `[:Function]`, so a member read of the result is a fn-typed lead
+	// the paren-bounded apply admits (`(fs.2 10)` — the container-member
+	// calls, 2026-09-22). An anonymous lambda's placeholder Any, an Any
+	// return and a multi-return fn keep the untyped list, as does a fn-typed
+	// CARRIER callback (the body analysis below finds no list body).
+	if fd, ok := args[0].Data.(FnDefInfo); ok && !fd.Anonymous {
+		if sig, has := fd.FirstOwnSig(); has && len(sig.Returns) == 1 && sig.Returns[0] != nil && !sig.Returns[0].Equal(TAny) {
+			return []Value{NewCarrierTypedList(sig.Returns[0])}
+		}
+	}
 	stk := analyseHigherOrderBodyVals(r, args[0], ElementCarrierFromValue(args[1]))
 	if len(stk) == 0 {
 		return []Value{NewCarrier(TList)}

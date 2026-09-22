@@ -354,7 +354,16 @@ user still gets an answer while the case is open:
   the whole-residual `OpCallDynApplyTop` (the word's own semantics: a
   closure of the window's arity runs VM-native, a 0-arg one fires above
   the window, a wider one under-applies through the re-step); pinned by
-  `top_level_apply_test.go`. The def-split spelling
+  `top_level_apply_test.go`. A fn-valued CONTAINER MEMBER applied through
+  a paren-bounded call, `(fs.b 10)`, compiles over a produced closure too
+  (the container-member calls, 2026-09-22): a map literal's computed
+  closure member is no longer const-folded (`OpMakeMap` assembles the map,
+  as `OpMakeList` always did), a fn-typed carrier member tags the read as
+  a member-fn read, `each` over a fn VALUE callback types its result by the
+  fn's declared return, and the paren lead admits a statically fn-typed
+  value beside the member tag; a `dynamic(Any)` lead — a flex field on the
+  compile pass, where the shape is not threaded — still declines; pinned by
+  `container_member_call_test.go`. The def-split spelling
   (`def r (f x) f r`) graduated the same day: `checkModeParenFnCollapse`
   killed its checker false positive on the plain surface, and
   `replayIsBodyTail`'s `windowReadsID` arm (a dyn-bind of a value the

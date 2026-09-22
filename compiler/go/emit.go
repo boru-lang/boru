@@ -9366,7 +9366,7 @@ func (es *EmitState) MemberFnReadValue(id string) (core.Value, bool) {
 // the tail apply is unaffected. Mirrors containerFnAutoDispatchRisk's
 // container/key walk (map member, list element, flat-instance field).
 func readsFnMember(args []core.Value) bool {
-	isFn := func(v core.Value) bool { _, ok := v.Data.(core.FnDefInfo); return ok }
+	isFn := memberIsFnValued
 	for _, a := range args {
 		if a.Carrier {
 			continue
@@ -9430,7 +9430,7 @@ func readsFnMember(args []core.Value) bool {
 // reports ok=false and the read carries the bool tag alone (the model then
 // declines and today's failure paths stand).
 func readFnMemberValue(args []core.Value) (core.Value, bool) {
-	isFn := func(v core.Value) bool { _, ok := v.Data.(core.FnDefInfo); return ok }
+	isFn := memberIsFnValued
 	for _, a := range args {
 		if a.Carrier {
 			continue
@@ -9459,6 +9459,20 @@ func readFnMemberValue(args []core.Value) (core.Value, bool) {
 		// pre-existing `o.f 21 eq 42` stranded-apply miscompile.
 	}
 	return core.Value{}, false
+}
+
+// memberIsFnValued reports whether a container member holds a fn: a concrete
+// fn value, or a fn-typed CARRIER — a produced closure stored by a map or
+// list literal (`{a: (mk 1)}`), which on the compile pass is the factory
+// call's Function carrier (the container-member calls, 2026-09-22). The
+// arrival model that needs the member's SIGNATURE still asks
+// MemberFnReadValue, which answers only for a concrete fn; the tag alone is
+// what the paren-bounded apply `(fs.b 10)` and the stranded-fn guard read.
+func memberIsFnValued(v core.Value) bool {
+	if _, ok := v.Data.(core.FnDefInfo); ok {
+		return true
+	}
+	return core.IsFnTypedCarrier(v)
 }
 
 func containerFnAutoDispatchRisk(args []core.Value) bool {

@@ -316,6 +316,38 @@ func MakeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 // object/class instance (whose Fields *OrderedMap `set` writes in
 // place). Drives FreshenDefault's identity fast path: scalars and
 // purely-immutable nodes share safely and are returned unchanged.
+// containsCapturingFn reports whether v is, or holds at any depth, a fn
+// value WITH captures — a closure, whose captured state no const can carry.
+func containsCapturingFn(v Value) bool {
+	if fd, ok := v.Data.(FnDefInfo); ok {
+		return len(fd.Captured) > 0
+	}
+	if !IsConcrete(v) {
+		return false
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				if containsCapturingFn(val) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				if containsCapturingFn(lst.Get(i)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func containsSharedMutable(v Value) bool {
 	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) || IsClassInstance(v) {
 		return true
