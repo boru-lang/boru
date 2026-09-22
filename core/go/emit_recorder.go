@@ -272,6 +272,17 @@ type EmitRecorder interface {
 	// lowered as an apply over the values after it.
 	NoteCollectionHazard(id string)
 	CollectionHazard(id string) bool
+	// ProducedLeadApplies reports whether the closure a value this recorder
+	// PRODUCED holds — a compiled factory call's returned closure, or a
+	// recorded fn-value apply's result (the curried chain's next level) —
+	// takes EXACTLY these arguments on every run (their count is its
+	// declared arity and each static type conforms to its param), and the
+	// static type of the one value the apply nets. False for any other
+	// value: a def-read binding (its read is a word dispatch the read model
+	// owns), a param slot, a native result, a window that might no-match.
+	// Engine.parenProducedLeadApplyIdx asks it of a paren's re-stepped lead
+	// over the window after it, and records the apply at the collapse.
+	ProducedLeadApplies(id string, args []Value) (ret *Type, ok bool)
 	// NoteFnResultReStep marks a NATIVE dispatch's result v — a fn-typed
 	// or fn-admitting gradual carrier — that the interpreter re-steps into
 	// a dispatch attempt at the call's position, with a plain body token
@@ -555,6 +566,7 @@ func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}
 func (inactiveEmit) CollectionHazard(string) bool                           { return false }
+func (inactiveEmit) ProducedLeadApplies(string, []Value) (*Type, bool)      { return nil, false }
 func (inactiveEmit) NoteFnResultReStep(Value, SrcPos)                       {}
 func (inactiveEmit) DynInputsProven(*Signature, []Value) bool               { return false }
 func (inactiveEmit) Materialise(v Value) (Value, bool)                      { return v, false }

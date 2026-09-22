@@ -11768,3 +11768,160 @@ the member tag).
 | interp-entry rows / engine entries / defers | 78 / 418 / 8 | 78 / 418 / 8 | unchanged — the three rows' closures run VM-native |
 | diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 284 / 33 | 284 / 33 | unchanged |
+
+## S1b — the curried chain: `(((mk3 1) 2) 3)`, and the leak it was hiding (2026-09-22)
+
+**The measurement first.** One corpus row, callbacks L151 — `def mk3 fn
+[[a:Integer][Function][([b:Integer] => [([c:Integer] => [(a add b) add
+c])])]]  (((mk3 1) 2) 3)` — declined "fn-value apply arity mismatch — curried
+chain or partial apply (Stage 3)": the program residual was `[closure, 2,
+3]` with the closure's arity known as one. The inner paren never collapsed.
+Inside a fn body the same chain compiled (the whole-frame replay); at the
+top level nothing handled a leading STRICT fn-typed carrier a
+closure-returning unit produced, so its window survived onto the tape.
+
+Probing the neighbours before touching anything found the row's real
+cost. `((mk 1) 2) mul 10` COMPILED — to 21, for the interpreter's 30:
+
+```
+0002 CALL_USER   f0   ; mk/1
+0003 PUSH_CONST  k2   ; 2
+0004 PUSH_CONST  k3   ; 10
+0005 CALL_NATIVE add
+0006 CALL_DYNAMIC /1
+```
+
+`mul` collected the 2 the paren's rewind would have applied the closure
+to, and the residual classifier applied the closure over the product. The
+`add` twin agreed by arithmetic (`1 + (2 + 10)` is `(1 + 2) + 10`), which is
+why no pin had seen it. NUR121's collection-hazard mark WAS set when `mul`
+took the 2 — and `hazardLead` exempted the lead on the inner paren's placed
+mark, whatever the outer paren had done to it. That is NUR178, silent on
+`main` (a worktree at 917ecf0), and the increment is built around closing
+it rather than around the row.
+
+**The changes.**
+
+- *The record at the collapse* (core `parenProducedLeadApplyIdx` /
+  `recordParenProducedLeadApply`, a new arm of `stepCloseParen` between
+  the trailing arm and the dynamic-lead arm; the trailing arm's body moved
+  to `recordParenTrailingFnApply` for the complexity cap). A paren whose
+  leading value is a strict fn-typed carrier the recorder PRODUCED, over
+  data arguments (parenLeadFnApplyIdx's gate: no fn value, no gradual that
+  may be one), records the apply through `RecordDynApplyLead` — the same
+  event `(x g)` seats — and collapses the window to the event's out. The
+  recorder vouches through a new seam, `ProducedLeadApplies(id, args)`:
+  the closure a produced value holds takes EXACTLY these arguments — its
+  declared param count is the window's, no param carries a pattern, every
+  argument's static type conforms — and the seam types the result (the
+  declared return when it says more than Any; else the out-op's own
+  construction, a closure push or a const lambda being a Function; else
+  Any). Strict on purpose: a no-match under the leading form leaves the
+  window lead-first, the event's op leaves it args-first, so a window that
+  might not match is not recorded. The produced value's closure is found
+  by walking the event stream (`eventProducedFnOp`): a user call's single
+  returned out-op, or a recorded apply's fn operand — the inner apply's
+  closure unit — whose single out-op is what the apply nets, so the chain
+  resolves level by level and `(((mk3 1) 2) 3)` is three events. A
+  def-read binding answers false (its read is a word dispatch the read
+  model owns); a window inside an UNNAMED-param frame answers false (below).
+- *The arguments' order.* The re-step binds the window from the forward
+  stack in WRITTEN order; the event's operands are a stack the callee reads
+  top-first; so the window is handed over reversed, and `((mk2 1) 2 3)`
+  binds x to 2. Measuring that exposed NUR179: EVERY fn-value-call op that
+  hands a compiled fn-VALUE closure its window built it positionally and
+  handed it to the token seam, whose fn-value arm (S1b-2) takes STACK order
+  and reverses it itself — `(2 3 (mk2 1))` compiled 24 for 33, `7 5 (mk2
+  1)/v apply` 76 for 58, a Function param's `(2 3 g)` 24 for 33, a
+  capturing closure member's `(m.g 2 3)` 33 for 24, the residual arm's
+  `((mk2 1) 2 3)` 33 for 24. One-argument windows, commutative bodies and
+  capture-free lambda members (consts, never at the seam) had hidden it
+  everywhere. `invokeClosurePositional`
+  (eng/go/vm.go) re-stacks a positional window for a fn-value closure; the
+  four call sites take it.
+- *The hazard's order* (`hazardAfterReStep`, compiler). `NoteCollectionHazard`
+  now records whether the lead was ALREADY re-stepped when the collection
+  marked it — the re-step record is taken at the collapse, the collection
+  after. A lazy lead's own collection inside its paren (`((mk) 7 add 1)` is
+  9 on both lanes) stays admitted; a collection past the apply the
+  interpreter already performed declines with NUR121's text. The first cut
+  read `placedNotReStepped` and declined the lazy lead too
+  (`TestCollectionHazardAdmittedTwins` caught it).
+- *Off the main loop.* A collapse on behalf of a pending forward collection
+  hands its survivors to that collection as ARGUMENTS and re-steps nothing
+  — `0 fold ([a:Integer e:Integer] => [a add ((mk 1) e)]) xs` is add's
+  no-match over `[a, closure, e]` on the interpreter, and `def r (((mk3 1)
+  2) 3)` binds r to the closure with 3 left on the stack. The arm reads
+  stepCloseParen's own `reStepped` flag and stands aside. The first cut
+  did not, and compiled the fold to 9.
+- *The leading form's no-match.* `callDynamic` handed the closure to the
+  token seam, whose no-match fallback re-steps the value TRAILING:
+  `((mk 1) "s")` compiled `[s fn]` for the interpreter's `[fn s]`. A
+  fn-value closure the window does not match is now left as written.
+- *The trailing arm's result type.* A NAMED concrete lead's one declared
+  return types the result (`concreteFnSingleReturn`); an anonymous fn
+  value's declared return is a count contract (NUR120) and stays Any. This
+  is the mitigation for NUR180, found on the way.
+
+**What it reaches.** L151 compiles with parity, and with it the family:
+one- and two-level chains at the top level, inside a fn body, a `do`, a
+branch arm and a named-param callback; a chain as another chain's argument,
+inside an outer paren, feeding a later word, def-bound and read back; the
+placed result (`((mk3 1) 2) 3` is `fn (Integer) 3`); the two-argument
+window in written order; the no-match window as written. Three pins
+graduated: `TestCurriedFactoryCompiles`'s three-level fence,
+`TestFnValueAutoApplyCompileFailures`'s nested-factory row, and NUR101's
+`[((mk 1) 2)]` list-element fence (the inner paren collapses to one
+element, so `RecordMakeListInner`'s re-step guard never meets the pair).
+
+**What it does not reach, and what it found.**
+
+- NUR180 (MITIGATED, open): a trailing paren apply whose result the
+  recorder can only type Any — an event lead, an anonymous lambda —
+  inside an UNNAMED-param frame (an each or fold body, `fn [[Integer] …]`),
+  consumed by a typed word: `xs each [(2 (mk 1)) mul 10]` compiles `[10
+  10 10]` for `[30 30 30]`, silent, present on `main`. The checker's
+  recovery re-matches the word over the frame's gradual input (`mul/2
+  (poly)` over the element and the result, the written 10 pushed after).
+  The typed result closes the named-lead rows (`(2 inc2/v) mul 10` in an
+  each body is 40 on both lanes); the chain arm stands aside in unnamed
+  frames, which keeps `xs each [((mk 1) 2) mul 10]` on the whole-frame
+  replay that answers it — the first cut recorded there and regressed it
+  to the same 10. The Any-result rows are pinned to fail when they agree.
+- NUR181 (open, not this landing's): `def r ((mk3 1) 2) end r 3` — r is
+  mk3's closure (the def's collection took the survivors), `r 3` is a
+  shaped method call whose result is a closure the interpreter PLACES
+  (`[2 fn (Integer)]`), and the compiled `RESTEP_LANDING` applies it to
+  the 2 beneath (6). Present on `main`; pinned to fail when it moves.
+- A window the closure might not take stays declined: a wider one (`((mk
+  1) 2 3)` — the re-step leaves a survivor), a no-match with a value after
+  it, a gradual argument that may be a fn (`((mk 1) m.x) mul 10` over a
+  Map param — now NUR121's loud decline where it was NUR178's silent 21),
+  and the def-bound chain's bare read (`def r (((mk3 1) 2) 3) end r` — the
+  read's statement window, as before). A chain's VALUE def-bound and read
+  back (`def r (((mk 1) 2)) end r`, 3 on the interpreter) declines as a
+  computed fn's read: `producedFnValue` classes every recorded apply's
+  result as a produced fn value whatever its type — loud, and the read
+  model's own item, not this landing's.
+
+**Pins.** `curried_chain_test.go` (lang/go): `TestCurriedChainParity`
+(twenty-seven rows), `TestFnValueApplyBindingOrderParity` (thirteen spellings
+with an order-sensitive body), `TestCurriedChainSoundCompileFailures`,
+`TestCurriedChainPendingCollection`, `TestUnnamedFrameApplyResultTyped`,
+`TestUnnamedFrameApplyResultAnyPending`, `TestDefBoundFactoryClosureLandingPending`;
+core `TestS5BCloseParenProducedLeadApply` / `…ArgOrder` / `…Declines`,
+`TestConcreteFnSingleReturn`; compiler `TestProducedLeadApplies`,
+`TestEventProducedFnOpArms`, `TestFnOpContract`, `TestArgConformsStatically`;
+eng `TestInvokeClosurePositional`.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 24 | 23 | callbacks 4 → 3 (L151) |
+| compute gaps / reducible | 19 / 4 | 18 / 4 | L151 |
+| interp-entry rows / engine entries / defers | 78 / 418 / 8 | 77 / 415 / 8 | callbacks L85 (`each ([k:Integer] => [((mk k) 100)]) [1 2 3]`) leaves the census: the chain inside the callback records natively and the callback runs as a closure unit — its three elements were one Engine.Run + one RunResolved each |
+| generated sweep: seeds / call-form variants | 30 / 194 | 30 / 194 | unchanged |
+| diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 284 / 33 | 280 / 34 | three fences graduated, four sound-failure witnesses added (net four fewer); one NEW compile-then-bail witness (`TestCurriedChainPendingCollection`'s fold, present on `main`) |
+

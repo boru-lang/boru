@@ -8073,6 +8073,216 @@ func (e *Engine) recordParenLeadFnApply(es EmitRecorder, leadFn, lastIdx, closeI
 	return closeIdx
 }
 
+// producedLeadWindow is the CURRIED-CHAIN window parenProducedLeadApplyIdx
+// classified: the lead's tape index, the argument indices after it, and
+// the static type of the value the recorded apply nets.
+type producedLeadWindow struct {
+	lead    int
+	argIdxs []int
+	ret     *Type
+}
+
+// parenProducedLeadApplyIdx classifies the CURRIED-CHAIN window: a paren
+// whose LEADING value is a strict fn-typed carrier the recorder PRODUCED —
+// a compiled factory call's returned closure (`(mk 1)` parked as one
+// survivor), or the result of an apply this same arm recorded one paren in
+// (`((mk3 1) 2)`) — followed by the DATA arguments its closure provably
+// takes. That is the shape whose park declines (more than one survivor)
+// and whose rewind lands ON the lead: the interpreter re-steps the carrier
+// into a call that fills every parameter from the window, in written order
+// (design/PAREN-RESTEP-RULE.0.md). Returns false for every other shape,
+// which keeps its own machinery: a Dynamic lead recordParenLeadingApply's
+// guarded method path, a local-slot lead parenLeadFnApplyIdx, a def-read
+// or unknown-shape lead the residual classifier (resolveDynamicApply's
+// "curried chain or partial apply" decline, or NUR121's collection-hazard
+// decline once a later dispatch has collected the window — the leak the
+// arm exists to close), and a window the closure might not take stays
+// there too: a smaller window's re-step would collect PAST the removed
+// paren, a larger one leaves survivors, and a no-match leaves the window
+// lead-first where the recorded event's op leaves it args-first.
+//
+// The argument gate is parenLeadFnApplyIdx's: a fn value or a gradual value
+// that may be one at run time is not a data argument this arm models
+// (parenLeadArgTypedNonFn admits a gradual whose declared bound excludes
+// Function); the recorder then holds each argument's static type to the
+// closure's declared param (ProducedLeadApplies). A lead a later dispatch
+// already collected past (NUR121) or one the `apply` word owns is never
+// this arm's.
+//
+// reStepped is stepCloseParen's own flag: a collapse the MAIN loop drives
+// rewinds onto the survivors and re-steps the lead; one driven OFF the
+// main loop on behalf of a pending forward collection hands the survivors
+// to that collection as ARGUMENTS and re-steps nothing — `a add ((mk 1)
+// e)` in a fold lambda is add's no-match over [a, closure, e] on the
+// interpreter, not an apply — so only the former is this arm's window.
+func (e *Engine) parenProducedLeadApplyIdx(es EmitRecorder, openIdx, closeIdx, count int, reStepped bool) (producedLeadWindow, bool) {
+	w := producedLeadWindow{lead: -1}
+	if count < 2 || !reStepped {
+		return w, false
+	}
+	for i := openIdx + 1; i < closeIdx; i++ {
+		v := e.Tape.At(i)
+		if !IsRecordableLiteral(v) {
+			continue
+		}
+		if w.lead < 0 {
+			if v.Dynamic || v.Quoted || v.ID == "" || !IsFnTypedCarrier(v) || es.CollectionHazard(v.ID) || es.ApplyPending(v.ID) {
+				return w, false
+			}
+			w.lead = i
+			continue
+		}
+		if IsFnValueResidual(v) || (v.Dynamic && !parenLeadArgTypedNonFn(v)) {
+			return w, false
+		}
+		w.argIdxs = append(w.argIdxs, i)
+	}
+	ret, ok := es.ProducedLeadApplies(e.Tape.At(w.lead).ID, e.producedLeadArgs(w))
+	w.ret = ret
+	return w, ok
+}
+
+// producedLeadArgs is the window's arguments in the order the recorded
+// event binds them — REVERSED from the tape: the interpreter's re-step
+// binds them from the forward stack in WRITTEN order, while the event's
+// operands are laid out as a stack the callee reads top-first, so
+// `((mk2 1) 2 3)` binds x to 2 only when 2 is the value nearest the fn.
+// (A one-argument window — the whole chain family the corpus writes — is
+// the same either way.)
+func (e *Engine) producedLeadArgs(w producedLeadWindow) []Value {
+	args := make([]Value, len(w.argIdxs))
+	for j, idx := range w.argIdxs {
+		args[len(w.argIdxs)-1-j] = e.Tape.At(idx)
+	}
+	return args
+}
+
+// recordParenProducedLeadApply records the classified curried-chain window
+// (parenProducedLeadApplyIdx) through RecordDynApplyLead — the same event
+// the trailing spelling seats — substituting the event's out carrier for
+// the lead and splicing every argument out, so the enclosing scope meets
+// ONE value exactly as the interpreter's re-step nets one. The out carries
+// the closure's declared return (a Function when the chain has another
+// level to apply). On a decline the window is left intact for the
+// downstream machinery. Returns the possibly-shrunk closeIdx.
+func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWindow, closeIdx int) int {
+	fnVal := e.Tape.At(w.lead)
+	retType := w.ret
+	if retType == nil {
+		retType = TAny
+	}
+	out := NewCarrier(retType)
+	out.ID = GenerateID(IDPrefixForType(retType))
+	out.pos = fnVal.pos
+	// The recorder matched the window to the callee's own arity, so the
+	// record consumes the whole window or declines: there is no partial
+	// consumption to thread here.
+	if _, ok := es.RecordDynApplyLead(e.producedLeadArgs(w), fnVal, out, fnVal.Pos()); ok {
+		e.Tape.Set(w.lead, out)
+		for j := len(w.argIdxs) - 1; j >= 0; j-- {
+			e.Tape.Remove(w.argIdxs[j])
+			closeIdx--
+		}
+	}
+	return closeIdx
+}
+
+// recordParenTrailingFnApply records the TRAILING fn-value apply window
+// (`(a b comp)`, classified by parenTrailingFnApply) as an EVENT producing
+// ONE carrier and COLLAPSES the [args…, fn] tape residual to that carrier —
+// exactly as the interpreter's paren auto-dispatch nets one result. The
+// event seats like any computed result (a def-local `def c (a b comp)`, an
+// `if` operand, a list member, the body residual), so a comparator apply
+// bound to a local compiles, not ONLY the body's trailing residual. On
+// compile failure (an unresolvable operand or a nested unapplied fn arg) the
+// residual is left intact and the body-residual lowering
+// (RegisterTrailingApply) still handles the trailing-residual case soundly.
+// Returns the possibly-shrunk closeIdx. Extracted from stepCloseParen for
+// its complexity cap (NUR038).
+func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx, closeIdx, lastIdx, count int) int {
+	var argVals []Value
+	var argIdxs []int
+	for i := openIdx + 1; i < closeIdx; i++ {
+		if IsRecordableLiteral(e.Tape.At(i)) && i != lastIdx {
+			argVals = append(argVals, e.Tape.At(i))
+			argIdxs = append(argIdxs, i)
+		}
+	}
+	outType := TAny
+	// A CONCRETE lead whose own signatures declare one return — a `/v`
+	// read of a typed fn, a lambda literal — nets a value of that type on
+	// every run (the callee's return contract enforces it), so the result
+	// carries it. A strict Any there left a typed consumer to the
+	// checker's recovery, and under an UNNAMED-param frame — an each or
+	// fold body, `fn [[Integer] …]` — that recovery re-matched the word
+	// over the frame's gradual input instead of the written argument:
+	// `xs each [(2 inc2/v) mul 10]` compiled 10 for the interpreter's 40
+	// (NUR180; a fn-typed carrier lead keeps the Any and the hazard).
+	if t := concreteFnSingleReturn(last); t != nil && !last.Dynamic && !es.ApplyPending(last.ID) {
+		outType = t
+	}
+	out := NewCarrier(outType)
+	// A lead the `apply` WORD owns — a gradual value, or a fn-typed
+	// carrier under the word (`(x f/v apply)`) — has no static
+	// return: its result is GRADUAL (Dynamic), the honest type, so a
+	// later dispatch over it matches gradually and records a runtime
+	// re-match instead of the checker's best-fit recovery (a strict
+	// Any there declined `x (x f/v apply) apply` as "unmatched
+	// dispatch recovered at apply", the twenty-seventh increment).
+	// A plain paren apply of a fn-typed carrier (`(1 2 c)`) keeps its
+	// strict Any: the comparator convention's consumers were built on
+	// it, and a gradual result there declined an each body's residual
+	// ("result above a literal") that compiles today.
+	if last.Dynamic || es.ApplyPending(last.ID) {
+		out.Dynamic = true
+	}
+	out.ID = GenerateID(IDPrefixForType(outType))
+	out.pos = last.pos
+	// consumed counts from the TOP of the window (the values
+	// nearest the fn). It is normally every arg, but a callee whose
+	// arity is provably smaller UNDER-APPLIES exactly as the
+	// interpreter does — `(1 2 (mk 4))` with a 1-arg adder nets
+	// [1, 6] — so only the consumed SUFFIX collapses and the deeper
+	// values stay on the tape as residual.
+	if consumed, ok := es.RecordDynApply(argVals, last, out, last.Pos()); ok {
+		e.Tape.Set(lastIdx, out)
+		for j := len(argIdxs) - 1; j >= len(argIdxs)-consumed; j-- {
+			e.Tape.Remove(argIdxs[j])
+			closeIdx--
+		}
+	} else {
+		es.RegisterTrailingApply(last.ID, count-1)
+	}
+	return closeIdx
+}
+
+// concreteFnSingleReturn is the one declared return type a CONCRETE NAMED
+// fn value's own signatures agree on — nil for a carrier, an anonymous fn
+// value (whose declared return the seams enforce as a count only), an
+// undeclared or multi-valued return, or overloads that disagree.
+func concreteFnSingleReturn(v Value) *Type {
+	fd, ok := v.Data.(FnDefInfo)
+	if !ok || fd.Anonymous {
+		return nil // an anonymous fn value's declared return is a COUNT contract
+	}
+	sigs := fd.OwnSigs()
+	if len(sigs) == 0 {
+		return nil
+	}
+	var t *Type
+	for i := range sigs {
+		if len(sigs[i].Returns) != 1 || sigs[i].Returns[0] == nil {
+			return nil
+		}
+		if t == nil {
+			t = sigs[i].Returns[0]
+		} else if !t.Equal(sigs[i].Returns[0]) {
+			return nil
+		}
+	}
+	return t
+}
+
 // parenTrailingFnApply classifies a paren whose LAST value is the fn a
 // paren-bounded apply applies to the values before it: a concrete or
 // fn-typed value that is not Dynamic, or a Dynamic value the recorder holds
@@ -8351,6 +8561,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 		// the value was stepped. The one exception is a tail the `apply`
 		// WORD owns (`(k r apply)`), which stays the trailing record's.
 		leadWins := leadFn >= 0 && !es.ApplyPending(last.ID)
+		producedLead, hasProducedLead := e.parenProducedLeadApplyIdx(es, openIdx, closeIdx, count, reStepped)
 		switch {
 		case leadWins:
 			// LEADING one-arg fn-carrier apply (the Stage-G increment) —
@@ -8359,55 +8570,21 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 			// complexity cap).
 			closeIdx = e.recordParenLeadFnApply(es, leadFn, lastIdx, closeIdx)
 		case parenTrailingFnApply(es, last, count, lastIdx):
-			// TRAILING fn-value apply (`(a b comp)`): record it as an EVENT producing
-			// ONE carrier and COLLAPSE the [args…, fn] tape residual to that carrier —
-			// exactly as the interpreter's paren auto-dispatch nets one result. The
-			// event seats like any computed result (a def-local `def c (a b comp)`, an
-			// `if` operand, a list member, the body residual), so a comparator apply
-			// bound to a local compiles, not ONLY the body's trailing residual. On
-			// compile failure (an unresolvable operand or a nested unapplied fn arg) the residual
-			// is left intact and the body-residual lowering (RegisterTrailingApply) still
-			// handles the trailing-residual case soundly.
-			var argVals []Value
-			var argIdxs []int
-			for i := openIdx + 1; i < closeIdx; i++ {
-				if IsRecordableLiteral(e.Tape.At(i)) && i != lastIdx {
-					argVals = append(argVals, e.Tape.At(i))
-					argIdxs = append(argIdxs, i)
-				}
-			}
-			out := NewCarrier(TAny)
-			// A lead the `apply` WORD owns — a gradual value, or a fn-typed
-			// carrier under the word (`(x f/v apply)`) — has no static
-			// return: its result is GRADUAL (Dynamic), the honest type, so a
-			// later dispatch over it matches gradually and records a runtime
-			// re-match instead of the checker's best-fit recovery (a strict
-			// Any there declined `x (x f/v apply) apply` as "unmatched
-			// dispatch recovered at apply", the twenty-seventh increment).
-			// A plain paren apply of a fn-typed carrier (`(1 2 c)`) keeps its
-			// strict Any: the comparator convention's consumers were built on
-			// it, and a gradual result there declined an each body's residual
-			// ("result above a literal") that compiles today.
-			if last.Dynamic || es.ApplyPending(last.ID) {
-				out.Dynamic = true
-			}
-			out.ID = GenerateID(IDPrefixForType(TAny))
-			out.pos = last.pos
-			// consumed counts from the TOP of the window (the values
-			// nearest the fn). It is normally every arg, but a callee whose
-			// arity is provably smaller UNDER-APPLIES exactly as the
-			// interpreter does — `(1 2 (mk 4))` with a 1-arg adder nets
-			// [1, 6] — so only the consumed SUFFIX collapses and the deeper
-			// values stay on the tape as residual.
-			if consumed, ok := es.RecordDynApply(argVals, last, out, last.Pos()); ok {
-				e.Tape.Set(lastIdx, out)
-				for j := len(argIdxs) - 1; j >= len(argIdxs)-consumed; j-- {
-					e.Tape.Remove(argIdxs[j])
-					closeIdx--
-				}
-			} else {
-				es.RegisterTrailingApply(last.ID, count-1)
-			}
+			// TRAILING fn-value apply (`(a b comp)`) — extracted to
+			// recordParenTrailingFnApply for the stepCloseParen complexity cap.
+			closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
+		case hasProducedLead:
+			// LEADING produced-closure apply — the CURRIED CHAIN (`((mk 1) 2)`,
+			// `(((mk3 1) 2) 3)`): a strict fn-typed carrier a compiled factory
+			// call or an earlier recorded apply PRODUCED, re-stepped by this
+			// paren's rewind over exactly its closure's arity of data arguments
+			// (parenProducedLeadApplyIdx). Recorded here, at the collapse, as
+			// the same event `(x g)` seats, because the residual cannot: the
+			// window's arguments survived onto the tape where a later dispatch
+			// collected them — `((mk 1) 2) mul 10` lowered `mul` over 2 and 10
+			// and applied the closure to the product, 21 for the interpreter's
+			// 30 (NUR178). Extracted for the complexity cap.
+			closeIdx = e.recordParenProducedLeadApply(es, producedLead, closeIdx)
 		case first >= 0 && count >= 2:
 			// LEADING dynamic apply (COMPILE FAILURE-CLOSURE §9.2e) — extracted to
 			// recordParenLeadingApply for the stepCloseParen complexity cap.

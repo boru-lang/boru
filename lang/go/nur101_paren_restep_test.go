@@ -6,40 +6,6 @@ import (
 	"testing"
 )
 
-// nur101CompileFailure pins a program the compiler must DECLINE rather than answer,
-// together with the interpreter's answer it must not contradict. It is the
-// fence shape NUR101's landing uses: a compile failure is sound (the fallback runs the
-// tree-walker, which is by definition right), a silent wrong answer is not.
-//
-// wantInterp is asserted against RunInterp — NEVER against Run, which post
-// Stage J is the compiled lane (NUR106).
-func nur101CompileFailure(t *testing.T, src, wantInterp string) {
-	t.Helper()
-	prog, reason, _, _ := mustNew(t).CompileCheck(src)
-	if prog != nil {
-		t.Errorf("%q: compiled — graduate this fence to a parity row (reason was %q)", src, reason)
-	}
-	// Asserted on wasCompiled, not on the error: the error text names the
-	// construct and moves as lowerings land, so it is not a stable signal for
-	// "this did not compile".
-	gotC, _, errC := mustNew(t).RunCompiled(src)
-	got, err := mustNew(t).RunInterp(src)
-	if noteCompileDefect(t, src, gotC, errC) {
-		return
-	}
-	if err != nil || fmt.Sprint(got) != wantInterp {
-		t.Errorf("%q: interp = %v (%v), want %s", src, got, err, wantInterp)
-	}
-	// The fallback must answer exactly as a plain interpreted run — when it
-	// ran at all (without the hatch RunCompiled returns the compile failure instead).
-	if errC == nil && fmt.Sprint(gotC) != fmt.Sprint(got) {
-		t.Errorf("%q: fallback=%v interp=%v", src, gotC, got)
-	}
-	if errC != nil && !strings.Contains(fmt.Sprint(errC), "compile_failed") {
-		t.Errorf("%q: err=%v, want compile_failed", src, errC)
-	}
-}
-
 // TestParenReStepRule is the standing measurement behind
 // design/PAREN-RESTEP-RULE.0.md: for every shape the rule classifies, the
 // compiled lane either AGREES with the tree-walking interpreter or DECLINES.
@@ -320,11 +286,13 @@ func TestListFoldCallbackOrderPin(t *testing.T) {
 // separates them — which is why that row above still compiles and this one
 // declines.
 //
-// GRADUATION: Stage 3 records the apply as an element event and this becomes a
-// parity row.
+// GRADUATED 2026-09-22 (the curried chain): the inner paren records its
+// re-stepped produced lead's apply at the collapse, so the list assembles
+// ONE element — the event's result — and the re-step guard in
+// RecordMakeListInner never meets the pair. A parity row since.
 func TestParenReStepListElementCompileFailure(t *testing.T) {
 	const src = `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] [((mk 1) 2)]`
-	nur101CompileFailure(t, src, "[[3]]")
+	mustCompileWithParity(t, src, "[[3]]")
 
 	// The twin that MUST keep compiling: no inner rewind, so two elements.
 	const placed = `def mk fn [[a:Integer] [Function] [(fn [[b:Integer] [Integer] [a add b]])]] [(mk 1) 2]`

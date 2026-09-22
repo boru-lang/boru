@@ -67,6 +67,7 @@ var operandKindSites = map[string]bool{
 	"callResultRenderKnown": true,
 	"unitRenderKnown":       true,
 	"closureOpShape":        true,
+	"fnOpContract":          true,
 	"computedArmCondOK":     true,
 	"deoptDeferred":         true,
 	"pushOperand":           true,
