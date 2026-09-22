@@ -11925,3 +11925,163 @@ eng `TestInvokeClosurePositional`.
 | diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 284 / 33 | 280 / 34 | three fences graduated, four sound-failure witnesses added (net four fewer); one NEW compile-then-bail witness (`TestCurriedChainPendingCollection`'s fold, present on `main`) |
 
+## S1b — the container reads inside quotation bodies: `each [ops.inc] xs` (2026-09-22)
+
+**The measurement first.** Three rows, one shape — a fn-valued container
+member read as the LAST token of a code body — and one decline:
+
+| row | source | declined at |
+|---|---|---|
+| each-variants L205 | `def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]` | "fn each$body: result above a literal (Stage 3)" |
+| fold-map-filter L215 | `def ops {inc: (fn [[n:Integer][Integer][n add 1]])} end each [ops.inc] [1 2 3]` | the same |
+| module-composition L98 | `… export "M" {tbl: tbl}] end fold [add] (each [M.tbl.inc] [1 2 3]) 0` | the same |
+
+The neighbours said where the seam was. `def f fn [[Integer][Integer]
+[ops.inc]] end f 5` — the same residual in a NAMED fn unit — compiles
+(`dot; RESTEP_LANDING; STORE_LOCAL; PUSH_LOCAL ×2; CALL_DYN_FRAME`): the
+whole-frame replay, with the unnamed input as its resolved prefix and the
+member as the token region the island re-steps. `each [ops.inc add 10]`
+compiles too (the forward-drift window, CALL_DYNAMIC_MIXED). Only a
+CODE-BODY closure unit with the member at its tail had nothing:
+`fnResidualReplayReason` returns before the replay for a closure ("their
+count mismatch is the higher-order word's own error and their reads are
+the enclosing frame's"), and the residual `[element, member]` reached the
+layout, which declines a maybe-callable above a literal. L205 is the
+placed twin — `(m.f)` parks — and the interpreter's answer there is the fn
+itself, twice.
+
+Probing the neighbours before touching anything found two more silent
+miscompiles on `main`. `each [dup ops.inc] [1 2 3]` COMPILED — to
+`[fn fn fn]` for `[2 3 4]` (NUR183): with two values beneath the member the
+layout seated in order and the member rode as data. And the fn-unit replay
+that answered the named twin correctly re-steps EVERYTHING it is handed:
+`def f fn [[Integer][Any][(ops.inc)]]  f 5` compiled 6 for the
+interpreter's `fn (Integer)`, and four spellings with a stepped value
+beside the placed member compiled 6 where the interpreter raises its
+return-count error (NUR182). The measurement that settled what a placed
+value IS inside a unit: a fn frame never re-steps it, whatever sits beside
+it (`[5 (ops.inc)]` is the count error over `[5 fn]`); a callback body
+never does (`each [5 (ops.inc)] xs` is a list of the fn); and `do [5
+(ops.inc)]` is 6 only because `do` returns the residual to the CALLER's
+tape, where the fn is re-stepped over its sibling — the same NUR124
+mechanism that makes `7 do [(ops.inc)]` 8 today. Inside any unit, a
+placed value is data.
+
+**The changes** (compiler/go/emit.go, callable_words.go).
+
+- *The closure-body replay* (`noteClosureBodyReplay`). A code-body
+  closure unit whose residual's TOP is a carrier the check pass tagged as
+  a fn-valued MEMBER read (NoteMemberFnRead) arms the whole-frame replay
+  through `noteDynFrameReplay` with the unnamed inputs as the prefix —
+  the same OpCallDynFrame the named unit takes — and its gates decide
+  (the body tail, one applicable, a token region above the prefix). The
+  tag is the trigger, not a bare fn-typed carrier and not the re-step
+  landing: a captured Function param read bare is the interpreter's WORD
+  dispatch (NUR123 — a no-match raises `cannot call g` where value
+  semantics would park; the closure paths keep declining it, and `each
+  [g] xs` compiles through them today), and the landing alone armed the
+  catch body of `error [dot code]`, which its word then declined. A
+  concrete member whose only signatures take no argument stays the
+  landing's (it fires; an island re-push would cost an interpreter entry
+  for nothing).
+- *Placed is data* (NUR182). `noteDynFrameReplay` skips a
+  placed-not-re-stepped value as an applicable and declines a window that
+  would carry one beside an applicable (`windowHasPlaced`);
+  `residualForceOrder` takes a data predicate so the promotion re-pushes
+  a placed value in order; a body whose driver returns the residual to
+  the caller (`fnUnitRec.residualToCaller`, `CallableSpec.BodyOut ==
+  BodyOutResidual`: `do`) keeps the bail for a placed value with siblings.
+
+**What it reaches.** The three rows compile with parity, and with them
+the family: a lambda or arrow-lambda member, the placed member alone or
+above a literal (the fn itself), the member over a literal or a
+duplicated element beneath, a no-match (parks), a two-param member (parks),
+a named-param lambda body, a `do` body, and the fn-unit rows NUR182 names.
+One pin graduated (`TestEdgeFindingDynamicFnValueApplyBodyTail`'s mid-body
+row: a placed fetched fn with a print after it is the interpreter's own
+count error on both lanes, the print in its place).
+
+**What "placed is data" uncovered.** Once a placed carrier stopped bailing
+the residual layout, the generated sweep's `apply` factory · lambda-body
+variant — `def zzvlam ([] => [5 (mk) apply]) zzvlam`, `mk` returning a
+capture-free lambda — went from **declined** to **DIVERGED**: the lambda
+compiled `[5 fn]` and the RET raised the count error for the interpreter's
+6. The `apply` word's dispatch over a produced fn-typed CARRIER inside a
+unit was being ELIDED as a registered output with its application seated
+nowhere — `recordCallElided`'s pending-apply arm admitted only a produced
+closure or an apply's result (`producedFnValue`), and a factory declaring
+`[Function]` types its result as a carrier whatever it returns — hidden
+for as long as the layout declined the shape. `producedFnCarrierInFnUnit`
+now registers the PENDING apply for any produced fn-typed carrier read
+inside a fn unit or a plain lambda; the layout then declines the literal-
+beneath shape loudly, as it did before, and a code-body closure unit is
+left to its own gate (its probe declines and the body runs as a raw token
+list — what `each [(mk) apply] xs` compiled to before and still does).
+
+**The VM's half** (eng/go/vm.go, `callDynFrame`). The replay's Apply
+kernel entered a frame only when the token region was `[fn, args…]` with
+the args filling the callee's params; a LONE fn over a non-empty prefix —
+this increment's whole shape, the member's argument being the element
+BENEATH it — fell to the island. With no token after the fn its forward
+window is empty whatever the barrier, so the value applied over the
+prefix's top n values, in the token seam's stack order, binds exactly what
+the re-step binds; a single-signature fn value or a known closure unit
+makes n definite (`loneTokenArity`), and the fn-VALUE seam
+(`invokeLoneToken` → `invokeFnValue` / `invokeFnValueClosure`) does the
+apply: the value's compiled unit hosted whatever program stamped it (a
+const lambda's ref may point at the probe's), a foreign-home module fn
+through its home's callback seam (`M.tbl.inc` — the module-fn seam,
+named in the census), the value's own return contract enforced; a no-match
+keeps the island, which parks the value as the interpreter does. `each
+[ops.inc] xs`, `[5 ops.add2]` and a capturing closure member run VM-native.
+
+**A probe's orphaned stamp** (`undoProbeStamps`, compiler). With the
+seam in place `each [ops.inc] xs` STILL islanded once per element while
+its named-fn twin ran native. Traced through the fn-value seam: the
+member's sig carried a compiled ref whose Program was nil. A closure body
+is compiled TWICE — a throwaway probe, then the real pass — and the probe
+reached the const chokepoint first: `stampFnConst` wrote its ref onto the
+lambda's shared impl and appended it to the PROBE's `storedFnRefs`; the
+probe was discarded, its Finalize never back-stamped the Program, and
+first-stamp-wins then kept the real pass from stamping the same impl. The
+probe's stamps are now undone when the probe is discarded, so the real
+pass stamps and seats them. Pre-existing: every capture-free fn value a
+closure body's probe met first was reaching the seams unstamped.
+
+**What it does not reach.** A member read in a WORD's forward slot inside
+a fold body — `0 fold [add ops.inc] xs`, `[add (ops.inc)]`: the reach
+re-steps over the element BEFORE `add` collects, and the recorded dispatch
+took the un-applied member as its argument — declines "result above a
+literal" as before. `do [5 (ops.inc)]` (the caller's re-step over a
+sibling) declines as before. A DEF-READ of the tagged member inside the
+body (`def f M.tbl.inc end each [f] xs`, module-composition L103 — NUR156's
+standing divergence, three fn values for `[2 3 4]`) is deliberately not
+armed: the trigger read the tag off the binding and arming it fixed the
+VALUE case through the island (the census caught the row entering), but
+the read is the interpreter's WORD dispatch, whose no-match RAISES
+`cannot call f` where the value replay parks — closing NUR156 needs the
+word-dispatch island (NUR123's `dynFrameWords`) widened to a closure
+body's non-local reads, which `NoteWordRead` deliberately does not count
+today. That is the next cut of this seam.
+
+**Pins.** `quotation_body_member_read_test.go` (lang/go):
+`TestQuotationBodyMemberReadParity` (twenty rows),
+`TestPlacedMemberInFnUnitErrorsWithParity`,
+`TestQuotationBodyMemberReadSoundCompileFailures`; compiler
+`TestNoteClosureBodyReplayArms`, `TestNoteDynFrameReplayPlaced`,
+`TestResidualForceOrderPlaced`, `TestProducedFnCarrierInFnUnit`,
+`TestUndoProbeStamps`; eng `TestLoneTokenArity`.
+
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, run alone on the
+final code — an earlier run built before the probe-stamp undo landed read
+418 engine entries, the three rows still islanding once per element):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 23 | 20 | each-variants 2 → 1 (L205), fold-map-filter 2 → 1 (L215), module-composition 3 → 2 (L98) |
+| compute gaps / reducible | 18 / 4 | 15 / 4 | the three rows |
+| interp-entry rows / engine entries / defers | 77 / 415 / 8 | 74 / 406 / 8 | the probe's orphaned stamp, not the three rows (they run native): callbacks L103 (`each [useit inc/v] [1 2 3]`), callbacks L55 (`each ([k:String] => [((cbs k get) 10)]) ['a' 'b']`) and module-composition L76 (the same over a module's exported map) leave the census — each was a capture-free fn value a closure body's probe had stamped first, reaching the fn-value seam with a nil Program and islanding per element; seams Engine.Run 415 → 406, CallBoru 242 → 240, vm:island 13 → 6, InvokeCallback:callboru 7 → 5 |
+| generated sweep: seeds / call-form variants | 30 / 194 | 30 / 194 | unchanged; two `apply` factory cells (fn-body, module-body) now decline at the residual layout ("result above a literal") instead of the carrier render and the trailing-apply gate — the pending apply registers, the layout declines the literal beneath, as the lambda-body cell's story above says |
+| diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 280 / 34 | 279 / 34 | `TestEdgeFindingDynamicFnValueApplyBodyTail`'s mid-body row graduated to a parity check |

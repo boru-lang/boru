@@ -1812,6 +1812,26 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 		if ent := vc.dynApplyEnter(tokens[0], tokens[1:]); ent != nil && (len(prefix) == 0 || ent.allForward) {
 			return stack[:base], ent, nil
 		}
+		// A LONE fn token over a non-empty prefix collects every parameter
+		// from the prefix, top-down — the interpreter's re-step of a member
+		// read at a body's tail (`each [ops.inc] xs`, the quotation-body
+		// container reads: the element beneath is its one argument). With no
+		// token after the fn its forward window is empty whatever the
+		// barrier, so a frame push over the prefix's top n values, top first,
+		// binds exactly what the re-step binds; a single-signature callee
+		// makes n definite. A no-match keeps the island, which parks the
+		// value as the interpreter does.
+		if len(tokens) == 1 && len(prefix) > 0 {
+			if n, ok := vc.loneTokenArity(tokens[0]); ok && n >= 1 && n <= len(prefix) {
+				res, err, ran := vc.invokeLoneToken(reg, tokens[0], prefix[len(prefix)-n:])
+				if err != nil {
+					return nil, nil, stampAt(err, curDebug, pc, reg)
+				}
+				if ran {
+					return append(stack[:base-n], res...), nil, nil
+				}
+			}
+		}
 	}
 	// A region carrying BARE READS of fn-valued bindings re-steps them as
 	// the WORDS the interpreter dispatches (NUR123, vm_dyn_words.go) — after
@@ -1834,6 +1854,46 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 		return nil, nil, err
 	}
 	return append(stack[:frameBase], results...), nil, nil
+}
+
+// loneTokenArity is the parameter count a stack-collecting re-step of a
+// lone fn token is certain to bind: a fn VALUE with exactly one own
+// signature (that signature's), or a compiled CLOSURE whose unit is known
+// (its params less its captures). An overloaded fn matches by signature
+// order against whatever the stack holds, which a fixed n cannot
+// reproduce, so it declines.
+func (vc *vmContext) loneTokenArity(v core.Value) (int, bool) {
+	if cl, ok := v.Data.(core.ClosurePayload); ok {
+		fn, known := vc.closureUnit(cl)
+		if !known {
+			return 0, false
+		}
+		return fn.NParams - fn.NCaptures, true
+	}
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return 0, false
+	}
+	own := fd.OwnSigs()
+	if len(own) != 1 {
+		return 0, false
+	}
+	return own[0].TotalArgs(), true
+}
+
+// invokeLoneToken applies a lone fn token over inputs taken from the
+// frame's resolved prefix, in STACK order (deepest first) — the TOKEN seam's
+// own convention, which matches the value top-down exactly as the
+// interpreter's re-step collects. A fn VALUE goes through invokeFnValue
+// (its compiled unit hosted whatever program stamped it, a foreign-home
+// module fn through its home's callback seam, the value's own return
+// contract enforced); a compiled CLOSURE through the token seam's closure
+// arm. ran is false when nothing matched and the island must decide.
+func (vc *vmContext) invokeLoneToken(reg *core.Registry, fnVal core.Value, inputs []core.Value) ([]core.Value, error, bool) {
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		return vc.invokeFnValueClosure(reg, fnVal, cl, inputs)
+	}
+	return vc.invokeFnValue(reg, fnVal, inputs)
 }
 
 // dynFrameSimpleWindow reports whether a replay token region is a fn followed

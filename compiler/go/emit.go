@@ -1579,6 +1579,13 @@ type fnUnitRec struct {
 	// type_error — so a closure keeps declining the mismatch (islands) while a
 	// user fn compiles the error path (the VM RET raises the matching error).
 	closure bool
+	// residualToCaller marks a code-body closure whose driving word returns
+	// the body's WHOLE residual to the caller's tape (CallableSpec.BodyOut ==
+	// BodyOutResidual — `do`), where the interpreter re-steps it at the call
+	// (NUR124's mechanism): a paren-placed fn value the body left above a
+	// sibling result is applied to that sibling there (`do [5 (ops.inc)]` is
+	// 6), so inside such a unit it is data only when it stands alone.
+	residualToCaller bool
 	// lambdaUnit marks the fn-VALUE flavour of a closure unit (word "fnval"
 	// — a returned lambda's body compiled via tryReturnedClosure), as
 	// opposed to a native code-body unit (each/do$body, whose analysis
@@ -1706,9 +1713,9 @@ func NewEmitState() *EmitState {
 // the whole residual in exact order. Returns nil for an in-order residual and
 // for any residual carrying a fn value or dynamic value (the auto-apply
 // boundary's territory: its stack layout is the apply's contract).
-func residualForceOrder(ops []EmitOperand, vals []core.Value) map[int]bool {
+func residualForceOrder(ops []EmitOperand, vals []core.Value, data func(core.Value) bool) map[int]bool {
 	for _, v := range vals {
-		if v.Dynamic || core.IsFnValueResidual(v) {
+		if (v.Dynamic || core.IsFnValueResidual(v)) && (data == nil || !data(v)) {
 			return nil
 		}
 	}
@@ -1750,7 +1757,21 @@ func (es *EmitState) residualForceOrderFor(dynTrail int, rec *fnUnitRec, ops []E
 	if rec.dynFrameW > 0 {
 		return es.replayForceOrder(ops)
 	}
-	return residualForceOrder(ops, vals)
+	// A paren-PLACED value the frame never re-steps is DATA in a unit's
+	// residual, and the promotion may re-push it as such: a fn frame returns
+	// `[5 fn]` for `[5 (ops.inc)]` (the interpreter's __RC then counts it),
+	// a callback body hands `(m.f)` to its driver as the value itself
+	// (`each [(m.f)] xs` is a list of the fn), and a `do` body returns it
+	// for the CALLER's re-step (NUR124's machinery, at the call). The
+	// fn/dynamic bail protects an UNARMED apply, and a placed value has
+	// none to compile away (NUR182). The one exception is a body whose
+	// driver returns the residual to the caller's tape (residualToCaller,
+	// `do`): there the caller's re-step applies the value to a sibling
+	// result beneath it, which no unit-side layout models, so a placed
+	// value with siblings keeps the bail (and today's decline).
+	return residualForceOrder(ops, vals, func(v core.Value) bool {
+		return es.placedNotReStepped(v) && !(rec.residualToCaller && len(vals) > 1)
+	})
 }
 
 // replayForceOrder returns the promotion set that re-pushes an ARMED
@@ -1854,6 +1875,24 @@ func (es *EmitState) forkForProbe() *EmitState {
 		p.storeHazard[k] = v
 	}
 	return p
+}
+
+// undoProbeStamps clears every stored-fn ref this PROBE state stamped onto
+// a shared sig impl (stampFnConst at the const chokepoint). The probe is
+// discarded and its Finalize never runs, so a ref it leaves behind carries
+// no Program — and first-stamp-wins then keeps the REAL pass from stamping
+// the same impl, so the value's compiled unit is unreachable at run time:
+// the fn-value seam fell to the stepping path, and `each [ops.inc] xs`
+// islanded its member once per element where the named fn unit's twin ran
+// it VM-native (the quotation-body container reads, 2026-09-22; measured
+// through invokeFnValue: ref set, Prog nil). The probe's tables are its
+// own (forkForProbe starts from NewEmitState), so every entry here is the
+// probe's stamp and nothing the real state placed.
+func (es *EmitState) undoProbeStamps() {
+	for impl := range es.stampImpls {
+		impl.SetCompiled(nil)
+	}
+	es.stampImpls = nil
 }
 
 // inClosureUnit reports whether the innermost OPEN fn unit is a CLOSURE body
@@ -7676,7 +7715,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// Finalize — never compiles the closure as unapplied data. Resolved
 	// BEFORE the registered-output arm below: apply's identity result
 	// carries the producer's id, which that arm would elide silently.
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && es.producedFnValue(args[0].ID) {
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedFnCarrierInFnUnit(args[0])) {
 		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
@@ -10001,6 +10040,36 @@ func (es *EmitState) producedFnValue(id string) bool {
 	}
 	w, ok := es.producerWord(id)
 	return ok && w == wordDynApply
+}
+
+// producedFnCarrierInFnUnit reports whether v is a fn-typed CARRIER a call
+// of this pass PRODUCED, read inside a FN unit (a named fn body or a plain
+// lambda) below the program's — a factory whose declared `[Function]`
+// return types its result as a carrier whatever it returns (a capture-free
+// const lambda, a named fn's `/v`), `5 (mk) apply` inside a unit.
+// producedFnValue admits only a produced CLOSURE or an apply's result (its
+// other callers need a closure payload for the VM's re-entrant runner), but
+// the `apply` word's PENDING registration does not: OpCallDynApplyTop
+// applies any appliable fn. Without the entry the dispatch was elided as a
+// registered output and the application seated NOWHERE — hidden while a
+// placed carrier bailed the residual layout, and a silent count error once
+// it stopped (NUR182): the generated sweep's `apply` factory · lambda-body
+// variant, `def zzvlam ([] => [5 (mk) apply])`, answered `[5 fn]` for the
+// interpreter's 6 (2026-09-22); with the entry the layout declines it
+// loudly, as it did before. A CODE-BODY closure unit (each/do$body) is left
+// to its own gate — closureResidualHasUnappliedFn declines the probe and
+// the body runs as a raw token list, which is what `each [(mk) apply] xs`
+// compiled to before and still does — and the program unit keeps its
+// residual arms, which apply the same value trailing.
+func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
+	if len(es.units) < 2 || !core.IsFnTypedCarrier(v) {
+		return false
+	}
+	if u := es.openUnitRec(); u == nil || (u.closure && !u.plainLambda()) {
+		return false
+	}
+	_, produced := es.producedBy[v.ID]
+	return produced
 }
 
 // producerReturnedClosure reports whether id holds a compiled CLOSURE this
@@ -12576,6 +12645,16 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		if es.callResultPlacedIn(v, rec.frag) {
 			continue
 		}
+		// A paren-PLACED value no enclosing paren re-stepped is data for the
+		// same reason (NUR182): the frame never re-steps it — `def f fn
+		// [[Integer][Any][(ops.inc)]]  f 5` returns the member itself, and
+		// `[5 (ops.inc)]` is the interpreter's count error over `[5 fn]`.
+		// The replay island re-steps every token it is handed, so a placed
+		// value can never ride in an armed window: it is skipped here, and a
+		// window that would carry one beside an applicable declines below.
+		if es.placedNotReStepped(v) {
+			continue
+		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
 			// (A lead a later dispatch collected past — `[g x add 1]`, whose
 			// replay would run over add's result, NUR121 — never reaches here:
@@ -12594,7 +12673,8 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 			// lead, whose runtime fn the replay would apply under value
 			// semantics. With no fn-typed value the count is the original
 			// one-applicable rule (replayLeadApplicables).
-			if w, ok := dynFrameWindow(u, rec, vals); ok && es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
+			if w, ok := dynFrameWindow(u, rec, vals); ok && !es.windowHasPlaced(vals[len(vals)-w:]) &&
+				es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
 				replayLeadApplicables(vals[len(vals)-w:], es.dynFrameWordsFor(u, rec, vals[len(vals)-w:])) == 1 {
 				rec.dynFrameW = w
 				rec.retReplay = true
@@ -12608,6 +12688,73 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		}
 	}
 	return true
+}
+
+// windowHasPlaced reports whether a replay window carries a paren-PLACED
+// value no enclosing paren re-stepped: the island re-steps every token, so
+// such a window cannot arm (NUR182).
+func (es *EmitState) windowHasPlaced(window []core.Value) bool {
+	for _, v := range window {
+		if es.placedNotReStepped(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteClosureBodyReplay arms the whole-frame replay for a CODE-BODY closure
+// unit — an each / fold / do body — whose residual's TOP is a value the
+// interpreter's pointer re-steps inside the body: a container member read as
+// the body's last token (`each [ops.inc] xs`, the quotation-body container
+// reads, 2026-09-22). A reach-lowered group never parks (NUR173), so its
+// collapse re-steps the member over the element beneath — the body nets
+// `inc(e)` — where the compiled body pushed the member as data above the
+// element and the residual layout declined "result above a literal". The
+// replay is the same OpCallDynFrame a named fn unit takes for the identical
+// residual (`def f fn [[Integer][Integer][ops.inc]]`): the unnamed inputs
+// are the resolved prefix, the token region re-steps under
+// execFnDefLiteral's own rule, and the driver reads the result.
+//
+// The count-mismatch trigger a fn unit arms on does not exist here (a code
+// body declares no returns), so the trigger is the top value itself: a
+// carrier the check pass tagged as a fn-valued MEMBER read (NoteMemberFnRead
+// — the container's member was a fn when it was read), gradual or
+// fn-typed. A bare fn-typed carrier without the tag is not one: a captured
+// Function param read bare is a WORD dispatch on the interpreter (NUR123 —
+// a no-match raises `cannot call g` where the replay's value semantics
+// would park), and the closure paths keep declining it on their own gates.
+// A DEF-READ of a tagged member (`def f M.tbl.inc end each [f] xs`,
+// module-composition L103) is the read model's, as everywhere: the tag
+// rides on the value's identity into the binding, and arming on it
+// islanded a row that ran natively (the census caught it). A placed value
+// is data (noteDynFrameReplay skips it, the
+// promotion re-pushes it: `each [(m.f)] xs` is a list of the fn); a
+// gradual value with no such tag — a mixed dispatch's result, an error's
+// `dot code` in a catch body, a get of data — keeps the layout it has
+// today (the re-step landing alone was tried as the trigger and armed the
+// catch body of `error [dot code]`, which its word then declined); and a
+// concrete member whose only signatures take no argument is the landing's
+// alone (it fires; re-pushing its result through an island would cost an
+// interpreter entry for nothing). noteDynFrameReplay's own gates then
+// decide — the body tail, exactly one applicable, a token region above the
+// prefix — and a shape they decline keeps today's failure.
+func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []core.Value) {
+	if len(vals) == 0 {
+		return
+	}
+	top := vals[len(vals)-1]
+	if es.placedNotReStepped(top) || es.callResultPlacedIn(top, rec.frag) {
+		return
+	}
+	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) || es.isDefRead(top) {
+		return
+	}
+	if mv, ok := es.MemberFnReadValue(top.ID); ok {
+		if fd, isFn := mv.Data.(core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(fd) {
+			return
+		}
+	}
+	es.noteDynFrameReplay(u, rec, vals, rec.nUnnamed)
 }
 
 // NoteWordRead counts a bare read of a fn-typed or gradual frame local on
@@ -12893,6 +13040,9 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 	// below is a plain-unit concern and still skips a closure.
 	rec.outOpsVals = vals
 	if rec.closure && !rec.plainLambda() {
+		// One replay a code body DOES take: its top value re-stepped by the
+		// interpreter's pointer inside the body (noteClosureBodyReplay).
+		es.noteClosureBodyReplay(u, rec, vals)
 		return ""
 	}
 	// A body-tail dynamic apply (dynTrail) owns the residual: the count and

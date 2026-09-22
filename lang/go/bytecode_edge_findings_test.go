@@ -704,13 +704,26 @@ func TestEdgeFindingDynamicFnValueApplyBodyTail(t *testing.T) {
 			t.Errorf("%q: count-error text — compiled=%v interp=%v", src, cErr, iErr)
 		}
 	}
-	// A MID-BODY dynamic apply (an event recorded after the window's
-	// producer — its print must run AFTER the apply) cannot replay at the
-	// RET without reordering effects: declines, the sound interpreter
-	// fallback.
-	mustFailToCompileWithParity(t,
-		`def rules {inc: ([x:Integer] => [x add 1])}
+	// A paren-PLACED fetched fn with an event after it. This used to decline
+	// ("unapplied fn-value in body residual": a mid-body dynamic apply the
+	// replay could not seat without reordering the print). GRADUATED
+	// 2026-09-22 (NUR182, the quotation-body container reads): the paren
+	// placed the fn and a fn frame never re-steps a placed value, so there
+	// is no apply to seat — the residual is `[5 fn]` on both lanes, the
+	// print runs where it stands, and the RET raises the interpreter's own
+	// count error.
+	{
+		src := `def rules {inc: ([x:Integer] => [x add 1])}
 		 def app fn [[nd:Any m:Map] [Any] [nd (m get "inc") print "after"]]
-		 app 5 rules`,
-		"unapplied fn-value in body residual")
+		 app 5 rules`
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if codeOf(errI) != "type_error" {
+			t.Fatalf("%q: interpreter oracle moved: %v err=[%s]", src, gotI, codeOf(errI))
+		}
+		if !compiled {
+			t.Errorf("%q: not compiled: %v", src, errC)
+		} else {
+			requireParityHead(t, src, gotC, errC, gotI, errI)
+		}
+	}
 }

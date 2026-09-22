@@ -396,6 +396,22 @@ user still gets an answer while the case is open:
   may be a fn — stays with the residual classifier, which declines it
   loudly. Pinned by `curried_chain_test.go`.
 
+  A fn-valued CONTAINER MEMBER read as the LAST token of a CODE BODY
+  (`each [ops.inc] xs`, `each [M.tbl.inc] xs`) compiles since the
+  quotation-body container reads (2026-09-22): the interpreter's reach
+  collapse re-steps the member over the element beneath, and the
+  code-body closure unit now takes the whole-frame replay
+  (`OpCallDynFrame`) a named fn unit already took for the identical
+  residual (`noteClosureBodyReplay` — the trigger is the check pass's
+  fn-member tag on the top value, never a bare fn-typed carrier, which is
+  a WORD dispatch, NUR123). Inside ANY unit a paren-PLACED value is data
+  (NUR182): the fn-unit replay skips it, the layout re-pushes it, and
+  `each [(m.f)] xs` is a list of the fn — except a `do` body's placed
+  value with siblings, which its caller re-steps and which stays
+  declined. What still declines: a member read in a WORD's forward slot
+  inside a fold body (`0 fold [add ops.inc] xs`). Pinned by
+  `quotation_body_member_read_test.go`.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.

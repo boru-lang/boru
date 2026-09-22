@@ -131,7 +131,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `afn` container · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `apply` factory · fn-body — **declined** — fn zzvfn: result above a literal (Stage 3)
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
 - `apply` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -139,7 +139,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `apply` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `apply` factory · module-body — **declined** — trailing fn-value apply over a call result (runtime quote state unknown)
+- `apply` factory · module-body — **declined** — fn zzvmod: result above a literal (Stage 3)
 - `apply` factory · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `apply` factory · prefix-stack — **DIVERGED** — value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]
 - `def` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload

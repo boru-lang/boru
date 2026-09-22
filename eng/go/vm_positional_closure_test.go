@@ -62,3 +62,40 @@ func TestInvokeClosurePositional(t *testing.T) {
 		t.Errorf("the body unit answers its slot, got %v", res[0])
 	}
 }
+
+// TestLoneTokenArity pins the frame replay's prefix-collecting entry gate:
+// a fn value with exactly one own signature has a definite arity, a
+// compiled closure with a known unit its params less its captures; a value
+// that is no fn, an overloaded one (which matches by signature order
+// against the stack), or a closure of an unknown unit declines.
+func TestLoneTokenArity(t *testing.T) {
+	vc, _ := foreignVC(t, oneConstProg(1))
+	one := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "inc", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}}}})
+	if n, ok := vc.loneTokenArity(one); !ok || n != 1 {
+		t.Errorf("one signature of one param: (%d, %v)", n, ok)
+	}
+	two := core.NewValueRaw(core.TFunction, core.FnDefInfo{Name: "z", Signatures: []core.Signature{{}, {Params: []core.FnParam{{Type: core.TInteger}}}}})
+	if _, ok := vc.loneTokenArity(two); ok {
+		t.Error("an overloaded fn has no lone arity")
+	}
+	if _, ok := vc.loneTokenArity(core.NewInteger(5)); ok {
+		t.Error("data has no arity")
+	}
+	cl := compiler.NewClosure(twoParamClosureProg(), 0, nil)
+	if n, ok := vc.loneTokenArity(cl); !ok || n != 2 {
+		t.Errorf("a closure's unit params: (%d, %v)", n, ok)
+	}
+	lost := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: twoParamClosureProg(), Unit: 9})
+	if _, ok := vc.loneTokenArity(lost); ok {
+		t.Error("a closure of an unknown unit declines")
+	}
+	// The lone-token apply over a prefix: the closure binds its params from
+	// the inputs top-down (the token seam's order); data answers ran=false.
+	res, err, ran := vc.invokeLoneToken(nil, cl, []core.Value{core.NewInteger(5), core.NewInteger(9)})
+	if !ran || err != nil || len(res) != 1 {
+		t.Fatalf("a matching closure runs: ran=%v err=%v res=%v", ran, err, res)
+	}
+	if n, _ := res[0].AsConcreteInteger(); n != 9 {
+		t.Errorf("the top input binds the first param, got %v", res[0])
+	}
+}

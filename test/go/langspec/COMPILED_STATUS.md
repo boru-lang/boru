@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8224** compilable, 339 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8201 |
+| compiled natively (fallback-free) | 8204 |
 | compiled with an interpreter island | 0 |
-| does not compile | 23 |
+| does not compile | 20 |
 | static check-error (invalid in both engines) | 339 |
 
-**8201 / 8224** compilable rows produce a Program (99% — 8201 of those fully native).
+**8204 / 8224** compilable rows produce a Program (99% — 8204 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,18 +22,17 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 23 | 23 | → 0 |
+| compile failures | 20 | 20 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
 | tier 2 reducible | 4 | 4 | → 0 |
-| compute frontier | 18 | 18 | → 0 |
+| compute frontier | 15 | 18 | → 0 |
 
 ## Compile failures by reason
 
 | count | bucket | root cause |
 | ---: | --- | --- |
 | 6 | operand provenance | soundness |
-| 3 | other: fn each$body: result above a literal (Stage 3) | coverage |
 | 2 | other: loop results as a branch/body result (Stage 2) | coverage |
 | 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it | coverage |
 | 1 | code-body word (NoEvalArgs) | coverage |
@@ -53,11 +52,11 @@ The compiler is interpreter-independent once compile failures and islands both r
 | soundness | 7 |
 | scheduling | 0 |
 | opcode | 0 |
-| coverage | 15 |
+| coverage | 12 |
 
 ## Re-scoped P7 partition
 
-Over the 23 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **18** compute-frontier gaps.
+Over the 20 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **15** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -76,7 +75,6 @@ _None._
 | count | reason |
 | ---: | --- |
 | 6 | operand provenance |
-| 3 | other: fn each$body: result above a literal (Stage 3) |
 | 2 | other: loop results as a branch/body result (Stage 2) |
 | 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it |
 | 1 | dispatch recovery (best guess) |
