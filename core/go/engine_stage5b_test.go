@@ -851,6 +851,34 @@ func TestS5BCloseParenLeadingDynamicFailedToCompile(t *testing.T) {
 	}
 }
 
+// TestS5BCloseParenLeadingFnTypedDynamicApply pins the admission beside the
+// member-read tag (the container-member calls, 2026-09-22): a leading
+// DYNAMIC value whose STATIC type is a fn — an each-produced typed list's
+// element, `(fs.2 10)` — records the guarded dyn-method apply with no
+// member provenance at all, while a dynamic Any lead without the tag keeps
+// the decline (TestS5BCloseParenLeadingDynamicFailedToCompile).
+func TestS5BCloseParenLeadingFnTypedDynamicApply(t *testing.T) {
+	r := covRegistry(t, nil)
+	es := newS5BEmit()
+	es.memberRead = false
+	es.dynMethodOK = true
+	installS5BEmit(t, r, es)
+	e := NewTop(r)
+	lead := NewCarrier(TFunction)
+	lead.Dynamic = true
+	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepCloseParen(true); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynMethods != 1 || len(es.uncompilable) != 0 {
+		t.Errorf("a fn-typed dynamic lead records the dyn-method apply: calls=%d uncompilable=%v", es.dynMethods, es.uncompilable)
+	}
+	if e.Tape.Len() != 1 {
+		t.Errorf("the window collapses to the out carrier, tape len %d", e.Tape.Len())
+	}
+}
+
 func TestS5BParenLeadFnApplyIdxArity(t *testing.T) {
 	// Only a two-value window is a lead-fn candidate (line 7188).
 	r := covRegistry(t, nil)

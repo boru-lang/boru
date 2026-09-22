@@ -4840,7 +4840,16 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 					// eval below — its make event records, and RecordMakeMap re-assembles
 					// the map per run. A SCHEMA default (dataMap=false) still folds + bakes
 					// as a template that make's FreshenDefault copies, unchanged.
-					if (!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded) {
+					// A folded CLOSURE — a fn value with captures, a factory
+					// call's result `{a: (mk 1)}` — is left to the recording eval
+					// too (the container-member calls, 2026-09-22): the compiled
+					// program cannot bake a closure's captured state as a const
+					// (the map declined "unannotated or opaque word dot" at its
+					// first read), while the recorded call models the member as
+					// the factory event's carrier and OpMakeMap assembles the
+					// map at run time — exactly the list literal's path, which
+					// never folds (`[(mk 1) (mk 2)]` compiled all along).
+					if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
 						out.Set(resolvedKey, folded)
 						continue
 					}
@@ -7919,7 +7928,12 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// nothing here: the outer paren undoes it. A gate on that mark was added
 	// 2026-08-26 under the since-falsified "place uniformly" ruling and
 	// declined this row against its own interpreted answer of 10; it is gone.
-	if !es.MemberFnRead(fnVal.ID) {
+	// A lead whose STATIC type is a fn — a fn-typed carrier, strict or
+	// gradual (a typed list's element, a flex field's recorded bound) — is
+	// admitted beside the member-fn read (the container-member calls,
+	// 2026-09-22): the guarded op applies the runtime value and defers on
+	// anything else, the same contract the tagged read takes.
+	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}

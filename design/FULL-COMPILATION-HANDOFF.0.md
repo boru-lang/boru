@@ -11679,3 +11679,92 @@ computed-key member row of `TestMemberFnArrivalDeclineFences` compiles;
 
 A compile failure becoming a compiled row with one attributed seam (L100)
 is the S1a trade in miniature, and the two census ceilings name it.
+
+## S1b — the container-member calls: `(fs.b 10)` over a produced closure (2026-09-22)
+
+**The measurement first.** Four rows, one spelling — a fn-valued container
+member applied through a paren-bounded call — and four different blockers:
+
+| row | source | declined at |
+|---|---|---|
+| callbacks L60 | `def fs {a: (mk 1) b: (mk 2)}  (fs.b 10)` | "unannotated or opaque word dot" — the map's FIRST read |
+| callbacks L73 | `def fs (each mk/v [1 2 3])  (fs.2 10)` | "fn-value application bounded by a paren (dynamic value precedes args)" |
+| module-composition L96 | `def fs {a: (M.mk 1) b: (M.mk 2)} end (fs.b 10)` | the same paren decline |
+| callbacks L61 | `def reg (flex {}) … reg set 'cb' h/v drop end ((reg.cb) 5)` | the same paren decline |
+
+Three neighbours already compiled and said where the seam was: a concrete
+fn member `(m.f 5)`, a LIST literal of the same closures `[(mk 1) (mk 2)]
+(fs.1 10)`, and the tail form `fs.2 10` over the each result. So the paren
+apply of a container member was not the missing piece — the guarded
+dyn-method apply (`recordParenLeadingApply` → `OpCallDynMethod`, the §3
+arrival chassis) has carried it since Stage M2c. What was missing was the
+READ: nothing told the paren that a produced closure's member is a fn.
+
+**The changes, one per blocker.**
+
+- *The map literal's const fold.* `AutoEvalMap` folds a deterministic paren
+  member at the top frame (`(mk 1)` evaluates concretely, twice, to the
+  same closure) — and a closure's captured state is nothing a const can
+  carry, so the folded map failed the const-bake and its first read
+  declined as opaque. The fold now stands aside for a value that holds a
+  CAPTURING fn at any depth (`containsCapturingFn`); the recording eval
+  models the member as the factory event's carrier and `OpMakeMap`
+  assembles the map at run time — the list literal's path, which never
+  folds. A capture-free fn literal `{f: (fn …)}` and a computed scalar
+  `{x: (1 add 2)}` still fold.
+- *The member-fn read tag.* `readsFnMember` / `readFnMemberValue`
+  recognised a member only as a concrete `FnDefInfo`; a fn-typed CARRIER
+  member — the factory event's result — is one too (`memberIsFnValued`).
+  The arrival model that needs a member's SIGNATURE still asks
+  `MemberFnReadValue`, which answers only for a concrete fn; the tag alone
+  is what the paren apply and the stranded-fn guard read.
+- *`each` over a fn VALUE callback.* `eachReturnsFn` analysed a code-body
+  list and answered an untyped `List` for `each mk/v xs`; it now types the
+  result by the fn's one declared return, so `fs.2` over the result is
+  `dynamic(Function)` through the typed-list element bound. An anonymous
+  lambda's placeholder Any, an Any return, a multi-return fn and a fn-typed
+  carrier callback keep the untyped list.
+- *The paren lead.* `recordParenLeadingApply` admits a lead whose STATIC
+  type is a fn — strict or gradual — beside the member-read tag. The
+  guarded op applies the runtime value and defers on anything else, the
+  contract the tagged read already took; a `dynamic(Any)` lead keeps the
+  decline, which is what keeps every other dynamic paren lead out.
+
+**What it reaches.** L60, L73 and L96 compile with parity, with their
+neighbours: the tail form, the bare read (the closure parks under
+`fn (Integer)`), the member def-bound and applied, two member calls in one
+expression, an empty each result, and a typed each result over a
+scalar-returning fn. The generated sweep's force-arity, forward-args and
+usurp × container cells each gain two variants (paren-group and
+module-body: the modifier-wrapped member under a paren is a fn-typed lead
+now) — 200 → 194 call-form failures.
+
+**What it does not reach.** L61, the flex registry: the flex SHAPE — the
+check pass's record of what `set` wrote — is deliberately not threaded on
+the compile pass (`setFlexMapReturns` keeps the legacy carrier there), so
+`reg.cb` reads as `dynamic(Any)` and the paren lead has no fn type to admit
+it on; the tail form `reg.cb 5` compiles through the residual's
+leading-dynamic apply. A read-back of a fn field as `dynamic(Function)`
+(`ShapeFieldRead`) was tried and reverted: it changes only the plain check
+pass, where the shape IS threaded, and buys the compile pass nothing.
+Threading the shape on the compile pass is the flex family's own item.
+A map literal of closures left as the PROGRAM RESIDUAL (`{a: (mk 1)}` with
+nothing consuming it) declines "residual value of unknown provenance" — a
+deferred residual map records no OpMakeMap by design.
+
+**Pins.** `container_member_call_test.go` (fourteen parity rows and the two
+flex declines with the interpreter's answers); `TestMemberIsFnValued`
+(compiler); `TestContainsCapturingFn` (core);
+`TestS5BCloseParenLeadingFnTypedDynamicApply` (core, the admission beside
+the member tag).
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures (`compile_failures.tsv`) | 27 | 24 | callbacks 6 → 4 (L60, L73), module-composition 4 → 3 (L96) |
+| compute gaps / reducible | 22 / 4 | 19 / 4 | the same three rows |
+| generated sweep: seeds / call-form variants | 30 / 200 | 30 / 194 | force-arity, forward-args, usurp × container: paren-group and module-body each |
+| interp-entry rows / engine entries / defers | 78 / 418 / 8 | 78 / 418 / 8 | unchanged — the three rows' closures run VM-native |
+| diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 284 / 33 | 284 / 33 | unchanged |
