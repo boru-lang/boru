@@ -1111,3 +1111,53 @@ func TestZZCoverAloneInLiveReachGroup(t *testing.T) {
 		fin()
 	}
 }
+
+// --- checkModeFallbackPositionsFor -------------------------------------------
+
+// TestZZCoverFallbackPositionsForwardFirst pins NUR180's fix: the recovery's
+// window for ONE signature fills the forward-eligible leading positions from
+// the written tokens FIRST, as the interpreter's matcher does, and only the
+// remainder from the stack — two stack values beneath a typed word with one
+// written argument take [top, written], never [deeper, top]; the stack run
+// comes back ascending with its length, a non-matching written token stops
+// the forward run, `/s` collects nothing forward, and a short stack fills
+// from the tokens after the run as the plain gatherer does.
+func TestZZCoverFallbackPositionsForwardFirst(t *testing.T) {
+	two := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	// tape: [1 2 zzw 10 "s"], pointer on zzw
+	e := engWithTape(t, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewWord("zzw"), core.NewInteger(10), core.NewString("s")}, 2)
+	pos, nStack := checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 3 || nStack != 1 {
+		t.Errorf("forward first: positions = %v nStack = %d, want [1 3] 1 (the written 10 fills sig[0], the stack top sig[1])", pos, nStack)
+	}
+	// /s: nothing collects forward — both from the stack, ascending.
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw", ForceStack: true})
+	if len(pos) != 2 || pos[0] != 0 || pos[1] != 1 || nStack != 2 {
+		t.Errorf("/s: positions = %v nStack = %d, want [0 1] 2", pos, nStack)
+	}
+	// A written token the position rejects stops the forward run: [1 2 zzw "s"]
+	e = engWithTape(t, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewWord("zzw"), core.NewString("s")}, 2)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 0 || pos[1] != 1 || nStack != 2 {
+		t.Errorf("a rejected token stops the run: positions = %v nStack = %d, want [0 1] 2", pos, nStack)
+	}
+	// A wildcard (an Any carrier, a raw word) is taken: [1 zzw x 10]
+	x := core.NewCarrier(core.TAny)
+	e = engWithTape(t, []core.Value{core.NewInteger(1), core.NewWord("zzw"), x, core.NewInteger(10)}, 1)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 2 || pos[1] != 3 || nStack != 0 {
+		t.Errorf("wildcards are taken: positions = %v nStack = %d, want [2 3] 0", pos, nStack)
+	}
+	// A short stack fills from the tokens after the run: [zzw "s" 7] with a
+	// stack-only signature — nothing forward-eligible, nothing beneath, the
+	// shortfall walks the tape after the pointer.
+	stackOnly := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: 0}
+	e = engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewString("s"), core.NewInteger(7)}, 0)
+	pos, nStack = checkModeFallbackPositionsFor(e, stackOnly, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 2 || nStack != 0 {
+		t.Errorf("shortfall: positions = %v nStack = %d, want [1 2] 0", pos, nStack)
+	}
+	if !fallbackTokenCompatible(two, 0, core.NewWord("w")) || !fallbackTokenCompatible(two, 0, x) || fallbackTokenCompatible(two, 0, core.NewString("s")) {
+		t.Error("fallbackTokenCompatible: a raw word and an Any carrier are wildcards, a String against Number is not")
+	}
+}

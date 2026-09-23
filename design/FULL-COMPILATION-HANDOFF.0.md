@@ -12330,3 +12330,103 @@ report):
 | generated sweep: call-form variants | 195 | 200 | four variants of passing seeds compile (`afn` factory and container · prefix-stack, `parse` named-fn and module-export — a parked result above a literal seats); the `word` seed's fourteen forms are counted for the first time and nine decline in existing families: 195 − 4 + 9 |
 | type-soundness, diagnostic parity / armed-only, bail defects, correct-error | 4, 349 / 9, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | the graduated witnesses assert outside the ledger |
+
+## S1b — the recovery's window: NUR180 closed, NUR184 found (2026-09-23)
+
+**The measurement first.** NUR180's open rows put a trailing paren apply
+whose result the recorder can only type Any — a factory's closure, an
+anonymous lambda — inside an UNNAMED-param frame and consumed it with a
+typed word: `xs each [(2 (mk 1)) mul 10]` was 10 for the interpreter's 30,
+the lambda twin 10 for 40. The same body in a NAMED frame (`([e:Integer]
+=> …)`, a named fn param) and at the top level agreed. The disassembly of
+the unnamed frame:
+
+```
+CALL_DYN_TRAIL_KEEPQ        ; the apply → out (a strict Any)
+PUSH_LOCAL  l0              ; the frame's input
+SWAP
+CALL_NATIVE_POLY mul/2      ; over [l0, out]
+PUSH_CONST  10              ; the written argument, pushed AFTER
+```
+
+`mul`'s static match fails on the strict-Any top, and the checker's
+unmatched-dispatch recovery (`checkModeAssumeSig`) gathered the window it
+would poly-record over: `checkModeFallbackPositions` took values from the
+STACK first ("values before the pointer are preferred") and filled any
+shortfall from the tokens after the word. Two stack values — the input and
+the result — satisfied a two-arg word without a glance at the written
+`10`; one stack value, in a named frame, made the shortfall reach the `10`.
+The interpreter's matcher does the opposite: its forward phase takes the
+written tokens for the forward-eligible leading positions FIRST, while
+they type-match, and the stack fills the rest top-down.
+
+**The change** (check/go/check_recovery.go, core/go/engine.go).
+`checkModeFallbackPositionsFor` lays the recovery's window out per
+candidate signature under the word's own modifiers — the barrier, `/s`
+(nothing forward), `/f` (everything), through the newly exported
+`core.EffectiveForwardLimit`, the one helper the matcher's two walks
+already share — taking a written token for its position while it is
+compatible (a static type match, or a value the assume path cannot type
+and the interpreter would still take: an Any carrier, a raw word), then the
+stack run for the remainder, and only then the plain gatherer's forward
+shortfall. It returns the stack run's length, which `SigOrderArgs` needs to
+rebuild signature order; the scoring loop, the fallback pass and the final
+window all take it. The plain gatherer stays for its two other callers.
+`mul` over `[out, 10]` records the poly the interpreter re-matches: 30, 40.
+
+**What it reached beyond the pins.** The corpus ledgers and the generated
+sweep did not move — the recovery had been landing on the written argument
+everywhere a frame had no stack value beneath. One corpus row GRADUATED
+into the census: generics-fn.tsv:L55, `def sumvals gen [T] fn [[bs:[:T]]
+[Integer] [0 fold [dot value add] bs]] … sumvals xs`, did not compile at
+all before — the check pass stopped at a FALSE `undefined word: value`,
+the fold body's two inputs having satisfied `dot`'s two-arg window with
+the written key left to be stepped as a word — and checks clean and
+compiles now, its fold body over a generic element running as a raw token
+body at the callback seam (the closure probe declines `dot` over `T`),
+one Engine.Run and one RunResolved: census rows 74 → 75, engine entries
+406 → 408, named in both ceilings; that body's native compile is the row's
+next cut. One pin moved with the window: `g2 k v` over a speculative undef
+(spec_undef_placed_test.go) used to recover over `[if-carrier, k]` — the
+stack-first gatherer took the `if`'s result and left `v` out — and
+declined at the generic seat; it recovers over the interpreter's `[k, v]`
+now, the disjunct arm plan runs, and it declines at the read's operand.
+Still declined, same hatch, and the pinned reason says so.
+
+**What it found: NUR184.** The third pinned row, `0 fold [add (2 (mk 1))]
+xs` (6 for 3), did not move, and probing its neighbours showed why: it is
+not this mechanism's. A paren's TRAILING fn value is not applied at the
+close — it is sealed and dispatched like a word AFTER the paren,
+forward-collecting the tokens past the `)` while they match its
+parameters, and taking the values inside the paren only when nothing
+collectable follows; a paren closing UNDER A PENDING FORWARD hands its
+survivors to that forward, and the fn value re-steps over the forward's
+result. The oracle: `(2 (mk 1)) 10` is `[2 11]` (compiled `[3 10]`), `(2
+(mk 1)) 10 mul` 22 (30), `(2 inc2/v) 10` `[2 12]` (`[4 10]` — a NAMED fn
+value the same way), `10 mul (2 (mk 1))` 21 (30: `mul` takes the 2, the
+closure re-steps over 20), `def r (2 (mk 1)) end r` `[fn 2]` (3); while
+`(2 (mk 1))`, `(2 (mk 1)) "s"`, `(2 (mk 1)) mul 10` and the LEADING form
+`((mk 1) 2) 10` agree. The compiled `recordParenTrailingFnApply` applies
+the value over the values INSIDE the paren — the no-follower model — and
+that is the next cut: look past the close as the interpreter does, or
+decline when a collectable token follows, and hand a paren's survivors to
+a pending forward rather than record an apply. Recorded as NUR184 with
+twelve witnesses pinned to fail when they move
+(`TestParenTrailingFnForwardCollectsPending`) and six agreeing controls.
+
+**Pins.** `TestUnnamedFrameApplyResultTyped` (curried_chain_test.go, four
+rows added), `TestUnnamedFrameApplyResultAnyPending` (the fold row,
+re-attributed), `paren_trailing_forward_test.go`; check
+`TestZZCoverFallbackPositionsForwardFirst`.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures / compute gaps / reducible | 21 / 16 / 4 | 21 / 16 / 4 | unchanged |
+| interp-entry rows / engine entries / defers | 74 / 406 / 8 | 75 / 408 / 8 | generics-fn L55 graduates in (see above): one Engine.Run, one RunResolved |
+| armed-only diagnostics / diagnostic parity | 9 / 349 | 8 / 348 | the same row's false `undefined word` gone from the compile-armed check |
+| generated sweep: seeds failing / islanded / diverged; call-form variants | 29 / 2 / 7; 200 | unchanged | — |
+| type-soundness, bail defects, correct-error | 4, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | unchanged |

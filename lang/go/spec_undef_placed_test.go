@@ -190,7 +190,11 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	declined = append(declined, []struct{ src, reason string }{
 		{`def c false end def id fn [[x:Any][Any][x]] end def k (id 5) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
 		{`def c false end def m {e: true} end def k (if (m "e" get) [7] ["s"]) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
-		{`def c false end def m {e: true} end def v (if (m "e" get) [7] ["s"]) end def k 5 end def g2 fn [[a:Integer x:Integer][Integer][a] [a:Integer x:String][Integer][a add 1]] end if c [undef k] [] g2 k v`, "unmatched dispatch recovered at g2"},
+		// The recovery's window is the interpreter's since NUR180's fix
+		// (2026-09-23: forward tokens first — `[k, v]`, where the stack-first
+		// gatherer had taken the `if`'s carrier and `k` and left `v` out), so
+		// the disjunct arm plan runs and declines at the read's operand.
+		{`def c false end def m {e: true} end def v (if (m "e" get) [7] ["s"]) end def k 5 end def g2 fn [[a:Integer x:Integer][Integer][a] [a:Integer x:String][Integer][a add 1]] end if c [undef k] [] g2 k v`, "fn call operand of unknown provenance"},
 	}...)
 	for _, c := range declined {
 		a, err := New()

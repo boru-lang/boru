@@ -6825,6 +6825,13 @@ func effectiveForwardLimit(sig *Signature, w WordInfo) int {
 	return sig.BarrierPos
 }
 
+// EffectiveForwardLimit is effectiveForwardLimit for the checker's
+// unmatched-dispatch recovery, which lays its assumed window out as
+// MatchSignature would (check_recovery.go, checkModeFallbackPositionsFor):
+// BarrierAllForward (-1) is returned as is — the caller caps it to the
+// signature's arity.
+func EffectiveForwardLimit(sig *Signature, w WordInfo) int { return effectiveForwardLimit(sig, w) }
+
 func scanBoundaryToken(tok Value) bool {
 	if IsForward(tok) || tok.Parent.ConformsTo(TMark) || tok.Parent.ConformsTo(TMove) ||
 		tok.Parent.ConformsTo(TInternal) || tok.Parent.ConformsTo(TReturnCheck) {

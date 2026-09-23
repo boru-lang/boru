@@ -722,6 +722,101 @@ func checkModeFallbackPositions(e *core.Engine, n int) []int {
 	return positions
 }
 
+// checkModeFallbackPositionsFor is checkModeFallbackPositions for ONE
+// candidate signature under the dispatching word's modifiers, laid out as
+// the interpreter's MatchSignature would lay the call out: the FORWARD-
+// eligible leading positions (sig[0..limit), effectiveForwardLimit — the
+// declared barrier, `/s` nothing, `/f` everything) are filled from the
+// tokens after the pointer FIRST, while each token is compatible with its
+// position (a type match, or a wildcard the assume path cannot type: an
+// Any carrier, a raw word), and only the remainder from the stack, top-down;
+// a shortfall on the stack is then filled from further forward tokens as
+// before (the assume path verifies nothing). Returns the positions in TAPE
+// order — the stack run ascending, then the forward run in source order —
+// and the length of the stack run, which is what SigOrderArgs needs to
+// rebuild signature order.
+//
+// The stack-first order the plain gatherer keeps was the mechanism of
+// NUR180: inside an UNNAMED-param frame the frame's input sits on the
+// stack beneath a trailing paren apply's strict-Any result, so a typed
+// word over that result — `xs each [(2 (mk 1)) mul 10]` — was recovered
+// over [input, result] with the written `10` left unconsumed, and each
+// body netted 10 for the interpreter's 30; the same body in a named frame
+// (one stack value, the shortfall filled forward) agreed. The interpreter's
+// forward phase takes the written argument first whatever the stack holds,
+// and so does this.
+func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.WordInfo) (positions []int, nStack int) {
+	n := s.TotalArgs()
+	limit := core.EffectiveForwardLimit(s, w)
+	if limit < 0 || limit > n {
+		limit = n
+	}
+	var forward []int
+	depth := 0
+	// The forward walk: the plain gatherer's own (markers skipped, a nested
+	// group entered, the ENCLOSING group's close a hard stop), taking at
+	// most `limit` compatible tokens.
+	for i := e.Pointer + 1; len(forward) < limit && i < e.Tape.Len(); i++ {
+		v := e.Tape.At(i)
+		if core.IsCloseParen(v) {
+			if depth == 0 {
+				break
+			}
+			depth--
+			continue
+		}
+		if core.IsOpenParen(v) {
+			depth++
+			continue
+		}
+		if core.IsForward(v) || core.IsMark(v) || core.IsMove(v) ||
+			core.IsReturnCheck(v) || core.IsDefCleanup(v) {
+			continue
+		}
+		if !fallbackTokenCompatible(s, len(forward), v) {
+			break
+		}
+		forward = append(forward, i)
+	}
+	positions = e.ResolvedIndicesBefore(n - len(forward))
+	nStack = len(positions)
+	positions = append(positions, forward...)
+	if len(positions) < n {
+		// The stack is short: fill from the tokens after the forward run,
+		// exactly as the plain gatherer fills its shortfall (positions past
+		// the last taken forward token, the same walk).
+		rest := checkModeFallbackPositions(e, n)
+		for _, p := range rest[nStack:] {
+			if len(positions) >= n {
+				break
+			}
+			taken := false
+			for _, q := range forward {
+				if q == p {
+					taken = true
+					break
+				}
+			}
+			if !taken && p > e.Pointer {
+				positions = append(positions, p)
+			}
+		}
+	}
+	return positions, nStack
+}
+
+// fallbackTokenCompatible reports whether a forward token can fill sig
+// position idx on the assume path: a static type match, or a value the
+// path cannot type and the interpreter's forward phase would still take —
+// an Any carrier (the scoring's wildcard), a raw word the dispatch has not
+// yet resolved.
+func fallbackTokenCompatible(s *core.Signature, idx int, v core.Value) bool {
+	if core.IsWord(v) || v.Parent == nil || v.Parent.Equal(core.TAny) {
+		return true
+	}
+	return core.SigArgMatches(s, idx, v)
+}
+
 // checkModeAssumeSig is the recovery path for unmatched signatures in
 // check mode: emit a diagnostic (with pos attached), gather up to N
 // adjacent positions as synthetic args, synthesise carrier results
@@ -829,7 +924,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			continue
 		}
 		n := s.TotalArgs()
-		pos := checkModeFallbackPositions(e, n)
+		pos, _ := checkModeFallbackPositionsFor(e, s, w)
 		if len(pos) != n {
 			continue
 		}
@@ -873,7 +968,8 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// ReturnsFn sees the short window — ReturnsFns are len-guarded).
 	if bestMatch < 0 {
 		fbn := best.TotalArgs()
-		bestSat := len(checkModeFallbackPositions(e, fbn)) == fbn
+		fbPos, _ := checkModeFallbackPositionsFor(e, best, w)
+		bestSat := len(fbPos) == fbn
 		if !bestHasFn || !bestSat {
 			for i := range fn.Signatures {
 				s := &fn.Signatures[i]
@@ -881,7 +977,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 					continue
 				}
 				n := s.TotalArgs()
-				if len(checkModeFallbackPositions(e, n)) != n {
+				if sp, _ := checkModeFallbackPositionsFor(e, s, w); len(sp) != n {
 					continue
 				}
 				best = s
@@ -890,17 +986,12 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		}
 	}
 	sig := best
-	n := sig.TotalArgs()
-	positions := checkModeFallbackPositions(e, n)
-	// nStack is how many of the gathered positions are STACK args (before
-	// the pointer, ascending); the remainder are FORWARD args (after the
-	// pointer, source order). checkModeFallbackPositions lays them out in
-	// that tape order — stack-before then forward-after — which is NOT
-	// signature order. Recorded below for the poly-recovery operand rebuild.
-	nStack := len(e.ResolvedIndicesBefore(n))
-	if nStack > len(positions) { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-		nStack = len(positions)
-	}
+	// positions are in TAPE order — the stack run (nStack of them, ascending
+	// toward the pointer) then the forward run in source order — which is
+	// NOT signature order; nStack is recorded for the poly-recovery operand
+	// rebuild (SigOrderArgs). The forward-eligible leading positions were
+	// filled from the written tokens first (checkModeFallbackPositionsFor).
+	positions, nStack := checkModeFallbackPositionsFor(e, sig, w)
 	// Snapshot the failed-dispatch tape state for the poly no-match spec
 	// BEFORE the operand-resolution loop below mutates it in place (the
 	// eval-map tape.Set) — the runtime interpreter's sigError reads exactly
