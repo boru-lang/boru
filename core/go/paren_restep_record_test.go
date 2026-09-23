@@ -91,6 +91,11 @@ func TestRecordParenReStep(t *testing.T) {
 			tape: []Value{carrier(), NewInteger(2)}, closeIdx: 3, noCheck: true, want: false,
 			why: "the interpreter runs with no analysis state at all; the record is a check-pass artefact",
 		},
+		{
+			name: "a trailing carrier survivor is re-stepped too",
+			tape: []Value{NewInteger(2), carrier()}, closeIdx: 3, want: true,
+			why: "the main loop steps EVERY survivor after the rewind: `(2 (mk 1)) 10` re-steps the closure over the 10 (NUR184)",
+		},
 	}
 
 	for _, tc := range cases {
@@ -103,8 +108,24 @@ func TestRecordParenReStep(t *testing.T) {
 			}
 			e.recordParenReStep(0, tc.closeIdx, tc.park, tc.reach)
 			got := e.Registry.Check != nil && len(e.Registry.Check.ParenReSteppedFnIDs) > 0
-			if got && len(tc.tape) > 0 && !e.Registry.Check.ParenReSteppedFnIDs[tc.tape[0].ID] {
-				t.Errorf("recorded an ID other than the lead's: %v", e.Registry.Check.ParenReSteppedFnIDs)
+			if got {
+				// Every marked ID is a survivor's, and every fn-valued
+				// survivor is marked (the lead alone left a trailing closure
+				// read as placed, NUR184).
+				for id := range e.Registry.Check.ParenReSteppedFnIDs {
+					found := false
+					for _, v := range tc.tape {
+						found = found || v.ID == id
+					}
+					if !found {
+						t.Errorf("recorded an ID no survivor carries: %s", id)
+					}
+				}
+				for _, v := range tc.tape {
+					if (IsFnTypedCarrier(v) || v.Dynamic) && !v.Quoted && v.ID != "" && !e.Registry.Check.ParenReSteppedFnIDs[v.ID] {
+						t.Errorf("survivor %s is callable but unmarked: %v", v.ID, e.Registry.Check.ParenReSteppedFnIDs)
+					}
+				}
 			}
 			if got != tc.want {
 				t.Errorf("recorded = %v, want %v — %s", got, tc.want, tc.why)

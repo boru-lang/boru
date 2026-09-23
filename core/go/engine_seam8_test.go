@@ -829,7 +829,7 @@ func w8scpFwd(name string, fi int) Value {
 func TestW8StepCloseParenReEvalEnd(t *testing.T) {
 	// Forward resolves, then the re-eval loop steps an End.
 	e := w8scpEng(t, []Value{NewOpenParen(), w8scpFwd("cadd", 2), NewEnd(), NewCloseParen()}, 3)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -837,14 +837,14 @@ func TestW8StepCloseParenReEvalEnd(t *testing.T) {
 func TestW8StepCloseParenReEvalForward(t *testing.T) {
 	// Forward resolves, then the re-eval loop advances past another Forward.
 	e := w8scpEng(t, []Value{NewOpenParen(), w8scpFwd("cadd", 2), w8scpFwd("cadd", 3), NewCloseParen()}, 3)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
 
 func TestW8StepCloseParenReEvalReturnCheck(t *testing.T) {
 	e := w8scpEng(t, []Value{NewOpenParen(), w8scpFwd("cadd", 2), NewReturnCheck(ReturnCheckInfo{FuncName: "f"}), NewCloseParen()}, 3)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -855,7 +855,7 @@ func TestW8StepCloseParenReEvalDefCleanup(t *testing.T) {
 	dc := NewDefCleanup(DefCleanupInfo{Registry: r, Snapshot: map[string]int{}})
 	e.Tape = NewTape([]Value{NewOpenParen(), w8scpFwd("cadd", 2), dc, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -864,7 +864,7 @@ func TestW8StepCloseParenReEvalLiteral(t *testing.T) {
 	// Forward whose funcIdx points at a literal: after resolution the
 	// re-eval loop steps that literal via the default arm.
 	e := w8scpEng(t, []Value{NewOpenParen(), w8scpFwd("cadd", 2), NewInteger(9), NewCloseParen()}, 3)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -873,7 +873,7 @@ func TestW8StepCloseParenReEvalOpenParen(t *testing.T) {
 	// Forward whose funcIdx points at an open paren: the re-eval loop
 	// advances past it (pointer++).
 	e := w8scpEng(t, []Value{NewWord("cneg"), NewOpenParen(), w8scpFwd("cadd", 1), NewCloseParen()}, 3)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -886,7 +886,7 @@ func TestW8StepCloseParenReEvalWordSuccess(t *testing.T) {
 	e := w8scpEng(t, []Value{NewOpenParen(), fwd, NewInteger(5), NewWord("cadd"), NewInteger(7), NewCloseParen()}, 5)
 	// The re-eval word dispatch may error (forward args running into the
 	// next word); the point is exercising the re-eval Word arm either way.
-	_ = e.stepCloseParen(true)
+	_ = e.stepCloseParen(true, false)
 }
 
 func TestW8StepCloseParenReEvalWordError(t *testing.T) {
@@ -904,7 +904,7 @@ func TestW8StepCloseParenReEvalWordError(t *testing.T) {
 	fwd := NewForward(ForwardInfo{FuncName: "cfail8", Sig: &Signature{Args: []*Type{TInteger}, BarrierPos: -1}, FuncIndex: 2})
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(1), NewWord("cfail8"), fwd, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 4
-	if err := e.stepCloseParen(true); err == nil {
+	if err := e.stepCloseParen(true, false); err == nil {
 		t.Fatal("expected the re-eval word dispatch error to propagate")
 	}
 }
@@ -913,7 +913,7 @@ func TestW8StepCloseParenVoidGroupForward(t *testing.T) {
 	// An empty group with a Forward marker below the open paren records the
 	// forward's FuncName as a void-group candidate.
 	e := w8scpEng(t, []Value{w8scpFwd("cadd", 0), NewOpenParen(), NewCloseParen()}, 2)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -922,7 +922,7 @@ func TestW8StepCloseParenVoidGroupWord(t *testing.T) {
 	// An empty group with a Word below the open paren records it as a
 	// void-group candidate.
 	e := w8scpEng(t, []Value{NewWord("cneg"), NewOpenParen(), NewCloseParen()}, 2)
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }
@@ -1083,7 +1083,7 @@ func TestW8StepCloseParenReEvalFlowCtrl(t *testing.T) {
 	fwd := NewForward(ForwardInfo{FuncName: "w8break", FuncIndex: 1})
 	e.Tape = NewTape([]Value{NewOpenParen(), NewWord("w8break"), fwd, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 }

@@ -93,7 +93,7 @@ func TestResidualEvalSweepAndTeardownArms(t *testing.T) {
 		NewCloseParen(),
 	}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err == nil || !strings.Contains(err.Error(), "boom") {
+	if err := e.stepCloseParen(true, false); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("sweep arm = %v, want boom", err)
 	}
 

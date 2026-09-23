@@ -106,7 +106,8 @@ keep the two in sync in the same commit.
 | [NUR181](#nur181) | FIXED 2026-09-23 (the def-bound closure park — the handoff log's entry of that date): a call result is parked where it lands on the compiled lane too, whatever route the call took — the recorder resolves a shaped method call's callee unit from the method value's own producer and a fn-value apply's from its closure operand (`callAppliedClosureUnit`), `callResultPlaced` reads both, and the program residual's ordering treats a parked result as data; `2 r 3`, `(r 3)`, `7 (r 3) 2`, `r 3 4`, `2 ((mk3 1) 3)` and `5 (mk 3)` (which declined) all agree. The original text: A def-bound factory closure applied through the READ model nets a closure the re-step landing applies where the interpreter parks it: `def mk3 … def r ((mk3 1) 2) end r 3` — the def's pending collection takes the paren's survivors as ARGUMENTS, so r is mk3's closure and 2 stays on the stack — is `[2 fn (Integer)]` interpreted (the call result is placed) and 6 compiled (`CALL_DYN_METHOD r/1; RESTEP_LANDING` applies the closure to the 2 beneath) — silent, present on `main`, measured on a worktree at 917ecf0. Not this landing's: recorded and pinned to fail when it moves | probing the def-bound chain, 2026-09-22 |
 | [NUR182](#nur182) | The whole-frame replay (OpCallDynFrame) re-stepped a paren-PLACED value: a fn unit whose body left `(ops.inc)` — a member read the paren placed — above its input compiled the APPLY, `def f fn [[Integer][Any][(ops.inc)]]  f 5` answering 6 for the interpreter's `fn (Integer)`, and `[[Integer][Integer][(ops.inc)]]`, `[5 (ops.inc)]`, `[(ops.inc) 5]`, `[x (ops.inc)]` answering 6 where the interpreter raises its return-count / return-type error — silent, default lane, present on `main`. A fn frame never re-steps a placed value (the re-step of a native's fn result is the CALLER's, NUR124), but noteDynFrameReplay counted it as the window's applicable and the replay island re-steps every token it is handed. FIXED 2026-09-22 (the quotation-body container reads): a placed value no enclosing paren re-stepped is data — skipped as an applicable, a blocker for any window beside one, re-pushed by the promotion; a `do` body's placed value with siblings stays declined, its caller re-steps it | the quotation-body container reads' probes, 2026-09-22 |
 | [NUR183](#nur183) | A fn-valued container member read as the LAST token of a code body over a DUPLICATED element compiled the member as data: `def ops {inc: (fn [[n:Integer][Integer][n add 1]])}  each [dup ops.inc] [1 2 3]` is `[2 3 4]` interpreted (the reach collapse re-steps the member over the copy) and `[fn fn fn]` compiled — silent, default lane, present on `main`. The same root as each-variants L205 / fold-map-filter L215 / module-composition L98, which DECLINED ("result above a literal"): a code-body closure unit took no whole-frame replay, and with two values beneath the member the layout seated in order and the member rode as data. FIXED 2026-09-22 (noteClosureBodyReplay: a tagged fn-member read at a code body's tail arms the replay a fn unit already took) | the quotation-body container reads, 2026-09-22 |
-| [NUR184](#nur184) | A paren's TRAILING fn value is dispatched like a word AFTER the paren — it forward-collects the tokens past the `)` first and takes the values inside the paren only when nothing collectable follows — and a paren closing UNDER A PENDING FORWARD hands its survivors to that forward, the fn value re-stepping over the forward's result: `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  (2 (mk 1)) 10` is `[2 11]` interpreted and `[3 10]` compiled, `(2 (mk 1)) 10 mul` 22 for 30, `(2 inc2/v) 10` `[2 12]` for `[4 10]`, `10 mul (2 (mk 1))` 21 for 30, `0 fold [add (2 (mk 1))] xs` 6 for 3, `def r (2 (mk 1)) end r` `[fn 2]` for 3; `(2 (mk 1))`, `(2 (mk 1)) "s"`, `(2 (mk 1)) mul 10` and the LEADING form `((mk 1) 2) 10` agree. The compiled trailing-apply record (`recordParenTrailingFnApply`) applies the value over the values INSIDE the paren, right only for the no-follower case. Pinned by `TestParenTrailingFnForwardCollectsPending` (lang/go) | closing NUR180, 2026-09-23 |
+| [NUR184](#nur184) | FIXED 2026-09-23 (the trailing value's re-step — the handoff log's entry of that date): the collapse records the trailing apply only for a lead the interpreter dispatches INSIDE the paren (a bare read of a fn-typed binding, an `apply`-owned lead) or a fn value nothing after the close can collect; a value with a collectable follower is left for the rewind (every fn-valued survivor is marked re-stepped), a paren under a pending forward marks its trailing value as that collection's LEFTOVER (never applied over later values), and the mixed island's interpreter SEALS a compiled closure at its collection's completion as it seals a FnDefInfo. `(2 (mk 1)) 10`, `(2 (mk 1)) 10 20`, `(2 inc2/v) 10 mul`, `xs each [(2 (mk 1)) 10]`, the fold row and the fn-unit `10 mul (2 (mk 1))` agree; `10 mul (2 (mk 1))` at the main program, `def r (2 (mk 1)) end r` and `[(2 (mk 1)) 10]` DECLINE; `(2 (mk 1)) 10 mul` and `(2 (mk 1)) 10 add` DECLINE too (a native poly record that collected the re-step-marked carrier the interpreter dispatches first: `polyCallDeclineReason`, the record's one compile-failure site). The original text: A paren's TRAILING fn value is dispatched like a word AFTER the paren — it forward-collects the tokens past the `)` first and takes the values inside the paren only when nothing collectable follows — and a paren closing UNDER A PENDING FORWARD hands its survivors to that forward, the fn value re-stepping over the forward's result: `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  (2 (mk 1)) 10` is `[2 11]` interpreted and `[3 10]` compiled, `(2 (mk 1)) 10 mul` 22 for 30, `(2 inc2/v) 10` `[2 12]` for `[4 10]`, `10 mul (2 (mk 1))` 21 for 30, `0 fold [add (2 (mk 1))] xs` 6 for 3, `def r (2 (mk 1)) end r` `[fn 2]` for 3; `(2 (mk 1))`, `(2 (mk 1)) "s"`, `(2 (mk 1)) mul 10` and the LEADING form `((mk 1) 2) 10` agree. The compiled trailing-apply record (`recordParenTrailingFnApply`) applies the value over the values INSIDE the paren, right only for the no-follower case. Pinned by `TestParenTrailingFnForwardCollectsPending` (lang/go) | closing NUR180, 2026-09-23 |
+| [NUR185](#nur185) | A `/v` READ of a def-bound closure re-stepped by the residual's mixed-window island: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  def c (mk 3) end 2 c/v 10` is `[2 fn c(Integer) 10]` interpreted (the value spelling delivers the closure inert) and `[2 30]` compiled, `c/v 10` `[fn c(Integer) 10]` for `[30]` — silent, default lane, present on `main` (a worktree at 888f234). The fn-carrier side table's `/v` read noted the def read and the local read but not the VALUE read, so `callResultPlaced` took it for the bare read's word dispatch and the mixed arm islanded the window live. FIXED 2026-09-23 (the trailing value's re-step): the carrier branch notes `NoteValRead` as the Defs path does, `callResultPlaced` treats a `/v`-only delivery as the parked result it is (`placedValRead`), and the rows decline at the render gate (the interpreter names the value after the def). Pinned in `def_bound_closure_park_test.go` | probing NUR184's neighbours, 2026-09-23 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7163,11 +7164,81 @@ crash is what this record is for.
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
 
+## NUR185 — a `/v` read of a def-bound closure re-stepped by the mixed-window island {#nur185}
+
+**Status:** FIXED 2026-09-23 (the trailing value's re-step — the handoff
+log's entry of that date), found probing NUR184's neighbours. Present on
+`main` (a worktree at 888f234), silent, default lane, exit 0.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+| witness (`mk` returns `mul k z`) | interpreted | compiled (before) |
+|---|---|---|
+| `def c (mk 3) end 2 c/v 10` | `[2 fn c(Integer) 10]` | `[2 30]` |
+| `def c (mk 3) end 2 c/v 10 20` | `[2 fn c(Integer) 10 20]` | `[2 30 20]` |
+| `def c (mk 3) end c/v 10` | `[fn c(Integer) 10]` | `[30]` |
+| `def c (mk 3) end c 10` (the bare read) | `[30]` | `[30]` |
+
+**The defect, in one sentence.** The `/v` read of a name def-bound to a
+computed fn CARRIER (stepWordVal's fn-carrier side-table branch) noted the
+def read and the local read but not the VALUE read, so the residual's
+`callResultPlaced` took the delivery for the bare read's word dispatch
+(its defReads exemption) and the mixed-window arm islanded `[2 fn 10]`
+live, where the island's interpreter re-steps the closure the `/v`
+spelling had delivered inert.
+
+**The fix.** The carrier branch notes `NoteValRead` as the Defs path does
+(core/go/engine.go); the recorder keeps every noted `/v` read program-wide
+(`valReadNoted`), and `callResultPlaced` treats a `/v`-only delivery — not
+also read bare (core's `WordReadFnIDs`), not under a pending `apply` — as
+the parked result it is (`placedValRead`, compiler/go/emit.go). The rows
+DECLINE at the residual's render gate: the interpreter renders the value
+under the def's name (`fn c(Integer)`), which the raw closure cannot
+reproduce (NUR119's rule). Pinned in `def_bound_closure_park_test.go`
+(lang/go).
+
 ## NUR184 — a paren's trailing fn value forward-collects past the paren's close {#nur184}
 
-**Status:** PENDING, recorded 2026-09-23 while closing NUR180 (its fold
-row is this record's). Present on `main` (`4ee542d`), silent, default
-lane, exit 0.
+**Status:** FIXED 2026-09-23 (the trailing value's re-step — the handoff
+log's entry of that date); what does not compile declines. Recorded
+2026-09-23 while closing NUR180 (its fold row is this record's). Present
+on `main` (`4ee542d`), silent, default lane, exit 0.
+
+**The fix, in one paragraph.** The collapse (stepCloseParen's trailing
+arm) records the trailing apply only for a lead the interpreter dispatches
+INSIDE the paren — a bare word read of a fn-typed binding (`(5 3 comp)`,
+CheckState.WordReadFnIDs, noted by noteWordRead) or a lead the `apply`
+word owns — or a fn VALUE nothing after the close can collect
+(trailingFnCollectsPastClose: a word, a close paren, an `end`, a modifier,
+a literal none of a concrete fn's forward positions takes). A value with a
+collectable follower is left for the rewind, and recordParenReStep marks
+EVERY fn-valued survivor re-stepped, not the lead alone. A paren under a
+pending forward — the eager group evaluator's own close (stepCloseParen's
+feedsForward) or a parked Forward still collecting (parenFeedsPendingForward)
+— marks its trailing value re-stepped AND as that collection's LEFTOVER
+(CheckState.ForwardLeftoverFnIDs): the residual's trailing arm applies it
+over what lay beneath, the lead arm never over the values above it, which
+a later statement produced (`def r (2 (mk 1)) end r` compiled 3 for `[fn
+2]` under the mark alone). And the mixed-window island's interpreter now
+SEALS a compiled closure at its collection's completion as it seals a
+FnDefInfo (the completion site bridges through fnDefAtPointer): unsealed,
+the re-step re-planned forward-first over the NEXT literal and walked the
+closure past every follower — `(2 (mk 1)) 10 20` islanded to `[2 10 21]`
+(NUR124's payload axis, in the island). After: `(2 (mk 1)) 10` `[2 11]`,
+`(2 (mk 1)) 10 20` `[2 11 20]`, `(2 inc2/v) 10 mul` 24, `xs each [(2 (mk
+1)) 10]`, the fold row 6, the fn-unit `10 mul (2 (mk 1))` 21 and `10 mul
+(2 (mk 1)) 5` `[20 6]` agree; `10 mul (2 (mk 1))` at the main program,
+`def r (2 (mk 1)) end r` and `[(2 (mk 1)) 10]` (RecordMakeListInner
+declines any re-step-marked element) DECLINE, and so do `(2 (mk 1)) 10
+mul` and `(2 (mk 1)) 10 add` (22 and 13 interpreted: the closure takes the
+10 before the word runs) — the check pass stepped the marked carrier as
+data and the word's poly record collected it, so the compiled program
+raised the no-match the interpreter never does; a native poly record that
+collects a re-step-marked carrier declines instead (`polyCallDeclineReason`,
+compiler/go/emit.go — the record's one compile-failure site, the same
+reason string discipline as the binder's). The stack-word twins (`drop`,
+`dup`, `swap`, `size`, `eq`) already declined through the collection
+hazard (NUR121). The original record follows.
 
 **Rule:** a compiled program answers as the interpreter does.
 
@@ -7208,9 +7279,9 @@ rather than record its own apply.
 
 **Where it belongs.** The paren re-step rule (design/PAREN-RESTEP-RULE.0.md)
 and NUR124's payload axis; the trailing-apply record's first cut. Pinned
-by `TestParenTrailingFnForwardCollectsPending` and
-`TestParenTrailingFnAgrees` (lang/go, paren_trailing_forward_test.go), and
-the fold row by `TestUnnamedFrameApplyResultAnyPending`.
+by `TestParenTrailingFnAgrees` and `TestParenTrailingFnSoundCompileFailures`
+(lang/go, paren_trailing_forward_test.go), and the fold row by
+`TestUnnamedFrameApplyResultTyped`.
 
 ## NUR183 — a member read at a code body's tail over a duplicated element compiled as data {#nur183}
 

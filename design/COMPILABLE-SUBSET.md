@@ -449,12 +449,29 @@ user still gets an answer while the case is open:
   recovery lays the window it poly-records out FORWARD-FIRST, as the
   interpreter's matcher does — the written argument fills the leading
   position, the stack the rest — where it used to prefer the stack and
-  took the frame's input for the written `10`. What still diverges,
-  pinned (NUR184): a paren's TRAILING fn value forward-collects the
-  tokens past the `)` (`(2 (mk 1)) 10` is `[2 11]` on the interpreter) and
-  a paren closing under a pending forward hands its survivors to it (`10
-  mul (2 (mk 1))` is 21); the compiled trailing-apply record applies the
-  value over the values inside the paren, the no-follower model.
+  took the frame's input for the written `10`. A paren's TRAILING fn
+  value forward-collects the tokens past the `)` on both lanes since the
+  trailing value's re-step (2026-09-23, NUR184): `(2 (mk 1)) 10` is `[2
+  11]`, `(2 (mk 1)) 10 20` `[2 11 20]` (the mixed island's interpreter
+  seals a compiled closure at its collection's completion), `(2 inc2/v)
+  10 mul` 24, `xs each [(2 (mk 1)) 10]` `[[11 11 11]]`, and a paren
+  closing under a pending forward hands its survivors to it — `0 fold
+  [add (2 (mk 1))] xs` is 6, the fn-unit `10 mul (2 (mk 1))` 21, `10 mul
+  (2 (mk 1)) 5` `[20 6]`. The collapse records the trailing apply only
+  for a lead the interpreter dispatches INSIDE the paren (a bare read of
+  a fn-typed binding, an `apply`-owned lead) or a value nothing after the
+  close can collect; a forward's leftover fn value is marked and never
+  applied over later values. Still DECLINING, pinned
+  (`TestParenTrailingFnSoundCompileFailures`): the leftover at the main
+  program (`10 mul (2 (mk 1))`), a leftover with nothing beneath it (`def
+  r (2 (mk 1)) end r` — def takes the 2, the closure parks) and a list
+  literal whose trailing element the rewind re-steps (`[(2 (mk 1)) 10]`),
+  and a numeric word after the follower whose poly record collected the
+  re-step-marked carrier (`(2 (mk 1)) 10 mul`, 22 interpreted — the
+  closure takes the 10 first). A `/v` read of a def-bound
+  closure is placed on both lanes (NUR185, 2026-09-23): `def c (mk 3) end
+  2 c/v 10` used to island the window and apply the closure; it declines
+  at the render gate now (the value renders under the def's name).
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

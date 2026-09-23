@@ -375,6 +375,35 @@ type CheckState struct {
 	// briefly after, and neither is right. Reset by Begin.
 	ParenReSteppedFnIDs map[string]bool
 
+	// WordReadFnIDs records the carriers a BARE WORD READ of a fn-typed
+	// binding pushed (Engine.noteWordRead's own gate: a `comp:Function`
+	// param read as `comp`). The interpreter never substitutes a binding
+	// holding a fn — the read IS a dispatch, at the word — so a paren such
+	// a read ends (`(5 3 comp)`) is a call over the values inside it
+	// whatever follows the close, where a fn VALUE ending a paren (a
+	// parked call result, a `/v` read, a lambda literal) is re-stepped at
+	// the collapse and forward-collects past the close first (NUR184).
+	// Only the collapse asks, and by then both are one fn-typed carrier on
+	// the tape. Keyed by value ID like the two sets above, so a binding
+	// read both bare and by `/v` in one pass reads as the word (the
+	// recorder's NoteValRead has the same limit). Reset by Begin.
+	WordReadFnIDs map[string]bool
+
+	// ForwardLeftoverFnIDs records the fn-valued survivors a paren under a
+	// pending forward LEFT to that collection (stepCloseParen's trailing
+	// arm, NUR184): the group's survivors are the collecting word's
+	// candidates in written order, and a fn value the word does not take
+	// re-steps right after the word fires — over the word's result and the
+	// values beneath (`10 mul (2 (mk 1))` is 21), with the tokens after the
+	// group as its forward candidates — never over a LATER statement's
+	// values. Such a value is marked re-stepped too (ParenReSteppedFnIDs:
+	// the trailing lowering applies it over what lies beneath), and this
+	// set is what stops the residual's LEAD arm applying it over the values
+	// above it, which came later: `def r (2 (mk 1)) end r` compiled 3 for
+	// the interpreter's `[fn 2]` (def takes the 2, the closure re-steps
+	// over nothing and parks). Reset by Begin.
+	ForwardLeftoverFnIDs map[string]bool
+
 	// FnAnalysisCounts tracks distinct body analyses (memo misses)
 	// per fn DEFINITION SITE (fnQuotaKey: scope + name + body position,
 	// NOT bare name — every higher-order closure shares a synthetic
@@ -947,6 +976,8 @@ func (c *CheckState) Clone() *CheckState {
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
 	cp.ParenReSteppedFnIDs = cloneMap(c.ParenReSteppedFnIDs)
+	cp.WordReadFnIDs = cloneMap(c.WordReadFnIDs)
+	cp.ForwardLeftoverFnIDs = cloneMap(c.ForwardLeftoverFnIDs)
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
@@ -1064,6 +1095,8 @@ func (c *CheckState) Begin() func() {
 	c.FnCarrierReadSubstituted = false
 	c.ParenPlacedFnIDs = nil
 	c.ParenReSteppedFnIDs = nil
+	c.WordReadFnIDs = nil
+	c.ForwardLeftoverFnIDs = nil
 	// Arm process-wide ID minting for the pass's lifetime: the emit
 	// recorder keys provenance on Value.IDs minted at creation, so every
 	// value created while ANY pass is live must carry one (see

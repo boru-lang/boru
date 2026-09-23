@@ -195,6 +195,11 @@ func TestUnnamedFrameApplyResultTyped(t *testing.T) {
 		// value` diagnostic, and no Program. It checks clean and compiles
 		// now (the body a raw token body at the callback seam).
 		{`def Box gen [T] class {value:T} def sumvals gen [T] fn [[bs:[:T]] [Integer] [0 fold [dot value add] bs]] def xs [(make (Box of [Integer]) {value:10}) (make (Box of [Integer]) {value:20})] end sumvals xs`, "[30]"},
+		// NUR184's fold row (2026-09-23): the paren closes UNDER `add`'s
+		// pending forward, which takes the 2; the closure is that
+		// collection's LEFTOVER and re-steps over the sum (paren_trailing_
+		// forward_test.go holds its siblings).
+		{ccMk + `def xs [1 2 3]  0 fold [add (2 (mk 1))] xs`, "[6]"},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -206,25 +211,5 @@ func TestUnnamedFrameApplyResultTyped(t *testing.T) {
 		if fmt.Sprint(gotC) != c.want {
 			t.Errorf("%q: %v, want %s", c.src, gotC, c.want)
 		}
-	}
-}
-
-// TestUnnamedFrameApplyResultAnyPending kept NUR180's OPEN half until
-// 2026-09-23, when the recovery's window became the interpreter's; what is
-// left of it is NUR184's: a paren closing UNDER A PENDING FORWARD hands its
-// survivors to that forward (`add (2 (mk 1))` collects the 2, and the
-// closure then re-steps over the sum), which the trailing-apply record
-// does not model. The pin fails the day the row agrees: retire it with
-// NUR184 (TestParenTrailingFnForwardCollectsPending holds its siblings).
-func TestUnnamedFrameApplyResultAnyPending(t *testing.T) {
-	src := ccMk + `def xs [1 2 3]  0 fold [add (2 (mk 1))] xs`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[6]" {
-		t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR184", src, gotI, errI)
-	}
-	if !compiled || errC != nil {
-		t.Errorf("%q: NUR184's fold row became loud (%v) — record that and retire this pin", src, errC)
-	} else if fmt.Sprint(gotC) == "[6]" {
-		t.Errorf("%q: NUR184's fold row agrees (%v) — move it to TestUnnamedFrameApplyResultTyped", src, gotC)
 	}
 }

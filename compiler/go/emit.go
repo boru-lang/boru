@@ -1014,6 +1014,16 @@ type EmitState struct {
 	// binder/call-graph reachability model (dynamicScopeReachable). See
 	// NoteDefRead.
 	defReads map[string]string
+	// valReadNoted records every `/v` read of a binding the pass noted
+	// (NoteValRead), program-wide — wider than valReadIDs below, which holds
+	// only the reads aliasValRead traced to a produced fn value. The value
+	// spelling is one the interpreter never dispatches: a def-bound closure
+	// read as `c/v` is PLACED where it lands, where the bare read `c` is a
+	// word dispatch (defReads holds both; core's WordReadFnIDs names the
+	// bare ones). callResultPlaced reads it so the residual window islands
+	// do not re-step a `/v` delivery: `def c (mk 1) end 2 c/v 10` islanded
+	// to `[2 11]` for the interpreter's `[2 fn 10]` (NUR185).
+	valReadNoted map[string]bool
 	// collectionHazard marks fn-typed value IDs a later dispatch collected
 	// past while they sat unapplied (NoteCollectionHazard, NUR121).
 	collectionHazard map[string]bool
@@ -8351,19 +8361,39 @@ func valueDivergingWord(owner, running *core.Registry, word string) bool {
 // noMatch, when non-nil, rides onto the PolyRef as the faithful-raise plan
 // for the runtime no-match arm (plan 3c) — the caller derived and gated it at
 // the failed-dispatch tape state; nil keeps the sound defer.
+// polyCallDeclineReason names why a native poly record declines the
+// program instead of recording (RecordPolyCall's one compile-failure site):
+//
+//   - a container-read fn value the interpreter invokes as it lands, which
+//     the VM would push as data — the same auto-dispatch divergence as the
+//     mono path (recordCallCompileFailure); annotated shaped-method reads
+//     and pinpointed genuine-0-arg member reads are exempt;
+//   - a fn-typed carrier the paren's rewind RE-STEPS (ParenReSteppedFnIDs)
+//     collected as this dispatch's operand: the check pass stepped it as
+//     data, but the interpreter dispatches the value first — `(2 (mk 1)) 10
+//     mul` is 22, the closure taking the 10 before `mul` runs — so the poly's
+//     runtime re-match over the carrier raised the no-match the interpreter
+//     never does (NUR184's loud residue). A lead the `apply` word owns is
+//     the apply's, not this dispatch's.
+func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value) string {
+	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
+		return "fn value read from a container auto-dispatches (Stage 3)"
+	}
+	for _, a := range args {
+		if core.IsFnTypedCarrier(a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
+			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
+		}
+	}
+	return ""
+}
+
 func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos core.SrcPos, ownerReg *core.Registry, noMatch *core.PolyNoMatchSpec) bool {
 	if !es.Active() {
 		return false
 	}
-	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
-		// Same auto-dispatch divergence as the mono path (recordCallCompileFailure):
-		// the interpreter invokes a container-read fn value as it lands; the
-		// VM would push it as data. Decline the program rather than diverge —
-		// the lesser failure, and one owed a lowering.
-		// Annotated shaped-method reads and pinpointed genuine-0-arg member
-		// reads are exempt (see recordCallCompileFailure).
+	if reason := es.polyCallDeclineReason(word, args, outs); reason != "" {
 		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
+		es.MarkUncompilable(reason)
 		return true
 	}
 	ops := make([]EmitOperand, len(args))
@@ -10224,8 +10254,15 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 	// would break the correct one. Return false rather than MarkUncompilable —
 	// an unrecorded list is already an unresolvable residual and the program
 	// falls back — until Stage 3 can record the apply as an element event.
-	if len(ins) >= 2 && es.parenReSteppedFn(ins[0]) {
-		return false
+	// Any later element too (NUR184): a TRAILING fn value the paren left
+	// for the rewind to re-step over the token after the close —
+	// `[(2 (mk 1)) 10]` is `[[2 11]]` interpreted — reaches here as the
+	// three elements `[2, carrier, 10]` with the carrier re-step-marked and
+	// no event consuming it; assembling them baked `[2 fn 10]`.
+	for i := range ins {
+		if len(ins) >= 2 && es.parenReSteppedFn(ins[i]) {
+			return false
+		}
 	}
 	// ops are in SIG order (ops[0] = top of stack), but a list assembles with
 	// element 0 DEEPEST, so reverse: ops[0] is the LAST element (laid out on
@@ -11537,8 +11574,14 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// three explicit application forms (a bare name, `apply`, a member read)
 	// and that the interpreter still applies. Placement is the question, not
 	// how the lead was named.
+	// A LEFTOVER of a forward's collection (forwardLeftoverFn) is excluded:
+	// its re-step ran before the values above it existed, so applying it
+	// over them is a later statement's operand fed to an earlier call —
+	// `def r (2 (mk 1)) end r` compiled 3 for the interpreter's `[fn 2]`
+	// (NUR184). With no arm to seat it the carrier declines below.
 	if !applyDynamic && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
-		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
+		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
+		!es.forwardLeftoverFn(residual[0]) {
 		applyDynamic = !anyFnOrDynamicTail(residual)
 		// When the carrier's closure arity is statically recoverable (its
 		// producer is a compiled factory fn returning one anonymous closure),
@@ -12899,6 +12942,10 @@ func (es *EmitState) NoteValRead(id, name string) {
 		return
 	}
 	es.aliasValRead(id, name)
+	if es.valReadNoted == nil {
+		es.valReadNoted = map[string]bool{}
+	}
+	es.valReadNoted[id] = true
 	if len(es.openUnitRecs) == 0 {
 		return
 	}
@@ -14669,13 +14716,40 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	default:
 		return false
 	}
-	if es.parenReSteppedFn(v) || es.isDefRead(v) {
+	// A def-bound read DISPATCHES only when it is the bare name (ADR-011):
+	// the `/v` spelling delivers the value inert, and the interpreter parks
+	// it exactly like the call result it is (NUR185).
+	if es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(v.ID)) {
 		return false
 	}
 	if _, member := es.MemberFnReadValue(v.ID); member {
 		return false
 	}
 	return true
+}
+
+// placedValRead reports whether the value id reached the residual through a
+// `/v` read and no other route the interpreter dispatches: not read bare
+// anywhere in the pass (core's WordReadFnIDs — one binding, one value ID,
+// and a bare read is a word dispatch) and not under a pending `apply`
+// word, which re-steps the delivery on purpose.
+func (es *EmitState) placedValRead(id string) bool {
+	if es == nil || id == "" || !es.valReadNoted[id] || es.applyPending(id) {
+		return false
+	}
+	return es.reg == nil || es.reg.Check == nil || !es.reg.Check.WordReadFnIDs[id]
+}
+
+// forwardLeftoverFn reports whether the collapse recorded v as a fn-valued
+// survivor a paren under a pending forward LEFT to that collection
+// (CheckState.ForwardLeftoverFnIDs, NUR184): re-stepped right after the
+// collecting word fired, over what lay beneath it then — never over the
+// residual values above it, which a later statement produced.
+func (es *EmitState) forwardLeftoverFn(v core.Value) bool {
+	if es == nil || es.reg == nil || es.reg.Check == nil || v.ID == "" {
+		return false
+	}
+	return es.reg.Check.ForwardLeftoverFnIDs[v.ID]
 }
 
 // callAppliedClosureUnit is the compiled closure UNIT a dyn-method or
