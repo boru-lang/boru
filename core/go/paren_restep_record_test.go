@@ -124,3 +124,41 @@ func TestRecordParenReStep(t *testing.T) {
 		t.Errorf("second record replaced the first: %v", e.Registry.Check.ParenReSteppedFnIDs)
 	}
 }
+
+// TestMarkReStepped pins the shared setter both re-step routes use — an
+// enclosing paren's rewind (recordParenReStep) and a `word` splice's
+// expansion (stepLiteral's splice arm, NUR181's `def dbl word (mk) end 5
+// dbl`): the same "might be callable" test, keyed by value ID, quoted and
+// ID-less values and a run with no analysis state recording nothing, and
+// the map reused across marks.
+func TestMarkReStepped(t *testing.T) {
+	carrier := func(id string) Value {
+		v := NewCarrier(TFunction)
+		v.ID = id
+		return v
+	}
+	dynAny := NewCarrier(TAny)
+	dynAny.Dynamic = true
+	dynAny.ID = "dyn-2"
+	quoted := carrier("fnc-q")
+	quoted.Quoted = true
+	e := &Engine{Registry: &Registry{Check: &CheckState{}}}
+	for _, v := range []Value{quoted, carrier(""), NewInteger(1), NewCarrier(TInteger)} {
+		e.markReStepped(v)
+	}
+	if len(e.Registry.Check.ParenReSteppedFnIDs) != 0 {
+		t.Errorf("a quoted, ID-less, concrete or non-callable value records nothing: %v", e.Registry.Check.ParenReSteppedFnIDs)
+	}
+	e.markReStepped(carrier("fnc-2"))
+	e.markReStepped(dynAny)
+	if !e.Registry.Check.ParenReSteppedFnIDs["fnc-2"] || !e.Registry.Check.ParenReSteppedFnIDs["dyn-2"] {
+		t.Errorf("a fn-typed carrier and a fn-admitting dynamic value are marked, the map reused: %v", e.Registry.Check.ParenReSteppedFnIDs)
+	}
+	// No analysis state: nothing to record on, no panic.
+	for _, e := range []*Engine{{}, {Registry: &Registry{}}} {
+		e.markReStepped(carrier("fnc-3"))
+		if e.Registry != nil && e.Registry.Check != nil {
+			t.Error("a run with no check state records nothing")
+		}
+	}
+}

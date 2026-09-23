@@ -68,6 +68,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// memo hit: the key includes name+input types, which determine the shape).
 	es.fnRecs[unit].inShape = shape
 	es.fnRecs[unit].closure = true
+	es.fnRecs[unit].residualToCaller = bodyOut == core.BodyOutResidual
 	es.fnRecs[unit].lambdaUnit = word == "fnval"
 	// A lambda VALUE's declared param PATTERNS ride on the record from the
 	// open, not only from the contract seated after the compile
@@ -824,6 +825,10 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		probeOk = probeOk && exOk
 	}
 	r.Check.Emit = real
+	// The probe's const stamps must not outlive it (undoProbeStamps): a
+	// ref it left on a shared impl has no Program and blocks the real
+	// pass's own stamp.
+	probe.undoProbeStamps()
 	if !probeOk {
 		return false
 	}

@@ -271,6 +271,15 @@ type emitCall struct {
 	// (claim failure → internal_error → interpreter re-run). Riding emitCall
 	// keeps the generic evCall machinery working unchanged for the result.
 	dynMethod *DynMethodSpec
+	// calleeUnit (valid when calleeKnown) is the compiled closure UNIT a
+	// dyn-method apply's runtime method value was PRODUCED as (a factory
+	// call's returned closure, an earlier apply's), resolved at the
+	// recording from the value's own producer — the fn OPERAND is a promoted
+	// slot for a def-bound value (`def r (mk3 1) end 2 r 3`) and names no
+	// unit. callResultPlaced reads it: the callee is a boru closure, so
+	// fnReturnPark parks what the call returns (NUR181).
+	calleeUnit  int
+	calleeKnown bool
 	// region, when non-nil, is the COMPLETED region descriptor for this
 	// dispatch (region_complete.go): what the interpreter read off the tape at
 	// this position, and which of those slots the dispatch claimed.
@@ -1579,6 +1588,13 @@ type fnUnitRec struct {
 	// type_error — so a closure keeps declining the mismatch (islands) while a
 	// user fn compiles the error path (the VM RET raises the matching error).
 	closure bool
+	// residualToCaller marks a code-body closure whose driving word returns
+	// the body's WHOLE residual to the caller's tape (CallableSpec.BodyOut ==
+	// BodyOutResidual — `do`), where the interpreter re-steps it at the call
+	// (NUR124's mechanism): a paren-placed fn value the body left above a
+	// sibling result is applied to that sibling there (`do [5 (ops.inc)]` is
+	// 6), so inside such a unit it is data only when it stands alone.
+	residualToCaller bool
 	// lambdaUnit marks the fn-VALUE flavour of a closure unit (word "fnval"
 	// — a returned lambda's body compiled via tryReturnedClosure), as
 	// opposed to a native code-body unit (each/do$body, whose analysis
@@ -1706,9 +1722,9 @@ func NewEmitState() *EmitState {
 // the whole residual in exact order. Returns nil for an in-order residual and
 // for any residual carrying a fn value or dynamic value (the auto-apply
 // boundary's territory: its stack layout is the apply's contract).
-func residualForceOrder(ops []EmitOperand, vals []core.Value) map[int]bool {
+func residualForceOrder(ops []EmitOperand, vals []core.Value, data func(core.Value) bool) map[int]bool {
 	for _, v := range vals {
-		if v.Dynamic || core.IsFnValueResidual(v) {
+		if (v.Dynamic || core.IsFnValueResidual(v)) && (data == nil || !data(v)) {
 			return nil
 		}
 	}
@@ -1750,7 +1766,21 @@ func (es *EmitState) residualForceOrderFor(dynTrail int, rec *fnUnitRec, ops []E
 	if rec.dynFrameW > 0 {
 		return es.replayForceOrder(ops)
 	}
-	return residualForceOrder(ops, vals)
+	// A paren-PLACED value the frame never re-steps is DATA in a unit's
+	// residual, and the promotion may re-push it as such: a fn frame returns
+	// `[5 fn]` for `[5 (ops.inc)]` (the interpreter's __RC then counts it),
+	// a callback body hands `(m.f)` to its driver as the value itself
+	// (`each [(m.f)] xs` is a list of the fn), and a `do` body returns it
+	// for the CALLER's re-step (NUR124's machinery, at the call). The
+	// fn/dynamic bail protects an UNARMED apply, and a placed value has
+	// none to compile away (NUR182). The one exception is a body whose
+	// driver returns the residual to the caller's tape (residualToCaller,
+	// `do`): there the caller's re-step applies the value to a sibling
+	// result beneath it, which no unit-side layout models, so a placed
+	// value with siblings keeps the bail (and today's decline).
+	return residualForceOrder(ops, vals, func(v core.Value) bool {
+		return es.placedNotReStepped(v) && !(rec.residualToCaller && len(vals) > 1)
+	})
 }
 
 // replayForceOrder returns the promotion set that re-pushes an ARMED
@@ -1854,6 +1884,24 @@ func (es *EmitState) forkForProbe() *EmitState {
 		p.storeHazard[k] = v
 	}
 	return p
+}
+
+// undoProbeStamps clears every stored-fn ref this PROBE state stamped onto
+// a shared sig impl (stampFnConst at the const chokepoint). The probe is
+// discarded and its Finalize never runs, so a ref it leaves behind carries
+// no Program — and first-stamp-wins then keeps the REAL pass from stamping
+// the same impl, so the value's compiled unit is unreachable at run time:
+// the fn-value seam fell to the stepping path, and `each [ops.inc] xs`
+// islanded its member once per element where the named fn unit's twin ran
+// it VM-native (the quotation-body container reads, 2026-09-22; measured
+// through invokeFnValue: ref set, Prog nil). The probe's tables are its
+// own (forkForProbe starts from NewEmitState), so every entry here is the
+// probe's stamp and nothing the real state placed.
+func (es *EmitState) undoProbeStamps() {
+	for impl := range es.stampImpls {
+		impl.SetCompiled(nil)
+	}
+	es.stampImpls = nil
 }
 
 // inClosureUnit reports whether the innermost OPEN fn unit is a CLOSURE body
@@ -7676,7 +7724,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// Finalize — never compiles the closure as unapplied data. Resolved
 	// BEFORE the registered-output arm below: apply's identity result
 	// carries the producer's id, which that arm would elide silently.
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && es.producedFnValue(args[0].ID) {
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedFnCarrierInFnUnit(args[0])) {
 		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
@@ -8439,10 +8487,19 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// as a read lost where the interpreter dispatches it.
 	es.creditWordRead(fn.ID)
 	es.SiteCounts[SiteDynamic]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
+	call := emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
 		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs)},
-	}})
+	}
+	// The method value's own producer, when it is a compiled closure (the
+	// factory pattern): the call is a user call by another route and its
+	// result parks (calleeUnit's doc).
+	if pr, ok := es.producedBy[fn.ID]; ok {
+		if op, ok := es.eventProducedFnOp(pr.seq, 0); ok && op.kind == opClosure && op.closureUnit >= 0 && op.closureUnit < len(es.fnRecs) {
+			call.calleeUnit, call.calleeKnown = op.closureUnit, true
+		}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	for i := range outs {
 		es.setProducedAt(outs[i], seq, i)
 	}
@@ -10001,6 +10058,36 @@ func (es *EmitState) producedFnValue(id string) bool {
 	}
 	w, ok := es.producerWord(id)
 	return ok && w == wordDynApply
+}
+
+// producedFnCarrierInFnUnit reports whether v is a fn-typed CARRIER a call
+// of this pass PRODUCED, read inside a FN unit (a named fn body or a plain
+// lambda) below the program's — a factory whose declared `[Function]`
+// return types its result as a carrier whatever it returns (a capture-free
+// const lambda, a named fn's `/v`), `5 (mk) apply` inside a unit.
+// producedFnValue admits only a produced CLOSURE or an apply's result (its
+// other callers need a closure payload for the VM's re-entrant runner), but
+// the `apply` word's PENDING registration does not: OpCallDynApplyTop
+// applies any appliable fn. Without the entry the dispatch was elided as a
+// registered output and the application seated NOWHERE — hidden while a
+// placed carrier bailed the residual layout, and a silent count error once
+// it stopped (NUR182): the generated sweep's `apply` factory · lambda-body
+// variant, `def zzvlam ([] => [5 (mk) apply])`, answered `[5 fn]` for the
+// interpreter's 6 (2026-09-22); with the entry the layout declines it
+// loudly, as it did before. A CODE-BODY closure unit (each/do$body) is left
+// to its own gate — closureResidualHasUnappliedFn declines the probe and
+// the body runs as a raw token list, which is what `each [(mk) apply] xs`
+// compiled to before and still does — and the program unit keeps its
+// residual arms, which apply the same value trailing.
+func (es *EmitState) producedFnCarrierInFnUnit(v core.Value) bool {
+	if len(es.units) < 2 || !core.IsFnTypedCarrier(v) {
+		return false
+	}
+	if u := es.openUnitRec(); u == nil || (u.closure && !u.plainLambda()) {
+		return false
+	}
+	_, produced := es.producedBy[v.ID]
+	return produced
 }
 
 // producerReturnedClosure reports whether id holds a compiled CLOSURE this
@@ -12101,10 +12188,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// `5 m.f` → [5, fn], `[..] r.one-of`): reordering it would drop the apply and
 	// diverge. Leave those to the fn-value / failure logic below; only a residual
 	// of pure resolvable data reorders.
+	// A PARKED call result (callResultPlaced — a user call's, a shaped
+	// method call's or a fn-value apply's returned closure, NUR181) is data
+	// here: no apply arm ever applies it, so reordering it drops nothing,
+	// and its gradual out carrier (a closure unit's count-contract Any)
+	// must not read as an apply lead — `2 r 3` over a def-bound factory
+	// closure is `[2 fn]` on both lanes. A result the `apply` WORD
+	// dispatches on purpose keeps the boundary (appliedByWord).
 	var forceOrder map[int]bool
 	residualHasFnOrDynamic := false
 	for _, rv := range residual {
-		if rv.Dynamic || core.IsFnValueResidual(rv) {
+		if (rv.Dynamic || core.IsFnValueResidual(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
 			residualHasFnOrDynamic = true
 			break
 		}
@@ -12576,6 +12670,16 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		if es.callResultPlacedIn(v, rec.frag) {
 			continue
 		}
+		// A paren-PLACED value no enclosing paren re-stepped is data for the
+		// same reason (NUR182): the frame never re-steps it — `def f fn
+		// [[Integer][Any][(ops.inc)]]  f 5` returns the member itself, and
+		// `[5 (ops.inc)]` is the interpreter's count error over `[5 fn]`.
+		// The replay island re-steps every token it is handed, so a placed
+		// value can never ride in an armed window: it is skipped here, and a
+		// window that would carry one beside an applicable declines below.
+		if es.placedNotReStepped(v) {
+			continue
+		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
 			// (A lead a later dispatch collected past — `[g x add 1]`, whose
 			// replay would run over add's result, NUR121 — never reaches here:
@@ -12594,7 +12698,8 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 			// lead, whose runtime fn the replay would apply under value
 			// semantics. With no fn-typed value the count is the original
 			// one-applicable rule (replayLeadApplicables).
-			if w, ok := dynFrameWindow(u, rec, vals); ok && es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
+			if w, ok := dynFrameWindow(u, rec, vals); ok && !es.windowHasPlaced(vals[len(vals)-w:]) &&
+				es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
 				replayLeadApplicables(vals[len(vals)-w:], es.dynFrameWordsFor(u, rec, vals[len(vals)-w:])) == 1 {
 				rec.dynFrameW = w
 				rec.retReplay = true
@@ -12610,6 +12715,82 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 	return true
 }
 
+// windowHasPlaced reports whether a replay window carries a paren-PLACED
+// value no enclosing paren re-stepped: the island re-steps every token, so
+// such a window cannot arm (NUR182).
+func (es *EmitState) windowHasPlaced(window []core.Value) bool {
+	for _, v := range window {
+		if es.placedNotReStepped(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteClosureBodyReplay arms the whole-frame replay for a CODE-BODY closure
+// unit — an each / fold / do body — whose residual's TOP is a value the
+// interpreter's pointer re-steps inside the body: a container member read as
+// the body's last token (`each [ops.inc] xs`, the quotation-body container
+// reads, 2026-09-22). A reach-lowered group never parks (NUR173), so its
+// collapse re-steps the member over the element beneath — the body nets
+// `inc(e)` — where the compiled body pushed the member as data above the
+// element and the residual layout declined "result above a literal". The
+// replay is the same OpCallDynFrame a named fn unit takes for the identical
+// residual (`def f fn [[Integer][Integer][ops.inc]]`): the unnamed inputs
+// are the resolved prefix, the token region re-steps under
+// execFnDefLiteral's own rule, and the driver reads the result.
+//
+// The count-mismatch trigger a fn unit arms on does not exist here (a code
+// body declares no returns), so the trigger is the top value itself: a
+// carrier the check pass tagged as a fn-valued MEMBER read (NoteMemberFnRead
+// — the container's member was a fn when it was read), gradual or
+// fn-typed. A bare fn-typed carrier without the tag is not one: a captured
+// Function param read bare is a WORD dispatch on the interpreter (NUR123 —
+// a no-match raises `cannot call g` where the replay's value semantics
+// would park), and the closure paths keep declining it on their own gates.
+// A DEF-READ of a tagged member (`def f M.tbl.inc end each [f] xs`,
+// module-composition L103) is the read model's, as everywhere: the tag
+// rides on the value's identity into the binding, and arming on it
+// islanded a row that ran natively (the census caught it). A placed value
+// is data (noteDynFrameReplay skips it, the
+// promotion re-pushes it: `each [(m.f)] xs` is a list of the fn); a
+// gradual value with no such tag — a mixed dispatch's result, an error's
+// `dot code` in a catch body, a get of data — keeps the layout it has
+// today (the re-step landing alone was tried as the trigger and armed the
+// catch body of `error [dot code]`, which its word then declined); and a
+// concrete member whose only signatures take no argument is the landing's
+// alone (it fires; re-pushing its result through an island would cost an
+// interpreter entry for nothing). noteDynFrameReplay's own gates then
+// decide — the body tail, exactly one applicable, a token region above the
+// prefix — and a shape they decline keeps today's failure.
+func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []core.Value) {
+	if len(vals) == 0 {
+		return
+	}
+	top := vals[len(vals)-1]
+	if es.placedNotReStepped(top) || es.callResultPlacedIn(top, rec.frag) {
+		return
+	}
+	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) {
+		return
+	}
+	// A DEF-READ of the tagged member (`def f tbl.inc end each [f] xs`,
+	// NUR156) arms only under its binding NAME (NoteWordRead's def-read
+	// arm): the read is the interpreter's WORD dispatch, whose no-match
+	// raises `cannot call `f`` where a value replay would park, so the
+	// window must carry the word for the VM's word island. A def read with
+	// no name (a `/v` read, a pending apply) is the read model's as before.
+	if es.isDefRead(top) && es.wordReadName(rec, top) == "" {
+		return
+	}
+	if mv, ok := es.MemberFnReadValue(top.ID); ok {
+		if fd, isFn := mv.Data.(core.FnDefInfo); isFn && core.FnValueOnlyZeroArgSigs(fd) {
+			return
+		}
+	}
+	es.noteDynFrameReplay(u, rec, vals, rec.nUnnamed)
+}
+
 // NoteWordRead counts a bare read of a fn-typed or gradual frame local on
 // the innermost open unit (EmitRecorder). A read of a value that is not a
 // local of that unit — a module-scope def, an enclosing unit's binding read
@@ -12620,6 +12801,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		return
 	}
 	u := es.units[len(es.units)-1]
+	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
 	if _, isLocal := u.localByID[v.ID]; !isLocal {
 		// A body-local `def` bound to a value an event of THIS unit
 		// produced (`def j (m get "f")  j`) resolves through its producing
@@ -12627,22 +12809,24 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		// this unit's read all the same; an ENCLOSING-scope binding's
 		// value (enclosingBindIDs, resolveOperand's own test) is not.
 		if _, produced := es.producedBy[v.ID]; !produced || u.enclosingBindIDs[v.ID] {
+			// A DEF-BOUND binding of an enclosing scope — a module-scope
+			// `def f tbl.inc` read inside an each body (NUR156, the
+			// quotation-body def reads) — is the interpreter's WORD dispatch
+			// in every unit that reads it bare (stepWord never substitutes a
+			// binding holding a fn), where the unit captured the VALUE. Its
+			// NAME is recorded so the replay's word table can re-step the
+			// entry as the word (a match applies natively, a no-match raises
+			// `cannot call `f`` through the island); the strict count is not
+			// — the value is not this unit's to seat, and an unreached
+			// consumption keeps the slot push it has today rather than
+			// declining a unit whose value semantics may still agree.
+			if es.isDefRead(v) {
+				rec.noteWordReadName(v.ID, name, pos)
+			}
 			return
 		}
 	}
-	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
-	if rec.wordReadNames == nil {
-		rec.wordReadNames = map[string]string{}
-		rec.wordReadPos = map[string]core.SrcPos{}
-	}
-	rec.wordReadNames[v.ID] = name
-	rec.wordReadPos[v.ID] = pos
-	if rec.wordReadFirst == nil {
-		rec.wordReadFirst = map[string]core.SrcPos{}
-	}
-	if _, seen := rec.wordReadFirst[v.ID]; !seen {
-		rec.wordReadFirst[v.ID] = pos
-	}
+	rec.noteWordReadName(v.ID, name, pos)
 	// Only a FN-TYPED read is accounted strictly: the interpreter
 	// dispatches it whatever the call passed. A GRADUAL read (an `x:Any`
 	// param, a Dynamic local) dispatches only when the runtime value is a
@@ -12654,6 +12838,24 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 			rec.wordReads = map[string]int{}
 		}
 		rec.wordReads[v.ID]++
+	}
+}
+
+// noteWordReadName records a bare read's binding NAME and position on the
+// unit — the replay's word table (dynFrameWordsFor) and the trailing apply's
+// head name read them. The strict count (wordReads) is the caller's call.
+func (rec *fnUnitRec) noteWordReadName(id, name string, pos core.SrcPos) {
+	if rec.wordReadNames == nil {
+		rec.wordReadNames = map[string]string{}
+		rec.wordReadPos = map[string]core.SrcPos{}
+	}
+	rec.wordReadNames[id] = name
+	rec.wordReadPos[id] = pos
+	if rec.wordReadFirst == nil {
+		rec.wordReadFirst = map[string]core.SrcPos{}
+	}
+	if _, seen := rec.wordReadFirst[id]; !seen {
+		rec.wordReadFirst[id] = pos
 	}
 }
 
@@ -12893,6 +13095,9 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 	// below is a plain-unit concern and still skips a closure.
 	rec.outOpsVals = vals
 	if rec.closure && !rec.plainLambda() {
+		// One replay a code body DOES take: its top value re-stepped by the
+		// interpreter's pointer inside the body (noteClosureBodyReplay).
+		es.noteClosureBodyReplay(u, rec, vals)
 		return ""
 	}
 	// A body-tail dynamic apply (dynTrail) owns the residual: the count and
@@ -13929,9 +14134,12 @@ func (es *EmitState) noteWordReadReplay(u *emitUnit, rec *fnUnitRec, vals []core
 	// A replay that cannot seat declines only a FN-TYPED read (the
 	// interpreter dispatches it unconditionally); a gradual read keeps the
 	// slot push it always had — best effort, never a new failure.
+	// Strict is the strict COUNT (NoteWordRead accounts a fn-typed LOCAL's
+	// read there), not a name: a module-scope def read carries a name for
+	// the word table and no count, and stays best-effort.
 	strict := false
 	for i, v := range vals {
-		if all[i].Name != "" && core.IsFnTypedCarrier(v) {
+		if all[i].Name != "" && rec.wordReads[v.ID] > 0 {
 			strict = true
 		}
 	}
@@ -14445,7 +14653,17 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 			return false
 		}
 	case evCall:
-		if ev.call.dynMethod == nil || ev.call.nout != 1 || !es.userMemberFn(ev.call.word) {
+		// A shaped method call over a def-bound CLOSURE (`def r (mk3 1) end
+		// 2 r 3`) and a compiled fn-value apply of one (`2 ((mk3 1) 3)`, the
+		// KEEPQ / produced-lead applies) are user calls by another route
+		// too — the callee is a boru closure, and fnReturnPark parks what
+		// it returns (NUR181: the trailing arm applied the returned closure
+		// to the value beneath, 6 for the interpreter's `[2 fn]`).
+		if ev.call.nout != 1 {
+			return false
+		}
+		if _, closure := es.callAppliedClosureUnit(ev); !closure &&
+			(ev.call.dynMethod == nil || !es.userMemberFn(ev.call.word)) {
 			return false
 		}
 	default:
@@ -14458,6 +14676,36 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 		return false
 	}
 	return true
+}
+
+// callAppliedClosureUnit is the compiled closure UNIT a dyn-method or
+// fn-value apply event (evCall with a DynMethodSpec, or wordDynApply) applies:
+// its fn operand as a closure operand, or an event operand whose netted fn
+// value is a closure (eventProducedFnOp — a factory call's returned closure,
+// an earlier apply's). A member-read carrier, a promoted local or a native
+// callee resolve to nothing here.
+func (es *EmitState) callAppliedClosureUnit(ev *EmitEvent) (int, bool) {
+	if ev == nil || ev.kind != evCall || len(ev.call.ops) == 0 ||
+		(ev.call.dynMethod == nil && ev.call.word != wordDynApply) {
+		return 0, false
+	}
+	if ev.call.calleeKnown {
+		return ev.call.calleeUnit, true
+	}
+	op := ev.call.ops[0]
+	if op.kind == opEvent {
+		if op.resIdx != 0 {
+			return 0, false
+		}
+		var ok bool
+		if op, ok = es.eventProducedFnOp(op.idx, 0); !ok {
+			return 0, false
+		}
+	}
+	if op.kind != opClosure || op.closureUnit < 0 || op.closureUnit >= len(es.fnRecs) || es.fnRecs[op.closureUnit] == nil {
+		return 0, false
+	}
+	return op.closureUnit, true
 }
 
 // callResultRenderKnown reports whether the user call that produced v
@@ -14477,7 +14725,16 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		return false
 	}
 	ev := es.eventBySeq(pr.seq)
-	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil {
+	if ev == nil {
+		return false
+	}
+	// A dyn-method or fn-value apply of a compiled CLOSURE renders as that
+	// closure unit's single result does (callAppliedClosureUnit — NUR181's
+	// parked results).
+	if unit, ok := es.callAppliedClosureUnit(ev); ok {
+		return es.unitRenderKnown(unit, 0)
+	}
+	if ev.kind != evCallUser || ev.uc.poly != nil {
 		return false
 	}
 	return es.unitRenderKnown(ev.uc.unit, 0)

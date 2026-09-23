@@ -176,31 +176,18 @@ func TestApplyWordClaimsParkedResult(t *testing.T) {
 		t.Errorf("the apply word applies the parked result: %v", gotI)
 	}
 
-	// Nothing claims it: the arm declines rather than applies. A compile failure is
-	// the compile failure — the default lane then answers on the interpreter.
-	// The forty-third increment's residual rebuild does NOT take this shape:
-	// its callable screen stands aside for a residual that may hold a
-	// Function, because a re-push is a data push where the interpreter
-	// re-steps (NUR131).
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
+	// Nothing claims it: the arm never applies. The shape declined "call
+	// result above a literal" until NUR181's fix (2026-09-23) let the
+	// program residual's ordering treat a PARKED result as the data it is;
+	// it now seats as the parked pair on both lanes.
+	src = mk + `5 (mk 3)`
+	gotC, compiled, errC, gotI, errI = runBothEngines(t, src)
+	if !compiled {
+		t.Error("an unclaimed parked result seats as data (NUR181)")
 	}
-	prog, reason, _, cerr := a.CompileCheck(mk + `5 (mk 3)`)
-	if cerr != nil {
-		t.Fatalf("check: %v", cerr)
-	}
-	if prog != nil {
-		t.Error("an unclaimed parked result must not compile to an apply")
-	}
-	if !strings.Contains(reason, "call result above a literal") {
-		t.Errorf("compile failure = %q, want the existing residual-shape site", reason)
-	}
-	// And the value both lanes agree on is the PARKED pair.
-	d, _ := New()
-	gotI2, errI2 := d.RunInterp(mk + `5 (mk 3)`)
-	if errI2 != nil || fmt.Sprint(gotI2) != "[5 fn (Integer)]" {
-		t.Errorf("the park rule leaves both values: %v/%v", gotI2, errI2)
+	requireParity(t, src, gotC, errC, gotI, errI)
+	if errI != nil || fmt.Sprint(gotI) != "[5 fn (Integer)]" {
+		t.Errorf("the park rule leaves both values: %v/%v", gotI, errI)
 	}
 
 	// Shapes the discriminator must leave alone, all previously passing.

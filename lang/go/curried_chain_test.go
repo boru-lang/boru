@@ -223,29 +223,3 @@ func TestUnnamedFrameApplyResultAnyPending(t *testing.T) {
 		}
 	}
 }
-
-// TestDefBoundFactoryClosureLandingPending pins NUR181, found while probing
-// the chain and NOT this increment's: a def-bound factory closure applied
-// through the read model (`r 3`, a shaped method call) nets a CLOSURE the
-// interpreter places where it lands, above the value the def's collection
-// left beneath; the compiled re-step landing applies it to that value. The
-// pin fails the day the rows agree: retire it and NUR181 together.
-func TestDefBoundFactoryClosureLandingPending(t *testing.T) {
-	for _, src := range []string{
-		ccMk3 + `def r ((mk3 1) 2) end r 3`,
-		ccMk3 + `def r ((mk3 1) 2) end (r 3)`,
-	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if errI != nil || fmt.Sprint(gotI) != "[2 fn (Integer)]" {
-			t.Errorf("%q: interpreter oracle moved: %v err=%v — re-derive NUR181", src, gotI, errI)
-			continue
-		}
-		if !compiled || errC != nil {
-			t.Errorf("%q: NUR181 became loud (%v) — record that and retire this pin", src, errC)
-			continue
-		}
-		if fmt.Sprint(gotC) == fmt.Sprint(gotI) {
-			t.Errorf("%q: NUR181 retired (compiled %v agrees) — move the row to TestCurriedChainParity", src, gotC)
-		}
-	}
-}

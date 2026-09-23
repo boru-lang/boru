@@ -6,8 +6,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
-| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 9/14 | ✓ 11/14 | n/a | ✓ 13/14 |
-| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | ✓ 14/14 | D! | n/a |
+| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 10/14 | ✓ 12/14 | n/a | ✓ 13/14 |
+| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | ✓ 14/14 | ✓ 13/14 | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
@@ -39,7 +39,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `mini` | ✓ 13/14 | ✓ 13/14 | ✓ 12/14 | F | C | ✓ 12/14 | n/a |
 | `module` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `outer` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `parse` | ✓ 13/14 | ✓ 13/14 | ✓ 11/14 | ✓ 12/14 | C | ✓ 11/14 | n/a |
+| `parse` | ✓ 13/14 | ✓ 13/14 | ✓ 12/14 | ✓ 12/14 | C | ✓ 12/14 | n/a |
 | `quote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `raise` | ✓ 14/14 | — | — | — | — | — | — |
 | `reach` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
@@ -56,15 +56,15 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `walk` | F | ✓ 11/14 | ✓ 10/14 | F | F | F | F |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `word` | ✓ 13/14 | ✓ 5/14 | ✓ 12/14 | F | D! | ✓ 13/14 | ✓ 13/14 |
+| `word` | ✓ 13/14 | ✓ 5/14 | ✓ 12/14 | ✓ 5/14 | D! | ✓ 13/14 | ✓ 13/14 |
 | `xml-attr` | ✓ 14/14 | — | — | — | — | — | — |
 
 ## Cells
 
-- pass: 150
-- failed: 27
+- pass: 152
+- failed: 26
 - islanded: 2
-- DIVERGED: 8
+- DIVERGED: 7
 - PANIC: 0
 - HUNG: 0
 - check-reject: 3
@@ -75,7 +75,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells that are not green
 
-- `apply` module-export — **DIVERGED**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` — value divergence: compiled [5 fn inc(Integer)] vs interp [6]
 - `behave` literal — **failed**: `def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)` — quoted-operand word behave
 - `behave` named-fn — **failed**: `def Temp refine Integer end def c fn [[t:Temp][String]['T']] end behave canon/q c/v end canon (make Temp 5)` — quoted-operand word behave
 - `behave` factory — **failed**: `def Temp refine Integer end def mk fn [[][Function][(fn [[t:Temp][String]['T']])]] end behave canon/q (mk) end canon (ma…` — quoted-operand word behave
@@ -113,7 +112,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` container — **failed**: `def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc` — code-body word walk (Stage 2)
 - `walk` module-export — **failed**: `import module [def acc (flex []) def h fn [[m:Any][Any][acc push m.path]] export "M" {h: h/v acc: acc}] end walk {mode: …` — function value reaches walk (Stage 3)
 - `walk` computed — **failed**: `def acc (flex []) end def b (quote [dot path acc swap push]) end walk {mode: "depth"} {a:1 b:[2 3]} b end size acc` — operand of unknown provenance or not statically materialisable at size
-- `word` factory — **failed**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end def dbl word (mk) end 5 dbl` — residual shape beyond Stage 1 (call result above a literal)
 - `word` container — **DIVERGED**: `def m {f: ([n:Integer] => [n add 1])} end def dbl word m.f end 5 dbl` — error divergence: compiled [boru/internal_error]: bytecode: internal: splice of a code-bearing payload; the compiled run…
 
 ## Call-form variants that are not green
@@ -125,13 +123,11 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `afn` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `afn` factory · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` container · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` container · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
-- `afn` container · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `afn` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `apply` factory · fn-body — **declined** — fn zzvfn: result above a literal (Stage 3)
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
 - `apply` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -139,9 +135,10 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `apply` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `apply` factory · module-body — **declined** — trailing fn-value apply over a call result (runtime quote state unknown)
+- `apply` factory · module-body — **declined** — fn zzvmod: result above a literal (Stage 3)
 - `apply` factory · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `apply` factory · prefix-stack — **DIVERGED** — value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]
+- `apply` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -288,12 +285,10 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `parse` lambda · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `parse` named-fn · for-body — **declined** — fn 'p' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` named-fn · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `parse` named-fn · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `parse` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `parse` module-export · for-body — **declined** — fn 'g' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `parse` module-export · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `quote` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `quote` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `scan` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -345,5 +340,14 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` lambda · module-body — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
 - `word` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `word` named-fn · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
+- `word` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `word` factory · lambda-body — **declined** — fn zzvlam: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)
+- `word` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `word` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `word` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
+- `word` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
+- `word` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `word` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `word` factory · module-body — **declined** — trailing fn-value apply over a call result (runtime quote state unknown)
 - `word` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` computed · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance

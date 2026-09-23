@@ -396,6 +396,52 @@ user still gets an answer while the case is open:
   may be a fn — stays with the residual classifier, which declines it
   loudly. Pinned by `curried_chain_test.go`.
 
+  A fn-valued CONTAINER MEMBER read as the LAST token of a CODE BODY
+  (`each [ops.inc] xs`, `each [M.tbl.inc] xs`) compiles since the
+  quotation-body container reads (2026-09-22): the interpreter's reach
+  collapse re-steps the member over the element beneath, and the
+  code-body closure unit now takes the whole-frame replay
+  (`OpCallDynFrame`) a named fn unit already took for the identical
+  residual (`noteClosureBodyReplay` — the trigger is the check pass's
+  fn-member tag on the top value, never a bare fn-typed carrier, which is
+  a WORD dispatch, NUR123). Inside ANY unit a paren-PLACED value is data
+  (NUR182): the fn-unit replay skips it, the layout re-pushes it, and
+  `each [(m.f)] xs` is a list of the fn — except a `do` body's placed
+  value with siblings, which its caller re-steps and which stays
+  declined. What still declines: a member read in a WORD's forward slot
+  inside a fold body (`0 fold [add ops.inc] xs`). Pinned by
+  `quotation_body_member_read_test.go`.
+
+  A module-scope DEF bound to such a member, read BARE inside a code body
+  (`def f tbl.inc end each [f] xs`, `each [dup f] xs`, `do [5 f]`), and a
+  `/v`-MARKED reach group under the `apply` word (`5 M.inc/v apply`,
+  `"s" M.inc/v apply`) compile since the quotation-body def reads
+  (2026-09-22, NUR156): the def read is the interpreter's WORD dispatch
+  under the binding name — the replay carries the name, a match applies
+  natively, a no-match raises `cannot call `f`` through the word island,
+  which dispatches a name the registry already binds through that
+  binding — and the check model of `apply` delivers its value unquoted,
+  as the runtime handler does. What still declines or diverges: the
+  same def read at the MAIN program (`5 f`) and inside a named fn unit
+  (NUR123's open points, pinned), and a dynamic-scope def of the apply's
+  result inside a loop body (`while […] [def i (i M.inc/v apply)]`, the
+  dynamic-scope def family). Pinned by `quotation_body_def_read_test.go`.
+
+  A call result is PARKED where it lands on the compiled lane too,
+  whatever route the call took (2026-09-23, NUR181): a shaped method call
+  over a def-bound factory closure (`def r (mk3 1) end 2 r 3` is
+  `[2 fn]`), a compiled fn-value apply of one (`2 ((mk3 1) 3)`), and a
+  named factory's result above a literal (`5 (mk 3)`, which declined
+  "call result above a literal") all seat as the parked pair with parity,
+  the mixed and trailing windows included (`7 (r 3) 2`, `r 3 4`). The
+  recorder resolves the callee's closure unit from the method value's own
+  producer, and the program residual's ordering treats a parked result as
+  data. What still declines: a bare read of the def-bound closure short
+  of its arity (`def r ((mk3 1) 2) end r`, the read's statement window)
+  and the shuffles the interpreter re-steps at the shuffle (`5 (mk 3) 1
+  roll`, NUR124's timing axis at the main program). Pinned by
+  `def_bound_closure_park_test.go`.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.

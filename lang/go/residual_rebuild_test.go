@@ -155,8 +155,9 @@ func TestShuffledClosureDoesNotLowerAndTheInterpreterApplies(t *testing.T) {
 		// A pick that copies the closure over a value further down.
 		{mkClosure + `7 (mk 3) 1 pick`, "[7 21]"},
 		// The residual REBUILD's own screen (a different guard, same rule):
-		// a literal beneath a produced closure, and two of them permuted.
-		{mkClosure + `5 (mk 3)`, "[5 fn (Integer)]"},
+		// two produced closures permuted. (A literal beneath ONE produced
+		// closure, `5 (mk 3)`, seats as the parked pair since NUR181's fix —
+		// TestDefBoundClosureParkParity, def_bound_closure_park_test.go.)
 		{mkClosure + `(mk 3) (mk 4) 1 roll`, "[fn (Integer) fn (Integer)]"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {

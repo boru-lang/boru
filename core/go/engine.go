@@ -3938,7 +3938,14 @@ func (e *Engine) stepLiteral() error {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
 			}
-			e.Tape.Splice(valIdx, 1, SpliceExpand(info.Data)...)
+			expanded := SpliceExpand(info.Data)
+			// The expansion RE-STEPS every element against the live stack: a
+			// fn-valued one dispatches there, however it was parked before
+			// the marker wrapped it (markReStepped).
+			for _, el := range expanded {
+				e.markReStepped(el)
+			}
+			e.Tape.Splice(valIdx, 1, expanded...)
 			return nil
 		}
 		// A dispatch-modifier marker reaching the pointer standalone means
@@ -8671,6 +8678,23 @@ func (e *Engine) recordParenReStep(openIdx, closeIdx, park int, wasReachGroup bo
 	// guard uses, so both ends agree on what the rewind would have called: a
 	// genuine fn-typed carrier, or a dynamic value whose static bound does not
 	// exclude Function.
+	e.markReStepped(v)
+}
+
+// markReStepped records v as a carrier a re-step will LAND ON and dispatch
+// (CheckState.ParenReSteppedFnIDs): the rewind of an enclosing paren
+// (recordParenReStep), or a `word` splice's expansion, which re-steps its
+// payload against the live stack — `def dbl word (mk) end 5 dbl` applies
+// mk's parked closure to the 5 (NUR181's measurement: the park rule read
+// the payload as placed and seated `[5 fn]` for the interpreter's 6). The
+// same "might be callable" test the residual lowering's auto-dispatch guard
+// uses, so both ends agree on what the re-step would call: a genuine
+// fn-typed carrier, or a dynamic value whose static bound does not exclude
+// Function.
+func (e *Engine) markReStepped(v Value) {
+	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
+		return
+	}
 	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
 		return
 	}
