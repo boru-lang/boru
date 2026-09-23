@@ -27,7 +27,7 @@ func nfState() (*EmitState, core.Value) {
 func TestNoteLandingNextGatesAndMerge(t *testing.T) {
 	es, v := nfState()
 	es.eventInfo = map[int]eventFlags{1: {variadicResult: true}}
-	es.NoteLandingNext(v, core.LandingNextWord, false)
+	es.NoteLandingNext(v, core.LandingNextWord, false, core.Value{})
 	if len(es.landingNext) != 0 {
 		t.Error("a variadic result has no landing to describe: its paths deliver different tails")
 	}
@@ -52,15 +52,15 @@ func TestNoteLandingNextGatesAndMerge(t *testing.T) {
 	} {
 		es.landingNext, es.landingBeneath = nil, nil
 		for _, n := range tc.notes {
-			es.NoteLandingNext(v, n, false)
+			es.NoteLandingNext(v, n, false, core.Value{})
 		}
 		if got := es.landingNext[1]; got != tc.want {
 			t.Errorf("%s: merged note = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 	es.landingNext, es.landingBeneath = nil, nil
-	es.NoteLandingNext(v, core.LandingNextWord, true)
-	es.NoteLandingNext(v, core.LandingNextWord, false)
+	es.NoteLandingNext(v, core.LandingNextWord, true, core.Value{})
+	es.NoteLandingNext(v, core.LandingNextWord, false, core.Value{})
 	if !es.landingBeneath[1] {
 		t.Error("values beneath at any step are the residual arms' apply")
 	}
@@ -72,35 +72,49 @@ func TestLandingArg(t *testing.T) {
 		t.Error("a nil state lands nothing")
 	}
 	inactive := &EmitState{}
-	inactive.NoteLandingNext(core.Value{ID: "v"}, core.LandingNextWord, false)
+	inactive.NoteLandingNext(core.Value{ID: "v"}, core.LandingNextWord, false, core.Value{})
 	if len(inactive.landingNext) != 0 {
 		t.Error("an inactive recorder notes nothing")
 	}
 	es, v := nfState()
-	es.NoteLandingNext(core.Value{ID: "unproduced"}, core.LandingNextWord, false)
+	es.NoteLandingNext(core.Value{ID: "unproduced"}, core.LandingNextWord, false, core.Value{})
 	if len(es.landingNext) != 0 {
 		t.Error("a value with no producing event has no landing to note")
 	}
+	z := core.NewWord("z")
 	for _, tc := range []struct {
 		name      string
 		next      core.LandingNext
 		beneath   bool
 		frameTail bool
+		word      core.Value
 		want      int
 	}{
-		{"a word follows", core.LandingNextWord, false, false, 1},
-		{"a word follows, inside a fn frame", core.LandingNextWord, false, true, 1},
-		{"the tape ends inside a fn frame: the tail markers", core.LandingNextEnd, false, true, 1},
-		{"the tape ends at the main program", core.LandingNextEnd, false, false, 0},
-		{"a boundary follows", core.LandingNextBoundary, false, true, 0},
-		{"a value-bound word follows: the residual arm's collection", core.LandingNextValue, false, true, 0},
-		{"values beneath: the residual arm's", core.LandingNextWord, true, true, 0},
+		{"a word follows: the candidate, and the word for the walk", core.LandingNextWord, false, false, z, 3},
+		{"a word follows, inside a fn frame", core.LandingNextWord, false, true, z, 3},
+		{"a word follows and none was noted: the candidate alone", core.LandingNextWord, false, false, core.Value{}, 1},
+		{"the tape ends inside a fn frame: the tail markers", core.LandingNextEnd, false, true, core.Value{}, 1},
+		{"the tape ends at the main program", core.LandingNextEnd, false, false, core.Value{}, 0},
+		{"a boundary follows", core.LandingNextBoundary, false, true, core.Value{}, 0},
+		{"a value-bound word follows: the residual arm's collection", core.LandingNextValue, false, true, core.Value{}, 0},
+		{"values beneath: the residual arm's", core.LandingNextWord, true, true, z, 0},
 	} {
-		es.landingNext, es.landingBeneath = nil, nil
-		es.NoteLandingNext(v, tc.next, tc.beneath)
+		es.landingNext, es.landingBeneath, es.landingWord = nil, nil, nil
+		es.NoteLandingNext(v, tc.next, tc.beneath, tc.word)
 		if got := es.landingArg(1, tc.frameTail); got != tc.want {
 			t.Errorf("%s: arg = %d, want %d", tc.name, got, tc.want)
 		}
+	}
+	// The word rides with the note once, under the first note that carries
+	// one; a nil state has none.
+	es.landingNext, es.landingBeneath, es.landingWord = nil, nil, nil
+	es.NoteLandingNext(v, core.LandingNextWord, false, z)
+	es.NoteLandingNext(v, core.LandingNextWord, false, core.NewWord("y"))
+	if got := es.landingWordAt(1); got.Name != "z" {
+		t.Errorf("the first word noted stays: %v", got)
+	}
+	if nilES.landingWordAt(1).Name != "" {
+		t.Error("a nil state notes no word")
 	}
 }
 
@@ -187,7 +201,7 @@ func TestCrossesBoundaryWordNext(t *testing.T) {
 	if es.crossesBoundary(v, rest) {
 		t.Error("nothing noted: no crossing")
 	}
-	es.NoteLandingNext(v, core.LandingNextWord, true)
+	es.NoteLandingNext(v, core.LandingNextWord, true, core.Value{})
 	if !es.crossesBoundary(v, rest) {
 		t.Error("a word after the value: every later entry was pushed after its re-step")
 	}
@@ -201,19 +215,19 @@ func TestCrossesBoundaryWordNext(t *testing.T) {
 		t.Error("nothing above the value: nothing to cross")
 	}
 	es.landingNext, es.landingBeneath = nil, nil
-	es.NoteLandingNext(v, core.LandingNextEnd, false)
+	es.NoteLandingNext(v, core.LandingNextEnd, false, core.Value{})
 	if es.crossesBoundary(v, rest) {
 		t.Error("the tape's end is not a word")
 	}
 	es.landingNext, es.landingBeneath = nil, nil
-	es.NoteLandingNext(v, core.LandingNextValue, false)
+	es.NoteLandingNext(v, core.LandingNextValue, false, core.Value{})
 	if es.crossesBoundary(v, rest) {
 		t.Error("a value-bound word is collected, not a boundary: `7 m.f k` is [7 6] on both lanes")
 	}
 	// A def-bound READ carries the value's note but was written where the
 	// name is: neither rule applies to it.
 	es.landingNext, es.landingBeneath = nil, nil
-	es.NoteLandingNext(v, core.LandingNextWord, false)
+	es.NoteLandingNext(v, core.LandingNextWord, false, core.Value{})
 	es.defReads = map[string]string{"v": "x"}
 	if es.crossesBoundary(v, rest) {
 		t.Error("a def read is excluded from the word rule")

@@ -149,10 +149,14 @@ branch-carried def"**; the re-estimate is
    closed NUR188 (a poly collecting a member read the interpreter
    re-steps first) and NUR189 (the trailing arms applying a paren-placed
    member), plus NUR187's fn-unit and word-after halves — and recorded
-   NUR190 pending: a DYNAMIC fn value under a function word whose `/q` or
-   Any-typed overload claims the word (`m.f y` is `[42 42]` for `[y]`;
-   fn-value.tsv's L317/L318 pass by coincidence), whose fix is the
-   landing's run-time overload walk with the word in hand. Most of the
+   NUR190: a DYNAMIC fn value under a function word. The landing's
+   overload walk (the same day, the handoff log's entry of that name)
+   closed its typed-slot, Any-typed and anonymous halves — the landing
+   carries the word and runs the interpreter's own plan over it — and
+   left the `/q` capture and the Function-typed reference open: both
+   need the word's compiled call skipped, and the faithful decline or
+   bail would move a corpus ceiling by fn-value.tsv's two coincidental
+   rows (L317/L318), which is the maintainer's call. Most of the
    interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.

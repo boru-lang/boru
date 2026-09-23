@@ -1072,6 +1072,12 @@ type EmitState struct {
 	// matches over them first and the residual arms own the outcome — the
 	// landing never raises over such a value (NUR175's rule).
 	landingBeneath map[int]bool
+	// landingWord is the FUNCTION WORD noted right after a landing
+	// (LandingNextWord), by the producing event's seq: the lowering seats it
+	// beside the landing op (LandingWords) so the VM's landing can walk the
+	// run-time fn's overloads over it as the interpreter's re-step does
+	// (NUR190).
+	landingWord map[int]LandingWord
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -8665,7 +8671,7 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 // and whether values sat beneath it in its frame (EmitRecorder; the
 // landingNext and landingBeneath fields). Nothing to record for a value with
 // no producing event — the landing itself was not noted for it either.
-func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneath bool) {
+func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneath bool, word core.Value) {
 	if !es.Active() {
 		return
 	}
@@ -8706,6 +8712,23 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	}
 	es.landingNext[pr.seq] = next
 	es.landingBeneath[pr.seq] = es.landingBeneath[pr.seq] || beneath
+	if w, err := core.AsWord(word); err == nil && w.Name != "" {
+		if es.landingWord == nil {
+			es.landingWord = map[int]LandingWord{}
+		}
+		if _, noted := es.landingWord[pr.seq]; !noted {
+			es.landingWord[pr.seq] = LandingWord{Name: w.Name, Pos: word.Pos()}
+		}
+	}
+}
+
+// landingWordAt is the function word noted after the event seq's landing
+// (the zero LandingWord when none was, or the note was not a word).
+func (es *EmitState) landingWordAt(seq int) LandingWord {
+	if es == nil {
+		return LandingWord{}
+	}
+	return es.landingWord[seq]
 }
 
 // mergeLandingNext joins two notes on one landing: a function word wins (a
@@ -8723,14 +8746,17 @@ func mergeLandingNext(a, b core.LandingNext) core.LandingNext {
 	return core.LandingNextBoundary
 }
 
-// landingArg is the OpReStepLanding argument for the event seq: 1 when the
-// interpreter's re-step of the landed value would find a CANDIDATE and
-// nothing beneath it in its frame — a function word after it, or a fn
-// frame's tail markers (the tape ended inside a unit whose frame has one,
-// frameTail) — so a named fn that matches nothing raises `uncalled_function`
-// at the landing (NUR186); 0 when nothing follows and the value stays data,
-// when a value-bound word follows and the residual arms model its
-// collection (LandingNextValue: `m.f k` is g over 2), or when values
+// landingArg is the OpReStepLanding argument for the event seq, a bit set:
+// bit 0 when the interpreter's re-step of the landed value would find a
+// CANDIDATE and nothing beneath it in its frame — a function word after it,
+// or a fn frame's tail markers (the tape ended inside a unit whose frame has
+// one, frameTail) — so a named fn that matches nothing raises
+// `uncalled_function` at the landing (NUR186); bit 1 when that candidate is
+// a FUNCTION WORD the lowering seats beside the op (LandingWords), so the
+// VM's landing walks the run-time fn's overloads over it exactly as the
+// interpreter's re-step plans (NUR190). 0 when nothing follows and the value
+// stays data, when a value-bound word follows and the residual arms model
+// its collection (LandingNextValue: `m.f k` is g over 2), or when values
 // beneath it are the residual arms' to apply it over.
 func (es *EmitState) landingArg(seq int, frameTail bool) int {
 	if es == nil || es.landingBeneath[seq] {
@@ -8738,6 +8764,9 @@ func (es *EmitState) landingArg(seq int, frameTail bool) int {
 	}
 	switch es.landingNext[seq] {
 	case core.LandingNextWord:
+		if es.landingWord[seq].Name != "" {
+			return 3
+		}
 		return 1
 	case core.LandingNextEnd:
 		if frameTail {
@@ -12644,7 +12673,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		SpecFnNames:     maps.Clone(es.specFnNames),
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames)}
-	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -12890,7 +12919,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).

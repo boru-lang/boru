@@ -806,14 +806,16 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// result) the re-step matches over them first, and the residual arms
 	// model that apply (NUR175's rule: the landing never consumes a stack
 	// operand); the note carries the fact beside what follows.
-	next := core.LandingNextEnd
+	next, word := core.LandingNextEnd, core.Value{}
 	if valIdx+1 < e.Tape.Len() {
 		next = core.LandingNextBoundary
 		if tv := e.Tape.At(valIdx + 1); core.IsWord(tv) {
-			next = landingNextForWord(e, tv)
+			if next = landingNextForWord(e, tv); next == core.LandingNextWord {
+				word = tv
+			}
 		}
 	}
-	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0)
+	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0, word)
 }
 
 // landingNextForWord classifies the word after a landed value the way the

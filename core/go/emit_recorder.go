@@ -282,15 +282,18 @@ type EmitRecorder interface {
 	// no branch, so never.
 	MayBeFn(id string) bool
 	// NoteLandingNext says what the check pass found on the tape right after
-	// a value it noted as a re-step landing (NoteReStepLanding): a WORD (the
-	// interpreter's re-step counts it as a candidate argument, so a named fn
-	// with no match RAISES `uncalled_function` rather than staying data), a
-	// statement or group BOUNDARY (no candidate: the value stays data), or
-	// the END of the tape — at the main program no candidate, inside a fn
-	// body the frame's tail markers, which the interpreter counts (NUR186:
-	// `def mk fn [[][Any][m.f]] end (mk)` raises interpreted). Inactive:
-	// no-op.
-	NoteLandingNext(v Value, next LandingNext, beneath bool)
+	// a value it noted as a re-step landing (NoteReStepLanding): a FUNCTION
+	// WORD (the interpreter's re-step plans over it — a named fn with no
+	// match RAISES `uncalled_function` rather than staying data, a
+	// zero-argument fallback fires, a `/q` or typed slot claims it; `word`
+	// is that token, so the VM's landing can walk the run-time fn's
+	// overloads over it, NUR190), a word bound to a VALUE the re-step
+	// collects (LandingNextValue; `word` is the zero Value), a statement or
+	// group BOUNDARY (no candidate: the value stays data), or the END of
+	// the tape — at the main program no candidate, inside a fn body the
+	// frame's tail markers, which the interpreter counts (NUR186: `def mk
+	// fn [[][Any][m.f]] end (mk)` raises interpreted). Inactive: no-op.
+	NoteLandingNext(v Value, next LandingNext, beneath bool, word Value)
 	// NoteStatementEnd records the position of a statement boundary (`;` /
 	// `end`) the pass stepped. The residual's fn-value apply arms ask it
 	// (crossesBoundary) so a value is never applied over an entry pushed
@@ -604,7 +607,7 @@ func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
-func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool)               {}
+func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }

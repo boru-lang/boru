@@ -12901,3 +12901,82 @@ crossing, the trailing arm's placed check); check
 `branch_fn_value_landing_test.go` (the what-follows and beneath notes);
 eng `vm_landing_candidate_test.go` (the raise, the data cases, the
 frame base); the inactive-recorder pins extended.
+
+## S1b — the landing's overload walk: NUR190's typed, Any-typed and anonymous halves closed (2026-09-23)
+
+**The measurement first.** NUR190 was recorded pending an hour earlier:
+a DYNAMIC fn value (a member of a Map a fn returned, `def m (mk) end
+m.f`) under a FUNCTION word is re-stepped by the interpreter over that
+word — execFnDefLiteral plans over the live tape — and the compiled
+landing stood aside for any arg-taking overload (NUR175's rule) while
+the residual apply took the word's RESULT. Probed before the design was
+chosen, with h = `[] -> 42` and `[n:Integer] -> n add 1`, a = `[x:Any]`,
+g = `[f:Function] -> 7`, lam an anonymous unary, z a 0-arg fn:
+
+| | interpreted | compiled before |
+|---|---|---|
+| `m.f z` | `[42 0]` (a typed slot stops at the word; the nullary fallback fires) | `[1]` |
+| `m.f typeof` | `[Integer]` | `[Function]` |
+| `m.l z` | `[fn lam(Integer) 0]` (the anonymous fn parks) | `[1]` |
+| `m.a z` | `signature_error` (the strict barrier strands the claim) | a false `uncalled_function` |
+| `m.g z` | `[7]` (the word's reference) | a false `uncalled_function` |
+| `m.q z` (q = `[]` and `[x:Atom/q]`) | `[z]` (the `/q` capture) | `[42 0]` |
+
+**The design.** The check pass already notes the word after a landing
+(NUR186's what-follows fact); the note now carries the word TOKEN
+(`NoteLandingNext`'s fourth argument), the recorder keeps it by the
+producing event (`landingWord`), the lowering seats it beside the landing
+op by pc (`Program.LandingWords` / `CompiledFn.LandingWords`,
+`seatLandingWord`) and sets bit 1 of the op's argument (`landingArg`),
+and the VM's landing, with the word and nothing beneath, runs the
+interpreter's own plan over a two-token window through the region host
+(`landingWalk`: `core.PlanMatch` over the value and `Word(name)`, the
+same call `DISPATCH_GENERIC` makes) and dispatches on the plan: no
+signature → a named fn raises, an anonymous or macro one parks INERT
+(`Quoted`, the VM's mark for a `/v` read, which `callDynamic` now reads
+as data in both forms — the later residual apply was what turned the
+park into 1); the zero-argument fallback → `landingFire` (the wordless
+landing's apply, factored out); a speculative claim (`specAt`) → the
+stranded-forward diagnostic pointing at the word, built as
+`DISPATCH_GENERIC` builds it; a `/q` claim → stands aside; a
+Function-typed claim → `vmDefer` ("vm:landing-claim"). The walk is the
+matcher's: the zero-argument fallback firing LAST, the `/q` preference
+when a word is next, the Function-slot reference and the Any-slot
+speculation are all `PlanMatch`'s own rules, re-implemented nowhere. One
+rule is execFnDefLiteral's rather than the matcher's, and the generated
+sweep caught the draft that forgot it: the ANONYMOUS-0-ARG PARK
+(ADR-016) — the fallback fires a named fn and parks a lambda or macro
+value, as the wordless landing does; `if/factory · do-catch` (`do [def
+mk fn [[][Function][([] => [1])]] end if true (mk) [2]] error [dot
+code]`, the lambda under the `error` word) answered 1 for `[fn]` until
+the arm was added, and is pinned.
+
+**What stays open, and why.** The `/q` capture and the Function-typed
+reference both need the word's compiled call SKIPPED — and every op after
+it re-planned, since the lowering shaped the program on the model that
+the word runs and the residual arm applies the value over its result (a
+skip leaves the stack one value short of the seat the lowering
+predicted; in a fn body the RET contract too). The faithful compiled
+treatment is a decline at lowering or a bail at the landing, and either
+moves a corpus ceiling by the two coincidental rows (fn-value.tsv's
+L317/L318, compile failures 21 → 23 or runtime defers 8 → 10) under the
+rule that ceilings only fall — the maintainer's call. The walk bails for
+the reference claim (no corpus row; the unit ledger's bail line carries
+the pin, 33 → 34, a pin not a regression) and stands aside for the
+capture (the coincidental rows keep passing; `m.q z` is pinned as
+measured).
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec, 1004 s) passes — compile failures 21 (the ledger's 21), compute gaps 16, islands 0, engine entries 408, runtime defers 8, interp-entry census rows 75, diagnostic parity divergences 348, property fuzz 2 seeds × 1500 programs with 0 divergences, the generated sweep at its pins (305 cells: pass 153, failed 26, islanded 2, diverged 6; 2142 call-form variants: pass 1909, declined 201, diverged 3); the gate report reads 11 open, 2 at end state, 0 tightened, 0 regressions; the lang unit ledger 280 / 34 at its ceilings (the bail line raised by the reference claim's pin); the arity gate re-pinned at 17 for eng/go/vm.go; the `MarkUncompilable` census 92.
+
+**Pins.** `named_fn_candidates_test.go` (lang/go: `TestNamedFnCandidatesWalk`,
+eight parity rows and the stranded claim raising alike on both lanes;
+`TestNamedFnCandidatesOpenShapes` extended with the capture's `[42 0]`
+and the reference's bail); eng `vm_landing_candidate_test.go`
+(`TestReStepLandingWalk`: every arm of the walk, the inert park through
+both apply forms, the wordless fallbacks; `TestLandingWordAt`); check
+`branch_fn_value_landing_test.go` (the word rides with the note);
+compiler `named_fn_candidates_test.go` (the walk bit, the first word
+kept) and `branch_fn_value_test.go` (the word seated at the landing's
+pc); the inactive-recorder pins; the arity gate re-pinned at 17 for
+eng/go/vm.go (both comparisons match the argument rule).
+

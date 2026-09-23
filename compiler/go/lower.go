@@ -644,6 +644,10 @@ type lowerer struct {
 	// seatDynApplyName. Nil for the main code, whose applies name no frame
 	// binding.
 	dynApplyName *map[int]DynApplyHead
+	// landingWords is the emission target's landing-word table
+	// (Program.LandingWords / CompiledFn.LandingWords), keyed by the
+	// target's own pc — see seatLandingWord.
+	landingWords *map[int]LandingWord
 	// storeNames is the emission target's def-name table for promoted
 	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
 	// keyed by the target's own pc — see seatStoreName.
@@ -1004,7 +1008,22 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
+	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
+}
+
+// seatLandingWord records the function word noted after a landing at the pc
+// of the OpReStepLanding about to be emitted (LandingWords), so the VM's
+// landing can walk the run-time fn's overloads over it (NUR190). A landing
+// with no word after it records nothing.
+func (lw *lowerer) seatLandingWord(w LandingWord) {
+	if lw.landingWords == nil || w.Name == "" {
+		return
+	}
+	if *lw.landingWords == nil {
+		*lw.landingWords = map[int]LandingWord{}
+	}
+	(*lw.landingWords)[len(*lw.code)] = w
 }
 
 // emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
@@ -1022,6 +1041,7 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 		return
 	}
 	delete(lw.es.landingAfter, ev.seq)
+	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 

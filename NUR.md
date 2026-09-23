@@ -112,7 +112,7 @@ keep the two in sync in the same commit.
 | [NUR187](#nur187) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date), found the same day: the residual's fn-value apply arms carried a value's collection across a STATEMENT BOUNDARY — `def m {f: inc/v} 7 m.f ; 3` islanded the window to `[7 4]` for the interpreter's `[8 3]`, `m.f ; 5` applied the member to the next statement's 5 (6 for `[fn inc 5]`) — silent, present on `main`. The pass notes every boundary's position (`NoteStatementEnd`) and no arm applies a value over an entry written past a boundary that follows it (`crossesBoundary`); an interior value past a boundary declines | probing NUR159's neighbours, 2026-09-23 |
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
-| [NUR190](#nur190) | A DYNAMIC fn value under a FUNCTION word whose arg-taking overload can CLAIM the word: `def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f y` (`y` a 0-arg fn) is `[y]` interpreted — the `/q` slot captures the word, y never runs — and `[42 42]` compiled: the landing stands aside for a mixed overload and the lead arm applies the fn over the word's RESULT. fn-value.tsv's L317/L318 (`m.f z`, z's result being its own atom) pass by coincidence. The mixed twin `7 m.f y` (`[7 42 42]` on main) declines since the named fn value's candidates (2026-09-23). Recorded and pinned pending 2026-09-23; the fix is the landing's run-time overload walk with the following word in hand (a `/q` slot captures it, an Any-typed slot takes its result, a Function-typed one its reference, a typed slot stops). |
+| [NUR190](#nur190) | PARTLY FIXED 2026-09-23 (the landing's overload walk — the handoff log's entry of that date), found the same day: a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing now walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. OPEN: a `/q` slot CAPTURES the word (`m.q z` is `[42 0]` for `[z]`; fn-value.tsv's L317/L318 pass by coincidence, z's result being its own atom) and a Function-typed slot takes its REFERENCE (`m.g z` is 7 interpreted; the run now bails loudly where it raised) — the word's call is compiled after the landing and cannot be skipped, and the faithful lowering (a decline or a bail) would move a corpus ceiling by the two coincidental rows. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7420,12 +7420,42 @@ beneath, then the word — is the follow-on.
 
 ## NUR190 — a dynamic fn value under a function word its `/q` or Any-typed overload claims {#nur190}
 
-**Status:** RECORDED and pinned pending 2026-09-23 (the named fn value's
-candidates — the handoff log's entry of that date), found when that
+**Status:** PARTLY FIXED 2026-09-23 (the landing's overload walk — the
+handoff log's entry of that date). RECORDED and pinned pending earlier
+the same day (the named fn value's candidates), found when that
 increment's word-after rule turned fn-value.tsv's L317/L318 (`m.f z`, `m
 get 'f' z`) into `[fn h(Atom) z]`: the rows pass on `main` and here by
 COINCIDENCE. Present on `main` (a worktree at 90d557b), silent, default
 lane, exit 0.
+
+**The walk (the closed half).** The landing op carries the function word
+the check pass found after the value (`LandingWords`, by the landing's
+pc; `landingArg`'s bit 1), and with that word and nothing beneath the
+VM's landing runs the interpreter's OWN plan (`core.PlanMatch`, through
+the region host) over a two-token window — the value, the word — and
+answers as the interpreter's re-step does (`landingWalk`): no overload
+takes the word or matches over nothing → a named fn raises
+`uncalled_function`, an anonymous or macro value PARKS inert, so the
+later residual apply leaves it (`m.l z` is `[fn lam(Integer) 0]`, was
+1); the zero-argument fallback → it FIRES (`m.f z` is `[42 0]`, was 1;
+`m.f typeof` Integer, was Function); an Any-typed slot's speculative
+claim → the strict barrier's stranded-forward `signature_error`, the
+interpreter's own (`m.a z`; the wordless landing raised a false
+`uncalled_function`). Pinned in `TestNamedFnCandidatesWalk` (lang), the
+eng landing tests, the compiler's word-table pins.
+
+**Still open, the claims the lowering cannot honour.** A `/q` slot
+CAPTURES the word (`m.q z` is `[42 0]` compiled for the interpreter's
+`[z]`: the walk stands aside and the residual apply takes z's result;
+L317/L318 answer right because z's result is its own atom) and a
+Function-typed slot takes the word's REFERENCE (`m.g z` is 7
+interpreted: the run BAILS loudly now, where it raised). Both need the
+word's compiled call SKIPPED and every later op re-planned — the
+lowering decided the program's shape on the model that the word runs and
+the residual arm applies the value over its result — so the faithful
+compiled treatment is a decline or a bail, and either moves a corpus
+ceiling (compile failures 21, runtime defers 8) by the two coincidental
+rows: the maintainer's call, not this increment's.
 
 **Rule:** the interpreter's re-step of a fn value matches over the live
 tape (execFnDefLiteral; CollectCandidateScan's word arm): a `/q` slot

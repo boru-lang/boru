@@ -507,7 +507,15 @@ user still gets an answer while the case is open:
   overload it raises
   `uncalled_function` (`def m {f: M.inc} def g fn [[][Any][m.f]] end (g)`,
   `m.f three`, `"s" M.inc`), with none it stays data (`m.f`, `m.f ; 5`,
-  `do [m.f]`, `[1] each [drop m.f]`); a 0-arg member fires either way. A
+  `do [m.f]`, `[1] each [drop m.f]`); a 0-arg member fires either way.
+  Under a FUNCTION word a DYNAMIC fn value is re-stepped over that word
+  by the landing's overload walk (2026-09-23, NUR190): the interpreter's
+  own plan over the value and the word decides — the zero-argument
+  fallback fires (`m.f z` with a nullary and a unary overload is `[42
+  0]`), an anonymous fn parks (`m.l z` is `[fn lam(Integer) 0]`), an
+  Any-typed slot's claim strands (`m.a z` raises `signature_error` on
+  both lanes); a `/q` capture stands aside and a Function-typed reference
+  bails, the open half. A
   CONCRETE named fn at a fn or lambda frame's tail (`def mk fn
   [[][Function][M.inc]] end (mk)`, the original witness) DECLINES the unit
   with the interpreter's raise pinned beside it — the unit-level trap is
