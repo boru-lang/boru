@@ -6610,7 +6610,7 @@ func (e *Engine) fnReturnPark(idx, closeIdx int, notReachGroup bool) int {
 	// at its site and never rebound. The general carrier is. Closing it means
 	// making the compiler's placement signal POSITIONAL like this one, rather
 	// than value-keyed — not widening the ID table further.
-	if !v.Quoted && (v.Dynamic || IsFnTypedCarrier(v)) {
+	if !v.Quoted && (v.Dynamic || IsFnTypedCarrier(v) || e.recorderMayBeFn(v)) {
 		// Ask the braid FIRST, and unconditionally. It is not only a
 		// predicate: it RECORDS the placement in ParenPlacedFnIDs for the
 		// compiler's residual lowering, which must not lower a placed lead
@@ -7296,6 +7296,11 @@ func (e *Engine) stepEnd() error {
 	// across statements (ERRORS.8.md §3).
 	e.voidGroups = e.voidGroups[:0]
 	endIdx := e.Pointer
+	// The recorder learns where the boundary fell (NUR187): the residual's
+	// apply arms never carry a fn value's collection across it.
+	if e.Registry != nil && e.Registry.Check != nil && e.Registry.analysisActive() {
+		e.Registry.Check.Recorder().NoteStatementEnd(e.Tape.At(endIdx).Pos())
+	}
 
 	// Find nearest pending forward, stopping at open-paren barriers.
 	fwdIdx := -1
@@ -8843,13 +8848,36 @@ func (e *Engine) markReStepped(v Value) {
 	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
 		return
 	}
-	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
+	if !e.mightBeCallable(v) {
 		return
 	}
 	if e.Registry.Check.ParenReSteppedFnIDs == nil {
 		e.Registry.Check.ParenReSteppedFnIDs = map[string]bool{}
 	}
 	e.Registry.Check.ParenReSteppedFnIDs[v.ID] = true
+}
+
+// mightBeCallable is the "might be callable" gate the collapse marks share
+// (markReStepped, markForwardLeftover): a genuine fn-typed carrier, a
+// dynamic value whose static bound does not exclude Function, or a BRANCH
+// result one of whose arms is a fn value (the recorder's MayBeFn — the
+// merge widened the fn arm's type to Word, so the static tests miss it;
+// NUR159). Requires a registry with check state.
+func (e *Engine) mightBeCallable(v Value) bool {
+	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
+		return true
+	}
+	return e.recorderMayBeFn(v)
+}
+
+// recorderMayBeFn asks the installed recorder whether v is a branch result
+// with a fn-valued arm (EmitRecorder.MayBeFn); false with no registry, no
+// check state or no recorder (the inactive default answers false).
+func (e *Engine) recorderMayBeFn(v Value) bool {
+	if e.Registry == nil || e.Registry.Check == nil || v.ID == "" {
+		return false
+	}
+	return e.Registry.Check.Recorder().MayBeFn(v.ID)
 }
 
 // markForwardLeftover records v as a fn-valued survivor a paren under a
@@ -8862,7 +8890,7 @@ func (e *Engine) markForwardLeftover(v Value) {
 	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
 		return
 	}
-	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
+	if !e.mightBeCallable(v) {
 		return
 	}
 	if e.Registry.Check.ForwardLeftoverFnIDs == nil {

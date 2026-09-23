@@ -91,7 +91,7 @@ keep the two in sync in the same commit.
 | [NUR156](#nur156) | FIXED 2026-09-22 (the quotation-body def reads — the handoff log's entry of that date): two defects, neither module-specific. The check-mode model of `apply` kept a `/v`-marked reach group's QUOTE (the runtime handler clears it), so a quoted concrete lead parked on the pass and the re-step recorded nothing — the model now delivers the value unquoted; and a bare read of a module-scope def bound to a fn-valued member is the interpreter's WORD dispatch in every unit that reads it, where the closure unit captured the VALUE — NoteWordRead names the read on the unit, the closure-body replay arms on a named def read of a tagged member, and the VM's word island dispatches through the registry's own binding. L102 and L103 agree with parity; L104 now DECLINES loudly in the dynamic-scope def family, where its local twin always did. Still open, pinned (`TestDefReadWordDispatchPending`): the same def read at the MAIN program (`5 f` is `[5 fn]`) and inside a named fn unit (a dynamic-scope-read bail). The original text: A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
 | [NUR158](#nur158) | A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
-| [NUR159](#nur159) | A NAMED fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: `def one fn [[][Integer][1]] end if true one/v [2]` is `1` interpreted and `fn one` compiled; the factory (`if true (mk) [2]`) and module-export (`if true M.one [2]`) forms of the same cell agree on both lanes, the lambda and container forms fail to compile | the generated sweep (design/FULL-COMPILATION-REPLAN.0.md S0, 2026-09-18), cell `if` × named-fn |
+| [NUR159](#nur159) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date): the recorder's branch event tells the collapse and the residual arms that a merged value MAY be a fn (`MayBeFn`, with an arg-taking flag), so the check pass notes the re-step landing on it, the lowering lands it after the merge, and the trailing / mixed arms apply an unsettled value over the values beneath it; what is left declines. Was: a NAMED fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: `def one fn [[][Integer][1]] end if true one/v [2]` is `1` interpreted and `fn one` compiled; the factory (`if true (mk) [2]`) and module-export (`if true M.one [2]`) forms of the same cell agree on both lanes, the lambda and container forms fail to compile | the generated sweep (design/FULL-COMPILATION-REPLAN.0.md S0, 2026-09-18), cell `if` × named-fn |
 | [NUR160](#nur160) | FIXED 2026-09-23 (the typed callback's contract): the `apply` word's pending-application arm admits a factory's baked fn CONST beside a produced closure (`producedConstLambda`), and the program's pending apply lowers over an EMPTY window too (a 0-arg closure fires, a wider one stays data) — `7 5 (mk) apply` is `[7 6]`, the named twin `[inc/v]` `[7 6]`, `(mk0) apply` 1 and `5 (mk0) apply` `[5 1]` (both silent on main); the sweep pin is retired. The original text: The apply of a FACTORY-built fn value does not fire on the compiled lane when a value sits below it on the stack: `7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply` is `[7 6]` interpreted and `[7 5 fn (Integer)]` compiled, while the clean-stack `def mk … end 5 (mk) apply` compiles with parity | the generated sweep, the prefix-stack call form of `apply` × factory |
 | [NUR161](#nur161) | An `afn` whose BODY is a fn value read from a container returns the value on both lanes — `def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5` is `fn (Integer)` — but with a value below on the stack the compiled lane APPLIES it to that value: `7 … f 5` is `[7 fn (Integer)]` interpreted and `[8]` compiled | the generated sweep, the prefix-stack call form of `afn` × container RESOLVED 2026-09-22 (loud compile failure) as a side effect of NUR177's fix: the residual no longer carries the container read's identity |
 | [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
@@ -109,6 +109,7 @@ keep the two in sync in the same commit.
 | [NUR184](#nur184) | FIXED 2026-09-23 (the trailing value's re-step — the handoff log's entry of that date): the collapse records the trailing apply only for a lead the interpreter dispatches INSIDE the paren (a bare read of a fn-typed binding, an `apply`-owned lead) or a fn value nothing after the close can collect; a value with a collectable follower is left for the rewind (every fn-valued survivor is marked re-stepped), a paren under a pending forward marks its trailing value as that collection's LEFTOVER (never applied over later values), and the mixed island's interpreter SEALS a compiled closure at its collection's completion as it seals a FnDefInfo. `(2 (mk 1)) 10`, `(2 (mk 1)) 10 20`, `(2 inc2/v) 10 mul`, `xs each [(2 (mk 1)) 10]`, the fold row and the fn-unit `10 mul (2 (mk 1))` agree; `10 mul (2 (mk 1))` at the main program, `def r (2 (mk 1)) end r` and `[(2 (mk 1)) 10]` DECLINE; `(2 (mk 1)) 10 mul` and `(2 (mk 1)) 10 add` DECLINE too (a native poly record that collected the re-step-marked carrier the interpreter dispatches first: `polyCallDeclineReason`, the record's one compile-failure site). The original text: A paren's TRAILING fn value is dispatched like a word AFTER the paren — it forward-collects the tokens past the `)` first and takes the values inside the paren only when nothing collectable follows — and a paren closing UNDER A PENDING FORWARD hands its survivors to that forward, the fn value re-stepping over the forward's result: `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  (2 (mk 1)) 10` is `[2 11]` interpreted and `[3 10]` compiled, `(2 (mk 1)) 10 mul` 22 for 30, `(2 inc2/v) 10` `[2 12]` for `[4 10]`, `10 mul (2 (mk 1))` 21 for 30, `0 fold [add (2 (mk 1))] xs` 6 for 3, `def r (2 (mk 1)) end r` `[fn 2]` for 3; `(2 (mk 1))`, `(2 (mk 1)) "s"`, `(2 (mk 1)) mul 10` and the LEADING form `((mk 1) 2) 10` agree. The compiled trailing-apply record (`recordParenTrailingFnApply`) applies the value over the values INSIDE the paren, right only for the no-follower case. Pinned by `TestParenTrailingFnForwardCollectsPending` (lang/go) | closing NUR180, 2026-09-23 |
 | [NUR185](#nur185) | A `/v` READ of a def-bound closure re-stepped by the residual's mixed-window island: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  def c (mk 3) end 2 c/v 10` is `[2 fn c(Integer) 10]` interpreted (the value spelling delivers the closure inert) and `[2 30]` compiled, `c/v 10` `[fn c(Integer) 10]` for `[30]` — silent, default lane, present on `main` (a worktree at 888f234). The fn-carrier side table's `/v` read noted the def read and the local read but not the VALUE read, so `callResultPlaced` took it for the bare read's word dispatch and the mixed arm islanded the window live. FIXED 2026-09-23 (the trailing value's re-step): the carrier branch notes `NoteValRead` as the Defs path does, `callResultPlaced` treats a `/v`-only delivery as the parked result it is (`placedValRead`), and the rows decline at the render gate (the interpreter names the value after the def). Pinned in `def_bound_closure_park_test.go` | probing NUR184's neighbours, 2026-09-23 |
 | [NUR186](#nur186) | A MODULE fn's value at a factory body's TAIL with nothing beneath it — `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def mk fn [[][Function][M.inc]] end 5 (mk) apply` — raises `uncalled_function: call to 'inc' matched no signature` interpreted (the reach group's lone survivor is a NAMED fn at the pointer, and a name always calls: ADR-011) and answers 6 compiled (the unit returns the value, the apply then applies it); `7 5 (mk) apply` `[7 6]` for the same raise — silent, default lane, present on `main` (a worktree at 3fa1212). The local `[inc/v]` twin agrees (`/v` is inert on both lanes). Pinned pending in `TestModuleFnAtFactoryTailPending` (lang/go) | probing NUR160's neighbours, 2026-09-23 |
+| [NUR187](#nur187) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date), found the same day: the residual's fn-value apply arms carried a value's collection across a STATEMENT BOUNDARY — `def m {f: inc/v} 7 m.f ; 3` islanded the window to `[7 4]` for the interpreter's `[8 3]`, `m.f ; 5` applied the member to the next statement's 5 (6 for `[fn inc 5]`) — silent, present on `main`. The pass notes every boundary's position (`NoteStatementEnd`) and no arm applies a value over an entry written past a boundary that follows it (`crossesBoundary`); an interior value past a boundary declines | probing NUR159's neighbours, 2026-09-23 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7056,7 +7057,39 @@ not the handler line's.
 
 ## NUR159 — a named fn value in a branch position is applied by the interpreter and pushed by the compiled lane {#nur159}
 
-**Status:** Pending (recorded 2026-09-18).
+**Status:** FIXED 2026-09-23 (the branch result's re-step — the handoff
+log's entry of that date). Recorded 2026-09-18.
+
+**The fix, in one paragraph.** The merge widens a fn arm's type to its
+lattice parent (Word), so no static fn test saw the branch's value; the
+recorder's branch event already knew (`eventFlags.mayBeFn`, set when an
+arm is a fn value), and the fact is now a seam every collapse-side and
+residual-side gate asks — `EmitRecorder.MayBeFn`, with a second flag,
+`mayBeFnArgs`, for a fn arm that may TAKE ARGUMENTS (a named fn with a
+parameterised overload, a carrier). The check pass's re-step landing note
+admits a may-be-fn value (`noteReStepLanding`), the lowering lands the
+merged value right after the merge (`emitBranchLanding`: a named 0-arg fn
+fires, a 0-arg lambda parks, an arg-taking fn stands aside — so `if true
+one/v [2]` is 1 on both lanes, in a paren, a def, a fn body and a code
+body alike), and the residual's trailing, trailing-window and mixed arms
+read an UNSETTLED value (arg-taking, neither paren-placed nor `/v`-read)
+as fn-like, so `7 if true inc/v [2]` is 8 and `1 7 if true inc/v [2]` is
+`[1 8]`. The collapse's park and re-step marks ask the same seam, so `7
+(if true inc/v [2])` is the placed pair on both lanes and `(7 (if true
+inc/v [2]))` is 8. What no arm seats declines through existing sites: a
+later dispatch that collected the branch's value (the poly record), an
+arg-taking value interior to the residual past a boundary, a list
+literal's element with siblings, a fn body's residual over a param, and a
+def bound to an arg-taking result (the interpreter installs the fn under
+the name and dispatches the name as a word — the read poisons the
+placement gate). A factory's closure in the arm is classified by its
+recovered shape (`branchArmMayTakeArgs`: a 0-arg lambda parks, so `7 if
+true (mk) [2]` is the pair on both lanes), and the VM's trailing apply
+islands its window as written so an unrecoverable shape is decided at run
+time (`7 if true (mk true) [2]` is `[7 fn]`, its 1-arg twin 8). Pinned in
+`branch_fn_value_test.go` (lang/go: fifty-one parity rows, nineteen sound
+declines); the sweep pin is retired and the `if` × named-fn cell PASSES.
+The original record follows.
 **Found:** the generated sweep of
 [design/FULL-COMPILATION-REPLAN.0.md](design/FULL-COMPILATION-REPLAN.0.md)
 S0 (`test/go/sweep`; the matrix is `test/go/langspec/SWEEP_STATUS.md`),
@@ -7085,7 +7118,7 @@ failure is honest; the named form is the one that answers wrong.
 **Where it belongs:** S1's fn-value convention (FULL-COMPILATION.0.md
 §10.1) — the branch-position landing is one more seat where a fn value
 must obtain a unit or fail to compile, never pass through as data.
-Pinned in `sweepKnownMiscompiles` until then.
+Pinned in `sweepKnownMiscompiles` until then (retired with the fix).
 
 ## NUR160 — the apply of a factory-built fn value does not fire compiled under a dirty stack {#nur160}
 
@@ -7233,6 +7266,50 @@ no 0-arg overload, where the landing's screen leaves the value as data.
 **Where it belongs.** The re-step landing (OpReStepLanding, NUR173) and its
 screens (NUR175). Pinned pending in `TestModuleFnAtFactoryTailPending`
 (lang/go, dirty_stack_apply_test.go).
+
+## NUR187 — the residual's fn-value apply arms cross a statement boundary {#nur187}
+
+**Status:** FIXED 2026-09-23 (the branch result's re-step — the handoff
+log's entry of that date). Recorded the same day, probing NUR159's
+neighbours. Present on `main`, silent, default lane, exit 0.
+
+**Rule:** a statement boundary ends a value's collection on both lanes.
+
+| witness (`inc` adds 1, `m` is `{f: inc/v}`) | interpreted | compiled |
+|---|---|---|
+| `7 m.f ; 3` | `[8 3]` | `[7 4]` |
+| `1 7 m.f ; 3` | `[1 8 3]` | `[1 7 4]` |
+| `m.f ; 5` | `[fn inc(Integer) 5]` | `[6]` |
+| `def one fn [[][Integer][1]] end if true one/v [2] ; 3` | `[1 3]` | `[1 3]` |
+
+**The defect, in one sentence.** The program residual is a flat list of
+values, and the apply arms that classify it — the leading dynamic and
+carrier arms (`OpCallDynamic` over the entries above the lead) and the
+mixed island (`OpCallDynamicMixed`, the whole window re-stepped verbatim)
+— had no notion of the `;` the interpreter stopped at: the member read's
+re-step took the 7 beneath it and left the 3 to the next statement, where
+the island laid `[7 fn 3]` out as one window and the fn collected the 3
+forward; with nothing beneath, the lead arm applied the member to the
+next statement's 5.
+
+**The fix.** The pass notes every statement boundary's position as it
+steps it (`stepEnd` → `EmitRecorder.NoteStatementEnd`, the compiler's
+`stmtEnds`), and `crossesBoundary` orders a value's producing event (or
+its token) against the entries above it: an entry written past a boundary
+that follows the value is a later statement's, and no arm applies the
+value over it — the lead arms stand aside (the value is data beneath the
+later entries, as the interpreter left it: `m.f ; 5` is the pair on both
+lanes), the mixed island declines (an interior value past a boundary has
+no layout here yet, so `7 m.f ; 3` is a loud compile failure — "dynamic
+value precedes residual args"). Only a PROVEN crossing counts: both
+positions known and a recorded boundary strictly between them; a
+def-bound read's position is the name's, which is not recorded, so it
+proves nothing (`def fs (FnUtil.flip sub/v) end (fs 3 10)` keeps its
+arm). A branch record whose condition token carries no position (`if
+true …`) takes the dispatching word's (`branchRecordPos`), or the branch
+family would have crossed unseen. A newline is not a boundary (`7 m.f`
+then `3` on the next line is `[7 4]` on both lanes). Pinned in
+`branch_fn_value_test.go` (lang/go), the member-read rows.
 
 ## NUR185 — a `/v` read of a def-bound closure re-stepped by the mixed-window island {#nur185}
 

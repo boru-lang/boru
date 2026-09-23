@@ -1524,7 +1524,7 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	// applied compiled, because the residual lowering had no way to learn the
 	// lead was placed data (NUR101).
 	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) &&
-		!core.IsFnValueResidual(v) {
+		!core.IsFnValueResidual(v) && !es.MayBeFn(v.ID) {
 		if _, ok := es.MemberFnReadValue(v.ID); !ok {
 			return false
 		}

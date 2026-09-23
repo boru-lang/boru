@@ -157,6 +157,14 @@ type eventFlags struct {
 	// (an arm is an fn value), so a trailing arg over it in the residual lowers
 	// to a runtime-conditional OpCallDynamic (`if c [99] MathUtil.sqrt 16`).
 	mayBeFn bool
+	// mayBeFnArgs refines mayBeFn: a fn-valued arm may TAKE ARGUMENTS (any
+	// overload with a parameter, or a carrier whose overloads are unknown),
+	// so the value the branch returns is UNSETTLED where it lands — the
+	// interpreter's re-step collects the values beneath it (`7 if true inc/v
+	// [2]` is 8) or the token after it. A branch whose fn arms are all
+	// only-0-arg is settled by the merge's guarded landing (emitBranchLanding
+	// fires a named one, parks a lambda) and reads as data past it (NUR159).
+	mayBeFnArgs bool
 	// applyLoop marks a LOOP event whose body runs a per-iteration dynamic
 	// apply (setLoopBodyApply). Its variadic value region may sit in a fn-body
 	// residual under an inert tail: the RET then takes the RetReplay trim
@@ -1043,6 +1051,15 @@ type EmitState struct {
 	// OpReStepLanding right after the event's own op (emitLandingAfter).
 	// Keyed by event seq, valued by the read's position.
 	landingAfter map[int]core.SrcPos
+	// stmtEnds holds the source positions of every statement boundary (`;`
+	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
+	// apply arms ask crossesBoundary before laying a value's apply over the
+	// entries above it: an entry whose position lies past a boundary that
+	// follows the value was pushed by a LATER statement, which the
+	// interpreter's re-step of the value never reached — `7 m.f ; 3` islanded
+	// to [7 4] for the interpreter's [8 3], and `m.f ; 5` applied for the
+	// interpreter's [fn 5] (NUR187).
+	stmtEnds []core.SrcPos
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -4392,7 +4409,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	zeroOut := false
 	// mayBeFn: an arm is an fn VALUE, so the branch result may be callable at
 	// run time — a trailing residual arg over it is a conditional apply.
-	mayBeFn := false
+	mayBeFn, mayBeFnArgs := false, false
 	if b.ConstCond != nil {
 		out, has, ok := resolveArm(bThen, b.ThenStk, "taken")
 		if !ok {
@@ -4429,6 +4446,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 			}
 			if core.IsFnValueResidual(*b.ThenValue) {
 				mayBeFn = true
+				mayBeFnArgs = mayBeFnArgs || es.branchArmMayTakeArgs(*b.ThenValue)
 			}
 			if op.kind == opEvent {
 				// A COMPUTED then value (`if cond (add 1 2) 88`) is eagerly on the
@@ -4467,6 +4485,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 				}
 				if core.IsFnValueResidual(*b.ElsValue) {
 					mayBeFn = true
+					mayBeFnArgs = mayBeFnArgs || es.branchArmMayTakeArgs(*b.ElsValue)
 				}
 				if op.kind == opEvent {
 					// A COMPUTED else value (`if cond [then] (add 1 2)`) is
@@ -4544,6 +4563,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	if mayBeFn {
 		f := es.eventInfo[seq]
 		f.mayBeFn = true
+		f.mayBeFnArgs = mayBeFnArgs
 		es.eventInfo[seq] = f
 	}
 	if !zeroOut && es.branchVariadicResult(b) {
@@ -8383,6 +8403,17 @@ func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value)
 		if core.IsFnTypedCarrier(a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
 			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
 		}
+		// A branch result the interpreter re-steps BEFORE this word runs: an
+		// arg-taking fn arm takes the values beneath it (`7 if true inc/v [2]
+		// add 1` is 9 — inc over 7, then add), which no poly window over the
+		// branch's VALUE models; and even a 0-arg arm the merge's landing
+		// settles was matched at check time against the WIDENED merge type,
+		// so the window's overload and width are the wrong dispatch's (`7 if
+		// true one/v [2] add 1` recorded a three-operand window and raised an
+		// internal error where the interpreter answers [7 2]) (NUR159).
+		if es.MayBeFn(a.ID) && !a.Quoted && !es.applyPending(a.ID) {
+			return "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
+		}
 	}
 	return ""
 }
@@ -8576,6 +8607,70 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 	es.landingAfter[pr.seq] = pos
 }
 
+// NoteStatementEnd records a statement boundary's position (EmitRecorder;
+// the stmtEnds field). An unknown position (no row) is nothing to order by
+// and is dropped.
+func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
+	if !es.Active() || pos.Row == 0 {
+		return
+	}
+	es.stmtEnds = append(es.stmtEnds, pos)
+}
+
+// srcPosBefore orders two known source positions (row, then column).
+func srcPosBefore(a, b core.SrcPos) bool {
+	return a.Row < b.Row || (a.Row == b.Row && a.Col < b.Col)
+}
+
+// residualPos is where a residual entry was written: its producing event's
+// own position (the word or branch that produced it), else the value's
+// token position. A zero row is unknown.
+func (es *EmitState) residualPos(v core.Value) core.SrcPos {
+	// A def-bound READ was written where the NAME is, not where its value
+	// was produced (`def fs (FnUtil.flip sub/v) end (fs 3 10)`: the
+	// producer sits before the `end`, the read after it); the read's own
+	// position is not recorded, so it stays unknown and proves nothing.
+	if es.isDefRead(v) {
+		return core.SrcPos{}
+	}
+	if pr, ok := es.producedBy[v.ID]; ok && v.ID != "" {
+		if ev := es.eventBySeq(pr.seq); ev != nil {
+			if pos := eventPos(*ev); pos.Row != 0 {
+				return pos
+			}
+		}
+	}
+	return v.Pos()
+}
+
+// crossesBoundary reports whether any entry of rest was written past a
+// statement boundary that follows v (stmtEnds): v's re-step ended at that
+// boundary, so applying v over such an entry — the lead arms' OpCallDynamic,
+// the mixed island's verbatim window — feeds a later statement's value to an
+// earlier call (NUR187). Only a PROVEN crossing answers true: both positions
+// known and a recorded boundary strictly between them.
+func (es *EmitState) crossesBoundary(v core.Value, rest []core.Value) bool {
+	if es == nil || len(es.stmtEnds) == 0 {
+		return false
+	}
+	from := es.residualPos(v)
+	if from.Row == 0 {
+		return false
+	}
+	for _, r := range rest {
+		to := es.residualPos(r)
+		if to.Row == 0 {
+			continue
+		}
+		for _, end := range es.stmtEnds {
+			if srcPosBefore(from, end) && srcPosBefore(end, to) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // containerFnAutoDispatchRisk reports whether a get-family dispatch may
 // surface a container member the interpreter could AUTO-DISPATCH after it
 // lands: a function value carrying a 0-arg-satisfiable signature. Probe-
@@ -8760,6 +8855,7 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		}
 		return
 	}
+	es.noteMayBeFnRead(id, name)
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
@@ -9374,6 +9470,96 @@ func (es *EmitState) applyPending(id string) bool {
 // ApplyPending is applyPending on the recorder seam (core's paren collapse
 // asks it for a Dynamic last value).
 func (es *EmitState) ApplyPending(id string) bool { return es.applyPending(id) }
+
+// MayBeFn is the recorder seam over the branch event's mayBeFn flag (the
+// EmitRecorder doc): the value is a branch result one of whose arms is a fn
+// VALUE. The residual's fn-value arms and the re-step landing's note ask it
+// beside the static fn tests, which the merge's widened type defeats.
+func (es *EmitState) MayBeFn(id string) bool {
+	if es == nil || id == "" {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	return ok && es.eventInfo[pr.seq].mayBeFn
+}
+
+// fnValueMayTakeArgs reports whether a fn VALUE in a branch arm may take
+// arguments at run time: a concrete fn with any parameterised overload, or a
+// carrier whose overloads are unknown. Only-0-arg fns (and 0-arg lambdas,
+// which the landing parks) are settled by the merge's guarded landing.
+func fnValueMayTakeArgs(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return true
+	}
+	return !core.FnValueOnlyZeroArgSigs(fd)
+}
+
+// branchArmMayTakeArgs is fnValueMayTakeArgs for a branch ARM's value, asking
+// the producer first: a factory's returned closure whose shape the pass
+// recovered (producerReturnedClosureArity — `def mk fn [[][Function][([] =>
+// [1])]] end if true (mk) [2]`) takes arguments iff its arity is positive;
+// a 0-arg lambda PARKS as data (the anonymous park), so the branch is
+// settled and `7 if true (mk) [2]` lays out as the pair on both lanes
+// (read as unsettled, the trailing arm rotated it to `[fn 7]`).
+func (es *EmitState) branchArmMayTakeArgs(v core.Value) bool {
+	if n, ok := es.producerReturnedClosureArity(v.ID); ok {
+		return n > 0
+	}
+	return fnValueMayTakeArgs(v)
+}
+
+// mayBeFnArgsOf reports whether id is a branch result with an ARG-TAKING fn
+// arm (eventFlags.mayBeFnArgs), whatever settled it since.
+func (es *EmitState) mayBeFnArgsOf(id string) bool {
+	if es == nil || id == "" {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	return ok && es.eventInfo[pr.seq].mayBeFnArgs
+}
+
+// noteMayBeFnRead poisons the placement gate for a READ of a def bound to a
+// branch result with an arg-taking fn arm (`def x (if true inc/v [2]) x 5`):
+// the interpreter installs the fn under the name and dispatches the bare
+// name as a WORD over the live stack (6; `x` alone raises `cannot call
+// x`), and delivers the RENAMED value for `x/v` (`fn x`), where the
+// lowering substitutes the branch's own value for every read. The read
+// declines through the arm-read seam, as an arm-bound read does (NUR159).
+func (es *EmitState) noteMayBeFnRead(id, name string) {
+	if !es.mayBeFnArgsOf(id) || es.trapAt != 0 || es.armReadCompileFailure != "" {
+		return
+	}
+	es.armReadCompileFailure = "read of `" + name + "`, bound to a branch result whose fn arm takes arguments: " +
+		"the interpreter dispatches the name as a word over the live stack, which the value substitution cannot seat (NUR159)"
+}
+
+// mayBeFnUnsettled reports whether v is a branch result with an ARG-TAKING
+// fn arm (eventFlags.mayBeFnArgs) that nothing has settled: a paren placed
+// it as data (placedNotReStepped) or a `/v` read delivered it inert
+// (placedValRead), and either is the interpreter's own park. Every arm and
+// gate that asks "could the interpreter re-step this value over its
+// neighbours?" asks this (NUR159).
+func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
+	if es == nil || v.ID == "" || v.Quoted {
+		return false
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok || !es.eventInfo[pr.seq].mayBeFnArgs {
+		return false
+	}
+	return !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
+}
+
+// fnLikeResidual reports whether a residual entry may be a callable at run
+// time: a gradual value, a fn value, a fn-typed carrier, or an unsettled
+// branch result with an arg-taking fn arm — the one test the trailing and
+// mixed arms share, so `7 if true inc/v [2]` (8 interpreted: the re-stepped
+// fn takes the 7 beneath) is the trailing apply it is and not the data the
+// widened merge type read (NUR159).
+func (es *EmitState) fnLikeResidual(v core.Value) bool {
+	return v.Dynamic || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(v) || es.mayBeFnUnsettled(v)
+}
 
 // PendingClosureApply is the recorder seam the check pass's user-fn record
 // site asks when a fn VALUE's re-step dispatch reaches it with no name to
@@ -10284,8 +10470,11 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 	// `[(2 (mk 1)) 10]` is `[[2 11]]` interpreted — reaches here as the
 	// three elements `[2, carrier, 10]` with the carrier re-step-marked and
 	// no event consuming it; assembling them baked `[2 fn 10]`.
+	// A branch result with an unsettled arg-taking fn arm the same way
+	// (NUR159): `[7 if true inc/v [2]]` is `[[8]]` interpreted, and `[if true
+	// inc/v [2] 5]` is `[[6]]`.
 	for i := range ins {
-		if len(ins) >= 2 && es.parenReSteppedFn(ins[i]) {
+		if len(ins) >= 2 && (es.parenReSteppedFn(ins[i]) || es.mayBeFnUnsettled(ins[i])) {
 			return false
 		}
 	}
@@ -11569,7 +11758,16 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		lw.dynOpPos = pos
 		return residual, OpCallDynApplyTop, ""
 	}
-	if len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
+	// A lead with a STATEMENT BOUNDARY between it and the entries above it
+	// (crossesBoundary) never applies over them: they were pushed by a later
+	// statement (`m.f ; 5` is `[fn 5]` interpreted, 6 applied), and the
+	// lead's own re-step — the landing the lowering emitted after the read
+	// or the merge fired a 0-arg fn and stood aside for the rest — had
+	// nothing beneath it to take, so the value is settled where it sits:
+	// every lead arm here stands aside and the unhandled loop below seats it
+	// as data (NUR187).
+	leadCrossed := len(residual) >= 2 && es.crossesBoundary(residual[0], residual[1:])
+	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
 	}
@@ -11604,7 +11802,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// over them is a later statement's operand fed to an earlier call —
 	// `def r (2 (mk 1)) end r` compiled 3 for the interpreter's `[fn 2]`
 	// (NUR184). With no arm to seat it the carrier declines below.
-	if !applyDynamic && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
+	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
 		!es.forwardLeftoverFn(residual[0]) {
 		applyDynamic = !anyFnOrDynamicTail(residual)
@@ -11652,7 +11850,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// fn arm's type to its lattice parent — Word — so the disjunct carrier no
 	// longer reads as Function; the branch-event mayBeFn flag is the precise
 	// signal the static residual type cannot recover.)
-	if !applyDynamic && len(residual) >= 2 {
+	if !applyDynamic && !leadCrossed && len(residual) >= 2 {
 		if pr, ok := es.producedBy[residual[0].ID]; ok && es.eventInfo[pr.seq].mayBeFn {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
@@ -11720,6 +11918,22 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		// shape is a real apply the machinery above owns.
 		if es.placedNotReStepped(residual[i]) || es.callResultPlaced(residual[i]) {
 			continue
+		}
+		// …and a lead a statement boundary separates from the entries above
+		// it (the arms above stood aside for it): nothing beneath it to take
+		// and nothing of the later statement's to collect, so the
+		// interpreter's own re-step left it exactly where the lowering's
+		// landing did — data under the later entries (NUR187).
+		if i == 0 && leadCrossed {
+			continue
+		}
+		// A branch result with an unsettled arg-taking fn arm INTERIOR to the
+		// residual, past a boundary (`7 if true inc/v [2] ; 3` — the mixed
+		// island declined it): the interpreter applies it over the values
+		// beneath and leaves the later entries, a layout no arm here seats
+		// (NUR159).
+		if es.mayBeFnUnsettled(residual[i]) {
+			return residual, 0, "a branch result whose fn arm re-steps over the values beneath precedes residual args (NUR159)"
 		}
 		if residual[i].Dynamic &&
 			core.SigTypeMatches(residual[i], core.TFunction) {
@@ -11815,8 +12029,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	}
 	fnv := residual[1]
 	pr, isEvent := es.producedBy[fnv.ID]
-	if !isEvent || pr.idx != 0 ||
-		!(fnv.Dynamic || core.IsFnValueResidual(fnv) || core.IsFnTypedCarrier(fnv)) {
+	if !isEvent || pr.idx != 0 || !es.fnLikeResidual(fnv) {
 		return residual, false
 	}
 	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
@@ -11851,7 +12064,7 @@ func (es *EmitState) trailingWindowApplyShape(residual []core.Value) bool {
 	}
 	last := len(residual) - 1
 	for i, rv := range residual {
-		if (rv.Dynamic || core.IsFnValueResidual(rv) || core.IsFnTypedCarrier(rv)) != (i == last) {
+		if es.fnLikeResidual(rv) != (i == last) {
 			return false
 		}
 	}
@@ -11872,7 +12085,7 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 	}
 	dynIdx := -1
 	for i, rv := range residual {
-		if rv.Dynamic || core.IsFnValueResidual(rv) || core.IsFnTypedCarrier(rv) {
+		if es.fnLikeResidual(rv) {
 			if dynIdx != -1 {
 				return 0, false // more than one dynamic / fn value
 			}
@@ -11892,6 +12105,13 @@ func (es *EmitState) mixedDynamicApplyShape(residual []core.Value) (int, bool) {
 	}
 	if pr, ok := es.producedBy[residual[dynIdx].ID]; !ok || pr.idx != 0 {
 		return 0, false // not event-produced — cannot promote to a local
+	}
+	// An entry ABOVE the value pushed past a statement boundary its re-step
+	// did not cross (`7 m.f ; 3` — the fn takes the 7 and the 3 is the next
+	// statement's): the verbatim island would collect it forward, so the
+	// shape declines (NUR187).
+	if es.crossesBoundary(residual[dynIdx], residual[dynIdx+1:]) {
+		return 0, false
 	}
 	return dynIdx, true
 }
@@ -12268,10 +12488,14 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// must not read as an apply lead — `2 r 3` over a def-bound factory
 	// closure is `[2 fn]` on both lanes. A result the `apply` WORD
 	// dispatches on purpose keeps the boundary (appliedByWord).
+	// A BRANCH result with a fn-valued arm (MayBeFn) is a boundary too: the
+	// merge's widened type hides the fn, and reordering `7 if true inc/v [2]`
+	// promoted the branch off the simulated stack before the trailing arm
+	// could rotate it, leaving `[7 fn inc]` for the interpreter's 8 (NUR159).
 	var forceOrder map[int]bool
 	residualHasFnOrDynamic := false
 	for _, rv := range residual {
-		if (rv.Dynamic || core.IsFnValueResidual(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
+		if (rv.Dynamic || core.IsFnValueResidual(rv) || es.mayBeFnUnsettled(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
 			residualHasFnOrDynamic = true
 			break
 		}
@@ -12971,6 +13195,7 @@ func (es *EmitState) NoteValRead(id, name string) {
 	if !es.Active() || id == "" {
 		return
 	}
+	es.noteMayBeFnRead(id, name)
 	es.aliasValRead(id, name)
 	if es.valReadNoted == nil {
 		es.valReadNoted = map[string]bool{}
@@ -13171,6 +13396,18 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 	// compiled to [9 fn] against the interpreter's [10]. The replay accounting
 	// below is a plain-unit concern and still skips a closure.
 	rec.outOpsVals = vals
+	// A branch result with an UNSETTLED arg-taking fn arm in a unit's
+	// residual is re-stepped by the interpreter inside the frame — over the
+	// frame's own values beneath it (`def g fn [[m:Integer][Any][m if true
+	// inc/v [2]]]` is 8, a code body's element the same: `xs each [if true
+	// inc/v [2]]` is [2 3]) or, with nothing to take, raised as an uncalled
+	// named fn at the frame's tail (NUR186's arm). No unit-side layout
+	// models either; the unit declines (NUR159).
+	for _, v := range vals {
+		if es.mayBeFnUnsettled(v) {
+			return "a branch result whose fn arm the frame re-steps sits in the residual (NUR159)"
+		}
+	}
 	if rec.closure && !rec.plainLambda() {
 		// One replay a code body DOES take: its top value re-stepped by the
 		// interpreter's pointer inside the body (noteClosureBodyReplay).

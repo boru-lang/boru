@@ -990,9 +990,19 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		// seam's own no-match fallback re-steps the value TRAILING — the
 		// stack-order inputs then the value — and would answer `[s fn]`,
 		// the trailing spelling's residual, silently (NUR178's sibling).
-		if !trailing && compiler.ClosureIsFnValue(fnVal) {
+		// The TRAILING form's no-match is the window as written too — the
+		// arg beneath, the fn on top: `7 if true (mk true) [2]` over a factory
+		// whose closure turns out 0-arg is `[7 fn]` interpreted (the anonymous
+		// park), and the rotation the lowering made for the apply must be
+		// undone, as it is for a non-callable value below (NUR159's probe:
+		// `[fn 7]` without this arm).
+		if compiler.ClosureIsFnValue(fnVal) {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
-				return stack, nil, nil
+				if !trailing {
+					return stack, nil, nil
+				}
+				rotated := append(stack[:base:base], args...)
+				return append(rotated, fnVal), nil, nil
 			}
 		}
 		// Pass fnVal directly so the payload's InShape rides along (invokeClosure
@@ -1076,9 +1086,19 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
 	// auto-applies the Function to the forward args exactly as a nested Run.
+	// The TRAILING form islands the window AS WRITTEN — the arg beneath, the
+	// fn on top, re-stepped over it — which answers the same when the fn
+	// takes the arg and leaves `[arg fn]` when it does not (a 0-arg lambda
+	// parks: `7 if true (mk true) [2]` is `[7 fn]` interpreted), where the
+	// fn-first layout parked the fn and then pushed the arg (`[fn 7]`).
 	island := make([]core.Value, 0, n+1)
-	island = append(island, fnVal)
-	island = append(island, args...)
+	if trailing {
+		island = append(island, args...)
+		island = append(island, fnVal)
+	} else {
+		island = append(island, fnVal)
+		island = append(island, args...)
+	}
 	results, err := vc.islandRun(reg, island)
 	if err != nil {
 		return nil, nil, stampAt(err, curDebug, pc, reg)

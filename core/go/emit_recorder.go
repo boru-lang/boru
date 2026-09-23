@@ -256,6 +256,21 @@ type EmitRecorder interface {
 	// as the paren-bounded apply it is, rather than as a leading dynamic
 	// value (the twenty-seventh increment).
 	ApplyPending(id string) bool
+	// MayBeFn reports whether the value id is a BRANCH result one of whose
+	// arms is a fn VALUE (`if c one/v [2]`) — callable at run time on that
+	// arm, data on the other. The merge widens the fn arm's type to its
+	// lattice parent (Word), so the carrier no longer reads as Function
+	// and the collapse-side gates (the re-step landing's note) would step
+	// past it as data where the interpreter re-steps whatever the branch
+	// returned: `if true one/v [2]` is 1 interpreted (NUR159). Inactive:
+	// no branch, so never.
+	MayBeFn(id string) bool
+	// NoteStatementEnd records the position of a statement boundary (`;` /
+	// `end`) the pass stepped. The residual's fn-value apply arms ask it
+	// (crossesBoundary) so a value is never applied over an entry pushed
+	// past a boundary its re-step did not cross — `7 m.f ; 3` islanded to
+	// `[7 4]` for the interpreter's `[8 3]` (NUR187). Inactive: no-op.
+	NoteStatementEnd(pos SrcPos)
 	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
 	// application over a closure this pass PRODUCED whose body is `body`
 	// (matched by the body's first token position — one lambda source, one
@@ -561,6 +576,8 @@ func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, Src
 func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
+func (inactiveEmit) MayBeFn(string) bool                                    { return false }
+func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }

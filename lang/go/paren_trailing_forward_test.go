@@ -89,7 +89,10 @@ func TestParenTrailingFnSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		{ptfMk + `10 mul (2 (mk 1))`, "unconsumed fn-value carrier", "[21]"},
 		{ptfMk + `def r (2 (mk 1)) end r`, "fn value precedes residual args", "[fn (Integer) 2]"},
-		{ptfMk + `def r (2 (mk 1)) end r 5`, "fn value precedes residual args", "[fn (Integer) 2 5]"},
+		// The `end` between the leftover closure and the values after it is a
+		// proven statement boundary (NUR187): the closure is data beneath them
+		// on both lanes, and the row declines at the render gate instead.
+		{ptfMk + `def r (2 (mk 1)) end r 5`, "unconsumed fn-value carrier", "[fn (Integer) 2 5]"},
 		{ptfMk + `[(2 (mk 1)) 10]`, "unknown provenance", "[[2 11]]"},
 		{ptfMk + `(2 (mk 1)) 10 mul`, "the paren's rewind re-steps first", "[22]"},
 		{ptfMk + `(2 (mk 1)) 10 add`, "the paren's rewind re-steps first", "[13]"},

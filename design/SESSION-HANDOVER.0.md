@@ -128,7 +128,17 @@ branch-carried def"**; the re-estimate is
    baked fn const under a dirty stack, and over an empty window; the
    sweep pin retired), and found NUR186 (a module fn's value at a
    factory body's tail raises interpreted, returns compiled — pinned
-   pending). Most of the interp-entry census rows are still this family.
+   pending). The branch result's re-step (2026-09-23, the handoff log's
+   entry of that name) closed NUR159 — the sweep's `if` × named-fn cell:
+   the recorder's branch event tells every collapse-side and
+   residual-side gate that a merged value MAY be a fn (`MayBeFn`, with
+   an arg-taking flag), so `if true one/v [2]` is 1 everywhere and `7 if
+   true inc/v [2]` is 8 — and found and closed NUR187 on the way: the
+   residual's apply arms carried a fn value's collection across a
+   statement boundary (`7 m.f ; 3` islanded to `[7 4]` for `[8 3]`, `m.f
+   ; 5` applied for `[fn 5]`); the pass notes every boundary's position
+   now and no arm applies a value over a later statement's entry. Most
+   of the interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.
@@ -684,7 +694,7 @@ state**:
 | type-soundness violations | 4 | 0 | checker debt the expansion exposed; 5 → 4 on 2026-09-22 (NUR156: L102 is sound once the `apply` model unquotes its lead) |
 | known divergences (`knownDivergences`) | 1 | 0 | NUR154 — the ledger is pinned both ways; NUR155's row left it on 2026-09-23 (the typed callback's contract: it agrees), NUR156's three rows on 2026-09-22 (two agree, one declines loudly) |
 | `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25 and the count ONLY FALLS — a new compile-failure site is new debt, which is why a screen must decline through an existing site rather than latch its own; handlers 114 → 94 on the migration line |
-| the generated sweep (S0): seeds failing / islanded / diverged | 29 / 2 / 7 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR159–161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22, the `word` × factory seed 2026-09-23 (NUR181) |
+| the generated sweep (S0): seeds failing / islanded / diverged | 29 / 2 / 6 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22, the `word` × factory seed 2026-09-23 (NUR181), the `if` × named-fn seed 2026-09-23 (NUR159, the branch result's re-step) |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |
 
 **Two ledgers the gate table does not show, and a third that is easy to miss:**

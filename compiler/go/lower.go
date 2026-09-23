@@ -1001,6 +1001,24 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	lw.emit(OpReStepLanding, 0, pos)
 }
 
+// emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
+// check pass noted on the merged value (NoteReStepLanding, admitted through
+// MayBeFn) lowers to an OpReStepLanding right after the merge, over the one
+// value on top — a named 0-arg fn fires (`if true one/v [2]` is 1), an
+// arg-taking one and the data arm's value stay as they are (NUR159). The
+// note is consumed so a later emitter cannot land it twice.
+func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
+	if lw.es == nil {
+		return
+	}
+	pos, noted := lw.es.landingAfter[ev.seq]
+	if !noted {
+		return
+	}
+	delete(lw.es.landingAfter, ev.seq)
+	lw.emit(OpReStepLanding, 0, pos)
+}
+
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
 // (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
@@ -3879,6 +3897,8 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 			// RET may absorb the run, so mark the merge variadic.
 			if thenMulti || lw.variadic[br.thenOut.idx] {
 				lw.variadic[ev.seq] = true
+			} else {
+				lw.emitBranchLanding(ev)
 			}
 			lw.note()
 		}
@@ -4060,6 +4080,12 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 	}
 	if br.hasThenOut || br.hasElsOut {
 		lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
+		// The guarded landing over the merged value, where both arms net one
+		// (the landing tests ONE value): a fn-valued arm's result is what the
+		// interpreter re-steps after `if` returns (NUR159).
+		if br.hasThenOut && br.hasElsOut && !thenMulti && !elseMulti {
+			lw.emitBranchLanding(ev)
+		}
 		// A MULTI-VALUE arm (either side leaves >1 runtime value) makes the merge
 		// runtime-variable-count even when both arms "net a value": the two arms
 		// can leave different counts (`if c [1 2] [3]`) and the interpreter leaves

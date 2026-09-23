@@ -761,7 +761,13 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// whitelist incomplete: a dispatch result splices at the pointer and is
 	// re-stepped with no collapse to see it. A producer list can only ever be
 	// as complete as the shapes measured so far; the step itself cannot.
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) {
+	//
+	// A BRANCH result one of whose arms is a fn VALUE is callable on that arm
+	// (the recorder's MayBeFn): the merge widened the fn arm's type to Word,
+	// so neither static test above sees it, and the interpreter re-steps
+	// whatever `if` returned — `if true one/v [2]` fires the named 0-arg fn
+	// and answers 1 (NUR159).
+	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
