@@ -266,3 +266,39 @@ func TestNoteClosureBodyReplayDefRead(t *testing.T) {
 		t.Errorf("the window carries the word table under the binding name: %+v", rec.dynFrameWords)
 	}
 }
+
+// TestCallAppliedClosureUnit pins NUR181's classifier: a dyn-method event
+// names its callee unit when the recording resolved it (calleeKnown), a
+// fn-value apply names the closure operand's unit, and everything else —
+// a plain native call, a promoted operand, an unknown unit — names none.
+func TestCallAppliedClosureUnit(t *testing.T) {
+	es := NewEmitState()
+	es.fnRecs = []*fnUnitRec{{}, {}}
+	closureOp := EmitOperand{kind: opClosure, closureUnit: 1}
+	if _, ok := es.callAppliedClosureUnit(nil); ok {
+		t.Error("nil event: none")
+	}
+	if _, ok := es.callAppliedClosureUnit(&EmitEvent{kind: evCall, call: emitCall{word: "add", ops: []EmitOperand{closureOp}}}); ok {
+		t.Error("a plain native call names no callee unit")
+	}
+	if u, ok := es.callAppliedClosureUnit(&EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{closureOp}}}); !ok || u != 1 {
+		t.Errorf("a fn-value apply of a closure operand names its unit: %d %v", u, ok)
+	}
+	if _, ok := es.callAppliedClosureUnit(&EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{{kind: opLocal}}}}); ok {
+		t.Error("a promoted operand names none")
+	}
+	if _, ok := es.callAppliedClosureUnit(&EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{{kind: opClosure, closureUnit: 9}}}}); ok {
+		t.Error("an unknown unit names none")
+	}
+	if _, ok := es.callAppliedClosureUnit(&EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: []EmitOperand{{kind: opEvent, idx: 77, resIdx: 1}}}}); ok {
+		t.Error("a second-result event operand names none")
+	}
+	dm := &EmitEvent{kind: evCall, call: emitCall{word: "r", ops: []EmitOperand{{kind: opLocal}}, dynMethod: &DynMethodSpec{Word: "r", NArgs: 1, NOut: 1}}}
+	if _, ok := es.callAppliedClosureUnit(dm); ok {
+		t.Error("a dyn-method over a promoted value with no recorded callee names none")
+	}
+	dm.call.calleeUnit, dm.call.calleeKnown = 0, true
+	if u, ok := es.callAppliedClosureUnit(dm); !ok || u != 0 {
+		t.Errorf("a dyn-method with its callee recorded names it: %d %v", u, ok)
+	}
+}

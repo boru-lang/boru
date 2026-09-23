@@ -103,7 +103,7 @@ keep the two in sync in the same commit.
 | [NUR178](#nur178) | A paren over a PRODUCED closure — a compiled factory call's result re-stepped by the paren's rewind, `((mk 1) 2)` — left its window on the tape for a LATER word to collect: `((mk 1) 2) mul 10` compiled 21 (mul over 2 and 10, the closure over the product) for the interpreter's 30, `((mk 1) 2.5) mul 2` 6.0 for 7.0 — silent, default lane, exit 0, present on `main`; `add` agreed by arithmetic. The NUR121 hazard mark WAS set, and `hazardLead` exempted the lead on the INNER paren's placed mark whatever the outer paren had done. FIXED 2026-09-22 (the curried chain): the collapse records the re-stepped produced lead's apply as an event (core `parenProducedLeadApplyIdx` over the `ProducedLeadApplies` seam), and a collection made AFTER the re-stepping paren closed is a leak the hazard declines (`hazardAfterReStep`); the leading form's no-match order (`((mk 1) "s")` compiled `[s fn]` for `[fn s]`) is closed in the same landing | the curried chain, callbacks.tsv L151, 2026-09-22 |
 | [NUR179](#nur179) | Every fn-value-call op that hands a compiled fn-VALUE closure its window bound a TWO-param closure's first param to the value farthest from it: `(2 3 (mk2 1))` compiled 24 for the interpreter's 33, `7 5 (mk2 1)/v apply` 76 for 58, `1 2 (kk 7) apply` 19 for 28, a Function param's `(2 3 g)` 24 for 33, a capturing closure MEMBER's `(m.g 2 3)` 33 for 24, and the residual arm's `((mk2 1) 2 3)` 33 for 24 — silent, default lane, present on `main`. The ops build their window POSITIONALLY (args[0] → the first param) and handed it to the token seam, whose fn-value arm (S1b-2, `invokeFnValueClosure`) takes STACK order and reverses it itself; every pin was a one-argument window or a commutative body. FIXED 2026-09-22: `invokeClosurePositional` (eng/go/vm.go) re-stacks a positional window for a fn-value closure | the curried chain's two-argument probes, 2026-09-22 |
 | [NUR180](#nur180) | A trailing paren apply whose result the recorder can only type Any — an event lead (a factory's closure), an anonymous lambda (a count contract) — inside an UNNAMED-param frame (an each or fold body, `fn [[Integer] …]`), consumed by a typed word: `xs each [(2 (mk 1)) mul 10]` compiles `[10 10 10]` for `[30 30 30]`, `0 fold [add (2 (mk 1))] xs` 3 for 6 — silent, present on `main`. The checker's recovery re-matches the word over the frame's gradual input (`mul/2 (poly)` over the element and the result, the written 10 pushed after) instead of the written argument. MITIGATED 2026-09-22: a NAMED concrete lead's declared return types the result (`concreteFnSingleReturn`), so `(2 inc2/v) mul 10` in an each body is 40 on both lanes; the curried-chain arm stands aside in unnamed frames. The Any-result rows stay open, pinned to fail when they agree | the curried chain's each-body probes, 2026-09-22 |
-| [NUR181](#nur181) | A def-bound factory closure applied through the READ model nets a closure the re-step landing applies where the interpreter parks it: `def mk3 … def r ((mk3 1) 2) end r 3` — the def's pending collection takes the paren's survivors as ARGUMENTS, so r is mk3's closure and 2 stays on the stack — is `[2 fn (Integer)]` interpreted (the call result is placed) and 6 compiled (`CALL_DYN_METHOD r/1; RESTEP_LANDING` applies the closure to the 2 beneath) — silent, present on `main`, measured on a worktree at 917ecf0. Not this landing's: recorded and pinned to fail when it moves | probing the def-bound chain, 2026-09-22 |
+| [NUR181](#nur181) | FIXED 2026-09-23 (the def-bound closure park — the handoff log's entry of that date): a call result is parked where it lands on the compiled lane too, whatever route the call took — the recorder resolves a shaped method call's callee unit from the method value's own producer and a fn-value apply's from its closure operand (`callAppliedClosureUnit`), `callResultPlaced` reads both, and the program residual's ordering treats a parked result as data; `2 r 3`, `(r 3)`, `7 (r 3) 2`, `r 3 4`, `2 ((mk3 1) 3)` and `5 (mk 3)` (which declined) all agree. The original text: A def-bound factory closure applied through the READ model nets a closure the re-step landing applies where the interpreter parks it: `def mk3 … def r ((mk3 1) 2) end r 3` — the def's pending collection takes the paren's survivors as ARGUMENTS, so r is mk3's closure and 2 stays on the stack — is `[2 fn (Integer)]` interpreted (the call result is placed) and 6 compiled (`CALL_DYN_METHOD r/1; RESTEP_LANDING` applies the closure to the 2 beneath) — silent, present on `main`, measured on a worktree at 917ecf0. Not this landing's: recorded and pinned to fail when it moves | probing the def-bound chain, 2026-09-22 |
 | [NUR182](#nur182) | The whole-frame replay (OpCallDynFrame) re-stepped a paren-PLACED value: a fn unit whose body left `(ops.inc)` — a member read the paren placed — above its input compiled the APPLY, `def f fn [[Integer][Any][(ops.inc)]]  f 5` answering 6 for the interpreter's `fn (Integer)`, and `[[Integer][Integer][(ops.inc)]]`, `[5 (ops.inc)]`, `[(ops.inc) 5]`, `[x (ops.inc)]` answering 6 where the interpreter raises its return-count / return-type error — silent, default lane, present on `main`. A fn frame never re-steps a placed value (the re-step of a native's fn result is the CALLER's, NUR124), but noteDynFrameReplay counted it as the window's applicable and the replay island re-steps every token it is handed. FIXED 2026-09-22 (the quotation-body container reads): a placed value no enclosing paren re-stepped is data — skipped as an applicable, a blocker for any window beside one, re-pushed by the promotion; a `do` body's placed value with siblings stays declined, its caller re-steps it | the quotation-body container reads' probes, 2026-09-22 |
 | [NUR183](#nur183) | A fn-valued container member read as the LAST token of a code body over a DUPLICATED element compiled the member as data: `def ops {inc: (fn [[n:Integer][Integer][n add 1]])}  each [dup ops.inc] [1 2 3]` is `[2 3 4]` interpreted (the reach collapse re-steps the member over the copy) and `[fn fn fn]` compiled — silent, default lane, present on `main`. The same root as each-variants L205 / fold-map-filter L215 / module-composition L98, which DECLINED ("result above a literal"): a code-body closure unit took no whole-frame replay, and with two values beneath the member the layout seated in order and the member rode as data. FIXED 2026-09-22 (noteClosureBodyReplay: a tagged fn-member read at a code body's tail arms the replay a fn unit already took) | the quotation-body container reads, 2026-09-22 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
@@ -7252,9 +7252,45 @@ interpreter's own count error with the print in its place.
 
 ## NUR181 — a def-bound factory closure applied through the read model: the landing re-steps a placed result {#nur181}
 
-**Status:** PENDING, recorded 2026-09-22 while probing the curried chain.
-Not that landing's defect — it neither introduced nor touched it — and
-measured present on `main` (a worktree at 917ecf0).
+**Status:** FIXED 2026-09-23 (the def-bound closure park — the handoff
+log's entry of that date). Recorded 2026-09-22 while probing the curried
+chain; measured present on `main` (a worktree at 917ecf0).
+
+**What it was.** Not the landing's: RESTEP_LANDING fires only for a
+0-arg-only member, and the disassembly showed the apply as the program
+residual's TRAILING arm (`CALL_DYNAMIC_TRAILING /1`) over `[2, result]`,
+with the mixed windows (`CALL_DYNAMIC_MIXED`) islanding the wider shapes
+live — `7 (r 3) 2` was `[7 6]`, `r 3 4` was `[2 8]`. Every apply arm
+already consults the park rule (`callResultPlaced`: a user call's single
+returned closure is parked where it lands, NUR101), but the classifier
+knew two producers — a named user call (evCallUser) and a user MEMBER's
+dyn-method call (`userMemberFn`, read off the def table) — and a shaped
+method call over a DEF-BOUND closure resolves to neither: at check time
+`r` holds the factory's carrier, not a FnDefInfo, and the method value's
+operand is a promoted slot that names no unit. A compiled fn-value
+apply's result (`2 ((mk3 1) 3)`, the paren's KEEPQ apply of `(mk3 1)`
+over 3) was the same defect one route over: a `wordDynApply` event no
+arm read as placed.
+
+**The fix** (compiler/go/emit.go). `RecordDynMethod` resolves the
+callee's closure UNIT from the method value's own producer
+(`eventProducedFnOp` — a factory call's returned closure, an earlier
+apply's) and records it on the event (`emitCall.calleeUnit`); a fn-value
+apply names it through its closure operand. `callAppliedClosureUnit`
+reads both, `callResultPlaced` admits an evCall whose callee is a
+compiled closure (a boru fn: fnReturnPark parks what it returns), and
+`callResultRenderKnown` renders the parked value as that unit's single
+result does. Finalize's program-residual ordering then treats a parked
+result as the data it is — its gradual out carrier (a closure unit's
+count-contract Any) had read as an apply lead and suppressed the
+reorder, which is why `5 (mk 3)` had declined "call result above a
+literal" all along; a result the `apply` WORD claims (appliedByWord)
+keeps the boundary. The shuffles the interpreter re-steps at the shuffle
+(`5 (mk 3) 1 roll`, NUR124's timing axis at the main program) keep their
+own declines. Pinned in `def_bound_closure_park_test.go` (lang/go);
+compiler `TestCallAppliedClosureUnit`.
+
+**The original record follows.**
 
 **Rule:** a compiled program answers as the interpreter does.
 

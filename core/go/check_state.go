@@ -360,7 +360,9 @@ type CheckState struct {
 	// ParenReSteppedFnIDs records the opposite fact, and the two together are
 	// the paren re-step rule (design/PAREN-RESTEP-RULE.0.md): the carriers an
 	// enclosing paren's rewind LANDED ON and will therefore re-step into a
-	// CALL. A paren with more than one survivor declines the park, so the
+	// CALL — and, since 2026-09-23, the carriers a `word` splice's expansion
+	// re-steps against the live stack, the same fact by another route
+	// (Engine.markReStepped). A paren with more than one survivor declines the park, so the
 	// pointer comes back onto the leading value — `((mk 1) 2)` is 3 for
 	// exactly that reason, while its unwrapped twin `(mk 1) 2` is
 	// `fn (Integer) 2` because no rewind ever reaches it.

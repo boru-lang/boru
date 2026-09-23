@@ -12215,3 +12215,118 @@ report):
 | generated sweep: seeds failing / islanded / diverged; call-form variants | 30 / 2 / 8; 194 | 30 / 2 / 7; 195 | the `apply` × module-export seed graduated (13 of 14 forms); its each-body variant is counted for the first time and declines in the twin-regime family |
 | diagnostic parity / armed-only, bail defects, correct-error | 349 / 9, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | the new witnesses assert outside the ledger |
+
+## S1b — the def-bound closure park: NUR181, and the parked pair that had always declined (2026-09-23)
+
+**The measurement first.** NUR181 was pinned during the curried chain as
+"the re-step landing applies a shaped method call's closure result the
+interpreter places". The disassembly said otherwise before any code was
+read: RESTEP_LANDING fires only for a 0-arg-only member, and the apply was
+the program residual's TRAILING arm (`CALL_DYNAMIC_TRAILING /1`) over
+`[2, result]`; the wider shapes went through the mixed windows
+(`CALL_DYNAMIC_MIXED`), which islanded the parked closure LIVE. The family,
+interpreter first:
+
+| source | interpreted | compiled (before) |
+|---|---|---|
+| `def r ((mk3 1) 2) end r 3` (and `(r 3)`) | `[2 fn (Integer)]` | `[6]` |
+| `def r (mk3 1) end 2 r 3` (and `2 (r 3)`, `2 ((r 3))`) | `[2 fn (Integer)]` | `[6]` |
+| `def r (mk3 1) end 7 (r 3) 2` | `[7 fn (Integer) 2]` | `[7 6]` |
+| `def r ((mk3 1) 2) end r 3 4` | `[2 fn (Integer) 4]` | `[2 8]` |
+| `2 ((mk3 1) 3)` (no def at all) | `[2 fn (Integer)]` | `[6]` |
+| `5 (mk 3)` | `[5 fn (Integer)]` | declined "call result above a literal" |
+
+Two of the six diverge through a def-bound closure's method call, one
+through a paren's own fn-value apply, and one had never compiled. The
+interpreter's rule is one rule — NUR101, "place uniformly": a user call's
+result is parked where it lands (`fnReturnPark`), and nothing at the main
+program re-steps it — so the compiled lane's `callResultPlaced` is the
+seam, and it knew two producers: a named user call (evCallUser) and a user
+MEMBER's dyn-method call (`userMemberFn`, read off the def table).
+
+**Why the classifier missed.** A shaped method call over a DEF-BOUND
+closure (`r 3`, the FnShapes claim's `CALL_DYN_METHOD r/1`) resolves to
+neither producer: at check time `r` holds the factory's carrier, not a
+FnDefInfo, so `userMemberFn` is false; and the method value's OPERAND is a
+promoted slot (the def's STORE_LOCAL), which names no unit, so nothing
+could see that the callee is a boru closure. A compiled fn-value apply's
+result (`2 ((mk3 1) 3)`, the paren's KEEPQ apply of `(mk3 1)` over 3) was
+the same gap one route over: a `wordDynApply` event no arm read as
+placed. And `5 (mk 3)` — a named user call, placed by every arm — had
+declined for a THIRD reason: Finalize's program-residual ordering treats
+any Dynamic or fn-valued entry as the auto-apply boundary's territory and
+suppresses the out-of-order promotion, and the result's gradual out
+carrier (a closure unit's count-contract Any, NUR120) read as one; the
+seating then found an event above a literal and declined.
+
+**The changes** (compiler/go/emit.go).
+
+- *The recorder resolves the callee at the recording.* `RecordDynMethod`
+  asks the method VALUE's own producer for the fn value it nets
+  (`eventProducedFnOp` — a factory call's returned closure, an earlier
+  apply's) and records the closure unit on the event
+  (`emitCall.calleeUnit` / `calleeKnown`); a fn-value apply names it
+  through its closure operand, or through an event operand the same way.
+  `callAppliedClosureUnit` reads both.
+- *The park rule covers every route.* `callResultPlaced` admits an evCall
+  whose callee is a compiled closure — a user call by another route,
+  whose return fnReturnPark parks — beside the two producers it knew;
+  `callResultRenderKnown` renders such a result as that unit's single out
+  operand does (a returned closure with its render string, a const
+  lambda, transitively another call's), so the render gate admits the
+  parked value where it admits a named factory's.
+- *A parked result is data for the ordering.* Finalize's
+  `residualHasFnOrDynamic` no longer counts a parked result (no arm ever
+  applies it, so reordering it drops nothing); a result the `apply` WORD
+  claims on purpose (`appliedByWord`, `10 (mk2 5) apply`) keeps the
+  boundary, since the trailing arm needs it on the sim's top.
+- *A splice's payload is re-stepped, not parked* (core/go/engine.go,
+  `markReStepped`). The generated sweep caught the ordering change
+  over-reaching by one route: its `word` × factory seed, `def dbl word
+  (mk) end 5 dbl`, went from declined to DIVERGED — `[5 fn]` for the
+  interpreter's 6. A `word` splice expands its payload against the live
+  stack and RE-STEPS it, so a parked closure wrapped by the marker
+  dispatches where it expands; the park rule read the payload's producer
+  (mk's call) and called it placed. The check pass now marks every
+  fn-valued element a splice expands as re-stepped, in the same set an
+  enclosing paren's rewind uses (`ParenReSteppedFnIDs`, whose doc now
+  names both routes), so `callResultPlaced` is false for it and the
+  trailing arm applies it — the seed passes, and `5 word (mk)` with it.
+  A LIST payload's elements are data on both lanes (`word [(mk)]` is
+  `[5 fn]`), and stay so.
+
+**What it reaches.** All six shapes agree, and with them a data-returning
+closure's method call (`2 r 5` is `[2 15]`, seated), the double paren, a
+value written after the call. `5 (mk 3)` compiles as the parked pair —
+`TestApplyWordClaimsParkedResult`'s "unclaimed parked result" arm asserted
+the DECLINE (the fear was an apply; the pair is the answer both lanes
+give) and `TestShuffledClosureDoesNotLowerAndTheInterpreterApplies`
+carried the row among the shuffles it screens; both now assert the
+parity. The pending pin `TestDefBoundFactoryClosureLandingPending` is
+retired.
+
+**What it does not reach.** The shuffles the interpreter re-steps AT the
+shuffle (`5 (mk 3) 1 roll` is 15, `5 (mk 3) swap` is 15, `7 (mk 3) 1
+pick` is `[7 21]`): NUR124's timing axis is open at the main program, and
+each keeps its own decline ("residual value of unknown provenance", "its
+apply did not collapse") — none of them reached the ordering this entry
+changed, which was measured before the tests were touched. A bare read of
+the def-bound closure short of its arity (`def r ((mk3 1) 2) end r`)
+declines at the read's statement window as before.
+
+**Pins.** `def_bound_closure_park_test.go` (lang/go):
+`TestDefBoundClosureParkParity` (sixteen rows, the `word` seed among
+them), `TestDefBoundClosureParkSoundCompileFailures`; compiler
+`TestCallAppliedClosureUnit`; core `TestMarkReSteppedAtSplice`.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report):
+
+| gate | before | after | what moved it |
+|---|---:|---:|---|
+| compile failures / compute gaps / reducible | 21 / 16 / 4 | 21 / 16 / 4 | no corpus row is in this family; the corpus's parked results are one level up (`1 2 (mk 3)`, in order) |
+| interp-entry rows / engine entries / defers | 74 / 406 / 8 | 74 / 406 / 8 | unchanged, row sets identical against the previous commit |
+| generated sweep: seeds failing / islanded / diverged | 30 / 2 / 7 | 29 / 2 / 7 | the `word` × factory seed graduated from failing to passing (its splice's payload is re-stepped, and the trailing arm applies it) |
+| generated sweep: call-form variants | 195 | 200 | four variants of passing seeds compile (`afn` factory and container · prefix-stack, `parse` named-fn and module-export — a parked result above a literal seats); the `word` seed's fourteen forms are counted for the first time and nine decline in existing families: 195 − 4 + 9 |
+| type-soundness, diagnostic parity / armed-only, bail defects, correct-error | 4, 349 / 9, 52, 1 | unchanged | — |
+| lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | the graduated witnesses assert outside the ledger |

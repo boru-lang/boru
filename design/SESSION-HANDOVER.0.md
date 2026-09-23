@@ -92,12 +92,14 @@ branch-carried def"**; the re-estimate is
    own item), apply-twice's two pending applies (L125), a def-bound
    factory result read back and applied (`def p (mk 1) end 5 p/v apply`,
    the read's statement window), and NUR176's 0-arg runtime lead. Two
-   silent miscompiles the chain's probes found stay OPEN and pinned to
-   fail when they move: NUR180 (a trailing paren apply's Any result inside
+   silent miscompiles the chain's probes found, one still OPEN and pinned
+   to fail when it moves: NUR180 (a trailing paren apply's Any result inside
    an UNNAMED-param frame, consumed by a typed word — `xs each [(2 (mk 1))
-   mul 10]` is 10 for 30; mitigated for a named concrete lead) and NUR181
-   (`def r ((mk3 1) 2) end r 3`: the re-step landing applies a shaped
-   method call's closure result the interpreter places). Most of the
+   mul 10]` is 10 for 30; mitigated for a named concrete lead) and NUR181 — CLOSED
+   2026-09-23 (the handoff log's "the def-bound closure park" entry: a
+   shaped method call's or a fn-value apply's returned closure is parked
+   on the compiled lane too — `def r ((mk3 1) 2) end r 3` is `[2 fn]` on
+   both lanes, and `5 (mk 3)` seats as the parked pair where it declined). Most of the
    interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
@@ -654,7 +656,7 @@ state**:
 | type-soundness violations | 4 | 0 | checker debt the expansion exposed; 5 → 4 on 2026-09-22 (NUR156: L102 is sound once the `apply` model unquotes its lead) |
 | known divergences (`knownDivergences`) | 2 | 0 | NUR154, NUR155 — the ledger is pinned both ways; NUR156's three rows left it on 2026-09-22 (two agree, one declines loudly) |
 | `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25 and the count ONLY FALLS — a new compile-failure site is new debt, which is why a screen must decline through an existing site rather than latch its own; handlers 114 → 94 on the migration line |
-| the generated sweep (S0): seeds failing / islanded / diverged | 30 / 2 / 7 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR159–161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22 |
+| the generated sweep (S0): seeds failing / islanded / diverged | 29 / 2 / 7 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR159–161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22, the `word` × factory seed 2026-09-23 (NUR181) |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |
 
 **Two ledgers the gate table does not show, and a third that is easy to miss:**

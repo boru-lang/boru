@@ -271,6 +271,15 @@ type emitCall struct {
 	// (claim failure → internal_error → interpreter re-run). Riding emitCall
 	// keeps the generic evCall machinery working unchanged for the result.
 	dynMethod *DynMethodSpec
+	// calleeUnit (valid when calleeKnown) is the compiled closure UNIT a
+	// dyn-method apply's runtime method value was PRODUCED as (a factory
+	// call's returned closure, an earlier apply's), resolved at the
+	// recording from the value's own producer — the fn OPERAND is a promoted
+	// slot for a def-bound value (`def r (mk3 1) end 2 r 3`) and names no
+	// unit. callResultPlaced reads it: the callee is a boru closure, so
+	// fnReturnPark parks what the call returns (NUR181).
+	calleeUnit  int
+	calleeKnown bool
 	// region, when non-nil, is the COMPLETED region descriptor for this
 	// dispatch (region_complete.go): what the interpreter read off the tape at
 	// this position, and which of those slots the dispatch claimed.
@@ -8478,10 +8487,19 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// as a read lost where the interpreter dispatches it.
 	es.creditWordRead(fn.ID)
 	es.SiteCounts[SiteDynamic]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
+	call := emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
 		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs)},
-	}})
+	}
+	// The method value's own producer, when it is a compiled closure (the
+	// factory pattern): the call is a user call by another route and its
+	// result parks (calleeUnit's doc).
+	if pr, ok := es.producedBy[fn.ID]; ok {
+		if op, ok := es.eventProducedFnOp(pr.seq, 0); ok && op.kind == opClosure && op.closureUnit >= 0 && op.closureUnit < len(es.fnRecs) {
+			call.calleeUnit, call.calleeKnown = op.closureUnit, true
+		}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	for i := range outs {
 		es.setProducedAt(outs[i], seq, i)
 	}
@@ -12170,10 +12188,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// `5 m.f` → [5, fn], `[..] r.one-of`): reordering it would drop the apply and
 	// diverge. Leave those to the fn-value / failure logic below; only a residual
 	// of pure resolvable data reorders.
+	// A PARKED call result (callResultPlaced — a user call's, a shaped
+	// method call's or a fn-value apply's returned closure, NUR181) is data
+	// here: no apply arm ever applies it, so reordering it drops nothing,
+	// and its gradual out carrier (a closure unit's count-contract Any)
+	// must not read as an apply lead — `2 r 3` over a def-bound factory
+	// closure is `[2 fn]` on both lanes. A result the `apply` WORD
+	// dispatches on purpose keeps the boundary (appliedByWord).
 	var forceOrder map[int]bool
 	residualHasFnOrDynamic := false
 	for _, rv := range residual {
-		if rv.Dynamic || core.IsFnValueResidual(rv) {
+		if (rv.Dynamic || core.IsFnValueResidual(rv)) && (!es.callResultPlaced(rv) || es.appliedByWord[rv.ID]) {
 			residualHasFnOrDynamic = true
 			break
 		}
@@ -14628,7 +14653,17 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 			return false
 		}
 	case evCall:
-		if ev.call.dynMethod == nil || ev.call.nout != 1 || !es.userMemberFn(ev.call.word) {
+		// A shaped method call over a def-bound CLOSURE (`def r (mk3 1) end
+		// 2 r 3`) and a compiled fn-value apply of one (`2 ((mk3 1) 3)`, the
+		// KEEPQ / produced-lead applies) are user calls by another route
+		// too — the callee is a boru closure, and fnReturnPark parks what
+		// it returns (NUR181: the trailing arm applied the returned closure
+		// to the value beneath, 6 for the interpreter's `[2 fn]`).
+		if ev.call.nout != 1 {
+			return false
+		}
+		if _, closure := es.callAppliedClosureUnit(ev); !closure &&
+			(ev.call.dynMethod == nil || !es.userMemberFn(ev.call.word)) {
 			return false
 		}
 	default:
@@ -14641,6 +14676,36 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 		return false
 	}
 	return true
+}
+
+// callAppliedClosureUnit is the compiled closure UNIT a dyn-method or
+// fn-value apply event (evCall with a DynMethodSpec, or wordDynApply) applies:
+// its fn operand as a closure operand, or an event operand whose netted fn
+// value is a closure (eventProducedFnOp — a factory call's returned closure,
+// an earlier apply's). A member-read carrier, a promoted local or a native
+// callee resolve to nothing here.
+func (es *EmitState) callAppliedClosureUnit(ev *EmitEvent) (int, bool) {
+	if ev == nil || ev.kind != evCall || len(ev.call.ops) == 0 ||
+		(ev.call.dynMethod == nil && ev.call.word != wordDynApply) {
+		return 0, false
+	}
+	if ev.call.calleeKnown {
+		return ev.call.calleeUnit, true
+	}
+	op := ev.call.ops[0]
+	if op.kind == opEvent {
+		if op.resIdx != 0 {
+			return 0, false
+		}
+		var ok bool
+		if op, ok = es.eventProducedFnOp(op.idx, 0); !ok {
+			return 0, false
+		}
+	}
+	if op.kind != opClosure || op.closureUnit < 0 || op.closureUnit >= len(es.fnRecs) || es.fnRecs[op.closureUnit] == nil {
+		return 0, false
+	}
+	return op.closureUnit, true
 }
 
 // callResultRenderKnown reports whether the user call that produced v
@@ -14660,7 +14725,16 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		return false
 	}
 	ev := es.eventBySeq(pr.seq)
-	if ev == nil || ev.kind != evCallUser || ev.uc.poly != nil {
+	if ev == nil {
+		return false
+	}
+	// A dyn-method or fn-value apply of a compiled CLOSURE renders as that
+	// closure unit's single result does (callAppliedClosureUnit — NUR181's
+	// parked results).
+	if unit, ok := es.callAppliedClosureUnit(ev); ok {
+		return es.unitRenderKnown(unit, 0)
+	}
+	if ev.kind != evCallUser || ev.uc.poly != nil {
 		return false
 	}
 	return es.unitRenderKnown(ev.uc.unit, 0)

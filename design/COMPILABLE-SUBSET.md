@@ -427,6 +427,21 @@ user still gets an answer while the case is open:
   result inside a loop body (`while […] [def i (i M.inc/v apply)]`, the
   dynamic-scope def family). Pinned by `quotation_body_def_read_test.go`.
 
+  A call result is PARKED where it lands on the compiled lane too,
+  whatever route the call took (2026-09-23, NUR181): a shaped method call
+  over a def-bound factory closure (`def r (mk3 1) end 2 r 3` is
+  `[2 fn]`), a compiled fn-value apply of one (`2 ((mk3 1) 3)`), and a
+  named factory's result above a literal (`5 (mk 3)`, which declined
+  "call result above a literal") all seat as the parked pair with parity,
+  the mixed and trailing windows included (`7 (r 3) 2`, `r 3 4`). The
+  recorder resolves the callee's closure unit from the method value's own
+  producer, and the program residual's ordering treats a parked result as
+  data. What still declines: a bare read of the def-bound closure short
+  of its arity (`def r ((mk3 1) 2) end r`, the read's statement window)
+  and the shuffles the interpreter re-steps at the shuffle (`5 (mk 3) 1
+  roll`, NUR124's timing axis at the main program). Pinned by
+  `def_bound_closure_park_test.go`.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.
