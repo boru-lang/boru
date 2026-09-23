@@ -573,8 +573,54 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		if res, err, ran := vc.invokeFnValueClosure(reg, body, cl, inputs); ran {
 			return res, err
 		}
+		if res, err, ran := vc.unmatchedLambdaBody(reg, body, cl, inputs); ran {
+			return res, err
+		}
 	}
 	return vc.applyClosure(reg, cl, shapeInputs(cl, inputs))
+}
+
+// unmatchedLambdaBody is the token seam's per-element signature match for a
+// callback BODY unit compiled from a TYPED LAMBDA at its call site — `each
+// ([x:Integer] => [typeof x]) xs`, whose unit is each$body with the lambda's
+// own param contract (CompiledFn.Params) but not a fn VALUE unit (NUR155).
+// The interpreter never enters such a body blind: its handler hands the fn
+// value to InvokeBody, which STEPS the value over the inputs, and a step no
+// signature admits leaves the value as DATA on top of them — `each
+// ([x:Integer] => [typeof x]) [1 'a']` is `[Integer fn (Integer)]`, the
+// element's result the fn itself — while the map arm's lambda no-match
+// raises its own signature_error (native_map_iter.go's callLambda). The
+// unit ran on every element regardless: `[Integer ProperString]`.
+//
+// A unit with no contract of its own (a quotation body: Params empty) and
+// a fn VALUE unit (invokeFnValueClosure's, above) are not this arm's; the
+// match runs over the positional args the bind would seat (shapeInputs), so
+// the match and the bind read one order.
+func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body core.Value, cl core.ClosurePayload, inputs []core.Value) ([]core.Value, error, bool) {
+	if body.Quoted {
+		return nil, nil, false
+	}
+	fn, known := vc.closureUnit(cl)
+	if !known || len(fn.Params) == 0 || len(fn.Params) != fn.NArgs {
+		return nil, nil, false
+	}
+	if closureMatchesArgs(fn, shapeInputs(cl, inputs)) {
+		return nil, nil, false
+	}
+	if cl.InShape == compiler.ClosureInKeyVal {
+		return nil, reg.BoruError("signature_error",
+			fmt.Sprintf("no matching lambda signature for %d argument(s)", len(inputs)), ""), true
+	}
+	// The value renders as the interpreter's own lambda renders — `fn
+	// (Integer)` — not as a body unit's payload (nameStoredClosure's rule,
+	// vm_dyn_words.go, over the unit's declared contract).
+	if cl.Render == "" {
+		if params, ok := closureSigParams(fn); ok {
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: true})
+			body = core.Value{Parent: body.Parent, Data: cl, Quoted: body.Quoted}
+		}
+	}
+	return append(append([]core.Value(nil), inputs...), body), nil, true
 }
 
 // applyClosure runs a closure's unit over args already in the unit's

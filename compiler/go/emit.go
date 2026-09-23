@@ -7734,7 +7734,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// Finalize — never compiles the closure as unapplied data. Resolved
 	// BEFORE the registered-output arm below: apply's identity result
 	// carries the producer's id, which that arm would elide silently.
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedFnCarrierInFnUnit(args[0])) {
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedConstLambda(args[0].ID) || es.producedFnCarrierInFnUnit(args[0])) {
 		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
@@ -10130,6 +10130,31 @@ func (es *EmitState) producerReturnedClosure(id string) bool {
 	return ok && op.kind == opClosure
 }
 
+// producedConstLambda reports whether id is the result of a user call whose
+// unit returns one baked fn CONST — a capture-free `=>` / `fn` literal a
+// factory hands back (`def mk fn [[][Function][([n:Integer] => [n add
+// 1])]]`), which stampFnConst bakes rather than closes over, or a named
+// fn's value (`[inc/v]`). The `apply` word's pending-application arm admits
+// it beside a produced closure (producedFnValue): the factory's declared
+// `[Function]` return types the result as a carrier at the program, and
+// with no pending entry the paren-shaped residual arms PARKED it under a
+// value beneath — `7 5 (mk) apply` compiled `[7 5 fn]` for the
+// interpreter's `[7 6]` (NUR160), the named twin `[7 5 fn inc(Integer)]`
+// — while the clean-stack `5 (mk) apply` took the 2-entry trailing arm.
+// OpCallDynApplyTop is applyHandler's own semantics over any FnDefInfo (a
+// named fn re-steps through its word), which is what lets a named const in
+// where constLambdaArity's OpCallDynamic callers keep it out.
+// producedFnValue itself stays narrow: its other callers need a closure
+// payload for the VM's re-entrant runner, which a baked const is not.
+func (es *EmitState) producedConstLambda(id string) bool {
+	op, ok := es.producerReturnedOutOp(id)
+	if !ok || op.kind != opConst || op.idx < 0 || op.idx >= len(es.consts) {
+		return false
+	}
+	_, isFn := es.consts[op.idx].Data.(core.FnDefInfo)
+	return isFn
+}
+
 // constLambdaArity reads the arity off a baked ANONYMOUS lambda const —
 // one own signature with a boru body, no name and no module origin. The
 // exclusions are the fn-value apply's soundness argument (resolveDynamicApply):
@@ -12177,7 +12202,12 @@ func (es *EmitState) programPendingApplyTop(residual []core.Value) bool {
 		return false
 	}
 	u := es.units[0]
-	return len(u.pendingApply) == 1 && len(residual) >= 2 && residual[len(residual)-1].ID == u.pendingApply[0].id
+	// One entry — the fn alone, nothing beneath it — is the apply word over
+	// an empty window, which the op models as applyHandler does: a 0-arg
+	// closure fires (`(mk0) apply` is 1), a wider one finds no match and
+	// stays data (`(mk) apply` is `fn (Integer)`); declining it left the
+	// first silently as `fn` on main (NUR160's neighbours).
+	return len(u.pendingApply) == 1 && len(residual) >= 1 && residual[len(residual)-1].ID == u.pendingApply[0].id
 }
 
 func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {

@@ -198,10 +198,10 @@ func appendGateSummary(name string, got, end, ceiling int, status, why string) {
 // on the direction lane and a known, tracked defect on the regression lane.
 var knownDivergences = map[string]string{
 	"code-bodies.tsv:L142": "NUR154 — `case` lowers its clause list as a static literal operand, so a quoted list a fn returns is a run-time value the lowering never reads: 'one' interpreted, case_error compiled",
-	// L215 -> L216 on 2026-09-18: NUR153's pin row was inserted above it in
-	// each-variants.tsv, shifting every row below by one. The divergence is
-	// unchanged — the KEY moved, not the defect.
-	"each-variants.tsv:L216": "NUR155 — the compiled callback dispatch binds each element into the unit's param slot and never mirrors the interpreter's per-element MatchFnSig, so a typed lambda runs on every element",
+	// each-variants.tsv:L216 (NUR155 — a typed lambda's each$body unit ran
+	// on every element) left the ledger on 2026-09-23: the VM's token seam
+	// matches a lambda-derived body unit's contract per element
+	// (unmatchedLambdaBody), and the row agrees.
 }
 
 var (

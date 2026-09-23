@@ -7,7 +7,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 |---|---|---|---|---|---|---|---|
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 10/14 | ✓ 12/14 | n/a | ✓ 13/14 |
-| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 3/14 | ✓ 14/14 | ✓ 13/14 | n/a |
+| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 13/14 | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
@@ -131,13 +131,12 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
 - `apply` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `apply` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
-- `apply` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
+- `apply` factory · if-then — **declined** — stack discipline: result operand of (…fn) is not on top
+- `apply` factory · if-else — **declined** — stack discipline: result operand of (…fn) is not on top
 - `apply` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `apply` factory · each-body — **declined** — fn each$body: result above a literal (Stage 3)
 - `apply` factory · module-body — **declined** — fn zzvmod: result above a literal (Stage 3)
 - `apply` factory · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
-- `apply` factory · prefix-stack — **DIVERGED** — value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]
 - `apply` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload

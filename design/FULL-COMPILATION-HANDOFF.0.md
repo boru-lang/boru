@@ -12550,3 +12550,92 @@ core `paren_trailing_fn_test.go`, `paren_restep_record_test.go` (every
 fn-valued survivor), `engine_closure_bridge_test.go` (the seal); compiler
 `paren_trailing_marks_test.go` (the mark readers and the poly screen);
 eng's CheckState lifecycle gate names the two new sets.
+
+## S1b — the typed callback's contract: NUR155 and NUR160 closed, NUR186 found (2026-09-23)
+
+**The measurement first.** Two of the register's pinned silent
+divergences were next in the ranked order, and both were smaller than
+their records read. NUR155 — `each ([x:Integer] => [typeof x]) [1 'a'
+[2] {b:1} true none]` is `[Integer fn fn fn fn fn]` interpreted (the
+lambda runs on the one Integer; every element its signature rejects
+leaves the fn VALUE as that element's result) and compiled `[Integer
+ProperString List Map Boolean None]` — was probed against its neighbours
+before any code was read, and the neighbours said where it lived: `[1
+'a']` agreed, `[1 'a' true]` agreed, `[1 none]`, `[1 [2]]` and `[1 'a'
+{b:1}]` diverged. The disassembly split the same way: the agreeing rows
+pushed the lambda as a stored-fn CONST (the interpreter's own callback
+path, signature-matched per element), the diverging rows compiled it as
+the word's own BODY unit — `each$body/1`, the lambda's `[Integer]`
+contract recorded on the unit, `Lambda` false because it is not a fn
+VALUE unit — which the VM's token seam (`invokeClosureOn`) entered
+blind. The check pass's routing is the collection's business; the seam's
+blindness was the defect. The map-arm twin `0 fold ([acc:Integer
+kv:KeyVal] => [acc add kv.v]) {a:"s" b:1}` compiled `[0s1]` where the
+interpreter raises at key b, the same way.
+
+**The change** (eng/go/vm.go). `unmatchedLambdaBody`, asked after the
+fn-value seam and before the ordinary invoke: for a unit with a declared
+contract of its own (`Params` one per real arg — a quotation body has
+none), the contract is matched over the positional args the bind would
+seat (`shapeInputs`, so the match and the bind read one order), and on a
+no-match a list body's inputs come back with the closure on top — what
+stepping the fn value leaves, the element's result the fn itself,
+rendered as the interpreter renders the lambda (`FormatFnDef` over the
+unit's contract, nameStoredClosure's rule) — while a map body's
+(ClosureInKeyVal) raises the map arm's `no matching lambda signature for
+N argument(s)` verbatim. Twelve rows agree, two raise identically,
+each-variants L216 left `knownDivergences` (1 left: NUR154).
+
+**NUR160** — `7 5 (mk) apply` compiled `[7 5 fn]` for `[7 6]` while `5
+(mk) apply` agreed. The factory `def mk fn [[][Function][([n:Integer] =>
+[n add 1])]]` returns a capture-free lambda, which `stampFnConst` bakes
+as a CONST rather than closing over, and the `apply` word's
+pending-application arm (`recordCallElided`) admitted only a produced
+CLOSURE (`producedFnValue`) or, inside a fn unit, a produced carrier: at
+the program the factory's declared `[Function]` return typed the result
+as a carrier with no pending entry, the residual's 2-entry trailing arm
+applied the clean-stack form, and the 3-entry window's arms PARKED the
+carrier as the call result it is. `producedConstLambda` admits a
+produced fn const — anonymous or a named fn's value (`[inc/v]`, whose
+twin compiled `[7 5 fn inc(Integer)]`) — so the program's pending apply
+lowers as `OpCallDynApplyTop`, applyHandler's own semantics; and
+`programPendingApplyTop` takes the fn ALONE as well, an empty window the
+op already modelled (a 0-arg closure fires, a wider one stays data),
+which closed two neighbours silent on main: `(mk0) apply` compiled `fn`
+for 1, `5 (mk0) apply` `[fn 5]` for `[5 1]`. Three sound-compile-failure
+rows of the empty-window shape compile with parity and moved to the new
+pin file. The sweep pin is retired; the `apply` × factory cell reads
+4/14 call forms.
+
+**What it found: NUR186.** The module-export twin — `def mk fn
+[[][Function][M.inc]] end 5 (mk) apply` — raises `uncalled_function:
+call to 'inc' matched no signature` INTERPRETED, inside the factory: the
+reach group's lone survivor is a NAMED fn at the body's tail, a name
+always calls (ADR-011), and the landing dispatches it over nothing. The
+compiled unit returns the value and the program applies it (6). Present
+on main, the landing's family (NUR173/NUR175) rather than the apply's;
+recorded and pinned pending.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report): every ceiling stands at its live value — compile failures 21,
+compute gaps 16, reducible 4, interp-entry rows 75, engine entries 408
+(Engine.Run×408, CallBoru×240, RunResolved×105), runtime defers 8,
+locally-resolved 1, armed-only 8, diagnostic parity 348, correct-error 1,
+type-soundness 4, the generated sweep 29 / 2 / 7 seeds and 200 call-form
+variants, the lang ledger 280 / 33. What moved is in the ledgers rather
+than the counts: `knownDivergences` 2 → 1 (each-variants L216 agrees), the
+sweep's `apply` × factory cell 3/14 → 4/14 (its prefix-stack variant was
+the one DIVERGED variant; two of its declining variants now decline for a
+later reason — "stack discipline: result operand of (…fn) is not on top"
+under a branch, "result above a literal" in an each body — the pending
+apply having replaced the paren-shaped park), and no corpus row is in
+NUR160's family.
+
+**Pins.** `typed_callback_hetero_test.go` (NUR155: eleven parity rows,
+three error-parity rows), `dirty_stack_apply_test.go` (NUR160: fourteen
+parity rows plus the three moved empty-window rows, three NUR124
+declines, the NUR186 pending pin); eng `vm_unmatched_lambda_body_test.go`
+(every branch of the seam); compiler `TestProducedConstLambdaGuards`,
+`TestProgramPendingApply` (the empty window). Ledgers: `knownDivergences`
+(L216 retired), `sweepKnownMiscompiles` (NUR160 retired),
+`SWEEP_STATUS.md` regenerated.

@@ -120,8 +120,15 @@ branch-carried def"**; the re-estimate is
    neighbours and present on main — the mixed island re-stepped a `/v`
    read of a def-bound closure (`def c (mk 3) end 2 c/v 10` was `[2 30]`
    for `[2 fn c(Integer) 10]`) — is closed in the same entry; its rows
-   decline at the render gate. Most of the interp-entry census rows are
-   still this family.
+   decline at the render gate. The typed callback's contract (2026-09-23,
+   the handoff log's entry of that name) closed two more silent families:
+   NUR155 (a typed lambda lowered as the word's own body unit ran on
+   every element of a heterogeneous list; each-variants L216 left
+   `knownDivergences`) and NUR160 (the `apply` word over a factory's
+   baked fn const under a dirty stack, and over an empty window; the
+   sweep pin retired), and found NUR186 (a module fn's value at a
+   factory body's tail raises interpreted, returns compiled — pinned
+   pending). Most of the interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.
@@ -675,7 +682,7 @@ state**:
 | reducible (tier-2) rows | 3 | 0 | word-class gaps the compiler does not model |
 | correct-error compile failures | 1 | 0 | a known-to-error row must compile an OpTrap / RET error path |
 | type-soundness violations | 4 | 0 | checker debt the expansion exposed; 5 → 4 on 2026-09-22 (NUR156: L102 is sound once the `apply` model unquotes its lead) |
-| known divergences (`knownDivergences`) | 2 | 0 | NUR154, NUR155 — the ledger is pinned both ways; NUR156's three rows left it on 2026-09-22 (two agree, one declines loudly) |
+| known divergences (`knownDivergences`) | 1 | 0 | NUR154 — the ledger is pinned both ways; NUR155's row left it on 2026-09-23 (the typed callback's contract: it agrees), NUR156's three rows on 2026-09-22 (two agree, one declines loudly) |
 | `MarkUncompilable` sites / undeclared handlers | 92 / 94 | 0 / 0 | sites unchanged since 2026-08-25 and the count ONLY FALLS — a new compile-failure site is new debt, which is why a screen must decline through an existing site rather than latch its own; handlers 114 → 94 on the migration line |
 | the generated sweep (S0): seeds failing / islanded / diverged | 29 / 2 / 7 | 0 / 0 / 0 | `test/go/langspec/SWEEP_STATUS.md` is the list; the divergences are NUR154, NUR159–161 and the rest of `sweepKnownMiscompiles`, pinned; NUR156's seed graduated 2026-09-22, the `word` × factory seed 2026-09-23 (NUR181) |
 | routed dispatches / oracle reproduced | 676 / 446,999 of 473,151 | — | increments 62–65 |

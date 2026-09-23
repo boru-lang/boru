@@ -99,7 +99,6 @@ func TestProducedClosureApplyParity(t *testing.T) {
 func TestProducedClosureApplySoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, note string }{
 		// nothing beneath the closure: the interpreter leaves it as data
-		{pcaK + `(kk 7) apply`, "never dispatched", "fn (Any) on the interpreter"},
 		// (`"s" (kk 7) apply` — the values beneath match no signature — and
 		// the fn-typed CARRIER lead `1 99 (mk 7) apply` moved to
 		// top_level_apply_test.go on 2026-09-22: the program unit's pending
