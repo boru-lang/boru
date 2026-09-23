@@ -1060,6 +1060,18 @@ type EmitState struct {
 	// to [7 4] for the interpreter's [8 3], and `m.f ; 5` applied for the
 	// interpreter's [fn 5] (NUR187).
 	stmtEnds []core.SrcPos
+	// landingNext is what the check pass found after each noted landing
+	// (NoteLandingNext, keyed like landingAfter by the producing event): the
+	// lowering hands the landing op a CANDIDATE flag when a word follows, or
+	// when the tape ended inside a FN unit — the frame's tail markers are the
+	// interpreter's candidates there — so a named fn with no match raises as
+	// the interpreter does instead of standing aside as data (NUR186).
+	landingNext map[int]core.LandingNext
+	// landingBeneath is landingNext's companion: values sat beneath the landed
+	// value in its frame (the interpreter's resolved stack), so its re-step
+	// matches over them first and the residual arms own the outcome — the
+	// landing never raises over such a value (NUR175's rule).
+	landingBeneath map[int]bool
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -8185,11 +8197,21 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal {
 			continue
 		}
-		if inertFn || sig.FnInertArgs[i] {
+		// Dispatch WRECKAGE rides no inert slot either: a named fn value the
+		// check pass re-stepped inside a fn body and matched nothing for
+		// (FailedDispatch) is a value the interpreter RAISED over — the
+		// frame's tail markers and this very word are its candidates — so
+		// `[M.inc typeof]` answers nothing there where a record would hand
+		// typeof the fn (NUR186).
+		if (inertFn || sig.FnInertArgs[i]) && !a.FailedDispatch {
 			continue
 		}
+		reason := "function value reaches " + word + " (Stage 3)"
+		if a.FailedDispatch {
+			reason = "a named fn value the frame's re-step matched nothing for reaches " + word + ": the interpreter raises uncalled_function inside the body (NUR186)"
+		}
 		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("function value reaches " + word + " (Stage 3)")
+		es.MarkUncompilable(reason)
 		return nil, false
 	}
 	ops := make([]EmitOperand, len(args))
@@ -8395,13 +8417,35 @@ func valueDivergingWord(owner, running *core.Registry, word string) bool {
 //     runtime re-match over the carrier raised the no-match the interpreter
 //     never does (NUR184's loud residue). A lead the `apply` word owns is
 //     the apply's, not this dispatch's.
-func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value) string {
+func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value, pos core.SrcPos) string {
 	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
 		return "fn value read from a container auto-dispatches (Stage 3)"
 	}
 	for _, a := range args {
 		if core.IsFnTypedCarrier(a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
 			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
+		}
+		// Dispatch WRECKAGE: a named fn value the check pass re-stepped and
+		// matched nothing for inside a fn body, where the interpreter raises
+		// (NUR186, the frame's tail markers as candidates).
+		if a.FailedDispatch {
+			return "a dispatch collected a named fn value the frame's re-step matched nothing for: the interpreter raises uncalled_function inside the body (NUR186)"
+		}
+		// A container MEMBER's fn value written BEFORE the word (`m.f typeof`,
+		// `7 m.f typeof`): the member read dispatches at its own token —
+		// ADR-011 — so the interpreter re-steps the fn first (over the values
+		// beneath, or raising with the word as its candidate) and the word
+		// never sees the fn; the poly's window would hand it the fn itself
+		// (`[7 Function]` for the interpreter's Integer). A read written
+		// AFTER the word (`typeof m.f`) is its collected operand and stays,
+		// and so is a read a user paren PLACED (`(m dot a) eq (m dot a)`,
+		// compare-restrict.tsv): the park rule leaves it as data where it
+		// sits, and the word takes it exactly as the poly's window does
+		// (NUR188).
+		if _, member := es.MemberFnReadValue(a.ID); member && !a.Quoted && !es.applyPending(a.ID) && !es.placedValRead(a.ID) && !es.placedNotReStepped(a) {
+			if rp := es.residualPos(a); rp.Row != 0 && pos.Row != 0 && srcPosBefore(rp, pos) {
+				return "a dispatch collected a container member's fn value the interpreter re-steps first (NUR188)"
+			}
 		}
 		// A branch result the interpreter re-steps BEFORE this word runs: an
 		// arg-taking fn arm takes the values beneath it (`7 if true inc/v [2]
@@ -8422,7 +8466,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	if !es.Active() {
 		return false
 	}
-	if reason := es.polyCallDeclineReason(word, args, outs); reason != "" {
+	if reason := es.polyCallDeclineReason(word, args, outs, pos); reason != "" {
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable(reason)
 		return true
@@ -8617,6 +8661,92 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 	es.stmtEnds = append(es.stmtEnds, pos)
 }
 
+// NoteLandingNext records what followed a noted landing's value on the tape
+// and whether values sat beneath it in its frame (EmitRecorder; the
+// landingNext and landingBeneath fields). Nothing to record for a value with
+// no producing event — the landing itself was not noted for it either.
+func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneath bool) {
+	if !es.Active() {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok || pr.idx != 0 {
+		return
+	}
+	// A VARIADIC result has no landing to describe (NoteReStepLanding stands
+	// aside for it: its outputs are a REGION, the mark-window machinery's),
+	// and a catch region's paths deliver different tails — `def x (do [(1
+	// add 2) "a" "b"] error [dot code]) x` re-steps the do's first result
+	// under its sibling results on the success path and under `x` on the
+	// raise path — so a note would carry one path's tail for both, and the
+	// word rule (crossesBoundary) read the raise path's `x` as a crossing
+	// where the S9 promotion is the shape's own diagnosis.
+	if es.eventInfo[pr.seq].variadicResult {
+		return
+	}
+	// A bare READ of a def-bound fn value is the interpreter's WORD dispatch
+	// under the binding's own name (`def j (m get "f") j` raises `cannot
+	// call j`), which the whole-frame replay seats (NUR123) — never the
+	// value's own re-step: no candidate for the landing to raise on.
+	if es.isDefRead(v) {
+		next = core.LandingNextBoundary
+	}
+	if es.landingNext == nil {
+		es.landingNext = map[int]core.LandingNext{}
+		es.landingBeneath = map[int]bool{}
+	}
+	// A value re-stepped MORE THAN ONCE (a paren's collapse re-steps what
+	// its group parked at a boundary) meets the tails of every step, and the
+	// interpreter parks at a boundary only to go on to the next step: a word
+	// at any step is a candidate (it raises there), else the tape's end at
+	// any step is the frame's to read, else every step parked. Values
+	// beneath at any step are the residual arms' apply.
+	if prev, noted := es.landingNext[pr.seq]; noted {
+		next = mergeLandingNext(prev, next)
+	}
+	es.landingNext[pr.seq] = next
+	es.landingBeneath[pr.seq] = es.landingBeneath[pr.seq] || beneath
+}
+
+// mergeLandingNext joins two notes on one landing: a function word wins (a
+// candidate at either step), then the tape's end, then a collected value
+// (the arms' apply), then a boundary.
+func mergeLandingNext(a, b core.LandingNext) core.LandingNext {
+	switch {
+	case a == core.LandingNextWord || b == core.LandingNextWord:
+		return core.LandingNextWord
+	case a == core.LandingNextEnd || b == core.LandingNextEnd:
+		return core.LandingNextEnd
+	case a == core.LandingNextValue || b == core.LandingNextValue:
+		return core.LandingNextValue
+	}
+	return core.LandingNextBoundary
+}
+
+// landingArg is the OpReStepLanding argument for the event seq: 1 when the
+// interpreter's re-step of the landed value would find a CANDIDATE and
+// nothing beneath it in its frame — a function word after it, or a fn
+// frame's tail markers (the tape ended inside a unit whose frame has one,
+// frameTail) — so a named fn that matches nothing raises `uncalled_function`
+// at the landing (NUR186); 0 when nothing follows and the value stays data,
+// when a value-bound word follows and the residual arms model its
+// collection (LandingNextValue: `m.f k` is g over 2), or when values
+// beneath it are the residual arms' to apply it over.
+func (es *EmitState) landingArg(seq int, frameTail bool) int {
+	if es == nil || es.landingBeneath[seq] {
+		return 0
+	}
+	switch es.landingNext[seq] {
+	case core.LandingNextWord:
+		return 1
+	case core.LandingNextEnd:
+		if frameTail {
+			return 1
+		}
+	}
+	return 0
+}
+
 // srcPosBefore orders two known source positions (row, then column).
 func srcPosBefore(a, b core.SrcPos) bool {
 	return a.Row < b.Row || (a.Row == b.Row && a.Col < b.Col)
@@ -8650,9 +8780,50 @@ func (es *EmitState) residualPos(v core.Value) core.SrcPos {
 // earlier call (NUR187). Only a PROVEN crossing answers true: both positions
 // known and a recorded boundary strictly between them.
 func (es *EmitState) crossesBoundary(v core.Value, rest []core.Value) bool {
-	if es == nil || len(es.stmtEnds) == 0 {
+	if es == nil || (len(es.stmtEnds) == 0 && len(es.landingNext) == 0) {
 		return false
 	}
+	// A FUNCTION WORD right after the value ends its collection as a
+	// boundary does (the check pass noted it: LandingNextWord — the
+	// interpreter's re-step stops its forward phase at a word that
+	// dispatches), so EVERY entry above the value in the residual was pushed
+	// after that re-step, by the word or later, and was never the value's
+	// to collect: `7 m.f three` is `[8 3]` interpreted, the fn over the 7
+	// beneath and three's result above it, and the island answered `[7 4]`.
+	// A word bound to a VALUE is no boundary (LandingNextValue): the phase
+	// collects it as the island's flat re-step does — `7 m.f k` is `[7 6]`
+	// on both. Keyed by the producing event, so a value a call returned
+	// under a fresh registration reads its own note.
+	// A def-bound READ is excluded from both rules: its residual entry
+	// carries the bound value's note, but the read was written where the
+	// NAME is, not where the value landed (residualPos), so neither the note
+	// nor the producer's position says anything about the entries above it.
+	if es.isDefRead(v) {
+		return false
+	}
+	return (len(rest) > 0 && es.wordFollowsLanding(v)) || es.crossesStatementEnd(v, rest)
+}
+
+// wordFollowsLanding reports whether the check pass noted a FUNCTION word
+// right after v's landing (LandingNextWord). The islands read it as a
+// crossing (crossesBoundary); the lead arm does not (NUR190, pending): a
+// dynamic fn value under a function word and nothing beneath is settled by
+// the landing when the fn fires its zero-argument overload or raises as a
+// named fn matching nothing, and by NEITHER the apply nor a data seat when
+// an arg-taking overload could CLAIM the word — a `/q` slot captures it
+// (`m.f z` with h's `[x:Atom/q]` overload is `z/q`), an Any-typed slot takes
+// the word's result, a Function-typed one its reference — which only the
+// run-time overload walk the landing does not do yet can tell apart.
+func (es *EmitState) wordFollowsLanding(v core.Value) bool {
+	pr, ok := es.producedBy[v.ID]
+	return ok && pr.idx == 0 && es.landingNext[pr.seq] == core.LandingNextWord
+}
+
+// crossesStatementEnd is crossesBoundary's positional rule alone: a recorded
+// statement boundary (stmtEnds) strictly between where v was written and
+// where an entry of rest was. Only a PROVEN crossing answers true — both
+// positions known.
+func (es *EmitState) crossesStatementEnd(v core.Value, rest []core.Value) bool {
 	from := es.residualPos(v)
 	if from.Row == 0 {
 		return false
@@ -11759,14 +11930,19 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		return residual, OpCallDynApplyTop, ""
 	}
 	// A lead with a STATEMENT BOUNDARY between it and the entries above it
-	// (crossesBoundary) never applies over them: they were pushed by a later
-	// statement (`m.f ; 5` is `[fn 5]` interpreted, 6 applied), and the
-	// lead's own re-step — the landing the lowering emitted after the read
-	// or the merge fired a 0-arg fn and stood aside for the rest — had
+	// (crossesStatementEnd) never applies over them: they were pushed by a
+	// later statement (`m.f ; 5` is `[fn 5]` interpreted, 6 applied), and
+	// the lead's own re-step — the landing the lowering emitted after the
+	// read or the merge fired a 0-arg fn and stood aside for the rest — had
 	// nothing beneath it to take, so the value is settled where it sits:
 	// every lead arm here stands aside and the unhandled loop below seats it
-	// as data (NUR187).
-	leadCrossed := len(residual) >= 2 && es.crossesBoundary(residual[0], residual[1:])
+	// as data (NUR187). A FUNCTION WORD after the lead is not this rule's
+	// (the islands' crossesBoundary reads it, the lead arm keeps applying
+	// over the word's result as it always did): the landing settles a fn
+	// that fires its zero-argument overload or raises, and for one whose
+	// arg-taking overload could claim the word neither the apply nor a data
+	// seat is faithful — the pending NUR190, wordFollowsLanding.
+	leadCrossed := len(residual) >= 2 && es.crossesStatementEnd(residual[0], residual[1:])
 	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
@@ -11873,7 +12049,10 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// 7`, pre-existing for a named fn value and reachable for a closure once
 	// the sub-engine bridges those too (NUR124's payload axis) — so both
 	// window arms decline it and the shape declines.
-	if i, ok := es.mixedDynamicApplyShape(residual); ok && !es.callResultPlaced(residual[i]) {
+	// A paren-PLACED value no enclosing paren re-stepped is data in both
+	// window arms too (NUR189: `1 7 (m.f)` islanded to `[1 8]` for the
+	// interpreter's `[1 7 fn]`).
+	if i, ok := es.mixedDynamicApplyShape(residual); ok && !es.callResultPlaced(residual[i]) && !es.placedNotReStepped(residual[i]) {
 		return residual, OpCallDynamicMixed, ""
 	}
 	// TRAILING window (Stage M2b): the single dynamic / fn value is LAST over
@@ -11886,7 +12065,8 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// stays put. The producing event was promoted to a frame local (Finalize's
 	// gate below), so the whole window re-pushes in source order. The 2-entry
 	// trailing shape stays with trailingApply above — landed and pinned.
-	if es.trailingWindowApplyShape(residual) && !es.callResultPlaced(residual[len(residual)-1]) {
+	if es.trailingWindowApplyShape(residual) && !es.callResultPlaced(residual[len(residual)-1]) &&
+		!es.placedNotReStepped(residual[len(residual)-1]) {
 		return residual, OpCallDynamicMixed, ""
 	}
 	// Unhandled: a dynamic value mid-residual, a fn value preceding args, or an
@@ -12047,6 +12227,16 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	// apply` parks identically and then applies — which is what appliedByWord
 	// separates and the residual shape cannot (NUR124).
 	if !es.appliedByWord[fnv.ID] && es.callResultPlaced(fnv) {
+		return residual, false
+	}
+	// A value a user paren PLACED and no enclosing paren re-stepped is data
+	// on both lanes (the park rule, design/PAREN-RESTEP-RULE.0.md): `7 (m.f)`
+	// is `[7 fn inc]` interpreted, and this arm applied the member over the
+	// 7 (NUR189). The lead arm asks leadPlacedNotRead; this one asked only
+	// the call-result park. An `apply` WORD after the placed value dispatches
+	// it on purpose, exactly as it undoes the call-result park above (`1
+	// (M.run2 mk/v) apply` is 7 on both lanes).
+	if !es.appliedByWord[fnv.ID] && es.placedNotReStepped(fnv) {
 		return residual, false
 	}
 	return []core.Value{fnv, arg}, true
@@ -12700,7 +12890,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true}
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -12978,6 +13168,14 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 			continue
 		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
+			// The replay re-steps the window as a flat run of VALUES, so a
+			// statement boundary between the lead and a later entry is lost:
+			// `[M.inc ; 5]` re-stepped `fn 5` to 6 where the interpreter's
+			// re-step stopped at the `;` and left `[fn 5]` (the frame's count
+			// error). A proven crossing declines the replay (NUR187).
+			if es.crossesBoundary(v, vals[i+1:]) {
+				return false
+			}
 			// (A lead a later dispatch collected past — `[g x add 1]`, whose
 			// replay would run over add's result, NUR121 — never reaches here:
 			// residualStands declined it while resolving the residual above.)
@@ -13430,8 +13628,42 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		if rec.dynFrameW == 0 && len(rec.returns) > 0 && !es.noteWordReadReplay(u, rec, vals) {
 			return "bare read of a fn-valued binding is a word dispatch the frame replay cannot seat (NUR123)"
 		}
+		// A CONCRETE named fn value left in a fn or lambda frame's residual
+		// with no replay to re-step it (a module export at a factory's tail:
+		// `def mk fn [[][Function][M.inc]]`): the interpreter re-steps it at
+		// its token with the frame's tail markers as candidates — a name
+		// always calls, ADR-011 — and RAISES `uncalled_function` when no
+		// overload takes zero arguments, where the unit returned the value
+		// and its caller applied it (NUR186). The check pass's body tape
+		// carries no markers, so it saw data; no unit-level trap models the
+		// raise yet, so the unit declines. A `/v` read, a quoted value and a
+		// paren-placed one are data on both lanes; a code-body closure
+		// (each / do) has no tail markers and keeps the value as data.
+		if rec.dynFrameW == 0 && (!rec.closure || rec.lambdaUnit) {
+			for _, v := range vals {
+				if es.namedFnUnmatchedAtTail(v) {
+					return "a named fn value at the frame's tail takes no zero-argument call: the interpreter raises uncalled_function there (NUR186)"
+				}
+			}
+		}
 	}
 	return es.wordReadAccounting(rec)
+}
+
+// namedFnUnmatchedAtTail reports whether v is a concrete NAMED fn value the
+// interpreter's re-step at a fn frame's tail raises over: named as the
+// interpreter's arm reads it (NamedDef — a lambda and a nameless `fn`
+// literal park), not a macro, with overloads but none taking zero
+// arguments, neither quoted, `/v`-read nor paren-placed.
+func (es *EmitState) namedFnUnmatchedAtTail(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok || v.Quoted || !fd.NamedDef() || fd.Macro || len(fd.OwnSigs()) == 0 {
+		return false
+	}
+	if core.MatchFnSig(v, nil) != nil {
+		return false
+	}
+	return !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
 }
 
 // seatUnitDeopts hands a deopt unit's points (planDeopts) to its lowerer:

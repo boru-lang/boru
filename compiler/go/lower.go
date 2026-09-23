@@ -706,6 +706,12 @@ type lowerer struct {
 	// OpFlowBreak/OpFlowContinue rather than declining. At the main unit the same
 	// shape stays a compile failure (a top-level break outside any loop).
 	isFnUnit bool
+	// frameTail marks a lowerer driving a unit whose interpreter frame ends
+	// in the fn tail markers (a user fn body or a lambda value's body): a
+	// named fn value landing at the body's END finds those markers as its
+	// re-step's candidates and raises (landingArg, NUR186). A code-body
+	// closure (each / do) has no such tail and leaves the value as data.
+	frameTail bool
 	// numLocals is the current unit's frame-local count, seeded from the unit's
 	// recorded locals and bumped by allocLocal for spill temps (spillSeat). The
 	// caller writes it back to the unit's NumLocals after lowering so the VM
@@ -998,7 +1004,7 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
-	lw.emit(OpReStepLanding, 0, pos)
+	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 
 // emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
@@ -1016,7 +1022,7 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 		return
 	}
 	delete(lw.es.landingAfter, ev.seq)
-	lw.emit(OpReStepLanding, 0, pos)
+	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 
 // seatDynApplyName records a trailing fn-value apply's head binding name at

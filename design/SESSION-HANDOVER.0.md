@@ -137,8 +137,23 @@ branch-carried def"**; the re-estimate is
    residual's apply arms carried a fn value's collection across a
    statement boundary (`7 m.f ; 3` islanded to `[7 4]` for `[8 3]`, `m.f
    ; 5` applied for `[fn 5]`); the pass notes every boundary's position
-   now and no arm applies a value over a later statement's entry. Most
-   of the interp-entry census rows are still this family.
+   now and no arm applies a value over a later statement's entry. The
+   named fn value's candidates (2026-09-23, the handoff log's entry of
+   that name) closed NUR186 — the landing note carries what follows the
+   value (a function word, a value-bound word the forward phase collects,
+   a boundary, the tape's end) and whether values sit beneath it, the VM's
+   landing raises the
+   interpreter's `uncalled_function` for a named fn over a candidate and
+   an empty frame, and a concrete named fn at a fn frame's tail declines
+   the unit (the unit-level trap is the follow-on) — and found and
+   closed NUR188 (a poly collecting a member read the interpreter
+   re-steps first) and NUR189 (the trailing arms applying a paren-placed
+   member), plus NUR187's fn-unit and word-after halves — and recorded
+   NUR190 pending: a DYNAMIC fn value under a function word whose `/q` or
+   Any-typed overload claims the word (`m.f y` is `[42 42]` for `[y]`;
+   fn-value.tsv's L317/L318 pass by coincidence), whose fix is the
+   landing's run-time overload walk with the word in hand. Most of the
+   interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.

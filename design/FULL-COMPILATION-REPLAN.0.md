@@ -439,7 +439,7 @@ two unit ledgers and the real-program gate, not re-derived):
 | engine entries / interp-entry rows (T2) | 422 / 78 | 422 / 80 | 422 / 80 | **408 / 75** |
 | real programs compiling | 34/62 | 34/62 | 34/62 | **36/62** |
 | known miscompiles LIVE on `main` (T3) | 0 | 1 | 0 | **0** |
-| silent miscompiles recorded and pinned pending | 4 | 4 | 4 | **3** (NUR154, NUR159, NUR186) — **2** after the branch result's re-step later the same day (NUR159 closed, NUR187 found and closed; NUR154 and NUR186 remain) |
+| silent miscompiles recorded and pinned pending | 4 | 4 | 4 | **3** (NUR154, NUR159, NUR186) — **2** after the branch result's re-step later the same day (NUR159 closed, NUR187 found and closed), **2** (NUR154, NUR190) after the named fn value's candidates (NUR186 closed, NUR188 and NUR189 found and closed, NUR190 found and pinned pending) |
 | `knownDivergences` (corpus rows diverging) | 5 | 5 | 2 | **1** (NUR154) |
 
 The 21 that remain, by mechanism: provenance 6 (S5 — the rest of Stage
@@ -490,12 +490,14 @@ range halved). The width still lives in S4 and S2b, and neither moved. By
 the end of February 2027: about 75%; by the end of March 2027: about 85%.
 
 **What would move it, in order of leverage.** (1) The landing model for a
-NAMED fn value (NUR186; NUR159's branch-arm half closed later the same
-day — the branch result's re-step, which also found and closed NUR187,
-the residual's statement boundary): the interpreter's re-step of a named
-fn at the pointer ALWAYS dispatches — a name always calls, ADR-011 — and
-raises on a no-match, where the landing leaves the value as data; one
-rule closes the record and the main-program half of NUR124. (2) The
+NAMED fn value — closed later the same day in two increments: the branch
+result's re-step (NUR159; NUR187 found and closed) and the named fn
+value's candidates (NUR186; NUR188 and NUR189 found and closed). The
+interpreter's re-step of a named fn at the pointer raises on a no-match
+with a candidate and parks without one; the landing note now carries the
+candidates and the VM raises, and a concrete named fn at a fn frame's
+tail declines the unit until a unit-level trap raises there — that trap
+is the one piece of this item still open. (2) The
 census's fn-value rows as one mechanism (a lambda literal or a produced
 closure stepped at a quotation body's tail), the same probing method that
 took the corpus's 23 rows. (3) The evaluating host (S4): still the only

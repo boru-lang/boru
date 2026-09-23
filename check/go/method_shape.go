@@ -795,6 +795,47 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())
+	// What the re-step finds after the value decides a NAMED fn's no-match:
+	// a function word is a candidate argument the interpreter counts (it
+	// raises), a word bound to a value is collected (landingNextForWord), a
+	// boundary is not a candidate (the value stays data), and the end of the
+	// tape is the unit's to read — the frame's tail markers follow a fn
+	// body's last token (NUR186).
+	// With values BENEATH the value in its frame (the interpreter's own
+	// resolved stack, EffectiveResolved — an unnamed param, an earlier
+	// result) the re-step matches over them first, and the residual arms
+	// model that apply (NUR175's rule: the landing never consumes a stack
+	// operand); the note carries the fact beside what follows.
+	next := core.LandingNextEnd
+	if valIdx+1 < e.Tape.Len() {
+		next = core.LandingNextBoundary
+		if tv := e.Tape.At(valIdx + 1); core.IsWord(tv) {
+			next = landingNextForWord(e, tv)
+		}
+	}
+	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0)
+}
+
+// landingNextForWord classifies the word after a landed value the way the
+// re-step's forward phase reads it (CollectCandidateScan's word arm): a word
+// bound to a VALUE is collected — `m.f k` with `def k 2` is g over 2, and
+// `7 m.f k` is `[7 6]` — so the landing stands aside and the residual arms
+// model the collection; a FUNCTION word — a registered word, a binding that
+// dispatches — stops the phase and is a candidate the interpreter counts,
+// so a named fn matching nothing raises there. A name the phase resolves to
+// a literal (`true`, a type name, an undefined name's atom) is collected too.
+func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
+	ww, _ := core.AsWord(tv)
+	if top, ok := e.DefTop(ww.Name); ok {
+		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+			return core.LandingNextValue
+		}
+		return core.LandingNextWord
+	}
+	if e.LookupWord(ww.Name) != nil {
+		return core.LandingNextWord
+	}
+	return core.LandingNextValue
 }
 
 // aloneInLiveReachGroup reports whether valIdx holds the only token of a
