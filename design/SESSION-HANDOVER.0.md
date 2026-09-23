@@ -102,14 +102,25 @@ branch-carried def"**; the re-estimate is
    shaped method call's or a fn-value apply's returned closure is parked
    on the compiled lane too — `def r ((mk3 1) 2) end r 3` is `[2 fn]` on
    both lanes, and `5 (mk 3)` seats as the parked pair where it declined).
-   One silent family found on the way stays OPEN and pinned: NUR184 — a
-   paren's TRAILING fn value forward-collects the tokens past the `)`
-   (`(2 (mk 1)) 10` is `[2 11]` for the compiled `[3 10]`; `(2 inc2/v) 10`
-   the same for a named fn value) and a paren closing under a pending
-   forward hands its survivors to it (`10 mul (2 (mk 1))` is 21; NUR180's
-   fold row is this record's); twelve witnesses in
-   `TestParenTrailingFnForwardCollectsPending`. Most of the
-   interp-entry census rows are still this family.
+   The silent family found on the way, NUR184 — a paren's TRAILING fn
+   value forward-collects the tokens past the `)` (`(2 (mk 1)) 10` is
+   `[2 11]`; `(2 inc2/v) 10` the same for a named fn value) and a paren
+   closing under a pending forward hands its survivors to it (`10 mul (2
+   (mk 1))` is 21; NUR180's fold row is this record's) — is CLOSED
+   2026-09-23 (the handoff log's "the trailing value's re-step" entry):
+   the collapse records the trailing apply only for a lead the
+   interpreter dispatches inside the paren, a collectable follower leaves
+   the value to the rewind, a forward's leftover is marked as such, and
+   the mixed island's interpreter seals a compiled closure at its
+   collection's completion. What is left is loud: three shapes decline
+   (`TestParenTrailingFnSoundCompileFailures`) and one raises the
+   no-match `mul` over the marked carrier (`(2 (mk 1)) 10 mul`,
+   `TestParenTrailingFnLoudPending`). NUR185, found probing its
+   neighbours and present on main — the mixed island re-stepped a `/v`
+   read of a def-bound closure (`def c (mk 3) end 2 c/v 10` was `[2 30]`
+   for `[2 fn c(Integer) 10]`) — is closed in the same entry; its rows
+   decline at the render gate. Most of the interp-entry census rows are
+   still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.

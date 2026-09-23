@@ -1371,7 +1371,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			e.stepPastOpenParen(val)
 
 		case IsCloseParen(val):
-			if err := e.stepCloseParen(true); err != nil {
+			if err := e.stepCloseParen(true, false); err != nil {
 				return nil, e.faultReturn(err)
 			}
 
@@ -1647,7 +1647,7 @@ func (e *Engine) resolveOrphanedForwards() error {
 					return err
 				}
 			case IsCloseParen(val):
-				if err := e.stepCloseParen(false); err != nil {
+				if err := e.stepCloseParen(false, false); err != nil {
 					return err
 				}
 			case IsEnd(val):
@@ -2091,7 +2091,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 		}
 		if IsCloseParen(v) {
 			depth--
-			if err := e.stepCloseParen(false); err != nil {
+			if err := e.stepCloseParen(false, depth == 0); err != nil {
 				e.Pointer = savedPointer
 				return err
 			}
@@ -2325,6 +2325,12 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 				e.Registry.noteAnalysisUse(w.Name)
 				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
+				// The value spelling is noted here as on the Defs path
+				// below: the residual lowering must know the delivery is
+				// INERT — `def c (mk 1) end 2 c/v 10` islanded the window
+				// and applied the closure, `[2 11]` for the interpreter's
+				// `[2 fn 10]` (NUR185; callResultPlaced's placedValRead).
+				e.Registry.analysisRecorder().NoteValRead(cv.ID, w.Name)
 				if e.Registry.analysisCompiling() {
 					e.Registry.Check.FnCarrierReadSubstituted = true
 				}
@@ -2439,6 +2445,15 @@ func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
 	}
 	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
 		e.Registry.analysisRecorder().NoteWordRead(v, name, pos)
+		// The collapse of a paren this read ends asks which it has — a
+		// value the rewind re-steps, or the model of a dispatch the
+		// interpreter already ran at the word (CheckState.WordReadFnIDs).
+		if e.Registry.Check != nil && v.ID != "" {
+			if e.Registry.Check.WordReadFnIDs == nil {
+				e.Registry.Check.WordReadFnIDs = map[string]bool{}
+			}
+			e.Registry.Check.WordReadFnIDs[v.ID] = true
+		}
 	}
 }
 
@@ -4093,8 +4108,8 @@ func (e *Engine) stepLiteral() error {
 			if IsWord(e.Tape.At(funcIdx)) {
 				w, _ := AsWord(e.Tape.At(funcIdx))
 				e.forceStackWord(funcIdx, w)
-			} else if v := e.Tape.At(funcIdx); isFnDefValue(v) &&
-				!e.fnValueWouldWiden(v, fwd.CollectedArgs+fwd.StackArgs, funcIdx+1) {
+			} else if fv, _, isFn := e.fnDefAtPointer(e.Tape.At(funcIdx)); isFn &&
+				!e.fnValueWouldWiden(fv, fwd.CollectedArgs+fwd.StackArgs, funcIdx+1) {
 				// A VALUE-called function (a dot-read export, a stored
 				// fn, a lambda) has no WordInfo to stamp /s on. Arm the
 				// one-shot seal instead, so the re-step below matches
@@ -4106,6 +4121,14 @@ func (e *Engine) stepLiteral() error {
 				// open (arity widening — `concat parts {sep}`); the
 				// plan barrier still stops a re-plan at a reach-read
 				// call head, so widening cannot cross a statement.
+				// A compiled CLOSURE on the tape (a VM island's window,
+				// NUR124's payload axis) is the same value-called function
+				// and is sealed through its bridge (fnDefAtPointer, which
+				// leaves the closure itself on the tape): unsealed, its
+				// re-step re-planned forward-first over the NEXT token and
+				// walked past every literal after it — `(2 (mk 1)) 10 20`
+				// islanded to `[2 10 21]` for the interpreter's `[2 11 20]`
+				// (NUR184's two-follower row).
 				e.sealFnValue, e.sealFnValueIdx = true, funcIdx
 			}
 		}
@@ -8270,6 +8293,84 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 	return closeIdx
 }
 
+// parenFeedsPendingForward reports whether the paren opening at openIdx is
+// collapsing directly under a PARKED Forward still collecting its arguments
+// (the arrival path — the eager evaluator's twin is stepCloseParen's
+// feedsForward): the group is that word's forward argument, and its
+// survivors arrive as the collection's candidates in written order rather
+// than as the main loop's re-steps — `10 mul (2 (mk 1))` is 21 because mul
+// takes the 2 and the closure re-steps later over the 20 (NUR184). A paren
+// nested inside another paren is the enclosing group's (its survivors are
+// re-stepped by the group's own evaluation loop), so the scan stops at an
+// open paren.
+func (e *Engine) parenFeedsPendingForward(openIdx int) bool {
+	if !e.Tape.hasForward() {
+		return false
+	}
+	for i := openIdx - 1; i >= 0; i-- {
+		v := e.Tape.At(i)
+		if IsOpenParen(v) {
+			return false
+		}
+		if IsForward(v) {
+			fwd, _ := AsForward(v)
+			return fwd.CollectedArgs < fwd.Sig.TotalArgs()
+		}
+	}
+	return false
+}
+
+// trailingFnCollectsPastClose reports whether the fn value that survives
+// LAST inside a collapsing paren would forward-collect the token after the
+// close paren once the rewind re-steps it — the interpreter's own rule
+// (execFnDefLiteral at the pointer: forward tokens first, the stack after),
+// which the trailing-apply record must not model as an apply over the
+// values inside the paren (NUR184). Nothing after the close, a word, a
+// close paren, an `end`, a marker or a `/v` modifier is not collectable
+// (the value falls to the stack: `(2 (mk 1)) mul 10` is 30). A literal is
+// collectable when the value is a fn-typed CARRIER (its runtime parameters
+// are unknown) or a concrete fn one of whose own signatures takes it at a
+// forward-eligible first position; an open paren is collectable (its result
+// arrives at the value's pending forward). A concrete fn none of whose
+// signatures takes the literal falls to the stack (`(2 (mk 1)) "s"` is
+// `[3 s]`).
+func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
+	if closeIdx+1 >= e.Tape.Len() {
+		return false
+	}
+	tok := e.Tape.At(closeIdx + 1)
+	if IsOpenParen(tok) {
+		return true
+	}
+	if IsWord(tok) || IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
+		return false
+	}
+	if _, mod := AsDispatchMod(tok); mod {
+		return false
+	}
+	fd, ok := last.Data.(FnDefInfo)
+	if !ok {
+		return true // a carrier: the runtime value's parameters are unknown
+	}
+	sigs := fd.OwnSigs()
+	if len(sigs) == 0 {
+		return true
+	}
+	for i := range sigs {
+		sig := &sigs[i]
+		if sig.TotalArgs() == 0 {
+			continue
+		}
+		limit := effectiveForwardLimit(sig, WordInfo{Name: fd.Name, ArgCount: -1})
+		if limit == BarrierAllForward || limit > 0 {
+			if SigArgMatches(sig, 0, tok) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // concreteFnSingleReturn is the one declared return type a CONCRETE NAMED
 // fn value's own signatures agree on — nil for a carrier, an anonymous fn
 // value (whose declared return the seams enforce as a count only), an
@@ -8317,8 +8418,13 @@ func parenTrailingFnApply(es EmitRecorder, last Value, count, lastIdx int) bool 
 // survivors at the pointer (true), or whether this collapse is happening off
 // the main loop on behalf of a pending forward collection (false), where the
 // survivors become ARGUMENTS instead. Only the recorder accounting reads it —
-// see creditParenSurvivorSkips.
-func (e *Engine) stepCloseParen(reStepped bool) error {
+// see creditParenSurvivorSkips. feedsForward narrows the second case to the
+// GROUP's own close under the eager forward-argument evaluator
+// (evalParenGroupAt at depth 0): its survivors are the collecting word's
+// candidates in written order, where a paren nested inside the group is
+// re-stepped by the group's own loop exactly as the main loop would
+// (NUR184's trailing-fn arm reads it).
+func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	closeIdx := e.Pointer
 
 	openIdx := -1
@@ -8384,7 +8490,7 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
 					case IsCloseParen(val): //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-						if err := e.stepCloseParen(false); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+						if err := e.stepCloseParen(false, false); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return err
 						}
 						closeIdx = e.findCloseParenAfter(openIdx) //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
@@ -8586,7 +8692,37 @@ func (e *Engine) stepCloseParen(reStepped bool) error {
 		case parenTrailingFnApply(es, last, count, lastIdx):
 			// TRAILING fn-value apply (`(a b comp)`) — extracted to
 			// recordParenTrailingFnApply for the stepCloseParen complexity cap.
-			closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
+			// The record models the fn dispatching over the values INSIDE the
+			// paren, which is the interpreter's answer only when the rewind
+			// re-steps the survivors (reStepped) and nothing after the close
+			// paren is collectable: the re-stepped fn dispatches like any fn
+			// literal at the pointer, forward tokens FIRST — `(2 (mk 1)) 10`
+			// is `[2 11]`, the closure taking the 10 and the 2 staying — and a
+			// collapse under a pending forward hands its survivors to that
+			// collection instead (`10 mul (2 (mk 1))` is 21: mul takes the 2,
+			// the closure re-steps over 20). NUR184. Either way the residual
+			// is left as it stands for the downstream arms, and a fn-valued
+			// survivor the forward may leave is marked re-stepped so no arm
+			// reads it as placed.
+			//
+			// The gate is for a fn VALUE the collapse re-steps — a parked
+			// call result, a `/v` read, a lambda literal. A BARE WORD READ of
+			// a fn-typed binding (`(5 3 comp)`: CheckState.WordReadFnIDs) and
+			// a lead the `apply` WORD owns (`(s/v s/v apply)`) are the check
+			// model's stand-ins for a dispatch the interpreter runs AT THE
+			// WORD, inside the paren, whatever follows the close: those
+			// record as before.
+			switch {
+			case es.ApplyPending(last.ID) || e.Registry.Check.WordReadFnIDs[last.ID]:
+				closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
+			case feedsForward, e.parenFeedsPendingForward(openIdx):
+				e.markReStepped(last)
+				e.markForwardLeftover(last)
+			case e.trailingFnCollectsPastClose(last, closeIdx):
+				e.markReStepped(last)
+			default:
+				closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
+			}
 		case hasProducedLead:
 			// LEADING produced-closure apply — the CURRIED CHAIN (`((mk 1) 2)`,
 			// `(((mk3 1) 2) 3)`): a strict fn-typed carrier a compiled factory
@@ -8677,15 +8813,20 @@ func (e *Engine) recordParenReStep(openIdx, closeIdx, park int, wasReachGroup bo
 	if e.Registry == nil || e.Registry.Check == nil {
 		return
 	}
-	v := e.Tape.At(openIdx)
-	if v.Quoted || v.ID == "" {
-		return
+	// The rewind lands on the lead and the main loop then steps EVERY
+	// survivor in turn: a fn value among the later ones is dispatched at
+	// the pointer exactly as the lead is — `(2 (mk 1)) 10` re-steps the
+	// closure over the 10 that follows the paren (NUR184) — so each fn-
+	// valued survivor is marked, not the lead alone (the lead alone left the
+	// trailing closure read as placed, and the residual arms seated it as
+	// data). The same "might be callable" test the residual lowering's
+	// auto-dispatch guard uses, so both ends agree on what the rewind would
+	// have called: a genuine fn-typed carrier, or a dynamic value whose
+	// static bound does not exclude Function (markReStepped's own gate; a
+	// quoted or ID-less value records nothing there).
+	for i := openIdx; i <= closeIdx-2 && i < e.Tape.Len(); i++ {
+		e.markReStepped(e.Tape.At(i))
 	}
-	// The same "might be callable" test the residual lowering's auto-dispatch
-	// guard uses, so both ends agree on what the rewind would have called: a
-	// genuine fn-typed carrier, or a dynamic value whose static bound does not
-	// exclude Function.
-	e.markReStepped(v)
 }
 
 // markReStepped records v as a carrier a re-step will LAND ON and dispatch
@@ -8709,6 +8850,25 @@ func (e *Engine) markReStepped(v Value) {
 		e.Registry.Check.ParenReSteppedFnIDs = map[string]bool{}
 	}
 	e.Registry.Check.ParenReSteppedFnIDs[v.ID] = true
+}
+
+// markForwardLeftover records v as a fn-valued survivor a paren under a
+// pending forward left to that collection (CheckState.ForwardLeftoverFnIDs —
+// see the field): the value re-steps right after the collecting word fires,
+// over the word's result and the values beneath, never over a later
+// statement's values. markReStepped's own gate applies (a quoted, ID-less,
+// concrete or non-callable value records nothing).
+func (e *Engine) markForwardLeftover(v Value) {
+	if e.Registry == nil || e.Registry.Check == nil || v.Quoted || v.ID == "" {
+		return
+	}
+	if !IsFnTypedCarrier(v) && !(v.Dynamic && SigTypeMatches(v, TFunction)) {
+		return
+	}
+	if e.Registry.Check.ForwardLeftoverFnIDs == nil {
+		e.Registry.Check.ForwardLeftoverFnIDs = map[string]bool{}
+	}
+	e.Registry.Check.ForwardLeftoverFnIDs[v.ID] = true
 }
 
 // findCloseParenAfter finds the index of the matching close-paren marker

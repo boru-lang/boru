@@ -19,6 +19,15 @@ import (
 // callee unit from the method value's own producer, a fn-value apply's from
 // its closure operand, and the program residual's ordering treats a parked
 // result as the data it is.
+//
+// NUR185 (2026-09-23, found probing NUR184's neighbours; present on main):
+// a `/v` READ of a def-bound closure is placed too — `def c (mk 3) end 2
+// c/v 10` is `[2 fn c(Integer) 10]` interpreted, and the residual's mixed
+// window islanded it and applied the closure (`[2 30]`). The carrier read
+// notes the value spelling now (NoteValRead on the fn-carrier side table),
+// callResultPlaced treats a `/v`-only delivery as the parked result it is,
+// and the rows decline at the render gate (the interpreter names the value
+// after the def).
 
 const dbMk3 = `def mk3 fn [[a:Integer][Function][( fn [[b:Integer][Function][( fn [[c:Integer][Integer][a add b add c]] )]] )]]  `
 const dbMk = `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  `
@@ -42,6 +51,7 @@ func TestDefBoundClosureParkParity(t *testing.T) {
 		// a closure returning DATA is unaffected: the value seats
 		{dbMk + `def r (mk 3) end 2 r 5`, "[2 15]", "a data result seats above the literal"},
 		{dbMk + `def r (mk 3) end 2 (r 5)`, "[2 15]", "the same in a paren"},
+		{dbMk + `def c (mk 3) end c 10`, "[30]", "a bare read of a def-bound closure dispatches (NUR185's control)"},
 		// a named factory's parked result above a literal seats too (it
 		// declined "call result above a literal" before)
 		{dbMk + `5 (mk 3)`, "[5 fn (Integer)]", "an unclaimed parked result seats as data"},
@@ -77,6 +87,10 @@ func TestDefBoundClosureParkSoundCompileFailures(t *testing.T) {
 		{dbMk3 + `def r ((mk3 1) 2) end r`, "statement ends short", "[fn (Integer)]"},
 		{dbMk + `5 (mk 3) 1 roll`, "unknown provenance", "[15]"},
 		{dbMk + `5 (mk 3) swap`, "did not collapse", "[15]"},
+		// NUR185: a `/v` read of a def-bound closure is placed, never islanded
+		{dbMk + `def c (mk 3) end 2 c/v 10`, "unconsumed fn-value carrier", "[2 fn c(Integer) 10]"},
+		{dbMk + `def c (mk 3) end 2 c/v 10 20`, "unconsumed fn-value carrier", "[2 fn c(Integer) 10 20]"},
+		{dbMk + `def c (mk 3) end c/v 10`, "unconsumed fn-value carrier", "[fn c(Integer) 10]"},
 	}
 	for _, c := range rows {
 		a, err := New()

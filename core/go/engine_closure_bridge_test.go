@@ -72,6 +72,24 @@ func TestClosureValueBridge(t *testing.T) {
 			t.Errorf("g 7 = 21: %v", out)
 		}
 	})
+	t.Run("a bridged closure's completed collection is sealed", func(t *testing.T) {
+		// The completion site arms the value seal for a compiled closure
+		// as for a FnDefInfo (NUR184's two-follower row, NUR124's payload
+		// axis): unsealed, the re-step re-planned forward-first over the
+		// NEXT literal and walked the closure past every follower — `(2
+		// (mk 1)) 10 20` islanded to `[2 10 21]` for `[2 11 20]`.
+		rt := &bridgeRuntime{bridge: true, params: 1}
+		out := run(rt, closure, NewInteger(7), NewInteger(8))
+		if len(out) != 3 || rt.calls != 1 {
+			t.Fatalf("collects the 7 only, once: %v (calls %d)", out, rt.calls)
+		}
+		if n, _ := AsInteger(out[1]); n != 21 {
+			t.Errorf("g 7 = 21 at the closure's own position: %v", out)
+		}
+		if n, _ := AsInteger(out[2]); n != 8 {
+			t.Errorf("the 8 stays: %v", out)
+		}
+	})
 	t.Run("a declined bridge leaves the closure as data", func(t *testing.T) {
 		out := run(&bridgeRuntime{}, closure)
 		if len(out) != 2 || !IsCompiledClosureValue(out[1]) {

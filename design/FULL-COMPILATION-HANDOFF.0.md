@@ -12430,3 +12430,114 @@ report):
 | generated sweep: seeds failing / islanded / diverged; call-form variants | 29 / 2 / 7; 200 | unchanged | — |
 | type-soundness, bail defects, correct-error | 4, 52, 1 | unchanged | — |
 | lang/go unit ledger: fail / bail | 279 / 34 | 279 / 34 | unchanged |
+
+## S1b — the trailing value's re-step: NUR184 closed, NUR185 found and closed (2026-09-23)
+
+**The measurement first.** NUR184's twelve witnesses put a fn VALUE at
+the tail of a paren with something after the close. The interpreter never
+applies such a value at the close: the rewind re-steps every survivor,
+and a fn value among them dispatches like any fn literal at the pointer —
+the tokens past the `)` first, while they match its parameters, the stack
+only after — so `(2 (mk 1)) 10` is `[2 11]` and `(2 (mk 1)) "s"` `[3 s]`;
+a paren under a pending forward hands its survivors to that collection in
+written order, and a fn value the word does not take re-steps right after
+the word fires — `10 mul (2 (mk 1))` is 21, `10 mul (2 (mk 1)) 5` `[20
+6]`, `def r (2 (mk 1)) end r` `[fn 2]` (def takes the 2, the closure
+parks over nothing). The compiled record (`recordParenTrailingFnApply`)
+applied the value over the values INSIDE the paren whatever followed.
+
+The first cut gated that record on a collectable follower and marked
+every survivor re-stepped, and four lang pins regressed at once —
+`(5 3 comp)` inside a fn body compiled `[-1]` for 2, the U combinator's
+`(s/v s/v apply)` declined, `def r (x g) g r` declined. Bisecting the two
+halves of the change showed both mattered, and reading the check model
+showed why: those leads are not fn VALUES the collapse re-steps. A bare
+read of a `comp:Function` param pushes a carrier the interpreter would
+have DISPATCHED at the word (stepWord never substitutes a binding holding
+a fn), and a lead the `apply` word owns dispatched at `apply`; the record
+was right for both, whatever followed the close. Only the collapse knows
+which it has, and by then both are one fn-typed carrier on the tape — so
+core's `noteWordRead` now leaves the bare read's ID for the collapse
+(`CheckState.WordReadFnIDs`), the third such set beside the placed and
+re-stepped ones, and the trailing arm records for a word read or an
+`apply`-owned lead first.
+
+**The change** (core/go/engine.go, check_state.go; compiler/go/emit.go;
+eng/go/vm.go untouched). `stepCloseParen`'s trailing arm is a four-way
+switch: record for a lead the interpreter dispatches inside the paren;
+mark re-stepped AND as the forward's LEFTOVER
+(`CheckState.ForwardLeftoverFnIDs`, `markForwardLeftover`) for a paren
+under a pending forward — the eager group evaluator's own close, threaded
+as `stepCloseParen`'s new `feedsForward` (evalParenGroupAt at depth 0; a
+nested group is re-stepped by the evaluator's own loop), or a parked
+Forward still collecting (`parenFeedsPendingForward`); mark re-stepped
+alone when a collectable token follows (`trailingFnCollectsPastClose`: an
+open paren, a literal a carrier's unknown parameters or one of a concrete
+fn's forward positions would take; never a word, a close, an `end`, a
+modifier); record otherwise. `recordParenReStep` marks every fn-valued
+survivor, not the lead alone. In the compiler the residual's LEAD arm
+refuses a leftover (`forwardLeftoverFn`) — its re-step ran before the
+values above it existed, so applying it over them fed a later statement's
+operand to an earlier call (`def r (2 (mk 1)) end r` compiled 3 under the
+mark alone) — and `RecordMakeListInner` declines a list any of whose
+elements is re-step-marked, not only the lead.
+
+That left `(2 (mk 1)) 10 20` at `[2 10 21]` for `[2 11 20]`, and the
+disassembly was clean: `[2 closure 10 20]` islanded through
+`CALL_DYNAMIC_MIXED`, whose interpreter is the oracle. Tracing the
+island's `execFnDefLiteral` showed the closure matched over the 10 at its
+own position, then MOVED past it, matched over the 20, moved again, and
+dispatched stack-only over the last literal: the collection-completion
+seal (NUR038's `sealFnValue`) is armed only for an `isFnDefValue` callee,
+and a compiled closure on an island's tape — the bridge stands in for the
+dispatch, the payload stays on the tape — never met that test, so its
+re-step re-planned forward-first over the NEXT token every time. The
+completion site now seals through `fnDefAtPointer`, the same bridge the
+dispatch takes (NUR124's payload axis, in the island). Pinned in core
+(`TestClosureValueBridge`, the two-follower subtest).
+
+**What it found: NUR185.** Probing the `/v` twin — `def c (mk 1) end 2
+c/v 10` — the compiled lane answered `[2 11]` for the interpreter's `[2
+fn 10]`, on `main` too (a worktree at 888f234). The fn-carrier side
+table's `/v` read (stepWordVal) noted the def read and the local read but
+not the VALUE read, so `callResultPlaced` took the delivery for the bare
+read's word dispatch and the mixed arm islanded the window live. The
+carrier branch notes `NoteValRead` as the Defs path does, the recorder
+keeps every noted `/v` read program-wide (`valReadNoted`), and
+`callResultPlaced` treats a `/v`-only delivery — not also read bare, not
+under a pending `apply` — as the parked result it is (`placedValRead`).
+The rows decline at the render gate (the interpreter names the value
+after the def). Recorded as NUR185, fixed in the same increment, pinned
+in `def_bound_closure_park_test.go`.
+
+**Where the twelve stand.** Eight agree (`(2 (mk 1)) 10`, `10 20`, `5 (2
+(mk 1)) 10`, `((2 (mk 1)) 10)`, `(2 inc2/v) 10`, `(2 inc2/v) 10 mul`, `xs
+each [(2 (mk 1)) 10]`, the fold row and the fn-unit `10 mul (2 (mk 1))`),
+three decline (`10 mul (2 (mk 1))` at the main program — no arm seats a
+leftover over a word's result there; `def r (2 (mk 1)) end r`; `[(2 (mk
+1)) 10]`), and one is LOUD: `(2 (mk 1)) 10 mul` — the check pass steps
+the marked carrier as data, `mul` collects it with the 10, and the
+compiled program raises the no-match the interpreter (22) never does.
+That residue is the next cut here: a dispatch that collects a re-step-
+marked carrier as a stack operand should decline at compile time. Pinned
+pending in `TestParenTrailingFnLoudPending`.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report): nothing moved. Every ceiling stands at its live value — compile
+failures 21, compute gaps 16, reducible 4, interp-entry rows 75, engine
+entries 408 (Engine.Run×408, CallBoru×240, RunResolved×105), runtime
+defers 8, locally-resolved 1, armed-only 8, diagnostic parity 348,
+correct-error 1, type-soundness 4, the generated sweep 29 / 2 / 7 and 200
+call-form variants, the lang ledger 279 / 34. No corpus row is in this
+family; the paren's trailing fn value with a follower is an off-corpus
+shape, as NUR181's parked pair was.
+
+**Pins.** `paren_trailing_forward_test.go` (rewritten: `TestParenTrailingFnAgrees`
+holds the witnesses, `TestParenTrailingFnSoundCompileFailures` the three
+declines with the interpreter's answers, `TestParenTrailingFnLoudPending`
+the residue), `TestUnnamedFrameApplyResultTyped` (the fold row moved in;
+the pending test retired), `def_bound_closure_park_test.go` (NUR185);
+core `paren_trailing_fn_test.go`, `paren_restep_record_test.go` (every
+fn-valued survivor), `engine_closure_bridge_test.go` (the seal); compiler
+`paren_trailing_marks_test.go`; eng's CheckState lifecycle gate names the
+two new sets.

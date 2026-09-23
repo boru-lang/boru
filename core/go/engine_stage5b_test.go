@@ -720,7 +720,7 @@ func TestS5BCloseParenTrailingApplyRecorded(t *testing.T) {
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(3), fnv, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 {
@@ -743,7 +743,7 @@ func TestS5BCloseParenTrailingApplyDeclined(t *testing.T) {
 		parenBody(NewWord("cadd"), NewWord("n"), NewWord("n")))
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(3), fnv, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if len(es.trailing) != 1 {
@@ -763,7 +763,7 @@ func TestS5BCloseParenLeadFnApply(t *testing.T) {
 	lead := NewCarrier(TFunction)
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(5), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 {
@@ -788,7 +788,7 @@ func TestS5BCloseParenLeadingDynamicApply(t *testing.T) {
 	dyn.Dynamic = true
 	e.Tape = NewTape([]Value{NewOpenParen(), dyn, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynMethods != 1 {
@@ -815,7 +815,7 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(7), lead, NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 || !es.lastOut.Dynamic || !es.lastOut.Carrier {
@@ -833,7 +833,7 @@ func TestS5BCloseParenPendingGradualLead(t *testing.T) {
 	e2 := NewTop(r)
 	e2.Tape = NewTape([]Value{NewOpenParen(), NewInteger(7), lead, NewCloseParen()}, StackHeadroom)
 	e2.Pointer = 3
-	if err := e2.stepCloseParen(true); err != nil {
+	if err := e2.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es2.dynApplies != 0 || e2.Tape.Len() != 2 {
@@ -853,7 +853,7 @@ func TestS5BCloseParenLeadingDynamicFailedToCompile(t *testing.T) {
 	dyn.Dynamic = true
 	e.Tape = NewTape([]Value{NewOpenParen(), dyn, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if len(es.uncompilable) != 1 {
@@ -878,7 +878,7 @@ func TestS5BCloseParenLeadingFnTypedDynamicApply(t *testing.T) {
 	lead.Dynamic = true
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynMethods != 1 || len(es.uncompilable) != 0 {
@@ -1010,7 +1010,7 @@ func TestS5BCloseParenSkipperHook(t *testing.T) {
 	e.SetRecorder(rec)
 	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(1), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 2
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if rec.skipped != 1 {
@@ -1025,7 +1025,7 @@ func TestS5BCloseParenVoidGroupStopsAtOpenParen(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewOpenParen(), NewOpenParen(), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 2
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if len(e.voidGroups) != 0 {
@@ -1041,7 +1041,7 @@ func TestS5BCloseParenReturnCountOverflow(t *testing.T) {
 	rc := NewReturnCheck(ReturnCheckInfo{FuncName: "f", Returns: []*Type{TInteger}})
 	e.Tape = NewTape([]Value{NewOpenParen(), rc, NewInteger(5), NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 4
-	err := e.stepCloseParen(true)
+	err := e.stepCloseParen(true, false)
 	if err == nil || !strings.Contains(err.Error(), "return") {
 		t.Fatalf("want a return-count error, got %v", err)
 	}
@@ -1055,7 +1055,7 @@ func TestS5BCloseParenDiscardsUnnamedArgs(t *testing.T) {
 	rc := NewReturnCheck(ReturnCheckInfo{FuncName: "f", Returns: []*Type{TInteger}, UnnamedCount: 1})
 	e.Tape = NewTape([]Value{NewOpenParen(), rc, NewInteger(5), NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 4
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if got := renderAll(e.Tape.Snapshot()); got != "7" {
@@ -1587,7 +1587,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	es := newS5BEmit()
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 	e, _ := producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 || len(es.uncompilable) != 0 {
@@ -1612,7 +1612,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	es = newS5BEmit()
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TFunction, true
 	e, _ = producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if e.Tape.Len() != 1 || !IsFnTypedCarrier(e.Tape.At(0)) || e.Tape.At(0).Dynamic {
@@ -1623,7 +1623,7 @@ func TestS5BCloseParenProducedLeadApply(t *testing.T) {
 	es = newS5BEmit()
 	es.producedOK, es.dynApplyOK = true, true
 	e, _ = producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent.Equal(TAny) {
@@ -1639,7 +1639,7 @@ func TestS5BCloseParenProducedLeadApplyArgOrder(t *testing.T) {
 	es := newS5BEmit()
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 	e, _ := producedLeadEngine(t, es, NewInteger(2), NewInteger(3))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 || e.Tape.Len() != 1 {
@@ -1666,7 +1666,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	es := newS5BEmit()
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 	e, _ := producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(false); err != nil {
+	if err := e.stepCloseParen(false, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 0 || es.producedArgs != nil || e.Tape.Len() != 2 {
@@ -1676,7 +1676,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	es = newS5BEmit()
 	es.dynApplyOK = true
 	e, _ = producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 0 || len(es.producedArgs) != 1 || e.Tape.Len() != 2 {
@@ -1686,7 +1686,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	es = newS5BEmit()
 	es.producedOK, es.producedRet = true, TInteger
 	e, _ = producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 || e.Tape.Len() != 2 || !IsFnTypedCarrier(e.Tape.At(0)) {
@@ -1697,7 +1697,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 	es.pending = "T_produced_lead"
 	e, _ = producedLeadEngine(t, es, NewInteger(2))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.producedArgs != nil {
@@ -1708,7 +1708,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 		es = newS5BEmit()
 		es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 		e, _ = producedLeadEngine(t, es, arg)
-		if err := e.stepCloseParen(true); err != nil {
+		if err := e.stepCloseParen(true, false); err != nil {
 			t.Fatalf("stepCloseParen: %v", err)
 		}
 		if es.producedArgs != nil {
@@ -1719,7 +1719,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	es = newS5BEmit()
 	es.producedOK, es.producedRet, es.dynApplyOK = true, TInteger, true
 	e, _ = producedLeadEngine(t, es, NewDynamicCarrier(TInteger))
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.dynApplies != 1 || e.Tape.Len() != 1 {
@@ -1736,7 +1736,7 @@ func TestS5BCloseParenProducedLeadApplyDeclines(t *testing.T) {
 	lead.ID = "T_dyn_lead"
 	e.Tape = NewTape([]Value{NewOpenParen(), lead, NewInteger(7), NewCloseParen()}, StackHeadroom)
 	e.Pointer = 3
-	if err := e.stepCloseParen(true); err != nil {
+	if err := e.stepCloseParen(true, false); err != nil {
 		t.Fatalf("stepCloseParen: %v", err)
 	}
 	if es.producedArgs != nil || es.dynMethods != 1 {
