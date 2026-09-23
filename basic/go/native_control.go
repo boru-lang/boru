@@ -641,6 +641,7 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 
 func if3ReturnsFn(args []Value, r *Registry) []Value {
 	es := r.Check
+	pos := branchRecordPos(r, args[0])
 	// Plain-check static reduction (the else-less-if soundness fix,
 	// forward-barrier.tsv:83): a paren comparison folds to a bare concrete
 	// Boolean, so reduce to the taken arm and return a bare-VALUE arm as-is,
@@ -685,7 +686,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		taken := lit
 		recorderState(es).RecordBranch(BranchRecord{
 			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: args[0].Pos(), Joins: joins,
+			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
 		})
 		return []Value{out}
 	}
@@ -793,7 +794,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		recorderState(es).RecordBranch(BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(), Joins: joins,
+			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
 		})
 		// The phantom None is only meaningful while bytecode recording is
 		// live (the lowering tracks the zeroOut slot and the top-level
@@ -819,9 +820,24 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	recorderState(es).RecordBranch(BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
-		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: args[0].Pos(), Joins: joins,
+		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
 	})
 	return []Value{out}
+}
+
+// branchRecordPos is the position a branch RECORD carries: the condition
+// token's own, else — a literal condition (`if true …`) or a bare read
+// carries none under the check pass — the dispatching word's (CurCallPos),
+// read at the handler's ENTRY, before the arm bodies' own dispatches
+// overwrite the scratch. The residual's boundary test orders the branch's
+// value against the statement boundaries that follow it by this position
+// (crossesBoundary, NUR187): a zero position proves nothing and let `if
+// true inc/v [2] ; 5` apply the fn over the next statement's 5.
+func branchRecordPos(r *Registry, cond Value) SrcPos {
+	if p := cond.Pos(); p.Row != 0 {
+		return p
+	}
+	return r.Check.CurCallPos
 }
 
 // computedArmDoBody synthesizes the `[do <arm>]` body for a COMPUTED
@@ -957,6 +973,7 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {
+	pos := branchRecordPos(r, args[0])
 	es := r.Check
 	// Plain-check static reduction (else-less if): a folded bare-Boolean
 	// condition reduces to the then residual (true) or nothing (false),
@@ -989,7 +1006,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// guard — RecordBranch lowers that with no merge slot.
 	recorderState(es).RecordBranch(BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
-		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: args[0].Pos(), Joins: joins,
+		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: pos, Joins: joins,
 	})
 	// A 0-value statement guard's phantom None only belongs on the carrier
 	// stack while recording is live (mirrors if3ReturnsFn): a plain or

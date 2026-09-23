@@ -41,7 +41,7 @@ const (
 	sweepFailureCeiling        = 29  // valid seeds that FAIL to compile or hard-error in CompileCheck — every one a BUG. 30 -> 29 on 2026-09-23 (NUR181, the def-bound closure park): the `word` × factory seed (`def dbl word (mk) end 5 dbl`) compiles with parity — the program residual's ordering treats a parked result as data, and a splice's payload is marked re-stepped so the trailing arm applies it. Before: 31 -> 30 on 2026-09-22 (the dynamic-lead group): the `apply` × container seed (`def m {f: ([n:Integer] => [n add 1])} end 5 m.f/v apply`) compiles — the gradual apply EVENT records at the program level too — and all fourteen of its call-form variants pass with it. Before: 44 -> 36 on 2026-09-19 (S1a): each/fold/scan/filter × factory and × container poly re-match. 36 -> 31 on 2026-09-19 (the fallback removal): five seeds that used to be classified as failures now compile and RUN — the classifier read the try-mode fallback's error as a compile failure, and with one outcome it reads the real one
 	sweepIslandCeiling         = 2   // valid seeds that compile with an interpreter island: inner ×2. 5 -> 2 on 2026-09-19 (S1a): scan × lambda, named-fn and module-export lower to a poly re-match instead of an island
 	sweepCrashCeiling          = 0   // valid seeds an engine PANICS on or never answers — recovered or abandoned by the classifier; the worst kind of defect
-	sweepVariantFailureCeiling = 200 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 195 -> 200 on 2026-09-23 (NUR181, the def-bound closure park): four variants of passing seeds compile now (`afn` factory and container · prefix-stack, `parse` named-fn and module-export — a parked result above a literal seats), and the `word` × factory seed GRADUATED from failing to passing, so its fourteen call forms are counted for the first time: nine decline in existing families (the closure render, a lambda body's unapplied fn value, the twin regime, a branch leaving extra values, a conditional redefinition, the trailing apply's quote state) — 195 - 4 + 9, no new debt. Before: 194 -> 195 on 2026-09-22 (NUR156): the `apply` × module-export seed (`5 M.inc/v apply`) GRADUATED from DIVERGED to passing, so its fourteen call forms are counted for the first time, and one — each-body — declines in the twin-regime family (a bind transition with no stream placement inside a multi-run body), an existing decline, not new debt. 200 -> 194 on 2026-09-22 (the container-member calls): six variants PASS — force-arity, forward-args and usurp × container, each under paren-group and module-body — the paren-bounded apply of a modifier-wrapped container member records through the fn-typed lead admission (recordParenLeadingApply admits a lead whose static type is a fn beside the member-read tag). Before: 200 = 200 on 2026-09-22 (S1b's apply shapes + NUR177): two variants PASS (afn factory · module-body — the transitive render rule, unitRenderKnown; afn container · suffix-def) and two DIVERGED variants became loud declines (afn container · prefix-stack — NUR161, closed as a side effect of NUR177's fresh residual identities; def container · module-body — the SWAP-underflow internal_error, now "fn-value application bounded by a paren"), so the count is unchanged and the silent divergences are gone. Before: 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow compile failure), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
+	sweepVariantFailureCeiling = 201 // call-form variants of passing seeds that fail to compile (islanded or check-reject). 200 -> 201 on 2026-09-23 (NUR159, the branch result's re-step): the `if` × named-fn seed (`def one fn [[][Integer][1]] end if true one/v [2]`) GRADUATED from DIVERGED to passing, so its fourteen call forms are counted for the first time: thirteen pass and one — for-body — declines in the conditional-redefinition family (`fn 'one' redefined inside a conditional body`), an existing decline, not new debt; the same increment turned the two DIVERGED `def` × container variants (fn-body and lambda-body, a `CALL_DYNAMIC underflow` error divergence) into passing ones, which changes no failure count. Before: 195 -> 200 on 2026-09-23 (NUR181, the def-bound closure park): four variants of passing seeds compile now (`afn` factory and container · prefix-stack, `parse` named-fn and module-export — a parked result above a literal seats), and the `word` × factory seed GRADUATED from failing to passing, so its fourteen call forms are counted for the first time: nine decline in existing families (the closure render, a lambda body's unapplied fn value, the twin regime, a branch leaving extra values, a conditional redefinition, the trailing apply's quote state) — 195 - 4 + 9, no new debt. Before: 194 -> 195 on 2026-09-22 (NUR156): the `apply` × module-export seed (`5 M.inc/v apply`) GRADUATED from DIVERGED to passing, so its fourteen call forms are counted for the first time, and one — each-body — declines in the twin-regime family (a bind transition with no stream placement inside a multi-run body), an existing decline, not new debt. 200 -> 194 on 2026-09-22 (the container-member calls): six variants PASS — force-arity, forward-args and usurp × container, each under paren-group and module-body — the paren-bounded apply of a modifier-wrapped container member records through the fn-typed lead admission (recordParenLeadingApply admits a lead whose static type is a fn beside the member-read tag). Before: 200 = 200 on 2026-09-22 (S1b's apply shapes + NUR177): two variants PASS (afn factory · module-body — the transitive render rule, unitRenderKnown; afn container · suffix-def) and two DIVERGED variants became loud declines (afn container · prefix-stack — NUR161, closed as a side effect of NUR177's fresh residual identities; def container · module-body — the SWAP-underflow internal_error, now "fn-value application bounded by a paren"), so the count is unchanged and the silent divergences are gone. Before: 200 -> 206 on 2026-09-19 (S1a), then 206 -> 200 on 2026-09-19 (the fallback removal), same cause as sweepFailureCeiling: eleven cells started passing and brought 154 new variants, six of which fail — each/filter/fold/scan × factory and scan × named-fn under for-body (the factory redefined inside the loop, the conditional-shadow compile failure), and scan × module-export under each-body (a twin-regime placement) — and no variant that passed before fails now (the sets were diffed)
 	sweepVariantCrashCeiling   = 2   // call-form variants an engine PANICS on or never answers: word/lambda under paren-group and module-body (NUR162) — its own ceiling, so a crash can never hide inside the failure count
 )
 
@@ -66,9 +66,6 @@ var sweepKnownMiscompiles = map[string]sweepPin{
 	`import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl`: {
 		"NUR154 — `case` lowers its clause list as a static literal, so a clause list a module fn returns is never read",
 		"error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional trailing default)"},
-	`def one fn [[][Integer][1]] end if true one/v [2]`: {
-		"NUR159 — a named fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane",
-		"value divergence: compiled [fn one] vs interp [1]"},
 }
 
 // sweepInventory is the matrix's rows: every declaration-relevant word of
@@ -222,7 +219,10 @@ func sweepBailReason(detail string) string {
 // is not, and a pinned one that diverges DIFFERENTLY is an error again.
 func TestSweepMiscompilePinsTheDivergence(t *testing.T) {
 	t.Parallel()
-	src := `def one fn [[][Integer][1]] end if true one/v [2]`
+	// The seed is the register's oldest open pin (NUR154); the `if` ×
+	// named-fn cell that seeded this test until 2026-09-23 agrees now
+	// (NUR159 FIXED).
+	src := `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl`
 	pinned := sweepKnownMiscompiles[src].detail
 
 	rec := &recTB{}
@@ -233,14 +233,14 @@ func TestSweepMiscompilePinsTheDivergence(t *testing.T) {
 	}
 
 	rec = &recTB{}
-	sweepMiscompile(rec, "if/named-fn (the seed)", src, pinned+" (and then some)", seen)
-	if rec.failed || len(rec.logs) != 1 || !strings.Contains(rec.logs[0], "known miscompile (NUR159") || !seen[src] {
+	sweepMiscompile(rec, "case/module-fn (the seed)", src, pinned+" (and then some)", seen)
+	if rec.failed || len(rec.logs) != 1 || !strings.Contains(rec.logs[0], "known miscompile (NUR154") || !seen[src] {
 		t.Errorf("pinned, matching: errs = %q logs = %q", rec.errs, rec.logs)
 	}
 
 	rec = &recTB{}
-	sweepMiscompile(rec, "if/named-fn (the seed)", src, "value divergence: compiled [2] vs interp [1]", seen)
-	if len(rec.errs) != 1 || !strings.HasPrefix(rec.errs[0], "MISCOMPILE CHANGED — if/named-fn (the seed) is pinned to NUR159") {
+	sweepMiscompile(rec, "case/module-fn (the seed)", src, "value divergence: compiled [2] vs interp [1]", seen)
+	if len(rec.errs) != 1 || !strings.HasPrefix(rec.errs[0], "MISCOMPILE CHANGED — case/module-fn (the seed) is pinned to NUR154") {
 		t.Errorf("pinned, changed: errs = %q", rec.errs)
 	}
 }

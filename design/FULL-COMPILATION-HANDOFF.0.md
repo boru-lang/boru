@@ -12639,3 +12639,135 @@ declines, the NUR186 pending pin); eng `vm_unmatched_lambda_body_test.go`
 `TestProgramPendingApply` (the empty window). Ledgers: `knownDivergences`
 (L216 retired), `sweepKnownMiscompiles` (NUR160 retired),
 `SWEEP_STATUS.md` regenerated.
+
+## S1b — the branch result's re-step: NUR159 closed, NUR187 found and closed (2026-09-23)
+
+**The measurement first.** NUR159 was the sweep's `if` × named-fn cell —
+`def one fn [[][Integer][1]] end if true one/v [2]` is 1 interpreted and
+`fn one` compiled — and, as with NUR155 and NUR160, its neighbours said
+where it lived before any code was read. The else arm (`if false [2]
+one/v`), the paren (`(if true one/v [2])`), the def (`def x (if true
+one/v [2]) end x`), the fn body (`def g fn [[][Any][if true one/v [2]]]
+end (g)`) and the value beneath (`7 if true inc/v [2]`, 8 interpreted for
+`[7 fn inc]`) all diverged the same way; `if true inc/v [2] 5` agreed (6:
+the lead arm's own mayBeFn clause, which already knew the branch could be
+callable over static args), and `if true inc/v [2]` agreed as data. The
+mechanism was one fact in one place: `RecordBranch` sets
+`eventFlags.mayBeFn` when an arm is a fn VALUE, but the merge widens the
+fn arm's type to its lattice parent (Word), so every gate that asks "is
+this value a fn?" statically — the landing's note (`noteReStepLanding`
+wants a fn-typed carrier or a fn-admitting dynamic), the residual's
+trailing and mixed arms, the collapse's park and re-step marks — stepped
+past the merged value as data.
+
+**The change.** The fact is a SEAM now. `EmitRecorder.MayBeFn(id)`
+(core/go/emit_recorder.go; `EmitState.MayBeFn` reads the branch event's
+flag) is asked beside the static fn tests wherever they are asked, and
+`RecordBranch` records a second flag, `mayBeFnArgs`, for a fn arm that
+may TAKE ARGUMENTS (`fnValueMayTakeArgs`: a named fn with a parameterised
+overload, or a carrier whose overloads are unknown) — because the two
+cases have different homes. A 0-arg arm is settled by the LANDING: the
+check pass notes the re-step landing on the merged value
+(`noteReStepLanding`, widened by `es.MayBeFn`), and the lowering lands it
+right after the merge (`emitBranchLanding`, `lowerArms`' two merge
+sites), where `reStepLanding` fires a named 0-arg fn, parks a 0-arg
+lambda and stands aside for anything else — so `if true one/v [2]` is 1
+at the main program, in a paren, in a def, in a fn body and in a code
+body, and `if true ([] => [1]) [2]` stays `fn`. An arg-taking arm is the
+RESIDUAL's: `mayBeFnUnsettled` (the args flag, and neither paren-placed
+nor `/v`-read) joins the fn-like test the trailing, trailing-window and
+mixed arms share (`fnLikeResidual`) and Finalize's reorder gate
+(`residualHasFnOrDynamic` — reordering `7 if true inc/v [2]` promoted the
+branch off the simulated stack before the trailing arm could rotate it),
+so `7 if true inc/v [2]` is 8, `1 7 if true inc/v [2]` `[1 8]`, `7 if
+true inc/v [2] 10` `[7 11]`. The collapse asks the same seam:
+`mightBeCallable` (markReStepped, markForwardLeftover) and `fnReturnPark`
+admit a may-be-fn survivor through `recorderMayBeFn`, and check's park
+twin records its placement, so `7 (if true inc/v [2])` is the placed
+pair on both lanes and `(7 (if true inc/v [2]))` is 8. Everything no arm
+seats declines through existing sites, each with the interpreter's
+answer pinned beside it: a later dispatch that collected the branch's
+value (`polyCallDeclineReason` — `7 if true inc/v [2] add 1` is 9, inc
+over 7 first; even a 0-arg arm's poly was matched at check time against
+the widened type, with the wrong overload and width), an arg-taking
+value interior to the residual (the unhandled loop), a list literal's
+element with siblings (`RecordMakeListInner`), a fn or closure unit's
+residual (`fnResidualReplayReason` — inside a frame the interpreter takes
+the frame's own values or raises, NUR186's arm), and a def bound to an
+arg-taking result (`noteMayBeFnRead`, through the arm-read placement
+poison: the interpreter installs the fn under the name and dispatches
+the NAME as a word, `def x (if true inc/v [2]) x 5` is 6, and delivers
+the RENAMED value for `x/v`).
+
+**What it found: NUR187.** `7 if true inc/v [2] ; 3` compiled `[7 4]` for
+the interpreter's `[8 3]` — and so did the member-read twin on main, `def
+m {f: inc/v} 7 m.f ; 3`, and `m.f ; 5` compiled 6 for `[fn inc 5]`. The
+residual is a flat list of values, and neither the lead arms nor the
+mixed island knew where a `;` fell: the island laid `[7 fn 3]` out as one
+window and the fn collected the 3 forward. A first draft keyed the
+boundary on the landing NOTE (a value noted as landing had nothing
+collectable after it) and it was wrong the way every value-keyed mark is
+wrong — the note travels with the value's ID, and a closure noted at its
+factory's tail read as "noted" at the main program, where the patrun
+rows and the curried factory rows silently laid their leads out as data.
+The fix is POSITIONAL: `stepEnd` hands every boundary's position to the
+recorder (`EmitRecorder.NoteStatementEnd` → `EmitState.stmtEnds`), and
+`crossesBoundary` orders a value's producing event (or its token) against
+the entries above it — a proven crossing (both positions known, a
+boundary strictly between) stands the lead arms aside (the value is data
+beneath the later entries, as the interpreter left it) and declines the
+mixed island. A def-bound read's position is the name's, which is not
+recorded, so it proves nothing (`def fs (FnUtil.flip sub/v) end (fs 3
+10)` keeps its arm); a branch record whose condition token carries no
+position (`if true …`) takes the dispatching word's (`branchRecordPos`,
+basic/go), or the branch family would have crossed unseen. One
+pre-existing decline moved reasons under the rule: `def r (2 (mk 1)) end
+r 5` (the `end` is a proven boundary between the leftover closure and
+the values after it, so the closure is data beneath them and the row
+declines at the render gate).
+
+**Two more things the corpus found.** The first full run's sweep flagged
+`7 def mk fn [[][Function][([] => [1])]] end if true (mk) [2]` — the
+`if` × factory cell's prefix-stack form — at `[fn 7]` for the
+interpreter's `[7 fn]`: a factory's closure in the arm read as "may take
+arguments" (a carrier's overloads are unknown), so the trailing arm
+rotated the pair for an apply that a 0-arg lambda never makes, and the
+island's fn-first layout parked the fn and then pushed the 7. Two fixes,
+one per end: the arm asks the producer's recovered closure shape first
+(`branchArmMayTakeArgs` → `producerReturnedClosureArity`: a 0-arg lambda
+parks, so the branch is settled and lays out as data), and the VM's
+trailing apply islands its window AS WRITTEN — the arg beneath, the fn on
+top — and undoes the rotation on a fn-value closure's no-match, which is
+what the interpreter's re-step leaves whether or not the fn takes the arg
+(`callDynamic`, eng/go/vm.go), so a shape the pass cannot recover (`def
+mk fn [[b:Boolean][Function][if b [([] => [1])] [([n:Integer] => [n add
+1])]]] end 7 if true (mk true) [2]`) answers `[7 fn]` and its 1-arg twin
+8. Six sweep variants of that cell declined in between and pass again.
+
+**Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
+report): every ceiling stands at its live value — compile failures 21,
+compute gaps 16, reducible 4, interp-entry rows 75, engine entries 408
+(Engine.Run×408, CallBoru×240, RunResolved×105), runtime defers 8,
+locally-resolved 1, armed-only 8, diagnostic parity 348, correct-error 1,
+type-soundness 4, corpus rows that compile and then bail 52, real
+programs 36 of 62, the lang ledger 280 / 33, the reference-engine ledger
+111. The generated sweep moved: seeds 29 / 2 / 6 (the `if` × named-fn
+seed graduated from DIVERGED to passing, `SWEEP_STATUS.md` pass 152 →
+153), and the call-form variant ceiling 200 → 201 — the graduated seed's
+fourteen forms are counted for the first time, thirteen pass and one
+(for-body) declines in the conditional-redefinition family, an existing
+decline; the two DIVERGED `def` × container variants (a `CALL_DYNAMIC
+underflow` error divergence under fn-body and lambda-body) pass now, which
+the failure count does not see. `knownDivergences` stays at 1 (NUR154).
+
+**Pins.** `branch_fn_value_test.go` (lang/go: fifty-one parity rows,
+one error-parity row, nineteen sound declines with the interpreter's
+answers, the member-read boundary rows and the factory arms among them); compiler
+`branch_fn_value_test.go` (the helpers, the poly decline, the read
+poison, the branch landing's lowering, the boundary note and its
+crossing test); check `branch_fn_value_landing_test.go` (the landing's
+note and the park twin through `MayBeFn`); core
+`branch_fn_value_marks_test.go` (the marks, the park, `stepEnd`'s note).
+Ledgers: `sweepKnownMiscompiles` (NUR159 retired; the pin-mechanics test
+re-seeded on NUR154), `paren_trailing_forward_test.go` (one reason
+re-pinned), `SWEEP_STATUS.md` regenerated.

@@ -117,6 +117,10 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.ApplyPending("id") {
 		t.Fatal("inactive ApplyPending must be false")
 	}
+	if e.MayBeFn("id") {
+		t.Fatal("inactive MayBeFn must be false")
+	}
+	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")
 	}

@@ -409,3 +409,106 @@ recorded miscompile closed, one new opcode, four regressions found and
 fixed by the corpus gates on the way (each now a rule in the code). The
 family-level rate the handover page's process rule 9 names — ten to twenty
 rows per family increment — held; the row-level rate did not apply.
+
+## 12. Re-estimated 2026-09-23, at the end of S1b's apply-shape run
+
+**Measured on `main` at cb97cd2 (PR #491).** Two session-days since §11:
+eight merges, all on S1b's fn-value family — the apply shapes (#484), the
+dynamic-lead group (#485), the container-member calls (#486), the curried
+chain (#487), the quotation-body reads with NUR156 and NUR181 (#488), the
+recovery's window (#489), the trailing value's re-step (#490) and the
+typed callback's contract (#491). Every one was reached by probing a
+pinned row's neighbours before reading code, and every one found at
+least one silent miscompile on `main` that no ledger held: eleven closed
+in the two days (NUR156, 178–185, 155, 160), one recorded open (NUR186).
+That is §9's prediction running the other way — the instruments raised
+the bill on 09-17 and 09-22, and a family worked as one mechanism paid it
+down faster than the row rate.
+
+**Where the debt stands** (`COMPILED_STATUS.md`, `GATE_STATUS.md`, the
+two unit ledgers and the real-program gate, not re-derived):
+
+| measure | 09-19 | 09-21 | 09-22 | **09-23** |
+|---|---:|---:|---:|---:|
+| corpus rows that fail to compile | 53 | 62 | 45 | **21** |
+| of which operand provenance (S5) | 16 | 25 | 8 | **6** |
+| of which the fn-value family (S1b) | ~28 | ~23 | ~23 | **2** |
+| compute gaps | 49 | 58 | 41 | **16** |
+| unit-suite programs that do not compile / compile and bail (`lang/go`) | 284 / — | 284 / — | 283 / — | **280 / 33** |
+| language tests answered on the reference engine (`lang/go/test`) | 111 | 111 | 111 | 111 |
+| engine entries / interp-entry rows (T2) | 422 / 78 | 422 / 80 | 422 / 80 | **408 / 75** |
+| real programs compiling | 34/62 | 34/62 | 34/62 | **36/62** |
+| known miscompiles LIVE on `main` (T3) | 0 | 1 | 0 | **0** |
+| silent miscompiles recorded and pinned pending | 4 | 4 | 4 | **3** (NUR154, NUR159, NUR186) — **2** after the branch result's re-step later the same day (NUR159 closed, NUR187 found and closed; NUR154 and NUR186 remain) |
+| `knownDivergences` (corpus rows diverging) | 5 | 5 | 2 | **1** (NUR154) |
+
+The 21 that remain, by mechanism: provenance 6 (S5 — the rest of Stage
+5's generality), a dynamic-scope def of an unpromoted computed value 4,
+loop results as a branch or body result 2, the twin regime's unplaced
+transitions 2, the fn-value family 2 (an apply not at a body's tail, a
+paren-bounded apply with a dynamic value before its args), dispatch
+recovery 1, a code-body word 1, a quoted-operand word 1, an uncaptured
+`for` body 1, the one correct-error row.
+
+**What the census says about the rest of S1b.** The 75 interp-entry rows
+are 21 code-bodies rows (S3: a quoted token body produced at run time —
+a fn returning `quote [add 1]`, a flex member, a def-bound branch result —
+handed to each/fold/do/filter), 8 fold-map-filter and 8 callbacks rows (a
+lambda literal INSIDE a quotation body, or a factory's closure produced
+inside an each body — the value stepped at the body's tail), and 4 each
+of fn-value, module-fnvalue-boundary and bytecode-migrated. The fn-value
+half (~27 rows) is what S1b still owes; the code-body half is S3's.
+
+**The re-estimate, per step** (the 09-22 column, and what moved it):
+
+| step | 09-22 | **09-23** | why |
+|---|---:|---:|---|
+| S0 | 2–4 | **2–4** | untouched: the module exports as rows, signature-level cells, the ratchets re-based on the sweep |
+| S1b | 8–14 | **4–8** | the corpus's ~23 fn-value rows fell to 2 in two session-days; what is left is the census's ~27 fn-value rows (the same mechanisms one level down, inside quotation bodies), the two corpus rows, NUR186 (the landing's family: a NAMED fn value re-stepped at a factory tail; NUR159, its branch-arm twin, closed later the same day), and the unit-suite ledger's fn-value programs |
+| S2a | 3–5 | **3–5** | no evidence since; undeclared handlers still 94 (quoted 28, fn-operand 7) |
+| S2b | 9–15 | **9–15** | 12 of the 26 real programs that do not compile fail on `test-describe`/`test-cover`, code-body words on units; unchanged |
+| S3 | 8–16 | **8–16** | the 21 code-body census rows; unchanged |
+| S4 | 18–30 | **18–30** | design-bound and unchanged; the kg gate stays off until the evaluating host lands |
+| S5 | 3–6 | **3–5** | 8 → 6: two provenance rows compiled as side effects of the fn-value increments; the seat is the same |
+| S6 | 4–8 | **4–7** | armed-only 9 → 8 (a false `undefined word` gone with the recovery's window); the four `undefined_word` witnesses stand |
+| S7 | 5–10 | **5–10** | unchanged; engine entries 422 → 408 moved with S1b, not with S7's valves |
+| | **60–108** | **56–100** | |
+
+**Calendar and probability.** At five session-days a week from 2026-09-23:
+
+| | session-days | finishes |
+|---|---:|---|
+| low | 56 | around 8 December 2026 |
+| midpoint | 78 | around 12 January 2027 |
+| high | 100 | around 10 February 2027 |
+
+Year end is about 70 session-days away, so the low end reaches it with
+three weeks' margin and the midpoint misses it by about a week and a
+half. T1 + T2 by year end: **about 40%**, up from §11's 30% — the low end
+came in by four days and, for the first time, the width narrowed (S1b's
+range halved). The width still lives in S4 and S2b, and neither moved. By
+the end of February 2027: about 75%; by the end of March 2027: about 85%.
+
+**What would move it, in order of leverage.** (1) The landing model for a
+NAMED fn value (NUR186; NUR159's branch-arm half closed later the same
+day — the branch result's re-step, which also found and closed NUR187,
+the residual's statement boundary): the interpreter's re-step of a named
+fn at the pointer ALWAYS dispatches — a name always calls, ADR-011 — and
+raises on a no-match, where the landing leaves the value as data; one
+rule closes the record and the main-program half of NUR124. (2) The
+census's fn-value rows as one mechanism (a lambda literal or a produced
+closure stepped at a quotation body's tail), the same probing method that
+took the corpus's 23 rows. (3) The evaluating host (S4): still the only
+thing that restores the kg gate, still the widest step. (4) A second
+session on S2a/S2b, the one line that does not contend for `compiler/go`.
+
+**Calibration.** Eight increments in two session-days, each one family:
+24 corpus compile failures and 25 compute gaps closed, 14 engine entries
+and 5 census rows retired, 36 of 62 real programs compiling (from 34),
+eleven silent miscompiles closed and one found. Every increment ran the
+full unfiltered corpus before merging and moved no ceiling the wrong way;
+the one thing the commit gate missed (the arity gate under `test/go`,
+which it does not run for a change under `core/go`) was caught by CI and
+repaired in the next merge. The family-level rate held at the top of its
+range — the rows fell faster than the row rate because each mechanism
+carried its neighbours — and the row-level rate did not apply.

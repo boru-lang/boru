@@ -473,6 +473,32 @@ user still gets an answer while the case is open:
   2 c/v 10` used to island the window and apply the closure; it declines
   at the render gate now (the value renders under the def's name).
 
+  A BRANCH whose arm is a fn VALUE returns a value the interpreter
+  re-steps, and the compiled lane re-steps it the same way since the
+  branch result's re-step (2026-09-23, NUR159): a named 0-arg fn fires at
+  the merge (`if true one/v [2]` is 1 — at the main program, in a paren,
+  a def, a fn body and a code body), a 0-arg lambda parks, and an
+  arg-taking fn takes the token after it (`if true inc/v [2] 5` is 6) or
+  the values beneath (`7 if true inc/v [2]` is 8, `1 7 if true inc/v [2]`
+  `[1 8]`, `xs each [if true inc/v [2]]` `[2 3]`), a paren placing the
+  lone value (`7 (if true inc/v [2])` is the pair) and an enclosing paren
+  re-stepping it (`(7 (if true inc/v [2]))` is 8). The merge widens the
+  fn arm's type to Word, so the recorder's branch event carries the fact
+  (`MayBeFn`, with an arg-taking flag) and every collapse-side and
+  residual-side gate asks it. Still DECLINING, pinned
+  (`TestBranchFnValueSoundCompileFailures`): a later dispatch that
+  collected the branch's value (`7 if true inc/v [2] add 1`, 9
+  interpreted — inc over 7 first), an arg-taking value interior to the
+  residual past a statement boundary (`7 if true inc/v [2] ; 3`, `[8 3]`),
+  a list literal's element with siblings (`[7 if true inc/v [2]]`), a fn
+  body's residual over a param (`def g fn [[m:Integer][Any][m if true
+  inc/v [2]]] end (g 7)`, 8), and a def bound to an arg-taking result
+  (`def x (if true inc/v [2]) x 5`, 6 — the interpreter dispatches the
+  NAME as a word). A statement boundary ends a value's collection on both
+  lanes (NUR187, the same day): `m.f ; 5` is `[fn 5]`, `if true inc/v [2]
+  ; 5` the same, and `7 m.f ; 3` — the fn over the 7 beneath, the 3 the
+  next statement's — declines loudly where it islanded to `[7 4]`.
+
   A TYPED lambda callback over a HETEROGENEOUS list is applied only to the
   elements its signature admits on both lanes since the typed callback's
   contract (2026-09-23, NUR155): `each ([x:Integer] => [typeof x]) [1 'a'
