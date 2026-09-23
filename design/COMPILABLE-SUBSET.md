@@ -442,6 +442,20 @@ user still gets an answer while the case is open:
   roll`, NUR124's timing axis at the main program). Pinned by
   `def_bound_closure_park_test.go`.
 
+  A typed word over a trailing paren apply's Any result inside an
+  UNNAMED-param frame (`xs each [(2 (mk 1)) mul 10]`, `def f fn
+  [[Integer][Integer][(2 (mk 1)) mul 10]]`) compiles with parity since the
+  recovery's window (2026-09-23, NUR180): the checker's unmatched-dispatch
+  recovery lays the window it poly-records out FORWARD-FIRST, as the
+  interpreter's matcher does — the written argument fills the leading
+  position, the stack the rest — where it used to prefer the stack and
+  took the frame's input for the written `10`. What still diverges,
+  pinned (NUR184): a paren's TRAILING fn value forward-collects the
+  tokens past the `)` (`(2 (mk 1)) 10` is `[2 11]` on the interpreter) and
+  a paren closing under a pending forward hands its survivors to it (`10
+  mul (2 (mk 1))` is 21); the compiled trailing-apply record applies the
+  value over the values inside the paren, the no-follower model.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.

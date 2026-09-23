@@ -102,10 +102,11 @@ keep the two in sync in the same commit.
 | [NUR177](#nur177) | An UNDECLARED-return fn — a lambda-bodied `def w n:Integer => [...]`, whose result is its analysed body residual — called twice in one program with the same argument shape seats ONE result for both calls: `def g x:Integer => [x add 3] end def w n:Integer => [(g n)] end (w 5) (w 0)` is `[8 3]` interpreted and `[3 3]` compiled, `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` `[8 0]` and `[0 0]` — silent, default lane, exit 0, present on `main`. AnalyseFnBody memoises the residual per arg shape and handed the SAME values to every call, and the recorder keys producers by value ID. FIXED 2026-09-22: `freshResidual` (check_fnbody.go) re-mints each call's result identities at the record; the declared-return path always minted its own, which is why the corpus's `fn [[…] [T] …]` spelling never saw it | S1b's apply shapes graduating a literal-read pin, 2026-09-22 |
 | [NUR178](#nur178) | A paren over a PRODUCED closure — a compiled factory call's result re-stepped by the paren's rewind, `((mk 1) 2)` — left its window on the tape for a LATER word to collect: `((mk 1) 2) mul 10` compiled 21 (mul over 2 and 10, the closure over the product) for the interpreter's 30, `((mk 1) 2.5) mul 2` 6.0 for 7.0 — silent, default lane, exit 0, present on `main`; `add` agreed by arithmetic. The NUR121 hazard mark WAS set, and `hazardLead` exempted the lead on the INNER paren's placed mark whatever the outer paren had done. FIXED 2026-09-22 (the curried chain): the collapse records the re-stepped produced lead's apply as an event (core `parenProducedLeadApplyIdx` over the `ProducedLeadApplies` seam), and a collection made AFTER the re-stepping paren closed is a leak the hazard declines (`hazardAfterReStep`); the leading form's no-match order (`((mk 1) "s")` compiled `[s fn]` for `[fn s]`) is closed in the same landing | the curried chain, callbacks.tsv L151, 2026-09-22 |
 | [NUR179](#nur179) | Every fn-value-call op that hands a compiled fn-VALUE closure its window bound a TWO-param closure's first param to the value farthest from it: `(2 3 (mk2 1))` compiled 24 for the interpreter's 33, `7 5 (mk2 1)/v apply` 76 for 58, `1 2 (kk 7) apply` 19 for 28, a Function param's `(2 3 g)` 24 for 33, a capturing closure MEMBER's `(m.g 2 3)` 33 for 24, and the residual arm's `((mk2 1) 2 3)` 33 for 24 — silent, default lane, present on `main`. The ops build their window POSITIONALLY (args[0] → the first param) and handed it to the token seam, whose fn-value arm (S1b-2, `invokeFnValueClosure`) takes STACK order and reverses it itself; every pin was a one-argument window or a commutative body. FIXED 2026-09-22: `invokeClosurePositional` (eng/go/vm.go) re-stacks a positional window for a fn-value closure | the curried chain's two-argument probes, 2026-09-22 |
-| [NUR180](#nur180) | A trailing paren apply whose result the recorder can only type Any — an event lead (a factory's closure), an anonymous lambda (a count contract) — inside an UNNAMED-param frame (an each or fold body, `fn [[Integer] …]`), consumed by a typed word: `xs each [(2 (mk 1)) mul 10]` compiles `[10 10 10]` for `[30 30 30]`, `0 fold [add (2 (mk 1))] xs` 3 for 6 — silent, present on `main`. The checker's recovery re-matches the word over the frame's gradual input (`mul/2 (poly)` over the element and the result, the written 10 pushed after) instead of the written argument. MITIGATED 2026-09-22: a NAMED concrete lead's declared return types the result (`concreteFnSingleReturn`), so `(2 inc2/v) mul 10` in an each body is 40 on both lanes; the curried-chain arm stands aside in unnamed frames. The Any-result rows stay open, pinned to fail when they agree | the curried chain's each-body probes, 2026-09-22 |
+| [NUR180](#nur180) | FIXED 2026-09-23 for the mechanism named here (the checker's recovery lays its window out forward-first, as the interpreter's matcher does — `checkModeFallbackPositionsFor`); the fold row belongs to NUR184. The original text: A trailing paren apply whose result the recorder can only type Any — an event lead (a factory's closure), an anonymous lambda (a count contract) — inside an UNNAMED-param frame (an each or fold body, `fn [[Integer] …]`), consumed by a typed word: `xs each [(2 (mk 1)) mul 10]` compiles `[10 10 10]` for `[30 30 30]`, `0 fold [add (2 (mk 1))] xs` 3 for 6 — silent, present on `main`. The checker's recovery re-matches the word over the frame's gradual input (`mul/2 (poly)` over the element and the result, the written 10 pushed after) instead of the written argument. MITIGATED 2026-09-22: a NAMED concrete lead's declared return types the result (`concreteFnSingleReturn`), so `(2 inc2/v) mul 10` in an each body is 40 on both lanes; the curried-chain arm stands aside in unnamed frames. The Any-result rows stay open, pinned to fail when they agree | the curried chain's each-body probes, 2026-09-22 |
 | [NUR181](#nur181) | FIXED 2026-09-23 (the def-bound closure park — the handoff log's entry of that date): a call result is parked where it lands on the compiled lane too, whatever route the call took — the recorder resolves a shaped method call's callee unit from the method value's own producer and a fn-value apply's from its closure operand (`callAppliedClosureUnit`), `callResultPlaced` reads both, and the program residual's ordering treats a parked result as data; `2 r 3`, `(r 3)`, `7 (r 3) 2`, `r 3 4`, `2 ((mk3 1) 3)` and `5 (mk 3)` (which declined) all agree. The original text: A def-bound factory closure applied through the READ model nets a closure the re-step landing applies where the interpreter parks it: `def mk3 … def r ((mk3 1) 2) end r 3` — the def's pending collection takes the paren's survivors as ARGUMENTS, so r is mk3's closure and 2 stays on the stack — is `[2 fn (Integer)]` interpreted (the call result is placed) and 6 compiled (`CALL_DYN_METHOD r/1; RESTEP_LANDING` applies the closure to the 2 beneath) — silent, present on `main`, measured on a worktree at 917ecf0. Not this landing's: recorded and pinned to fail when it moves | probing the def-bound chain, 2026-09-22 |
 | [NUR182](#nur182) | The whole-frame replay (OpCallDynFrame) re-stepped a paren-PLACED value: a fn unit whose body left `(ops.inc)` — a member read the paren placed — above its input compiled the APPLY, `def f fn [[Integer][Any][(ops.inc)]]  f 5` answering 6 for the interpreter's `fn (Integer)`, and `[[Integer][Integer][(ops.inc)]]`, `[5 (ops.inc)]`, `[(ops.inc) 5]`, `[x (ops.inc)]` answering 6 where the interpreter raises its return-count / return-type error — silent, default lane, present on `main`. A fn frame never re-steps a placed value (the re-step of a native's fn result is the CALLER's, NUR124), but noteDynFrameReplay counted it as the window's applicable and the replay island re-steps every token it is handed. FIXED 2026-09-22 (the quotation-body container reads): a placed value no enclosing paren re-stepped is data — skipped as an applicable, a blocker for any window beside one, re-pushed by the promotion; a `do` body's placed value with siblings stays declined, its caller re-steps it | the quotation-body container reads' probes, 2026-09-22 |
 | [NUR183](#nur183) | A fn-valued container member read as the LAST token of a code body over a DUPLICATED element compiled the member as data: `def ops {inc: (fn [[n:Integer][Integer][n add 1]])}  each [dup ops.inc] [1 2 3]` is `[2 3 4]` interpreted (the reach collapse re-steps the member over the copy) and `[fn fn fn]` compiled — silent, default lane, present on `main`. The same root as each-variants L205 / fold-map-filter L215 / module-composition L98, which DECLINED ("result above a literal"): a code-body closure unit took no whole-frame replay, and with two values beneath the member the layout seated in order and the member rode as data. FIXED 2026-09-22 (noteClosureBodyReplay: a tagged fn-member read at a code body's tail arms the replay a fn unit already took) | the quotation-body container reads, 2026-09-22 |
+| [NUR184](#nur184) | A paren's TRAILING fn value is dispatched like a word AFTER the paren — it forward-collects the tokens past the `)` first and takes the values inside the paren only when nothing collectable follows — and a paren closing UNDER A PENDING FORWARD hands its survivors to that forward, the fn value re-stepping over the forward's result: `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  (2 (mk 1)) 10` is `[2 11]` interpreted and `[3 10]` compiled, `(2 (mk 1)) 10 mul` 22 for 30, `(2 inc2/v) 10` `[2 12]` for `[4 10]`, `10 mul (2 (mk 1))` 21 for 30, `0 fold [add (2 (mk 1))] xs` 6 for 3, `def r (2 (mk 1)) end r` `[fn 2]` for 3; `(2 (mk 1))`, `(2 (mk 1)) "s"`, `(2 (mk 1)) mul 10` and the LEADING form `((mk 1) 2) 10` agree. The compiled trailing-apply record (`recordParenTrailingFnApply`) applies the value over the values INSIDE the paren, right only for the no-follower case. Pinned by `TestParenTrailingFnForwardCollectsPending` (lang/go) | closing NUR180, 2026-09-23 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7162,6 +7163,55 @@ crash is what this record is for.
 signature, and why) and, defensively, the disassembler; until then the
 sweep's call-form ceiling names the two variants.
 
+## NUR184 — a paren's trailing fn value forward-collects past the paren's close {#nur184}
+
+**Status:** PENDING, recorded 2026-09-23 while closing NUR180 (its fold
+row is this record's). Present on `main` (`4ee542d`), silent, default
+lane, exit 0.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**The oracle, measured.** A paren whose LAST survivor is a fn value does
+not apply it at the close: the value is sealed and dispatched like a word
+right after the paren — the interpreter's forward phase takes the tokens
+past the `)` while they match the value's parameters, and only with nothing
+collectable there does the value fall to the stack, the values inside the
+paren. A paren that closes UNDER A PENDING FORWARD (a word before it still
+collecting) hands its survivors to that forward in order, and the fn value
+left over re-steps over the forward's result.
+
+| witness (`mk` returns `x add n`; `inc2` adds 2) | interpreted | compiled |
+|---|---|---|
+| `(2 (mk 1)) 10` | `[2 11]` | `[3 10]` |
+| `(2 (mk 1)) 10 20`, `5 (2 (mk 1)) 10`, `((2 (mk 1)) 10)`, `[(2 (mk 1)) 10]` | the same shape | the same shape |
+| `(2 (mk 1)) 10 mul` | `[22]` | `[30]` |
+| `(2 inc2/v) 10`, `(2 inc2/v) 10 mul` | `[2 12]`, `[24]` | `[4 10]`, `[40]` |
+| `10 mul (2 (mk 1))`; the same in a fn unit | `[21]` | `[30]`; `[3]` |
+| `def xs [1 2 3]  xs each [(2 (mk 1)) 10]` | `[[11 11 11]]` | `[[10 10 10]]` |
+| `0 fold [add (2 (mk 1))] xs` (NUR180's fold row) | `[6]` | `[3]` |
+| `def r (2 (mk 1)) end r` | `[fn (Integer) 2]` | `[3]` |
+
+Agreeing: `(2 (mk 1))` (3), `(2 (mk 1)) "s"` (`[3 s]` — the String is not
+collectable), `(2 (mk 1)) mul 10` (30 — a word follows), `(2 (mk 1)) add
+10`, `((mk 1) 2) 10` (`[3 10]` — a LEADING fn collects inside the paren, the
+rewind's re-step), a body whose tail is the paren.
+
+**The mechanism.** `recordParenTrailingFnApply` (core/go/engine.go) records
+the trailing window `(args… fn)` as one apply EVENT over the values inside
+the paren and collapses the tape to its result — the model of the
+no-follower case. The interpreter's sealed value looks past the close
+first. The record must either look past the close as the interpreter does
+(the follower literal is the argument, the inside values stay as residual
+— `[2 11]`) or decline when a collectable token follows; and a paren under
+a pending forward must hand its survivors to the forward's collection
+rather than record its own apply.
+
+**Where it belongs.** The paren re-step rule (design/PAREN-RESTEP-RULE.0.md)
+and NUR124's payload axis; the trailing-apply record's first cut. Pinned
+by `TestParenTrailingFnForwardCollectsPending` and
+`TestParenTrailingFnAgrees` (lang/go, paren_trailing_forward_test.go), and
+the fold row by `TestUnnamedFrameApplyResultAnyPending`.
+
 ## NUR183 — a member read at a code body's tail over a duplicated element compiled as data {#nur183}
 
 **Status:** FIXED 2026-09-22 (the quotation-body container reads — the
@@ -7316,8 +7366,35 @@ must not seat over it. Pinned by `TestDefBoundFactoryClosureLandingPending`
 
 ## NUR180 — a trailing paren apply's Any result inside an unnamed-param frame is re-matched over the frame's input {#nur180}
 
-**Status:** MITIGATED 2026-09-22 (the curried chain); the Any-result rows
-stay OPEN. Present on `main` (a worktree at 917ecf0), silent, default lane.
+**Status:** FIXED 2026-09-23 (the recovery's window — the handoff log's
+entry of that date) for the mechanism this record names; MITIGATED
+2026-09-22 (the curried chain) for a named concrete lead. Present on
+`main` (a worktree at 917ecf0), silent, default lane. The fold row of the
+table below (`0 fold [add (2 (mk 1))] xs`) is NOT this mechanism's: its
+paren closes UNDER `add`'s pending forward, which is NUR184's record.
+
+**The fix.** The checker's unmatched-dispatch recovery
+(`checkModeAssumeSig`, check/go/check_recovery.go) gathered its assumed
+window from the STACK first and filled any shortfall from the tokens after
+the word — the opposite of the interpreter's matcher, whose forward phase
+takes the written tokens for the forward-eligible leading positions FIRST
+and the stack for the rest. Inside an unnamed-param frame the frame's input
+sits on the stack beneath the result, so a two-arg word found two stack
+values and never looked at the written `10`; in a named frame it found one
+and filled the shortfall forward, which is why only unnamed frames
+diverged. `checkModeFallbackPositionsFor` now lays the window out
+forward-first per candidate signature under the word's modifiers
+(`core.EffectiveForwardLimit`: the barrier, `/s`, `/f`), a written token
+filling its position while it is compatible (a type match, an Any
+carrier, a raw word), and hands the stack run's length to `SigOrderArgs`.
+`xs each [(2 (mk 1)) mul 10]` is 30 and the lambda row 40 on both lanes;
+`TestUnnamedFrameApplyResultTyped` holds them. One pin moved with it:
+`g2 k v` over a speculative undef (spec_undef_placed_test.go) now
+recovers over the interpreter's window `[k, v]` and declines at the arm
+plan's operand instead of at the generic seat — still declined, still the
+same hatch.
+
+**The original record follows.**
 
 **Rule:** a compiled program answers as the interpreter does.
 

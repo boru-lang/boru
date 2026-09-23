@@ -92,14 +92,23 @@ branch-carried def"**; the re-estimate is
    own item), apply-twice's two pending applies (L125), a def-bound
    factory result read back and applied (`def p (mk 1) end 5 p/v apply`,
    the read's statement window), and NUR176's 0-arg runtime lead. Two
-   silent miscompiles the chain's probes found, one still OPEN and pinned
-   to fail when it moves: NUR180 (a trailing paren apply's Any result inside
-   an UNNAMED-param frame, consumed by a typed word — `xs each [(2 (mk 1))
-   mul 10]` is 10 for 30; mitigated for a named concrete lead) and NUR181 — CLOSED
+   silent miscompiles the chain's probes found, both CLOSED now: NUR180
+   (a trailing paren apply's Any result inside an UNNAMED-param frame,
+   consumed by a typed word — `xs each [(2 (mk 1)) mul 10]` was 10 for 30;
+   closed 2026-09-23, the handoff log's "the recovery's window" entry: the
+   checker's unmatched-dispatch recovery lays its window out forward-first,
+   as the interpreter's matcher does) and NUR181 — CLOSED
    2026-09-23 (the handoff log's "the def-bound closure park" entry: a
    shaped method call's or a fn-value apply's returned closure is parked
    on the compiled lane too — `def r ((mk3 1) 2) end r 3` is `[2 fn]` on
-   both lanes, and `5 (mk 3)` seats as the parked pair where it declined). Most of the
+   both lanes, and `5 (mk 3)` seats as the parked pair where it declined).
+   One silent family found on the way stays OPEN and pinned: NUR184 — a
+   paren's TRAILING fn value forward-collects the tokens past the `)`
+   (`(2 (mk 1)) 10` is `[2 11]` for the compiled `[3 10]`; `(2 inc2/v) 10`
+   the same for a named fn value) and a paren closing under a pending
+   forward hands its survivors to it (`10 mul (2 (mk 1))` is 21; NUR180's
+   fold row is this record's); twelve witnesses in
+   `TestParenTrailingFnForwardCollectsPending`. Most of the
    interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
@@ -648,8 +657,8 @@ state**:
 | diagnostic parity / armed-only | 349 / 9 | 0 / 0 | unchanged on 2026-09-22, row for row — callbacks L139 diverged for one measurement (a plain-check false positive on a fn-carrier window over a lambda literal) and the plain surface was fixed the same day. Before: checker debt the expansion exposed; both fell at S1b-2; 351 → 353 and 11 → 13 on 2026-09-21 — exactly TWO of the nine witnesses diverge, measured not assumed: L179 and L181, the two OPERAND-spelling rows, each mirroring a pre-existing armed-only twin (L178, L180) diagnostic for diagnostic; **353 → 349 and 13 → 9 on 2026-09-22** — those four rows compile, and leave both ledgers together as predicted |
 | interpreter islands | 0 | 0 | 12 at the expansion, all fn-VALUE callbacks; two fell when NUR153 closed; the last ten at S1a. **At end state** |
 | interpreter-only rows | 0 | 0 (ceiling 3) | **at end state**; the ceiling keeps headroom for a genuine irreducibility claim |
-| interp-entry census rows | 74 | 0 | **77 → 74 on 2026-09-22** (the container reads inside quotation bodies: none of the three compiled rows enters, and callbacks L103, callbacks L55 and module-composition L76 LEAVE — a closure body's probe compile no longer leaves an orphaned stamp on a capture-free fn value, so the fn-value seams run its unit VM-native). Before: **78 → 77 on 2026-09-22** (the curried chain: callbacks L85, `each ([k:Integer] => [((mk k) 100)]) [1 2 3]`, leaves — the chain inside the callback records natively and the callback runs as a closure unit; Engine.Run 418 → 415 with it). Before: **77 → 78 on 2026-09-22** (the dynamic-lead group: module-composition L100 compiles and its apply of a fetched MODULE export runs through the re-step island — the module-fn seam; the S1a trade in miniature). Before: **80 → 77 on 2026-09-22** (S1b's apply shapes: three `each ([f:Function] => [(f n)]) fs` rows compile their callback as a closure unit instead of running it through RunResolved — callbacks L54/L105, fold-map-filter L200). Before: 54 at the expansion; 52 → 102 (S1a, the G-lane-first landing); 102 → 77 (S1b-1); 77 → 78 (S1b-2); 78 → 80 on 2026-09-21 (PR #481, the two 0-RETURN `fn-value.tsv` witnesses standing aside onto the residual apply) |
-| engine entries / runtime defers | 406 / 8 | 0 / 0 | **415 → 406 on 2026-09-22** (the container reads inside quotation bodies: the three rows that leave the census ran their fn value through the stepping island per element). Before: **418 → 415 on 2026-09-22** (the curried chain: callbacks L85's three elements, one Engine.Run + one RunResolved each, leave with the row). Before: **416 → 418 on 2026-09-22** (the same row). Before: **422 → 416 on 2026-09-22** (the same three callback rows, six entries). Before: 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 (S1a); 489 → 419 (S1b-1); 419 → 422 (S1b-2). Unchanged since |
+| interp-entry census rows | 75 | 0 | **74 → 75 on 2026-09-23** (the recovery's window, NUR180: generics-fn L55 GRADUATES in — it did not compile at all before, the check pass stopping at a false `undefined word: value`; its fold body over a generic element runs as a raw token body at the callback seam). Before: **77 → 74 on 2026-09-22** (the container reads inside quotation bodies: none of the three compiled rows enters, and callbacks L103, callbacks L55 and module-composition L76 LEAVE — a closure body's probe compile no longer leaves an orphaned stamp on a capture-free fn value, so the fn-value seams run its unit VM-native). Before: **78 → 77 on 2026-09-22** (the curried chain: callbacks L85, `each ([k:Integer] => [((mk k) 100)]) [1 2 3]`, leaves — the chain inside the callback records natively and the callback runs as a closure unit; Engine.Run 418 → 415 with it). Before: **77 → 78 on 2026-09-22** (the dynamic-lead group: module-composition L100 compiles and its apply of a fetched MODULE export runs through the re-step island — the module-fn seam; the S1a trade in miniature). Before: **80 → 77 on 2026-09-22** (S1b's apply shapes: three `each ([f:Function] => [(f n)]) fs` rows compile their callback as a closure unit instead of running it through RunResolved — callbacks L54/L105, fold-map-filter L200). Before: 54 at the expansion; 52 → 102 (S1a, the G-lane-first landing); 102 → 77 (S1b-1); 77 → 78 (S1b-2); 78 → 80 on 2026-09-21 (PR #481, the two 0-RETURN `fn-value.tsv` witnesses standing aside onto the residual apply) |
+| engine entries / runtime defers | 408 / 8 | 0 / 0 | **406 → 408 on 2026-09-23** (the same graduated row, one Engine.Run and one RunResolved). Before: **415 → 406 on 2026-09-22** (the container reads inside quotation bodies: the three rows that leave the census ran their fn value through the stepping island per element). Before: **418 → 415 on 2026-09-22** (the curried chain: callbacks L85's three elements, one Engine.Run + one RunResolved each, leave with the row). Before: **416 → 418 on 2026-09-22** (the same row). Before: **422 → 416 on 2026-09-22** (the same three callback rows, six entries). Before: 379 at the expansion; thirteen fell when NUR153 closed; 366 → 489 (S1a); 489 → 419 (S1b-1); 419 → 422 (S1b-2). Unchanged since |
 | locally-resolved defers | 1 | 0 | `vm:poly-no-match×1` — a caller's own fallback absorbed, the program staying compiled |
 | reducible (tier-2) rows | 3 | 0 | word-class gaps the compiler does not model |
 | correct-error compile failures | 1 | 0 | a known-to-error row must compile an OpTrap / RET error path |

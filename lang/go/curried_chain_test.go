@@ -181,6 +181,20 @@ func TestUnnamedFrameApplyResultTyped(t *testing.T) {
 		{`def inc2 fn [[x:Integer][Integer][x add 2]]  def xs [1 2 3]  xs each [(2 inc2/v) mul 10]`, "[[40 40 40]]"},
 		{`def inc2 fn [[x:Integer][Integer][x add 2]]  def f fn [[Integer][Integer][(2 inc2/v) mul 10]]  f 1`, "[40]"},
 		{`def inc2 fn [[x:Integer][Integer][x add 2]]  (2 inc2/v) mul 10`, "[40]"},
+		// NUR180's Any-result rows (2026-09-23): the checker's recovery lays
+		// its window out forward-first, as the interpreter's matcher does, so
+		// a typed word over a strict-Any result takes the WRITTEN argument in
+		// an unnamed frame too (checkModeFallbackPositionsFor, check/go).
+		{ccMk + `def xs [1 2 3]  xs each [(2 (mk 1)) mul 10]`, "[[30 30 30]]"},
+		{`def xs [1 2 3]  xs each [(2 ([x:Integer] => [x add 2])) mul 10]`, "[[40 40 40]]"},
+		{ccMk + `def f fn [[Integer][Integer][(2 (mk 1)) mul 10]]  f 1`, "[30]"},
+		{ccMk + `def xs [1 2 3]  xs each ([e:Integer] => [(2 (mk 1)) mul 10])`, "[[30 30 30]]"},
+		// The same window fault, one level down (generics-fn.tsv:L55): a
+		// fold body's two inputs satisfied `dot`'s two-arg window and the
+		// written key was stepped as a word — a FALSE `undefined word:
+		// value` diagnostic, and no Program. It checks clean and compiles
+		// now (the body a raw token body at the callback seam).
+		{`def Box gen [T] class {value:T} def sumvals gen [T] fn [[bs:[:T]] [Integer] [0 fold [dot value add] bs]] def xs [(make (Box of [Integer]) {value:10}) (make (Box of [Integer]) {value:20})] end sumvals xs`, "[30]"},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -195,31 +209,22 @@ func TestUnnamedFrameApplyResultTyped(t *testing.T) {
 	}
 }
 
-// TestUnnamedFrameApplyResultAnyPending pins NUR180's OPEN half: a trailing
-// paren apply whose result the recorder can only type Any — an event lead
-// (a factory's closure), an anonymous lambda (a count contract) — inside an
-// unnamed-param frame, consumed by a typed word. The checker's recovery
-// re-matches the word over the frame's gradual input instead of the
-// written argument, and the compiled answer is wrong WITHOUT an error.
-// The pin fails the day the rows agree: retire it and NUR180 together.
+// TestUnnamedFrameApplyResultAnyPending kept NUR180's OPEN half until
+// 2026-09-23, when the recovery's window became the interpreter's; what is
+// left of it is NUR184's: a paren closing UNDER A PENDING FORWARD hands its
+// survivors to that forward (`add (2 (mk 1))` collects the 2, and the
+// closure then re-steps over the sum), which the trailing-apply record
+// does not model. The pin fails the day the row agrees: retire it with
+// NUR184 (TestParenTrailingFnForwardCollectsPending holds its siblings).
 func TestUnnamedFrameApplyResultAnyPending(t *testing.T) {
-	rows := []struct{ src, interp string }{
-		{ccMk + `def xs [1 2 3]  xs each [(2 (mk 1)) mul 10]`, "[[30 30 30]]"},
-		{`def xs [1 2 3]  xs each [(2 ([x:Integer] => [x add 2])) mul 10]`, "[[40 40 40]]"},
-		{ccMk + `def xs [1 2 3]  0 fold [add (2 (mk 1))] xs`, "[6]"},
+	src := ccMk + `def xs [1 2 3]  0 fold [add (2 (mk 1))] xs`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if errI != nil || fmt.Sprint(gotI) != "[6]" {
+		t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR184", src, gotI, errI)
 	}
-	for _, c := range rows {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if errI != nil || fmt.Sprint(gotI) != c.interp {
-			t.Errorf("%q: interpreter oracle moved: %v err=%v, want %s — re-derive NUR180", c.src, gotI, errI, c.interp)
-			continue
-		}
-		if !compiled || errC != nil {
-			t.Errorf("%q: NUR180 became loud (%v) — record that and retire this pin's row", c.src, errC)
-			continue
-		}
-		if fmt.Sprint(gotC) == c.interp {
-			t.Errorf("%q: NUR180 retired for this row (compiled %v agrees) — move it to TestUnnamedFrameApplyResultTyped", c.src, gotC)
-		}
+	if !compiled || errC != nil {
+		t.Errorf("%q: NUR184's fold row became loud (%v) — record that and retire this pin", src, errC)
+	} else if fmt.Sprint(gotC) == "[6]" {
+		t.Errorf("%q: NUR184's fold row agrees (%v) — move it to TestUnnamedFrameApplyResultTyped", src, gotC)
 	}
 }
