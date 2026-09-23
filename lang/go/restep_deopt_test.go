@@ -137,9 +137,15 @@ func TestClosureValueReStepParity(t *testing.T) {
 // the MAIN program (no unit body to resume into) keeps the optimistic model
 // when its note is gradual.
 func TestReStepDeoptOpenShapes(t *testing.T) {
+	// A compiled column of "" means the shape CLOSED: the compiled lane
+	// raises as the interpreter does. The main-program member read closed
+	// on 2026-09-23 (the named fn value's candidates, NUR186): the landing
+	// note carries the word that follows the value, and the landing raises
+	// the interpreter's `uncalled_function` over a candidate and an empty
+	// frame — the optimistic model is gone from that shape.
 	rows := []struct{ src, interp, compiled string }{
 		{rsG + `  def f fn [[h:Function][Any][[5 h/v] get 1 drop 7]]  f g/v`, "uncalled_function", "[7]"},
-		{rsG + `  def m {f: g/v}  m get "f" drop 7`, "uncalled_function", "[7]"},
+		{rsG + `  def m {f: g/v}  m get "f" drop 7`, "uncalled_function", ""},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -149,6 +155,12 @@ func TestReStepDeoptOpenShapes(t *testing.T) {
 		}
 		if errI == nil || !strings.Contains(errI.Error(), c.interp) {
 			t.Errorf("%q: interpreter: want %s, got %v/%v", c.src, c.interp, gotI, errI)
+		}
+		if c.compiled == "" {
+			if codeOf(errC) != c.interp {
+				t.Errorf("%q: compiled (closed): want the interpreter's %s, got %v/%v", c.src, c.interp, gotC, errC)
+			}
+			continue
 		}
 		if errC != nil || fmt.Sprint(gotC) != c.compiled {
 			t.Errorf("%q: compiled (measured, open): want %s, got %v/%v", c.src, c.compiled, gotC, errC)

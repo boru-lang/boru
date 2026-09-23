@@ -1138,7 +1138,7 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 	case compiler.OpCallDynMethod:
 		return vc.callDynMethod(reg, &vc.p.DynMethods[arg], stack, curDebug, pc)
 	case compiler.OpReStepLanding:
-		return vc.reStepLanding(reg, stack, curDebug, pc)
+		return vc.reStepLanding(reg, arg, frameBase, stack, curDebug, pc)
 	default:
 		return vc.callDynamicOp(reg, op, arg, stack, curDebug, pc)
 	}
@@ -1170,7 +1170,7 @@ func (vc *vmContext) callDynamicOp(reg *core.Registry, op compiler.Opcode, arg i
 // not an optimisation: an island is an interpreter entry, and the project's
 // census counts every one. The island stays as the last resort for a fn the VM
 // cannot take — a detached ref, a shape whose params do not match the unit.
-func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	top := len(stack) - 1
 	if top < 0 {
 		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING stack underflow")
@@ -1209,6 +1209,18 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		// skipped anyway, where a wrong "yes" costs an interpreter entry on
 		// every read of one (module-rand.tsv:L16, `[10 20 30] r.one-of`).
 		if len(fnDef.OwnSigs()) > 0 && core.MatchFnSig(v, nil) == nil {
+			// A NAMED fn (a name always calls, ADR-011) with a CANDIDATE after
+			// it — a function word (a value-bound word is collected, and the
+			// arms model that), or the fn frame's tail markers (the op's
+			// argument, landingArg) — and nothing beneath it in the frame matches
+			// nothing, and the interpreter's re-step RAISES there rather than
+			// leaving the value as data: `def mk fn [[][Any][m.f]] end (mk)` is
+			// `uncalled_function: call to 'inc' matched no signature` (NUR186).
+			// With values beneath the residual arm decides (an island raises
+			// the same way over a mismatch, NUR175's rule).
+			if arg&1 != 0 && top == frameBase && fnDef.NamedDef() && !fnDef.Macro {
+				return nil, nil, stampAt(uncalledFunctionError(reg, fnDef), curDebug, pc, reg)
+			}
 			return stack, nil, nil
 		}
 		// The interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral): a lambda
@@ -1269,6 +1281,21 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, stack []core.Value, curDe
 		return nil, nil, stampAt(err, curDebug, pc, reg)
 	}
 	return vc.landingResults(reg, stack, top, results, curDebug, pc)
+}
+
+// uncalledFunctionError is the interpreter's own no-match raise for a named
+// fn value re-stepped at the pointer (execFnDefLiteral's uncalled_function
+// arm), built for the landing: the same code, detail and hint; the position
+// is stamped from the op's debug entry (the noted landing's token).
+func uncalledFunctionError(reg *core.Registry, fnDef core.FnDefInfo) error {
+	detail := "call to '" + fnDef.Name + "' matched no signature"
+	hint := "hint: check the call's argument types and arity — or use " +
+		fnDef.Name + "/v to push the function as a value deliberately"
+	src := ""
+	if reg != nil {
+		src = reg.Source
+	}
+	return core.MakeBoruErrorAt("uncalled_function", detail, fnDef.Name, src, hint, core.SrcPos{})
 }
 
 // landingResults seats one applied landing's results over the value it

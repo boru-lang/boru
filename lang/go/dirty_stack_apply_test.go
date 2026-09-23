@@ -100,26 +100,3 @@ func TestDirtyStackApplySoundCompileFailures(t *testing.T) {
 		}
 	}
 }
-
-// TestModuleFnAtFactoryTailPending pins NUR186 (found 2026-09-23 probing
-// NUR160's neighbours; present on main): a module fn's value at a factory
-// body's TAIL with nothing beneath it — `def mk fn [[][Function][M.inc]]` —
-// is a NAMED fn at the pointer, and the interpreter's landing raises
-// `uncalled_function` (a name always calls, ADR-011) where the compiled
-// unit returns the value; the program then applies it. The pin fails the
-// day a row agrees or becomes loud on the compiled lane: record that and
-// retire it.
-func TestModuleFnAtFactoryTailPending(t *testing.T) {
-	const mod = `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def mk fn [[][Function][M.inc]] end `
-	for _, src := range []string{mod + `7 5 (mk) apply`, mod + `5 (mk) apply`} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if codeOf(errI) != "uncalled_function" {
-			t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR186", src, gotI, errI)
-		}
-		if !compiled || errC != nil {
-			t.Errorf("%q: NUR186 became loud (compiled=%v %v) — record that and retire this pin", src, compiled, errC)
-		} else if len(gotC) == 0 {
-			t.Errorf("%q: the compiled lane answers nothing now — re-derive NUR186", src)
-		}
-	}
-}

@@ -59,7 +59,7 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 	unmarked.ID = "fnc-u"
 	quoted := marked
 	quoted.Quoted = true
-	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil); got != "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)" {
+	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil, core.SrcPos{}); got != "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)" {
 		t.Errorf("a re-step-marked carrier operand declines: %q", got)
 	}
 	for name, args := range map[string][]core.Value{
@@ -67,13 +67,13 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 		"quoted copy":      {quoted, core.NewInteger(10)},
 		"plain data":       {core.NewInteger(2), core.NewInteger(10)},
 	} {
-		if got := es.polyCallDeclineReason("mul", args, nil); got != "" {
+		if got := es.polyCallDeclineReason("mul", args, nil, core.SrcPos{}); got != "" {
 			t.Errorf("%s records: %q", name, got)
 		}
 	}
 	// A lead the apply word owns is the apply's: no decline here.
 	es.units = append(es.units, &emitUnit{pendingApply: []pendingApply{{id: "fnc-r"}}})
-	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil); got != "" {
+	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("an apply-owned lead records: %q", got)
 	}
 }

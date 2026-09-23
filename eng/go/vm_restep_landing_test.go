@@ -72,7 +72,7 @@ func TestReStepLandingClosureArm(t *testing.T) {
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
-	got, ent, err := vc.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("closure landing: %v %v", ent, err)
 	}
@@ -92,7 +92,7 @@ func TestReStepLandingNativeArm(t *testing.T) {
 		return []core.Value{core.NewInteger(11)}, nil
 	})
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	got, ent, err := vc.reStepLanding(r, []core.Value{fn}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{fn}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("native landing: %v %v", ent, err)
 	}
@@ -129,7 +129,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 		t.Fatal("fixture is not a self-contained Go fn value")
 	}
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	got, ent, err := vc.reStepLanding(r, []core.Value{core.NewFunction(fd)}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{core.NewFunction(fd)}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("anonymous landing: %v %v", ent, err)
 	}
@@ -152,7 +152,7 @@ func TestReStepLandingAnonymousParks(t *testing.T) {
 	if !compiler.ClosureIsFnValue(cl) {
 		t.Fatal("fixture is not a fn-VALUE closure — the lambda rung would not consult it")
 	}
-	gotc, entc, errc := vcl.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0)
+	gotc, entc, errc := vcl.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0)
 	if errc != nil || entc != nil {
 		t.Fatalf("lambda landing: %v %v", entc, errc)
 	}
@@ -175,7 +175,7 @@ func TestReStepLandingDriftDefers(t *testing.T) {
 		return []core.Value{core.NewInteger(1), core.NewInteger(2)}, nil
 	})
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	_, _, err := vc.reStepLanding(r, []core.Value{fn}, seam7Dbg, 0)
+	_, _, err := vc.reStepLanding(r, 0, 0, []core.Value{fn}, seam7Dbg, 0)
 	wantInternal(t, err, "recorded landing claims one")
 }
 
@@ -198,7 +198,7 @@ func TestReStepLandingNonFnValueClosureInvokes(t *testing.T) {
 	if compiler.ClosureIsFnValue(cl) {
 		t.Fatal("fixture reads as a fn-VALUE closure — it would park, not invoke")
 	}
-	got, ent, err := vc.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("non-fn-value closure landing: %v %v", ent, err)
 	}
@@ -239,7 +239,7 @@ func TestReStepLandingStaysData(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := []core.Value{core.NewString("below"), tc.v}
-			got, ent, err := vc.reStepLanding(r, in, seam7Dbg, 0)
+			got, ent, err := vc.reStepLanding(r, 0, 0, in, seam7Dbg, 0)
 			if err != nil || ent != nil {
 				t.Fatalf("%s must not apply: %v %v — %s", tc.name, ent, err, tc.why)
 			}
@@ -269,7 +269,7 @@ func TestReStepLandingIslandArm(t *testing.T) {
 	if _, isFn := lit.Data.(core.FnDefInfo); isFn {
 		t.Fatal("fixture carries an FnDefInfo — it would take an earlier rung")
 	}
-	got, ent, err := vc.reStepLanding(r, []core.Value{lit}, seam7Dbg, 0)
+	got, ent, err := vc.reStepLanding(r, 0, 0, []core.Value{lit}, seam7Dbg, 0)
 	if err != nil || ent != nil {
 		t.Fatalf("island landing: %v %v", ent, err)
 	}
@@ -287,7 +287,7 @@ func TestReStepLandingIslandArm(t *testing.T) {
 func TestReStepLandingUnderflow(t *testing.T) {
 	r := seam7Reg(t)
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
-	if _, _, err := vc.reStepLanding(r, nil, seam7Dbg, 0); err == nil {
+	if _, _, err := vc.reStepLanding(r, 0, 0, nil, seam7Dbg, 0); err == nil {
 		t.Error("an empty stack at the landing must error, not answer")
 	}
 }
@@ -309,7 +309,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, Ident: core.NewFnIdentity()})
-	if _, _, err := vc.reStepLanding(r, []core.Value{cl}, seam7Dbg, 0); err == nil {
+	if _, _, err := vc.reStepLanding(r, 0, 0, []core.Value{cl}, seam7Dbg, 0); err == nil {
 		t.Error("a raising closure member must surface its error, not a stack")
 	}
 
@@ -318,7 +318,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 		return nil, core.MakeBoruError("bad_input", "landing handler raised", "boom", "", "")
 	})
 	vcb := &vmContext{p: landingProg(), r: rb, ceiling: 1 << 20, stepLimit: 1 << 20}
-	if _, _, err := vcb.reStepLanding(rb, []core.Value{boom}, seam7Dbg, 0); err == nil {
+	if _, _, err := vcb.reStepLanding(rb, 0, 0, []core.Value{boom}, seam7Dbg, 0); err == nil {
 		t.Error("a raising member must surface its error at the landing")
 	}
 
@@ -341,7 +341,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 	if vmNativeApplicable(r, islandRaiser) {
 		t.Fatal("fixture reads as natively applicable — it would take the native arm, not the island")
 	}
-	if _, _, err := vc.reStepLanding(r, []core.Value{core.NewFunction(islandRaiser)}, seam7Dbg, 0); err == nil {
+	if _, _, err := vc.reStepLanding(r, 0, 0, []core.Value{core.NewFunction(islandRaiser)}, seam7Dbg, 0); err == nil {
 		t.Error("an island that raises must surface the error, not a stack")
 	}
 }

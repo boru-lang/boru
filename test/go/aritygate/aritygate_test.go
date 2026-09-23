@@ -245,7 +245,15 @@ var pinnedAritySites = map[string]int{
 	// locates its unit by. A lambda or a Go alias declares none, so the
 	// placement declines it; the count of PARAMS never enters — the
 	// seventieth increment.
-	"compiler/go/emit.go": 7,
+	// branchArmMayTakeArgs (7 -> 8, the named fn value's candidates,
+	// 2026-09-23) reads a factory closure's RECOVERED arity for a branch
+	// arm's value: zero is the anonymous park the landing itself applies
+	// (a 0-arg lambda is data wherever it is held, ADR-016's parking rule),
+	// positive means the value takes the values beneath it. It classifies
+	// the arm as settled or unsettled for the residual arms — the same
+	// rule the interpreter's execFnDefLiteral applies to the value at run
+	// time — never what a fn of a given arity may do.
+	"compiler/go/emit.go": 8,
 	// sameFnDecls compares two fn VALUES for declaration identity — the
 	// same signature list: the same count, then each position's declaration
 	// site (Signature.Decl). It decides whether a unit's recorded def event

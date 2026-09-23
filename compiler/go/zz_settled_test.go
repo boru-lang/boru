@@ -77,6 +77,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	}
 	e.NoteReStepLanding(core.Value{}, core.SrcPos{})
 	e.NoteStatementEnd(core.SrcPos{})
+	e.NoteLandingNext(core.Value{}, core.LandingNextEnd, false)
 	if e.MayBeFn("id") {
 		t.Fatal("inactive MayBeFn should be false")
 	}

@@ -499,6 +499,28 @@ user still gets an answer while the case is open:
   ; 5` the same, and `7 m.f ; 3` — the fn over the 7 beneath, the 3 the
   next statement's — declines loudly where it islanded to `[7 4]`.
 
+  A NAMED fn value's re-step raises or parks as the interpreter's does
+  since the named fn value's candidates (2026-09-23, NUR186): with a
+  CANDIDATE — a value beneath, a FUNCTION word after (a word bound to a
+  value is collected instead: `m.f k` with `def k 2` is 3), or a fn
+  frame's tail markers after the body's last token — and no matching
+  overload it raises
+  `uncalled_function` (`def m {f: M.inc} def g fn [[][Any][m.f]] end (g)`,
+  `m.f three`, `"s" M.inc`), with none it stays data (`m.f`, `m.f ; 5`,
+  `do [m.f]`, `[1] each [drop m.f]`); a 0-arg member fires either way. A
+  CONCRETE named fn at a fn or lambda frame's tail (`def mk fn
+  [[][Function][M.inc]] end (mk)`, the original witness) DECLINES the unit
+  with the interpreter's raise pinned beside it — the unit-level trap is
+  the follow-on — and so does dispatch wreckage a word collected inside a
+  body (`[M.inc typeof]`). A native poly that collected a container
+  member's fn value written before the word declines (NUR188: `7 m.f
+  typeof`, Integer interpreted; `typeof m.f` stays), a paren-PLACED member
+  is data in every residual arm (NUR189: `7 (m.f)` and `1 7 (m.f)` are the
+  placed pair), a function word after a value ends its collection (NUR187:
+  `7 m.f three` is `[8 3]`, declining where it islanded to `[7 4]`; `7 m.f
+  k` stays `[7 3]`), and a fn body's whole-frame replay never crosses a
+  `;` (`[M.inc ; 5]`).
+
   A TYPED lambda callback over a HETEROGENEOUS list is applied only to the
   elements its signature admits on both lanes since the typed callback's
   contract (2026-09-23, NUR155): `each ([x:Integer] => [typeof x]) [1 'a'

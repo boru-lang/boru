@@ -12771,3 +12771,133 @@ note and the park twin through `MayBeFn`); core
 Ledgers: `sweepKnownMiscompiles` (NUR159 retired; the pin-mechanics test
 re-seeded on NUR154), `paren_trailing_forward_test.go` (one reason
 re-pinned), `SWEEP_STATUS.md` regenerated.
+
+## S1b — the named fn value's candidates: NUR186 closed, NUR188 and NUR189 found and closed, NUR187's other halves (2026-09-23)
+
+**The measurement first.** NUR186 was the record the previous entry
+left pending: `import module [def inc fn n:Integer Integer [n add 1]
+export "M" {inc: inc/v}] end def mk fn [[][Function][M.inc]] end 5 (mk)
+apply` raises `uncalled_function: call to 'inc' matched no signature`
+interpreted and answered 6 compiled. Its neighbours, probed before any
+code was read, drew the rule the interpreter applies at a NAMED fn
+value's re-step (execFnDefLiteral): the CANDIDATES are the values beneath
+the value in its frame and the tokens after it up to a boundary — a
+word counts, and so do a fn frame's tail markers after the body's last
+token — and with candidates and no match it raises, with no candidate
+it leaves the value as data. So `M.inc` alone is data, `M.inc ; 5` and
+`(M.inc)` are data, `M.inc typeof` raises, `"s" M.inc` raises, `do
+[M.inc]` and `[1] each [drop M.inc]` are data (a code body's frame has
+no tail markers), and every fn or lambda body ending in the value
+raises — `def mk fn [[a:Integer][Any][M.inc]] end (mk 1)` too, the
+named param bound rather than beneath. The compiled lane had one answer
+for all of them: the landing (NUR173) stood aside as data wherever no
+zero-argument overload existed, and for the CONCRETE export the check
+pass's body tape, which carries no tail markers, never saw a candidate
+at all — the unit baked the value (`PUSH_CONST fn; RET`) and the
+caller's `apply` applied it.
+
+**The change, in two halves.** The DYNAMIC half (a member read: `def m
+{f: M.inc} def g fn [[][Any][m.f]] end (g)`): the check pass's landing
+note now carries what follows the value and whether values sit beneath
+it (`EmitRecorder.NoteLandingNext`: a word, a boundary or the tape's
+end, and the interpreter's own `EffectiveResolved` for the frame beneath
+— the VM cannot tell, since a unit re-pushes its unnamed params after
+the landing), the lowering hands the landing op a CANDIDATE flag
+(`landingArg`: a word after the value, or the tape's end inside a unit
+whose interpreter frame carries the tail markers — a user fn or a lambda
+value's body, the lowerer's `frameTail`; a code-body closure has none),
+and the VM's landing raises the interpreter's own error for a named fn
+with no zero-argument overload over a candidate and an empty frame
+(`reStepLanding`, `uncalledFunctionError`), standing aside as before
+with values beneath (the residual arms apply, or an island raises the
+same way). The CONCRETE half: a named fn with no zero-argument overload
+left in a fn or lambda frame's residual with no replay to re-step it
+declines the unit (`namedFnUnmatchedAtTail` in `fnResidualReplayReason`
+— a `/v` read, a quoted value and a paren-placed one are data on both
+lanes), and dispatch WRECKAGE the pass did mark (`FailedDispatch`:
+`[M.inc typeof]`, a word after the value inside the body) declines at
+the word's operand record (`RecordCallOperands`, the poly's
+`polyCallDeclineReason`), through their existing sites. A draft refused
+wreckage in `resolveOperand` itself and was withdrawn: with a value
+beneath or a literal after (`[s M.inc]`, `[M.inc "s"]`) the whole-frame
+replay already raises the identical error, and the refusal declined
+those rows for nothing. A unit-level trap that raises the identical
+error where the unit now declines is the follow-on; the `MarkUncompilable`
+census stays at 92.
+
+**What it found.** NUR188: a native poly that collected a container
+MEMBER's fn value written BEFORE the word handed the word the fn — `7
+m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f
+typeof` Function for its raise — where the member read dispatches at its
+own token (ADR-011); `polyCallDeclineReason` declines a member read
+whose producing event precedes the word (`typeof m.f` stays: the read is
+the word's collected operand). NUR189: the trailing arm asked only the
+call-result park, so `7 (m.f)` applied a paren-PLACED member (8 for `[7
+fn]`) and the two window arms did the same (`1 7 (m.f)` was `[1 8]`);
+all three ask `placedNotReStepped` now, as the lead arm always did, and
+the rows compile with parity. NUR187's two other halves: inside a fn
+body the whole-frame replay re-stepped `[M.inc ; 5]` as a flat run of
+values (6 for the frame's count error over `[fn 5]`) — the replay
+declines a proven crossing — and a WORD after a value ends its
+collection as a boundary does (`7 m.f three` is `[8 3]` interpreted, the
+mixed island answered `[7 4]`): with the note's what-follows fact
+`crossesBoundary` holds for every later entry, positions or none — for a
+FUNCTION word, the one the re-step's forward phase stops at; a word bound
+to a value is collected (`7 m.f k` with `def k 2` is `[7 3]`), which the
+arms model as they always did (`LandingNextValue`).
+Regressions caught by the probes on the way and repaired before the
+tests: the tape's end inside a CLOSURE unit read as a candidate (`do
+[m.f]` raised), and the VM's `top == frameBase` test for "nothing
+beneath" was false under a re-pushed unnamed param — both are why the
+note, not the VM, decides. And the note carried a catch region's
+raise-path tail for its success path too — `def x (do [(1 add 2) "a"
+"b"] error [dot code]) x` (`TestS9FrontierDefOverCatchRegion`) re-steps
+the do's first result under its sibling results on one path and under
+`x` on the other, and the word rule rerouted the S9 promotion's own
+diagnosis ("variadic result promoted to frame slots") into the generic
+unpromoted-def decline: the note now has the landing's own gates (a
+variadic result is not noted, a def-bound read is excluded, and repeated
+notes merge with a word first, since the interpreter parks at a boundary
+only to go on to the next step). And the unit-suite compile-defect ledger
+(280 against 280) caught the draft that read EVERY word after a value as
+a candidate: `m.f k` (`def k 2`) raised `uncalled_function` where the
+interpreter collects the word's value and answers 3, and `7 m.f k` and a
+capturing lambda's `[kv.v k]` declined (`TestFnValueSeamParityAndNoEntry`,
+`TestFnHomeMainModule`'s applied factory — the latter because the trailing
+arm's new placed check ignored the `apply` mark the call-result park
+honours). The forward phase (CollectCandidateScan's word arm) collects a
+word bound to a VALUE and stops at a word that DISPATCHES, so the note
+tells them apart (`landingNextForWord`; six parity rows and two raising
+alike pin the value-word shapes), and the ledger stands at its ceiling.
+The corpus ledger caught one more: NUR188's arm declined compare-restrict's
+`(m dot a) eq (m dot a)` — a member read a user paren PLACED, data the
+word collects — so the arm excludes a placed read (`placedNotReStepped`),
+as the trailing arms do; three parity rows pin the placed-read shapes.
+And the full corpus caught the last: fn-value.tsv's L317/L318 (`m.f z`,
+`m get 'f' z` — h with a `/q` overload under a dynamic read) answered `[fn
+h(Atom) z]` where the word-after rule stood the LEAD arm aside and seated
+the value as data. They pass on main by COINCIDENCE (z's result is its
+own atom): `m.f y` is `[42 42]` on main for the interpreter's `[y]` — the
+`/q` slot captures the word, the lead arm applies the fn over the word's
+RESULT — and no static model can tell a `/q`, an Any-typed, a
+Function-typed and a typed first slot apart for a DYNAMIC value. Neither
+the apply nor a data seat is faithful, and a decline would put every
+`7 m.z typeof`-like row the landing settles at run time on the ledger,
+so the lead arm keeps the apply it always had (the positional rule alone,
+`crossesStatementEnd`), the islands keep the word-after crossing (their
+apply was NUR187's witnessed miscompile, and `7 m.f y` — `[7 42 42]` on
+main — declines soundly now), and the shape is NUR190, recorded and
+pinned pending as measured (`TestNamedFnCandidatesOpenShapes`); its fix
+is the landing's run-time overload walk with the following word in hand.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec, 1058 s) passes — compile failures 21 (the ledger's 21; fn-value.tsv's L317/L318 pass as before), compute gaps 16, islands 0, engine entries 408, interp-entry census rows 75, diagnostic parity divergences 348, property fuzz 2 seeds × 1500 programs with 0 divergences, the generated sweep at its pins (305 cells: pass 153, failed 26, islanded 2, diverged 6; 2142 call-form variants: pass 1909, declined 201); the gate report reads 11 open, 2 at end state, 0 tightened, 0 regressions; the lang unit ledger 280 / 33 at its ceilings; the arity gate re-pinned at 8 for compiler/go/emit.go; the `MarkUncompilable` census 92.
+
+**Pins.** `named_fn_candidates_test.go` (lang/go: forty-eight parity
+rows, twelve rows raising alike, sixteen sound declines with the
+interpreter's answers, NUR190's three open shapes as measured; the
+pending `TestModuleFnAtFactoryTailPending` retired into it); compiler `named_fn_candidates_test.go` (the landing argument, the
+unit-tail test, the member-read and wreckage poly arms, the word-after
+crossing, the trailing arm's placed check); check
+`branch_fn_value_landing_test.go` (the what-follows and beneath notes);
+eng `vm_landing_candidate_test.go` (the raise, the data cases, the
+frame base); the inactive-recorder pins extended.

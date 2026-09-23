@@ -103,20 +103,20 @@ func TestPolyCallDeclineReasonMayBeFn(t *testing.T) {
 	es, br, br0 := bfState()
 	want := "a dispatch collected a branch result whose fn arm the interpreter re-steps first (NUR159)"
 	for _, v := range []core.Value{br, br0} {
-		if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), v}, nil); got != want {
+		if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), v}, nil, core.SrcPos{}); got != want {
 			t.Errorf("%s: a branch result under a poly declines, got %q", v.ID, got)
 		}
 	}
 	quoted := br
 	quoted.Quoted = true
-	if got := es.polyCallDeclineReason("add", []core.Value{quoted}, nil); got != "" {
+	if got := es.polyCallDeclineReason("add", []core.Value{quoted}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("a quoted operand is data: %q", got)
 	}
 	es.units[0].pendingApply = []pendingApply{{id: "br"}}
-	if got := es.polyCallDeclineReason("apply", []core.Value{br}, nil); got != "" {
+	if got := es.polyCallDeclineReason("apply", []core.Value{br}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("an apply-owned operand is the apply word's: %q", got)
 	}
-	if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), core.NewInteger(2)}, nil); got != "" {
+	if got := es.polyCallDeclineReason("add", []core.Value{core.NewInteger(1), core.NewInteger(2)}, nil, core.SrcPos{}); got != "" {
 		t.Errorf("plain operands: %q", got)
 	}
 }

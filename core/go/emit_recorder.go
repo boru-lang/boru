@@ -73,6 +73,22 @@ type BranchJoin struct {
 // callable from lang/native; the unexported tail is eng-internal. The
 // unexported methods also mean out-of-package types cannot implement the
 // interface — the recorder contract is owned here, by design.
+// LandingNext classifies the token after a noted re-step landing
+// (EmitRecorder.NoteLandingNext) the way the re-step's forward phase reads
+// it (CollectCandidateScan): a statement or group boundary, a FUNCTION word
+// the phase stops at (a candidate the interpreter counts), the end of the
+// tape, or a token the phase COLLECTS — a word bound to a value (`m.f k`
+// with `def k 2` is g over 2), a literal name — which the residual arms
+// model rather than the landing.
+type LandingNext int
+
+const (
+	LandingNextBoundary LandingNext = iota
+	LandingNextWord
+	LandingNextEnd
+	LandingNextValue
+)
+
 type EmitRecorder interface {
 	// --- activity / lifecycle ------------------------------------------
 	// Active / active report that recording is LIVE (armed, compilable,
@@ -265,6 +281,16 @@ type EmitRecorder interface {
 	// returned: `if true one/v [2]` is 1 interpreted (NUR159). Inactive:
 	// no branch, so never.
 	MayBeFn(id string) bool
+	// NoteLandingNext says what the check pass found on the tape right after
+	// a value it noted as a re-step landing (NoteReStepLanding): a WORD (the
+	// interpreter's re-step counts it as a candidate argument, so a named fn
+	// with no match RAISES `uncalled_function` rather than staying data), a
+	// statement or group BOUNDARY (no candidate: the value stays data), or
+	// the END of the tape — at the main program no candidate, inside a fn
+	// body the frame's tail markers, which the interpreter counts (NUR186:
+	// `def mk fn [[][Any][m.f]] end (mk)` raises interpreted). Inactive:
+	// no-op.
+	NoteLandingNext(v Value, next LandingNext, beneath bool)
 	// NoteStatementEnd records the position of a statement boundary (`;` /
 	// `end`) the pass stepped. The residual's fn-value apply arms ask it
 	// (crossesBoundary) so a value is never applied over an entry pushed
@@ -578,6 +604,7 @@ func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
+func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool)               {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }

@@ -15,14 +15,20 @@ import (
 // a record of every landing it is told about.
 type mayBeFnEmit struct {
 	core.EmitRecorder
-	maybe  map[string]bool
-	landed []string
+	maybe   map[string]bool
+	landed  []string
+	next    []core.LandingNext
+	beneath []bool
 }
 
 func (m *mayBeFnEmit) Active() bool           { return true }
 func (m *mayBeFnEmit) MayBeFn(id string) bool { return m.maybe[id] }
 func (m *mayBeFnEmit) NoteReStepLanding(v core.Value, _ core.SrcPos) {
 	m.landed = append(m.landed, v.ID)
+}
+func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, beneath bool) {
+	m.next = append(m.next, next)
+	m.beneath = append(m.beneath, beneath)
 }
 
 func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*core.Engine, *mayBeFnEmit, func()) {
@@ -81,5 +87,50 @@ func TestParenPlacedFnCarrierAdmitsMayBeFn(t *testing.T) {
 	defer fin()
 	if parenPlacedFnCarrier(e, 0) || e.Registry.Check.ParenPlacedFnIDs["br-park"] {
 		t.Errorf("a plain carrier is not placed: %v", e.Registry.Check.ParenPlacedFnIDs)
+	}
+}
+
+// TestNoteReStepLandingNotesNext: beside the landing, the note says what
+// follows the value — the tape's end, a word, a boundary — and whether
+// values sit beneath it in its frame (NUR186: a named fn's no-match raises
+// only with a candidate after it and nothing beneath).
+func TestNoteReStepLandingNotesNext(t *testing.T) {
+	branch := core.NewCarrier(core.TAny)
+	branch.ID = "br-next"
+	maybe := map[string]bool{"br-next": true}
+	for _, tc := range []struct {
+		name    string
+		tape    []core.Value
+		at      int
+		next    core.LandingNext
+		beneath bool
+	}{
+		{"the tape ends", []core.Value{branch}, 0, core.LandingNextEnd, false},
+		{"a registered word follows", []core.Value{branch, core.NewWord("cadd")}, 0, core.LandingNextWord, false},
+		{"a boundary follows", []core.Value{branch, core.NewCloseParen()}, 0, core.LandingNextBoundary, false},
+		{"a value beneath", []core.Value{core.NewInteger(7), branch}, 1, core.LandingNextEnd, true},
+		// The forward phase's word arm: a word bound to a VALUE is collected
+		// (`m.f k` with `def k 2` is g over 2), a binding that dispatches
+		// and a registered word stop it, a name it resolves to a literal —
+		// `true`, a type name, an undefined name's atom — is collected.
+		{"a value-bound word follows", []core.Value{branch, core.NewWord("k")}, 0, core.LandingNextValue, false},
+		{"a fn-bound word follows", []core.Value{branch, core.NewWord("g")}, 0, core.LandingNextWord, false},
+		{"a literal name follows", []core.Value{branch, core.NewWord("true")}, 0, core.LandingNextValue, false},
+		{"a type name follows", []core.Value{branch, core.NewWord("Integer")}, 0, core.LandingNextValue, false},
+		{"an undefined name follows", []core.Value{branch, core.NewWord("zzz-undefined")}, 0, core.LandingNextValue, false},
+	} {
+		e, rec, fin := mayBeFnEngine(t, tc.tape, maybe)
+		e.Registry.Defs.Push("k", core.NewInteger(2))
+		e.Registry.Defs.Push("g", core.NewFunction(core.FnDefInfo{Name: "g", Signatures: []core.Signature{{BarrierPos: 0}}}))
+		e.Pointer = tc.at
+		noteReStepLanding(e, tc.at)
+		fin()
+		if len(rec.landed) != 1 || len(rec.next) != 1 {
+			t.Errorf("%s: one landing, one note, got %v %v", tc.name, rec.landed, rec.next)
+			continue
+		}
+		if rec.next[0] != tc.next || rec.beneath[0] != tc.beneath {
+			t.Errorf("%s: next = %v beneath = %v, want %v %v", tc.name, rec.next[0], rec.beneath[0], tc.next, tc.beneath)
+		}
 	}
 }
