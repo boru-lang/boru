@@ -112,10 +112,11 @@ branch-carried def"**; the re-estimate is
    interpreter dispatches inside the paren, a collectable follower leaves
    the value to the rewind, a forward's leftover is marked as such, and
    the mixed island's interpreter seals a compiled closure at its
-   collection's completion. What is left is loud: three shapes decline
-   (`TestParenTrailingFnSoundCompileFailures`) and one raises the
-   no-match `mul` over the marked carrier (`(2 (mk 1)) 10 mul`,
-   `TestParenTrailingFnLoudPending`). NUR185, found probing its
+   collection's completion. What is left declines
+   (`TestParenTrailingFnSoundCompileFailures`): the leftover at the main
+   program, a leftover with nothing beneath it, a list literal's
+   re-stepped element, and a numeric word whose poly record collected
+   the marked carrier (`(2 (mk 1)) 10 mul`). NUR185, found probing its
    neighbours and present on main — the mixed island re-stepped a `/v`
    read of a def-bound closure (`def c (mk 3) end 2 c/v 10` was `[2 30]`
    for `[2 fn c(Integer) 10]`) — is closed in the same entry; its rows

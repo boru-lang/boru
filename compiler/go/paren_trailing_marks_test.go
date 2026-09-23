@@ -45,3 +45,35 @@ func TestPlacedValReadAndForwardLeftoverGuards(t *testing.T) {
 		t.Error("the leftover mark is keyed by value ID")
 	}
 }
+
+// TestPolyCallDeclineReasonReSteppedOperand: a native poly record that
+// collected a re-step-marked fn carrier as its operand declines with
+// NUR184's reason; a quoted copy, an unmarked carrier, one the `apply`
+// word owns, and a plain data operand record.
+func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
+	es := NewEmitState()
+	es.reg = &core.Registry{Check: &core.CheckState{ParenReSteppedFnIDs: map[string]bool{"fnc-r": true}}}
+	marked := core.NewCarrier(core.TFunction)
+	marked.ID = "fnc-r"
+	unmarked := core.NewCarrier(core.TFunction)
+	unmarked.ID = "fnc-u"
+	quoted := marked
+	quoted.Quoted = true
+	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil); got != "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)" {
+		t.Errorf("a re-step-marked carrier operand declines: %q", got)
+	}
+	for name, args := range map[string][]core.Value{
+		"unmarked carrier": {unmarked, core.NewInteger(10)},
+		"quoted copy":      {quoted, core.NewInteger(10)},
+		"plain data":       {core.NewInteger(2), core.NewInteger(10)},
+	} {
+		if got := es.polyCallDeclineReason("mul", args, nil); got != "" {
+			t.Errorf("%s records: %q", name, got)
+		}
+	}
+	// A lead the apply word owns is the apply's: no decline here.
+	es.units = append(es.units, &emitUnit{pendingApply: []pendingApply{{id: "fnc-r"}}})
+	if got := es.polyCallDeclineReason("mul", []core.Value{marked, core.NewInteger(10)}, nil); got != "" {
+		t.Errorf("an apply-owned lead records: %q", got)
+	}
+}

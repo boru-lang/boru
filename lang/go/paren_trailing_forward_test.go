@@ -26,7 +26,10 @@ import (
 // applies over later values. The mixed-window island's interpreter then
 // SEALS a compiled closure at its collection's completion as it seals a
 // FnDefInfo (NUR124's payload axis: unsealed, `(2 (mk 1)) 10 20` walked
-// the closure past every literal and applied it to the last).
+// the closure past every literal and applied it to the last). A native
+// poly record that collected a re-step-marked carrier as its operand
+// declines (polyCallDeclineReason): the check pass stepped the value as
+// data where the interpreter dispatches it first.
 
 const ptfMk = `def mk fn [[n:Integer][Function][( fn [[x:Integer][Integer][x add n]] )]]  `
 const ptfInc = `def inc2 fn [[x:Integer][Integer][x add 2]]  `
@@ -55,6 +58,7 @@ func TestParenTrailingFnAgrees(t *testing.T) {
 		{ptfInc + `(2 inc2/v) 10 mul`, "[24]", "and under a later stack word"},
 		{ptfInc + `(2 inc2/v) 10 20`, "[2 12 20]", "a named fn value, two followers"},
 		{ptfMk + `def xs [1 2 3]  xs each [(2 (mk 1)) 10]`, "[[11 11 11]]", "the follower case inside a code body"},
+		{ptfMk + `def xs [1 2 3]  xs each [(2 (mk 1)) 10 mul]`, "[[22 22 22]]", "the collected result under a later stack word, inside a code body"},
 		// a paren under a pending forward hands its survivors to it: mul
 		// takes the 2, the closure re-steps over the 20
 		{ptfMk + `def f fn [[Integer][Any][10 mul (2 (mk 1))]]  f 1`, "[21]", "the leftover closure applies over the word's result inside a fn unit"},
@@ -77,14 +81,19 @@ func TestParenTrailingFnAgrees(t *testing.T) {
 // row with the interpreter's own answer beside it — a leftover closure at
 // the main program (no arm seats a re-step over a word's result there), a
 // leftover with nothing beneath it (def takes the 2, the closure parks),
-// and a list literal whose trailing element the rewind would have
-// re-stepped over the next element.
+// a list literal whose trailing element the rewind would have re-stepped
+// over the next element, and a numeric word after the follower, whose
+// poly record collected the re-step-marked carrier the interpreter
+// dispatches first (22: the closure takes the 10 before `mul` runs).
 func TestParenTrailingFnSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		{ptfMk + `10 mul (2 (mk 1))`, "unconsumed fn-value carrier", "[21]"},
 		{ptfMk + `def r (2 (mk 1)) end r`, "fn value precedes residual args", "[fn (Integer) 2]"},
 		{ptfMk + `def r (2 (mk 1)) end r 5`, "fn value precedes residual args", "[fn (Integer) 2 5]"},
 		{ptfMk + `[(2 (mk 1)) 10]`, "unknown provenance", "[[2 11]]"},
+		{ptfMk + `(2 (mk 1)) 10 mul`, "the paren's rewind re-steps first", "[22]"},
+		{ptfMk + `(2 (mk 1)) 10 add`, "the paren's rewind re-steps first", "[13]"},
+		{ptfMk + `(2 (mk 1)) 10 drop`, "collected by a later dispatch", "[2]"},
 	}
 	for _, c := range rows {
 		a, err := New()
@@ -110,30 +119,5 @@ func TestParenTrailingFnSoundCompileFailures(t *testing.T) {
 		if errI != nil || fmt.Sprint(gotI) != c.interp {
 			t.Errorf("%q: interpreter %v err=%v, want %s", c.src, gotI, errI, c.interp)
 		}
-	}
-}
-
-// TestParenTrailingFnLoudPending pins what is left of NUR184 as a LOUD
-// divergence: the check pass steps a re-step-marked carrier as data, so a
-// word after the follower collects the carrier itself — `mul` over
-// `[10, fn]` — and the compiled program raises the no-match the
-// interpreter (22: the closure takes the 10 first) never does. The pin
-// fails the day the row agrees (move it to TestParenTrailingFnAgrees) or
-// declines at compile time (move it to the sound compile failures).
-func TestParenTrailingFnLoudPending(t *testing.T) {
-	src := ptfMk + `(2 (mk 1)) 10 mul`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[22]" {
-		t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR184", src, gotI, errI)
-	}
-	switch {
-	case !compiled:
-		t.Errorf("%q: declines now (%v) — move it to TestParenTrailingFnSoundCompileFailures", src, errC)
-	case errC == nil && fmt.Sprint(gotC) == "[22]":
-		t.Errorf("%q: agrees now — move it to TestParenTrailingFnAgrees", src)
-	case errC == nil:
-		t.Errorf("%q: compiled %v silently for the interpreter's 22 — NUR184 regressed", src, gotC)
-	case codeOf(errC) != "signature_error":
-		t.Errorf("%q: raises %v, want the loud no-match at mul", src, errC)
 	}
 }

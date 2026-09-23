@@ -12513,14 +12513,19 @@ in `def_bound_closure_park_test.go`.
 **Where the twelve stand.** Eight agree (`(2 (mk 1)) 10`, `10 20`, `5 (2
 (mk 1)) 10`, `((2 (mk 1)) 10)`, `(2 inc2/v) 10`, `(2 inc2/v) 10 mul`, `xs
 each [(2 (mk 1)) 10]`, the fold row and the fn-unit `10 mul (2 (mk 1))`),
-three decline (`10 mul (2 (mk 1))` at the main program — no arm seats a
-leftover over a word's result there; `def r (2 (mk 1)) end r`; `[(2 (mk
-1)) 10]`), and one is LOUD: `(2 (mk 1)) 10 mul` — the check pass steps
-the marked carrier as data, `mul` collects it with the 10, and the
-compiled program raises the no-match the interpreter (22) never does.
-That residue is the next cut here: a dispatch that collects a re-step-
-marked carrier as a stack operand should decline at compile time. Pinned
-pending in `TestParenTrailingFnLoudPending`.
+and four decline: `10 mul (2 (mk 1))` at the main program (no arm seats a
+leftover over a word's result there), `def r (2 (mk 1)) end r`, `[(2 (mk
+1)) 10]`, and `(2 (mk 1)) 10 mul`. The last was LOUD for a moment — the
+check pass steps the marked carrier as data, `mul`'s static match fails
+on it, and the recovery's POLY record collected the carrier with the 10,
+so the compiled program raised the no-match the interpreter (22) never
+does; its stack-word twins (`drop`, `dup`, `swap`, `size`, `eq`) had
+already declined through the collection hazard (NUR121), the poly path
+alone having no screen. `RecordPolyCall`'s one compile-failure site now
+takes its reason from `polyCallDeclineReason`, which adds the re-step-
+marked carrier operand to the container-read case (the site count stays
+at 92). `(2 (mk 1)) 10 add` declines the same way; `xs each [(2 (mk 1))
+10 mul]` compiles to `[[22 22 22]]`.
 
 **Measured** (the full unfiltered corpus, `-timeout 40m`, and the gate
 report): nothing moved. Every ceiling stands at its live value — compile
@@ -12528,16 +12533,20 @@ failures 21, compute gaps 16, reducible 4, interp-entry rows 75, engine
 entries 408 (Engine.Run×408, CallBoru×240, RunResolved×105), runtime
 defers 8, locally-resolved 1, armed-only 8, diagnostic parity 348,
 correct-error 1, type-soundness 4, the generated sweep 29 / 2 / 7 and 200
-call-form variants, the lang ledger 279 / 34. No corpus row is in this
-family; the paren's trailing fn value with a follower is an off-corpus
-shape, as NUR181's parked pair was.
+call-form variants. No corpus row is in this family; the paren's trailing
+fn value with a follower is an off-corpus shape, as NUR181's parked pair
+was. The lang/go unit ledger moved one program between its two lines,
+279 / 34 → 280 / 33: `TestParenApplyLowering`'s non-member fence, `def q
+(if true [([y:Integer] => [y add 1])] [([y:Integer] => [y sub 1])]) add 1
+(q 5)` (7 interpreted), whose poly record of `add` collected the
+re-step-marked branch closure with the 1 and BAILED at run time, declines
+at the record now — the same program, earlier and louder.
 
 **Pins.** `paren_trailing_forward_test.go` (rewritten: `TestParenTrailingFnAgrees`
-holds the witnesses, `TestParenTrailingFnSoundCompileFailures` the three
-declines with the interpreter's answers, `TestParenTrailingFnLoudPending`
-the residue), `TestUnnamedFrameApplyResultTyped` (the fold row moved in;
+holds the witnesses, `TestParenTrailingFnSoundCompileFailures` the
+declines with the interpreter's answers), `TestUnnamedFrameApplyResultTyped` (the fold row moved in;
 the pending test retired), `def_bound_closure_park_test.go` (NUR185);
 core `paren_trailing_fn_test.go`, `paren_restep_record_test.go` (every
 fn-valued survivor), `engine_closure_bridge_test.go` (the seal); compiler
-`paren_trailing_marks_test.go`; eng's CheckState lifecycle gate names the
-two new sets.
+`paren_trailing_marks_test.go` (the mark readers and the poly screen);
+eng's CheckState lifecycle gate names the two new sets.

@@ -465,9 +465,10 @@ user still gets an answer while the case is open:
   (`TestParenTrailingFnSoundCompileFailures`): the leftover at the main
   program (`10 mul (2 (mk 1))`), a leftover with nothing beneath it (`def
   r (2 (mk 1)) end r` — def takes the 2, the closure parks) and a list
-  literal whose trailing element the rewind re-steps (`[(2 (mk 1)) 10]`);
-  one LOUD residue, `(2 (mk 1)) 10 mul` (the compiled program raises the
-  no-match at `mul` for the interpreter's 22). A `/v` read of a def-bound
+  literal whose trailing element the rewind re-steps (`[(2 (mk 1)) 10]`),
+  and a numeric word after the follower whose poly record collected the
+  re-step-marked carrier (`(2 (mk 1)) 10 mul`, 22 interpreted — the
+  closure takes the 10 first). A `/v` read of a def-bound
   closure is placed on both lanes (NUR185, 2026-09-23): `def c (mk 3) end
   2 c/v 10` used to island the window and apply the closure; it declines
   at the render gate now (the value renders under the def's name).

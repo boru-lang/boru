@@ -8361,19 +8361,39 @@ func valueDivergingWord(owner, running *core.Registry, word string) bool {
 // noMatch, when non-nil, rides onto the PolyRef as the faithful-raise plan
 // for the runtime no-match arm (plan 3c) — the caller derived and gated it at
 // the failed-dispatch tape state; nil keeps the sound defer.
+// polyCallDeclineReason names why a native poly record declines the
+// program instead of recording (RecordPolyCall's one compile-failure site):
+//
+//   - a container-read fn value the interpreter invokes as it lands, which
+//     the VM would push as data — the same auto-dispatch divergence as the
+//     mono path (recordCallCompileFailure); annotated shaped-method reads
+//     and pinpointed genuine-0-arg member reads are exempt;
+//   - a fn-typed carrier the paren's rewind RE-STEPS (ParenReSteppedFnIDs)
+//     collected as this dispatch's operand: the check pass stepped it as
+//     data, but the interpreter dispatches the value first — `(2 (mk 1)) 10
+//     mul` is 22, the closure taking the 10 before `mul` runs — so the poly's
+//     runtime re-match over the carrier raised the no-match the interpreter
+//     never does (NUR184's loud residue). A lead the `apply` word owns is
+//     the apply's, not this dispatch's.
+func (es *EmitState) polyCallDeclineReason(word string, args, outs []core.Value) string {
+	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
+		return "fn value read from a container auto-dispatches (Stage 3)"
+	}
+	for _, a := range args {
+		if core.IsFnTypedCarrier(a) && !a.Quoted && es.parenReSteppedFn(a) && !es.applyPending(a.ID) {
+			return "a dispatch collected a fn value the paren's rewind re-steps first (NUR184)"
+		}
+	}
+	return ""
+}
+
 func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos core.SrcPos, ownerReg *core.Registry, noMatch *core.PolyNoMatchSpec) bool {
 	if !es.Active() {
 		return false
 	}
-	if isGetFamilyWord(word) && !es.shapedReadOut(outs) && (containerFnAutoDispatchRisk(args) || zeroArgFnOut(outs) || es.instanceFnFieldRisk(args)) && !es.zeroArgMemberFnLandingOut(outs) {
-		// Same auto-dispatch divergence as the mono path (recordCallCompileFailure):
-		// the interpreter invokes a container-read fn value as it lands; the
-		// VM would push it as data. Decline the program rather than diverge —
-		// the lesser failure, and one owed a lowering.
-		// Annotated shaped-method reads and pinpointed genuine-0-arg member
-		// reads are exempt (see recordCallCompileFailure).
+	if reason := es.polyCallDeclineReason(word, args, outs); reason != "" {
 		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
+		es.MarkUncompilable(reason)
 		return true
 	}
 	ops := make([]EmitOperand, len(args))
