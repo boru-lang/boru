@@ -79,7 +79,16 @@ var pinnedAritySites = map[string]int{
 	// sequential-spelling note) moved to core/go/region_diag.go as
 	// BarrierReceiverWord, where the routed dispatch raises the same
 	// diagnostic from its window. The site did not change; the file did.
-	"core/go/engine.go":       27,
+	// 27 -> 29 (2026-09-23, the trailing value's re-step, NUR184): two
+	// reads of the argument rule at the paren collapse —
+	// trailingFnCollectsPastClose skips a signature with no position to
+	// collect into (`sig.TotalArgs() == 0`) before asking whether the
+	// token after the close matches its first forward position, and
+	// parenFeedsPendingForward asks whether a parked Forward is still
+	// collecting (`fwd.CollectedArgs < fwd.Sig.TotalArgs()`, the same test
+	// hasPendingForwardCollecting makes). Both decide where a value's
+	// arguments COME FROM, never what a fn may do by its count.
+	"core/go/engine.go":       29,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
@@ -139,7 +148,14 @@ var pinnedAritySites = map[string]int{
 	// any arity reaches it and is answered by its signatures, never by a
 	// count: one that matches at zero runs, one that does not stays data,
 	// which is what the interpreter's own re-step does there.
-	"eng/go/vm.go": 13,
+	// 13 -> 15 (2026-09-23, the typed callback's contract, NUR155):
+	// unmatchedLambdaBody asks whether a callback BODY unit recorded a
+	// contract of its own — one Params entry per real arg (`len(fn.Params)
+	// == 0`, `len(fn.Params) != fn.NArgs`: closureSigParams's own
+	// precondition) — before matching that contract over the element with
+	// MatchFnSig's rule. A unit with no contract (a quotation body) stands
+	// aside; the decision that follows is the signature's, never the count's.
+	"eng/go/vm.go": 15,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the

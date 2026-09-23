@@ -7,9 +7,11 @@ import (
 )
 
 // programPendingApply lowers the program unit's ONE pending `apply`-word
-// application when it is the residual's top over at least one value, and
-// consumes it; every other shape is left for Finalize's decline (the
-// dynamic-lead group, 2026-09-22).
+// application when it is the residual's top — over any number of values
+// beneath, none included: the op models applyHandler over an empty window
+// too (a 0-arg closure fires, a wider one stays data; NUR160's neighbours,
+// 2026-09-23) — and consumes it; every other shape is left for Finalize's
+// decline (the dynamic-lead group, 2026-09-22).
 func TestProgramPendingApply(t *testing.T) {
 	var nilES *EmitState
 	if nilES.programPendingApplyTop(nil) {
@@ -24,8 +26,8 @@ func TestProgramPendingApply(t *testing.T) {
 	}
 	pos := core.SrcPos{Row: 3, Col: 7}
 	es.units[0].pendingApply = []pendingApply{{id: "fn-p", pos: pos}}
-	if es.programPendingApplyTop([]core.Value{fn}) {
-		t.Error("nothing beneath the fn: the interpreter leaves it as data")
+	if !es.programPendingApplyTop([]core.Value{fn}) {
+		t.Error("nothing beneath the fn: the apply word's op over an empty window")
 	}
 	if es.programPendingApplyTop([]core.Value{fn, core.NewInteger(5)}) {
 		t.Error("the pending fn must be the residual's top")

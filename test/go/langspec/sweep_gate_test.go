@@ -69,9 +69,6 @@ var sweepKnownMiscompiles = map[string]sweepPin{
 	`def one fn [[][Integer][1]] end if true one/v [2]`: {
 		"NUR159 — a named fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane",
 		"value divergence: compiled [fn one] vs interp [1]"},
-	`7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply`: {
-		"NUR160 — the apply of a factory-built fn value does not fire on the compiled lane when a value sits below it on the stack; the clean-stack form agrees",
-		"value divergence: compiled [7 5 fn (Integer)] vs interp [7 6]"},
 }
 
 // sweepInventory is the matrix's rows: every declaration-relevant word of

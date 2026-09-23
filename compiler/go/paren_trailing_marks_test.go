@@ -77,3 +77,37 @@ func TestPolyCallDeclineReasonReSteppedOperand(t *testing.T) {
 		t.Errorf("an apply-owned lead records: %q", got)
 	}
 }
+
+// TestProducedConstLambdaGuards pins producedConstLambda's edges: an id no
+// event produced, a producer whose returned out-op is not a const, a const
+// index out of range and a non-fn const all answer false; a produced fn
+// const answers true.
+func TestProducedConstLambdaGuards(t *testing.T) {
+	es := NewEmitState()
+	if es.producedConstLambda("nothing") {
+		t.Error("an unproduced id is not a const lambda")
+	}
+	fnc := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TInteger}}, BarrierPos: 1}}, Anonymous: true})
+	es.consts = []core.Value{core.NewInteger(1), fnc}
+	unit := len(es.fnRecs)
+	es.fnRecs = append(es.fnRecs, &fnUnitRec{name: "mk"})
+	seed := func(op EmitOperand) string {
+		id := "res"
+		es.fnRecs[unit].outOps = []EmitOperand{op}
+		es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{unit: unit}, seq: 1}}}
+		es.producedBy = map[string]producer{id: {seq: 1, idx: 0}}
+		return id
+	}
+	if es.producedConstLambda(seed(EmitOperand{kind: opLocal, idx: 0})) {
+		t.Error("a returned local is not a const")
+	}
+	if es.producedConstLambda(seed(EmitOperand{kind: opConst, idx: 7})) {
+		t.Error("a const index out of range")
+	}
+	if es.producedConstLambda(seed(EmitOperand{kind: opConst, idx: 0})) {
+		t.Error("an Integer const is not a fn")
+	}
+	if !es.producedConstLambda(seed(EmitOperand{kind: opConst, idx: 1})) {
+		t.Error("a returned baked fn const is the apply arm's")
+	}
+}

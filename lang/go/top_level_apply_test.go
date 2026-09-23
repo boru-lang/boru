@@ -102,7 +102,6 @@ func TestTopLevelGradualApplyDefers(t *testing.T) {
 func TestTopLevelApplySoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
 		// nothing beneath the closure: the interpreter leaves it as data
-		{tlaMk + `(mk 1)/v apply`, "never dispatched", "[fn (Integer)]"},
 		// the pending apply is not the program's tail: a later word consumes it
 		{tlaMk + `5 (mk 1)/v apply add 10`, "NUR124", "[16]"},
 		// a def-bound factory result read back: the read's statement window

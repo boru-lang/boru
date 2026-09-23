@@ -473,6 +473,22 @@ user still gets an answer while the case is open:
   2 c/v 10` used to island the window and apply the closure; it declines
   at the render gate now (the value renders under the def's name).
 
+  A TYPED lambda callback over a HETEROGENEOUS list is applied only to the
+  elements its signature admits on both lanes since the typed callback's
+  contract (2026-09-23, NUR155): `each ([x:Integer] => [typeof x]) [1 'a'
+  [2] {b:1} true none]` is `[Integer fn fn fn fn fn]` — a lambda the
+  compiler lowers as the word's own body unit (each$body, fold$body) is
+  matched against its recorded contract per element by the VM's token
+  seam, a list body's no-match leaving the fn value as the element's
+  result and a map body's raising the map arm's signature_error. The
+  `apply` word over a factory's baked fn const under a dirty stack (`7 5
+  (mk) apply`, NUR160) and over an empty window (`(mk0) apply` fires a
+  0-arg closure, `(mk) apply` leaves a wider one as data) compiles with
+  parity the same day. Still diverging, pinned (NUR186): a MODULE fn's
+  value at a factory body's tail (`def mk fn [[][Function][M.inc]]`),
+  which the interpreter's landing dispatches and raises on, and the
+  compiled unit returns.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.
