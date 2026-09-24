@@ -406,7 +406,25 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// the interpreter answers 3, because the interpreter's `def` bound
 		// the closure over the 1 and its `undef` left fn bindings alone.
 		// Decline rather than model a name with two meanings.
-		if _, shadowed := r.Defs.Top(name); shadowed {
+		// The same two-store disagreement when the live binding is ITSELF
+		// a computed fn (the side table's, not Defs') and this def sits in
+		// a FN BODY: the interpreter's install drops the overlapping outer
+		// closure and pushes the new one at the same depth, so the frame's
+		// def-cleanup pops nothing and the redefinition OUTLIVES the call
+		// (`def a5 (mk 1)  def g fn [[xs:List][List][def a5 (mk 5)  each
+		// [a5] xs]]  g [1 2 3]  each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]`
+		// interpreted), where the compiled frame's bind is popped with the
+		// frame and the outer closure answers again (NUR192, 2026-09-24). A
+		// redefinition in the SAME frame (the body re-analysed by a unit
+		// compile, a second `def` in one body) is bound at this depth and
+		// stays: the frame's cleanup pops both on both lanes.
+		_, shadowed := r.Defs.Top(name)
+		if !shadowed && r.Check.FnBodyDepth > 0 {
+			if depth, bound := CheckFnCarrierBindDepth(r, name); bound && depth < r.Check.FnBodyDepth {
+				shadowed = true
+			}
+		}
+		if shadowed {
 			r.Check.Recorder().MarkUncompilable(
 				"computed fn shadows a live binding of the same name (two binding stores disagree — Stage 1)")
 		}

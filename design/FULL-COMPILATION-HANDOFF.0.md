@@ -13106,3 +13106,65 @@ the def read of a placed closure still an apply, the trim keeping a
 trailing apply's args), `unit_memo_test.go` (the probe fork's root
 computed binds, a clone); the lang ledger 280 -> 281 (the nested-def
 witness). Docs: NUR.md (NUR192 new), COMPILABLE-SUBSET.md, the handover.
+
+## S1b — the frame's closure bind: NUR192 closed, the shadowing def declined, NUR193 found (2026-09-24)
+
+**The defect.** A computed fn value `def` binds inside a fn body (`def g
+fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]`) is a
+binding installDef leaves to the compiled-closure machinery — the
+installer's carrier guard installs NOTHING for a Function-family value
+without an FnDefInfo payload — so the frame's `BIND_DYN_SCOPE` left no
+Defs entry, and every read of the name inside the frame missed it: the
+native's raw-body island dispatched `a5` and raised a false `undefined
+word: a5` where the interpreter answers `[[6 7 8]]` (present on `main`,
+NUR192), and the tail-read increment's live route deferred on the same
+miss.
+
+**The fix, in two pieces.** (1) The VM's `bindDynScope` pushes a compiled
+CLOSURE value onto the def stack as the top-level write-back
+(`bindGlobal`) already does — the interpreter dispatches the pushed
+closure through the compiled-runtime hooks, as the top-level rows prove —
+and the frame's trail truncation (`unwindDynBinds`) pops it with the
+frame, the interpreter's own def-cleanup; the second call binds afresh
+and a same-frame redefinition agrees. (2) The closure body's REAL compile
+routes a def-read fn carrier whose producer is an enclosing unit's event
+to the live lookup (`resolveOperand`'s enclosing-event arm): the probe
+(no producedBy) rescued it live while the real compile seated the parent's
+event, unreachable from the closure's frame, so the tail rule fired in one
+verdict and not the other and the program failed whole ("result above a
+literal"). Both verdicts now agree; the nested tail read lowers
+`LOOKUP_DYN_SCOPE_DATA a5` + `CALL_DYN_TRAIL_TOP 1` and the raw-body read
+(`each [a5 add 1] xs`) islands to the pushed closure with parity.
+
+**Found on the way, declined loudly.** A fn body's computed fn def that
+SHADOWS an enclosing frame's computed fn of the same name outlives the
+call in the interpreter: its install drops the overlapping outer closure
+and pushes the new one at the SAME depth, so the frame's def-cleanup pops
+nothing — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7
+8]]` interpreted, where the compiled push-and-pop answered `[[6 7 8] [2 3
+4]]` (and `main` `[[2 3 4] [2 3 4]]`, both halves wrong). The existing
+"computed fn shadows a live binding" decline (`native_definition.go`)
+covered a Defs-held outer binding only; it now covers a side-table-held
+computed fn bound at a SHALLOWER fn-body depth — the fn-carrier side table
+records the OUTERMOST depth a name was bound at (`CheckFnCarrierBindDepth`;
+outermost because the table is never torn down with a frame and a fn body
+is analysed more than once — the def site's check, the unit compile — so
+the first draft's last-bind depth hid the enclosing bind from the second
+analysis). A top-level redefinition has no frame to outlive and compiles
+with parity. NUR193 recorded: a def-bound computed fn read inside a `do`
+body — `7 do [a5]` is 12 compiled for the interpreter's raise (the check
+pass's own run of the body leaves the carrier as its result and the
+program residual's trailing apply takes it over the 7), `do [a5 7]` a
+`CALL_DYNAMIC underflow` — present on `main` before and after the
+tail-read increment; the first row silent.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with every gate at its ceiling and no row moving — interp-entry census rows 62, engine entries 375 (Engine.Run 375, CallBoru 239, RunResolved 73), the generated sweep's call-form failures 197 (305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3), compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences (no corpus row carries the shapes); the gate report reads 0 regressions; the lang unit ledger 282 / 34 (the compile line: the nested-def witness compiles, the two shadow witnesses added); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `def_fn_body_tail_test.go` (lang/go: the nested read and the
+same-frame redefinition native with the second call, the raw-body read
+open with parity, the two shadow witnesses as sound compile failures and
+the top-level redefinition with parity; the lang ledger 281 -> 282), eng
+`TestBindDynScopeClosureValue` (the push, the data lookup, the RET's pop),
+core `TestCheckFnCarrierBindDepth` (the outermost depth, undef, reset).
+Docs: NUR.md (NUR192 FIXED, NUR193 new), COMPILABLE-SUBSET.md, the
+handover.

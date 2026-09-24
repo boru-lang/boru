@@ -2921,7 +2921,20 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 			// def-binding ID snapshotted at unit open takes this path, so a
 			// body-local producer (its ID absent from enclosingBindIDs) and an
 			// immutable const literal (no producing event) are untouched.
-			if cur := es.units[len(es.units)-1]; cur != nil && len(es.units) > 1 && cur.enclosingBindIDs[v.ID] {
+			// A def READ of a fn-typed carrier whose producer is an ENCLOSING
+			// unit's event is the same read of a binding installDef left to
+			// the compiled-closure machinery — a fn-body-local computed fn
+			// def (`def g fn [[xs:List][List][def a5 (mk 5)  each [a5]
+			// xs]]`), absent from Defs and so from the snapshot; the closure
+			// body's probe (no producedBy) rescued it live and the real
+			// compile seated the parent's event, unreachable from the
+			// closure's frame, and the two verdicts must be about the same
+			// unit (NUR192, 2026-09-24). The rescue's reachability model
+			// admits it (the enclosing fn binds the name and reaches the
+			// body) and the binding unit's OpBindDynScope twin installs the
+			// closure the lookup then reads (the VM's bindDynScope).
+			if cur := es.units[len(es.units)-1]; cur != nil && len(es.units) > 1 &&
+				(cur.enclosingBindIDs[v.ID] || (es.isDefRead(v) && core.IsFnTypedCarrier(v) && !es.producedInCurrentUnit(v.ID))) {
 				if op, ok := es.dynScopeRescue(v); ok {
 					return op, true
 				}
@@ -6066,15 +6079,14 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 				// dispatch takes its operands from the stack top-down, the
 				// same contract, at the shape's claimed arity (2026-09-24).
 				// Only over the read's LIVE lookup (opDynScope, the
-				// dynamic-scope rescue of an enclosing binding): a fn-body-
-				// local computed def read from a nested closure (`def g fn
-				// [[xs:List][List][def a5 (mk 5)  each [a5] xs]]`) resolves
-				// to the parent's event, unreachable from this frame, and
-				// lowering the apply over it failed the whole program
-				// ("result above a literal"); under the unapplied-fn guard
-				// below it is the loud compile failure instead (NUR192: the
-				// frame's dynamic-scope bind installs nothing for a closure
-				// value, so the live route cannot bind it yet).
+				// dynamic-scope rescue of an enclosing binding): a read that
+				// resolved to an EVENT of an enclosing unit is unreachable
+				// from this frame, and lowering the apply over it failed the
+				// whole program ("result above a literal"); under the
+				// unapplied-fn guard below it is the loud compile failure
+				// instead. A fn-body-local computed def read from a nested
+				// closure takes the live route since NUR192's fix (the
+				// enclosing-event arm of resolveOperand).
 				if a == 0 && rec.closure && len(ops) > 0 && ops[len(ops)-1].kind == opDynScope {
 					if n, readName := es.defReadFnTailArity(top); n == len(bodyStk)-1 {
 						a = n

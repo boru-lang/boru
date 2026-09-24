@@ -162,12 +162,16 @@ branch-carried def"**; the re-estimate is
    def-bound computed fn read at a closure body's tail (2026-09-24)
    lowered `each [a5] xs` as the body-tail trailing apply over the
    read's live lookup, the fn-util wrappers with it (six census rows
-   left); its fn-body-LOCAL twin is NUR192 — the frame's dynamic-scope
-   bind installs nothing for a closure value, so the tail row is a loud
-   compile failure now and the raw-body rows still a false
-   `undefined_word` on `main` — and the run-time list bodies
-   (code-bodies.tsv's twenty) are S3's runtime compilation. Most of the
-   interp-entry census rows are still this family.
+   left); its fn-body-LOCAL twin (NUR192) closed the same day with the
+   frame's closure bind — the VM pushes a closure value the installer's
+   carrier guard ignored, and the nested read compiles natively — with
+   a fn body's computed fn def shadowing an enclosing one declined
+   loudly (the interpreter's install outlives the call). NUR193 recorded
+   on the way: a def-bound computed fn read inside a `do` body (`7 do
+   [a5]` is 12 compiled for the interpreter's raise, silent on `main`).
+   The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
+   compilation. Most of the interp-entry census rows are still this
+   family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.

@@ -483,9 +483,14 @@ user still gets an answer while the case is open:
   seated, so a no-match raises `cannot call `a5`` alike. Declining to the
   island, as before: a deeper frame (`0 fold [s] xs` over a one-argument
   `s`, the check's short window). A fn-body-LOCAL computed def read the
-  same way from a nested closure is a loud compile failure (NUR192,
-  `TestDefFnBodyTailNestedDefSoundCompileFailure`): the frame's
-  dynamic-scope bind installs nothing for a closure value yet.
+  same way from a nested closure compiles too (NUR192, 2026-09-24): the
+  frame's dynamic-scope bind pushes the closure value the lookup reads
+  and pops it with the frame (`def g fn [[xs:List][List][def a5 (mk 5)
+  each [a5] xs]] end g [1 2 3]`), and the raw-body read under a later
+  word islands to the same pushed closure. A fn body's computed fn def
+  SHADOWING an enclosing frame's computed fn of the same name DECLINES
+  (the interpreter's install outlives the call; the compiled push-and-pop
+  cannot model it), pinned in `TestDefFnBodyTailShadowSoundCompileFailures`.
 
   A BRANCH whose arm is a fn VALUE returns a value the interpreter
   re-steps, and the compiled lane re-steps it the same way since the

@@ -2387,6 +2387,21 @@ func (vc *vmContext) bindDynScope(curReg *core.Registry, p *compiler.Program, ar
 	// Ascription hygiene: a stored binding holds the REAL value.
 	v := core.StripAscribed(stack[len(stack)-1])
 	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: curReg, name: name, depth: curReg.Defs.Depth(name)})
+	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
+		// A compiled CLOSURE value (a factory's result bound by a fn-body
+		// `def a5 (mk 5)`): the installer's carrier guard installs NOTHING
+		// for a Function-family value without an FnDefInfo payload, so the
+		// frame's bind left no entry and a read of the name — the island's
+		// word dispatch of a raw body, the unit's live lookup — missed it
+		// (NUR192: `each [a5] xs` inside the fn raised a false
+		// `undefined word: a5`). Push it as the top-level write-back does
+		// (bindGlobal): the interpreter dispatches the pushed closure through
+		// the compiled-runtime hooks, and the trail's depth truncation
+		// (unwindDynBinds) pops it with the frame, the interpreter's own
+		// def-cleanup.
+		curReg.Defs.Push(name, v)
+		return stack[:len(stack)-1], nil
+	}
 	core.InstallDef(curReg, name, v)
 	return stack[:len(stack)-1], nil
 }
