@@ -13223,3 +13223,61 @@ langspec `runtime_defer_ledger_test.go` (every arm of the ledger check,
 the census, the site join, the detail strip) and `runtime_defers.tsv`.
 Docs: NUR.md (NUR190 CONTAINED), COMPILABLE-SUBSET.md, the replan's §12
 table, the handover.
+
+## S1b — the do body's read: NUR193 closed, NUR194 found (2026-09-24)
+
+**The defect.** A def-bound computed fn read inside a `do` body: `7 do
+[a5]` with `def a5 (mk 5)` compiled 12 for the interpreter's `[7
+error(cannot call `a5` …)]` — silent, on `main` — and `do [a5 7]` died in
+a `CALL_DYNAMIC underflow`. Two mechanisms stacked. The check pass's run
+of the do body is a suspended type probe that notes no read, so the
+carrier stood as the body's result, `DoListReturnsFn` typed the do's
+result Function, and the program residual's trailing arm applied it over
+the 7 (`CALL_DYNAMIC_TRAILING`). And at run time the island stepping the
+raw body found the def-bound COMPILED CLOSURE in the def stack (the
+frame's push, the top-level write-back), which the engine's simple-value
+substitution pushed as data and the literal chain re-stepped through the
+closure bridge as an ANONYMOUS fn — parked over the empty frame — where
+the interpreter's `def a5 (mk 5)` is a NAMED fn definition whose word
+dispatch raises. The raw-body rows that agreed before (NUR192's `each [a5
+add 1] xs`) agreed by the re-step's luck: the element beneath matched.
+
+**The fix, in two pieces.** (1) core: a compiled closure a program binds
+by `def` is bridged into the word dispatch under its binding's name —
+`Registry.Lookup` walks the def stack and, under a run's invoker, folds a
+`ClosurePayload` entry into the aggregate through the compiled runtime's
+own view (`ClosureAsFnDef`, the same bridge the re-step uses) with
+`Name` set and `Anonymous` cleared (`lookupUncachedBridged`); the
+aggregate is never cached, since the bridge captures the run's invoker
+and a later run on the same registry would dispatch through a dead
+context; and the word step routes such a name through Lookup instead of
+substituting it (`dispatchesAsWord`). The island's `a5` now matches over
+the frame or the written tokens, invokes the unit through the run's
+invoker, raises the interpreter's own `cannot call` over nothing, and is
+a fn-word collection barrier as the interpreter's definition is. Outside
+a run the payload stays the data it was. (2) basic: `DoListReturnsFn`
+takes the computed-body hatch (one dynamic(Any)) when the body's residual
+carries a def-bound computed fn carrier (the side table's), so the
+program residual applies nothing over the do's result. Measured: `7 do
+[a5]` and `do [a5]` the caught raise on both lanes, `do [a5 7]` and `do
+[a5 7 add 1]` 12 and 13, the each rows and NUR192's nested rows
+unchanged.
+
+**Found on the way, pinned as measured.** NUR194: a written operand the
+closure's contract does not take — `each [a5 "s" add] [1 2]` is `['6s'
+'7s']` interpreted (the matcher falls back from the written `"s"` to the
+element) and bails compiled on the shaped read's claim (`result count 2
+violates the host-registered shape claim 1`); `do [a5 "s"]` the same
+bail, where `main` answered `[fn a5(Integer) s]` silently. The shaped
+read's window claims the written tokens as the arguments without asking
+the signature whether they fit; that is the read model's next cut.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with every gate at its ceiling and no row moving — the bridged dispatch changes no corpus row's answer or interpreter entry: interp-entry census rows 62, engine entries 375 (Engine.Run 375, CallBoru 239, RunResolved 73), runtime defers 10, the bailing rows 54 (the ledger asserted over 130 files), the generated sweep's call-form failures 197, compile failures 21, compute gaps 16, islands 0, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 282 / 39 (the bail line: NUR194's two rows); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** lang `do_body_read_test.go` (`TestDoBodyReadParity`: the five
+do shapes; `TestDoBodyReadWrittenNoMatchBails`: the two NUR194 rows
+booked, the unit ledger's bail line 37 -> 39), core
+`TestDefBoundClosureDispatchesAsWord` (data outside a run; the bridged
+lookup under the name, uncached; the dispatch over the frame; the raise
+over nothing; the collection barrier). Docs: NUR.md (NUR193 FIXED,
+NUR194 new), COMPILABLE-SUBSET.md, the handover.

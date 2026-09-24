@@ -169,10 +169,14 @@ branch-carried def"**; the re-estimate is
    frame's closure bind — the VM pushes a closure value the installer's
    carrier guard ignored, and the nested read compiles natively — with
    a fn body's computed fn def shadowing an enclosing one declined
-   loudly (the interpreter's install outlives the call). NUR193 recorded
-   on the way: a def-bound computed fn read inside a `do` body (`7 do
-   [a5]` is 12 compiled for the interpreter's raise, silent on `main`).
-   The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
+   loudly (the interpreter's install outlives the call). NUR193 (a
+   def-bound computed fn read inside a `do` body, `7 do [a5]` 12 compiled
+   for the interpreter's caught raise, silent on `main`) closed the same
+   day: a closure a compiled program binds by `def` dispatches as the
+   named fn it is inside every island (core's bridged Lookup), and `do`'s
+   result model no longer claims the carrier; NUR194 recorded on the way
+   (a written operand the contract does not take — a loud bail on the
+   shape claim, the read model's next cut). The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this
    family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at

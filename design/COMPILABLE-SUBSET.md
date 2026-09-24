@@ -491,6 +491,14 @@ user still gets an answer while the case is open:
   SHADOWING an enclosing frame's computed fn of the same name DECLINES
   (the interpreter's install outlives the call; the compiled push-and-pop
   cannot model it), pinned in `TestDefFnBodyTailShadowSoundCompileFailures`.
+  Inside a `do` body the same read is the word's dispatch over the body's
+  EMPTY frame or its written tokens (NUR193, 2026-09-24): `7 do [a5]` is
+  `[7 error(cannot call …)]` on both lanes (the caught raise), `do [a5 7]`
+  12 — a closure a compiled program binds by `def` dispatches as the named
+  fn it is inside every island, and `do`'s result model takes the
+  computed-body hatch over such a carrier. A written operand the contract
+  does not take (`each [a5 "s" add] xs`, `do [a5 "s"]`) BAILS on the
+  shape claim, pinned as measured (NUR194).
 
   A BRANCH whose arm is a fn VALUE returns a value the interpreter
   re-steps, and the compiled lane re-steps it the same way since the
