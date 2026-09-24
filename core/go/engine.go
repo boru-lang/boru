@@ -4757,15 +4757,6 @@ func lastReachResult(res []Value, err error) (Value, error) {
 	return res[len(res)-1], nil
 }
 
-// evalParenExprResults evaluates a ParenExpr's tokens in a sub-engine and
-// returns its result value(s). Used by autoEvalMap for paren values in map
-// (data) context, where a single result value is collected for a key. It
-// shares the registry (defs leak) and propagates errors (a paren is not an
-// error boundary, unlike `do`).
-func (e *Engine) evalParenExprResults(items []Value) ([]Value, error) {
-	return RunPooledSub(e.Registry, expandParenExpr(items), false)
-}
-
 // autoEvalMap evaluates each value in a plain map using a sub-engine.
 // Word values resolve directly; lists auto-evaluate via autoEvalStack:
 //
@@ -4780,6 +4771,83 @@ func (e *Engine) evalParenExprResults(items []Value) ([]Value, error) {
 // residual is evaluated LATE, after its enclosing fn frame has popped, so its
 // value bindings (a fn param) are gone — recording it in-frame would diverge
 // from the interpreter (which errors / re-binds at the later time).
+// autoEvalMapGroupMember evaluates one paren-group member of a map literal
+// (AutoEvalMap's `{k:(…)}` arm): a check-mode const-fold where the group is
+// deterministic and the fold is admissible, else the group run as the inline
+// context region a list element runs in (autoEvalList), where its dispatches
+// record. Several results become a list member, as the interpreter has always
+// read a multi-value group; a group with no result sets no member (set=false).
+//
+// CHECK-MODE const-fold: a computed container value (a class field default
+// like (make Foo 1), or a data-map (1 add 2)) evaluated abstractly leaves a
+// recorded event the container then swallows ("unconsumed call results"), so
+// the program declines. When the expression is DETERMINISTIC it is a
+// compile-time constant — fold it to its concrete value so the container
+// bakes as a const. The downstream const-bake gate (typeBodyConstOK for a
+// schema default, isInertConst for a data map) decides mutation-safety, so an
+// instance still bakes only where `make` copies it per instance. ONLY at the
+// TOP frame: a container inside a fn body / for body / closure (`for 3 [{a:
+// (3 mul i)} get a]`) is re-evaluated per call against live locals, so its
+// members are NOT compile-time constants — the fold would bake the FIRST
+// iteration's value. A group that reads a carrier (a fn param, a loop
+// variable) is never folded either (ExprRefsCarrier). A make-body member or
+// an element-recordable run keeps a folded shared mutable off the const path
+// (containsSharedMutable): the OpMakeMap assembly threads it as a fresh
+// per-run event. A capturing fn never folds (containsCapturingFn).
+func (e *Engine) autoEvalMapGroupMember(items []Value, dataMap, consumed bool) (member Value, set bool, err error) {
+	topFrame := e.Registry.analysisRecorder().TopFrameOnly()
+	if e.Registry.analysisActive() && topFrame && !CheckBraid.ExprRefsCarrier(e, items) {
+		if folded, ok := e.constFoldContainerVal(items); ok {
+			if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
+				return e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
+					return e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+				}), true, nil
+			}
+		}
+	}
+	// The group runs as an INLINE context region — the list literal's
+	// discipline (autoEvalList): the same pooled sub-run, bracketed for the
+	// recorder so the group's dispatches are this unit's events and their
+	// results resolve as the map's operands (RecordMakeMap). Off that bracket
+	// — the bare pooled sub-run this used to be — a member the fold declined
+	// left the map with no compiled home.
+	result, err := e.runInlineCtxRegion(expandParenExpr(items), e.IsTop || consumed || e.ElemEvalRecordable)
+	if err != nil {
+		return Value{}, false, err
+	}
+	switch {
+	case len(result) == 1:
+		return result[0], true, nil
+	case len(result) > 1:
+		return NewList(result), true, nil
+	}
+	return Value{}, false, nil
+}
+
+// foldedReferenceIdentity returns folded — a plain map literal member's
+// const-fold, kept as the member because the check pass needs the CONCRETE
+// value (a class body's schema default reads it; the recorded run's result is
+// the check's carrier, which `make` would report as a missing field) — under
+// the identity of the recorded run's result when the fold holds a FLEX or
+// STORE: a reference the fold's scratch run minted, with no event and no
+// compiled home, so the map holding it had none either (`{a:(flex [1])}`
+// failed to compile where `[(flex [1])]` compiled). run evaluates the member
+// once more on the recorded path (the inline context region, or the pooled
+// sub-run a nested literal records its own assembly in), and the folded value
+// takes that result's ID, so RecordMakeMap resolves the member to the event
+// and the map assembles at run time (OpMakeMap) from the reference the run
+// mints then. A make-body member, an element-recordable run, a fold with no
+// reference, and an unarmed recorder keep the fold as it is.
+func (e *Engine) foldedReferenceIdentity(folded Value, dataMap bool, run func() ([]Value, error)) Value {
+	if dataMap || e.ElemEvalRecordable || !containsFlexOrStore(folded) || !e.Registry.analysisRecorder().Armed() {
+		return folded
+	}
+	if result, err := run(); err == nil && len(result) == 1 && result[0].ID != "" {
+		folded.ID = result[0].ID
+	}
+	return folded
+}
+
 func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 	m, _ := AsMutableMap(val)
 	out := NewOrderedMap()
@@ -4840,69 +4908,22 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// (shared via evalParenExprResults with the main-stack path).
 		if IsParenExpr(v) {
 			items, _ := AsParenExpr(v)
-			// CHECK-MODE const-fold: a computed container value (a class field
-			// default like (make Foo 1), or a data-map (1 add 2)) evaluated
-			// abstractly leaves a recorded event the container then swallows
-			// ("unconsumed call results"), so the program declines. When the
-			// expression is DETERMINISTIC it is a compile-time constant — fold
-			// it to its concrete value so the container bakes as a const. The
-			// downstream const-bake gate (typeBodyConstOK for a schema default,
-			// isInertConst for a data map) decides mutation-safety, so an
-			// instance still bakes only where `make` copies it per instance.
-			// ONLY at the TOP frame: a container inside a fn
-			// body / for body / closure (`for 3 [{a: (3 mul i)} get a]`) is
-			// RE-EVALUATED per call or iteration, often with a different binding
-			// (the loop iterator `i`). The fold's determinism check (two equal
-			// concrete evals) does NOT catch that — `i` is stable WITHIN the fold —
-			// so freezing the value would replicate it across iterations. Those
-			// keep declining and fall back (mirrors the OpMakeList gate).
-			// The expression must also not REFERENCE a CARRIER binding (a def-local
-			// bound to a computed value, `def v0 (0 add 3) ... {a: (5 mul v0)}`): the
-			// concrete fold coerces the carrier (e.g. to 0) and freezes a WRONG value
-			// (the determinism check sees the same coerced 0 twice). exprRefsCarrier
-			// catches that; a user TYPE binding (Carrier=false) still folds.
-			topFrame := e.Registry.analysisRecorder().TopFrameOnly()
-			if e.Registry.analysisActive() && topFrame && !CheckBraid.ExprRefsCarrier(e, items) {
-				if folded, ok := e.constFoldContainerVal(items); ok {
-					// Bake the computed value as a const EXCEPT in a `make`
-					// construction body (dataMap) when the value is shared-mutable: a
-					// data-map instance is stored VERBATIM by make (MakeClassFieldValue),
-					// so a baked const would alias across runs. Leave it to the recording
-					// eval below — its make event records, and RecordMakeMap re-assembles
-					// the map per run. A SCHEMA default (dataMap=false) still folds + bakes
-					// as a template that make's FreshenDefault copies, unchanged.
-					// A folded CLOSURE — a fn value with captures, a factory
-					// call's result `{a: (mk 1)}` — is left to the recording eval
-					// too (the container-member calls, 2026-09-22): the compiled
-					// program cannot bake a closure's captured state as a const
-					// (the map declined "unannotated or opaque word dot" at its
-					// first read), while the recorded call models the member as
-					// the factory event's carrier and OpMakeMap assembles the
-					// map at run time — exactly the list literal's path, which
-					// never folds (`[(mk 1) (mk 2)]` compiled all along).
-					if ((!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)) && !containsCapturingFn(folded) {
-						out.Set(resolvedKey, folded)
-						continue
-					}
-				}
-			}
-			result, err := e.evalParenExprResults(items)
+			member, set, err := e.autoEvalMapGroupMember(items, dataMap, consumed)
 			if err != nil {
 				return Value{}, err
 			}
-			if len(result) == 1 {
-				out.Set(resolvedKey, result[0])
-			} else if len(result) > 1 {
-				out.Set(resolvedKey, NewList(result))
+			if set {
+				out.Set(resolvedKey, member)
 			}
 			continue
 		}
 
 		// Reach map value (e.g. {x: m.a}) — evaluate its lowered get-chain
-		// as an isolated sub-expression, like a ParenExpr (Reach Phase B).
+		// as an isolated sub-expression, like a ParenExpr (Reach Phase B),
+		// in the same inline region as a paren member.
 		if isEvalReach(v) {
 			info, _ := AsReach(v)
-			result, err := e.evalParenExprResults(lowerReach(info))
+			result, err := e.runInlineCtxRegion(lowerReach(info), e.IsTop || consumed || e.ElemEvalRecordable)
 			if err != nil {
 				return Value{}, err
 			}
@@ -4927,7 +4948,14 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			e.Registry.analysisRecorder().TopFrameOnly() && !CheckBraid.ExprRefsCarrier(e, []Value{v}) {
 			if folded, ok := e.constFoldContainerVal([]Value{v}); ok {
 				if (!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded) {
-					out.Set(resolvedKey, folded)
+					// The group member's rule for a nested literal holding a
+					// flex or store (`{x: {y:(flex [1])}}`): the value runs
+					// once more below the fold — the nested map recording its
+					// own assembly — and the folded value takes that result's
+					// identity (foldedReferenceIdentity).
+					out.Set(resolvedKey, e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
+						return RunPooledSub(e.Registry, []Value{v}, e.IsTop || consumed || e.ElemEvalRecordable)
+					}))
 					continue
 				}
 			}
@@ -5008,7 +5036,11 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 	// stays an unresolvable residual and the program falls back faithfully.
 	// Gated on `consumed`: a DEFERRED residual (end-of-run autoEvalStack) is
 	// evaluated after its frame pops, so recording it in-frame would diverge.
-	if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() {
+	// The top engine's DEFERRED residual (`{a:(flex [1])}` as the program's
+	// last value, frames==1) records too, as autoEvalList's top-level arm
+	// does: the end-of-Run evaluation appends the assembly at the end of the
+	// event stream, exactly when the interpreter builds the map.
+	if (consumed || e.ElemEvalRecordable || e.IsTop) && e.Registry.analysisActive() {
 		if es := e.Registry.analysisRecorder(); es.Armed() && !IsInertConst(res) {
 			keys := out.Keys()
 			vals := make([]Value, len(keys))
