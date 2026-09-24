@@ -340,7 +340,11 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// write-back is emitted, because the twin's replay must then leave the
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
-	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
+	// A KEEP-DEFS unit (`do`'s body) installs EVERY value def: the
+	// interpreter runs the body in the caller's frame and the binding
+	// leaks, so each is registry-visible — a kept OpBindDynScope the VM
+	// leaves standing past this unit's RET (CompiledFn.KeepsDefs).
+	needDyn := lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
 	if needDyn && d.root && lw.twinInstalls(twin) {
 		// A ROOT def whose bind twin REPLAYS at this very site (a concrete
 		// captured entry, not written back) is registry-visible by that
@@ -710,6 +714,10 @@ type lowerer struct {
 	// OpFlowBreak/OpFlowContinue rather than declining. At the main unit the same
 	// shape stays a compile failure (a top-level break outside any loop).
 	isFnUnit bool
+	// keepsDefs marks a lowerer driving a KEEP-DEFS body unit
+	// (fnUnitRec.keepsDefs — `do`'s body): every value def lowers to the
+	// kept OpBindDynScope install, whatever its name (lowerDynBind).
+	keepsDefs bool
 	// frameTail marks a lowerer driving a unit whose interpreter frame ends
 	// in the fn tail markers (a user fn body or a lambda value's body): a
 	// named fn value landing at the body's END finds those markers as its
@@ -1897,10 +1905,11 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	// promotion forceOrder describes (store once, re-push per use), so one
 	// set drives every trigger below without extra per-site conditions.
 	var deoptNames map[string]bool
+	keepsDefs := false
 	if unit != nil {
-		deoptNames = unit.deoptNames
+		deoptNames, keepsDefs = unit.deoptNames, unit.keepsDefs
 	}
-	if dynBindSrc := es.collectDynBindSources(events, deoptNames); len(dynBindSrc) > 0 {
+	if dynBindSrc := es.collectDynBindSources(events, deoptNames, keepsDefs); len(dynBindSrc) > 0 {
 		merged := make(map[int]bool, len(forceOrder)+len(dynBindSrc))
 		for k := range forceOrder {
 			merged[k] = true
@@ -2726,7 +2735,7 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 // (OpBindGlobal) — the promotion set planValueDefLocals feeds into its
 // triggers so lowerDynBind can re-push each value from a frame slot for its
 // install.
-func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[string]bool) map[int]bool {
+func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[string]bool, keepsDefs bool) map[int]bool {
 	dynBindSrc := map[int]bool{}
 	// Every event of the unit, the arms and loop bodies included: a
 	// dyn-bound def INSIDE an `if` arm (`[def acc3 (n add 1) f (n sub 1)]`,
@@ -2751,6 +2760,10 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
 		if es.dynEnv || deoptNames[ev.dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
+			// A KEEP-DEFS unit (`do`'s body) installs every value def
+			// (lowerDynBind's keep arm), so every computed source is
+			// promoted for the install's re-push.
+			keepsDefs ||
 			// An ARM-RESIDENT body compile (the each-unit bracket, regime
 			// only): every def's computed source is force-promoted so the
 			// resident install can re-push it from a frame slot — a body

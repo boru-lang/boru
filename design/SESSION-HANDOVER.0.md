@@ -226,7 +226,16 @@ branch-carried def"**; the re-estimate is
    leave the census; NUR197 and NUR198 recorded on the way — a loop
    body's residual literal over the loop variable, and a dotted read
    through a missing member, each the interpreter's undefined_word for
-   the compiled lane's value); filter's predicate
+   the compiled lane's value); the keep-defs body lands the same day
+   (the handoff log's "NUR199 closed — the keep-defs body" entry: a `do`
+   body's defs install as kept dynamic-scope bindings the enclosing frame
+   pops, the enclosing loop refreshes its carried slot after the call and
+   a leaked name's read seats live; `for 3 [do [def t 5]]  t` was 0 for
+   the interpreter's 5 on main — NUR199, closed — and code-bodies L180 /
+   L186 compile, 13 -> 11; NUR200, the each body's leak inside a loop,
+   recorded and fenced, is the resident-twin bridge's root fence to
+   lift, and NUR201, a callee's def outliving a trapped raise on the
+   interpreter only, is recorded against the interpreter); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

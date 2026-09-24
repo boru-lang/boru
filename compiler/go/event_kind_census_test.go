@@ -40,7 +40,7 @@ var eventKindSites = map[string]string{
 	"regionReadsTheStack":     "emit.go  — does the region's event pop something already on the stack? (default: reads the stack — NUR137)",
 	"eventPos":                "emit.go  — the event's source position (no default; an unnamed kind reports 0:0 — see NUR130 on what a wrong position costs)",
 	"eventDivergesDeep":       "emit.go  — does this event never return past itself? (no default)",
-	"eventsBindDynScope":      "emit.go  — does this event bind a registry-visible name? (no default)",
+	"eventsBindValueWhere":    "emit.go  — does this event bind a registry-visible name? (no default)",
 	"callResultPlacedIn":      "emit.go  — where a call's result lands",
 	"forEachOperand":          "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
 	"forEachFragmentOperand":  "lower.go — the same walk over a fragment's own events",

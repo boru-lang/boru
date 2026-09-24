@@ -1417,6 +1417,14 @@ type CompiledFn struct {
 	// gate), and the value-path bridge (CompiledRuntime.ClosureAsFnDef)
 	// carries the flag so a compiled closure parks in the same places.
 	Lambda bool
+	// KeepsDefs marks the body unit of a BodyOnceKeepsDefs word (`do`): the
+	// interpreter runs that body ONCE in the caller's frame and its defs
+	// LEAK to the enclosing scope, so the unit's OpBindDynScope installs are
+	// KEPT past its own RET — they ride the dynamic-scope trail the
+	// ENCLOSING frame unwinds (torn down with a fn frame as the
+	// interpreter's def-cleanup tears the leak down; kept for the run at
+	// root, as a root def is). Every other unit's installs pop at its RET.
+	KeepsDefs bool
 	// NArgs is the fn's REAL argument count — the sig-matched args, excluding
 	// the trailing capture slots a user fn's call site pushes (NParams
 	// includes them; NCaptures stays 0 for user fns). The DynEnv args bracket

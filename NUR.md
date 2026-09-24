@@ -121,6 +121,9 @@ keep the two in sync in the same commit.
 | [NUR196](#nur196) | FIXED 2026-09-24 (the escaped body ends the iteration — the handoff log's entry of that date), found the same day: an iterating native — each, fold, scan, filter, for-each, outer, inner, eachrank — read the residual of a body run that had ESCAPED (a break/continue left unresolved, the registry's flag set) as the element's result: the interpreter's sub-engine hands back the unstepped tape (a frame-cleanup marker, which `filter` reported as "must produce a Boolean, got __CP"), the VM's island nothing (which `each` reported as "body produced no result"). The natives end their iteration on an escaped body now (core.BodyEscaped) and return no result, so the run resolves the flag on both lanes — `for 3 [each [f] [1 2 3] i] 99` is `[99]` on both, and with no loop the interpreter raises where the compiled lane takes the loop-less deferral. The original text: A `break` raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer] [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its `[99]`; the compiled lane raises each's own `each_error: body produced no result` on both — the body's unit (or the island the declined fn takes) returns nothing on the escape, and the handler complains before the flag can be read. Loud, but a different answer. Pinned as it stands in lang `TestLiteralBodyFlowThroughFnPending` | found while closing NUR195 (2026-09-24) |
 | [NUR197](#nur197) | A loop body's residual LITERAL bearing a paren group over the loop variable — `for 2 [[(i add 1)] i]`, `for 2 [{a:(flex [i])} i]` — is the interpreter's `undefined word: i` (the residual literal is evaluated at the end of the run, after the loop unbound `i`) and the compiled lane's value per iteration (`[[1] 0 [2] 1]`); inside a fn the interpreter raises the same where the compiled lane raises the fn's return-count error. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestLoopBodyResidualLiteralPending`. |
 | [NUR198](#nur198) | A dotted read through a MISSING member — `def f fn [[m:Map][Any][m.b.c]] end f {a:1}`, `((make C {}).x get 0).y` — is the interpreter's `undefined word: c` (its `dot` over a run-time None leaves the atom unconsumed, which steps as a word) and the compiled lane's None (the chain's second hop over the first's result); a STATIC None fails to compile at the same undefined_word, consistently. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestDotChainOnMissingMemberPending`. |
+| [NUR199](#nur199) | FIXED 2026-09-24 (the keep-defs body — the handoff log's entry of that date), found the same day: a `do` body's closure unit is a keep-defs unit — every value def installs through a kept OpBindDynScope the VM leaves standing past the unit's RET for the enclosing frame to pop (CompiledFn.KeepsDefs), the enclosing loop refreshes its carried slot from the registry after the call, a leaked name's later read seats live at its token, and the adopted twin is marked written back; `def t 0  for 3 [do [def t 5]]  t` is 5 on both lanes, `for 3 [do [def t (t add 1)]]` compiles (code-bodies.tsv 13 -> 11). The original text: A `do` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [do [def t 5]] end t`, `for 3 [do [def t (i add 1)]]` — is the interpreter's 5 / 3 (the body runs in the caller's frame and its def leaks) and the compiled lane's 0: the do$body unit kept the def frame-local and the loop's carried slot never saw it; the computed twin `for 3 [do [def t (t add 1)]]` declined instead ("dynamic-scope def `t` of unpromoted computed value"). Present on main at 3768c46. Fence: `TestDoBodyDefLeaksToTheEnclosingScope`. | found while surveying the corpus's compile failures (2026-09-24) |
+| [NUR200](#nur200) | An `each` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [[1] each [def t 5] drop] end t` — is the interpreter's 5 (the body leaks its def per element) and the compiled lane's 0: no arm-resident twin is adopted inside a loop fragment (the bridge's root fence), so nothing installs the binding at run time and the carried slot keeps the pre-loop value; NUR199's multi-run twin. Present on main at 3768c46; found while closing NUR199. Fence: `TestEachBodyDefInLoopPending`. |
+| [NUR201](#nur201) | A callee's def before a raise the caller TRAPS — `def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t` — is the interpreter's `[error(x) 9]` (a raise skips the frame's def-cleanup tail, so the callee's binding leaks) and the compiled lane's `[error(x) 0]` (the frame installs nothing a trap could keep; an installed one is unwound with the frame on the error path). The interpreter's is the questionable rule. Present on main at 3768c46; found while closing NUR199. Fence: `TestCalleeDefSurvivesTrappedRaisePending`. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7442,6 +7445,146 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 (NUR186) answers the same rows the interpreter raises on when nothing
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
+
+## NUR201 — a callee's def survives a trapped raise on the interpreter, not on the VM {#nur201}
+
+**Status:** Pending (recorded 2026-09-24, found while closing NUR199 — the
+handoff log's "NUR199 closed — the keep-defs body" entry). Present on
+main before that change (measured on a clean worktree at 3768c46).
+
+**Rule:** a compiled program answers as the interpreter does — the
+bindings a raise leaves behind are the same on both lanes.
+
+**Divergence.**
+
+```
+def t 0 end def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t
+  interpreted   [error(x) 9]
+  compiled      [error(x) 0]
+```
+
+The interpreter's raise skips the fn frame's def-cleanup tail (the
+`__dc` markers never step), so a def the callee made before raising
+LEAKS into the caller's scope when the error is trapped — `do [g]`
+answers the Error value and `t` reads 9. The VM's frame installs nothing
+a trap could keep (a fn body's def of a name nobody dyn-reads lowers to
+no registry install at all; one that does is unwound with the frame on
+the error path, `vmContext.run`'s deferred unwind), so the read answers
+the root binding. The same shape with the def in the `do` body ITSELF
+agrees since NUR199: a keep-defs body's own installs survive the raise
+(`def t 0  do [def t 5 raise 'x']  t` is 5 on both lanes).
+
+**Fence.** `TestCalleeDefSurvivesTrappedRaisePending` (lang
+keep_defs_leak_test.go) pins both lanes as they stand, so closing it is
+loud.
+
+**Verdict:** none yet. The interpreter's behaviour is the questionable
+one — a frame's bindings outliving the frame because it raised — and
+"a raise runs the frame's cleanup" is the rule a language would choose;
+the VM already keeps that rule. Directed at the interpreter's error
+unwinding (Engine.exitWithFlowCtrl's non-island contract for errors),
+not at the VM.
+
+## NUR200 — an each body's def of a loop-carried name: the compiled loop's slot never sees it {#nur200}
+
+**Status:** Pending (recorded 2026-09-24, found while closing NUR199 — the
+handoff log's "NUR199 closed — the keep-defs body" entry). Present on
+main before that change (measured on a clean worktree at 3768c46).
+
+**Rule:** a compiled program answers as the interpreter does — a def an
+`each` body makes leaks into the enclosing scope on both lanes, once per
+element, and a read after the loop sees the last one.
+
+**Divergence.**
+
+```
+def t 0 end for 3 [[1] each [def t 5] drop] end t
+  interpreted   5
+  compiled      0
+```
+
+NUR199's multi-run twin. The `for` loop carries `t` in a frame slot (the
+check pass's loop join sees the body rebind it), but the each$body unit
+keeps its def frame-local: no arm-resident twin is adopted inside a loop
+fragment (AdoptResidentTwins' root fence), so nothing installs the
+binding at run time and nothing refreshes the slot — the post-loop read
+answers the pre-loop value. NUR199's keep-defs mechanism is the once-run
+`do` body's (one install, the closure's own RET keeping it); a
+per-element install rides the resident-twin bridge, which is fenced to
+the root stream today.
+
+**Fence.** `TestEachBodyDefInLoopPending` (lang keep_defs_leak_test.go)
+pins both lanes as they stand, so closing it is loud.
+
+**Verdict:** none yet. Directed at the arm-resident bridge: lifting its
+root fence for a loop fragment (the twins a loop round notes are rolled
+back with the round, so the pairing needs the FINAL round's) and the
+carried-slot refresh NUR199 added after a `do` call, after the `each`
+call too.
+
+## NUR199 — a do body's def of a loop-carried name: the compiled loop's slot never sees it {#nur199}
+
+**Status:** FIXED 2026-09-24 (the keep-defs body — the handoff log's entry
+of that date). RECORDED the same day, found while surveying the corpus's
+compile failures (code-bodies.tsv rows 180 and 186 declined "dynamic-scope
+def `t` of unpromoted computed value" inside a `do` body, and the probe
+beside them answered wrong).
+
+**The fix.** A `do` body's closure unit is a KEEP-DEFS unit
+(`fnUnitRec.keepsDefs`, armed by the dispatch through
+`EmitState.keepDefsUnitDepth` and stamped by StartFnCompile on the unit
+the `do` opens): every value def it makes lowers to a kept
+OpBindDynScope — the install through the interpreter's own installer —
+whose trail entry the VM leaves standing past the unit's own RET
+(`CompiledFn.KeepsDefs`), so the ENCLOSING frame's exit pops it (a fn
+frame, as the interpreter's def-cleanup tears the leak down) or the run
+keeps it (root, as a root def). The enclosing side
+(`EmitState.NoteKeepDefsLeak`): a name an armed loop carries in a frame
+slot gets a store right after the call — the registry value into the
+slot — and every leaked name's later read seats live at its token
+(NoteLiveRead's keep-leak arm), where the interpreter reads it. The twin
+the root adopts for such a def (AdoptBodyTwins) is marked written back
+by name (`markKeepDefsTwins`), so its replay installs nothing and the
+runtime install is the one level `undef` pops. A def whose value the
+install cannot re-push — a fn value, a `word` splice marker, a macro
+(`emitDynBind.keepSkip`) — keeps the lowering it had, nothing, with the
+adopted twin's replay standing; the sweep's twenty-two do-body variants
+of the `afn`, `word`, `macro`, `walk` and `for-each` seeds measured that
+fence into existence.
+
+**Rule:** a compiled program answers as the interpreter does — a def a
+`do` body makes leaks into the enclosing scope on both lanes, and a read
+after the loop sees it.
+
+**Divergence (as it stood).**
+
+```
+def t 0 end for 3 [do [def t 5]] end t
+  interpreted   5
+  compiled      0
+def t 0 end for 3 [do [def t (i add 1)]] end t
+  interpreted   3
+  compiled      0
+def f fn [[][Integer][def t 0 for 3 [do [def t 5]] t]] end f
+  interpreted   5
+  compiled      0
+```
+
+The `for` loop carried `t` in a frame slot (the check pass's loop join
+saw the body rebind it), but the do$body unit kept its def frame-local —
+lowered to nothing, the twin the loop analysis noted for the post-loop
+join replaying a carrier — so nothing installed the binding at run time
+and nothing stored the slot: the post-loop read answered the pre-loop
+value. The computed twin (`def t (t add 1)`) declined instead, the
+corpus rows.
+
+**Fence.** `TestDoBodyDefLeaksToTheEnclosingScope` (lang
+keep_defs_leak_test.go): the three shapes above answer as the
+interpreter does (the fn-frame one by a loud decline — the fn's residual
+is a variadic loop value the RET cannot seat, a counted defect where it
+answered 0), with the computed def, the root leak read back as a residual
+and as an operand, the undef interplay, a def inside a branch arm of the
+body, a fn def, a loop inside the body, and the fn frame's teardown.
 
 ## NUR198 — a dotted read through a MISSING member: the interpreter's undefined_word, the compiled lane's None {#nur198}
 

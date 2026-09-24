@@ -650,6 +650,16 @@ type emitDynBind struct {
 	armCarried  bool
 	armSlot     int
 	armSrcOuter bool
+	// keepSkip marks a def inside a KEEP-DEFS unit (fnUnitRec.keepsDefs)
+	// whose value the install could not re-push — a fn value, a `word`
+	// splice marker, a macro: no producing event, no frame slot, not an
+	// inert const (keepInstallable). Such a def keeps the lowering it had
+	// before the keep arm existed — nothing, with the root twin's replay
+	// of the captured entry standing where one is adopted — so the keep
+	// arm never turns a compiling program into a decline (the sweep's
+	// twenty-two do-body variants of the `afn`, `word`, `macro`, `walk`
+	// and `for-each` seeds, measured 2026-09-24).
+	keepSkip bool
 }
 
 // bindsValue reports whether this def-site event installs a RUNTIME value
@@ -846,6 +856,22 @@ type EmitState struct {
 	// seat (`def _2 …` in row 41 — the ledger notes it, so the bridge
 	// needs its event).
 	armResidentDepth int
+	// keepDefsUnitDepth arms the KEEP-DEFS unit flag for the next closure
+	// unit a BodyOnceKeepsDefs word (`do`) opens: the unit count at the
+	// dispatch, so exactly the body's own unit — opened while the count
+	// still equals it, never a fn unit its analysis opens deeper — is
+	// stamped fnUnitRec.keepsDefs (StartFnCompile). 0 is unarmed;
+	// tryRecordClosure sets it around recordClosureDispatch and
+	// forkForProbe copies it so the probe compiles the same unit.
+	keepDefsUnitDepth int
+	// keepLeakNames is every name a keep-defs unit (`do`'s body) DEFS: the
+	// binding LEAKS into the enclosing scope at run time (the interpreter's
+	// InvokeBody runs the body in the caller's frame), installed by the
+	// unit's kept OpBindDynScope. A later read of the name has no compiled
+	// home (the unit's provenance is dropped at its finish), so it seats
+	// LIVE at its token (NoteLiveRead) and re-resolves the registry there,
+	// exactly where the interpreter reads it. Nil until first use.
+	keepLeakNames map[string]bool
 	// armBoundNames are names whose binding, after adoption, exists at
 	// runtime ONLY through arm-resident installs — count, values, and
 	// even definedness (a zero-iteration collection) are body-run-
@@ -1389,6 +1415,12 @@ type emitUnit struct {
 	// frame environment; the unit never tail-calls.
 	deoptEnv   bool
 	deoptNames map[string]bool
+	// keepsDefs marks the body unit of a BodyOnceKeepsDefs word (`do`):
+	// every value def it makes is registry-visible (a kept
+	// OpBindDynScope — the leak the interpreter delivers), so
+	// planValueDefLocals promotes every computed def source for the
+	// re-push the install needs (collectDynBindSources).
+	keepsDefs bool
 	// enclosingIDs snapshots, at unit open, the value IDs of every compound
 	// (List/Map) binding visible in the DefTable — i.e. values an ENCLOSING
 	// scope already constructed. A compound const whose ID is in this set was
@@ -1670,6 +1702,18 @@ type fnUnitRec struct {
 	// its params, so the island resolves every name it spells without the
 	// factory frame being live.
 	lambdaDeopt bool
+	// keepsDefs marks a `do` body unit (CallableSpec.BodyOnceKeepsDefs —
+	// the interpreter runs the body ONCE in the caller's frame and its
+	// defs LEAK to the enclosing scope). Its lowering installs every value
+	// def through OpBindDynScope (lowerDynBind's keep arm) and the VM keeps
+	// those installs past the unit's own RET (CompiledFn.KeepsDefs): they
+	// ride the trail the ENCLOSING frame unwinds — torn down with a fn
+	// frame as the interpreter's def-cleanup tears the leak down, kept
+	// for the run at root as a root def is. A twin the root adopted for
+	// such a def (AdoptBodyTwins) is marked written back by name
+	// (markKeepDefsTwins), so the replay leaves the install to the op
+	// that has the runtime value (NUR199).
+	keepsDefs bool
 	// promoted / dead are the value-def-local plan for THIS unit's body —
 	// computed by planValueDefLocals at finish (while the unit is still live) and
 	// read by the lowerer (flw.promoted / flw.dead) when the unit lowers. Mirrors
@@ -1916,6 +1960,11 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// def-event population (`_`-named body defs) or the probe's verdict is
 	// about a different unit.
 	p.armResidentDepth = es.armResidentDepth
+	// The keep-defs arm too, for the same reason: the probe's do$body unit
+	// must carry the flag the real one will, or its verdict is about a
+	// unit whose defs lower differently.
+	p.keepDefsUnitDepth = es.keepDefsUnitDepth
+	p.keepLeakNames = maps.Clone(es.keepLeakNames)
 	// The residual-order hazard tables too (unit_memo.go): a read the real
 	// state saw in an enclosing fragment must count against a bind the
 	// probe records, or the probe admits a residual the real compile then
@@ -5023,6 +5072,7 @@ func (es *EmitState) AdoptBodyTwins(body core.Value) {
 		}
 		return false
 	}
+	var adopted []int
 	for i := es.lastKeepRange[0]; i < es.lastKeepRange[1] && i < len(es.bindTwins); i++ {
 		tr := es.bindTwins[i]
 		if es.twinPlaced[i] || tainted(i) || tr.Pos.Row == 0 || !sites[tr.Pos] {
@@ -5031,6 +5081,103 @@ func (es *EmitState) AdoptBodyTwins(body core.Value) {
 		es.appendEvent(EmitEvent{kind: evBindTwin, twin: &emitBindTwin{idx: i, pos: tr.Pos}})
 		es.twinPlaced[i] = true
 		es.twinAdoptions = append(es.twinAdoptions, i)
+		adopted = append(adopted, i)
+	}
+	es.markKeepDefsTwins(adopted)
+}
+
+// keepDefsUnitNames is the set of names the just-recorded closure unit
+// (lastClosure) value-defs anywhere in its body — top level, branch arms
+// and loop bodies alike — when it is a KEEP-DEFS unit (fnUnitRec.keepsDefs);
+// nil for any other unit. Every such def is a kept runtime install
+// (lowerDynBind's keep arm), the leak the interpreter's `do` delivers.
+func (es *EmitState) keepDefsUnitNames() map[string]bool {
+	var names map[string]bool
+	// Both callers run right after recordClosureDispatch returned true for
+	// a BodyOnceKeepsDefs word, which set the latch to the body's unit (a
+	// closed, finished record: its fragment is in hand), so the guards
+	// below are the belt: they read nil for a latch that names no unit or
+	// a unit that is not keep-defs.
+	if cl := es.lastClosure; cl.unit >= 0 && cl.unit < len(es.fnRecs) && es.fnRecs[cl.unit].keepsDefs && es.fnRecs[cl.unit].frag != nil {
+		all, _, _ := collectPromotableEvents(es.fnRecs[cl.unit].frag.events)
+		for _, ev := range all {
+			if ev.kind != evDynBind || ev.dyn == nil || !ev.dyn.bindsValue() || ev.dyn.keepSkip {
+				continue
+			}
+			if names == nil {
+				names = map[string]bool{}
+			}
+			names[ev.dyn.name] = true
+		}
+	}
+	return names
+}
+
+// markKeepDefsTwins pairs the twins a `do` call just adopted with the
+// runtime installs its KEEP-DEFS unit makes: an adopted value-def twin of
+// a name the unit defs is marked written back, so its replay after the
+// call installs nothing and the unit's kept OpBindDynScope — the op that
+// has the runtime value — is the one install (a concrete capture replayed
+// beside it stacked a second level, the double install of #464). Paired by
+// NAME over the whole unit: a memo-hit unit's events serve every dispatch
+// of the body, so no per-site order is assumed. A twin of a name the unit
+// never value-defs (`def _`, whose event RecordDynBind skips inside a
+// unit) keeps its replay. The mark lands on the recorder's table, which
+// Finalize copies into the Program entry for entry.
+func (es *EmitState) markKeepDefsTwins(adopted []int) {
+	if len(adopted) == 0 {
+		return
+	}
+	names := es.keepDefsUnitNames()
+	if len(names) == 0 {
+		return
+	}
+	for _, i := range adopted {
+		tr := &es.bindTwins[i]
+		if names[tr.Name] && (tr.Kind == core.BindDef || tr.Kind == core.BindDefReplace) {
+			tr.WrittenBack = true
+		}
+	}
+}
+
+// NoteKeepDefsLeak is the enclosing side of a KEEP-DEFS body dispatch
+// (`do`, after its closure unit is recorded): every name the unit value-defs
+// LEAKS into this scope at run time, installed by the unit's kept
+// OpBindDynScope. Two consequences, both recorded here:
+//
+//   - the name joins keepLeakNames, so a later read of it — whose value
+//     has no compiled home once the unit's provenance is dropped at its
+//     finish — seats LIVE at its token (NoteLiveRead) and re-resolves the
+//     registry there, where the interpreter reads it;
+//   - a name an armed loop of this unit CARRIES in a frame slot gets a
+//     store right after the call — the registry value (OpLookupDynScope)
+//     into the slot — because the loop's post-iteration reads and the next
+//     iteration's captures resolve the SLOT, and the unit's install never
+//     touched it (NUR199: `def t 0  for 3 [do [def t 5]]  t` answered 0
+//     for the interpreter's 5 — the slot kept the pre-loop value).
+//
+// Nothing for a unit that is not keep-defs, or defs no name.
+func (es *EmitState) NoteKeepDefsLeak(pos core.SrcPos) {
+	names := es.keepDefsUnitNames()
+	if len(names) == 0 {
+		return
+	}
+	// Deterministic order: the stores' stream order must not depend on Go
+	// map iteration (the emit goldens would jitter run to run).
+	sorted := make([]string, 0, len(names))
+	for n := range names {
+		sorted = append(sorted, n)
+	}
+	sort.Strings(sorted)
+	if es.keepLeakNames == nil {
+		es.keepLeakNames = map[string]bool{}
+	}
+	for _, name := range sorted {
+		es.keepLeakNames[name] = true
+		if slot, ok := es.carriedSlot(name); ok {
+			es.appendEvent(EmitEvent{kind: evStore, store: &emitStore{src: dynScopeOperand(es.intern(core.NewString(name))), slot: slot, pos: pos}})
+			es.noteStoreHazard(name, slot)
+		}
 	}
 }
 
@@ -5654,6 +5801,11 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
+	} else if es.keepLeakNames[name] && !core.IsConcrete(*v) {
+		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak): the binding the
+		// pass reads is the unit's install, whose event home is gone with
+		// the closed unit, so the read seats live below — a concrete read
+		// keeps its bake exactly as a concrete generalised read does.
 	} else if !es.specUndefNames[name] || core.IsConcrete(*v) {
 		// A CONCRETE read of the name is a binding a later `def` made after
 		// the region (`if c [undef k] []  def k 6  k`): program order is
@@ -6039,6 +6191,10 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		}
 	}
 	rec := &fnUnitRec{name: name, nParams: len(args), nUnnamed: nUnnamed, caps: captures, generic: generic, returns: declared, locals: locals, pos: pos, reg: fnReg}
+	// The keep-defs body unit: opened at the very unit count the `do`
+	// dispatch armed (keepDefsUnitDepth), never a fn unit the body's own
+	// analysis opens one level deeper.
+	rec.keepsDefs = es.keepDefsUnitDepth > 0 && len(es.units) == es.keepDefsUnitDepth
 	es.fnRecs = append(es.fnRecs, rec)
 	es.fnUnits[key] = unit
 	// The enclosing-binding snapshots read the registry the unit RUNS in —
@@ -6051,7 +6207,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	// read baked as a fresh clone of the check pass's snapshot (NUR143,
 	// closed 2026-09-24; the region oracle's two ledgered descriptors read
 	// the binding live now).
-	u := &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}, enclosingIDs: es.snapshotCompoundBindingIDs(fnReg), enclosingBindIDs: es.snapshotAllBindingIDs(fnReg), enclosingBindNames: es.snapshotAllBindingNames(fnReg), reg: fnReg}
+	u := &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}, enclosingIDs: es.snapshotCompoundBindingIDs(fnReg), enclosingBindIDs: es.snapshotAllBindingIDs(fnReg), enclosingBindNames: es.snapshotAllBindingNames(fnReg), reg: fnReg, keepsDefs: rec.keepsDefs}
 	es.units = append(es.units, u)
 	es.unitNames = append(es.unitNames, name)
 	es.openUnitRecs = append(es.openUnitRecs, unit)
@@ -9513,8 +9669,24 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
+		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
 	}})
 	es.noteBindHazard(name)
+}
+
+// keepInstallable reports whether a KEEP-DEFS unit's def can install its
+// value at run time: the value has a home the install re-pushes from — a
+// producing event (promoted to a frame slot for the re-push), a frame
+// slot, an inert const, or a stripped-literal carrier resolveOperand
+// recovers as a const or local — exactly the sources lowerDynBind's
+// dyn-scope arm accepts. Anything else (a fn value, a splice marker, a
+// macro) is emitDynBind.keepSkip.
+func (es *EmitState) keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
+	if srcSeq >= 0 || src.kind == opLocal || core.IsInertConst(v) {
+		return true
+	}
+	op, ok := es.resolveOperand(v)
+	return ok && (op.kind == opConst || op.kind == opLocal)
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value
@@ -12600,13 +12772,26 @@ func eventsBindDynScope(events []EmitEvent, names map[string]bool) bool {
 	if len(names) == 0 {
 		return false
 	}
+	return eventsBindValueWhere(events, func(d *emitDynBind) bool { return names[d.name] })
+}
+
+// eventsBindAnyValue reports whether the events (fragment trees included)
+// hold a value-binding def site the keep-defs unit INSTALLS — every one
+// but a keepSkip def, whose value the install cannot re-push.
+func eventsBindAnyValue(events []EmitEvent) bool {
+	return eventsBindValueWhere(events, func(d *emitDynBind) bool { return !d.keepSkip })
+}
+
+// eventsBindValueWhere walks events and every nested fragment for a
+// value-binding def site that satisfies pred.
+func eventsBindValueWhere(events []EmitEvent, pred func(*emitDynBind) bool) bool {
 	var frag func(f *EmitFragment) bool
 	walk := func(evs []EmitEvent) bool {
 		for i := range evs {
 			ev := &evs[i]
 			switch ev.kind {
 			case evDynBind:
-				if ev.dyn.bindsValue() && names[ev.dyn.name] {
+				if ev.dyn.bindsValue() && pred(ev.dyn) {
 					return true
 				}
 			case evBranch:
@@ -12650,6 +12835,11 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 		}
 	}
 	if eventsBindDynScope(rec.frag.events, es.dynScopeNames) || eventsBindDynScope(rec.frag.events, es.routedNames) {
+		return true
+	}
+	// A KEEP-DEFS unit installs every value def it makes (lowerDynBind's
+	// keep arm), whatever its name.
+	if rec.keepsDefs && eventsBindAnyValue(rec.frag.events) {
 		return true
 	}
 	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 {
@@ -13054,7 +13244,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
+		cf.KeepsDefs = rec.keepsDefs
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).

@@ -368,6 +368,15 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 		es.armResidentDepth++
 		defer func() { es.armResidentDepth-- }()
 	}
+	// A once-run defs-keeping body (`do`) arms the KEEP-DEFS unit flag for
+	// the unit its compile opens next (StartFnCompile stamps the unit
+	// opened at exactly this unit count): its defs install as kept
+	// registry bindings, the leak the interpreter delivers.
+	if spec.BodyOnceKeepsDefs && es != nil {
+		prevKeep := es.keepDefsUnitDepth
+		es.keepDefsUnitDepth = len(es.units)
+		defer func() { es.keepDefsUnitDepth = prevKeep }()
+	}
 	// The body's compile re-run runs in the environment its analysis run
 	// STARTED from (unit_memo.go): claimed here, applied around every
 	// compile inside recordClosureDispatch.
@@ -381,6 +390,10 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// (AdoptBodyTwins; a no-op for the flag-less multi-run words).
 	if spec.BodyOnceKeepsDefs {
 		es.AdoptBodyTwins(body)
+		// The enclosing side of the leak: later reads seat live, and a
+		// loop-carried slot the body rebinds is refreshed from the registry
+		// right after the call (NUR199).
+		es.NoteKeepDefsLeak(pos)
 	}
 	// A multi-run body's twins instead bridge INTO the unit — per-element
 	// installs with runtime values (AdoptResidentTwins; every fence

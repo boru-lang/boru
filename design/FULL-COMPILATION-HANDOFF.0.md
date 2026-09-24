@@ -13322,6 +13322,113 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR199 closed — the keep-defs body (2026-09-24)
+
+**The survey.** The corpus's twenty-one compile failures, listed by
+reason: four in one family — "dynamic-scope def `t` of unpromoted computed
+value" — code-bodies.tsv L180 (`def t 0  for 3 [do [def t (t add 1)]]  t`)
+and L186 (its while twin), callbacks L89 and module-composition L104 (a
+loop rebinding through `inc/v apply`, a different mechanism, the apply
+family's). Probing the first two's neighbours found a MISCOMPILE beside
+them, silent on main: `def t 0  for 3 [do [def t 5]]  t` answered 0 for
+the interpreter's 5, and so did `for 3 [do [def t (i add 1)]]` (0 for 3)
+and the same loop inside a fn (0 for 5). NUR199, recorded and closed here;
+its multi-run twin — `for 3 [[1] each [def t 5] drop]  t`, 0 for 5 — is
+NUR200, recorded and fenced, not closed.
+
+**The mechanism.** The interpreter's `do` runs its body ONCE in the
+caller's frame (InvokeBody) and the body's defs LEAK into the enclosing
+scope; the check pass models that (RunCarrierBodyKeepDefs), so a loop
+whose body holds a `do [def t …]` sees `t` rebound and CARRIES it in a
+frame slot. But the compiled body is a closure unit, and its def was
+frame-local to that unit: outside the twin regime's root adoption — a
+loop fragment, a fn body — it lowered to NOTHING (the def's name was in
+no dyn-scope set), and inside the loop the twin the loop analysis noted
+for the post-loop JOIN replayed a carrier. Nothing installed the binding
+at run time and nothing stored the slot; the post-loop read answered the
+pre-loop value. The computed def declined instead ("unpromoted computed
+value": at the unit's plan time the name was in no set that forces the
+source's promotion; by the lowering it was, through the root's live
+read).
+
+**The fix, in four pieces.** The body unit of a BodyOnceKeepsDefs word is
+a KEEP-DEFS unit: `tryRecordClosure` arms `EmitState.keepDefsUnitDepth`
+around the dispatch's compile (the unit count at the dispatch; the probe
+fork copies it), StartFnCompile stamps the unit opened at exactly that
+count (`fnUnitRec.keepsDefs`, `emitUnit.keepsDefs` — never a fn unit the
+body's analysis opens deeper), and:
+
+- *the install.* Every value def in such a unit lowers to OpBindDynScope
+  (lowerDynBind's keep arm; collectDynBindSources promotes every computed
+  source for the re-push; unitBindsDynScope counts it), and the VM keeps
+  the trail entry past the unit's own RET (`CompiledFn.KeepsDefs` — the
+  frameless top RET skips its unwind), so the ENCLOSING frame's exit pops
+  it — a fn frame, as the interpreter's def-cleanup tears the leak down —
+  or the run keeps it at root, as a root def. `def t 0  def f fn
+  [[][Integer][do [def t 5] t]]  f  do [t]` is `[5 0]` on both lanes: the
+  leak lives exactly as long as the frame. Past a RAISE too: the
+  interpreter's raise skips the frame's cleanup, so `do [def t 5 raise
+  'x']` leaves t bound and `do` traps the error — the activation's
+  error-path unwind keeps a keep-defs unit's own installs and tears down
+  only the frames still open beneath the error (a callee mid-body). The
+  callee's OWN def under that raise is the interpreter's leak the VM does
+  not share — NUR201, recorded and fenced here, present on main, and
+  directed at the interpreter.
+- *the slot.* `EmitState.NoteKeepDefsLeak`, after the call event: a
+  leaked name an armed loop of the enclosing unit carries gets an evStore
+  of the registry value (OpLookupDynScope) into the slot — the loop's
+  next iteration and the post-loop read resolve the SLOT (a capture of
+  the carried carrier, the joined binding's local), which the unit's
+  install never touched.
+- *the read.* Every leaked name joins `keepLeakNames`, and a later
+  non-concrete read of it seats LIVE at its token (NoteLiveRead's
+  keep-leak arm): the unit's provenance is dropped at its finish, so the
+  value has no compiled home, and the live lookup executes where the
+  interpreter reads. A concrete read keeps its bake (`do [def t 5]  t`
+  is the const, as before).
+- *the twin.* The twin the root adopts for such a def (AdoptBodyTwins)
+  is marked written back BY NAME over the unit's def events
+  (`markKeepDefsTwins` — a memo-hit unit's events serve every dispatch of
+  the body, so no per-site order is assumed): its replay installs
+  nothing and the runtime install is the ONE level `undef` pops (`def t
+  0  do [def t 5]  undef t  t` is 0 on both lanes; a replay beside the
+  install stacked a second level — #464's double install).
+
+**The fence the sweep measured.** The first cut installed every def, and
+the generated sweep's call-form failures went 197 -> 219: the do-body and
+do-catch variants of the `afn`, `word`, `macro`, `walk` and `for-each`
+seeds declined "dynamic-scope def of unknown provenance" — a def whose
+value the install cannot re-push (a fn value, a `word` splice marker, a
+macro: no producing event, no frame slot, not an inert const). Such a def
+is `emitDynBind.keepSkip` (`keepInstallable`, stamped at RecordDynBind):
+it keeps the lowering it had — nothing, with the adopted twin's replay
+standing — so the keep arm never turns a compiling program into a
+decline. The sweep is back at 197, byte-identical.
+
+**What stays.** The fn whose RESULT is the leaked name after the loop —
+`def f fn [[][Integer][def t 0 for 3 [do [def t 5]] t]] end f` — declines
+"result is a variadic loop value": the loop over a count-agnostic body
+(`do` returns its whole residual) leaves the fn's residual a variadic
+loop value the RET cannot seat. It answered 0 before; a loud decline is
+the sound direction, counted (the lang ledger 286 -> 287). NUR200 (the
+each body, above): the per-element install rides the resident-twin
+bridge, root-fenced today. Callbacks L89 and module-composition L104 keep
+their reason under the apply family.
+
+**Measured:** code-bodies.tsv 13 -> 11 compile failures (L180, L186 — the corpus total 21 -> 19), the lang ledger's compile-failure line 286 -> 287 (the fn-frame edge above, a pin) and bail line 44 unchanged, the sweep's call-form failures 197 -> 219 -> 197 (byte-identical status), the full corpus 8563 rows, 8204 -> 8206 compiled (L180 and L186), the interp-entry census 24 rows at its ceiling of 24, the engine-entry census 166 unattributed runs unchanged, the compute-gap gate 16 -> 14 (the same two rows; computeGapCeiling re-pinned), the region oracle's diverged-value 3 / over-claimed 1 as before, the runtime-defers ledger at 10, the reducible, diagnostic-parity and type-soundness gates at their values, the unit suites of core, eng, compiler, check, basic, lang and the arity gate green.
+
+**Pins.** lang `TestDoBodyDefLeaksToTheEnclosingScope` (the three
+divergence shapes, the computed def and its while twin, the root leak as
+a residual and an operand, the undef interplay, a def in a branch arm, a
+fn def, the splice marker and `_` (keepSkip), a loop inside the body and
+the body inside a loop, leak then raise, the fn frame's teardown; the
+BIND_DYN_SCOPE / LOOKUP_DYN_SCOPE lowering; no unattributed interpreter
+entry; the fn-result edge counted), `TestEachBodyDefInLoopPending`
+(NUR200 as it stands), `TestCalleeDefSurvivesTrappedRaisePending` (NUR201
+as it stands); compiler `TestKindKeyedSiteCensus` re-classifies the moved
+kind switch (`eventsBindValueWhere`). Docs: the handover, NUR.md (NUR199
+FIXED, NUR200 and NUR201 Pending), this entry.
+
 ## The flex-member map literal — a folded reference keeps the recorded path (2026-09-24)
 
 **The gap.** `{a:(flex [1])}` failed to compile at every position — "residual
