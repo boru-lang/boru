@@ -1573,6 +1573,11 @@ type fnUnitRec struct {
 	// dynTrailPos is the apply WORD's position for a dynTrailApply tail —
 	// the op is stamped there so a runtime no-match raises at the word.
 	dynTrailPos core.SrcPos
+	// dynTrailName is the binding NAME of a def-bound computed fn READ at
+	// the body tail (defReadFnTailArity: `each [a5] xs`), seated beside the
+	// op (DynApplyName) so a no-match names the word the interpreter
+	// dispatches, and the op is stamped at the read.
+	dynTrailName string
 	// dynFrameW > 0 marks a body whose residual carries an UNAPPLIED runtime fn
 	// value beyond the frame-bottom re-push window — the shape the interpreter
 	// resolves by execFnDefLiteral's runtime rule against the LIVE frame. The
@@ -1928,6 +1933,17 @@ func (es *EmitState) forkForProbe() *EmitState {
 	for k, v := range es.storeHazard {
 		p.storeHazard[k] = v
 	}
+	// The top-level computed fn value-defs too (RecordDynBind's root arm): a
+	// closure body's unit snapshots them into its enclosing-binding IDs at
+	// open, and a def-bound computed fn READ at the body's tail (`each [a5]
+	// xs` with `def a5 (mk 5)`, the read carrying the binding's ID) reaches
+	// the dynamic-scope rescue only through that snapshot. Without it the
+	// probe declined the body ("body result of unknown provenance") where
+	// the real compile admitted it — the probe's verdict must be about the
+	// same unit. Copied, not shared: the probe opens no root unit, so it
+	// never writes the map, and a clone keeps that true by construction
+	// (2026-09-24).
+	p.rootComputedBindIDs = maps.Clone(es.rootComputedBindIDs)
 	return p
 }
 
@@ -6044,7 +6060,36 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			dynTrail := 0
 			if len(bodyStk) >= 2 {
 				top := bodyStk[len(bodyStk)-1]
-				if a := es.TrailingApplyArity(top.ID); a > 0 && a == len(bodyStk)-1 {
+				a := es.TrailingApplyArity(top.ID)
+				// A def-bound computed fn READ at a closure body's tail over
+				// the body's values (`each [a5] xs`): the interpreter's word
+				// dispatch takes its operands from the stack top-down, the
+				// same contract, at the shape's claimed arity (2026-09-24).
+				// Only over the read's LIVE lookup (opDynScope, the
+				// dynamic-scope rescue of an enclosing binding): a fn-body-
+				// local computed def read from a nested closure (`def g fn
+				// [[xs:List][List][def a5 (mk 5)  each [a5] xs]]`) resolves
+				// to the parent's event, unreachable from this frame, and
+				// lowering the apply over it failed the whole program
+				// ("result above a literal"); under the unapplied-fn guard
+				// below it is the loud compile failure instead (NUR192: the
+				// frame's dynamic-scope bind installs nothing for a closure
+				// value, so the live route cannot bind it yet).
+				if a == 0 && rec.closure && len(ops) > 0 && ops[len(ops)-1].kind == opDynScope {
+					if n, readName := es.defReadFnTailArity(top); n == len(bodyStk)-1 {
+						a = n
+						rec.dynTrailName = readName
+						rec.dynTrailPos = top.Pos()
+						// The read's live lookup feeds the apply the op
+						// performs, so it takes the data-position twin: a
+						// binding holding a fn DEFINITION (a fn-util
+						// wrapper's product, `def h (FnUtil.compose …)`)
+						// pushes for the op to call, where the dispatch
+						// lookup defers on it ("vm:dyn-scope-dispatching").
+						ops[len(ops)-1] = dataScopeOperand(ops[len(ops)-1].idx)
+					}
+				}
+				if a > 0 && a == len(bodyStk)-1 {
 					argsOK := true
 					for _, v := range bodyStk[:len(bodyStk)-1] {
 						if core.IsFnValueResidual(v) {
@@ -12982,26 +13027,11 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				}
 				return nil, reason, false
 			}
-			// A paren-bounded trailing fn-value apply body: outOps were seated as the
-			// full [args…, fn] (fn on top); collapse them to the one applied value with
-			// OpCallDynTrailTop before the RET (the captured/param fn auto-applies to
-			// its args exactly as the interpreter's paren auto-dispatch).
-			// No DynApplyName is seated here. Measured (cover-gate, 2026-09-06):
-			// every body-tail dynTrail the corpus reaches carries the `apply`
-			// flavour, so a name seated on this route would be dead code — the
-			// paren body-tail form the seat was written for either declines or
-			// lowers through the EVENT route (lowerCall), which does seat it.
-			if rec.dynTrailArity > 0 {
-				op := OpCallDynTrailTop
-				pos := rec.pos
-				if rec.dynTrailApply {
-					op = OpCallDynApplyTop // the `apply` word's unquote-then-apply
-					if rec.dynTrailPos != (core.SrcPos{}) {
-						pos = rec.dynTrailPos
-					}
-				}
-				flw.emit(op, rec.dynTrailArity, pos)
-			}
+			// A body-tail trailing fn-value apply (a paren-bounded apply, an
+			// `apply` word's, a def-bound computed fn read's): outOps were
+			// seated as the full [args…, fn]; collapse them to the one applied
+			// value before the RET (emitBodyTailApply).
+			flw.emitBodyTailApply(rec)
 			// A whole-frame dynamic-apply replay: outOps seated the FULL residual
 			// (frame re-push prefix included); replay the top dynFrameW token-region
 			// entries against it and let the RET apply the RetReplay discipline.
@@ -15012,7 +15042,12 @@ func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *E
 func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
 	pr, produced := es.producedBy[v.ID]
 	if !produced {
-		return es.placedNotReStepped(v)
+		// A def READ of a placed closure carries the placed value's ID and
+		// no body event, but a bare name always calls (ADR-011): `0 fold
+		// [s] [1 2 3]` with `def s (mk 0)` is the word `s` over the element,
+		// never the parked value — measured `[fn s(Integer)]` for the
+		// interpreter's 3 when the read passed as placed (2026-09-24).
+		return !es.isDefRead(v) && es.placedNotReStepped(v)
 	}
 	// The unit's events sit in its captured fragment at finish (TakeFragment
 	// moved them off the frame stack), so the producing event is read there
@@ -15033,6 +15068,31 @@ func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
 	// it (`[add (2 (mk 1))]` is add over 3, the paren re-step rule), which
 	// the body's own residual models still own: not this rule's.
 	return ev != nil && ev.kind == evCallUser && ev.uc.nout == 1 && !es.parenReSteppedFn(v)
+}
+
+// defReadFnTailArity is the claimed arity of a def-bound computed fn READ
+// left on top of a closure body's residual — `each [a5] xs` with `def a5
+// (mk 5)`, the fn-util wrappers — and the binding's name. The interpreter
+// dispatches the WORD over the values beneath it (its stack phase,
+// top-down), which is the body-tail trailing apply's contract
+// (OpCallDynTrailTop, callDynTrailTop's top-down binding), so the read
+// lowers as one; the check pass stood aside for it with the carrier on the
+// stack (tryShapedFnReadArrival's short window inside a closure unit). A
+// `/v` read and a quoted value are data, and a value the recorder cannot
+// name is not a read.
+func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
+	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(v) || es.placedValRead(v.ID) {
+		return 0, ""
+	}
+	name, read := es.DefReadName(v.ID)
+	if !read || es.reg == nil || es.reg.Check == nil {
+		return 0, ""
+	}
+	n, claimed := es.reg.Check.FnShapeArity(v.ID)
+	if !claimed || n == 0 {
+		return 0, ""
+	}
+	return n, name
 }
 
 // fnConcreteSingleValuedOrCarrier reports whether the fn VALUE v is safe to
@@ -15524,6 +15584,40 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 	es.dropStampRef(len(p.Fns) - 1)
 }
 
+// emitBodyTailApply lowers a unit's body-tail trailing fn-value apply
+// (dynTrailArity > 0): outOps were seated as the full [args…, fn] (fn on
+// top), and the op collapses them to the one applied value before the RET
+// — the captured/param fn auto-applies to its args exactly as the
+// interpreter's paren auto-dispatch. The `apply` word's tail takes
+// OpCallDynApplyTop (unquote, then apply) at the word's position. A
+// def-bound computed fn READ at the tail (defReadFnTailArity, dynTrailName)
+// seats the binding's name beside the op, so the VM's no-match raises the
+// interpreter's own `cannot call `a5“ at the read; the paren-bounded form
+// seats none (measured, cover-gate 2026-09-06: every paren body-tail
+// dynTrail the corpus reaches either declines or lowers through the EVENT
+// route, lowerCall, which seats its own). Split out of Finalize for
+// trimUnconsumedUnnamed's reason: Finalize sits on the gocyclo ceiling.
+func (lw *lowerer) emitBodyTailApply(rec *fnUnitRec) {
+	if rec.dynTrailArity == 0 {
+		return
+	}
+	op := OpCallDynTrailTop
+	pos := rec.pos
+	if rec.dynTrailApply {
+		op = OpCallDynApplyTop
+		if rec.dynTrailPos != (core.SrcPos{}) {
+			pos = rec.dynTrailPos
+		}
+	}
+	if rec.dynTrailName != "" {
+		if rec.dynTrailPos != (core.SrcPos{}) {
+			pos = rec.dynTrailPos
+		}
+		lw.seatDynApplyName(DynApplyHead{Name: rec.dynTrailName, Pos: pos})
+	}
+	lw.emit(op, rec.dynTrailArity, pos)
+}
+
 // trimUnconsumedUnnamed applies the __RC unnamed-arg allowance at LOWERING
 // time: a declared fn's residual bottoms that are (a) within the NUnnamed
 // window and (b) pure PARAM-LOCAL references are the frame's unconsumed
@@ -15543,8 +15637,14 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 // `return` it becomes is a STATEMENT that must be reached — and ADR-008's
 // floor is statements. The De Morgan'd version cost one uncovered statement
 // in compiler/go for a guard no corpus row declines.
+//
+// A body-tail trailing apply (dynTrailArity > 0) is exempt: its outOps are
+// the [args…, fn] window OpCallDynTrailTop consumes, so the param-local
+// bottoms are the apply's operands, not unconsumed args — `filter [g1] xs`
+// with `def g1 (mkgt 1)` trimmed the element from under the read and the
+// op underflowed (2026-09-24).
 func trimUnconsumedUnnamed(rec *fnUnitRec) {
-	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
+	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay && rec.dynTrailArity == 0 {
 		if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
 			drop := 0
 			for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {

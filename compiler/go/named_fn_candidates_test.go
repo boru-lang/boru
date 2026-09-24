@@ -272,6 +272,14 @@ func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
 	if es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
 		t.Error("a paren-placed value is data")
 	}
+	// A def READ of the placed value carries its ID, but a bare name always
+	// calls: `0 fold [s] xs` over a one-argument `s` is the word over the
+	// element, an apply the body must not leave as data.
+	es.defReads = map[string]string{"c": "s"}
+	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
+		t.Error("a def read of a placed closure is a dispatch, not the parked value")
+	}
+	es.defReads = nil
 	es.reg.Check.ParenReSteppedFnIDs = map[string]bool{"c": true}
 	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
 		t.Error("an enclosing paren's re-step undoes the placement")
@@ -300,5 +308,65 @@ func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
 	es.reg = &core.Registry{Check: &core.CheckState{ParenPlacedFnIDs: map[string]bool{"c": true}}}
 	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, frag) {
 		t.Error("a paren-apply's produced closure is an apply over the element")
+	}
+}
+
+// TestDefReadFnTailArity: a def-bound computed fn READ (a fn-typed carrier
+// the recorder can name, with a claimed shape) lowers at a closure body's
+// tail as the trailing apply at its arity; a quoted value, a `/v` read, an
+// unnamed carrier, an unclaimed shape and a zero arity do not.
+func TestDefReadFnTailArity(t *testing.T) {
+	es := NewEmitState()
+	v := core.NewCarrier(core.TFunction)
+	v.ID = "a5"
+	if n, _ := es.defReadFnTailArity(v); n != 0 {
+		t.Error("no registry, no claim")
+	}
+	es.reg = &core.Registry{Check: &core.CheckState{}}
+	es.reg.Check.FnShapes = map[string]core.FnShape{"a5": {Arity: 1}}
+	if n, _ := es.defReadFnTailArity(v); n != 0 {
+		t.Error("a carrier the recorder cannot name is not a read")
+	}
+	es.defReads = map[string]string{"a5": "a5"}
+	if n, name := es.defReadFnTailArity(v); n != 1 || name != "a5" {
+		t.Errorf("a named read with a claimed arity: got %d %q", n, name)
+	}
+	quoted := v
+	quoted.Quoted = true
+	if n, _ := es.defReadFnTailArity(quoted); n != 0 {
+		t.Error("a quoted value is data")
+	}
+	es.valReadNoted = map[string]bool{"a5": true}
+	if n, _ := es.defReadFnTailArity(v); n != 0 {
+		t.Error("a /v read is data")
+	}
+	es.valReadNoted = nil
+	es.reg.Check.FnShapes["a5"] = core.FnShape{Arity: 0}
+	if n, _ := es.defReadFnTailArity(v); n != 0 {
+		t.Error("a zero arity has nothing to apply over")
+	}
+	if n, _ := es.defReadFnTailArity(core.NewInteger(1)); n != 0 {
+		t.Error("not a fn carrier")
+	}
+}
+
+// TestTrimUnconsumedUnnamedKeepsTrailingApplyArgs: the __RC unnamed-arg trim
+// drops a declared body's param-local bottoms as unconsumed, except under a
+// body-tail trailing apply, whose outOps are the [args…, fn] window the op
+// consumes (`filter [g1] xs` with `def g1 (mkgt 1)` underflowed without it).
+func TestTrimUnconsumedUnnamedKeepsTrailingApplyArgs(t *testing.T) {
+	mk := func(trail int) *fnUnitRec {
+		return &fnUnitRec{returns: []*core.Type{core.TBoolean}, nUnnamed: 1, nParams: 1,
+			outOps: []EmitOperand{localOperand(0), dynScopeOperand(0)}, dynTrailArity: trail}
+	}
+	rec := mk(0)
+	trimUnconsumedUnnamed(rec)
+	if len(rec.outOps) != 1 || rec.outOps[0].kind != opDynScope {
+		t.Errorf("without a trailing apply the unconsumed unnamed bottom is trimmed: %v", rec.outOps)
+	}
+	rec = mk(1)
+	trimUnconsumedUnnamed(rec)
+	if len(rec.outOps) != 2 {
+		t.Errorf("a trailing apply's args are consumed, never trimmed: %v", rec.outOps)
 	}
 }

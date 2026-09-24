@@ -461,6 +461,18 @@ func TestForkForProbeCarriesTheHazardTables(t *testing.T) {
 	if !p.fragReads[readKey{"k", 1}] || !p.bindHazard[readKey{"k", 1}] || !p.storeHazard[slotKey{2, 1}] {
 		t.Error("the probe must see the real state's reads and hazards")
 	}
+	// The top-level computed fn value-defs too, as a clone: a closure body's
+	// unit snapshots them at open, and a def-bound fn read at its tail is
+	// admitted to the dynamic-scope rescue only through that snapshot.
+	es.rootComputedBindIDs = map[string]bool{"a5": true}
+	p = es.forkForProbe()
+	if !p.rootComputedBindIDs["a5"] {
+		t.Error("the probe must see the real state's root computed binds")
+	}
+	p.rootComputedBindIDs["z"] = true
+	if es.rootComputedBindIDs["z"] {
+		t.Error("the probe's copy must not write through to the real state")
+	}
 }
 
 // residualStands is the ONE compile failure site the four residual settlements share

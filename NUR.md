@@ -114,6 +114,7 @@ keep the two in sync in the same commit.
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
 | [NUR190](#nur190) | PARTLY FIXED 2026-09-23 (the landing's overload walk — the handoff log's entry of that date), found the same day: a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing now walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. OPEN: a `/q` slot CAPTURES the word (`m.q z` is `[42 0]` for `[z]`; fn-value.tsv's L317/L318 pass by coincidence, z's result being its own atom) and a Function-typed slot takes its REFERENCE (`m.g z` is 7 interpreted; the run now bails loudly where it raised) — the word's call is compiled after the landing and cannot be skipped, and the faithful lowering (a decline or a bail) would move a corpus ceiling by the two coincidental rows. |
 | [NUR191](#nur191) | A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
+| [NUR192](#nur192) | A fn-body-LOCAL computed fn def read by a native's raw code body: `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` is `[[6 7 8]]` interpreted and `undefined_word: a5` compiled — the closure body declines, the native is handed the raw list and steps it on the interpreter, whose registry never saw the def: the frame's dynamic-scope bind installs nothing for a closure value (`installDef`'s carrier guard), where the top level's root computed bind is written back. `each [a5 add 1] xs` the same; `do [a5 7]` a `CALL_DYN_FRAME underflow` internal error for the interpreter's return-count `type_error`. Recorded 2026-09-24 (the def-bound computed fn read at a closure body's tail), present on `main` (c268afb); the tail-read row is a loud compile failure since that increment (the program falls back whole and answers), the rest open. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7418,6 +7419,46 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 (NUR186) answers the same rows the interpreter raises on when nothing
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
+
+## NUR192 — a fn-body-local computed fn def under a native's raw code body {#nur192}
+
+**Status:** RECORDED 2026-09-24 (the def-bound computed fn read at a
+closure body's tail — the handoff log's entry of that date), found when
+that increment's tail rule was probed against a nested closure. Present
+on `main` (a worktree at c268afb); an error-versus-value divergence, not
+silent. The tail-read row is CONTAINED by the increment — a loud compile
+failure, the program falling back whole to the interpreter's answer
+(`TestDefFnBodyTailNestedDefSoundCompileFailure`, the lang ledger 280 ->
+281); the raw-body rows are open.
+
+**Rule:** a compiled program answers as the interpreter does; a name
+`def` binds inside a fn body is in dynamic scope for every body the fn
+reaches (the interpreter's def stack).
+
+| witness (`mk` returns `([n:Integer] => [n add k])`; inside `def g fn [[xs:List][List][def a5 (mk 5)  …]] end g [1 2 3]`) | interpreted | compiled on `main` | compiled since 2026-09-24 |
+|---|---|---|---|
+| `each [a5] xs` | `[[6 7 8]]` | `undefined_word: a5` | a compile failure; the interpreter's answer |
+| `each [a5 add 1] xs` | `[[7 8 9]]` | `undefined_word: a5` | the same as `main` |
+| `do [a5 7]` | `type_error: g: return value 1: expected List, got Integer` | `CALL_DYN_FRAME underflow` (an internal error) | the same as `main` |
+
+**The defect, in one sentence.** A computed fn value `def` binds inside
+a fn body is a binding the compiled-closure machinery owns — the runtime
+installer's carrier guard installs NOTHING for a closure value
+(`installDef`: a Function-family body with no FnDefInfo payload), so the
+frame's `BIND_DYN_SCOPE` leaves no Defs entry — and a code body the
+closure probe declines is handed to the native raw and stepped on the
+interpreter against a registry that never saw `a5`. At the top level the
+same def is a root computed bind (`RecordDynBind`'s root arm,
+`BIND_GLOBAL`'s write-back), which the live lookup finds; inside a frame
+nothing writes it, and the closure body's real compile resolves the read
+to the parent's event, unreachable from its frame, where the probe (no
+producedBy) rescued it live — the two verdicts disagree, so the tail
+rule fires only over the live lookup (`opDynScope`) and the unapplied-fn
+guard declines the body. **The fix** is the frame-scoped computed fn
+def's runtime binding — the dynamic-scope bind installing a closure
+value (rendered, or as the payload the lookup can call) and tearing it
+down with the frame — after which the read's live route closes the first
+row natively and the raw-body rows read the name on the island.
 
 ## NUR191 — a module fn's body re-steps a parked closure the main registry parks {#nur191}
 

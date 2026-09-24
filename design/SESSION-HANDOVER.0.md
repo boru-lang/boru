@@ -158,12 +158,16 @@ branch-carried def"**; the re-estimate is
    bail would move a corpus ceiling by fn-value.tsv's two coincidental
    rows (L317/L318), which is the maintainer's call. The placed value
    inside a code body (the same day) compiled the `[(lambda)]` and
-   `[(mk 2)]` bodies into their units (seven census rows left); the
-   def-bound computed fn over the element (`each [a5] xs`) is the next
-   cut — the trailing apply lowered inside a closure body — and the
-   run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
-   compilation. Most of the interp-entry census rows are still this
-   family.
+   `[(mk 2)]` bodies into their units (seven census rows left), and the
+   def-bound computed fn read at a closure body's tail (2026-09-24)
+   lowered `each [a5] xs` as the body-tail trailing apply over the
+   read's live lookup, the fn-util wrappers with it (six census rows
+   left); its fn-body-LOCAL twin is NUR192 — the frame's dynamic-scope
+   bind installs nothing for a closure value, so the tail row is a loud
+   compile failure now and the raw-body rows still a false
+   `undefined_word` on `main` — and the run-time list bodies
+   (code-bodies.tsv's twenty) are S3's runtime compilation. Most of the
+   interp-entry census rows are still this family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.

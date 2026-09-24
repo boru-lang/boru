@@ -29,16 +29,14 @@ var placedInBodyRows = []struct {
 	// later literal is not what each collects, on either lane.
 	{"placed, then a literal", pibMk + `each [(mk 2) 9] [1 2]`, "[[9 9]]", true},
 	// A placed CALL of a def-bound closure (`(f 1)`, f a factory's result)
-	// is its result on both lanes, but the body's compile still declines
-	// on the closure's shaped read inside the paren (a def-bound computed
-	// fn's window), so the native runs it on the interpreter — open.
-	{"a placed call of a def-bound closure (open)", pibMk + `def f (mk 1) end each [(f 1)] [1 2 3]`, "[[2 2 2]]", false},
-	// A fn-typed CARRIER read as the body over the element — a captured
-	// comparator, a def-bound computed fn (`each [a5] xs`) — is the
-	// interpreter's word dispatch over the value beneath, which the closure
-	// body does not lower yet (the trailing apply in a closure body is the
-	// follow-on); the native runs the body on the interpreter, as before.
-	{"a def-bound computed fn applied over the element (open)", pibMk + `def a5 (mk 5) end each [a5] [1 2 3]`, "[[6 7 8]]", false},
+	// is its result on both lanes; the closure's shaped read inside the
+	// paren reaches the live binding since the body's probe carries the
+	// top-level computed fn value-defs (2026-09-24).
+	{"a placed call of a def-bound closure", pibMk + `def f (mk 1) end each [(f 1)] [1 2 3]`, "[[2 2 2]]", true},
+	// The tail read itself — a def-bound computed fn over the element
+	// (`each [a5] xs`) — is the interpreter's word dispatch over the value
+	// beneath, lowered as the body-tail trailing apply (def_fn_body_tail_test.go).
+	{"a def-bound computed fn applied over the element", pibMk + `def a5 (mk 5) end each [a5] [1 2 3]`, "[[6 7 8]]", true},
 }
 
 func TestPlacedInBodyParityAndNoEntry(t *testing.T) {

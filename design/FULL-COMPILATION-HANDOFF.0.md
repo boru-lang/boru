@@ -13042,3 +13042,67 @@ the element); compiler `named_fn_candidates_test.go`
 returned closure skipped, a carrier over the element still an apply, an
 enclosing paren's re-step undoing the placement).
 
+## S1b — the def-bound computed fn read at a closure body's tail: the trailing apply over the live lookup (2026-09-24)
+
+**The shape.** The interp-entry census's code-body family, the second
+cut after the placed value: a def-bound COMPUTED fn read as the whole of
+a closure body over the element beneath — `def a5 (mk 5) end each [a5]
+[1 2 3]`, `filter [g1] xs`, `0 fold [s] xs` over a two-argument `s`, the
+fn-util wrappers `each [h] xs` with `def h (FnUtil.compose inc/v dbl/v)`.
+The interpreter dispatches the WORD `a5` over the frame's values (its
+stack phase, top-down), which is the body-tail trailing apply's contract
+(`OpCallDynTrailTop`, `callDynTrailTop`'s top-down binding); the check
+pass's shaped-read model declined the read (`the statement ends short of
+the wrapper's arity`), the closure body's probe failed and the native was
+handed the raw list to step on the interpreter once per element.
+
+**The fix, in four pieces, each found by the next probe.** (1) The check
+pass STANDS ASIDE instead of declining when the window is short but the
+closure unit's frame holds EXACTLY the arity (`tryShapedFnReadArrival`,
+`shortReadWindow`; exactly, not at least — a deeper frame declines to the
+island as before). (2) The unit's finish lowers the read at the residual's
+top as the trailing apply at the shape's claimed arity
+(`defReadFnTailArity`, `dynTrailName`), with the binding NAME seated
+beside the op so the VM's closure no-match raises the interpreter's own
+`cannot call `a5`` at the read (`callDynTrailTop`, a seated head over a
+`ClosurePayload`), and the read's lookup takes the DATA-position twin
+(`OpLookupDynScopeData`) so a binding holding a fn DEFINITION — the
+fn-util wrapper's product — pushes for the op to call where the dispatch
+lookup deferred. (3) The closure body's PROBE fork carries the top-level
+computed fn value-defs (`forkForProbe`, `rootComputedBindIDs`): the read
+carries the binding's ID, absent from Defs (installDef leaves such names
+to the compiled-closure machinery) and so from the unit's snapshot unless
+that map is there — the probe declined `body result of unknown
+provenance` where the real compile admitted it, and the placed CALL of a
+def-bound closure (`each [(f 1)] xs`, the placed-value increment's open
+row) compiles natively for the same reason. (4) Two guards the new
+arrival exposed: the `__RC` unnamed-arg trim (`trimUnconsumedUnnamed`)
+dropped the element from under the read in a DECLARED body (`filter`'s
+Boolean, `CALL_DYN_TRAIL_TOP underflow`) — exempt under a trailing apply,
+whose outOps are the op's window — and the park rule (`parkedInBody`)
+read a def READ of a placed closure as the parked value, since the read
+carries the placed value's ID and no body event, and `0 fold [s] xs` over
+a one-argument `s` compiled `[fn s(Integer)]` for the interpreter's 3; a
+bare name always calls (ADR-011), so a def read is never parked, and the
+unapplied-fn guard declines the body to the island. The tail rule fires
+only over the read's LIVE lookup (`opDynScope`): a fn-body-LOCAL computed
+def read from a nested closure resolves to the parent's event in the real
+compile and rescued live in the probe, and the two verdicts must be about
+one unit — that shape is NUR192, recorded, present on `main` as a false
+`undefined_word: a5` (the frame's dynamic-scope bind installs nothing for
+a closure value; the tail row is a loud compile failure now, the program
+falling back whole and answering).
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with two ratchets tightened — interp-entry census rows 68 → 62 (six rows leave: callbacks.tsv L83, L84, L155, L156, L158 and each-variants.tsv L204; none enter), engine entries 392 → 375 (Engine.Run 375, CallBoru 239, RunResolved 73) — and everything else at its ceiling: the generated sweep's call-form failures 197 (305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3), compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 281 / 34 (the compile line raised by the nested-def witness); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `def_fn_body_tail_test.go` (lang/go: five parity rows entering
+nothing — the each body, its stack form, fold's collect, a two-argument
+fold body, a filter body, the fn-util wrapper — plus the read under a
+later word (open, the read's own window); the no-match raising alike on
+both lanes, named and positioned at the read; the nested-def witness as
+a sound compile failure), `placed_in_body_test.go`'s two open rows moved
+to native; compiler `named_fn_candidates_test.go` (`TestDefReadFnTailArity`,
+the def read of a placed closure still an apply, the trim keeping a
+trailing apply's args), `unit_memo_test.go` (the probe fork's root
+computed binds, a clone); the lang ledger 280 -> 281 (the nested-def
+witness). Docs: NUR.md (NUR192 new), COMPILABLE-SUBSET.md, the handover.

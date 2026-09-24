@@ -625,6 +625,17 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	}
 	args, why := shapedFnReadWindow(e, valIdx, n)
 	if why != "" {
+		// The window is short but the FRAME holds exactly the operands — the
+		// element under a closure body's `[a5]` (`def a5 (mk 5)  each [a5] xs`)
+		// — and the interpreter's stack phase takes them top-down, which is
+		// the body-tail trailing apply the unit's residual lowers
+		// (compiler defReadFnTailArity, OpCallDynTrailTop): stand aside with
+		// the carrier on the stack, no decline (2026-09-24). Exactly, not at
+		// least: the apply is the WHOLE residual, and a deeper frame declines
+		// here as before (`0 fold [s] xs` over a one-argument `s`).
+		if why == shortReadWindow && es.InClosureUnit() && len(e.EffectiveResolved()) == n {
+			return false
+		}
 		return decline(why)
 	}
 	out := shapedReadOut(r, v.ID)
@@ -635,18 +646,22 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	return true
 }
 
+// shortReadWindow is shapedFnReadWindow's verdict when the statement ends
+// before the wrapper's arity of tokens.
+const shortReadWindow = "the statement ends short of the wrapper's arity"
+
 // shapedFnReadWindow scans the wrapper's arity of tokens after valIdx for the
 // two read models: every token evaluation-fixed and inside the statement. why
 // names the first failure, and is empty when the window is whole.
 func shapedFnReadWindow(e *core.Engine, valIdx, n int) (args []core.Value, why string) {
 	if valIdx+n >= e.Tape.Len() {
-		return nil, "the statement ends short of the wrapper's arity"
+		return nil, shortReadWindow
 	}
 	args = make([]core.Value, n)
 	for i := 1; i <= n; i++ {
 		tv := e.Tape.At(valIdx + i)
 		if statementWindowBoundary(tv) {
-			return nil, "the statement ends short of the wrapper's arity"
+			return nil, shortReadWindow
 		}
 		if !evalFixedWindowToken(tv) {
 			return nil, "an argument is not an evaluation-fixed value"

@@ -532,12 +532,15 @@ const (
 	OpBindGlobal
 	// OpLookupDynScopeData is the DATA-position twin of OpLookupDynScope: it
 	// reads the name's live dynamic-scope binding and PUSHES it, WITHOUT the
-	// FnDefInfo dispatch-defer. The emitter uses it only where a
-	// Signature.FnDataArgs slot proved the fn value is consumed as DATA (the
-	// parselang-fn-dispatch parser operand), so pushing the FnDefInfo binding is
-	// byte-identical to the interpreter reading the /q-captured name as data. It
-	// still defers on a genuine miss, an active token, and a class binding (a
-	// class read as data is not a parser).
+	// FnDefInfo dispatch-defer. The emitter uses it only where the fn value's
+	// consumer is proven: a Signature.FnDataArgs slot that takes it as DATA
+	// (the parselang-fn-dispatch parser operand), so pushing the FnDefInfo
+	// binding is byte-identical to the interpreter reading the /q-captured
+	// name as data; or the OpCallDynTrailTop the emitter lowers right after
+	// it for a def-bound fn read at a closure body's tail (`each [h] xs`),
+	// which calls what the lookup pushes. It still defers on a genuine miss,
+	// an active token, and a class binding (a class read as data is not a
+	// parser, and the tail rule never fires on one).
 	OpLookupDynScopeData
 	// OpBindTwin marks ONE bind-ledger transition's position in the
 	// instruction stream (§6.5's inert-emission stage): Arg indexes

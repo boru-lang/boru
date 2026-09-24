@@ -471,7 +471,21 @@ user still gets an answer while the case is open:
   closure takes the 10 first). A `/v` read of a def-bound
   closure is placed on both lanes (NUR185, 2026-09-23): `def c (mk 3) end
   2 c/v 10` used to island the window and apply the closure; it declines
-  at the render gate now (the value renders under the def's name).
+  at the render gate now (the value renders under the def's name). A
+  def-bound computed fn READ as the whole of a closure body over the
+  element beneath — `def a5 (mk 5) end each [a5] [1 2 3]`, `0 fold [s]
+  xs` over a two-argument `s`, `filter [g1] xs`, a fn-util wrapper `each
+  [h] xs` — is the interpreter's word dispatch over the frame's values
+  (2026-09-24, the def-bound computed fn read at a closure body's tail):
+  the check pass stands aside when the statement's window is short but
+  the frame holds exactly the arity, and the body lowers the read's live
+  lookup plus `OpCallDynTrailTop` at the claimed arity with the name
+  seated, so a no-match raises `cannot call `a5`` alike. Declining to the
+  island, as before: a deeper frame (`0 fold [s] xs` over a one-argument
+  `s`, the check's short window). A fn-body-LOCAL computed def read the
+  same way from a nested closure is a loud compile failure (NUR192,
+  `TestDefFnBodyTailNestedDefSoundCompileFailure`): the frame's
+  dynamic-scope bind installs nothing for a closure value yet.
 
   A BRANCH whose arm is a fn VALUE returns a value the interpreter
   re-steps, and the compiled lane re-steps it the same way since the

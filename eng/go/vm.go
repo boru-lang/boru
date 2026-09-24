@@ -1447,7 +1447,21 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// Under a seated NAME the op stands for a WORD dispatch (a def-bound
+		// computed fn read at a closure body's tail, `each [a5] xs`), and the
+		// interpreter raises `cannot call `a5`` where the closure's contract
+		// matches nothing — a paren-bounded VALUE apply parks instead.
+		if head.Name != "" {
+			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
+				if fnv, built := closureFnDef(fn, cl.Ident, func([]core.Value) ([]core.Value, error) { return nil, nil }); built {
+					fd, _ := fnv.Data.(core.FnDefInfo)
+					view := installedSigView(fd)
+					written := args[:min(head.NWritten, len(args))]
+					return nil, nil, stampAt(core.NoMatchDiag(reg.Source, head.Name, &view, written, head.Pos, core.ReorderHintFor(head.Name, &view, written)), curDebug, pc, reg)
+				}
+			}
+		}
 		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
