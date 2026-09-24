@@ -255,3 +255,50 @@ func TestTrailingApplyPlacedDeclines(t *testing.T) {
 		t.Error("an enclosing paren's re-step undoes the placement")
 	}
 }
+
+// TestClosureResidualUnappliedFnSkipsPlaced: a value a user paren placed in
+// a closure body's residual, or a user fn's returned closure parked where
+// it landed, is data (the park rule) and no unapplied apply; a fn-typed
+// carrier over a value beneath still is.
+func TestClosureResidualUnappliedFnSkipsPlaced(t *testing.T) {
+	es := NewEmitState()
+	carrier := core.NewCarrier(core.TFunction)
+	carrier.ID = "c"
+	elem := core.NewInteger(1)
+	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
+		t.Error("a fn-typed carrier over the element is an unapplied apply")
+	}
+	es.reg = &core.Registry{Check: &core.CheckState{ParenPlacedFnIDs: map[string]bool{"c": true}}}
+	if es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
+		t.Error("a paren-placed value is data")
+	}
+	es.reg.Check.ParenReSteppedFnIDs = map[string]bool{"c": true}
+	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
+		t.Error("an enclosing paren's re-step undoes the placement")
+	}
+	es.reg = nil
+	es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{nout: 1}, seq: 1}}}
+	es.producedBy = map[string]producer{"c": {seq: 1, idx: 0}}
+	if es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, nil) {
+		t.Error("a user fn's returned closure parked where it landed is data")
+	}
+	// At a unit's finish the producing event sits in the captured fragment,
+	// not on the frame stack.
+	es.frames = nil
+	frag := &EmitFragment{events: []EmitEvent{{kind: evCallUser, uc: emitUserCall{nout: 1}, seq: 1}}}
+	if es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, frag) {
+		t.Error("the fragment's user call parks its returned closure")
+	}
+	es.reg = &core.Registry{Check: &core.CheckState{ParenReSteppedFnIDs: map[string]bool{"c": true}}}
+	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, frag) {
+		t.Error("an enclosing paren's re-step applies the parked closure (`[add (2 (mk 1))]`)")
+	}
+	// A closure a paren-apply produced (a call event, not a user fn's
+	// return) is re-stepped again over what follows: the placement record
+	// alone does not make it data (the module decliner's chain).
+	frag = &EmitFragment{events: []EmitEvent{{kind: evCall, call: emitCall{word: wordDynApply, nout: 1}, seq: 1}}}
+	es.reg = &core.Registry{Check: &core.CheckState{ParenPlacedFnIDs: map[string]bool{"c": true}}}
+	if !es.closureResidualHasUnappliedFn([]core.Value{elem, carrier}, frag) {
+		t.Error("a paren-apply's produced closure is an apply over the element")
+	}
+}

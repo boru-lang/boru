@@ -6164,7 +6164,16 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// strips the quote, and the caller decides whether to apply it —
 			// `((h 5) 2)` is 6, `(h 5) 2` the parked pair. Nothing is
 			// unapplied here.
-			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && closureResidualHasUnappliedFn(bodyStk) &&
+			// A value a user paren PLACED inside the body — a lambda literal
+			// or a factory's returned closure, `[(mk 2)]`, `[([n:Integer] =>
+			// [n mul 2])]` — is data on both lanes (the park rule,
+			// design/PAREN-RESTEP-RULE.0.md; the interpreter's body leaves
+			// `[fn fn fn]` for `each [(mk 2)] [1 2 3]`), so it is no
+			// unapplied apply: the body compiles and the handler reads the
+			// placed value as its result, where the native used to run the
+			// whole body on the interpreter (the interp-entry census's
+			// placed-in-body rows, 2026-09-23).
+			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag) &&
 				!(rec.plainLambda() && len(bodyStk) == 1 && (bodyStk[0].Quoted || rec.valReads[bodyStk[0].ID] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
@@ -14975,14 +14984,55 @@ func residualLeadReStepped(stk []core.Value) bool {
 //
 // A SOLE inert fn-reference body (`each [cmp/v]`) is a concrete const — not a
 // carrier, not preceded by args — so it still compiles.
-func closureResidualHasUnappliedFn(bodyStk []core.Value) bool {
+func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *EmitFragment) bool {
 	for i, v := range bodyStk {
+		if es.parkedInBody(v, frag) {
+			continue
+		}
 		dynMaybeFn := v.Dynamic && core.SigTypeMatches(v, core.TFunction) && i+1 < len(bodyStk)
 		if core.IsFnTypedCarrier(v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
 			return true
 		}
 	}
 	return false
+}
+
+// parkedInBody reports whether a fn value in a closure body's residual is
+// DATA there on both lanes: a fn LITERAL a user paren placed and no
+// enclosing paren re-stepped (`[([n:Integer] => [n mul 2])]`, no producing
+// event), or a USER FN's single returned closure parked where it landed and
+// re-stepped by no enclosing paren (`[(mk 2)]`, NUR101's rule) — measured
+// `each [(mk 2)] [1 2 3]` is `[fn fn fn]` and `(mk 3) 5` the parked pair. A
+// closure a paren-apply PRODUCED (the module decliner's chain `(((A) 1) 2)
+// 3`, a call event rather than a user fn's return) and one an enclosing
+// paren RE-STEPS (`[add (2 (mk 1))]`, add over 3) are the interpreter's
+// applies, so their placement records alone do not prove data
+// (TestModuleFnStampedAtLoadAndRerouted's decliner and the curried chain's
+// pending collection caught the drafts that read them so).
+func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
+	pr, produced := es.producedBy[v.ID]
+	if !produced {
+		return es.placedNotReStepped(v)
+	}
+	// The unit's events sit in its captured fragment at finish (TakeFragment
+	// moved them off the frame stack), so the producing event is read there
+	// first — the frame stack no longer holds it.
+	var ev *EmitEvent
+	if frag != nil {
+		for i := range frag.events {
+			if frag.events[i].seq == pr.seq {
+				ev = &frag.events[i]
+				break
+			}
+		}
+	}
+	if ev == nil {
+		ev = es.eventBySeq(pr.seq)
+	}
+	// An ENCLOSING paren re-steps the parked closure over the values beside
+	// it (`[add (2 (mk 1))]` is add over 3, the paren re-step rule), which
+	// the body's own residual models still own: not this rule's.
+	return ev != nil && ev.kind == evCallUser && ev.uc.nout == 1 && !es.parenReSteppedFn(v)
 }
 
 // fnConcreteSingleValuedOrCarrier reports whether the fn VALUE v is safe to

@@ -113,6 +113,7 @@ keep the two in sync in the same commit.
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
 | [NUR190](#nur190) | PARTLY FIXED 2026-09-23 (the landing's overload walk — the handoff log's entry of that date), found the same day: a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing now walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. OPEN: a `/q` slot CAPTURES the word (`m.q z` is `[42 0]` for `[z]`; fn-value.tsv's L317/L318 pass by coincidence, z's result being its own atom) and a Function-typed slot takes its REFERENCE (`m.g z` is 7 interpreted; the run now bails loudly where it raised) — the word's call is compiled after the landing and cannot be skipped, and the faithful lowering (a decline or a bail) would move a corpus ceiling by the two coincidental rows. |
+| [NUR191](#nur191) | A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7417,6 +7418,38 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 (NUR186) answers the same rows the interpreter raises on when nothing
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
+
+## NUR191 — a module fn's body re-steps a parked closure the main registry parks {#nur191}
+
+**Status:** RECORDED 2026-09-23 (the placed value inside a code body —
+the handoff log's entry of that date), found when that increment's
+first draft let `TestModuleFnStampedAtLoadAndRerouted`'s decliner compile.
+Present on `main` (a worktree at c268afb) under the whole-program compile;
+an error-versus-value divergence, not silent.
+
+**Rule:** a compiled program answers as the interpreter does; a user fn's
+single returned closure is PARKED where it lands (NUR101, NUR124).
+
+| witness (`mk` returns `([n:Integer] => [n add k])`) | interpreted | compiled |
+|---|---|---|
+| `def d1 (fn [[x:Integer][Integer][(mk x) 3]]) d1 10` | `type_error … got 2 — [fn 3]` | the same |
+| `import module [… def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` | `[13]` | `type_error … got 2 — [fn 3]` |
+| the module decliner's chain `(((A) 1) 2) 3` | `[16]` | the count error |
+
+**The defect, in one sentence.** A boru fn defined inside a module runs
+its body through `CallBoru` in the captured sub-registry, and CallBoru
+sweeps the body's deferred residual after teardown (NUR153's
+`ResidualEvalsInFrame` / `CallBoruNamed`), re-stepping the parked closure
+over the token after it — where the main registry's inline splice parks
+it and both lanes raise the count error; the compiled module fn (the
+whole-program compile stamps it) parks as the main registry does. The two
+interpreter paths disagree with each other before the compiler is
+involved; `TestModuleFnStampedAtLoadAndRerouted` keeps the decliner
+unstamped at load, and the closure body's park rule (`parkedInBody`)
+admits only a user fn's returned closure and a placed fn literal, never a
+paren-apply's result, so the increment did not widen the divergence.
+**The fix** belongs to the interpreter's two paths agreeing (one park
+rule for the sweep and the splice), then the compiled module fn follows.
 
 ## NUR190 — a dynamic fn value under a function word its `/q` or Any-typed overload claims {#nur190}
 

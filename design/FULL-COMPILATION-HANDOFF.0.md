@@ -12980,3 +12980,65 @@ kept) and `branch_fn_value_test.go` (the word seated at the landing's
 pc); the inactive-recorder pins; the arity gate re-pinned at 17 for
 eng/go/vm.go (both comparisons match the argument rule).
 
+## S1b — the placed value inside a code body: five interp-entry census rows leave (2026-09-23)
+
+**The measurement first.** The interp-entry census (75 rows) was read row
+by row from the corpus log, and its largest family is the code body a
+native runs on the interpreter: `each`, `fold` and `do` handed a raw LIST
+where the closure-body probe declined the body, so the native's handler
+stepped it through `RunResolved` once per element. A trace on the probe's
+decline over code-bodies.tsv, fold-map-filter.tsv and callbacks.tsv
+classified the sixteen bodies that reach the probe: seven `unapplied
+fn-value in body residual (dynamic apply not lowered)` — a lambda literal
+or a factory's returned closure a user paren PLACED in the body (`0 fold
+[([a:Integer e:Integer] => [a add e])] [1 2 3]`, `each [(mk 2)] [1 2
+3]`); five `def-bound computed fn … the statement ends short of the
+wrapper's arity` — a def-bound closure read as the whole body over the
+element beneath (`each [a5] [1 2 3]`, the fn-util wrappers); two `do$body:
+body result of unknown provenance`, one gradual-Any overload, one
+recovered dispatch. The twenty-odd rows that never reach the probe are
+bodies that are RUN-TIME lists (a quoted list from a flex, a fn's result,
+a List param) — S3's runtime compilation, a different mechanism.
+
+**The fix, for the placed family.** The interpreter parks a value a user
+paren places inside a body exactly as it parks one at the top level (the
+park rule, design/PAREN-RESTEP-RULE.0.md): `each [(mk 2)] [1 2 3]` is
+`[fn fn fn]` interpreted, `0 fold [(lambda)] [1 2 3]` the lambda itself,
+and the handler reads the body's top result. So a placed value is no
+unapplied apply: `closureResidualHasUnappliedFn` (now a method) skips a
+value `parkedInBody` reports — a fn LITERAL a paren placed and no
+enclosing paren re-stepped (no producing event), or a USER FN's single
+returned closure (a user-call event, read in the unit's captured
+fragment, where its events sit at finish) that no enclosing paren
+re-steps — and the body compiles into its closure unit — `PUSH_CLOSURE
+each$body` with the lambda a constant and the factory's closure a call —
+where the native used to get the raw list. Parity held before through
+the interpreter; what changes is the seam. Two drafts read the placement
+record too widely and the unit suite caught both: the check pass places
+a closure a paren-APPLY produced (the module decliner's chain `(((A) 1)
+2) 3`, `TestModuleFnStampedAtLoadAndRerouted`) and one an enclosing paren
+RE-STEPS (`[add (2 (mk 1))]`, the curried chain's pending collection),
+and the interpreter applies both — so the rule admits the two producers
+that park and nothing the placement record alone vouches for. The
+decliner also surfaced NUR191, recorded: a MODULE fn's body re-steps a
+parked closure over the token after it (CallBoru's deferred residual
+sweep, 13 for `[(mk x) 3]`) where the main registry parks it on both
+lanes; present on main under the whole-program compile. The def-bound
+computed fn read over the element
+(`each [a5] xs`) stays open: it needs the trailing apply lowered inside a
+closure body — the residual `[elem, fnv]` re-pushed as `[fnv, elem]` and
+applied through OpCallDynamicTrailing, whose main-program form exists —
+and the check pass's shaped-read model standing aside instead of
+declining when the window is short but the frame holds the operand. That
+is the next cut in this family.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with three ratchets tightened — interp-entry census rows 75 → 68 (seven rows leave: fold-map-filter.tsv L86, L89, L240, L241, callbacks.tsv L75, bytecode-migrated.tsv L113 and L114; none enter), engine entries 408 → 392 (Engine.Run 392, CallBoru 239, RunResolved 90), the generated sweep's call-form failures 201 → 197 (the `afn` factory and `word` lambda do-body and do-catch variants graduate; 305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3) — and everything else at its ceiling: compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 280 / 34 at its ceilings; the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `placed_in_body_test.go` (lang/go: six parity rows that enter
+nothing, the handler's top-result read, and two rows measured open — the
+placed CALL of a def-bound closure and the def-bound computed fn over
+the element); compiler `named_fn_candidates_test.go`
+(`TestClosureResidualUnappliedFnSkipsPlaced`: a placed value and a parked
+returned closure skipped, a carrier over the element still an apply, an
+enclosing paren's re-step undoing the placement).
+
