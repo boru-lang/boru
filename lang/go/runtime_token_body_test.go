@@ -65,6 +65,11 @@ var runtimeTokenBodyRows = []struct {
 	{"a break through two called fns ends the enclosing loop", `def f fn [[x:Integer] [Integer] [break 7]] def g fn [[x:Integer] [Integer] [f x]] def b (quote [g 1]) for 5 [do b i] 99`, "[99]", false},
 	{"a break through a recursion ends the enclosing loop", `def r fn [[n:Integer] [Integer] [if (n lte 0) [break 0] [r (n sub 1)]]] def b (quote [r 2]) for 5 [do b i] 99`, "[99]", false},
 	{"a continue through a called fn steps the enclosing loop", `def f fn [[x:Integer] [Integer] [continue 7]] def b (quote [f 1]) for 3 [do b i] 99`, "[99]", false},
+	// A flow sentinel INSIDE the computed body, under a native inside a
+	// loop: the flag the body run leaves set is read after the native
+	// returns (NUR195's close), so the `for` ends or steps on.
+	{"a break inside an each body ends the enclosing loop (NUR195)", `def mk fn [[][List][quote [break]]] end for 3 [each (mk) [1 2 3] i] 99`, "[99]", false},
+	{"a continue inside an each body steps the enclosing loop (NUR195)", `def mk fn [[][List][quote [continue]]] end for 3 [each (mk) [1 2 3] i] 99`, "[99]", false},
 	// A body carrying a reference value is keyed by its ID (a fn's returned
 	// quotation has one); built by `push` at run time it has none, and the
 	// seam keeps the interpreter rather than name it by text.
@@ -78,8 +83,7 @@ var runtimeTokenBodyRows = []struct {
 	// read inside a token body, and a map literal bearing paren groups (the
 	// dyn-scope rescue's family). A body with a flow sentinel is declined
 	// by the stamp too (as the lazy stamp declines a fn body's) and keeps
-	// the interpreter — where the lanes already disagreed before this seam
-	// (NUR195, TestComputedBodyFlowSentinelPending).
+	// the interpreter (TestComputedBodyFlowSentinelDefers).
 	{"an empty body keeps the interpreter (open)", `def mk fn [[][List][quote []]] end do (mk)`, "[]", false},
 	{"args inside a token body keeps the interpreter (open, control L83)", `def f fn [[y:Integer] [Any] [do [args]]]  f 7`, "[[7]]", false},
 	{"a map literal with paren groups keeps the interpreter (open, L77)", `do [{a:(1 add 2) b:(2 mul 3)}]`, "[{a:3 b:6}]", false},
@@ -125,24 +129,54 @@ func TestRuntimeTokenBodyRaisesAlike(t *testing.T) {
 	}
 }
 
-// TestComputedBodyFlowSentinelPending pins NUR195 as it stands: a flow
-// sentinel inside a COMPUTED code body under `each` — `def mk fn
-// [[][List][quote [break]]] end each (mk) [1 2 3]` — is the interpreter's
-// `flow_error: break outside loop`, and the compiled lane answers
-// `[[1 2 3]]`, silently. Present on main before the run-time token-body
-// stamp (which declines a sentinel body and leaves the seam exactly as it
-// was). When the divergence closes this test fails, and NUR195 retires.
-func TestComputedBodyFlowSentinelPending(t *testing.T) {
+// TestComputedBodyFlowSentinelDefers pins NUR195's close (2026-09-24, the
+// escaped flow after a native call): a flow sentinel inside a COMPUTED body
+// under `each` or `fold` with no enclosing loop is the interpreter's
+// `flow_error: break outside loop`, and the compiled lane — which answered
+// `[[1 2 3]]` silently, the flag a native's body run left set never read —
+// now reads the flag after every native call and takes the loop-less
+// flow's designed path: the internal error RunCompiled's callers defer to
+// the interpreter on (a bail in the lang ledger, loud, never a value). With
+// an enclosing loop the lanes agree outright (the `for` rows in the parity
+// table).
+func TestComputedBodyFlowSentinelDefers(t *testing.T) {
 	for _, src := range []string{
 		`def mk fn [[][List][quote [break]]] end each (mk) [1 2 3]`,
 		`def mk fn [[][List][quote [continue]]] end each (mk) [1 2 3]`,
+		`def mk fn [[][List][quote [break]]] end fold (mk) [1 2 3] 0`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if codeOf(errI) != "flow_error" || len(gotI) != 0 {
 			t.Fatalf("%q: the interpreter's answer moved: %v / %v", src, gotI, errI)
 		}
-		if !compiled || errC != nil || fmt.Sprint(gotC) != "[[1 2 3]]" {
-			t.Errorf("%q: NUR195's divergence moved — compiled %v / %v (%v); if the lanes now agree, retire NUR195 and delete this pin", src, gotC, errC, compiled)
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
+		if !compiled || codeOf(errC) != "flow_error" || len(gotC) != 0 {
+			t.Errorf("%q: compiled %v / %v (%v) — neither the interpreter's raise nor the loop-less deferral", src, gotC, errC, compiled)
+		}
+	}
+}
+
+// TestLiteralBodyFlowThroughFnPending pins NUR196 as it stands: a `break`
+// raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer]
+// [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's
+// `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its
+// [99]; the compiled lane raises each's own `body produced no result` on
+// both, the body's unit having returned nothing on the escape before the
+// flag could be read. When the divergence closes this test fails, and
+// NUR196 retires.
+func TestLiteralBodyFlowThroughFnPending(t *testing.T) {
+	for _, row := range []struct{ src, wantI string }{
+		{`def f fn [[x:Integer][Integer][break]] end each [f] [1 2 3]`, "flow_error"},
+		{`def f fn [[x:Integer][Integer][break]] end for 3 [each [f] [1 2 3] i] 99`, "[99]"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, row.src)
+		if (errI == nil && fmt.Sprint(gotI) != row.wantI) || (errI != nil && codeOf(errI) != row.wantI) {
+			t.Fatalf("%q: the interpreter's answer moved: %v / %v", row.src, gotI, errI)
+		}
+		if !compiled || codeOf(errC) != "each_error" || len(gotC) != 0 {
+			t.Errorf("%q: NUR196's divergence moved — compiled %v / %v (%v); if the lanes now agree, retire NUR196 and delete this pin", row.src, gotC, errC, compiled)
 		}
 	}
 }

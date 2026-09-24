@@ -13322,6 +13322,58 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR195 closed — the escaped flow after a native call (2026-09-24)
+
+**The divergence.** Recorded while pinning S3's first slice: `each (mk) [1
+2 3]` over a computed `[break]` is the interpreter's `flow_error: break
+outside loop` and was the compiled lane's `[[1 2 3]]`, silently. Probing
+the family found more of it: `for 3 [each (mk) [1 2 3] i] 99` ran all
+three iterations for the interpreter's one (`[[1 2 3] 0 [1 2 3] 1 [1 2 3] 2
+99]` for `[99]`), and `fold (mk) [1 2 3] 0` over `[break]` answered `[3]`.
+
+**The mechanism.** A native's body run hands an unresolved break/continue
+back with the registry's FlowCtrl set — the seam's sub-engine
+(Engine.exitWithFlowCtrl's contract for a non-top engine: return the
+residual cleanly, leave the flag), and since the previous entry a hosted
+token body too — for the ENCLOSING run to resolve. The interpreter's run
+loop reads the flag after every step and either unwinds to a loop on its
+tape or, at the top, raises `outside loop`. The VM read it only after a
+fallback island (`OpFallback`) and after the fn-value apply family
+(`resolveEscapedFlow`), never after a plain `CALL_NATIVE` — so `each`
+computed its elements, the flag stayed set, nothing read it, and the run
+ended with a value. Two lines close it: `resolveEscapedFlow()` after
+`OpCallNative`'s result push and after `OpCallNativePoly`'s, the same
+translation the fallback gets — the nearest open loop, or the loop-less
+flow's designed path: an internal error RunCompiled's callers defer to the
+interpreter on, which raises the canonical `break outside loop`.
+
+**What the lanes say now.** With an enclosing loop they agree outright:
+`for 3 [each (mk) [1 2 3] i] 99` and its `continue` twin are `[99]` on
+both. With no loop at all the interpreter raises and the compiled lane
+bails loud (the lang ledger's bail line counts the three witnesses —
+break and continue under `each`, break under `fold` — 37 -> 40), never a
+value: by the register's scope ruling the answer divergence is gone and
+NUR195 is FIXED; the bail is the compiled runtime's, counted where such
+bails are counted.
+
+**Found on the way, recorded.** NUR196: a `break` raised by a fn CALLED
+from a LITERAL each body (`def f fn [[x:Integer][Integer][break]] end each
+[f] [1 2 3]`, and the same under `for 3 [… i] 99`) is the interpreter's
+`flow_error` (and `[99]` under the loop), and the compiled lane's
+`each_error: body produced no result` on both — the declined fn runs
+through the island, whose contract on an escaped flow is to return NO
+values, and the each handler raises for the empty element before the
+flag can be read. Another mechanism; pinned as it stands
+(`TestLiteralBodyFlowThroughFnPending`).
+
+**Measured:** the interp-entry census 29 and the engine entries 281 unchanged (no corpus row carries a loop-less flow in a computed body); the lang ledger 282 / 40 (the three witnesses, bails where they were silent values); the region oracle, the sweep ceilings, runtime defers 54 and real programs 36 of 62 unchanged.
+
+**Pins.** lang `TestComputedBodyFlowSentinelDefers` (the three loop-less
+witnesses: the interpreter's raise, the compiled lane's deferral bail) and
+the two `for` rows in `runtime_token_body_test.go`'s parity table;
+`TestLiteralBodyFlowThroughFnPending` (NUR196 as it stands). Docs: the
+handover, NUR.md (NUR195 FIXED, NUR196 recorded).
+
 ## S3's first slice — the run-time token body at the seam (2026-09-24)
 
 **The family.** Read from the 53-row interp-entry census: code-bodies.tsv's

@@ -204,8 +204,12 @@ branch-carried def"**; the re-estimate is
    code-bodies.tsv's twenty-one rows and four elsewhere left the census.
    Open there: `args` inside a token body, a map literal bearing paren
    groups (the dyn-scope rescue's family), an identity-less body carrying a
-   reference value; NUR195 recorded (a flow sentinel in a computed body,
-   swallowed by the compiled lane); filter's predicate
+   reference value. NUR195 (a flow sentinel in a computed body, swallowed
+   by the compiled lane) closed the same day: the VM reads the flag a
+   native's body run leaves set after every native call, as after a
+   fallback — the enclosing loop ends, or the loop-less flow defers loud;
+   NUR196 recorded (a fn called from a LITERAL each body breaking: each's
+   no-result error for the interpreter's flow_error); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

@@ -3178,6 +3178,22 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 			stack = append(stack, results...)
+			// A native that ran a code body through the InvokeBody seam can
+			// return with the registry's FlowCtrl set — a break/continue the
+			// body raised with no loop of its own, handed back by the seam's
+			// sub-engine (Engine.exitWithFlowCtrl's contract) or by a hosted
+			// token body (vm_token_body.go) for the ENCLOSING run to resolve.
+			// The interpreter's run loop reads the flag after every step;
+			// this loop read it only after a fallback or a fn-value apply, so
+			// `each (mk) [1 2 3]` over a computed `[break]` answered
+			// `[[1 2 3]]` for the interpreter's `break outside loop`, and
+			// `for 3 [each (mk) xs i]` ran all three iterations for the
+			// interpreter's one (NUR195, 2026-09-24). Translated here as after
+			// a fallback: the nearest open loop, or the loop-less internal
+			// error that defers to the interpreter's canonical raise.
+			if err := resolveEscapedFlow(); err != nil {
+				return nil, err
+			}
 		case compiler.OpBindTyped:
 			// Typed value-def validate/reparent (the compiled defTypedHandler
 			// refinement step): pop the body value, run the SAME membership check
@@ -3221,6 +3237,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 			stack = ns
+			// The poly re-match's handler runs bodies too (see OpCallNative).
+			if err := resolveEscapedFlow(); err != nil {
+				return nil, err
+			}
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
 			compiler.OpCallDynTrailTop, compiler.OpCallDynApplyTop, compiler.OpCallDynApplyOne, compiler.OpCallDynTrailKeepQ, compiler.OpCallDynFrame, compiler.OpCallDynMethod,
 			compiler.OpReStepLanding:

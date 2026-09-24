@@ -117,7 +117,8 @@ keep the two in sync in the same commit.
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | FIXED 2026-09-24 (the do body's read — the handoff log's entry of that date), found the same day: a def-bound computed fn read inside a `do` body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` was `[12]` compiled for the interpreter's `[7 error(cannot call `a5` …)]` (the check pass modelled the do's result as the fn carrier and the program residual applied it over the 7; the island stepped the def-bound compiled closure as anonymous DATA and parked it over the empty frame where the interpreter's fn definition raises), `do [a5 7]` a `CALL_DYNAMIC underflow`. A closure a compiled program binds by `def` is now bridged into the word dispatch under its name (core `lookupUncachedBridged`, `dispatchesAsWord`; the aggregate never cached) and `do`'s result model takes the computed-body hatch when the body leaves such a carrier. The written operand the contract does not take is NUR194. |
 | [NUR194](#nur194) | FIXED 2026-09-24 (the written argument's fit — the handoff log's entry of that date), found the same day: a def-bound computed fn read with a WRITTEN operand its contract does not take — `def a5 (mk 5) end each [a5 "s" add] [1 2]` is `['6s' '7s']` interpreted (the matcher falls back from the written token to the frame's element) and bailed compiled on the shaped read's claim (`result count 2 violates the host-registered shape claim 1`); `do [a5 "s"]` the caught `cannot call` interpreted, the same bail (`[fn a5(Integer) s]` on main before the do body's read, silent). The shape claim carries the wrapper's parameter types now (`FnShape.Params`, from the closure unit's declared params or a const lambda's signature) and the read window declines a written token that does not conform; the body islands and the island dispatches the word as the interpreter does, and the top-level `(a5 "s")` declines the program to the interpreter's own raise. |
-| [NUR195](#nur195) | A flow sentinel inside a COMPUTED code body under `each` — `def mk fn [[][List][quote [break]]] end each (mk) [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and the compiled lane answers `[[1 2 3]]`, silently; `continue` the same. The LITERAL twin `each [break] [1 2 3]` fails to compile (the Stage-2 code-body gate) and falls back with parity. Present on `main` (d75dd75) before the run-time token-body stamp, which declines a sentinel body and leaves the seam as it was. Pinned as it stands in lang `TestComputedBodyFlowSentinelPending` | found while pinning S3's first slice (2026-09-24) |
+| [NUR195](#nur195) | FIXED 2026-09-24 (the escaped flow after a native call — the handoff log's entry of that date), found the same day: the flag a native's body run leaves set (a break/continue with no loop of its own, handed back by the seam's sub-engine) was read by the VM only after a fallback or a fn-value apply, never after a plain native call, so `each (mk) [1 2 3]` over a computed `[break]` answered `[[1 2 3]]` silently and `for 3 [each (mk) xs i] 99` ran all three iterations; the flag is read after every native call now — the enclosing loop ends or steps on (`[99]` on both lanes), and with no loop at all the compiled lane takes the loop-less flow's designed path, the internal error RunCompiled's callers defer to the interpreter's `break outside loop` on (a loud bail, never a value). The original text: A flow sentinel inside a COMPUTED code body under `each` — `def mk fn [[][List][quote [break]]] end each (mk) [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and the compiled lane answers `[[1 2 3]]`, silently; `continue` the same. The LITERAL twin `each [break] [1 2 3]` fails to compile (the Stage-2 code-body gate) and falls back with parity. Present on `main` (d75dd75) before the run-time token-body stamp, which declines a sentinel body and leaves the seam as it was. Pinned as it stands in lang `TestComputedBodyFlowSentinelPending` | found while pinning S3's first slice (2026-09-24) |
+| [NUR196](#nur196) | A `break` raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer] [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its `[99]`; the compiled lane raises each's own `each_error: body produced no result` on both — the body's unit (or the island the declined fn takes) returns nothing on the escape, and the handler complains before the flag can be read. Loud, but a different answer. Pinned as it stands in lang `TestLiteralBodyFlowThroughFnPending` | found while closing NUR195 (2026-09-24) |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7440,12 +7441,69 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
 
+## NUR196 — a fn called from a literal each body breaks: each's no-result error for the interpreter's flow_error {#nur196}
+
+**Status:** Pending (recorded 2026-09-24, found while closing NUR195).
+
+**Rule:** a compiled program answers as the interpreter does — the same
+raise, or the same value, for a break that escapes a fn called from a
+code body.
+
+**Divergence.**
+
+```
+def f fn [[x:Integer][Integer][break]] end each [f] [1 2 3]
+  interpreted   flow_error: break outside loop
+  compiled      each_error: each: element 0: body produced no result
+def f fn [[x:Integer][Integer][break]] end for 3 [each [f] [1 2 3] i] 99
+  interpreted   [99]                (the break ends the for)
+  compiled      each_error: each: element 0: body produced no result
+```
+
+The COMPUTED twin (`each (mk) [1 2 3]` over a returned `[break]`, NUR195)
+agrees since the escaped flow is read after every native call. Here the
+body is a LITERAL, lowered as the each body's unit: the fn `f` — its body
+a bare sentinel, which the compiler declines — runs through the island,
+whose contract on an unresolved flow is to tear down and return NO values
+(runIslandResolved's FlowUnwind); the each handler then raises its own
+no-result error for the element before the VM can read the flag the
+island left set. The interpreter's sub-engine, splicing `f`'s body onto
+the each body's tape, hands back a residual and the top run raises the
+flow error after `each` returns. Not yet root-caused past that: whether
+the island's "no values" or the handler's eagerness is the wrong half.
+
+**Fence.** `TestLiteralBodyFlowThroughFnPending` (lang
+runtime_token_body_test.go) pins the divergence as it stands, so closing
+it is loud.
+
+**Verdict:** none yet. Directed at the each handler's contract with an
+escaped flow — a body that escaped should end the iteration and let the
+run resolve the flag, on both lanes.
+
 ## NUR195 — a flow sentinel in a computed code body is swallowed by the compiled lane {#nur195}
 
-**Status:** Pending (recorded 2026-09-24, found while pinning S3's first
-slice, the run-time token-body stamp). Present on `main` (d75dd75) before
-that change, which declines a sentinel body and leaves the seam exactly as
-it was.
+**Status:** FIXED 2026-09-24 (the escaped flow after a native call — the
+handoff log's entry of that date). RECORDED the same day, found while
+pinning S3's first slice (the run-time token-body stamp); present on
+`main` (d75dd75) before that change.
+
+**The fix.** The seam's sub-engine hands an unresolved break/continue back
+with the registry's FlowCtrl set (Engine.exitWithFlowCtrl's sub-engine
+contract) for the outer run to resolve; the interpreter's run loop reads
+the flag after every step, and the VM read it only after a fallback and
+after a fn-value apply (`resolveEscapedFlow`), never after a plain native
+call — so the flag `each`'s body run left set was dropped where the
+interpreter's top run raised. The VM reads it after every native call now
+(CALL_NATIVE and its poly twin): with an enclosing loop the flow unwinds
+to it (`for 3 [each (mk) [1 2 3] i] 99` is `[99]` on both lanes, for the
+compiled lane's `[[1 2 3] 0 [1 2 3] 1 [1 2 3] 2 99]`), and with none the
+compiled lane takes the loop-less flow's designed path — the internal
+error RunCompiled's callers defer to the interpreter on, which raises the
+canonical `break outside loop`. The silent value is gone; what remains
+is a bail the lang ledger counts (`TestComputedBodyFlowSentinelDefers`),
+never an answer. The literal-body twin — a fn CALLED from a literal each
+body breaking — diverges by another mechanism and is NUR196. The original
+record follows.
 
 **Rule:** a compiled program answers as the interpreter does. A `break` or
 `continue` stepped outside a loop is the interpreter's `flow_error`; a
