@@ -188,9 +188,11 @@ branch-carried def"**; the re-estimate is
    live binding (boru:sift's two descriptors left the region oracle's
    ledger) — and, seeing the right registry, DECLINES kg/main.boru
    (gomod.boru's `[[repo-entity] …]`, a module fn's body literal over a
-   shared module-level map: the per-call spine the const rule can neither
-   freshen nor share; ledgered in realProgramLedger, the selective
-   spine-only freshen that graduates it the next cut); filter's predicate
+   shared module-level map: the per-call spine the const rule could neither
+   freshen nor share) — graduated again the same day by the selective
+   freshen (the fresh push clones the literal's spine and KEEPS the
+   embedded members, Program.ConstKeep; PR #225 P1's open item closed,
+   the lang ledger 283 -> 282); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

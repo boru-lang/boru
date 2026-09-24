@@ -986,6 +986,10 @@ type EmitState struct {
 	// escape the fn, and declines otherwise. See OpPushConstFresh (bytecode.go)
 	// and design/legacy/MISCOMPILE-HUNT-FINDINGS.0.ignore §A.
 	freshenConst map[int]bool
+	// constKeep names, per freshened const-pool index, the value IDs of the
+	// enclosing bindings' containers the literal EMBEDS — the members the
+	// per-call clone keeps shared (Program.ConstKeep; core.CloneValueKeeping).
+	constKeep map[int]map[string]bool
 	// fnRiskFields maps a constructed INSTANCE's value ID → the field keys
 	// holding genuinely-0-param fn values (noteFnRiskFields /
 	// instanceFnFieldRisk — the carrier-receiver auto-dispatch hazard).
@@ -3045,18 +3049,20 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// to exactly this materialise context.
 	if len(es.units) > 1 && freshenableConst(lit) &&
 		!es.units[len(es.units)-1].enclosingIDs[v.ID] {
-		// A body literal EMBEDDING an enclosing binding's container cannot
-		// be freshened OR shared: the interpreter constructs the OUTER
-		// literal fresh per call while the binding-read MEMBER keeps its
-		// shared instance (`def c [9] def mk fn [[] [List] [[c]]]` —
-		// `((mk) get 0) eq c` stays true, `(mk) eq (mk)` stays false).
-		// A deep-clone freshen breaks the member identity; a shared const
-		// breaks the outer's. Until a selective (spine-only) freshen
-		// exists, decline — no wrong answer, and an open defect until the
-		// selective freshen lands (PR #225 P1).
-		if embedsEnclosingCompound(lit, es.units[len(es.units)-1].enclosingIDs) {
-			es.MarkUncompilable("fn body literal embeds an enclosing binding's container (per-call spine identity over a shared member)")
-			return EmitOperand{}, false
+		// A body literal EMBEDDING an enclosing binding's container is
+		// neither deep-freshened nor shared: the interpreter constructs the
+		// OUTER literal fresh per call while the binding-read MEMBER keeps
+		// its shared instance (`def c [9] def mk fn [[] [List] [[c]]]` —
+		// `((mk) get 0) eq c` stays true, `(mk) eq (mk)` stays false). The
+		// fresh push clones the spine and KEEPS the embedded members
+		// (Program.ConstKeep, core.CloneValueKeeping); the shape declined
+		// until 2026-09-24 (PR #225 P1's open item; kg/main.boru's
+		// `[[repo-entity] …]` was its real-program row).
+		if keep := embeddedEnclosingIDs(lit, es.units[len(es.units)-1].enclosingIDs); len(keep) > 0 {
+			if es.constKeep == nil {
+				es.constKeep = map[int]map[string]bool{}
+			}
+			es.constKeep[idx] = keep
 		}
 		if es.freshenConst == nil {
 			es.freshenConst = map[int]bool{}
@@ -3067,38 +3073,59 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	return ConstOperand(idx), true
 }
 
-// embedsEnclosingCompound reports whether a compound literal (recursively)
-// contains a compound member whose identity is an ENCLOSING binding's value
-// — the shape whose interpreter semantics mix a per-call-fresh spine with a
-// shared member, which neither OpPushConstFresh (deep clone) nor a shared
-// pooled const can model. See the failure at the resolveOperand marking
-// site (PR #225 P1).
-func embedsEnclosingCompound(v core.Value, enclosing map[string]bool) bool {
-	switch d := v.Data.(type) {
-	case core.ListPayload:
-		for _, e := range d.Elems {
-			if !freshenableConst(e) {
-				continue
+// embeddedEnclosingIDs collects, from a fn-unit body literal, the value IDs
+// of the ENCLOSING bindings' containers it embeds — the members a per-call
+// fresh push keeps shared (Program.ConstKeep) while cloning the literal's
+// own spine. A member that is an enclosing binding is kept whole (its
+// contents are the binding's, not the literal's); a member the literal
+// itself constructs is walked for embeddings of its own. Empty when the
+// literal embeds none.
+func embeddedEnclosingIDs(v core.Value, enclosing map[string]bool) map[string]bool {
+	var keep map[string]bool
+	var walk func(v core.Value)
+	walk = func(v core.Value) {
+		if enclosing[v.ID] {
+			if keep == nil {
+				keep = map[string]bool{}
 			}
-			if enclosing[e.ID] || embedsEnclosingCompound(e, enclosing) {
-				return true
-			}
+			keep[v.ID] = true
+			return
 		}
-	case core.MapPayload:
-		if d.M == nil {
-			return false
-		}
-		for _, k := range d.M.Keys() {
-			mv, _ := d.M.Get(k)
-			if !freshenableConst(mv) {
-				continue
+		switch d := v.Data.(type) {
+		case core.ListPayload:
+			for _, e := range d.Elems {
+				if freshenableConst(e) {
+					walk(e)
+				}
 			}
-			if enclosing[mv.ID] || embedsEnclosingCompound(mv, enclosing) {
-				return true
+		case core.MapPayload:
+			if d.M == nil {
+				return
+			}
+			for _, k := range d.M.Keys() {
+				if mv, _ := d.M.Get(k); freshenableConst(mv) {
+					walk(mv)
+				}
 			}
 		}
 	}
-	return false
+	switch d := v.Data.(type) {
+	case core.ListPayload:
+		for _, e := range d.Elems {
+			if freshenableConst(e) {
+				walk(e)
+			}
+		}
+	case core.MapPayload:
+		if d.M != nil {
+			for _, k := range d.M.Keys() {
+				if mv, _ := d.M.Get(k); freshenableConst(mv) {
+					walk(mv)
+				}
+			}
+		}
+	}
+	return keep
 }
 
 // freshenFnUnitConsts gives fn-unit compound body literals per-call identity
@@ -13120,6 +13147,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	}
 
 	lw.p.Consts = es.consts // interning may have grown during reconciliation
+	lw.p.ConstKeep = es.constKeep
 	lw.p.Types = es.types
 	lw.p.Fallbacks = es.fallbacks
 	lw.p.MaxStack = lw.maxDepth

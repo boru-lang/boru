@@ -185,6 +185,23 @@ cd cmd/go  && make build        # builds cmd/go/bin/boru
 cd wpg     && make wasm          # builds the docs/ wasm playground
 ```
 
+### Transient tasks report progress
+
+Every transient task — a corpus walk, a coverage run, a generator, a
+sweep, a benchmark, a script an agent starts and waits on — produces
+status output while it runs, even if minimal, **at least every 30
+seconds**, and gives a **percentage-complete estimate** whenever one can
+be made (rows walked of the total, files done of the list, the phase
+reached of the phases known). A task that goes quiet for longer than
+that is indistinguishable from one that has hung, and the person or
+agent watching it has to guess whether to wait or kill it. When the work
+has no natural unit to count, print the phase and the elapsed time; when
+it runs under `go test`, log through `t.Logf` under `-v` (the langspec
+gates print their per-gate lines this way) or write a progress line to
+stderr. This applies to new tools and to the tasks an agent runs by hand:
+a long command an agent backgrounds still owes the log it watches a
+heartbeat.
+
 
 ## Working in the code — module deep guides
 

@@ -849,19 +849,19 @@ func TestComputedArmCondOKDirect(t *testing.T) {
 	}
 }
 
-func TestEmbedsEnclosingCompound(t *testing.T) {
-	// MapPayload with nil backing map → false (the nil-map guard).
+func TestEmbeddedEnclosingIDsGuards(t *testing.T) {
+	// MapPayload with nil backing map → no keep (the nil-map guard).
 	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
-	if embedsEnclosingCompound(nilMap, map[string]bool{}) {
-		t.Fatal("nil-map should not embed")
+	if keep := embeddedEnclosingIDs(nilMap, map[string]bool{}); keep != nil {
+		t.Fatalf("nil-map should embed nothing: %v", keep)
 	}
-	// A map whose (compound) member is an enclosing binding's value → true.
+	// A map whose (compound) member is an enclosing binding's value → kept.
 	member := core.NewList([]core.Value{core.NewInteger(9)})
 	om := core.NewOrderedMap()
 	om.Set("k", member)
 	mp := core.NewMap(om)
-	if !embedsEnclosingCompound(mp, map[string]bool{member.ID: true}) {
-		t.Fatal("map embedding an enclosing compound should report true")
+	if keep := embeddedEnclosingIDs(mp, map[string]bool{member.ID: true}); len(keep) != 1 || !keep[member.ID] {
+		t.Fatalf("map embedding an enclosing compound should keep it: %v", keep)
 	}
 }
 
