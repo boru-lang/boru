@@ -112,7 +112,7 @@ keep the two in sync in the same commit.
 | [NUR187](#nur187) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date), found the same day: the residual's fn-value apply arms carried a value's collection across a STATEMENT BOUNDARY — `def m {f: inc/v} 7 m.f ; 3` islanded the window to `[7 4]` for the interpreter's `[8 3]`, `m.f ; 5` applied the member to the next statement's 5 (6 for `[fn inc 5]`) — silent, present on `main`. The pass notes every boundary's position (`NoteStatementEnd`) and no arm applies a value over an entry written past a boundary that follows it (`crossesBoundary`); an interior value past a boundary declines | probing NUR159's neighbours, 2026-09-23 |
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
-| [NUR190](#nur190) | PARTLY FIXED 2026-09-23 (the landing's overload walk — the handoff log's entry of that date), found the same day: a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing now walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. OPEN: a `/q` slot CAPTURES the word (`m.q z` is `[42 0]` for `[z]`; fn-value.tsv's L317/L318 pass by coincidence, z's result being its own atom) and a Function-typed slot takes its REFERENCE (`m.g z` is 7 interpreted; the run now bails loudly where it raised) — the word's call is compiled after the landing and cannot be skipped, and the faithful lowering (a decline or a bail) would move a corpus ceiling by the two coincidental rows. |
+| [NUR190](#nur190) | CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
 | [NUR191](#nur191) | A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | A def-bound computed fn read inside a `do` body: `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` is `[7 error(cannot call `a5` — no signature matches the arguments)]` interpreted (the body's frame holds no operand for the word) and `[12]` compiled — the check pass's own run of the body leaves the carrier as the body's RESULT and the program residual's trailing apply takes it over the 7 (`CALL_DYNAMIC_TRAILING`); `do [a5 7]` is 12 interpreted and a `CALL_DYNAMIC underflow` internal error compiled. Recorded 2026-09-24 (the frame's closure bind), present on `main` before and after the tail-read increment (c268afb, db7cffb); the first row silent, default lane, exit 0. |
@@ -7553,13 +7553,36 @@ rule for the sweep and the splice), then the compiled module fn follows.
 
 ## NUR190 — a dynamic fn value under a function word its `/q` or Any-typed overload claims {#nur190}
 
-**Status:** PARTLY FIXED 2026-09-23 (the landing's overload walk — the
-handoff log's entry of that date). RECORDED and pinned pending earlier
-the same day (the named fn value's candidates), found when that
-increment's word-after rule turned fn-value.tsv's L317/L318 (`m.f z`, `m
-get 'f' z`) into `[fn h(Atom) z]`: the rows pass on `main` and here by
-COINCIDENCE. Present on `main` (a worktree at 90d557b), silent, default
-lane, exit 0.
+**Status:** CONTAINED 2026-09-24 (NUR190's open halves deferred — the
+handoff log's entry of that date), the maintainer's call: the `/q`
+capture and the Function-typed reference DEFER loudly at the landing's
+walk and the corpus keeps them on the runtime-defers ledger
+(runtime_defers.tsv). PARTLY FIXED 2026-09-23 (the landing's overload
+walk — the handoff log's entry of that date). RECORDED and pinned
+pending earlier the same day (the named fn value's candidates), found
+when that increment's word-after rule turned fn-value.tsv's L317/L318
+(`m.f z`, `m get 'f' z`) into `[fn h(Atom) z]`: the rows pass on `main`
+and here by COINCIDENCE. Present on `main` (a worktree at 90d557b),
+silent, default lane, exit 0.
+
+**The deferral (the contained half, 2026-09-24).** The walk's `/q` arm
+stood aside and the residual apply took the word's RESULT (`m.q z` was
+`[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`); it now defers at the
+landing (`vm:landing-quote-claim`) exactly as the Function-typed
+reference does (`vm:landing-claim`), and the program dies loudly with
+the compiler-defect note. A compile-time decline was the alternative,
+and over-wide: no static model tells a `/q` slot from a typed slot's
+barrier, so a decline would have to fire on every landing whose
+candidate overloads carry either slot, declining typed-slot rows that
+run right today. The deferral is precise — only the walk that actually
+claims the slot dies — and the maintainer asked that such deferrals be
+KEPT ON A LEDGER: runtime_defers.tsv, the per-file twin of
+compile_failures.tsv (runtime_defer_ledger_test.go), names the rows that
+compile and then bail, both ways per file, and fn-value.tsv's L317/L318
+are its first rows booked by choice (the corpus-wide runtime defers
+8 -> 10, the lang unit ledger's bail line 34 -> 37: `m.f y`, `m.f z`,
+`m.q z`). Pinned in `TestNamedFnCandidatesOpenShapes` (lang) and the
+eng landing test's `/q` arm.
 
 **The walk (the closed half).** The landing op carries the function word
 the check pass found after the value (`LandingWords`, by the landing's
@@ -7577,7 +7600,7 @@ interpreter's own (`m.a z`; the wordless landing raised a false
 `uncalled_function`). Pinned in `TestNamedFnCandidatesWalk` (lang), the
 eng landing tests, the compiler's word-table pins.
 
-**Still open, the claims the lowering cannot honour.** A `/q` slot
+**The claims the lowering cannot honour (open until the deferral above).** A `/q` slot
 CAPTURES the word (`m.q z` is `[42 0]` compiled for the interpreter's
 `[z]`: the walk stands aside and the residual apply takes z's result;
 L317/L318 answer right because z's result is its own atom) and a

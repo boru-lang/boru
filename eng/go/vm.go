@@ -1371,7 +1371,14 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	case sig.QuoteArgs != nil && sig.QuoteArgs[0]:
-		return stack, nil, nil
+		// A `/q` slot CAPTURES the word as an atom (`m.q z` is `[z]`
+		// interpreted): the compiled code calls the word after the landing
+		// and the residual arm applies the value over its result, so the
+		// walk cannot honour the claim — it defers, loudly, the same
+		// containment as the Function-typed reference below, and the
+		// corpus keeps both on the runtime-defers ledger (NUR190's open
+		// halves; the maintainer's call, 2026-09-24).
+		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 	}
 	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step takes the word `"+lword.Name+"` as its argument (a Function-typed slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 }

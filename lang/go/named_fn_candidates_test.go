@@ -205,13 +205,15 @@ func TestNamedFnCandidatesWalk(t *testing.T) {
 	}
 }
 
-// TestNamedFnCandidatesOpenShapes pins, as MEASURED, the neighbour this
-// increment leaves open (NUR190, recorded and pinned pending 2026-09-23): a
-// DYNAMIC fn value under a FUNCTION word whose arg-taking overload can claim
-// the word. The interpreter's `/q` slot captures the word (`y` never runs);
-// the landing stands aside for a mixed overload and the lead arm applies the
-// fn over the word's result. fn-value.tsv's `m.f z` passes by coincidence
-// (z's result is its own atom); the mixed twin declines soundly since the
+// TestNamedFnCandidatesOpenShapes pins NUR190's `/q` and Function-typed
+// halves as the maintainer settled them (2026-09-24): a DYNAMIC fn value
+// under a FUNCTION word whose arg-taking overload claims the word. The
+// interpreter's `/q` slot captures the word (`y` never runs); the landing's
+// walk cannot honour the claim (the compiled code calls the word) and
+// DEFERS loudly, kept on the runtime-defers ledger — where it used to stand
+// aside and the lead arm applied the fn over the word's result (`[42 42]`
+// for `[y]`, silent; fn-value.tsv's `m.f z` passed by coincidence, z's
+// result being its own atom). The mixed twin declines soundly since the
 // islands read the word as a crossing (NUR187).
 func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	const nfQ = `def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end ` +
@@ -219,21 +221,23 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
 	// The landing's overload walk (the same day) settles the typed slot, the
 	// Any-typed claim and the anonymous park (TestNamedFnCandidatesWalk); the
-	// `/q` capture still stands aside (the residual apply answers by the
-	// word's result: `m.q z` is `[42 0]` for `[z]`), and a Function-typed
-	// slot's reference BAILS loudly where the wordless landing raised a
-	// false uncalled_function (`m.g z` is 7 interpreted) — the word's call
-	// is compiled after the landing and cannot be skipped.
+	// `/q` capture and a Function-typed slot's reference BAIL loudly at the
+	// landing (`m.q z` is `[z]` interpreted and used to compile `[42 0]`,
+	// the residual apply over the word's result; `m.g z` is 7 interpreted,
+	// where the wordless landing raised a false uncalled_function) — the
+	// word's call is compiled after the landing and cannot be skipped, and
+	// the maintainer chose the deferral kept on the runtime-defers ledger
+	// (2026-09-24) over a compile-time decline.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	rows := []struct {
 		src, interp, compiled, reason string
 		bail                          bool
 	}{
-		{nfQ + `m.f y`, "[y]", "[42 42]", "", false},
-		{nfQ + `m.f z`, "[z]", "[z]", "", false},
+		{nfQ + `m.f y`, "[y]", "", "CAPTURES the word `y`", true},
+		{nfQ + `m.f z`, "[z]", "", "CAPTURES the word `z`", true},
 		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
-		{nfR + `m.q z`, "[z]", "[42 0]", "", false},
+		{nfR + `m.q z`, "[z]", "", "CAPTURES the word `z`", true},
 		{nfR + `m.g z`, "[7]", "", "takes the word `z` as its argument", true},
 	}
 	for _, c := range rows {

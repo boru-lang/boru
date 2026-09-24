@@ -38,7 +38,14 @@ import (
 //
 // 2026-09-19: set when the interpreter fallbacks were removed. Not new bugs —
 // each row was already bailing and being answered by a silent re-run.
-const bailDefectCeiling = 52
+//
+// 52 -> 54 on 2026-09-24 (NUR190's open halves deferred, the maintainer's
+// call): fn-value.tsv:L317/L318 — a `/q` slot CAPTURES the following word —
+// bail at the landing's walk (vm:landing-quote-claim) where they passed by
+// coincidence; booked by choice on the per-file ledger of deferred
+// compilation failures (runtime_defers.tsv, runtime_defer_ledger_test.go),
+// which names every row this count counts.
+const bailDefectCeiling = 54
 
 var bailDefects = struct {
 	mu      sync.Mutex
@@ -82,6 +89,16 @@ func bookCompiledDefect(key, detail string, errC error) bool {
 	bailDefects.rows[key] = detail
 	bailDefects.reasons[bailReasonOf(ae.Detail)]++
 	return true
+}
+
+// bailDetailOf is bailReasonOf over an error: the surfaced BoruError's
+// detail without its position, or the error text when it is not one.
+func bailDetailOf(err error) string {
+	var ae *core.BoruError
+	if errors.As(err, &ae) {
+		return bailReasonOf(ae.Detail)
+	}
+	return bailReasonOf(err.Error())
 }
 
 // bailReasonOf strips a bail's position suffix so the ledger groups by site

@@ -439,7 +439,7 @@ two unit ledgers and the real-program gate, not re-derived):
 | engine entries / interp-entry rows (T2) | 422 / 78 | 422 / 80 | 422 / 80 | **408 / 75** |
 | real programs compiling | 34/62 | 34/62 | 34/62 | **36/62** |
 | known miscompiles LIVE on `main` (T3) | 0 | 1 | 0 | **0** |
-| silent miscompiles recorded and pinned pending | 4 | 4 | 4 | **3** (NUR154, NUR159, NUR186) — **2** after the branch result's re-step later the same day (NUR159 closed, NUR187 found and closed), **2** (NUR154, NUR190) after the named fn value's candidates (NUR186 closed, NUR188 and NUR189 found and closed, NUR190 found and pinned pending), **2** still (NUR154, NUR190's `/q` and Function-typed claims) after the landing's overload walk closed NUR190's other halves |
+| silent miscompiles recorded and pinned pending | 4 | 4 | 4 | **3** (NUR154, NUR159, NUR186) — **2** after the branch result's re-step later the same day (NUR159 closed, NUR187 found and closed), **2** (NUR154, NUR190) after the named fn value's candidates (NUR186 closed, NUR188 and NUR189 found and closed, NUR190 found and pinned pending), **2** still (NUR154, NUR190's `/q` and Function-typed claims) after the landing's overload walk closed NUR190's other halves, **1** (NUR154) after NUR190's open halves were deferred at the walk and kept on the runtime-defers ledger (2026-09-24, the maintainer's call) |
 | `knownDivergences` (corpus rows diverging) | 5 | 5 | 2 | **1** (NUR154) |
 
 The 21 that remain, by mechanism: provenance 6 (S5 — the rest of Stage

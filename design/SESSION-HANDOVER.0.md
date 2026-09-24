@@ -154,9 +154,12 @@ branch-carried def"**; the re-estimate is
    closed its typed-slot, Any-typed and anonymous halves — the landing
    carries the word and runs the interpreter's own plan over it — and
    left the `/q` capture and the Function-typed reference open: both
-   need the word's compiled call skipped, and the faithful decline or
-   bail would move a corpus ceiling by fn-value.tsv's two coincidental
-   rows (L317/L318), which is the maintainer's call. The placed value
+   need the word's compiled call skipped. The maintainer ruled
+   (2026-09-24): defer at the walk, and keep such deferrals on a ledger
+   — `runtime_defers.tsv`, the per-file twin of `compile_failures.tsv`,
+   names every corpus row that compiles and then bails, fn-value.tsv's
+   L317/L318 the first booked by choice (runtime defers 8 -> 10). The
+   placed value
    inside a code body (the same day) compiled the `[(lambda)]` and
    `[(mk 2)]` bodies into their units (seven census rows left), and the
    def-bound computed fn read at a closure body's tail (2026-09-24)

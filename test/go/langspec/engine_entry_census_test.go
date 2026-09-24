@@ -65,7 +65,7 @@ const engineEntryCeiling = 375 // the REGRESSION ceiling (lanes_test.go; end sta
 // vmDefer (eng/go/vm_defer.go) is the single chokepoint every reachable
 // designed-defer site routes through, so each defer is seen exactly once
 // with a stable site tag.
-const deferCeiling = 8 // the REGRESSION ceiling (lanes_test.go; end state 0): 8 on 2026-09-17 — vm:poly-nout-drift×3, vm:rematch-matched×3 (the corpus expansion), vm:poly-no-match×2. History: 5 // 5 (2026-08-25, Stage-1 baseline) -> 0 (Stage 9)
+const deferCeiling = 10 // the REGRESSION ceiling (lanes_test.go; end state 0): 8 -> 10 on 2026-09-24 (NUR190's open halves deferred, the maintainer's call): fn-value.tsv:L317/L318 (`m.f z`, `m get 'f' z` — a `/q` slot CAPTURES the following word) BAIL at the landing's walk (vm:landing-quote-claim×2) where they passed by coincidence (z's result is its own atom) and the same shape answered wrong off-corpus (`m.f y` was `[42 42]` for `[y]`); a compile-time decline would have been over-wide (no static model tells a `/q` slot from a typed slot's barrier), and the deferral is kept on the per-file runtime-defers ledger (runtime_defers.tsv, runtime_defer_ledger_test.go) as the maintainer asked. Before: 8 on 2026-09-17 — vm:poly-nout-drift×3, vm:rematch-matched×3 (the corpus expansion), vm:poly-no-match×2. History: 5 // 5 (2026-08-25, Stage-1 baseline) -> 0 (Stage 9)
 
 // deferLocalCeiling is the second, weaker kind of bail — and it exists because
 // a change made the difference measurable rather than theoretical.

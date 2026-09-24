@@ -13168,3 +13168,58 @@ the top-level redefinition with parity; the lang ledger 281 -> 282), eng
 core `TestCheckFnCarrierBindDepth` (the outermost depth, undef, reset).
 Docs: NUR.md (NUR192 FIXED, NUR193 new), COMPILABLE-SUBSET.md, the
 handover.
+
+## S1b — NUR190's open halves deferred at the walk, and the ledger of deferred compilation failures (2026-09-24)
+
+**The maintainer's call.** NUR190's two remaining halves — a `/q` slot
+CAPTURES the following word (`m.q z` compiled `[42 0]` for the
+interpreter's `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's
+L317/L318 passed by coincidence, z's result being its own atom) and a
+Function-typed slot takes the word's REFERENCE (`m.g z`, 7 interpreted,
+bailing loudly since the walk) — need the word's compiled call skipped
+and every later op re-planned, which the lowering cannot do. Asked to
+choose between a compile-time decline and a run-time deferral, the
+maintainer chose the deferral, KEPT ON A LEDGER. A decline would have
+been over-wide: no static model tells a `/q` slot from a typed slot's
+barrier, so it would have to fire on every landing whose candidate
+overloads carry either slot, declining typed-slot rows that run right
+today; the deferral is precise — only the walk that actually claims the
+slot dies.
+
+**The deferral.** The walk's `/q` arm (`landingWalk`) stood aside; it now
+defers at the landing (`vm:landing-quote-claim`) exactly as the
+Function-typed reference does (`vm:landing-claim`), and the program dies
+with the compiler-defect note. Pinned in `TestNamedFnCandidatesOpenShapes`
+(lang: `m.f y`, `m.f z`, `m.q z` booked on the unit ledger's bail line,
+34 -> 37) and the eng landing test's `/q` arm.
+
+**The ledger.** `runtime_defers.tsv` (test/go/langspec) is the per-file
+twin of `compile_failures.tsv` for the ledger's worse half — corpus rows
+that COMPILE and then BAIL, the compiled run dying with the
+compiler-defect note: the VM abandoning the run at a designed defer site
+(vmDefer, named beside the row) or raising an internal error the compiler
+admitted. The corpus walk (`TestSpecCompiledOrFallback`) gathers the
+bailing rows per file with their defer sites and the surfaced detail, and
+`runtime_defer_ledger_test.go` asserts the ledger both ways per file over
+every file the run walks — under `BORU_SPEC_FILES` too, so a filtered run
+over one family catches a new deferral in that family in seconds; a
+count above the ledger's lists the file's bailing rows with site and
+reason, a count below it is the ratchet tightening, and nothing
+regenerates the file. The corpus-wide runtime-defers gate keeps counting
+EVENTS by site (`deferCeiling` 8 -> 10, the two `/q` landings) and the
+walk's row count stays exact (`bailDefectCeiling` 52 -> 54); the ledger
+counts ROWS by file and names them. Its first lines are the corpus's
+standing bails — ten with a designed defer site (`convert`'s poly
+no-match, `set`'s result-count drift on a flex, the re-match of a class
+member's Any-typed list under fold/each/scan) and the rest internal
+errors the compiled runtime raised — and fn-value.tsv's L317/L318 are
+the first rows booked by choice.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with the two chosen pins raised and everything else at its ceiling — runtime defers 8 → 10 (vm:landing-quote-claim×2, fn-value.tsv L317/L318), the walk's bailing rows 52 → 54 and the new per-file ledger asserted over the 130 files walked (20 listed, 54 rows), interp-entry census rows 62, engine entries 375, the generated sweep's call-form failures 197, compile failures 21, compute gaps 16, islands 0, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 282 / 37 (the bail line: `m.f y`, `m.f z`, `m.q z`); the arity gate unchanged; the `MarkUncompilable` census 92. The shard table gained the three ledger tests (TestLangspecShardsPartition caught the omission on the first run).
+
+**Pins.** lang `named_fn_candidates_test.go` (the three `/q` rows as
+booked bails), eng `vm_landing_candidate_test.go` (the `/q` arm defers),
+langspec `runtime_defer_ledger_test.go` (every arm of the ledger check,
+the census, the site join, the detail strip) and `runtime_defers.tsv`.
+Docs: NUR.md (NUR190 CONTAINED), COMPILABLE-SUBSET.md, the replan's §12
+table, the handover.

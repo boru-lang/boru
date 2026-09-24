@@ -533,8 +533,11 @@ user still gets an answer while the case is open:
   fallback fires (`m.f z` with a nullary and a unary overload is `[42
   0]`), an anonymous fn parks (`m.l z` is `[fn lam(Integer) 0]`), an
   Any-typed slot's claim strands (`m.a z` raises `signature_error` on
-  both lanes); a `/q` capture stands aside and a Function-typed reference
-  bails, the open half. A
+  both lanes); a `/q` capture and a Function-typed reference DEFER loudly
+  at the walk (2026-09-24, the maintainer's call — a compile-time decline
+  would be over-wide, no static model telling a `/q` slot from a typed
+  slot's barrier), and the corpus keeps such rows on the runtime-defers
+  ledger, `runtime_defers.tsv` (fn-value.tsv L317/L318). A
   CONCRETE named fn at a fn or lambda frame's tail (`def mk fn
   [[][Function][M.inc]] end (mk)`, the original witness) DECLINES the unit
   with the interpreter's raise pinned beside it — the unit-level trap is
