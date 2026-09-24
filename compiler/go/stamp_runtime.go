@@ -394,3 +394,35 @@ func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, po
 	impl.SetCompiled(ref)
 	return ref
 }
+
+// StampTokenBody is the run-time stamp of a TOKEN body (S3's first slice,
+// 2026-09-24): a quoted list a native hands the InvokeBody seam at run time
+// — read from a flex, returned by a fn, passed as a List param — that the
+// program could not lower because the body did not exist until it ran, so
+// the seam stepped it on a pooled sub-engine once per application (the
+// interp-entry census's code-bodies.tsv, twenty-one rows). The body
+// becomes the one signature of a synthetic anonymous fn — one unnamed param
+// per seam input, in stack order, typed by the input the seam holds (the
+// VM keys the unit by those types), over the tokens — and takes
+// the detached stamp every fn value takes (StampDetachedSig: compiled on a
+// fork of r against r's live bindings, its free words snapshotted for the
+// freshness dance), so the VM hosts the unit where it stepped the tokens.
+// The same hazards that keep a fn body from the lazy stamp keep a token
+// body: a body that mutates the registry when run (bodyHasReplayHazard —
+// the compile pass RUNS it in check mode) and a flow sentinel (break /
+// continue / return, storedSigEligible's rule). ok=false is the seam's
+// interpreter path, byte-identical to before.
+func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Type, pos core.SrcPos) (*CompiledFnRef, bool) {
+	if r == nil || !r.RuntimeStampingEnabled() || len(tokens) == 0 || bodyHasReplayHazard(core.NewList(tokens)) {
+		return nil, false
+	}
+	params := make([]core.FnParam, len(inputTypes))
+	for i, t := range inputTypes {
+		if t == nil {
+			t = core.TAny
+		}
+		params[i] = core.FnParam{Type: t}
+	}
+	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
+	return StampDetachedSig(r, fd, 0, pos)
+}

@@ -196,7 +196,16 @@ branch-carried def"**; the re-estimate is
    seam (the same day): a module fn value's own detached stamp is hosted
    nested at every dynamic-apply site where the frame entry declined it
    (callbacks L146, module-composition L100, module-fnvalue-boundary L51
-   left the census); filter's predicate
+   left the census). S3's first slice (the same day): a TOKEN body reaching
+   the InvokeBody seam at run time — read from a flex, returned by a fn,
+   passed as a List param — is stamped at run time (a synthetic fn over the
+   tokens, typed by the seam's inputs, memoised by text or ID and input
+   shape, the detached ref's freshness) and hosted; twenty of
+   code-bodies.tsv's twenty-one rows and four elsewhere left the census.
+   Open there: `args` inside a token body, a map literal bearing paren
+   groups (the dyn-scope rescue's family), an identity-less body carrying a
+   reference value; NUR195 recorded (a flow sentinel in a computed body,
+   swallowed by the compiled lane); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

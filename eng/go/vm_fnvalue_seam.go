@@ -159,7 +159,7 @@ func (vc *vmContext) hostFnValueUnit(reg *core.Registry, ref *compiler.CompiledF
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = false
 	defer func() { vc.rootRetTrim = prev }()
-	return vc.hostForeign(ref.Prog, reg, ref.Unit, args, ref.Captures)
+	return vc.hostForeign(ref.Prog, reg, ref.Unit, args, ref.Captures, false)
 }
 
 // deliverArgs applies the interpreter's binding rule to the matched args

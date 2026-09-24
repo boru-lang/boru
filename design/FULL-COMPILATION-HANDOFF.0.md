@@ -13322,6 +13322,114 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## S3's first slice — the run-time token body at the seam (2026-09-24)
+
+**The family.** Read from the 53-row interp-entry census: code-bodies.tsv's
+twenty-one rows, every one `Engine.Run 1, RunResolved 1` — a quoted list
+read from a flex (`each bodies.inc xs`, `each s.body xs`), returned by a fn
+(`each (mkb) xs`, `do (mk 0)`, `if true (mk 0) [0]`, `fold (mk 0) xs 0`),
+selected by a branch, passed as a List param (`def f fn [[b:List][List][each
+b xs]]`), a map member through a Map param, a list built by `push` — and
+four rows of the same seam elsewhere (control.tsv:L82's `do (ops get …)`,
+word-splice.tsv:L126's `do [word xs]`, fold-map-filter.tsv:L239's fn-local
+fold body, generics-fn.tsv:L55's fold body over a generic element). The
+body exists only at run time, so the program could not lower it; the
+native's handler hands it to the InvokeBody seam as a raw token list, and
+`invokeClosureOn` stepped it on a pooled sub-engine once per application
+(`core.RunResolved`). This is what the re-plan calls S3 ("runtime
+compilation: computed bodies … memoised by body key and dep generation").
+
+**The stamp.** A token body reaching the seam is compiled AT RUN TIME
+(eng/go/vm_token_body.go over `compiler.StampTokenBody`): the body becomes
+the one signature of a synthetic anonymous fn — one unnamed param per seam
+input, in stack order, TYPED by the input the seam holds — and takes the
+detached stamp every fn value takes at its first application
+(`StampDetachedSig`: compiled on a fork of the calling registry against its
+live bindings, the free words snapshotted), then is hosted nested as a
+foreign closure is (`hostForeign`, `applyClosure`'s arm) with the token
+seam's count-agnostic residual (`rootRetTrim` false: the unit's whole
+frame comes back, unconsumed inputs beneath the results — exactly
+RunResolved's stack; `10 fold (mk) [1 2 3]` over `[sub]` is 4 on both
+lanes). Typing the params by the runtime inputs is what makes `fold`'s
+accumulator compile: as an `Any` it stayed in the residual as a possible fn
+value and the stamp declined (`unapplied fn-value in body residual`); as an
+Integer it is data, and the body dispatches natively besides.
+
+**The memo.** The unit is memoised on the calling registry
+(`core.Registry.TokenBodyStamp`, per registry, a fork starts empty) by the
+body and the input shape — count and concrete types, so a heterogeneous
+collection compiles once per type it meets (`each (mk) [1 "a" [2]]` over
+`[typeof]`, three units). The body's key is its TEXT — the tokens rendered
+with their positions — when every token is identity-free (a word, a
+scalar, a list of those): a list stored in a flex or built by `push` at
+run time carries no ID (the mode-gated ID elision), a fn that returns a
+quoted literal hands out a fresh clone with a fresh ID per call, and two
+bodies of the same text at the same positions are the same program text,
+so one unit answers both, error positions included. A body carrying a
+reference value (a map, a flex) is keyed by its ID — two such bodies can
+render alike around different instances and the unit bakes the first — and
+without one it is not named and the seam keeps the interpreter (`do (push
+(quote size) [{a:1}])`, open). A declined body is remembered as declined,
+so it pays the compile once. Freshness is the detached ref's own: DepSnap
+against the registry's live bindings, and the JIT re-stamp bounded by its
+try budget — a free word, a called fn or a compound binding rebound
+between applications recompiles (`def k 10` between two `each (mk) [1]`
+answers [11]), and one rebound past the budget takes the interpreter,
+which resolves it live (the budget's point; measured: every user def a
+token body reads is a LIVE read — word, fn, typed fn, compound, string,
+class — so DepSnap catches nothing today, and the dance stays for the day
+a stamp bakes one). The cache keeps the FIRST ref: its box carries the
+current twin and the tries spent, as the callback seam keeps the sig's;
+caching the twin would hand every rebind a fresh budget.
+
+**The escaped flow.** A `break` or `continue` raised inside the hosted body
+with no loop in the hosted frames — `for 5 [do b i]` with `b` a computed
+body whose called fn breaks — used to be the seam's sub-engine's to hand
+back: a non-top engine exits cleanly with the registry's FlowCtrl set and
+the outer run resolves it (Engine.exitWithFlowCtrl's sub-engine contract,
+the VM's escapedFlow after the native returns). A hosted context has no
+such contract, and the first cut bailed with `flow signal with no
+enclosing loop` (four unit-suite programs, the lang ledger's bail line 37
+-> 41 for a moment). The hosted token body now carries the contract
+(`vmContext.flowEscapes`): `flowSignal` returns a `flowEscape` instead of
+the loop-less internal error, and the seam sets the registry's flag and
+returns no values, as the sub-engine did — the `for` ends or steps on, on
+both lanes, and the ledger is back at 37. The other hosts (a foreign
+closure, a callback's unit) keep their contract.
+
+**What stays the interpreter's**, each byte-identical to before: an empty
+body, a body with a replay hazard (an import, a capitalised def — the
+compile pass runs the body in check mode) or a flow sentinel
+(`storedSigEligible`'s rule, as for a fn body), a body the stamp declines
+(`args` read inside a token body — control.tsv:L83; a map literal bearing
+paren groups — code-bodies.tsv:L77, the dyn-scope rescue's family), a
+reference-bearing body with no identity, and a stale ref past its budget.
+
+**Found on the way.** NUR195, recorded: a flow sentinel inside a COMPUTED
+body under `each` (`def mk fn [[][List][quote [break]]] end each (mk) [1 2
+3]`) is the interpreter's `flow_error: break outside loop` and the
+compiled lane's `[[1 2 3]]`, silently — on main before this change, which
+declines a sentinel body and leaves the seam as it was; pinned as it
+stands in `TestComputedBodyFlowSentinelPending`. And a pre-existing bail:
+`5 do (mk)` over an EMPTY computed body is `CALL_DYNAMIC underflow` on the
+compiled lane for the interpreter's `[5]` (loud; `do (mk)` with nothing
+beneath agrees) — not in any suite, noted here for the next `do` cut.
+
+**Measured:** twenty-four interp-entry census rows leave and none enter (53 -> 29; the ceiling fails both ways): code-bodies.tsv ×20 (L77 stays, the map literal with paren groups), control.tsv:L82, word-splice.tsv:L126, fold-map-filter.tsv:L239, generics-fn.tsv:L55. Engine entries 335 -> 281 (Engine.Run 335 -> 281, RunResolved 67 -> 14, runPooledSub 10 -> 9, CallBoru 235), measured with BORU_LOG_CENSUS_ROWS=1 against d75dd75. The lang ledger 282 / 37 (unchanged; the flow-escape contract brought the bail line back from a momentary 41); the region oracle 50747 reproduced over 76945 descriptors (the hosted units walked), diverged-value 3 (NUR152), over-claimed 1 (NUR141); the sweep ceilings unchanged (197 / 29 / 2 / 2), runtime defers 54 (the gate 10), real programs 36 of 62; MarkUncompilable sites 88.
+
+**Pins.** lang `runtime_token_body_test.go` (forty-odd rows: the twenty
+code-bodies rows and the four elsewhere native and entering nothing, the
+stack order, the heterogeneous collection, one body under two arities, the
+three rebinds recompiling and one past the budget, the identity-keyed and
+the unnamed body, the four escaped flows, the open rows; a raise and a
+no-match inside a stamped body named, detailed and rendered alike;
+NUR195's pending pin), eng `TestTokenBodyKeying` and
+`TestTokenBodyFlowEscape`, compiler `TestStampTokenBodyGuards` (stamping
+not armed, an empty body, a replay hazard, a nil input type), core
+`TestTokenBodyStampCache` (the cache and the fork's fresh one); the piece
+map assigns the new VM file; the interp-entry and engine-entry ceilings to
+the live values. Docs: the handover, NUR.md (NUR195).
+
 ## The foreign-home fn value at the apply seam — four census rows leave (2026-09-24)
 
 **The rows.** Read from the 57-row interp-entry census, one mechanism (and a fourth row the measurement found, module-composition.tsv:L75 — a callback lambda applying a module fn fetched from an exported map, `each ([k:String] => [((M.tbl k get) 4)]) …`, once per element):

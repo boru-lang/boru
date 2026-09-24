@@ -146,6 +146,15 @@ type vmContext struct {
 	// test-describe, each — which needs the VM seam there just as the main
 	// registry does). Restored to nil at run end by runProgram's defer.
 	foreignInvokers []*core.Registry
+	// flowEscapes marks a HOSTED context whose enclosing run resolves a
+	// break/continue that finds no loop in this context's own frames: the
+	// run-time token body's (vm_token_body.go), whose interpreter twin — the
+	// InvokeBody seam's sub-engine — exits cleanly with the registry's
+	// FlowCtrl set for the outer run to translate (Engine.exitWithFlowCtrl's
+	// sub-engine contract, escapedFlow). flowSignal then returns a
+	// flowEscape instead of the loop-less internal error, and the seam
+	// hands the signal to the enclosing run's registry.
+	flowEscapes bool
 	// rootRetTrim marks a re-entrant run entered through the fn-VALUE seam
 	// (enterCallbackUnit): its root RET applies the CallBoru return
 	// discipline (checkCallBoruContract) rather than __RC's.
@@ -616,6 +625,12 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 				return res, err
 			}
 		}
+		// A TOKEN body that exists only at run time is compiled at run time
+		// and hosted here (vm_token_body.go, S3's first slice); what it
+		// declines still steps below.
+		if res, err, ran := vc.invokeTokenBody(reg, body, inputs); ran {
+			return res, err
+		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
 	// A fn-VALUE closure — a capturing `fn` / `=>` literal minted at run
@@ -692,7 +707,7 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 		prev := vc.rootRetTrim
 		vc.rootRetTrim = false
 		defer func() { vc.rootRetTrim = prev }()
-		return vc.hostForeign(p, reg, cl.Unit, args, cl.Captures)
+		return vc.hostForeign(p, reg, cl.Unit, args, cl.Captures, false)
 	}
 	// Inputs fill the leading param slots, captures the trailing ones
 	// (StartFnCompile registers params before captures) — the same split
@@ -3659,6 +3674,12 @@ func (vc *vmContext) opForSetup(stack []core.Value, loops []vmLoop, slot int, cu
 // compiled. Split out of run to keep that switch under the complexity budget.
 func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vmLoop, locals, stack []core.Value, pc, curUnit int, debug []core.SrcPos) ([]vmFrame, []vmLoop, []core.Value, []core.Value, int, int, error) {
 	if len(loops) == 0 {
+		if vc.flowEscapes {
+			// A hosted token body: the signal is the ENCLOSING run's to
+			// resolve, as the seam's sub-engine would have handed it back
+			// (vmContext.flowEscapes).
+			return nil, nil, nil, nil, 0, 0, &flowEscape{op: op}
+		}
 		return nil, nil, nil, nil, 0, 0, vmErrAt(debug, pc, "flow signal with no enclosing loop")
 	}
 	target := len(loops) - 1
