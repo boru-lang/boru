@@ -243,7 +243,13 @@ branch-carried def"**; the re-estimate is
    body lands the same day (the handoff log's "the variadic loop body"
    entry: a loop body whose one result is a 0-or-1 branch is admitted,
    the S5 first-value bind over such a loop declining instead;
-   code-bodies L181 / L182 compile, 16 -> 14); filter's predicate
+   code-bodies L181 / L182 compile, 16 -> 14); the var splice's
+   token sites land the same day (the handoff log's "the var splice's
+   token sites" entry: `var`'s synthesized def and __varundef tokens carry
+   the declaration name's position, so the root `do [var …]` twins adopt
+   and place — code-bodies L197 compiles, 14 -> 13; NUR202 recorded on the
+   way: a keep-defs body over a GRADUAL list runs as a const the native
+   drives and its def does not leak, `[[1 1 1]]` for `[[1 2 3]]`, fenced); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

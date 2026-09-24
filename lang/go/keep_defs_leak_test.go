@@ -169,3 +169,24 @@ func TestCalleeDefSurvivesTrappedRaisePending(t *testing.T) {
 		t.Errorf("%q: NUR201's compiled value %v / %v (compiled=%v), pinned as [error(x) 0] — closing the divergence must update this pin", src, gotC, errC, compiled)
 	}
 }
+
+// TestKeepDefsConstBodyOverGradualListPending pins NUR202 as it stands: a
+// keep-defs token body over a GRADUAL list inside a fn unit — `def f fn
+// [[xs:List][List][def t 0 each [def t (t add 1) t] xs]]  f [1 2 3]` —
+// lowers the body as a CONST the native runs per element (PUSH_CONST_FRESH
+// then CALL_NATIVE each, the dynamic-callback path), and that run does not
+// leak the body's def where the interpreter's each does: `[[1 2 3]]`
+// interpreted, `[[1 1 1]]` compiled. The same body over a literal list
+// compiles to a closure unit and agrees. Closing it must update this pin.
+func TestKeepDefsConstBodyOverGradualListPending(t *testing.T) {
+	src := `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if errI != nil || fmt.Sprint(gotI) != "[[1 2 3]]" {
+		t.Errorf("%q: the interpreter leaks the body's def per element: %v / %v", src, gotI, errI)
+	}
+	if errC != nil || !compiled || fmt.Sprint(gotC) != "[[1 1 1]]" {
+		t.Errorf("%q: NUR202's compiled value %v / %v (compiled=%v), pinned as [[1 1 1]] — closing the divergence must update this pin", src, gotC, errC, compiled)
+	}
+	// The literal-list twin lowers as a closure unit and agrees.
+	requireEngineParity(t, `def f fn [[][List][def t 0 each [def t (t add 1) t] [1 2 3]]] end f`, true)
+}

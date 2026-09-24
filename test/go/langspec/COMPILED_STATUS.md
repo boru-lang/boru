@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8225** compilable, 338 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8211 |
+| compiled natively (fallback-free) | 8212 |
 | compiled with an interpreter island | 0 |
-| does not compile | 14 |
+| does not compile | 13 |
 | static check-error (invalid in both engines) | 338 |
 
-**8211 / 8225** compilable rows produce a Program (99% — 8211 of those fully native).
+**8212 / 8225** compilable rows produce a Program (99% — 8212 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,11 +22,11 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 14 | 14 | → 0 |
+| compile failures | 13 | 13 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
 | tier 2 reducible | 4 | 4 | → 0 |
-| compute frontier | 9 | 9 | → 0 |
+| compute frontier | 8 | 8 | → 0 |
 
 ## Compile failures by reason
 
@@ -34,12 +34,12 @@ The compiler is interpreter-independent once compile failures and islands both r
 | ---: | --- | --- |
 | 3 | operand provenance | soundness |
 | 2 | other: dynamic-scope def `i` of unpromoted computed value | coverage |
-| 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it | coverage |
 | 1 | code-body word (NoEvalArgs) | coverage |
 | 1 | dispatch recovery (best guess) | soundness |
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) | coverage |
 | 1 | other: fn-value application bounded by a paren (dynamic value precedes args) | coverage |
 | 1 | other: for: body not captured | coverage |
+| 1 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it | coverage |
 | 1 | quoted-operand word | coverage |
 | 1 | suppressed runtime error | correct-error |
 
@@ -49,11 +49,11 @@ The compiler is interpreter-independent once compile failures and islands both r
 | soundness | 4 |
 | scheduling | 0 |
 | opcode | 0 |
-| coverage | 9 |
+| coverage | 8 |
 
 ## Re-scoped P7 partition
 
-Over the 14 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **9** compute-frontier gaps.
+Over the 13 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **8** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -73,7 +73,7 @@ _None._
 | ---: | --- |
 | 3 | operand provenance |
 | 2 | other: dynamic-scope def `i` of unpromoted computed value |
-| 2 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it |
 | 1 | dispatch recovery (best guess) |
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) |
+| 1 | other: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it |
 

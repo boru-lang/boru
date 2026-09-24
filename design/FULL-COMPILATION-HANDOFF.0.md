@@ -13322,6 +13322,55 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The var splice's token sites — the root `do [var …]` twin places (2026-09-24)
+
+**The row.** code-bodies.tsv L197 (`do [var [[[k 1]] k add 1]]`) declined
+"twin regime: a bind transition has no stream placement (a multi-run-body
+or post-trap twin), so the rollback would lose it" — at the ROOT only:
+inside a fn unit or a loop fragment the same shape compiled, and the
+hand-written pair `do [def k 1 k add 1 undef k]` always compiled at the
+root.
+
+**The cause.** `var` splices `def k 1 end … __varundef k` onto the tape
+(basic/go's VarHandler), and the synthesized tokens carried no source
+position. A bind transition takes its site from the value's position or,
+failing that, from the word dispatching (core's bindSitePos falls back to
+CurWordPos, the tape token's own position): the def's twin had the value
+`1`'s site, the UNDEF's twin — `__varundef` supplies no value — had the
+synthesized token's 0:0. The root's adoption of a once-run keep-defs
+body's twins (AdoptBodyTwins) keys on the body's token sites and skips a
+twin with no site, so the undef twin stayed table-only and unplaced, and
+the full-placement gate (twinsFullyPlaced) declined the program.
+
+**The fix.** The synthesized `def`, name, `__varundef` and name tokens
+carry the declaration NAME's position (WithPos): the def's site is the
+declaration, the undef's the same token, both inside the body's sites, so
+the twins adopt as placed BIND_TWIN replays exactly as the hand-written
+pair does. VarHandler only; no compiler change.
+
+**Found on the way — NUR202.** Measuring L189 (`def f fn
+[[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]]  f
+[1 2 3]`, "fn f: body result of unknown provenance") beside its
+List-returning twin: the twin COMPILES, to `[[1 1 1]]` for the
+interpreter's `[[1 2 3]]` — over a GRADUAL list the each body lowers as a
+const the native runs per element (PUSH_CONST_FRESH then CALL_NATIVE each,
+the S1a dynamic-callback path) and that run does not leak the body's def to
+the next element, where the interpreter's eachHandler drives InvokeBody on
+the shared registry with no def cleanup. Recorded and fenced
+(TestKeepDefsConstBodyOverGradualListPending); present on main at 3768c46
+(the same wrong value on a clean worktree). The next increment: the
+const-body run of a keep-defs body leaks as InvokeBody does, or declines.
+
+**Measured:** code-bodies.tsv 7 -> 6 (L197) — the corpus's compile
+failures 14 -> 13; the full corpus 8563 rows / 8211 -> 8212 compiled with the interp-entry census 24, the engine-entry census 166, the runtime-defer census 10, the compute-gap gate 9 -> 8 (L197's twin-regime gap) and the sweep's call-form failures 197 -> 195 (two `var`-bearing variants under a root do body compile), every other gate at its value; the lang ledger
+285 / 44 unchanged; the unit suites of core, eng, compiler, check, basic,
+lang and the arity gate green.
+
+**Pins.** lang TestVarInRootDoBodyCompiles (the root shapes, the placed
+replays, the shapes that compiled before), TestKeepDefsConstBodyOverGradualListPending
+(NUR202's fence). Docs: NUR.md (NUR202 Pending), this entry, the handover.
+
+
 ## The variadic loop body — a 0-or-1 branch as a loop's per-iteration result (2026-09-24)
 
 **The rows.** code-bodies.tsv L181 (`def t 0  for 2 [if true [def t (t
