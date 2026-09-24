@@ -1577,6 +1577,9 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		if err != nil {
 			return nil, fmt.Errorf("each: element %d: %w", i, err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil // the body's break/continue ends the each; the run resolves it
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("each_error", fmt.Sprintf("each: element %d: body produced no result", i), "each")
 		}
@@ -1657,6 +1660,9 @@ func forEachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) 
 		elem := dataList.Get(i)
 		if _, err := InvokeBody(reg, args[0], []Value{elem}); err != nil {
 			return nil, fmt.Errorf("for-each: element %d: %w", i, err)
+		}
+		if BodyEscaped(reg) {
+			return nil, nil
 		}
 	}
 	return nil, nil
@@ -2035,6 +2041,9 @@ func doFold(reg *Registry, acc Value, body Value, data ReadList) ([]Value, error
 		if err != nil {
 			return nil, fmt.Errorf("fold: step %d: %w", i, err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("fold_error", fmt.Sprintf("fold: step %d: body produced no result", i), "fold")
 		}
@@ -2066,6 +2075,9 @@ func scanHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 		res, err := InvokeBody(reg, args[0], []Value{acc, elem})
 		if err != nil {
 			return nil, fmt.Errorf("scan: step %d: %w", i, err)
+		}
+		if BodyEscaped(reg) {
+			return nil, nil
 		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("scan_error", fmt.Sprintf("scan: step %d: body produced no result", i), "scan")
@@ -2120,6 +2132,9 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			if err != nil {
 				return nil, fmt.Errorf("outer: (%d,%d): %w", i, j, err)
 			}
+			if BodyEscaped(reg) {
+				return nil, nil
+			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("outer_error", fmt.Sprintf("outer: (%d,%d): body produced no result", i, j), "outer")
 			}
@@ -2165,6 +2180,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			if err != nil {
 				return nil, fmt.Errorf("inner: pair %d: %w", i, err)
 			}
+			if BodyEscaped(reg) {
+				return nil, nil
+			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair %d: no result", i), "inner")
 			}
@@ -2176,6 +2194,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			res, err := InvokeBody(reg, args[1], []Value{acc, paired[i]})
 			if err != nil {
 				return nil, fmt.Errorf("inner: fold %d: %w", i, err)
+			}
+			if BodyEscaped(reg) {
+				return nil, nil
 			}
 			if len(res) == 0 {
 				return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold %d: no result", i), "inner")
@@ -2206,6 +2227,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 				if err != nil {
 					return nil, err
 				}
+				if BodyEscaped(reg) {
+					return nil, nil
+				}
 				if len(res) == 0 {
 					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: pair (%d,%d,%d): no result", i, j, k), "inner")
 				}
@@ -2216,6 +2240,9 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 				res, err := InvokeBody(reg, args[1], []Value{acc, paired[k]})
 				if err != nil {
 					return nil, err
+				}
+				if BodyEscaped(reg) {
+					return nil, nil
 				}
 				if len(res) == 0 {
 					return nil, reg.BoruError("inner_error", fmt.Sprintf("inner: fold (%d,%d,%d): no result", i, j, k), "inner")
@@ -2323,6 +2350,9 @@ func eachrankWalk(reg *Registry, depth int, body Value, cell Value) ([]Value, er
 		if err != nil {
 			return nil, fmt.Errorf("eachrank: %w", err)
 		}
+		if BodyEscaped(reg) {
+			return nil, nil
+		}
 		if len(res) == 0 {
 			return nil, reg.BoruError("eachrank_error", "eachrank: body produced no result", "eachrank")
 		}
@@ -2337,6 +2367,9 @@ func eachrankWalk(reg *Registry, depth int, body Value, cell Value) ([]Value, er
 		sub, err := eachrankWalk(reg, depth-1, body, list.Get(i))
 		if err != nil {
 			return nil, err
+		}
+		if BodyEscaped(reg) {
+			return nil, nil
 		}
 		out[i] = sub[0]
 	}

@@ -76,75 +76,25 @@ func flowCtrlOf(op compiler.Opcode) core.FlowCtrl {
 }
 
 // tokenBodyKey names one body under one input shape, and reports ok=false
-// for a body it cannot name. The body is keyed by its TEXT — its tokens
-// rendered with their positions — when every token is identity-free (a
-// word, a scalar, a list of those): two such bodies of the same text at
-// the same positions are the same program text, so one unit answers both,
-// error positions included, and a fn that returns a quoted literal (a
-// fresh clone with a fresh ID per call) meets its unit again instead of
-// paying a compile per call. A body carrying a reference value (a flex, a
-// map, an object — a list built by `push` around a live store) is keyed
-// by its value ID instead, since two such bodies can render alike around
-// different instances and the unit bakes the first; without an ID it is
-// not named at all and the seam keeps the interpreter. Each input's type
-// closes the key.
+// for a body it cannot name: the body's own name (core.TokenBodyKey — its
+// tokens rendered with their positions when every token is identity-free,
+// else its value ID; a reference-bearing body with no ID is not named at
+// all and the seam keeps the interpreter) closed by this seam's shape, the
+// input count and each input's type.
 func tokenBodyKey(body core.Value, tokens, inputs []core.Value) (string, bool) {
-	var b strings.Builder
-	switch {
-	case tokenBodyContentKeyable(tokens):
-		b.WriteString("txt:")
-		for _, tok := range tokens {
-			p := tok.Pos()
-			b.WriteString(tok.String())
-			b.WriteByte('@')
-			b.WriteString(strconv.Itoa(p.Row))
-			b.WriteByte(':')
-			b.WriteString(strconv.Itoa(p.Col))
-			b.WriteByte(' ')
-		}
-	case body.ID != "":
-		b.WriteString("id:")
-		b.WriteString(body.ID)
-	default:
+	base, ok := core.TokenBodyKey(body, tokens)
+	if !ok {
 		return "", false
 	}
+	var b strings.Builder
+	b.WriteString(base)
 	b.WriteByte('/')
 	b.WriteString(strconv.Itoa(len(inputs)))
 	for _, in := range inputs {
 		b.WriteByte(',')
-		b.WriteString(tokenBodyInputType(in).Name())
+		b.WriteString(core.TokenBodyInputType(in).Name())
 	}
 	return b.String(), true
-}
-
-// tokenBodyContentKeyable reports whether every token is identity-free — a
-// word, a scalar, or a list of those, at any depth — so the body's rendered
-// text names it (tokenBodyKey).
-func tokenBodyContentKeyable(tokens []core.Value) bool {
-	for _, tok := range tokens {
-		switch d := tok.Data.(type) {
-		case core.WordInfo:
-			continue
-		case core.ListPayload:
-			if !tokenBodyContentKeyable(d.Elems) {
-				return false
-			}
-			continue
-		}
-		if tok.Parent == nil || !tok.Parent.ConformsTo(core.TScalar) {
-			return false
-		}
-	}
-	return true
-}
-
-// tokenBodyInputType is the type the synthetic signature declares for one
-// seam input: its concrete Parent, Any for a value with none.
-func tokenBodyInputType(v core.Value) *core.Type {
-	if v.Parent == nil {
-		return core.TAny
-	}
-	return v.Parent
 }
 
 // invokeTokenBody runs body — a raw token list at the InvokeBody seam — as a
@@ -170,7 +120,7 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	} else {
 		types := make([]*core.Type, len(inputs))
 		for i, in := range inputs {
-			types[i] = tokenBodyInputType(in)
+			types[i] = core.TokenBodyInputType(in)
 		}
 		r, ok := compiler.StampTokenBody(reg, tokens, types, body.Pos())
 		if !ok {

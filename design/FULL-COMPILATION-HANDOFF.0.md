@@ -13322,6 +13322,141 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The boru:test bodies reach the VM — Test.invoke through the seam, the throwaway signature stamped at run time (2026-09-24)
+
+**The rows.** Eight of the interp-entry census's twenty-nine rows were
+`boru:test`'s: `Test.invoke` ran its subject word on a FRESH engine of its
+own (module-test.tsv L37/L38, corpus-modules.tsv L165/L166 — one
+`Engine.Run` per invoke, one per `run-spec` case), and `Test.check-prop`
+bound a body the recorder had not compiled — a property that leaves its
+`Any` input beneath its residual (`['c','d']`, `[0 gte]`: "unapplied
+fn-value in body residual" at the carrier compile), a body read RAW from a
+`Test.prop` spec (`p get "gen"`), a generator over the opaque `r`
+(`[r.int 0 100]`) — in a throwaway CallBoru frame per iteration, and BOTH
+shrinkers rebuilt that frame per candidate whatever the body's form
+(module-test.tsv L48/L49/L50, corpus-modules.tsv L164). The value-level
+shrinker also replayed each candidate — a single literal push — through a
+fresh engine, and the gen-program shrinker's recorder run reported bare.
+
+**Test.invoke.** The subject runs through the InvokeBody seam — the word's
+tokens as the body (dotted names lex as before), the inputs as resolved
+stack data — so a compiled run hosts it as a run-time-stamped unit (S3's
+token-body host) and a `run-spec` dispatches every case on the VM; an
+error is the invoke's Error VALUE as before. An undefined subject (L165/L166)
+declines the stamp at the check pass and takes the seam's interpreter path,
+which raises exactly what the fresh engine raised: the two rows stay, a
+bare read of the interpreter's undefined-word raise that no pre-check
+reproduces (the engine's resolution has a priority block, DefStacks, types
+and hints a native cannot replay).
+
+**The throwaway signature, stamped at run time.** `native.StampBodySig` is
+the run-time twin of the recorder's stored-param-body carrier: a handler's
+throwaway signature over a RAW body — its own params, the tokens — is
+compiled once per param shape as a detached unit (StampDetachedSig) whose
+params are TYPED BY THE RUN-TIME INPUTS, the token-body host's lesson (an
+`Any` input left in the residual is a fn value the checker cannot rule
+out; a String is not), memoised on the registry by the body's name and the
+shape (`core.TokenBodyKey`, moved from the VM seam so both share it, closed
+by each param's name and concrete type), a declined shape remembered. The
+returned signature carries the ref, InvokeCallback hosts it nested on the
+VM, and CallBoru — the very frame the unit models — is its per-invoke
+fallback; an input that does not conform to the declared param keeps the
+throwaway signature, so CallBoru raises what it raised. check-prop's one
+dispatcher (`checkPropBody`) serves the driver's loop and both shrinkers:
+the carrier when the recorder compiled the body, the stamped signature
+otherwise, the frame last.
+
+**The shrinkers.** The value-level shrinker's candidates are single literal
+pushes, and the engine's step of a plain literal is the push of that value
+(identity, Quoted mark and all — pinned against the engine's own replay):
+`stackform.Eval` answers a form of plain literal pushes without an engine
+run, and replays a call, a quote, a Function push or a stepped literal (a
+paren group, a splice, sugar, a reach) on the engine as before. The
+gen-program shrinker's recorder run — the recorder observes the ENGINE's
+operations, every push and dispatch in the order the tree-walker performs
+them, and the VM performs none of them — reports its entries attributed
+"stackform-record", as the debugger's observation runs report
+"debug-observe": an observation of the interpreter, not a program the
+compiled lane handed back to it (the run's own result is discarded).
+
+**What stays.** L48/L49/L50 keep their generator: `[r.int 0 100]` — a member
+fn read from the opaque Map param applied to forward args — declines as
+"unapplied fn-value in body residual (dynamic apply not lowered)", the
+dynamic-landing frontier (the fn-value islands: fn-value.tsv L19/L28,
+module-fnvalue-boundary.tsv L24/L32/L33), not a stamp's to fix; their
+property `[0 gte]` is hosted now. L165/L166 as above.
+
+**Measured:** the interp-entry census 29 -> 26 rows (module-test.tsv L37/L38, corpus-modules.tsv L164 leave; none enter), the engine-entry census 281 -> 172 unattributed runs (Engine.Run 281 -> 172, CallBoru 235 -> 132, RunResolved 14 -> 16 — the undefined subjects on the seam's interpreter path — runPooledSub 9, vm:island-resolved 7, InvokeCallback:callboru 5, vm:island 4), the corpus otherwise unchanged (8563 rows, 8204 compiled, the region oracle's diverged-value 3 / over-claimed 1 as before, the compile-failure, runtime-defers and sweep ledgers at their values), the lang ledger's compile-failure line 286 and bail line 44 unchanged, the unit suites of core, eng, compiler, check, basic, lang (with its modules, native and stackform packages) and the arity gate green.
+
+**Pins.** lang `TestInvokeSubjectHostsOnVM` (no unattributed entry for the
+plain, dotted, `run-spec` and raising subjects; both lanes' answers),
+`TestInvokeSubjectUndefinedStaysInterpreted`,
+`TestCheckPropShrinkAddsNoInterpEntries` (a failing property's shrink, the
+atom-bodied corpus row, a raw `Test.prop` spec — zero unattributed entries
+and the interpreter's result map; the recorder run attributed); native
+`TestStampBodySigHostsAndRemembers` / `TestStampBodySigKeepsTheFrame`;
+stackform `TestEvalLiteralsOnlyMatchesTheEngine`,
+`TestCompileAttributesRecorderRun`; core `TestTokenBodyKey`; the arity
+gate pins the stamp's positional binding. Docs: the handover, this entry.
+
+## NUR196 closed — the escaped body ends the iteration (2026-09-24)
+
+**The divergence.** Recorded while closing NUR195: a `break` raised by a fn
+CALLED from a LITERAL each body — `def f fn [[x:Integer][Integer][break]]
+end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside
+loop`, and under `for 3 [… i] 99` its `[99]`; the compiled lane raised
+each's own `each_error: body produced no result` on both. Probed across
+the family: fold and scan the same way, and `filter [f] [1 2 3]` on the
+INTERPRETER itself raised "filter: element 0: body must produce a Boolean,
+got __CP" — a frame-cleanup marker read as the body's answer.
+
+**The mechanism.** Both lanes read the residual of a body run that had
+ESCAPED — a break/continue left unresolved, the registry's FlowCtrl set for
+an enclosing loop or the top of the run to resolve — as the element's
+result, and each read something different. The interpreter's sub-engine
+hands back the unstepped tape (Engine.exitWithFlowCtrl's non-island
+contract: `Tape.TakeAll()`): after the fn's spliced body, that is its
+cleanup marker, which `each` collected as junk the flow error then
+discarded, and which `filter` judged and reported. The VM's island — the
+fn `f`, its body a bare sentinel the compiler declines, runs through one
+— hands back nothing (runIslandResolved's FlowUnwind), which `each`
+reported before the flag could be read.
+
+**The fix.** Whatever an iterating native returns on an escape is
+discarded by the flow's resolution — the loop's iteration is abandoned
+(`flowSignal` trims to the iteration base), or the run raises `outside
+loop` — so the one answer both lanes share is NO result. `core.BodyEscaped`
+(beside `InvokeBody`) reads the flag, and each iterating native ends its
+iteration on it and returns nothing, before its own per-element judgement:
+each, fold, scan, filter (list and map), for-each, outer, inner (1D and
+2D, the pair op and the fold op), eachrank and its recursive walk. The
+VM's `resolveEscapedFlow` after the native call (NUR195's close) then
+does the rest: `for 3 [each [f] [1 2 3] i] 99` is `[99]` on both lanes,
+the `continue` twin and the map, filter, scan, outer and inner shapes
+likewise; with no loop at all the interpreter raises `flow_error` and the
+compiled lane takes the loop-less deferral, a counted bail (the lang
+ledger's bail line 40 -> 44: each, fold, scan and filter over `[f]`),
+never a value. Single-shot bodies (`do`, a branch) keep their residual:
+it is the run's to keep stepping, and no per-element contract judges it.
+
+**A language-visible change, for the better.** The interpreter's `filter
+[f] xs` no longer reports the cleanup marker; it raises the canonical
+flow error like its siblings. No corpus row carried the marker (the
+corpus is unchanged), and the langspec differential would have caught a
+row that did.
+
+**Measured:** the lang ledger's compile-failure line 282 -> 286 (for-each,
+fold and eachrank under a loop over the escaping fn — the natives the
+compiler still declines, `[99]` by fallback) and its bail line 40 -> 44
+(the loop-less witnesses); the full corpus unchanged (8563 rows, 8204 compiled, the interp-entry census 29 rows at its ceiling of 29, the engine-entry census 281, the region oracle's diverged-value 3 / over-claimed 1 as before, the compile-failure, runtime-defers and sweep ledgers all at their values).
+
+**Pins.** lang `TestLiteralBodyFlowThroughFnResolves` (the looped shapes
+`[99]` on both lanes across each, the map each, continue, scan, filter,
+outer, inner ×4, the map filter; the loop-less each, fold, scan and
+filter — the interpreter's raise, the compiled lane's deferral; for-each
+and fold under a loop by fallback parity), core `TestBodyEscaped`. Docs:
+the handover, NUR.md (NUR196 FIXED).
+
 ## NUR195 closed — the escaped flow after a native call (2026-09-24)
 
 **The divergence.** Recorded while pinning S3's first slice: `each (mk) [1

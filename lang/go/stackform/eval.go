@@ -128,9 +128,24 @@ func Replayable(form *StackForm) error {
 //
 // A form the recorder could not capture faithfully is DECLINED here
 // rather than replayed to a wrong answer; see Replayable.
+//
+// A form of PLAIN literal pushes alone — the value-level shrinker's
+// candidates (shrinkFailingInput: `[PushLit v]`, v the failing input or one
+// of its shrinks, a scalar or a container) — is its literals: the engine's
+// step of such a literal is the push of that value, unchanged (identity,
+// Quoted, all of it — TestEvalLiteralsOnlyMatchesTheEngine), so Eval answers
+// it without an engine run, and a compiled program's shrink stays off the
+// interpreter (the interp-entry census's corpus-modules.tsv L164). A form
+// with a call, a quote or a do replays on the engine as before, and so does
+// one pushing a Function — the push the engine would DISPATCH, which the
+// replay stamps Quoted — or any literal the engine steps rather than
+// pushes (a paren group, a splice, sugar, a reach).
 func Eval(reg *core.Registry, form *StackForm) ([]core.Value, error) {
 	if err := Replayable(form); err != nil {
 		return nil, err
+	}
+	if lits, only := plainLiterals(form); only {
+		return lits, nil
 	}
 	tokens, stamped := flattenStamped(form)
 	out, err := core.NewTop(reg).Run(tokens)
@@ -138,6 +153,34 @@ func Eval(reg *core.Registry, form *StackForm) ([]core.Value, error) {
 		return out, err
 	}
 	return unstamp(out, stamped), nil
+}
+
+// plainLiterals returns the values of a form made of plain literal pushes
+// alone (see Eval), or ok=false for any other form, an empty one included.
+func plainLiterals(form *StackForm) ([]core.Value, bool) {
+	if form == nil || len(form.Ops) == 0 {
+		return nil, false
+	}
+	out := make([]core.Value, 0, len(form.Ops))
+	for _, op := range form.Ops {
+		lit, isLit := op.(PushLit)
+		if !isLit || !plainLiteral(lit.V) {
+			return nil, false
+		}
+		out = append(out, lit.V)
+	}
+	return out, true
+}
+
+// plainLiteral reports whether the engine's step of v is the push of v
+// itself: a scalar, a list or a map value that is not a form the engine
+// steps (a paren group, a splice, sugar, a reach). A Function is not plain —
+// unquoted it dispatches.
+func plainLiteral(v core.Value) bool {
+	if v.Parent == nil || core.IsParenExpr(v) || core.IsSplice(v) || core.IsSugar(v) || core.IsReach(v) {
+		return false
+	}
+	return v.Parent.ConformsTo(core.TScalar) || v.Parent.ConformsTo(core.TList) || v.Parent.ConformsTo(core.TMap)
 }
 
 // unstamp restores the recorded state of every Function that flattenStamped

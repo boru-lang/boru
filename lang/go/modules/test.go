@@ -814,6 +814,45 @@ func storedBodyArg(arg native.Value, what string) (*native.FnSig, []native.Value
 	return nil, lst.Slice(), nil
 }
 
+// checkPropGenParams / checkPropPropParams are the frames runCheckProp binds
+// a body with — the generator's named `r` (the iteration's rand instance),
+// the property's one unnamed Any (the generated value on the stack, and
+// `args.0`). The recorder compiles a literal body's stored-param-body carrier
+// to the SAME params (test-check-prop's StoredBodies), so the carrier's unit
+// models exactly the throwaway frame a raw body gets.
+var (
+	checkPropGenParams  = []native.FnParam{{Name: "r", Type: native.TMap}}
+	checkPropPropParams = []native.FnParam{{Type: native.TAny}}
+)
+
+// checkPropBody dispatches one check-prop body over inputs: a stored-param-body
+// carrier (sigC, its CompiledFnRef) through InvokeCallback — the unit nested
+// on the VM, the interpreter its per-invoke fallback — and a RAW body (the
+// list value the handler received, validated by storedBodyArg; its tokens
+// as InvokeBody reads them) through a throwaway CallBoru frame with
+// the given params, stamped at run time on a compiled run so the same seam
+// hosts it (native.StampBodySig: the carrier's twin, its params typed by the
+// inputs; a body the stamp declines keeps the frame). One dispatcher for the
+// driver's loop and both shrinkers: the shrinkers used to build the throwaway
+// frame for every candidate whatever the body's form, so a COMPILED property
+// still interpreted once per shrink step (the interp-entry census's
+// corpus-modules.tsv L164, a failing property's shrink).
+func checkPropBody(parent *native.Registry, sigC *native.FnSig, params []native.FnParam, body native.Value, inputs []native.Value) ([]native.Value, error) {
+	if sigC != nil {
+		return core.InvokeCallback(parent, sigC, inputs, nil)
+	}
+	sig := native.StampBodySig(parent, &native.FnSig{
+		Params:     params,
+		Returns:    []*native.Type{native.TAny},
+		Impl:       native.Boru(append([]native.Value(nil), core.BodyTokens(body)...)),
+		BarrierPos: -1,
+	}, body, inputs)
+	if compiler.CompiledRef(sig) != nil {
+		return core.InvokeCallback(parent, sig, inputs, nil)
+	}
+	return parent.CallBoru(sig, inputs, nil)
+}
+
 // requirePropCount validates one of Test.check-prop's numeric arguments
 // against its legal range, raising `range_error` — the code REFERENCE.md
 // already defines as "a numeric argument outside a word's legal range" —
@@ -850,7 +889,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 	if err != nil {
 		return nil, err
 	}
-	propSigC, propBody, err := storedBodyArg(args[2], "Test.check-prop property")
+	propSigC, _, err := storedBodyArg(args[2], "Test.check-prop property")
 	if err != nil {
 		return nil, err
 	}
@@ -892,18 +931,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 		// dispatches through InvokeCallback — the unit runs nested on the
 		// VM, and stale deps / internal errors degrade to the identical
 		// CallBoru frame; a raw body builds today's throwaway sig.
-		var genResults []native.Value
-		if genSigC != nil {
-			genResults, err = core.InvokeCallback(parent, genSigC, []native.Value{native.NewMap(randMap)}, nil)
-		} else {
-			genSig := native.FnSig{
-				Params:     []native.FnParam{{Name: "r", Type: native.TMap}},
-				Returns:    []*native.Type{native.TAny},
-				Impl:       native.Boru(append([]native.Value(nil), genBody...)),
-				BarrierPos: -1,
-			}
-			genResults, err = parent.CallBoru(&genSig, []native.Value{native.NewMap(randMap)}, nil)
-		}
+		genResults, err := checkPropBody(parent, genSigC, checkPropGenParams, args[1], []native.Value{native.NewMap(randMap)})
 		if err != nil {
 			failed = true
 			failingIter = i
@@ -924,18 +952,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 		// the stack (so stack-form bodies like `[0 gte]` work) AND
 		// can reference it via `args.0` (so map-destructuring bodies
 		// work). Body must leave a Boolean; anything else is a failure.
-		var propResults []native.Value
-		if propSigC != nil {
-			propResults, err = core.InvokeCallback(parent, propSigC, []native.Value{input}, nil)
-		} else {
-			propSig := native.FnSig{
-				Params:     []native.FnParam{{Type: native.TAny}},
-				Returns:    []*native.Type{native.TAny},
-				Impl:       native.Boru(append([]native.Value(nil), propBody...)),
-				BarrierPos: -1,
-			}
-			propResults, err = parent.CallBoru(&propSig, []native.Value{input}, nil)
-		}
+		propResults, err := checkPropBody(parent, propSigC, checkPropPropParams, args[2], []native.Value{input})
 		if err != nil {
 			failed = true
 			failingIter = i
@@ -984,14 +1001,14 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 	shrunkCost := int64(0)
 	if failed && !native.IsNone(failingInput) && failingIter >= 0 {
 		genSv, genSrc, genCost, genOK := shrinkFailingProgram(
-			parent, genBody, propBody, seed+failingIter, maxShrinks)
+			parent, genBody, propSigC, args[2], seed+failingIter, maxShrinks)
 		if genOK {
 			shrunkInput = genSv
 			shrunkSource = genSrc
 			shrunkCost = genCost
 		} else {
 			shrunkInput, shrunkSource, shrunkCost = shrinkFailingInput(
-				parent, failingInput, propBody, maxShrinks)
+				parent, failingInput, propSigC, args[2], maxShrinks)
 		}
 	}
 
@@ -1041,7 +1058,8 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 func shrinkFailingProgram(
 	parent *native.Registry,
 	genBody []native.Value,
-	propBody []native.Value,
+	propSigC *native.FnSig,
+	propBody native.Value,
 	failingSeed int64,
 	maxShrinks int64,
 ) (shrunkValue native.Value, shrunkSource string, shrunkCost int64, ok bool) {
@@ -1083,13 +1101,7 @@ func shrinkFailingProgram(
 			return shrink.Invalid
 		}
 		candidateValue := vals[len(vals)-1]
-		propSig := native.FnSig{
-			Params:     []native.FnParam{{Type: native.TAny}},
-			Returns:    []*native.Type{native.TAny},
-			Impl:       native.Boru(append([]native.Value(nil), propBody...)),
-			BarrierPos: -1,
-		}
-		res, err := parent.CallBoru(&propSig, []native.Value{candidateValue}, nil)
+		res, err := checkPropBody(parent, propSigC, checkPropPropParams, propBody, []native.Value{candidateValue})
 		if err != nil || len(res) == 0 {
 			return shrink.Invalid
 		}
@@ -1145,7 +1157,8 @@ func shrinkFailingProgram(
 func shrinkFailingInput(
 	parent *native.Registry,
 	failingInput native.Value,
-	propBody []native.Value,
+	propSigC *native.FnSig,
+	propBody native.Value,
 	maxShrinks int64,
 ) (shrunkInput native.Value, shrunkSource string, shrunkCost int64) {
 	shrunkInput = failingInput
@@ -1177,15 +1190,10 @@ func shrinkFailingInput(
 			return shrink.Invalid
 		}
 		candidateValue := vals[len(vals)-1]
-		// Same CallBoru plumbing as the main loop: an unnamed Any
-		// param makes `args.0` available inside the property body.
-		propSig := native.FnSig{
-			Params:     []native.FnParam{{Type: native.TAny}},
-			Returns:    []*native.Type{native.TAny},
-			Impl:       native.Boru(append([]native.Value(nil), propBody...)),
-			BarrierPos: -1,
-		}
-		res, err := parent.CallBoru(&propSig, []native.Value{candidateValue}, nil)
+		// The main loop's dispatch: the carrier on the VM, or the
+		// throwaway frame whose unnamed Any param makes `args.0`
+		// available inside the property body.
+		res, err := checkPropBody(parent, propSigC, checkPropPropParams, propBody, []native.Value{candidateValue})
 		if err != nil || len(res) == 0 {
 			return shrink.Invalid
 		}
@@ -1421,15 +1429,24 @@ func (run *testRun) summary() native.Value {
 // invokeSubject runs a subject word against an input list in the
 // parent registry. Shared by the Atom and String overloads of
 // test-invoke.
+//
+// The subject runs through the InvokeBody seam — the word's tokens as the
+// body, the inputs as resolved stack data beneath them — rather than on a
+// fresh engine of its own: on a compiled run the seam hosts the body as a
+// run-time-stamped unit (the VM's token-body host), so `[3] Test.invoke
+// double/q` and every `run-spec` case dispatch the subject on the VM instead
+// of re-entering the tree-walker once per case (the interp-entry census's
+// module-test.tsv L37/L38). A subject the stamp declines — an undefined
+// word, a body the compiler cannot lower — takes the seam's interpreter path,
+// which raises exactly what the fresh engine raised. Either way an error is
+// the invoke's Error VALUE, never a raise.
 func invokeSubject(parent *native.Registry, name string, inputArg native.Value) ([]native.Value, error) {
 	inputs, err := native.RequireConcreteList(inputArg, "Test.invoke")
 	if err != nil {
 		return nil, err
 	}
-	tokens := append([]native.Value(nil), inputs.Slice()...)
-	tokens = append(tokens, dottedWordTokens(name)...)
-	sub := native.New(parent)
-	stack, runErr := sub.Run(tokens)
+	body := native.NewList(dottedWordTokens(name))
+	stack, runErr := native.InvokeBody(parent, body, append([]native.Value(nil), inputs.Slice()...))
 	if runErr != nil {
 		return []native.Value{native.NewError(runErr)}, nil
 	}
