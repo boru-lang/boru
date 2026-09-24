@@ -239,7 +239,11 @@ branch-carried def"**; the re-estimate is
    units too, every read of a leaked name seats live — the twin regime's
    value-name read fence is retired — and a mutated flex read back after
    a body seats live; code-bodies L183 / L190 and module-composition L92
-   compile, the corpus's compile failures 19 -> 16); filter's predicate
+   compile, the corpus's compile failures 19 -> 16); the variadic loop
+   body lands the same day (the handoff log's "the variadic loop body"
+   entry: a loop body whose one result is a 0-or-1 branch is admitted,
+   the S5 first-value bind over such a loop declining instead;
+   code-bodies L181 / L182 compile, 16 -> 14); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

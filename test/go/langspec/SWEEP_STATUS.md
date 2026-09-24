@@ -26,7 +26,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `fnpred` | ✓ 7/14 | ✓ 7/14 | ✓ 8/14 | ✓ 5/14 | ✓ 8/14 | ✓ 8/14 | ✓ 8/14 |
 | `fnsig` | ✓ 11/14 | n/a | n/a | n/a | n/a | C | ✓ 11/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
-| `for` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
+| `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | F | F | F | ✓ 14/14 |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
@@ -227,10 +227,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `fold` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 3 — [0 2 4]   --> 1:38   1 | def zzvlam ([] => [for 3 [i mu…
 - `for` literal · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
-- `for` literal · for-body — **declined** — loop results as a branch/body result (Stage 2)
 - `for` computed · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 3 — [0 2 4]   --> 1:58   1 | def zzvlam ([] => [def b (quot…
 - `for` computed · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
-- `for` computed · for-body — **declined** — loop results as a branch/body result (Stage 2)
 - `for-each` named-fn · for-body — **declined** — fn 'stp' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `for-each` named-fn · each-body — **declined** — fn each$body: arm-resident def `stp` of unknown provenance
 - `force-arity` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload

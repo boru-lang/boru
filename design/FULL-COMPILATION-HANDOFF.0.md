@@ -13322,6 +13322,49 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The variadic loop body — a 0-or-1 branch as a loop's per-iteration result (2026-09-24)
+
+**The rows.** code-bodies.tsv L181 (`def t 0  for 2 [if true [def t (t
+add 1)] [0]]  t`) and L182 (its `case` twin, `for 2 [case 1 [1 [drop def
+t (t add 1)] 0]]`) declined "loop results as a branch/body result (Stage
+2)": the loop body's one result is a VARIADIC event — an `if` whose
+then-arm binds a name and leaves nothing while its else-arm leaves a
+value, a `case` with a clause that nets nothing — and lowerFragment
+admitted such an out only for a branch ARM (the parent `if` propagates the
+0-or-1 up to its own merge), never for a loop body or condition, "they
+need a definite single value per iteration".
+
+**Why a loop body does not.** A Stage 2 loop's region is a
+runtime-variable count already (FOR_NEXT accumulates whatever the body
+leaves; the loop's sim slot is variadic), and only the program residual
+absorbs it — a `def` over loop results, a call consuming them, a fn
+returning them all decline on their own rules. So a per-iteration count of
+0 or 1 costs the region nothing: the residual re-push runs after the loop
+with the region already in place. What it does cost is the ONE consumer
+that assumed one value per iteration: the S5 first-value split (`def x
+(for 3 [i])`, SplitLoopRegionBind), whose static depth `regionN - 1`
+counts values above the first at bind time.
+
+**The change** (compiler/go/lower.go): lowerLoop hands the body fragment a
+one-shot note (`loopBodyFrag`, consumed at lowerFragment's entry so a
+nested fragment never inherits it — the out's variadic-ness is known only
+once the body's own events have lowered, which is why the admission is
+the fragment's and not the caller's); the fragment admits a variadic out
+under that note and reports back (`variadicOutAdmitted`); lowerLoop then
+marks the loop (`bodyVariadic`), and lowerDynBind's S5 arm declines a
+first-value bind over a marked loop ("binds the first value of a loop
+whose body leaves 0 or 1 per iteration") where the split's static depth
+would have read the wrong value. A loop CONDITION keeps its one-value
+rule (the interpreter raises "condition produced no value").
+
+**Measured:** code-bodies.tsv 9 -> 7 (L181, L182) — the corpus's compile failures 16 -> 14; the lang ledger's compile-failure line 283 -> 285 (the two fence witnesses below, added as pins) and bail line 44 unchanged; the sweep's call-form failures 199 -> 197 (the two `walk` for-body variants the previous entry counted compile: the for body's last value is a variadic result the loop body admits now); the full corpus 8563 rows / 8209 -> 8211 compiled and 14 compile failures, with the interp-entry census 24, the engine-entry census 166, the runtime-defer census 10 and the compute-gap gate 11 -> 9 (the same two rows), every other gate at its value; the unit suites of core, eng, compiler, check, basic, lang and the arity gate green.
+
+**Pins.** lang `TestLoopBodyVariadicBranchCompiles` (the two rows; the
+if/else-empty pair, a trailing literal, nested loops, a while body with a
+loop-carried rebind in either arm, the fn whose RET judges the result on
+both lanes; the native lowering; the S5 fence and the loop-condition
+fence as counted defects). Docs: the handover, this entry.
+
 ## NUR200 closed — the multi-run keep-defs body (2026-09-24)
 
 **The divergence.** NUR199's multi-run twin, recorded while closing it:
