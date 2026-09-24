@@ -37,10 +37,10 @@ func TestTokenBodyKeying(t *testing.T) {
 		t.Fatal("a reference-bearing body with no ID is not named")
 	}
 	nested := []core.Value{core.NewList(ref)}
-	if tokenBodyContentKeyable(nested) {
+	if core.TokenBodyContentKeyable(nested) {
 		t.Fatal("a reference inside a nested list is not identity-free")
 	}
-	if tokenBodyInputType(core.Value{}) != core.TAny {
+	if core.TokenBodyInputType(core.Value{}) != core.TAny {
 		t.Fatal("an input with no type declares Any")
 	}
 }

@@ -20,11 +20,23 @@ import (
 // clock-seeded top-level. The Recorder simply observes what the
 // engine does; if the program is non-deterministic, so is the
 // resulting StackForm.
+//
+// The run is the tree-walker's by design: the recorder observes the ENGINE's
+// operations — every literal push and every dispatch, in the order the
+// interpreter performs them — and the VM performs none of them (a compiled
+// unit pushes constants and calls natives by index). So the run reports its
+// interpreter entries attributed "stackform-record", as the debugger's
+// observation runs report "debug-observe": an observation of the
+// interpreter, not a program the compiled lane handed back to it. The
+// shrinker discards the run's own result (shrinkFailingProgram reads only
+// the form); a form's REPLAY (Eval) is a program run and stays bare.
 func Compile(reg *core.Registry, tokens []core.Value) (result []core.Value, form *StackForm, err error) {
 	form = &StackForm{}
 	rec := &recorder{form: form}
 	e := core.NewTop(reg)
 	e.SetRecorder(rec)
+	restore := reg.SetInterpAttribution("stackform-record")
+	defer restore()
 	result, err = e.Run(tokens)
 	return result, form, err
 }

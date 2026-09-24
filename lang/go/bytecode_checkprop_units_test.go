@@ -66,6 +66,63 @@ func TestCheckPropIterationsAddNoInterpEntries(t *testing.T) {
 	}
 }
 
+// TestCheckPropShrinkAddsNoInterpEntries: a FAILING property's shrink dispatches
+// the property through the same carrier the driver's loop does (checkPropBody —
+// InvokeCallback over the stored-param-body unit), not a throwaway CallBoru
+// frame per candidate, and the gen-program recorder's run reports itself as
+// the observation it is ("stackform-record"). So a compiled check-prop whose
+// bodies compile adds NO unattributed interpreter entry, shrinking included
+// (the interp-entry census's corpus-modules.tsv L164), and the result map —
+// the shrunk input, its source and cost — is the interpreter's.
+func TestCheckPropShrinkAddsNoInterpEntries(t *testing.T) {
+	src := `import "boru:test" end
+def res (Test.check-prop "f" [ 3 4 add ] [ drop false ] 3 1 4)
+res`
+	for _, c := range []struct{ src, want string }{
+		{src, "[{name:'f' ok:false runs:1 failing-input:7 shrunk-input:0 shrunk-source:'0' shrunk-cost:1 error:none}]"},
+		// The corpus row (corpus-modules.tsv L164): a property that leaves its
+		// String input beneath two atoms declines the recorder's Any-typed
+		// carrier and is stamped at run time over the String it meets
+		// (native.StampBodySig), in the loop and in the shrink alike.
+		{`import "boru:test" end Test.check-prop 'a' ['a','b'] ['c','d'] 2 3 4`,
+			`[{name:'a' ok:false runs:1 failing-input:'b' shrunk-input:'b' shrunk-source:'"b"' shrunk-cost:2 error:error(property returned non-Boolean (ProperString))}]`},
+		// Bodies read RAW from a PropertySpec map (`Test.prop`, `run-property`):
+		// no carrier at all, both stamped at run time.
+		{`import "boru:test"  def p (Test.prop "x" [3 4 add] [5 gte]) end (p Test.run-property) get "ok"`, "[true]"},
+	} {
+		seen, gotC := unattributedEntries(t, c.src)
+		if len(seen) != 0 {
+			t.Errorf("%q: unattributed interpreter entries %v — a body is back on the interpreter", c.src, seen)
+		}
+		if fmt.Sprint(gotC) != c.want {
+			t.Errorf("%q: compiled %v, want %s", c.src, gotC, c.want)
+		}
+		a := mustNew(t)
+		a.SetOutput(&bytes.Buffer{})
+		gotI, err := a.RunInterp(c.src)
+		if err != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: interp %v / %v, want %s", c.src, gotI, err, c.want)
+		}
+	}
+	// The recorder's run is attributed, and it happens: the shrink of a
+	// failing gen program records the program once.
+	b := mustNew(t)
+	b.SetOutput(&bytes.Buffer{})
+	recorded := 0
+	disarm := b.ArmInterpEntryHook(func(ev InterpEntry) {
+		if ev.Attribution == "stackform-record" {
+			recorded++
+		}
+	})
+	if _, _, err := b.RunCompiled(src); err != nil {
+		t.Fatal(err)
+	}
+	disarm()
+	if recorded == 0 {
+		t.Error("the gen-program recorder's run reported no stackform-record entry")
+	}
+}
+
 // TestCheckPropMemberFnGenVariesNotConstant — the regression pin for the
 // generator miscompile (bisected to 853dcaa4, fixed 2026-07-18). A direct
 // rand-call gen body `[r.int 1 9]` reads a member fn from the opaque Map

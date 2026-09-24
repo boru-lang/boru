@@ -97,13 +97,13 @@ func TestW9ShrinkFailingProgramArms(t *testing.T) {
 	w9BuildSeededRandInstance = func(int64) (*native.OrderedMap, error) {
 		return nil, errors.New("w9 inst boom")
 	}
-	if _, _, _, ok := shrinkFailingProgram(r, genBody, propBody, 1, 5); ok {
+	if _, _, _, ok := shrinkFailingProgram(r, genBody, nil, native.NewList(propBody), 1, 5); ok {
 		t.Error("908: rand-instance failure should yield ok=false")
 	}
 	w9BuildSeededRandInstance = origInst
 
 	// 914: an empty gen body compiles to an empty StackForm → ok=false.
-	if _, _, _, ok := shrinkFailingProgram(r, nil, propBody, 1, 5); ok {
+	if _, _, _, ok := shrinkFailingProgram(r, nil, nil, native.NewList(propBody), 1, 5); ok {
 		t.Error("914: empty gen body should yield ok=false")
 	}
 
@@ -114,7 +114,7 @@ func TestW9ShrinkFailingProgramArms(t *testing.T) {
 	w9BuildSeededRandRegistry = func(int64) (*native.Registry, error) {
 		return nil, errors.New("w9 reg boom")
 	}
-	if _, _, _, ok := shrinkFailingProgram(r, genBody, propBody, 1, 5); ok {
+	if _, _, _, ok := shrinkFailingProgram(r, genBody, nil, native.NewList(propBody), 1, 5); ok {
 		t.Error("929: eval-registry failure should yield ok=false")
 	}
 }
@@ -152,7 +152,7 @@ func TestW9ShrinkMaterialiseErrors(t *testing.T) {
 	origReg := w9BuildSeededRandRegistry
 	regCalls := 0
 	w9BuildSeededRandRegistry = func(s int64) (*native.Registry, error) { regCalls++; return origReg(s) }
-	if _, _, _, ok := shrinkFailingProgram(r, gen, prop, seed, maxSteps); !ok {
+	if _, _, _, ok := shrinkFailingProgram(r, gen, nil, native.NewList(prop), seed, maxSteps); !ok {
 		w9BuildSeededRandRegistry = origReg
 		t.Fatal("973 setup: expected a successful reduce that reaches materialise")
 	}
@@ -165,7 +165,7 @@ func TestW9ShrinkMaterialiseErrors(t *testing.T) {
 		}
 		return origReg(s)
 	}
-	if _, _, _, ok := shrinkFailingProgram(r, gen, prop, seed, maxSteps); ok {
+	if _, _, _, ok := shrinkFailingProgram(r, gen, nil, native.NewList(prop), seed, maxSteps); ok {
 		t.Error("973: materialise registry failure should yield ok=false")
 	}
 	w9BuildSeededRandRegistry = origReg
@@ -178,7 +178,7 @@ func TestW9ShrinkMaterialiseErrors(t *testing.T) {
 		evalCalls++
 		return origEval(reg, f)
 	}
-	if _, _, _, ok := shrinkFailingProgram(r, gen, prop, seed, maxSteps); !ok {
+	if _, _, _, ok := shrinkFailingProgram(r, gen, nil, native.NewList(prop), seed, maxSteps); !ok {
 		w9StackformEval = origEval
 		t.Fatal("977 setup: expected a successful reduce that reaches materialise")
 	}
@@ -191,7 +191,7 @@ func TestW9ShrinkMaterialiseErrors(t *testing.T) {
 		}
 		return origEval(reg, f)
 	}
-	if _, _, _, ok := shrinkFailingProgram(r, gen, prop, seed, maxSteps); ok {
+	if _, _, _, ok := shrinkFailingProgram(r, gen, nil, native.NewList(prop), seed, maxSteps); ok {
 		t.Error("977: materialise eval failure should yield ok=false")
 	}
 }
@@ -209,7 +209,7 @@ func TestW9ShrinkFailingInputEvalError(t *testing.T) {
 	}
 	// A large integer generates shrink candidates; each candidate's eval
 	// fails, so the reducer rejects them and the input stays unchanged.
-	shrunk, _, _ := shrinkFailingInput(r, native.NewInteger(100), propBody, 5)
+	shrunk, _, _ := shrinkFailingInput(r, native.NewInteger(100), nil, native.NewList(propBody), 5)
 	if i, _ := shrunk.AsConcreteInteger(); i != 100 {
 		t.Errorf("eval-failing shrink should leave the input at 100, got %d", i)
 	}

@@ -319,12 +319,19 @@ var pinnedAritySites = map[string]int{
 	// signature TABLE to match — the value's own, or the one its name resolves
 	// to in the registry — never whether the parser may act. That is matching
 	// machinery, the argument rule's own, not a behaviour-by-arity exception.
-	"lang/go/modules/parselang.go":  2,
-	"lang/go/modules/net_codec.go":  1,
-	"lang/go/modules/test.go":       1,
-	"lang/go/stackform/walk.go":     1,
-	"basic/go/native_control.go":    1,
-	"basic/go/native_definition.go": 1,
+	"lang/go/modules/parselang.go": 2,
+	"lang/go/modules/net_codec.go": 1,
+	"lang/go/modules/test.go":      1,
+	// StampBodySig binds a handler's run-time inputs to its throwaway
+	// signature's params POSITIONALLY before typing each param by the input
+	// it binds — the frame's argument rule (CallBoru binds the same inputs
+	// to the same params); an input count that is not the params' stands
+	// aside so CallBoru raises what it raised. Matching machinery, not a
+	// decision by arity.
+	"lang/go/native/body_sig_stamp.go": 1,
+	"lang/go/stackform/walk.go":        1,
+	"basic/go/native_control.go":       1,
+	"basic/go/native_definition.go":    1,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,

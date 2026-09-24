@@ -212,7 +212,14 @@ branch-carried def"**; the re-estimate is
    no-result error for the interpreter's flow_error) closed the same day —
    every iterating native ends its iteration on an escaped body
    (core.BodyEscaped) and returns no result, so the run resolves the flag
-   on both lanes; filter's predicate
+   on both lanes; the boru:test bodies reached the VM the same day (the
+   handoff log's "the boru:test bodies reach the VM" entry: `Test.invoke`
+   through the InvokeBody seam, a handler's throwaway signature over a raw
+   body stamped at run time with params typed by the inputs —
+   native.StampBodySig, the carrier's twin — the value-level shrinker's
+   literal forms answered without an engine run, the recorder run
+   attributed "stackform-record"; what stays is the generator over the
+   opaque `r`, the dynamic-landing frontier); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this
