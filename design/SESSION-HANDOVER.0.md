@@ -178,7 +178,21 @@ branch-carried def"**; the re-estimate is
    the contract does not take) closed the same day — the shape claim
    carries the wrapper's parameter types and the read window declines a
    token that does not fit, so the body islands to the bridged dispatch.
-   The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
+   The fn-util wrapper at the token seam (the same day) applies a
+   self-contained Go fn value natively under each/fold/scan (callbacks.tsv
+   L154 left the census) and the recorder's registry follows the running
+   engine again after an inline module's body (module-composition.tsv L94
+   and three `$module` rows left), and the third piece of the same change
+   closed NUR143 — a fn unit's enclosing-binding snapshot reads the unit's
+   OWN registry, so a module fn's read of its module-scope flex is the
+   live binding (boru:sift's two descriptors left the region oracle's
+   ledger) — and, seeing the right registry, DECLINES kg/main.boru
+   (gomod.boru's `[[repo-entity] …]`, a module fn's body literal over a
+   shared module-level map: the per-call spine the const rule can neither
+   freshen nor share; ledgered in realProgramLedger, the selective
+   spine-only freshen that graduates it the next cut); filter's predicate
+   seam for a Go-implemented value and a `flip`ped wrapper are the
+   family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this
    family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at

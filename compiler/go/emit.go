@@ -2040,10 +2040,18 @@ func (es *EmitState) InInlineCtxBoundary() bool {
 func (es *EmitState) Armed() bool { return es != nil }
 
 // BindRegistry installs the registry back-pointer used by returned-closure
-// compilation (tryReturnedClosure) and the flex-hook sig-identity proof.
-func (es *EmitState) BindRegistry(r *core.Registry) {
+// compilation (tryReturnedClosure) and the flex-hook sig-identity proof,
+// and returns the restore of the binding it replaced. The engine defers it
+// at every run's start (core engine.go), so reg follows the RUNNING
+// engine's registry — a module body's sub-registry for the body's run, the
+// enclosing registry again after — where it used to stay on whatever the
+// last sub-engine bound: after an inline module import, a top-level `def
+// a5 (M.mk 5)` noted its closure shape on the module registry's inactive
+// check state and the read on the program's found no claim (the
+// interp-entry census's module-composition.tsv:L94, 2026-09-24).
+func (es *EmitState) BindRegistry(r *core.Registry) func() {
 	if es == nil {
-		return
+		return func() {}
 	}
 	// The FIRST bind names the program registry: the outermost check Run binds
 	// the top-level registry before any module-body / island sub-engine run
@@ -2052,7 +2060,15 @@ func (es *EmitState) BindRegistry(r *core.Registry) {
 		es.progReg = r
 		es.bindSnap = r.SnapshotBindings()
 	}
+	prev := es.reg
 	es.reg = r
+	if prev == nil {
+		// The OUTERMOST run: its binding outlives the run — Finalize lowers
+		// the program after the engine returns and reads reg throughout —
+		// so there is nothing to restore to.
+		return func() {}
+	}
+	return func() { es.reg = prev }
 }
 
 // isProgramRegistry reports whether reg IS the program registry — progReg,
@@ -3178,13 +3194,13 @@ func returnsAllScalar(returns []*core.Type) bool {
 // (List/Map) binding currently visible in the DefTable — the values a fn
 // unit opening NOW would read from ENCLOSING scope. See
 // emitUnit.enclosingIDs for the semantics.
-func (es *EmitState) snapshotCompoundBindingIDs() map[string]bool {
+func (es *EmitState) snapshotCompoundBindingIDs(reg *core.Registry) map[string]bool {
 	ids := map[string]bool{}
-	if es.reg == nil || es.reg.Defs == nil {
+	if reg == nil || reg.Defs == nil {
 		return ids
 	}
-	for _, name := range es.reg.Defs.Names() {
-		for _, bv := range es.reg.Defs.Stack(name) {
+	for _, name := range reg.Defs.Names() {
+		for _, bv := range reg.Defs.Stack(name) {
 			if freshenableConst(bv) && bv.ID != "" {
 				ids[bv.ID] = true
 			}
@@ -3198,7 +3214,7 @@ func (es *EmitState) snapshotCompoundBindingIDs() map[string]bool {
 // Used to recognise an enclosing-scope binding read whose producing event
 // lives in the parent/module frame — resolveOperand routes it to a dynamic-
 // scope lookup rather than an unreachable in-frame event operand.
-func (es *EmitState) snapshotAllBindingIDs() map[string]bool {
+func (es *EmitState) snapshotAllBindingIDs(reg *core.Registry) map[string]bool {
 	ids := map[string]bool{}
 	// Top-level computed fn value-defs installDef declined to install in Defs
 	// (`def op (Parse.parser g)`) are still real enclosing bindings; the Defs
@@ -3206,11 +3222,11 @@ func (es *EmitState) snapshotAllBindingIDs() map[string]bool {
 	for id := range es.rootComputedBindIDs {
 		ids[id] = true
 	}
-	if es.reg == nil || es.reg.Defs == nil {
+	if reg == nil || reg.Defs == nil {
 		return ids
 	}
-	for _, name := range es.reg.Defs.Names() {
-		for _, bv := range es.reg.Defs.Stack(name) {
+	for _, name := range reg.Defs.Names() {
+		for _, bv := range reg.Defs.Stack(name) {
 			if bv.ID != "" {
 				ids[bv.ID] = true
 			}
@@ -3223,12 +3239,12 @@ func (es *EmitState) snapshotAllBindingIDs() map[string]bool {
 // the DefTable at unit open — the by-name twin of snapshotAllBindingIDs, used
 // only to recover an ENCLOSING mutable-reference read whose value ID was elided
 // at pure runtime (a detached stamp). See emitUnit.enclosingBindNames.
-func (es *EmitState) snapshotAllBindingNames() map[string]bool {
+func (es *EmitState) snapshotAllBindingNames(reg *core.Registry) map[string]bool {
 	names := map[string]bool{}
-	if es.reg == nil || es.reg.Defs == nil {
+	if reg == nil || reg.Defs == nil {
 		return names
 	}
-	for _, name := range es.reg.Defs.Names() {
+	for _, name := range reg.Defs.Names() {
 		names[name] = true
 	}
 	return names
@@ -5998,7 +6014,17 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	rec := &fnUnitRec{name: name, nParams: len(args), nUnnamed: nUnnamed, caps: captures, generic: generic, returns: declared, locals: locals, pos: pos, reg: fnReg}
 	es.fnRecs = append(es.fnRecs, rec)
 	es.fnUnits[key] = unit
-	u := &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}, enclosingIDs: es.snapshotCompoundBindingIDs(), enclosingBindIDs: es.snapshotAllBindingIDs(), enclosingBindNames: es.snapshotAllBindingNames(), reg: fnReg}
+	// The enclosing-binding snapshots read the registry the unit RUNS in —
+	// its home, fnReg (a module fn's sub-registry; every caller passes the
+	// registry it compiles against) — not the recorder's binding, which
+	// follows the running engine: after `import "boru:sift"` that was the
+	// LAST nested import's registry (sift imports three), and once
+	// BindRegistry restores it is the program's, in neither of which the
+	// module-scope flex a module fn's body reads is a binding — so the
+	// read baked as a fresh clone of the check pass's snapshot (NUR143,
+	// closed 2026-09-24; the region oracle's two ledgered descriptors read
+	// the binding live now).
+	u := &emitUnit{localByID: map[string]int{}, capID: map[string]bool{}, enclosingIDs: es.snapshotCompoundBindingIDs(fnReg), enclosingBindIDs: es.snapshotAllBindingIDs(fnReg), enclosingBindNames: es.snapshotAllBindingNames(fnReg), reg: fnReg}
 	es.units = append(es.units, u)
 	es.unitNames = append(es.unitNames, name)
 	es.openUnitRecs = append(es.openUnitRecs, unit)

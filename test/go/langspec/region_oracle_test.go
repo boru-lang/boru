@@ -49,15 +49,23 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 //   - a predicate-typed param the check pass claims optimistically and the
 //     runtime scan rejects (`f 5` with n:Even): an ERROR row on both lanes,
 //     and the descriptor records the plan the check pass made (NUR141).
-//   - a fn-body read of a MODULE-SCOPE flex binding pushed as a fresh
-//     clone (`PUSH_CONST_FRESH`) of the check pass's snapshot, not the
-//     binding: `keys sift-catalog` in boru:sift's `Sift.kinds`. The keys
-//     agree today because the check pass performs the same mutations the
-//     run does (a dry-passed `set` on a concrete flex) and a mutation
-//     between requests makes the next compile DECLINE (the memo's
-//     materialisation guard); the operand is still not the object the
-//     interpreter reads (NUR143). Found the moment the agreement test
-//     became identity (review of #458).
+//   - a value divergence: the live word slot resolves to an object the
+//     lowering did not push. Today NUR152's three (below): a name read
+//     LIVE inside a foreign-compiled unit, the finding its provenance,
+//     both engines agreeing on the value. The class's other family was
+//     NUR143, retired below.
+//
+// RETIRED (2026-09-24, NUR143 resolved): the module-flex snapshot — a
+// fn-body read of a MODULE-SCOPE flex binding pushed as a fresh clone
+// (`PUSH_CONST_FRESH`) of the check pass's snapshot, not the binding:
+// `keys sift-path-detect` in boru:sift's detect and `keys sift-catalog` in
+// `Sift.kinds` (module-sift.tsv:L69 keys@1078:16, L74 keys@1042:55). The
+// enclosing-binding snapshot taken at a fn unit's open read the RECORDER's
+// binding — the registry of the last engine that ran, a nested import's
+// after `import "boru:sift"` — where the module's flex is no binding, so
+// the read fell to the const clone; it reads the unit's own registry now
+// (compiler StartFnCompile's fnReg), both descriptors read the binding
+// live, and the class is pinned in lang/go/module_fn_unit_registry_test.go.
 //
 // RETIRED (the sixty-third increment, NUR140 resolved): the twin-carrier
 // class — six rows where a top-level `def` of a COMPUTED compound (`def b
@@ -69,9 +77,7 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 // six reproduces, and the class is pinned across requests in
 // lang/go/bytecode_globalbind_test.go.
 var regionOracleFindings = map[string]string{
-	"module-sift.tsv:L69 keys@1078:16": "module-flex snapshot: `keys sift-path-detect` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
-	"module-sift.tsv:L74 keys@1042:55": "module-flex snapshot: `keys sift-catalog` reads a fresh clone of the check pass's flex, not the binding (NUR143)",
-	"fnpred.tsv:L50 f@1:80":            "a predicate param (n:Even) claimed by the check pass, rejected by the runtime scan; an ERROR row on both lanes",
+	"fnpred.tsv:L50 f@1:80": "a predicate param (n:Even) claimed by the check pass, rejected by the runtime scan; an ERROR row on both lanes",
 	// NUR152's reverse-direction rows: a MAIN-program fn (`pub`, or the `=>`
 	// lambda) applied INSIDE a module fn (`M.run`). Its unit is compiled at
 	// its home (main) from inside `run`'s foreign compile, and its free word

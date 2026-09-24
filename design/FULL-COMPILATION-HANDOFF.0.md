@@ -13321,3 +13321,123 @@ the fitting claim, the plain half), compiler `TestClosureOpShapeArms`
 check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
+
+## S1b — the fn-util wrapper at the token seam, and the recorder's registry after a module body (2026-09-24)
+
+**Two census rows, two mechanisms — and a third the second exposed.** Read from the 62-row interp-entry
+census: callbacks.tsv:L154 (`def h (FnUtil.compose inc/v dbl/v) end each
+h/v [1 2 3]`) paid a `RunResolved` + `Engine.Run` entry per element where
+its quotation twin `each [h] [1 2 3]` ran natively, and
+module-composition.tsv:L94 (`def a5 (M.mk 5) end each [a5] [1 2 3]` over
+an inline module's factory) islanded its body where the same factory
+defined in the program compiled it.
+
+**The wrapper at the token seam.** A self-contained Go-implemented fn
+value (fn-util's produced wrappers) handed to a native's body seam
+(`invokeClosureOn`, the InvokeBody seam) had no native arm: `invokeFnValue`
+declined it (no compiled unit) and the fallback stepped it on the
+interpreter — where the quotation body's trailing apply already applied
+the same value natively (`callDynTrailTop` → `tryNativeFnApply`). The seam
+now applies it the way the interpreter steps it there
+(`applyNativeFnValueTopDown`): each own signature's arity says how many
+inputs it takes from the top of the seam's stack window, those bind
+top-down (NUR179's rule, the window reversed into positional order), and
+the inputs beneath stay as the body's residual — `1 fold h/v [1 2]` over a
+one-param wrapper applies h to the element and leaves the accumulator,
+which fold reads past. Arities are tried widest first; with none matching
+the interpreter fallback stands. A `flip`ped wrapper (a usurped signature,
+`ArgsReversed`) is not self-contained and keeps the interpreter, as the
+VM's other native-apply sites keep it; filter's predicate seam
+(`InvokeCallbackFn`, core) has no native arm for a Go-implemented value
+and still enters — both pinned open.
+
+**The recorder's registry after a module body.** `EmitRecorder.BindRegistry`
+was last-bind-wins: the engine bound the recorder to each run's registry
+at the run's start and nothing restored it, so after an inline module's
+body ran on the module's sub-registry every top-level def that followed
+recorded on that registry's INACTIVE check state — `def a5 (M.mk 5)`
+noted its closure shape there (`NoteFnShape` refuses an inactive pass),
+the read on the program's registry found no claim, and the each body
+islanded. `BindRegistry` returns the restore of the binding it replaced
+and the engine defers it at every run's start, so reg follows the
+RUNNING engine's registry; the outermost bind outlives its run, since the
+program's lowering reads it after the engine returns (the first draft
+restored it to nil and the whole lowering declined — the lang suite
+caught it). `progReg`, the first bind, is untouched. One unit-suite
+program moved with it, from a run-time bail to a compile-time decline:
+`add p0 1` over an inline module's Point class
+(`TestUnmatchedDispatchTrapCarrierDisjoint`), whose poly no-match bailed
+while the recorder sat on the module registry and which the check pass's
+unmatched-dispatch recovery now declines, the interpreter's own `cannot
+call add` the answer (the lang ledger's bail line 37 -> 36).
+
+**The unit's own registry at its open (NUR143 closed).** The restore
+exposed a third: the region oracle over the FULL corpus found
+module-sift.tsv:L68 (`Sift.define m {…} end Sift.detect "/proc/meminfo"`)
+baking `sift-path-detect` as an empty const where the live word resolves
+to the filled flex — NUR143's shape on a row the ledger did not know. The
+enclosing-binding snapshots a fn unit takes at its open
+(`snapshotAllBindingIDs` and its two siblings, at `StartFnCompile`) read
+the RECORDER's binding, and that binding is the registry of the last
+engine that ran: after `import "boru:sift"` it was the last NESTED
+import's (sift imports three — which is why NUR143's two ledgered
+descriptors read a clone since 2026-09-15), and with the restore the
+program's (which is why L68 joined them); in neither is the module's
+flex a binding, so the read fell to the const clone of the check pass's
+snapshot. The snapshots read the unit's own registry now (`fnReg`, which
+every caller passes), a module fn's body reads its module-scope flex as
+the live binding wherever the unit is compiled, and both NUR143
+descriptors stop reproducing: retired from `regionOracleFindings`. The
+ledger asserts both ways, and a FILTERED run skips it — which is how the
+first check of the fix read green; the unfiltered oracle is the check
+(50694 reproduced, diverged-value 3 — NUR152's three — and over-claimed 1,
+NUR141). Measured by disabling each half: the snapshots alone retire both
+descriptors and pass the lang pin; a first draft that also routed
+`dynScopeRescue` and the tail-read arity through the unit's registry
+changed nothing measured and was dropped. The lang pin
+(`module_fn_unit_registry_test.go`) is a SILENT miscompile on the
+unfixed tree: `R.put 'a' 1  R.count` over an inline module's flex
+answered `[1 0]` for `[1 1]`, and `R.peek` a type error over the clone's
+None.
+
+**A real program steps back, recorded.** The same snapshot makes
+`kg/main.boru` DECLINE (the real-program ratchet, 36 -> 35 of 62):
+gomod.boru's `candidate-bundle` writes `[[repo-entity] (each …) …]`, a
+body list literal embedding the module-level map `repo-entity` — the
+interpreter's per-call outer list over the SHARED member, which the
+fn-unit const rule can neither deep-freshen nor share, so it declines
+(`fn body literal embeds an enclosing binding's container`, PR #225 P1's
+open item; a main-program fn with the same shape always declined). The
+wrong-registry snapshot had let the literal be deep-cloned per call: an
+unsound compile, which the program's `DISPATCH_GENERIC` death at run time
+never reached. Ledgered in `realProgramLedger` with the argument. The
+selective (spine-only) freshen — clone the literal's spine and keep the
+members whose IDs are enclosing bindings, a keep-set carried per const
+into the Program and read at both fresh pushes (`OpPushConstFresh`,
+`seatConstLocal`) — graduates it and is the next cut.
+
+**Measured:** five interp-entry census rows leave and none enter (62 ->
+57; the ceiling fails both ways): callbacks.tsv:L154 and
+module-composition.tsv:L94 (Engine.Run 3 + RunResolved 3 each, once per
+element), and three `$module` reads on an imported native module that the
+restore compiles where they fell to the interpreter after the module's
+body — edge-modules-1.tsv:L60 (`Test.$module is Assert.$module`,
+Engine.Run 12 + runPooledSub 8), compare-restrict.tsv:L133 (its `eq` twin,
+the same) and module-vault-tui.tsv:L18 (`convert List VaultTui.$module`,
+Engine.Run 1). Engine entries 375 -> 344 (Engine.Run 375 -> 344,
+RunResolved 73 -> 67, runPooledSub 26 -> 10, CallBoru 239, nothing else
+moved), measured with BORU_LOG_CENSUS_ROWS=1 against be610d7 and per file
+with BORU_SPEC_FILES on both heads (each file's entries were its one
+census row's). The lang ledger 283 / 36 (bail 37 -> 36), runtime defers
+54, the region oracle as above; the sweep ceilings unchanged (call-form failures 197, compile failures 29, islands 2, call-form crashes 2; no variant moved); the real programs 36 -> 35 of 62 (kg/main.boru, above).
+
+**Pins.** lang `fn_util_value_seam_test.go` (five wrapper rows and the two
+module-factory rows native and entering nothing, the no-match raising
+alike, `flip` and `filter` measured open) and
+`module_fn_unit_registry_test.go` (the module-scope flex read live through
+put / peek / keys, with a nested inline and a nested native import before
+the flex, and the sift row itself), compiler `TestBindRegistryRestores`
+(the sub-engine restore, the outermost bind kept, progReg captured once);
+the region oracle's ledger minus NUR143's two; the arity gate re-pinned at
+18 for eng/go/vm.go (the seam's signature-arity window, the argument
+rule's stack fill). Docs: the handover, NUR.md (NUR143 FIXED).

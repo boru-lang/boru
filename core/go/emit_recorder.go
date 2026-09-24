@@ -99,7 +99,13 @@ type EmitRecorder interface {
 	Active() bool
 	Armed() bool
 	Suspend() func()
-	BindRegistry(r *Registry)
+	// BindRegistry binds the recorder to the registry an engine run is
+	// about to execute on, and returns the restore of the binding it
+	// replaced: a sub-engine run (an inline module's body) binds the
+	// module's sub-registry and the enclosing run's registry comes back
+	// when it returns, so a top-level def after the import records on the
+	// program's check state, where its reads look (2026-09-24).
+	BindRegistry(r *Registry) func()
 	TopFrameOnly() bool
 	SuspendedNow() bool
 	BodyAnalysisGuard() func()
@@ -537,7 +543,7 @@ func (inactiveEmit) MemberFnReadValue(string) (Value, bool)                 { re
 func (inactiveEmit) Active() bool                                           { return false }
 func (inactiveEmit) Armed() bool                                            { return false }
 func (inactiveEmit) Suspend() func()                                        { return func() {} }
-func (inactiveEmit) BindRegistry(*Registry)                                 {}
+func (inactiveEmit) BindRegistry(*Registry) func()                          { return func() {} }
 func (inactiveEmit) TopFrameOnly() bool                                     { return true }
 func (inactiveEmit) SuspendedNow() bool                                     { return false }
 func (inactiveEmit) BodyAnalysisGuard() func()                              { return func() {} }

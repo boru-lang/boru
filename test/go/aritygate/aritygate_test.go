@@ -169,7 +169,14 @@ var pinnedAritySites = map[string]int{
 	// signature no forward token or stack value fills) to fire that
 	// overload, and `ArgCount: -1` is the unmodified call the landed value
 	// plans as (no `/N` at a value). Neither decides behaviour by arity.
-	"eng/go/vm.go": 17,
+	// 17 -> 18 (2026-09-24, the fn-util wrapper at the token seam):
+	// applyNativeFnValueTopDown asks each own signature's TotalArgs for how
+	// many inputs the value takes from the seam's stack window — the
+	// argument rule's own stack fill (positions filled from the top down),
+	// mirrored for a Go-implemented fn value handed to a native's body
+	// seam; every arity takes the same path and the match is
+	// tryNativeFnApply's.
+	"eng/go/vm.go": 18,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
