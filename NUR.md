@@ -119,6 +119,8 @@ keep the two in sync in the same commit.
 | [NUR194](#nur194) | FIXED 2026-09-24 (the written argument's fit — the handoff log's entry of that date), found the same day: a def-bound computed fn read with a WRITTEN operand its contract does not take — `def a5 (mk 5) end each [a5 "s" add] [1 2]` is `['6s' '7s']` interpreted (the matcher falls back from the written token to the frame's element) and bailed compiled on the shaped read's claim (`result count 2 violates the host-registered shape claim 1`); `do [a5 "s"]` the caught `cannot call` interpreted, the same bail (`[fn a5(Integer) s]` on main before the do body's read, silent). The shape claim carries the wrapper's parameter types now (`FnShape.Params`, from the closure unit's declared params or a const lambda's signature) and the read window declines a written token that does not conform; the body islands and the island dispatches the word as the interpreter does, and the top-level `(a5 "s")` declines the program to the interpreter's own raise. |
 | [NUR195](#nur195) | FIXED 2026-09-24 (the escaped flow after a native call — the handoff log's entry of that date), found the same day: the flag a native's body run leaves set (a break/continue with no loop of its own, handed back by the seam's sub-engine) was read by the VM only after a fallback or a fn-value apply, never after a plain native call, so `each (mk) [1 2 3]` over a computed `[break]` answered `[[1 2 3]]` silently and `for 3 [each (mk) xs i] 99` ran all three iterations; the flag is read after every native call now — the enclosing loop ends or steps on (`[99]` on both lanes), and with no loop at all the compiled lane takes the loop-less flow's designed path, the internal error RunCompiled's callers defer to the interpreter's `break outside loop` on (a loud bail, never a value). The original text: A flow sentinel inside a COMPUTED code body under `each` — `def mk fn [[][List][quote [break]]] end each (mk) [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and the compiled lane answers `[[1 2 3]]`, silently; `continue` the same. The LITERAL twin `each [break] [1 2 3]` fails to compile (the Stage-2 code-body gate) and falls back with parity. Present on `main` (d75dd75) before the run-time token-body stamp, which declines a sentinel body and leaves the seam as it was. Pinned as it stands in lang `TestComputedBodyFlowSentinelPending` | found while pinning S3's first slice (2026-09-24) |
 | [NUR196](#nur196) | FIXED 2026-09-24 (the escaped body ends the iteration — the handoff log's entry of that date), found the same day: an iterating native — each, fold, scan, filter, for-each, outer, inner, eachrank — read the residual of a body run that had ESCAPED (a break/continue left unresolved, the registry's flag set) as the element's result: the interpreter's sub-engine hands back the unstepped tape (a frame-cleanup marker, which `filter` reported as "must produce a Boolean, got __CP"), the VM's island nothing (which `each` reported as "body produced no result"). The natives end their iteration on an escaped body now (core.BodyEscaped) and return no result, so the run resolves the flag on both lanes — `for 3 [each [f] [1 2 3] i] 99` is `[99]` on both, and with no loop the interpreter raises where the compiled lane takes the loop-less deferral. The original text: A `break` raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer] [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its `[99]`; the compiled lane raises each's own `each_error: body produced no result` on both — the body's unit (or the island the declined fn takes) returns nothing on the escape, and the handler complains before the flag can be read. Loud, but a different answer. Pinned as it stands in lang `TestLiteralBodyFlowThroughFnPending` | found while closing NUR195 (2026-09-24) |
+| [NUR197](#nur197) | A loop body's residual LITERAL bearing a paren group over the loop variable — `for 2 [[(i add 1)] i]`, `for 2 [{a:(flex [i])} i]` — is the interpreter's `undefined word: i` (the residual literal is evaluated at the end of the run, after the loop unbound `i`) and the compiled lane's value per iteration (`[[1] 0 [2] 1]`); inside a fn the interpreter raises the same where the compiled lane raises the fn's return-count error. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestLoopBodyResidualLiteralPending`. |
+| [NUR198](#nur198) | A dotted read through a MISSING member — `def f fn [[m:Map][Any][m.b.c]] end f {a:1}`, `((make C {}).x get 0).y` — is the interpreter's `undefined word: c` (its `dot` over a run-time None leaves the atom unconsumed, which steps as a word) and the compiled lane's None (the chain's second hop over the first's result); a STATIC None fails to compile at the same undefined_word, consistently. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestDotChainOnMissingMemberPending`. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7440,6 +7442,96 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 (NUR186) answers the same rows the interpreter raises on when nothing
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
+
+## NUR198 — a dotted read through a MISSING member: the interpreter's undefined_word, the compiled lane's None {#nur198}
+
+**Status:** Pending (recorded 2026-09-24, found while closing the flex-member
+map literal — the handoff log's "the flex-member map literal" entry).
+Present on main before that change (measured on a clean worktree at
+6ccf827).
+
+**Rule:** a compiled program answers as the interpreter does — the same
+raise, or the same value, for a dotted read whose receiver is None at run
+time.
+
+**Divergence.**
+
+```
+def f fn [[m:Map][Any][m.b.c]] end f {a:1}
+  interpreted   undefined_word: undefined word: c
+  compiled      None
+def f fn [[m:Map][Any][(m.b).c]] end f {a:1}
+  interpreted   undefined_word: undefined word: c
+  compiled      None
+def C class {x:[{y:1}]} end ((make C {}).x get 0).y
+  interpreted   undefined_word: undefined word: y
+  compiled      None
+```
+
+`m.b` over `{a:1}` is None on both lanes (`def m {a:1} m.b`). The
+interpreter's `dot` over a None receiver does not consume the atom that
+follows: `c` steps as a WORD and raises undefined_word. The compiled
+chain reads the second hop as a `dot` over the first's result and answers
+None. Where the None is STATIC (`none dot y`, `(none).y`, a fn over an
+`Any` parameter called with none) the check pass stops at the same
+undefined_word and the compiled lane fails to compile — consistent; the
+divergence is the run-time None behind a typed receiver, which the check
+pass models as a member read.
+
+**Fence.** `TestDotChainOnMissingMemberPending` (lang
+map_literal_flex_member_test.go) pins both lanes as they stand, so closing
+it is loud.
+
+**Verdict:** none yet. Directed at the chained `dot` lowering — the second
+hop over a None receiver should raise as the interpreter raises, or the
+interpreter's `dot` should consume its atom and answer None; either way one
+answer.
+
+## NUR197 — a loop body's residual literal over the loop variable: the interpreter's undefined_word, the compiled lane's value {#nur197}
+
+**Status:** Pending (recorded 2026-09-24, found while closing the flex-member
+map literal — the handoff log's "the flex-member map literal" entry).
+Present on main before that change (measured on a clean worktree at
+6ccf827), for list and map literals alike.
+
+**Rule:** a compiled program answers as the interpreter does — the same
+raise, or the same value, for a literal a loop body leaves as its residual.
+
+**Divergence.**
+
+```
+for 2 [[(i add 1)] i]
+  interpreted   undefined_word: undefined word: i
+  compiled      [[1] 0 [2] 1]
+for 2 [{a:(i add 1)} i]
+  interpreted   undefined_word: undefined word: i
+  compiled      [{a:1} 0 {a:2} 1]
+for 2 [{a:(flex [i])} i]
+  interpreted   undefined_word: undefined word: i
+  compiled      [{a:[0]} 0 {a:[1]} 1]
+def f fn [[][List][for 2 [[(i add 1)] i]]] end f
+  interpreted   undefined_word: undefined word: i
+  compiled      type_error: f: expected 1 return value(s), got 4 — [[1] 0 [2] 1]
+```
+
+The interpreter leaves a body's residual literal UNEVALUATED on the stack
+and evaluates it at the end of the run (autoEvalStack, the deferred
+residual), by which time the loop has unbound `i`: the raise. The recorder
+evaluates the same literal where it stands in the body — the top engine's
+`case e.IsTop` arm of autoEvalList / the map gate's top arm — with `i`
+bound, so the compiled lane assembles a value per iteration. Which lane
+holds the rule is not decided here: the interpreter's deferral is the
+documented behaviour the list gate's comment names ("a fn body returning a
+bare-word list raises undefined_word at run time"), and the compiled
+answer is the one a reader expects.
+
+**Fence.** `TestLoopBodyResidualLiteralPending` (lang
+map_literal_flex_member_test.go) pins both lanes as they stand, so closing
+it is loud.
+
+**Verdict:** none yet. Directed at the recorder's top-engine arm for a
+residual literal inside a loop body — the deferral the interpreter
+performs is the frame's, not the top run's.
 
 ## NUR196 — a fn called from a literal each body breaks: each's no-result error for the interpreter's flow_error {#nur196}
 

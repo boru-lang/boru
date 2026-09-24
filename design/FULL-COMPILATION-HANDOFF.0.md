@@ -13322,6 +13322,69 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The flex-member map literal — a folded reference keeps the recorded path (2026-09-24)
+
+**The gap.** `{a:(flex [1])}` failed to compile at every position — "residual
+value not statically materialisable" as the program's result, "operand of
+unknown provenance or not statically materialisable at size / flex / dot"
+as an operand or through a def-bound read — where `[(flex [1])]` compiled.
+The `Vm.run` round trip of a flex tree (canon.tsv L39/L40, the interp-entry
+census's last two canon rows) ran its sub-program on the interpreter for
+exactly this: `canon` renders a flex map as `(flex {a:(flex [1])})`.
+
+**The mechanism.** AutoEvalMap const-folds a paren member in the check pass
+(constFoldContainerVal: the group evaluated twice on a scratch run, off the
+emit path) and, for a PLAIN literal (not make's construction body, not an
+element-recordable run), accepted the fold whatever it held — the escape
+`(!dataMap && !e.ElemEvalRecordable) || !containsSharedMutable(folded)`,
+there for a class field default whose folded instance the downstream const
+gate copies per `make`. A folded FLEX or STORE is a reference the scratch run
+minted: no event, no compiled home, and the map that holds it is not an inert
+const either (IsInertConst), so it fell between the two gates. A list
+literal never folds its elements — autoEvalList runs them as an inline
+context region (runInlineCtxRegion), where every dispatch records — which is
+why the list compiled and the map did not.
+
+**The fix.** The fold's concrete value stays the member — a class body's
+schema default needs it (the check pass's `class` reads the body map, and
+the region's result is the check's CARRIER: made the member outright, a flex
+default read as "missing field x" at `make`, a nested one as the field's
+type) — and takes the region result's IDENTITY: when a plain literal's fold
+holds a flex or store (`containsFlexOrStore`), the group runs once more as
+the inline context region a list element runs in (runInlineCtxRegion), where
+its `flex` records, and `folded.ID = result[0].ID`, so RecordMakeMap resolves
+the member to the recorded event and the map assembles at run time
+(OpMakeMap) from the reference the run mints then. The bare map-value member
+(a nested literal `{y:(flex [1])}`) does the same through the pooled
+sub-run that records the nested assembly. A paren member the fold declines
+outright runs in the region too (the reach-valued member `{x: m.a}`
+likewise), and the map gate records the TOP engine's deferred residual
+(`case e.IsTop`, autoEvalList's arm): the end-of-run evaluation appends the
+assembly at the end of the event stream, when the interpreter builds the
+map. A folded class instance keeps the const path unchanged (class.tsv's
+defaults measured). The old bare-sub-run helper (evalParenExprResults) is
+gone with its last callers.
+
+**Found on the way — NUR197 and NUR198, recorded, not this cut's.** A loop
+body's residual literal over the loop variable — `for 2 [[(i add 1)] i]`,
+`for 2 [{a:(flex [i])} i]` — is the interpreter's `undefined word: i` (the
+residual is evaluated at the end of the run, after the loop unbound `i`) and
+the compiled lane's value per iteration, for lists and maps alike (NUR197);
+a dotted read through a MISSING member — `def f fn [[m:Map][Any][m.b.c]]
+end f {a:1}` — is the interpreter's `undefined word: c` (its `dot` over a
+run-time None leaves the atom unconsumed) and the compiled lane's None
+(NUR198). Both present on main at 6ccf827 (measured on a clean worktree);
+`TestLoopBodyResidualLiteralPending` and `TestDotChainOnMissingMemberPending`
+pin both lanes as they stand.
+
+**Measured:** the interp-entry census 26 -> 24 rows (canon.tsv L39/L40 leave; none enter), the engine-entry census 172 -> 166 unattributed runs (Engine.Run 172 -> 166, runPooledSub 9 -> 5 — the two canon rows' sub-runs — CallBoru 132, RunResolved 16, vm:island-resolved 7, InvokeCallback:callboru 5, vm:island 4), the corpus otherwise unchanged (8563 rows, 8204 compiled, the region oracle's diverged-value 3 / over-claimed 1 as before with eight more descriptors executed and reproduced, the compile-failure, runtime-defers and sweep ledgers at their values), the lang ledger's compile-failure line 286 and bail line 44 unchanged, the unit suites of core, eng, compiler, check, basic and lang green.
+
+**Pins.** lang `TestMapLiteralFlexMemberCompiles` (thirteen shapes on both
+lanes — the residual, `size` and `flex` operands, def-bound reads through
+`dot`, nested map and list members, the reach-valued member, the canon
+round trip with no unattributed entry; the class defaults unchanged), core
+`TestContainsFlexOrStore`; NUR.md (NUR197, NUR198 recorded); the handover.
+
 ## The boru:test bodies reach the VM — Test.invoke through the seam, the throwaway signature stamped at run time (2026-09-24)
 
 **The rows.** Eight of the interp-entry census's twenty-nine rows were

@@ -219,7 +219,14 @@ branch-carried def"**; the re-estimate is
    native.StampBodySig, the carrier's twin — the value-level shrinker's
    literal forms answered without an engine run, the recorder run
    attributed "stackform-record"; what stays is the generator over the
-   opaque `r`, the dynamic-landing frontier); filter's predicate
+   opaque `r`, the dynamic-landing frontier); the flex-member map literal
+   compiles the same day (the handoff log's "the flex-member map literal"
+   entry: a folded flex or store keeps the recorded path, the member runs
+   as a list element's inline region, canon.tsv's Vm.run round trips
+   leave the census; NUR197 and NUR198 recorded on the way — a loop
+   body's residual literal over the loop variable, and a dotted read
+   through a missing member, each the interpreter's undefined_word for
+   the compiled lane's value); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

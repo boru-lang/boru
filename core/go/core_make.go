@@ -348,6 +348,41 @@ func containsCapturingFn(v Value) bool {
 	return false
 }
 
+// containsFlexOrStore reports whether v is, or holds at any depth of a map or
+// list, a flex node or a store — the shared-mutable REFERENCES a const-fold's
+// scratch run mints afresh, which no compiled home can name (unlike a class
+// instance, which the const gate copies per `make`). AutoEvalMap's fold
+// acceptance keeps such a member on the recorded path.
+func containsFlexOrStore(v Value) bool {
+	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) {
+		return true
+	}
+	if !IsConcrete(v) {
+		return false
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				if containsFlexOrStore(val) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				if containsFlexOrStore(lst.Get(i)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func containsSharedMutable(v Value) bool {
 	if IsFlexNode(v) || IsWeakFlexNode(v) || IsStore(v) || IsClassInstance(v) {
 		return true
