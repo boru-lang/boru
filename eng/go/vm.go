@@ -2751,10 +2751,28 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// failed run (or a closure error a caller traps) leaks nothing into the
 	// registry.
 	dynBase := len(vc.dynBinds)
+	// A KEEP-DEFS body unit (`do`, CompiledFn.KeepsDefs) is the exception
+	// both ways: the interpreter runs that body in the caller's frame and
+	// its defs leak, so the installs its OWN frame made stay on the trail
+	// — past its top RET (below) for the enclosing frame's exit to pop,
+	// and past a raise too (the interpreter's leak-then-raise: `do [def t
+	// 5 raise 'x']` leaves t bound). Only the frames still open BENEATH
+	// the error — a callee mid-body — are torn down then, from the first
+	// such frame's entry depth.
+	keepDefs := startUnit >= 0 && startUnit < len(p.Fns) && p.Fns[startUnit].KeepsDefs
+	var frames []vmFrame
 	defer func() {
-		if runErr != nil {
-			vc.unwindDynBinds(dynBase)
+		if runErr == nil {
+			return
 		}
+		base := dynBase
+		if keepDefs {
+			if len(frames) == 0 {
+				return
+			}
+			base = frames[0].dynBase
+		}
+		vc.unwindDynBinds(base)
 	}()
 	// This activation counts against the shared frame ceiling; restore the
 	// entry baseline on exit so sequential runs and error unwinds never leak
@@ -2764,7 +2782,6 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	vc.frameDepth++
 	defer func() { vc.frameDepth = entryFrameDepth }()
 	var loops []vmLoop
-	var frames []vmFrame
 	// marks is the variadic-region mark stack (OpStackMark / OpDropToMark /
 	// OpPopMark): each entry is a saved stack depth so a 0-or-1 (runtime-variadic)
 	// value produced above the mark can be discarded by truncation regardless of
@@ -3605,8 +3622,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// result, threaded back through the InvokeBody seam. The
 				// main program (unit -1) never RETs — it runs off the end —
 				// so this path is closure/fn-root only. Bindings this
-				// activation installed pop here, like any frame exit.
-				vc.unwindDynBinds(dynBase)
+				// activation installed pop here, like any frame exit —
+				// except a KEEP-DEFS body's (`do`, CompiledFn.KeepsDefs):
+				// the interpreter runs that body in the caller's frame and
+				// its defs leak, so the installs stay on the trail for the
+				// ENCLOSING frame's exit to pop (or the run's end at root).
+				if !keepDefs {
+					vc.unwindDynBinds(dynBase)
+				}
 				return stack, nil
 			}
 			f := frames[len(frames)-1]

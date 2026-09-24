@@ -226,7 +226,24 @@ branch-carried def"**; the re-estimate is
    leave the census; NUR197 and NUR198 recorded on the way — a loop
    body's residual literal over the loop variable, and a dotted read
    through a missing member, each the interpreter's undefined_word for
-   the compiled lane's value); filter's predicate
+   the compiled lane's value); the keep-defs body lands the same day
+   (the handoff log's "NUR199 closed — the keep-defs body" entry: a `do`
+   body's defs install as kept dynamic-scope bindings the enclosing frame
+   pops, the enclosing loop refreshes its carried slot after the call and
+   a leaked name's read seats live; `for 3 [do [def t 5]]  t` was 0 for
+   the interpreter's 5 on main — NUR199, closed — and code-bodies L180 /
+   L186 compile, 13 -> 11; NUR201, a callee's def outliving a trapped
+   raise on the interpreter only, is recorded against the interpreter);
+   the multi-run keep-defs body closes NUR200 the same day (the handoff
+   log's "NUR200 closed" entry: each / fold / scan bodies are keep-defs
+   units too, every read of a leaked name seats live — the twin regime's
+   value-name read fence is retired — and a mutated flex read back after
+   a body seats live; code-bodies L183 / L190 and module-composition L92
+   compile, the corpus's compile failures 19 -> 16); the variadic loop
+   body lands the same day (the handoff log's "the variadic loop body"
+   entry: a loop body whose one result is a 0-or-1 branch is admitted,
+   the S5 first-value bind over such a loop declining instead;
+   code-bodies L181 / L182 compile, 16 -> 14); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

@@ -101,10 +101,31 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	}
 	// A multi-out body (net drivers) allows the residualN>1 variadic
 	// reconciliation; its per-iteration values accumulate across iterations.
+	// A body whose ONE result is itself a 0-or-1 event — a variadic `if`
+	// (`for 2 [if c [def t (t add 1)] [0]]`, one arm binding, the other
+	// leaving a value) — is admitted too: the loop's region is a
+	// runtime-variable count already (Stage 2 loops feed only the program
+	// residual, which absorbs whatever the region leaves), so a per-
+	// iteration count of 0 or 1 costs the region nothing. What it does
+	// cost is the S5 first-value split, whose static depth assumes one
+	// value per iteration — bodyVariadic marks the loop so that bind
+	// declines (lowerDynBind). A loop CONDITION keeps its one-value rule.
+	// The out's variadic-ness is known only once the body's events have
+	// lowered (the `if` inside it marks its own seq), so the admission is
+	// the fragment's: loopBodyFrag tells this ONE fragment it is a loop
+	// body, and variadicOutAdmitted reports back whether it used that.
+	lw.loopBodyFrag, lw.variadicOutAdmitted = true, false
 	reason := lw.lowerFragment(lp.body, out, lp.multiOut, lp.pos)
+	lw.loopBodyFrag = false
 	lw.loops = lw.loops[:len(lw.loops)-1]
 	if reason != "" {
 		return reason
+	}
+	if lw.variadicOutAdmitted {
+		if lw.bodyVariadic == nil {
+			lw.bodyVariadic = map[int]bool{}
+		}
+		lw.bodyVariadic[ev.seq] = true
 	}
 	lw.emit(OpJmp, head, lp.pos)
 	if condExit >= 0 {
@@ -340,7 +361,11 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// write-back is emitted, because the twin's replay must then leave the
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
-	needDyn := lw.es != nil && (lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
+	// A KEEP-DEFS unit (`do`'s body) installs EVERY value def: the
+	// interpreter runs the body in the caller's frame and the binding
+	// leaks, so each is registry-visible — a kept OpBindDynScope the VM
+	// leaves standing past this unit's RET (CompiledFn.KeepsDefs).
+	needDyn := lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
 	if needDyn && d.root && lw.twinInstalls(twin) {
 		// A ROOT def whose bind twin REPLAYS at this very site (a concrete
 		// captured entry, not written back) is registry-visible by that
@@ -377,6 +402,11 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	src := d.src
 	if needDyn || !fastGlobal {
 		switch {
+		case d.srcSeq >= 0 && lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal && lw.bodyVariadic[d.srcSeq]:
+			// The S5 split's static depth assumes one value per iteration;
+			// a loop whose body leaves 0 or 1 (lowerLoop's bodyVariadic)
+			// has no static region to splice from.
+			return "def `" + d.name + "` binds the first value of a loop whose body leaves 0 or 1 per iteration (Stage 2)"
 		case d.srcSeq >= 0 && lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal:
 			// (needDyn is irrelevant here: an S5 read resolves via
 			// OpLookupDynScope against the registry slot the splice bind
@@ -655,6 +685,17 @@ type lowerer struct {
 	sigIdx     map[*core.Signature]int
 	vm         []vmSlot
 	variadic   map[int]bool // loop seqs: N runtime values, not one
+	// bodyVariadic marks a loop event whose body leaves 0 or 1 value per
+	// iteration (a variadic `if` as the body's one result — lowerLoop):
+	// its region has no static per-iteration count, so the S5 first-value
+	// bind over it declines. Nil until first use. loopBodyFrag is
+	// lowerLoop's one-shot note to the NEXT lowerFragment that it lowers a
+	// loop body (consumed at entry, so a nested fragment never inherits
+	// it), and variadicOutAdmitted is that fragment's report back that its
+	// out was a variadic event it admitted on that account.
+	bodyVariadic        map[int]bool
+	loopBodyFrag        bool
+	variadicOutAdmitted bool
 	// twinFor pairs a root def with its bind twin: the most recent PUSH-kind
 	// twin lowered under each name, taken by the def's own lowering
 	// (takeTwin) so a write-back can mark it (markTwinWrittenBack) and a
@@ -710,6 +751,10 @@ type lowerer struct {
 	// OpFlowBreak/OpFlowContinue rather than declining. At the main unit the same
 	// shape stays a compile failure (a top-level break outside any loop).
 	isFnUnit bool
+	// keepsDefs marks a lowerer driving a KEEP-DEFS body unit
+	// (fnUnitRec.keepsDefs — `do`'s body): every value def lowers to the
+	// kept OpBindDynScope install, whatever its name (lowerDynBind).
+	keepsDefs bool
 	// frameTail marks a lowerer driving a unit whose interpreter frame ends
 	// in the fn tail markers (a user fn body or a lambda value's body): a
 	// named fn value landing at the body's END finds those markers as its
@@ -1897,10 +1942,11 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	// promotion forceOrder describes (store once, re-push per use), so one
 	// set drives every trigger below without extra per-site conditions.
 	var deoptNames map[string]bool
+	keepsDefs := false
 	if unit != nil {
-		deoptNames = unit.deoptNames
+		deoptNames, keepsDefs = unit.deoptNames, unit.keepsDefs
 	}
-	if dynBindSrc := es.collectDynBindSources(events, deoptNames); len(dynBindSrc) > 0 {
+	if dynBindSrc := es.collectDynBindSources(events, deoptNames, keepsDefs); len(dynBindSrc) > 0 {
 		merged := make(map[int]bool, len(forceOrder)+len(dynBindSrc))
 		for k := range forceOrder {
 			merged[k] = true
@@ -2726,7 +2772,7 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 // (OpBindGlobal) — the promotion set planValueDefLocals feeds into its
 // triggers so lowerDynBind can re-push each value from a frame slot for its
 // install.
-func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[string]bool) map[int]bool {
+func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[string]bool, keepsDefs bool) map[int]bool {
 	dynBindSrc := map[int]bool{}
 	// Every event of the unit, the arms and loop bodies included: a
 	// dyn-bound def INSIDE an `if` arm (`[def acc3 (n add 1) f (n sub 1)]`,
@@ -2751,6 +2797,10 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
 		if es.dynEnv || deoptNames[ev.dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
+			// A KEEP-DEFS unit (`do`'s body) installs every value def
+			// (lowerDynBind's keep arm), so every computed source is
+			// promoted for the install's re-push.
+			keepsDefs ||
 			// An ARM-RESIDENT body compile (the each-unit bracket, regime
 			// only): every def's computed source is force-promoted so the
 			// resident install can re-push it from a frame slot — a body
@@ -3254,6 +3304,10 @@ func (lw *lowerer) collectRegionTop(ev *EmitEvent) bool {
 // emitted its jump, so whatever its scope holds is unreachable and
 // ignored). Restores the parent scope afterwards.
 func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos) string {
+	// A loop body's admission of a variadic out (lowerLoop): read once and
+	// cleared, so the fragments this one lowers inside itself start clean.
+	loopBody := lw.loopBodyFrag
+	lw.loopBodyFrag = false
 	lw.depth++
 	defer func() { lw.depth-- }()
 	if lw.depth > maxLowerDepth {
@@ -3385,13 +3439,18 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 			return "branch leaves extra values (Stage 2 lowers single-result branches)"
 		}
 	case out.kind == opEvent:
-		if lw.variadic[out.idx] && !allowVariadic {
+		if lw.variadic[out.idx] && !allowVariadic && !loopBody {
 			// The fragment's result is itself a VARIADIC (0-or-1) event — a
 			// nested variadic `if` (e.g. a no-default `case` chain). A BRANCH ARM
 			// may carry it (allowVariadic — the parent if propagates the
-			// variadic-ness up to its own merge), but a loop body / condition may
-			// not: they need a definite single value per iteration.
+			// variadic-ness up to its own merge), and so may a LOOP BODY
+			// (loopBody — lowerLoop's bodyVariadic: the region's count is
+			// runtime-variable anyway), but a loop condition may not: it
+			// needs a definite single value per iteration.
 			return "loop results as a branch/body result (Stage 2)"
+		}
+		if lw.variadic[out.idx] && loopBody {
+			lw.variadicOutAdmitted = true
 		}
 		if len(lw.vm) != 1 || !slotIs(lw.vm[0], *out) {
 			return "branch leaves extra values (Stage 2 lowers single-result branches)"
