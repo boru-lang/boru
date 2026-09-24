@@ -208,8 +208,11 @@ branch-carried def"**; the re-estimate is
    by the compiled lane) closed the same day: the VM reads the flag a
    native's body run leaves set after every native call, as after a
    fallback — the enclosing loop ends, or the loop-less flow defers loud;
-   NUR196 recorded (a fn called from a LITERAL each body breaking: each's
-   no-result error for the interpreter's flow_error); filter's predicate
+   NUR196 (a fn called from a LITERAL each body breaking: each's
+   no-result error for the interpreter's flow_error) closed the same day —
+   every iterating native ends its iteration on an escaped body
+   (core.BodyEscaped) and returns no result, so the run resolves the flag
+   on both lanes; filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

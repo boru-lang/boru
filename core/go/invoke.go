@@ -38,6 +38,26 @@ func InvokeBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
 	return RunResolved(r, inputs, BodyTokens(body))
 }
 
+// BodyEscaped reports whether the body InvokeBody just ran left a
+// break/continue unresolved — the registry's FlowCtrl set, the signal an
+// enclosing loop or the top of the run will resolve (Engine.exitWithFlowCtrl's
+// sub-engine contract; the VM's resolveEscapedFlow after the native returns). An
+// ITERATING native — each, fold, scan, filter, for-each, the zip and matrix
+// words — ends its iteration on it and returns NO result, instead of reading
+// the escaped run's residual as the element's answer: the interpreter's
+// sub-engine hands back the unstepped tape (a frame-cleanup marker `__CP`,
+// which `filter` then reported as "must produce a Boolean, got __CP"), and
+// the VM's island hands back nothing (which `each` then reported as "body
+// produced no result", for the interpreter's flow_error — NUR196). Whatever
+// the native returns on an escape is discarded by the flow's resolution —
+// the loop's iteration is abandoned, or the run raises `outside loop` — so
+// returning nothing is the one answer both lanes share. Single-shot bodies
+// (`do`, a branch) need no such check: their residual is the run's to keep
+// stepping, and no per-element contract judges it.
+func BodyEscaped(r *Registry) bool {
+	return r.FlowCtrl != FlowNone
+}
+
 // InvokeCallbackBody is the compiled-closure twin of InvokeCallbackFn — the
 // fn-VALUE seam. A handler that hands a FnDefInfo to InvokeCallbackFn (the
 // CallBoru discipline: the declared TYPES are checked over the aligned

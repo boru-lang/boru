@@ -158,25 +158,73 @@ func TestComputedBodyFlowSentinelDefers(t *testing.T) {
 	}
 }
 
-// TestLiteralBodyFlowThroughFnPending pins NUR196 as it stands: a `break`
-// raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer]
-// [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's
-// `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its
-// [99]; the compiled lane raises each's own `body produced no result` on
-// both, the body's unit having returned nothing on the escape before the
-// flag could be read. When the divergence closes this test fails, and
-// NUR196 retires.
-func TestLiteralBodyFlowThroughFnPending(t *testing.T) {
-	for _, row := range []struct{ src, wantI string }{
-		{`def f fn [[x:Integer][Integer][break]] end each [f] [1 2 3]`, "flow_error"},
-		{`def f fn [[x:Integer][Integer][break]] end for 3 [each [f] [1 2 3] i] 99`, "[99]"},
+// TestLiteralBodyFlowThroughFnResolves pins NUR196's close (2026-09-24,
+// the escaped body ends the iteration): a `break` raised by a fn CALLED
+// from a LITERAL each body — `def f fn [[x:Integer] [Integer] [break]] end
+// each [f] [1 2 3]` — is the interpreter's `flow_error: break outside
+// loop`, and under `for 3 [… i] 99` its [99]; the compiled lane raised
+// each's own `body produced no result` on both, the fn's island having
+// returned nothing on the escape before the flag could be read. The
+// iterating natives end their iteration on an escaped body now
+// (core.BodyEscaped) and return no result, so the run resolves the flag on
+// both lanes: [99] under the loop, and with no loop at all the
+// interpreter's raise against the compiled lane's loop-less deferral bail
+// (as NUR195's witnesses).
+func TestLiteralBodyFlowThroughFnResolves(t *testing.T) {
+	const f = `def f fn [[x:Integer][Integer][break]] end `
+	for _, src := range []string{
+		f + `for 3 [each [f] [1 2 3] i] 99`,
+		f + `for 3 [each [f] {a:1} i] 99`,
+		`def g fn [[x:Integer][Integer][continue]] end for 3 [each [g] [1 2 3] i] 99`,
+		f + `for 3 [scan [f] [1 2 3] i] 99`,
+		f + `for 3 [filter [f] [1 2 3] i] 99`,
+		f + `for 3 [filter [f] {a:1} i] 99`,
+		f + `for 3 [outer [f] [1 2] [3 4] i] 99`,
+		f + `for 3 [inner [f] [add] [1 2] [3 4] i] 99`,
+		`def h fn [[x:Integer y:Integer][Integer][break]] end for 3 [inner [add] [h] [1 2] [3 4] i] 99`,
+		f + `for 3 [inner [f] [add] [[1 2] [3 4]] [[5 6] [7 8]] i] 99`,
+		`def h fn [[x:Integer y:Integer][Integer][break]] end for 3 [inner [add] [h] [[1 2] [3 4]] [[5 6] [7 8]] i] 99`,
 	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, row.src)
-		if (errI == nil && fmt.Sprint(gotI) != row.wantI) || (errI != nil && codeOf(errI) != row.wantI) {
-			t.Fatalf("%q: the interpreter's answer moved: %v / %v", row.src, gotI, errI)
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || errC != nil || !compiled || fmt.Sprint(gotC) != "[99]" || fmt.Sprint(gotI) != "[99]" {
+			t.Errorf("%q: compiled %v/%v (%v) interp %v/%v, want [99] on both lanes", src, gotC, errC, compiled, gotI, errI)
 		}
-		if !compiled || codeOf(errC) != "each_error" || len(gotC) != 0 {
-			t.Errorf("%q: NUR196's divergence moved — compiled %v / %v (%v); if the lanes now agree, retire NUR196 and delete this pin", row.src, gotC, errC, compiled)
+	}
+	// The natives the compiler still declines (a code-body word, a fold
+	// whose branch leaves extra values): the interpreter's [99] is the
+	// contract, and the compiled lane reaches it by fallback or by parity.
+	for _, src := range []string{
+		f + `for 3 [[1 2] for-each [f] i] 99`,
+		f + `for 3 [0 fold [f] [1 2 3] i] 99`,
+		`import "boru:array-util" ` + f + `for 3 [ArrayUtil.eachrank 0 [f] [[1 2] [3 4]] i] 99`,
+		`import "boru:array-util" def fl fn [[x:List][Integer][break]] end for 3 [ArrayUtil.eachrank 1 [fl] [[1 2] [3 4]] i] 99`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || fmt.Sprint(gotI) != "[99]" {
+			t.Errorf("%q: interp %v/%v, want [99]", src, gotI, errI)
+		}
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
+		if errC != nil || !compiled || fmt.Sprint(gotC) != "[99]" {
+			t.Errorf("%q: compiled %v/%v (%v), want [99]", src, gotC, errC, compiled)
+		}
+	}
+	for _, src := range []string{
+		f + `each [f] [1 2 3]`,
+		f + `0 fold [f] [1 2 3]`,
+		f + `scan [f] [1 2 3]`,
+		f + `filter [f] [1 2 3]`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if codeOf(errI) != "flow_error" || len(gotI) != 0 {
+			t.Fatalf("%q: the interpreter must raise the flow error, not read the escaped residual: %v / %v", src, gotI, errI)
+		}
+		if noteCompileDefect(t, src, gotC, errC) {
+			continue
+		}
+		if !compiled || codeOf(errC) != "flow_error" || len(gotC) != 0 {
+			t.Errorf("%q: compiled %v / %v (%v) — neither the interpreter's raise nor the loop-less deferral", src, gotC, errC, compiled)
 		}
 	}
 }

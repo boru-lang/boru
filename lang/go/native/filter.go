@@ -211,6 +211,9 @@ func filterBodyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		if err != nil {
 			return false, fmt.Errorf("filter: %s: %w", label, err)
 		}
+		if BodyEscaped(r) {
+			return false, nil // the body's break/continue ends the filter; the loops below return
+		}
 		if len(res) == 0 {
 			return false, r.BoruError("filter_error", fmt.Sprintf("filter: %s: body produced no result", label), "filter")
 		}
@@ -232,6 +235,9 @@ func filterBodyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 			if err != nil {
 				return nil, err
 			}
+			if BodyEscaped(r) {
+				return nil, nil
+			}
 			if ok {
 				out = append(out, elem)
 			}
@@ -246,6 +252,9 @@ func filterBodyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 			ok, err := keep(v, fmt.Sprintf("key %q", k))
 			if err != nil {
 				return nil, err
+			}
+			if BodyEscaped(r) {
+				return nil, nil
 			}
 			if ok {
 				out.Set(k, v)

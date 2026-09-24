@@ -13322,6 +13322,64 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR196 closed — the escaped body ends the iteration (2026-09-24)
+
+**The divergence.** Recorded while closing NUR195: a `break` raised by a fn
+CALLED from a LITERAL each body — `def f fn [[x:Integer][Integer][break]]
+end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside
+loop`, and under `for 3 [… i] 99` its `[99]`; the compiled lane raised
+each's own `each_error: body produced no result` on both. Probed across
+the family: fold and scan the same way, and `filter [f] [1 2 3]` on the
+INTERPRETER itself raised "filter: element 0: body must produce a Boolean,
+got __CP" — a frame-cleanup marker read as the body's answer.
+
+**The mechanism.** Both lanes read the residual of a body run that had
+ESCAPED — a break/continue left unresolved, the registry's FlowCtrl set for
+an enclosing loop or the top of the run to resolve — as the element's
+result, and each read something different. The interpreter's sub-engine
+hands back the unstepped tape (Engine.exitWithFlowCtrl's non-island
+contract: `Tape.TakeAll()`): after the fn's spliced body, that is its
+cleanup marker, which `each` collected as junk the flow error then
+discarded, and which `filter` judged and reported. The VM's island — the
+fn `f`, its body a bare sentinel the compiler declines, runs through one
+— hands back nothing (runIslandResolved's FlowUnwind), which `each`
+reported before the flag could be read.
+
+**The fix.** Whatever an iterating native returns on an escape is
+discarded by the flow's resolution — the loop's iteration is abandoned
+(`flowSignal` trims to the iteration base), or the run raises `outside
+loop` — so the one answer both lanes share is NO result. `core.BodyEscaped`
+(beside `InvokeBody`) reads the flag, and each iterating native ends its
+iteration on it and returns nothing, before its own per-element judgement:
+each, fold, scan, filter (list and map), for-each, outer, inner (1D and
+2D, the pair op and the fold op), eachrank and its recursive walk. The
+VM's `resolveEscapedFlow` after the native call (NUR195's close) then
+does the rest: `for 3 [each [f] [1 2 3] i] 99` is `[99]` on both lanes,
+the `continue` twin and the map, filter, scan, outer and inner shapes
+likewise; with no loop at all the interpreter raises `flow_error` and the
+compiled lane takes the loop-less deferral, a counted bail (the lang
+ledger's bail line 40 -> 44: each, fold, scan and filter over `[f]`),
+never a value. Single-shot bodies (`do`, a branch) keep their residual:
+it is the run's to keep stepping, and no per-element contract judges it.
+
+**A language-visible change, for the better.** The interpreter's `filter
+[f] xs` no longer reports the cleanup marker; it raises the canonical
+flow error like its siblings. No corpus row carried the marker (the
+corpus is unchanged), and the langspec differential would have caught a
+row that did.
+
+**Measured:** the lang ledger's compile-failure line 282 -> 286 (for-each,
+fold and eachrank under a loop over the escaping fn — the natives the
+compiler still declines, `[99]` by fallback) and its bail line 40 -> 44
+(the loop-less witnesses); the full corpus unchanged (8563 rows, 8204 compiled, the interp-entry census 29 rows at its ceiling of 29, the engine-entry census 281, the region oracle's diverged-value 3 / over-claimed 1 as before, the compile-failure, runtime-defers and sweep ledgers all at their values).
+
+**Pins.** lang `TestLiteralBodyFlowThroughFnResolves` (the looped shapes
+`[99]` on both lanes across each, the map each, continue, scan, filter,
+outer, inner ×4, the map filter; the loop-less each, fold, scan and
+filter — the interpreter's raise, the compiled lane's deferral; for-each
+and fold under a loop by fallback parity), core `TestBodyEscaped`. Docs:
+the handover, NUR.md (NUR196 FIXED).
+
 ## NUR195 closed — the escaped flow after a native call (2026-09-24)
 
 **The divergence.** Recorded while pinning S3's first slice: `each (mk) [1

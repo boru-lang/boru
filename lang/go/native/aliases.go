@@ -488,6 +488,7 @@ var (
 	RunPooledTop             = core.RunPooledTop
 	RunResolved              = core.RunResolved
 	InvokeBody               = core.InvokeBody
+	BodyEscaped              = core.BodyEscaped
 	InvokeCallbackBody       = core.InvokeCallbackBody
 	InvokeCallbackFn         = core.InvokeCallbackFn
 	FnValueOnlyZeroArgSigs   = core.FnValueOnlyZeroArgSigs
