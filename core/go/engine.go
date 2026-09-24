@@ -1259,7 +1259,10 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// calls to push carrier return values declared on the signature.
 	if e.Registry.analysisActive() {
 		es := e.Registry.analysisRecorder()
-		es.BindRegistry(e.Registry) // back-pointer for returned-closure compilation
+		// The back-pointer for returned-closure compilation, restored when
+		// this run returns so a sub-engine's registry (an inline module's
+		// body) does not outlive its run on the recorder.
+		defer es.BindRegistry(e.Registry)()
 		pre := input
 		input = e.Registry.analysisStripToCarriers(input)
 		es.RememberStrippedOriginals(pre, input)

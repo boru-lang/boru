@@ -545,6 +545,46 @@ func (vc *vmContext) invokeClosurePositional(reg *core.Registry, fnVal core.Valu
 	return vc.invokeClosure(reg, fnVal, rev)
 }
 
+// applyNativeFnValueTopDown applies a self-contained Go-implemented fn value
+// (or a parked native) at the TOKEN seam over the inputs a native handed it
+// in STACK order, the way the interpreter steps the value there: each own
+// signature's arity names how many inputs it takes from the top, those
+// bind top-down (the top input → the first param, NUR179's rule, the
+// window reversed into positional order), and the inputs beneath stay as
+// the body's residual — `1 fold h/v [1 2]` over a one-param wrapper applies
+// h to the element and leaves the accumulator, and fold reads the top.
+// Arities are tried widest first, so an overloaded wrapper takes as much as
+// it can, and the first matching one applies (tryNativeFnApply); with none
+// matching the caller's interpreter fallback steps the value as before.
+func (vc *vmContext) applyNativeFnValueTopDown(body core.Value, fd core.FnDefInfo, inputs []core.Value) ([]core.Value, bool, error) {
+	for k := len(inputs); k >= 0; k-- {
+		takes := false
+		for i := range fd.Signatures {
+			if !fd.Signatures[i].Fallback && fd.Signatures[i].TotalArgs() == k {
+				takes = true
+				break
+			}
+		}
+		if !takes {
+			continue
+		}
+		args := make([]core.Value, k)
+		for i := 0; i < k; i++ {
+			args[i] = inputs[len(inputs)-1-i]
+		}
+		res, done, err := vc.tryNativeFnApply(body, args)
+		if !done {
+			continue
+		}
+		if err != nil {
+			return nil, true, err
+		}
+		out := append(append([]core.Value(nil), inputs[:len(inputs)-k]...), res...)
+		return out, true, nil
+	}
+	return nil, false, nil
+}
+
 // invokeClosureOn runs a code body for the InvokeBody seam against the
 // CALLING registry: the registry the handler dispatched on (the main
 // registry, a module sub-registry, or a per-connection fork that inherited
@@ -560,6 +600,21 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		// see vmContext.islandEng's non-reentrancy contract).
 		if res, err, ran := vc.invokeFnValue(reg, body, inputs); ran {
 			return res, err
+		}
+		// A SELF-CONTAINED Go-implemented fn value (fn-util's produced
+		// wrappers) or a parked native: apply it on its own signatures here,
+		// as the quotation body's trailing apply does (callDynTrailTop →
+		// tryNativeFnApply), rather than stepping it on the interpreter per
+		// element — `each h/v [1 2 3]` with `def h (FnUtil.compose …)` paid
+		// a RunResolved entry per element where `each [h] [1 2 3]` ran
+		// natively (the interp-entry census, callbacks.tsv:L154). The seam's
+		// inputs are in STACK order and the value's signature binds
+		// top-down, so the window is reversed into positional order exactly
+		// as invokeClosurePositional does for a closure (NUR179's rule).
+		if fd, isFn := body.Data.(core.FnDefInfo); isFn && vmNativeApplicable(vc.r, fd) {
+			if res, done, err := vc.applyNativeFnValueTopDown(body, fd, inputs); done {
+				return res, err
+			}
 		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
