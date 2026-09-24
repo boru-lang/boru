@@ -192,7 +192,11 @@ branch-carried def"**; the re-estimate is
    freshen nor share) — graduated again the same day by the selective
    freshen (the fresh push clones the literal's spine and KEEPS the
    embedded members, Program.ConstKeep; PR #225 P1's open item closed,
-   the lang ledger 283 -> 282); filter's predicate
+   the lang ledger 283 -> 282). The foreign-home fn value at the apply
+   seam (the same day): a module fn value's own detached stamp is hosted
+   nested at every dynamic-apply site where the frame entry declined it
+   (callbacks L146, module-composition L100, module-fnvalue-boundary L51
+   left the census); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

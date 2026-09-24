@@ -191,7 +191,7 @@ var pinnedAritySites = map[string]int{
 	// do: the replay window reads it to know whether the callee can reach the
 	// resolved prefix below the tokens, and a callee of any arity that cannot
 	// takes the same path.
-	"eng/go/vm_dyn_apply.go":    3,
+	"eng/go/vm_dyn_apply.go":    4, // 3 -> 4 (2026-09-24, the foreign-home fn value at the apply seam): dynApplyForeign requires the matched overload's parameter count to equal the window — the argument rule (a unit binds exactly its params; dynApplyEnter's NParams == len(args) shape rule for a detached unit), never behaviour by arity
 	"eng/go/vm_rematch.go":      2,
 	"eng/go/vm_poly_nomatch.go": 3,
 	// closureAsWord bridges a compiled closure to a handler-bearing FnDefInfo
