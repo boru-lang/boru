@@ -1126,8 +1126,15 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 	if fn, ok := r.dispatchCache.get(name, gen); ok {
 		return fn
 	}
-	fn := r.lookupUncached(name)
-	r.dispatchCache.put(name, gen, fn)
+	fn, closureBound := r.lookupUncachedBridged(name)
+	// A name bound to a compiled closure is never cached: a bridged
+	// aggregate captures the RUN's invoker (ClosureAsFnDef's one-dispatch
+	// contract), and a nil computed between runs — no invoker, so no
+	// bridge — would outlive the run that next sets one, at the same
+	// binding generation.
+	if !closureBound {
+		r.dispatchCache.put(name, gen, fn)
+	}
 	return fn
 }
 
@@ -1136,7 +1143,25 @@ func (r *Registry) Lookup(name string) *FnDefInfo {
 // dispatchCache; call this directly only when a fresh (uncached) aggregate
 // is required.
 func (r *Registry) lookupUncached(name string) *FnDefInfo {
+	fn, _ := r.lookupUncachedBridged(name)
+	return fn
+}
+
+// lookupUncachedBridged is lookupUncached, saying whether the name's def
+// stack holds a compiled CLOSURE (bridged into the aggregate under a run's
+// invoker, or skipped as data outside one — either way uncacheable). A closure
+// value a compiled program binds by `def` (bindGlobal, bindDynScope) is the
+// interpreter's NAMED fn definition — its word dispatches, its no-match
+// raises `cannot call` — but the def stack holds the payload, which the
+// simple-value substitution used to push as data and the literal chain
+// re-stepped as an anonymous value (parking over an empty frame where the
+// interpreter raises: `7 do [a5]` compiled 12 for the caught `cannot call`,
+// NUR193). Bridged through the compiled runtime's hook (the same view the
+// re-step uses), under the binding's name, whenever a run's invoker can
+// host the dispatch; outside a run the payload stays the data it was.
+func (r *Registry) lookupUncachedBridged(name string) (*FnDefInfo, bool) {
 	stack := r.Defs.Stack(name)
+	closureBound := false
 	// Collect every FnDefInfo binding for the name, newest-first. Each
 	// entry holds only its OWN overloads; the dispatch table is the union
 	// across the stack (overloading across stacked defs of one name).
@@ -1150,6 +1175,23 @@ func (r *Registry) lookupUncached(name string) *FnDefInfo {
 	// re-exposes whatever the walk stopped short of.
 	var entries []FnDefInfo
 	for i := len(stack) - 1; i >= 0; i-- {
+		if _, isClosure := stack[i].Data.(ClosurePayload); isClosure {
+			closureBound = true
+			// Only under a run's invoker (dispatchesAsWord's own gate, kept
+			// here too rather than trusting the hook to ask): outside a run
+			// the payload is data and the name has no dispatch.
+			if r.Invoker == nil {
+				continue
+			}
+			if bv, ok := compiledRuntime.ClosureAsFnDef(r, stack[i]); ok {
+				if fnDef, ok := bv.Data.(FnDefInfo); ok {
+					fnDef.Name = name
+					fnDef.Anonymous = false
+					entries = append(entries, fnDef)
+				}
+			}
+			continue
+		}
 		if fnDef, ok := stack[i].Data.(FnDefInfo); ok {
 			entries = append(entries, fnDef)
 			if fnDef.Extends != "" {
@@ -1158,9 +1200,23 @@ func (r *Registry) lookupUncached(name string) *FnDefInfo {
 		}
 	}
 	if len(entries) == 0 {
-		return nil
+		return nil, closureBound
 	}
-	return r.aggregateDispatch(name, entries)
+	return r.aggregateDispatch(name, entries), closureBound
+}
+
+// dispatchesAsWord reports whether a def-bound value is a DISPATCHING
+// definition the word step must route through Lookup rather than
+// substitute: a fn definition, a class, or a compiled closure a run's
+// invoker can bridge (lookupUncachedBridged).
+func dispatchesAsWord(v Value, r *Registry) bool {
+	switch v.Data.(type) {
+	case FnDefInfo, *ClassTypeInfo:
+		return true
+	case ClosurePayload:
+		return r != nil && r.Invoker != nil
+	}
+	return false
 }
 
 // aggregateDispatch builds the cross-stack dispatch view for name from the

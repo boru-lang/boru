@@ -44,6 +44,9 @@
 6	TestCompileFailureLedgerIsWellFormed
 6	TestCompileFailureLedgerParses
 6	TestCompileFailureLedgerAssertsEveryWalkedFile
+6	TestRuntimeDeferLedgerIsWellFormed
+6	TestRuntimeDeferLedgerAssertsEveryWalkedFile
+6	TestRuntimeDeferCensusAndSites
 6	TestSpecFilterMustSelectEveryPattern
 6	TestRowTBAbortsTheRowNotTheTest
 6	TestParseSpecRowsCountsEveryLine

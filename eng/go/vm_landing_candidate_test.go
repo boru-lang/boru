@@ -154,11 +154,14 @@ func TestReStepLandingWalk(t *testing.T) {
 		t.Errorf("a speculative claim strands at the word: got %v %v", ent, err)
 	}
 
-	// A `/q` slot captures the word: the open half stands aside, unquoted.
+	// A `/q` slot captures the word: the walk cannot honour the claim (the
+	// compiled code calls the word) and defers loudly, as the Function-typed
+	// reference does — NUR190's open halves, kept on the runtime-defers
+	// ledger.
 	quoteFn := core.NewFunction(core.FnDefInfo{Name: "q", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TAtom, Quote: true}}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Returns: []*core.Type{core.TAtom}}}})
-	got, ent, err = vc.reStepLanding(r, 3, 0, []core.Value{quoteFn}, seam7Dbg, 0, z)
-	if err != nil || ent != nil || len(got) != 1 || got[0].Quoted {
-		t.Errorf("a /q capture stands aside (NUR190's open half): got %v %v %v", got, ent, err)
+	_, ent, err = vc.reStepLanding(r, 3, 0, []core.Value{quoteFn}, seam7Dbg, 0, z)
+	if err == nil || ent != nil || !strings.Contains(err.Error(), "CAPTURES the word `z`") {
+		t.Errorf("a /q capture defers at the landing (NUR190's open half): got %v %v", ent, err)
 	}
 
 	// A Function-typed slot takes the word's reference: the run bails loudly.

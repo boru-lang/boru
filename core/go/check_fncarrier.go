@@ -11,13 +11,49 @@ package core
 // (ResetCheckFnCarrierBinds) — like the module-export growth ledger.
 const capCheckFnCarrierBinds = "engine.check.fn-carrier-binds"
 
-// NoteCheckFnCarrierBind records name → carrier in the per-pass table.
+// capCheckFnCarrierBindDepths is the table's frame twin: the fn-body depth
+// (CheckState.FnBodyDepth) each name was bound at, so a def site can tell
+// a REDEFINITION in the same frame (the body re-analysed, a second `def`)
+// from a fn body SHADOWING an enclosing frame's computed fn — the shape
+// whose interpreter install outlives the call (NUR192).
+const capCheckFnCarrierBindDepths = "engine.check.fn-carrier-bind-depths"
+
+// NoteCheckFnCarrierBind records name → carrier in the per-pass table, and
+// the OUTERMOST fn-body depth the name was bound at beside it: the table
+// is never torn down with a frame, and a fn body is analysed more than
+// once (the def site's check, the unit compile), so a deeper bind must not
+// hide the enclosing one it shadows.
 func NoteCheckFnCarrierBind(r *Registry, name string, v Value) {
+	depth := 0
+	if r.Check != nil {
+		depth = r.Check.FnBodyDepth
+	}
+	if d, ok, _ := Cap[map[string]int](r, capCheckFnCarrierBindDepths); ok && d != nil {
+		if prev, bound := d[name]; !bound || depth < prev {
+			d[name] = depth
+		}
+	} else {
+		_ = r.Capabilities.Set(capCheckFnCarrierBindDepths, map[string]int{name: depth})
+	}
 	if m, ok, _ := Cap[map[string]Value](r, capCheckFnCarrierBinds); ok && m != nil {
 		m[name] = v
 		return
 	}
 	_ = r.Capabilities.Set(capCheckFnCarrierBinds, map[string]Value{name: v})
+}
+
+// CheckFnCarrierBindDepth is the outermost fn-body depth name has been
+// bound at in this check pass (NoteCheckFnCarrierBind), if it is bound.
+func CheckFnCarrierBindDepth(r *Registry, name string) (int, bool) {
+	if _, bound := CheckFnCarrierBind(r, name); !bound {
+		return 0, false
+	}
+	d, ok, _ := Cap[map[string]int](r, capCheckFnCarrierBindDepths)
+	if !ok || d == nil {
+		return 0, false
+	}
+	depth, hit := d[name]
+	return depth, hit
 }
 
 // CheckFnCarrierBind returns the fn carrier def-bound to name during this
@@ -79,6 +115,9 @@ func DropCheckFnCarrierBind(r *Registry, name string) {
 	if m, ok, _ := Cap[map[string]Value](r, capCheckFnCarrierBinds); ok && m != nil {
 		delete(m, name)
 	}
+	if d, ok, _ := Cap[map[string]int](r, capCheckFnCarrierBindDepths); ok && d != nil {
+		delete(d, name)
+	}
 }
 
 // ResetCheckFnCarrierBinds clears the fn-carrier side table so it is scoped
@@ -89,4 +128,5 @@ func ResetCheckFnCarrierBinds(r *Registry) {
 		return
 	}
 	_, _ = r.Capabilities.Delete(capCheckFnCarrierBinds)
+	_, _ = r.Capabilities.Delete(capCheckFnCarrierBindDepths)
 }

@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // bridgeRuntime is the interpreter-only runtime plus the closure VALUE
 // bridge (CompiledRuntime.ClosureAsFnDef, NUR124's payload axis): when
@@ -131,4 +134,59 @@ func TestClosureValueBridge(t *testing.T) {
 func IsCompiledClosureValue(v Value) bool {
 	_, ok := v.Data.(ClosurePayload)
 	return ok
+}
+
+// TestDefBoundClosureDispatchesAsWord pins NUR193's core half: a compiled
+// closure a program binds by `def` is the interpreter's NAMED fn
+// definition. Under a run's invoker the registry's Lookup bridges the
+// def-stack payload under the binding's name (lookupUncachedBridged),
+// never caching the aggregate, and the word step routes the name through
+// that dispatch (dispatchesAsWord) — matching over the frame, and raising
+// the interpreter's own `cannot call` over an empty one — where the
+// simple-value substitution used to push the payload as data and the
+// re-step parked it. Outside a run (no invoker) the payload stays data.
+func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
+	rt := &bridgeRuntime{bridge: true, params: 1}
+	prev := InstallCompiledRuntime(rt)
+	defer InstallCompiledRuntime(prev)
+	r := covRegistry(t, nil)
+	closure := Value{Parent: TFunction, Data: ClosurePayload{}}
+	r.Defs.Push("a5", closure)
+
+	if dispatchesAsWord(closure, r) || r.Lookup("a5") != nil {
+		t.Fatal("outside a run the bound closure is data: no dispatch, no lookup aggregate")
+	}
+	if dispatchesAsWord(closure, nil) {
+		t.Error("a nil registry hosts no dispatch")
+	}
+	// The nil computed without an invoker must not outlive the run that
+	// next sets one at the same binding generation: never cached.
+	if _, cached := r.dispatchCache.get("a5", r.Defs.Gen("a5")); cached {
+		t.Error("a closure-bound name's lookup is never cached")
+	}
+
+	r.Invoker = func(_ *Registry, _ Value, _ []Value) ([]Value, error) { return nil, nil }
+	if !dispatchesAsWord(closure, r) {
+		t.Fatal("under a run's invoker the bound closure dispatches as a word")
+	}
+	fn := r.Lookup("a5")
+	if fn == nil || fn.Name != "a5" || fn.Anonymous || len(fn.Signatures) == 0 {
+		t.Fatalf("the lookup bridges the closure under its binding's name: %+v", fn)
+	}
+	if _, cached := r.dispatchCache.get("a5", r.Defs.Gen("a5")); cached {
+		t.Error("a bridged aggregate is never cached (it captures the run's invoker)")
+	}
+	rt.calls = 0
+	out, err := RunResolved(r, []Value{NewInteger(5)}, []Value{NewWord("a5")})
+	if n, _ := AsInteger(out[len(out)-1]); err != nil || len(out) != 1 || n != 15 || rt.calls != 1 {
+		t.Errorf("the word dispatches the bridged closure over the frame's 5: %v %v (calls %d)", out, err, rt.calls)
+	}
+	_, err = RunResolved(r, nil, []Value{NewWord("a5")})
+	var be *BoruError
+	if err == nil || !errors.As(err, &be) || be.Code != "signature_error" {
+		t.Errorf("over an empty frame the dispatch raises the interpreter's no-match, got %v", err)
+	}
+	if !FnWordBarrierOn(r, NewWord("a5")) {
+		t.Error("a bridged closure's name is a fn-word collection barrier, as the interpreter's definition is")
+	}
 }

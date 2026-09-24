@@ -32,7 +32,22 @@ var defFnBodyTailRows = []struct {
 	// for the trailing apply, which calls it natively (the wrapper's inner
 	// fns are stamped).
 	{"a fn-util wrapper as the body", `import "boru:fn-util"  def inc x:Integer => [add 1 x] end def dbl x:Integer => [mul 2 x] end def h (FnUtil.compose inc/v dbl/v) end each [h] [1 2]`, "[[3 5]]", true},
+	// A fn-body-LOCAL computed def read from a nested closure body (NUR192,
+	// fixed): the frame's dynamic-scope bind pushes the closure the lookup
+	// reads, and the real compile routes the read live where it seated the
+	// parent's event. The frame's teardown pops it (the second call binds
+	// afresh); a redefinition in the same frame is the interpreter's too.
+	{"a fn-body-local computed def read from a nested closure", dfFactory + `def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3] g [4]`, "[[6 7 8] [9]]", true},
+	{"a same-frame redefinition", dfFactory + `def g fn [[xs:List][List][def a5 (mk 1)  def a5 (mk 5)  each [a5] xs]] end g [1 2 3] g [4]`, "[[6 7 8] [9]]", true},
+	// The raw-body twin — the read under a later word — islands as at the
+	// top level, and the island's word dispatch finds the pushed closure
+	// where it raised a false `undefined word: a5` (NUR192's first row).
+	{"the fn-body-local read under a later word (open)", dfFactory + `def g fn [[xs:List][List][def a5 (mk 5)  each [a5 add 1] xs]] end g [1 2 3] g [4]`, "[[7 8 9] [10]]", false},
 }
+
+// dfFactory is dfMk without the top-level `def a5`, for the rows that bind
+// the name inside a fn body.
+const dfFactory = `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end `
 
 func TestDefFnBodyTailParityAndNoEntry(t *testing.T) {
 	for _, row := range defFnBodyTailRows {
@@ -86,25 +101,33 @@ func TestDefFnBodyTailNoMatchRaisesAlike(t *testing.T) {
 	}
 }
 
-// TestDefFnBodyTailNestedDefSoundCompileFailure: the same read of a
-// fn-body-LOCAL computed def from a nested closure body — `def a5 (mk 5)`
-// inside g, then `each [a5] xs` — is a loud compile failure, not the raw
-// body the native used to run on the interpreter, which raised a false
-// `undefined word: a5` where the interpreter answers (NUR192, present on
-// main): the frame's dynamic-scope bind installs nothing for a closure
-// value, so the read cannot reach the live binding yet, and the
-// unapplied-fn guard declines the body where the tail rule cannot fire
-// (the read resolves to the parent's event, not the live lookup). The
-// interpreter's answer is the program's, through the whole-program
-// fallback.
-func TestDefFnBodyTailNestedDefSoundCompileFailure(t *testing.T) {
-	src := dfMk[:len(dfMk)-len("def a5 (mk 5) end ")] + `def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]`
+// TestDefFnBodyTailShadowSoundCompileFailures: a fn body's computed fn def
+// SHADOWING an enclosing frame's computed fn of the same name declines
+// loudly (NUR192's second finding): the interpreter's install drops the
+// overlapping outer closure and pushes the new one at the same depth, so
+// the frame's def-cleanup pops nothing and the redefinition OUTLIVES the
+// call (`[[6 7 8] [6 7 8]]` interpreted), where the compiled frame's bind
+// would be popped with the frame and the outer closure answer again
+// (`[[6 7 8] [2 3 4]]` before the decline). Bound before or after the fn's
+// definition alike (the side table keeps the outermost depth); a top-level
+// redefinition has no frame to outlive and compiles with parity.
+func TestDefFnBodyTailShadowSoundCompileFailures(t *testing.T) {
+	for _, src := range []string{
+		dfMk[:len(dfMk)-len("def a5 (mk 5) end ")] + `def a5 (mk 1) end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3] each [a5] [1 2 3]`,
+		dfFactory + `def g fn [[xs:List][List][def a5 (mk 5)  each [a5 add 1] xs]] end def a5 (mk 1) end g [1 2 3] each [a5] [1 2 3]`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || fmt.Sprint(gotI) != "[[6 7 8] [6 7 8]]" && fmt.Sprint(gotI) != "[[7 8 9] [6 7 8]]" {
+			t.Fatalf("%q: interp %v / %v", src, gotI, errI)
+		}
+		if compiled {
+			t.Errorf("%q: the shadowing def must not compile: compiled %v / %v", src, gotC, errC)
+		}
+		requireCompileDefect(t, src, gotC, errC)
+	}
+	src := dfFactory + `def a5 (mk 1) end def a5 (mk 5) end each [a5] [1 2 3]`
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[[6 7 8]]" {
-		t.Fatalf("%q: interp %v / %v", src, gotI, errI)
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != "[[6 7 8]]" || fmt.Sprint(gotI) != "[[6 7 8]]" {
+		t.Errorf("%q: a top-level redefinition compiles with parity: compiled %v/%v (%v) interp %v/%v", src, gotC, errC, compiled, gotI, errI)
 	}
-	if compiled {
-		t.Errorf("%q: the nested read must not compile yet (NUR192): compiled %v / %v", src, gotC, errC)
-	}
-	requireCompileDefect(t, src, gotC, errC)
 }

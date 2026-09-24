@@ -294,11 +294,13 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 	entryCensus := newEngineEntryCensus()
 	bailCensus := newDeferCensus()
 	localBailCensus := newDeferCensus()
+	deferLedger := newRuntimeDeferCensus()
 	specWalk(t, func(t testing.TB, r specRow) {
 		if len(r.Cells) < 2 {
 			return
 		}
 		input := r.Input
+		deferLedger.walked(r.File)
 
 		ac := newDifferentialInstance(t)
 		disarm := ac.ArmInterpEntryHook(entryCensus.add)
@@ -334,6 +336,18 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 				localBailCensus.add(ev)
 			}
 		}
+		// The per-file ledger of deferred compilation failures
+		// (runtime_defers.tsv): a row that compiled and then died with the
+		// compiler-defect note — the bailDefects population — named with
+		// its defer sites (when a designed vmDefer fired) and the surfaced
+		// detail.
+		if compiledDefect(errC) {
+			evs := make([]struct{ Site, Reason string }, len(rowBails))
+			for i, ev := range rowBails {
+				evs[i] = struct{ Site, Reason string }{ev.Site, ev.Reason}
+			}
+			deferLedger.add(bailedRow{file: r.File, line: r.Line, input: input, sites: bailSites(evs), reason: bailDetailOf(errC)})
+		}
 		ai := newDifferentialInstance(t)
 		gotI, errI := ai.RunInterp(input)
 
@@ -357,6 +371,7 @@ func TestSpecCompiledOrFallback(t *testing.T) {
 	entryCensus.assertCeiling(t)
 	bailCensus.assertCeiling(t)
 	localBailCensus.assertLocalCeiling(t)
+	assertRuntimeDeferLedger(t, deferLedger)
 	checkLedgerRetired(t, "compile-or-fallback")
 	knownPositionLoss.checkRetired(t)
 	knownDiagDrift.checkRetired(t)

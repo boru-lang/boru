@@ -1371,7 +1371,14 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	case sig.QuoteArgs != nil && sig.QuoteArgs[0]:
-		return stack, nil, nil
+		// A `/q` slot CAPTURES the word as an atom (`m.q z` is `[z]`
+		// interpreted): the compiled code calls the word after the landing
+		// and the residual arm applies the value over its result, so the
+		// walk cannot honour the claim — it defers, loudly, the same
+		// containment as the Function-typed reference below, and the
+		// corpus keeps both on the runtime-defers ledger (NUR190's open
+		// halves; the maintainer's call, 2026-09-24).
+		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 	}
 	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step takes the word `"+lword.Name+"` as its argument (a Function-typed slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 }
@@ -2387,6 +2394,21 @@ func (vc *vmContext) bindDynScope(curReg *core.Registry, p *compiler.Program, ar
 	// Ascription hygiene: a stored binding holds the REAL value.
 	v := core.StripAscribed(stack[len(stack)-1])
 	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: curReg, name: name, depth: curReg.Defs.Depth(name)})
+	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
+		// A compiled CLOSURE value (a factory's result bound by a fn-body
+		// `def a5 (mk 5)`): the installer's carrier guard installs NOTHING
+		// for a Function-family value without an FnDefInfo payload, so the
+		// frame's bind left no entry and a read of the name — the island's
+		// word dispatch of a raw body, the unit's live lookup — missed it
+		// (NUR192: `each [a5] xs` inside the fn raised a false
+		// `undefined word: a5`). Push it as the top-level write-back does
+		// (bindGlobal): the interpreter dispatches the pushed closure through
+		// the compiled-runtime hooks, and the trail's depth truncation
+		// (unwindDynBinds) pops it with the frame, the interpreter's own
+		// def-cleanup.
+		curReg.Defs.Push(name, v)
+		return stack[:len(stack)-1], nil
+	}
 	core.InstallDef(curReg, name, v)
 	return stack[:len(stack)-1], nil
 }

@@ -483,9 +483,22 @@ user still gets an answer while the case is open:
   seated, so a no-match raises `cannot call `a5`` alike. Declining to the
   island, as before: a deeper frame (`0 fold [s] xs` over a one-argument
   `s`, the check's short window). A fn-body-LOCAL computed def read the
-  same way from a nested closure is a loud compile failure (NUR192,
-  `TestDefFnBodyTailNestedDefSoundCompileFailure`): the frame's
-  dynamic-scope bind installs nothing for a closure value yet.
+  same way from a nested closure compiles too (NUR192, 2026-09-24): the
+  frame's dynamic-scope bind pushes the closure value the lookup reads
+  and pops it with the frame (`def g fn [[xs:List][List][def a5 (mk 5)
+  each [a5] xs]] end g [1 2 3]`), and the raw-body read under a later
+  word islands to the same pushed closure. A fn body's computed fn def
+  SHADOWING an enclosing frame's computed fn of the same name DECLINES
+  (the interpreter's install outlives the call; the compiled push-and-pop
+  cannot model it), pinned in `TestDefFnBodyTailShadowSoundCompileFailures`.
+  Inside a `do` body the same read is the word's dispatch over the body's
+  EMPTY frame or its written tokens (NUR193, 2026-09-24): `7 do [a5]` is
+  `[7 error(cannot call …)]` on both lanes (the caught raise), `do [a5 7]`
+  12 — a closure a compiled program binds by `def` dispatches as the named
+  fn it is inside every island, and `do`'s result model takes the
+  computed-body hatch over such a carrier. A written operand the contract
+  does not take (`each [a5 "s" add] xs`, `do [a5 "s"]`) BAILS on the
+  shape claim, pinned as measured (NUR194).
 
   A BRANCH whose arm is a fn VALUE returns a value the interpreter
   re-steps, and the compiled lane re-steps it the same way since the
@@ -528,8 +541,11 @@ user still gets an answer while the case is open:
   fallback fires (`m.f z` with a nullary and a unary overload is `[42
   0]`), an anonymous fn parks (`m.l z` is `[fn lam(Integer) 0]`), an
   Any-typed slot's claim strands (`m.a z` raises `signature_error` on
-  both lanes); a `/q` capture stands aside and a Function-typed reference
-  bails, the open half. A
+  both lanes); a `/q` capture and a Function-typed reference DEFER loudly
+  at the walk (2026-09-24, the maintainer's call — a compile-time decline
+  would be over-wide, no static model telling a `/q` slot from a typed
+  slot's barrier), and the corpus keeps such rows on the runtime-defers
+  ledger, `runtime_defers.tsv` (fn-value.tsv L317/L318). A
   CONCRETE named fn at a fn or lambda frame's tail (`def mk fn
   [[][Function][M.inc]] end (mk)`, the original witness) DECLINES the unit
   with the interpreter's raise pinned beside it — the unit-level trap is

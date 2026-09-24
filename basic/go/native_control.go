@@ -345,6 +345,22 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// as the runtime leaves them (RunCarrierBodyKeepDefs doc).
 	stk := RunCarrierBodyKeepDefs(r, body)
 	r.Check.CaughtBodyDepth--
+	// A def-bound COMPUTED fn read inside the body stands in the residual
+	// as its CARRIER (the side table's; the body's check-time run notes no
+	// read), where the interpreter's word dispatch calls it — over the
+	// frame, which `do` opens empty, or over the tokens after it. The
+	// residual is then not the body's: `7 do [a5]` modelled a Function
+	// result the program residual applied over the 7 (`[12]` compiled for
+	// the interpreter's caught `cannot call`), and `do [a5 7]` an apply
+	// the run underflowed (NUR193). Take the computed-body hatch: one
+	// bounded dynamic(Any), the run's own result.
+	for _, v := range stk {
+		if v.Carrier && v.Parent != nil && v.Parent.ConformsTo(TFunction) {
+			if _, bound := CheckFnCarrierBoundName(r, v.ID); bound {
+				return []Value{NewDynamicCarrier(TAny)}
+			}
+		}
+	}
 	if len(stk) == 0 {
 		// A NON-EMPTY body that produced an empty residual ran to nothing —
 		// for `do` (the error-catching word) that is exactly the shape a

@@ -154,20 +154,31 @@ branch-carried def"**; the re-estimate is
    closed its typed-slot, Any-typed and anonymous halves — the landing
    carries the word and runs the interpreter's own plan over it — and
    left the `/q` capture and the Function-typed reference open: both
-   need the word's compiled call skipped, and the faithful decline or
-   bail would move a corpus ceiling by fn-value.tsv's two coincidental
-   rows (L317/L318), which is the maintainer's call. The placed value
+   need the word's compiled call skipped. The maintainer ruled
+   (2026-09-24): defer at the walk, and keep such deferrals on a ledger
+   — `runtime_defers.tsv`, the per-file twin of `compile_failures.tsv`,
+   names every corpus row that compiles and then bails, fn-value.tsv's
+   L317/L318 the first booked by choice (runtime defers 8 -> 10). The
+   placed value
    inside a code body (the same day) compiled the `[(lambda)]` and
    `[(mk 2)]` bodies into their units (seven census rows left), and the
    def-bound computed fn read at a closure body's tail (2026-09-24)
    lowered `each [a5] xs` as the body-tail trailing apply over the
    read's live lookup, the fn-util wrappers with it (six census rows
-   left); its fn-body-LOCAL twin is NUR192 — the frame's dynamic-scope
-   bind installs nothing for a closure value, so the tail row is a loud
-   compile failure now and the raw-body rows still a false
-   `undefined_word` on `main` — and the run-time list bodies
-   (code-bodies.tsv's twenty) are S3's runtime compilation. Most of the
-   interp-entry census rows are still this family.
+   left); its fn-body-LOCAL twin (NUR192) closed the same day with the
+   frame's closure bind — the VM pushes a closure value the installer's
+   carrier guard ignored, and the nested read compiles natively — with
+   a fn body's computed fn def shadowing an enclosing one declined
+   loudly (the interpreter's install outlives the call). NUR193 (a
+   def-bound computed fn read inside a `do` body, `7 do [a5]` 12 compiled
+   for the interpreter's caught raise, silent on `main`) closed the same
+   day: a closure a compiled program binds by `def` dispatches as the
+   named fn it is inside every island (core's bridged Lookup), and `do`'s
+   result model no longer claims the carrier; NUR194 recorded on the way
+   (a written operand the contract does not take — a loud bail on the
+   shape claim, the read model's next cut). The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
+   compilation. Most of the interp-entry census rows are still this
+   family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at
    `DISPATCH_GENERIC at ev` and the kg gate is off until it lands.
 3. **S5's remainder** — 8 provenance rows on the same seat as the join.

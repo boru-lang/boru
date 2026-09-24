@@ -13106,3 +13106,178 @@ the def read of a placed closure still an apply, the trim keeping a
 trailing apply's args), `unit_memo_test.go` (the probe fork's root
 computed binds, a clone); the lang ledger 280 -> 281 (the nested-def
 witness). Docs: NUR.md (NUR192 new), COMPILABLE-SUBSET.md, the handover.
+
+## S1b — the frame's closure bind: NUR192 closed, the shadowing def declined, NUR193 found (2026-09-24)
+
+**The defect.** A computed fn value `def` binds inside a fn body (`def g
+fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]`) is a
+binding installDef leaves to the compiled-closure machinery — the
+installer's carrier guard installs NOTHING for a Function-family value
+without an FnDefInfo payload — so the frame's `BIND_DYN_SCOPE` left no
+Defs entry, and every read of the name inside the frame missed it: the
+native's raw-body island dispatched `a5` and raised a false `undefined
+word: a5` where the interpreter answers `[[6 7 8]]` (present on `main`,
+NUR192), and the tail-read increment's live route deferred on the same
+miss.
+
+**The fix, in two pieces.** (1) The VM's `bindDynScope` pushes a compiled
+CLOSURE value onto the def stack as the top-level write-back
+(`bindGlobal`) already does — the interpreter dispatches the pushed
+closure through the compiled-runtime hooks, as the top-level rows prove —
+and the frame's trail truncation (`unwindDynBinds`) pops it with the
+frame, the interpreter's own def-cleanup; the second call binds afresh
+and a same-frame redefinition agrees. (2) The closure body's REAL compile
+routes a def-read fn carrier whose producer is an enclosing unit's event
+to the live lookup (`resolveOperand`'s enclosing-event arm): the probe
+(no producedBy) rescued it live while the real compile seated the parent's
+event, unreachable from the closure's frame, so the tail rule fired in one
+verdict and not the other and the program failed whole ("result above a
+literal"). Both verdicts now agree; the nested tail read lowers
+`LOOKUP_DYN_SCOPE_DATA a5` + `CALL_DYN_TRAIL_TOP 1` and the raw-body read
+(`each [a5 add 1] xs`) islands to the pushed closure with parity.
+
+**Found on the way, declined loudly.** A fn body's computed fn def that
+SHADOWS an enclosing frame's computed fn of the same name outlives the
+call in the interpreter: its install drops the overlapping outer closure
+and pushes the new one at the SAME depth, so the frame's def-cleanup pops
+nothing — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7
+8]]` interpreted, where the compiled push-and-pop answered `[[6 7 8] [2 3
+4]]` (and `main` `[[2 3 4] [2 3 4]]`, both halves wrong). The existing
+"computed fn shadows a live binding" decline (`native_definition.go`)
+covered a Defs-held outer binding only; it now covers a side-table-held
+computed fn bound at a SHALLOWER fn-body depth — the fn-carrier side table
+records the OUTERMOST depth a name was bound at (`CheckFnCarrierBindDepth`;
+outermost because the table is never torn down with a frame and a fn body
+is analysed more than once — the def site's check, the unit compile — so
+the first draft's last-bind depth hid the enclosing bind from the second
+analysis). A top-level redefinition has no frame to outlive and compiles
+with parity. NUR193 recorded: a def-bound computed fn read inside a `do`
+body — `7 do [a5]` is 12 compiled for the interpreter's raise (the check
+pass's own run of the body leaves the carrier as its result and the
+program residual's trailing apply takes it over the 7), `do [a5 7]` a
+`CALL_DYNAMIC underflow` — present on `main` before and after the
+tail-read increment; the first row silent.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with every gate at its ceiling and no row moving — interp-entry census rows 62, engine entries 375 (Engine.Run 375, CallBoru 239, RunResolved 73), the generated sweep's call-form failures 197 (305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3), compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences (no corpus row carries the shapes); the gate report reads 0 regressions; the lang unit ledger 282 / 34 (the compile line: the nested-def witness compiles, the two shadow witnesses added); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `def_fn_body_tail_test.go` (lang/go: the nested read and the
+same-frame redefinition native with the second call, the raw-body read
+open with parity, the two shadow witnesses as sound compile failures and
+the top-level redefinition with parity; the lang ledger 281 -> 282), eng
+`TestBindDynScopeClosureValue` (the push, the data lookup, the RET's pop),
+core `TestCheckFnCarrierBindDepth` (the outermost depth, undef, reset).
+Docs: NUR.md (NUR192 FIXED, NUR193 new), COMPILABLE-SUBSET.md, the
+handover.
+
+## S1b — NUR190's open halves deferred at the walk, and the ledger of deferred compilation failures (2026-09-24)
+
+**The maintainer's call.** NUR190's two remaining halves — a `/q` slot
+CAPTURES the following word (`m.q z` compiled `[42 0]` for the
+interpreter's `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's
+L317/L318 passed by coincidence, z's result being its own atom) and a
+Function-typed slot takes the word's REFERENCE (`m.g z`, 7 interpreted,
+bailing loudly since the walk) — need the word's compiled call skipped
+and every later op re-planned, which the lowering cannot do. Asked to
+choose between a compile-time decline and a run-time deferral, the
+maintainer chose the deferral, KEPT ON A LEDGER. A decline would have
+been over-wide: no static model tells a `/q` slot from a typed slot's
+barrier, so it would have to fire on every landing whose candidate
+overloads carry either slot, declining typed-slot rows that run right
+today; the deferral is precise — only the walk that actually claims the
+slot dies.
+
+**The deferral.** The walk's `/q` arm (`landingWalk`) stood aside; it now
+defers at the landing (`vm:landing-quote-claim`) exactly as the
+Function-typed reference does (`vm:landing-claim`), and the program dies
+with the compiler-defect note. Pinned in `TestNamedFnCandidatesOpenShapes`
+(lang: `m.f y`, `m.f z`, `m.q z` booked on the unit ledger's bail line,
+34 -> 37) and the eng landing test's `/q` arm.
+
+**The ledger.** `runtime_defers.tsv` (test/go/langspec) is the per-file
+twin of `compile_failures.tsv` for the ledger's worse half — corpus rows
+that COMPILE and then BAIL, the compiled run dying with the
+compiler-defect note: the VM abandoning the run at a designed defer site
+(vmDefer, named beside the row) or raising an internal error the compiler
+admitted. The corpus walk (`TestSpecCompiledOrFallback`) gathers the
+bailing rows per file with their defer sites and the surfaced detail, and
+`runtime_defer_ledger_test.go` asserts the ledger both ways per file over
+every file the run walks — under `BORU_SPEC_FILES` too, so a filtered run
+over one family catches a new deferral in that family in seconds; a
+count above the ledger's lists the file's bailing rows with site and
+reason, a count below it is the ratchet tightening, and nothing
+regenerates the file. The corpus-wide runtime-defers gate keeps counting
+EVENTS by site (`deferCeiling` 8 -> 10, the two `/q` landings) and the
+walk's row count stays exact (`bailDefectCeiling` 52 -> 54); the ledger
+counts ROWS by file and names them. Its first lines are the corpus's
+standing bails — ten with a designed defer site (`convert`'s poly
+no-match, `set`'s result-count drift on a flex, the re-match of a class
+member's Any-typed list under fold/each/scan) and the rest internal
+errors the compiled runtime raised — and fn-value.tsv's L317/L318 are
+the first rows booked by choice.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with the two chosen pins raised and everything else at its ceiling — runtime defers 8 → 10 (vm:landing-quote-claim×2, fn-value.tsv L317/L318), the walk's bailing rows 52 → 54 and the new per-file ledger asserted over the 130 files walked (20 listed, 54 rows), interp-entry census rows 62, engine entries 375, the generated sweep's call-form failures 197, compile failures 21, compute gaps 16, islands 0, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 282 / 37 (the bail line: `m.f y`, `m.f z`, `m.q z`); the arity gate unchanged; the `MarkUncompilable` census 92. The shard table gained the three ledger tests (TestLangspecShardsPartition caught the omission on the first run).
+
+**Pins.** lang `named_fn_candidates_test.go` (the three `/q` rows as
+booked bails), eng `vm_landing_candidate_test.go` (the `/q` arm defers),
+langspec `runtime_defer_ledger_test.go` (every arm of the ledger check,
+the census, the site join, the detail strip) and `runtime_defers.tsv`.
+Docs: NUR.md (NUR190 CONTAINED), COMPILABLE-SUBSET.md, the replan's §12
+table, the handover.
+
+## S1b — the do body's read: NUR193 closed, NUR194 found (2026-09-24)
+
+**The defect.** A def-bound computed fn read inside a `do` body: `7 do
+[a5]` with `def a5 (mk 5)` compiled 12 for the interpreter's `[7
+error(cannot call `a5` …)]` — silent, on `main` — and `do [a5 7]` died in
+a `CALL_DYNAMIC underflow`. Two mechanisms stacked. The check pass's run
+of the do body is a suspended type probe that notes no read, so the
+carrier stood as the body's result, `DoListReturnsFn` typed the do's
+result Function, and the program residual's trailing arm applied it over
+the 7 (`CALL_DYNAMIC_TRAILING`). And at run time the island stepping the
+raw body found the def-bound COMPILED CLOSURE in the def stack (the
+frame's push, the top-level write-back), which the engine's simple-value
+substitution pushed as data and the literal chain re-stepped through the
+closure bridge as an ANONYMOUS fn — parked over the empty frame — where
+the interpreter's `def a5 (mk 5)` is a NAMED fn definition whose word
+dispatch raises. The raw-body rows that agreed before (NUR192's `each [a5
+add 1] xs`) agreed by the re-step's luck: the element beneath matched.
+
+**The fix, in two pieces.** (1) core: a compiled closure a program binds
+by `def` is bridged into the word dispatch under its binding's name —
+`Registry.Lookup` walks the def stack and, under a run's invoker, folds a
+`ClosurePayload` entry into the aggregate through the compiled runtime's
+own view (`ClosureAsFnDef`, the same bridge the re-step uses) with
+`Name` set and `Anonymous` cleared (`lookupUncachedBridged`); the
+aggregate is never cached, since the bridge captures the run's invoker
+and a later run on the same registry would dispatch through a dead
+context; and the word step routes such a name through Lookup instead of
+substituting it (`dispatchesAsWord`). The island's `a5` now matches over
+the frame or the written tokens, invokes the unit through the run's
+invoker, raises the interpreter's own `cannot call` over nothing, and is
+a fn-word collection barrier as the interpreter's definition is. Outside
+a run the payload stays the data it was. (2) basic: `DoListReturnsFn`
+takes the computed-body hatch (one dynamic(Any)) when the body's residual
+carries a def-bound computed fn carrier (the side table's), so the
+program residual applies nothing over the do's result. Measured: `7 do
+[a5]` and `do [a5]` the caught raise on both lanes, `do [a5 7]` and `do
+[a5 7 add 1]` 12 and 13, the each rows and NUR192's nested rows
+unchanged.
+
+**Found on the way, pinned as measured.** NUR194: a written operand the
+closure's contract does not take — `each [a5 "s" add] [1 2]` is `['6s'
+'7s']` interpreted (the matcher falls back from the written `"s"` to the
+element) and bails compiled on the shaped read's claim (`result count 2
+violates the host-registered shape claim 1`); `do [a5 "s"]` the same
+bail, where `main` answered `[fn a5(Integer) s]` silently. The shaped
+read's window claims the written tokens as the arguments without asking
+the signature whether they fit; that is the read model's next cut.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with every gate at its ceiling and no row moving — the bridged dispatch changes no corpus row's answer or interpreter entry: interp-entry census rows 62, engine entries 375 (Engine.Run 375, CallBoru 239, RunResolved 73), runtime defers 10, the bailing rows 54 (the ledger asserted over 130 files), the generated sweep's call-form failures 197, compile failures 21, compute gaps 16, islands 0, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 282 / 39 (the bail line: NUR194's two rows); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** lang `do_body_read_test.go` (`TestDoBodyReadParity`: the five
+do shapes; `TestDoBodyReadWrittenNoMatchBails`: the two NUR194 rows
+booked, the unit ledger's bail line 37 -> 39), core
+`TestDefBoundClosureDispatchesAsWord` (data outside a run; the bridged
+lookup under the name, uncached; the dispatch over the frame; the raise
+over nothing; the collection barrier). Docs: NUR.md (NUR193 FIXED,
+NUR194 new), COMPILABLE-SUBSET.md, the handover.

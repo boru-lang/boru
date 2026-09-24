@@ -45,6 +45,48 @@ func TestCheckFnCarrierBindTable(t *testing.T) {
 	}
 }
 
+// TestCheckFnCarrierBindDepth: the table keeps the OUTERMOST fn-body depth
+// a name was bound at (NUR192's shadow test) — a deeper rebind does not
+// hide the enclosing bind, a shallower one lowers it — and the depth goes
+// with the bind on undef and on the pass-scoped reset.
+func TestCheckFnCarrierBindDepth(t *testing.T) {
+	r := covRegistry(t, nil)
+	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
+		t.Error("an unbound name has no depth")
+	}
+	r.Check.FnBodyDepth = 0
+	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
+	r.Check.FnBodyDepth = 1
+	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
+	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
+	if d, bound := CheckFnCarrierBindDepth(r, "a"); !bound || d != 0 {
+		t.Errorf("the outermost depth stays: got %d %v, want 0", d, bound)
+	}
+	if d, bound := CheckFnCarrierBindDepth(r, "b"); !bound || d != 1 {
+		t.Errorf("a name first bound in a fn body records that depth: got %d %v, want 1", d, bound)
+	}
+	r.Check.FnBodyDepth = 0
+	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
+	if d, _ := CheckFnCarrierBindDepth(r, "b"); d != 0 {
+		t.Errorf("a shallower bind lowers the depth: got %d, want 0", d)
+	}
+	DropCheckFnCarrierBind(r, "a")
+	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
+		t.Error("undef drops the depth with the bind")
+	}
+	ResetCheckFnCarrierBinds(r)
+	if _, bound := CheckFnCarrierBindDepth(r, "b"); bound {
+		t.Error("the reset clears the depths with the table")
+	}
+	// A registry without a check state records depth 0.
+	r2 := covRegistry(t, nil)
+	r2.Check = nil
+	NoteCheckFnCarrierBind(r2, "c", NewCarrier(TFunction))
+	if d, bound := CheckFnCarrierBindDepth(r2, "c"); !bound || d != 0 {
+		t.Errorf("no check state: depth 0, got %d %v", d, bound)
+	}
+}
+
 // TestStepWordCompileCarrierSubstitute — a COMPILE pass resolves a plain
 // read of a name def-bound to a Function carrier through the side table:
 // stepWord substitutes the carrier with no undefined_word diagnostic.

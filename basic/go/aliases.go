@@ -515,6 +515,7 @@ var (
 	// so the engine's compile-pass undefined-word branches can consult it.
 	NoteCheckFnCarrierBind   = core.NoteCheckFnCarrierBind
 	CheckFnCarrierBind       = core.CheckFnCarrierBind
+	CheckFnCarrierBindDepth  = core.CheckFnCarrierBindDepth
 	CheckFnCarrierBoundName  = core.CheckFnCarrierBoundName
 	DropCheckFnCarrierBind   = core.DropCheckFnCarrierBind
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
