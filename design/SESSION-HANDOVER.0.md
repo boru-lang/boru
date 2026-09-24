@@ -232,10 +232,14 @@ branch-carried def"**; the re-estimate is
    pops, the enclosing loop refreshes its carried slot after the call and
    a leaked name's read seats live; `for 3 [do [def t 5]]  t` was 0 for
    the interpreter's 5 on main — NUR199, closed — and code-bodies L180 /
-   L186 compile, 13 -> 11; NUR200, the each body's leak inside a loop,
-   recorded and fenced, is the resident-twin bridge's root fence to
-   lift, and NUR201, a callee's def outliving a trapped raise on the
-   interpreter only, is recorded against the interpreter); filter's predicate
+   L186 compile, 13 -> 11; NUR201, a callee's def outliving a trapped
+   raise on the interpreter only, is recorded against the interpreter);
+   the multi-run keep-defs body closes NUR200 the same day (the handoff
+   log's "NUR200 closed" entry: each / fold / scan bodies are keep-defs
+   units too, every read of a leaked name seats live — the twin regime's
+   value-name read fence is retired — and a mutated flex read back after
+   a body seats live; code-bodies L183 / L190 and module-composition L92
+   compile, the corpus's compile failures 19 -> 16); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

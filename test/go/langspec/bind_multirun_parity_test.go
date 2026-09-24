@@ -80,11 +80,13 @@ var parityShapes = []parityShape{
 	// arm-resident bridge places a per-element runtime-value install
 	// (OpBindResident) at each def site inside the compiled unit, so
 	// count, values, order, and zero-iteration definedness are measured
-	// interpreter-equal. Still-declined rows pin the population the bridge
-	// declines: the var-param Pos-0:0 def/undef pair (until the undef
-	// seam lands), nested multi-run bodies (the latch's bodyID fence),
-	// and any root read of an arm-bound name (body-run-dependent
-	// definedness — its own compile failure reason, not the placement gate's).
+	// interpreter-equal. A root read of an arm-bound name is parity too
+	// (NUR200's close, the keep-defs leak): it seats LIVE at its token, so
+	// the runtime binding — the last element's install, or the miss the
+	// interpreter raises at zero iterations — is what it reads. Still-
+	// declined rows pin the population the bridge declines: the var-param
+	// Pos-0:0 def/undef pair (until the undef seam lands) and nested
+	// multi-run bodies (the latch's bodyID fence).
 	{name: "each-literal-def", src: "[1 2 3] each [def x 5]",
 		probes: []string{"x"}},
 	{name: "each-elem-valued-def", src: "[10 20] each [ var [[r] def x r x] ]",
@@ -92,7 +94,7 @@ var parityShapes = []parityShape{
 	{name: "each-zero-iterations", src: "[] each [def x 5]",
 		probes: []string{"x"}},
 	{name: "each-read-after", src: "[1 2] each [def x 5] x add 1",
-		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}},
 	{name: "each-underscore-def", src: "[1 2] each [def _u 5]",
 		probes: []string{"_u"}},
 	{name: "each-nested-multirun", src: "[1] each [[2 3] each [def x 5] 0]",
@@ -151,23 +153,23 @@ var parityShapes = []parityShape{
 	// list — a different count through the same mechanism.
 	{name: "outer-pair-def", src: "outer [ var [[a b] def x 5 (a add b)] ] [1 2] [3 4]",
 		probes: []string{"x"}},
-	// The graduations' NEGATIVE half: enabling arm-resident compilation for
-	// a word must not weaken the fences that keep its unsupported
-	// populations out. Each sibling gets the two compile failures `each` carries —
-	// a root read of an arm-bound name (body-run-dependent definedness) and
+	// The graduations' other half: enabling arm-resident compilation for a
+	// word must not weaken the fences that keep its unsupported populations
+	// out. Each sibling gets the read-after row (parity, the keep-defs
+	// leak's live read) and the one compile failure `each` still carries —
 	// a nested multi-run body (the latch's bodyID fence) — so the lane
-	// proves the fences still REJECT, not merely that the happy path binds.
+	// proves the fence still REJECTS, not merely that the happy path binds.
 	{name: "fold-read-after", src: "fold [ def x 5 ] [10 20] 0  x add 1",
-		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}},
 	{name: "scan-read-after", src: "scan [ def x 5 ] [10 20]  x add 1",
-		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}},
 	// outer's body must consume BOTH inputs, so its compile failure rows take the
 	// var form: a bare body declines earlier as a Stage-2 code-body word,
 	// which would pin the wrong gate. (Its nested-multi-run shape declines
 	// there too, so the bodyID fence is pinned on fold below rather than
 	// twice-over on a word that never reaches it.)
 	{name: "outer-read-after", src: "outer [ var [[a b] def x 5 (a add b)] ] [1 2] [3 4]  x add 1",
-		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}},
 	{name: "fold-nested-multirun",
 		src:    "fold [ var [[a b] ([1] each [def x 5]) (a add b)] ] [1 2] 0",
 		probes: []string{"x"}, declined: "twin regime:"},
@@ -260,12 +262,11 @@ var parityShapes = []parityShape{
 	{name: "foldaxis-empty",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] []`,
 		probes: []string{"x", "a", "b"}},
-	// The graduation's NEGATIVE half, as for every sibling: the fences must
-	// still REJECT a root read of an arm-bound name and a nested multi-run
-	// body.
+	// The graduation's other half, as for every sibling: the read-after row
+	// is parity, and the fence must still REJECT a nested multi-run body.
 	{name: "foldaxis-read-after",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] [[1 2] [3 4]]  x add 1`,
-		probes: []string{"x"}, declined: "read of `x` after a multi-run body binds it"},
+		probes: []string{"x"}},
 	{name: "foldaxis-nested-multirun",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [var [[a b] ([1] each [def x 5]) (a add b)]] [[1 2] [3 4]]`,
 		probes: []string{"x"}, declined: "twin regime:"},

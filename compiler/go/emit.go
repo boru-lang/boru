@@ -864,23 +864,28 @@ type EmitState struct {
 	// tryRecordClosure sets it around recordClosureDispatch and
 	// forkForProbe copies it so the probe compiles the same unit.
 	keepDefsUnitDepth int
-	// keepLeakNames is every name a keep-defs unit (`do`'s body) DEFS: the
-	// binding LEAKS into the enclosing scope at run time (the interpreter's
-	// InvokeBody runs the body in the caller's frame), installed by the
-	// unit's kept OpBindDynScope. A later read of the name has no compiled
-	// home (the unit's provenance is dropped at its finish), so it seats
-	// LIVE at its token (NoteLiveRead) and re-resolves the registry there,
-	// exactly where the interpreter reads it. Nil until first use.
+	// keepLeakNames is every name a keep-defs unit (`do`'s body, an each /
+	// fold / scan body) DEFS: the binding LEAKS into the enclosing scope at
+	// run time (the interpreter's InvokeBody runs the body in the caller's
+	// frame), installed by the unit's kept OpBindDynScope or its
+	// arm-resident op. A later read of the name has no compiled home (the
+	// unit's provenance is dropped at its finish) and, after a multi-run
+	// body, no static value at all (per element; absent at zero
+	// iterations), so it seats LIVE at its token (NoteLiveRead) and
+	// re-resolves the registry there, exactly where the interpreter reads
+	// it. Nil until first use.
 	keepLeakNames map[string]bool
-	// armBoundNames are names whose binding, after adoption, exists at
-	// runtime ONLY through arm-resident installs — count, values, and
-	// even definedness (a zero-iteration collection) are body-run-
-	// dependent, so a later root read would bake the check model's
-	// generalized value where the interpreter reads the runtime state.
-	// NoteDefRead poisons armReadCompileFailure on such reads; a later LIVE
-	// root install of the name (RecordBindTwin's placed arm) clears it —
-	// the new binding is the read's referent again.
-	armBoundNames map[string]bool
+	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
+	// at runtime only through arm-resident type installs — a node minted
+	// per element, whose depth and identity are body-run-dependent — so a
+	// later root read would bake the check pass's node where the
+	// interpreter reads the runtime one. NoteDefRead poisons
+	// armReadCompileFailure on such reads; a later LIVE root install of the
+	// name (RecordBindTwin's placed arm) clears it. A VALUE name the body
+	// binds is not fenced any more: its reads seat live (keepLeakNames), so
+	// the runtime binding — the last element's install, or the miss the
+	// interpreter raises — is what they read.
+	armBoundTypeNames map[string]bool
 	// supersededTwins are twin-table indices recorded by an analysis round
 	// a LATER round of the same body replaced (the fold-accumulator fixed
 	// point re-runs its body until the accumulator type settles). They
@@ -888,10 +893,11 @@ type EmitState struct {
 	// execute — so the placement gate exempts them; see MultiRunBodyGuard.
 	supersededTwins map[int]bool
 	// armReadCompileFailure is the placement-gate poison a root read of an
-	// arm-bound name latches (first read wins, mirroring
-	// MarkUncompilable's first-reason rule). The fence is the REGIME's
-	// own machinery — the default recorder compiles the same read by
-	// const-folding the kept install — so it declines through Finalize's
+	// arm-bound type name latches, and a root read of a branch result whose
+	// fn arm takes arguments (NUR159's read fence) — first read wins,
+	// mirroring MarkUncompilable's first-reason rule. The fence is the
+	// REGIME's own machinery — the default recorder compiles the same read
+	// by const-folding the kept install — so it declines through Finalize's
 	// placement seam under the "twin regime:" prefix, the layer the
 	// full-placement gate already owns, not through a recorder-layer
 	// MarkUncompilable site (the failure-site census counts that layer,
@@ -2614,7 +2620,7 @@ func (es *EmitState) MultiRunBodyGuard(r *core.Registry, bodyID string) func() {
 // consumer exists, and the event's absence keeps every other lane's
 // event streams untouched. Nil-safe.
 func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
-	if es == nil || !es.Active() || es.armResidentDepth == 0 || name == "" {
+	if es == nil || !es.Active() || name == "" || (es.armResidentDepth == 0 && !es.inKeepDefsUnit()) {
 		return
 	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
@@ -4982,9 +4988,9 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 		es.appendEvent(EmitEvent{kind: evBindTwin,
 			twin: &emitBindTwin{idx: len(es.bindTwins) - 1, pos: tr.Pos}})
 		es.twinPlaced = append(es.twinPlaced, true)
-		// A live root install of an arm-bound name re-binds it: later reads
-		// resolve THIS binding, so the arm-bound read failure lifts.
-		delete(es.armBoundNames, tr.Name)
+		// A live root install of an arm-bound type name re-binds it: later
+		// reads resolve THIS binding, so the arm-bound read failure lifts.
+		delete(es.armBoundTypeNames, tr.Name)
 	} else {
 		es.twinPlaced = append(es.twinPlaced, false)
 	}
@@ -5320,17 +5326,19 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 			return
 		}
 	}
-	// Total match: stamp, mark, and fence the reads (the installing halves
-	// drive the fence; an undef half re-fences nothing).
+	// Total match: stamp, mark, and fence the TYPE reads (a value name's
+	// reads after the body are the keep-defs leak's — NoteKeepDefsLeak, at
+	// the dispatch — and seat live, so the runtime binding is what a later
+	// read finds; a type name has no live read, so its fence stays).
 	for k, i := range twins {
 		events[k].residentTwin = i
 		es.twinPlaced[i] = true
 		es.twinAdoptions = append(es.twinAdoptions, i)
-		if k := es.bindTwins[i].Kind; k == core.BindDef || k == core.BindTypeInstall {
-			if es.armBoundNames == nil {
-				es.armBoundNames = map[string]bool{}
+		if es.bindTwins[i].Kind == core.BindTypeInstall {
+			if es.armBoundTypeNames == nil {
+				es.armBoundTypeNames = map[string]bool{}
 			}
-			es.armBoundNames[es.bindTwins[i].Name] = true
+			es.armBoundTypeNames[es.bindTwins[i].Name] = true
 		}
 	}
 }
@@ -5801,11 +5809,28 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
-	} else if es.keepLeakNames[name] && !core.IsConcrete(*v) {
-		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak): the binding the
-		// pass reads is the unit's install, whose event home is gone with
-		// the closed unit, so the read seats live below — a concrete read
-		// keeps its bake exactly as a concrete generalised read does.
+	} else if (es.keepLeakNames[name] && !es.readHasHome(*v)) || es.mutableRefCarrierRead(*v) {
+		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak), or a mutable
+		// reference — a flex, a store — the pass now holds as a CARRIER
+		// with no compiled home (a body's check-mode mutation re-modelled
+		// the binding; the runtime cell is the registry's, mutated in
+		// place by the body's own live lookups): the binding the pass reads
+		// is the unit's install, whose event home is gone with the closed
+		// unit, so the read seats live below — a CONCRETE read included,
+		// since a multi-run body's leak is per element and absent at zero
+		// iterations (`[] each [def x 5]  x` is the interpreter's
+		// undefined_word where the pass's model still holds x): the
+		// registry at the read is the one answer, and a miss raises as the
+		// interpreter raises (Program.LiveReadNames). A read that HAS a
+		// compiled home is another binding of the same name — a param or
+		// a capture of the reading unit, a produced value, a carried slot
+		// — and keeps it: the frontier's `xs each [var [[a] (a comp)]]`
+		// over `([a:Integer] => [a mul 2])` seated the lambda's own param
+		// live and missed it in the registry (measured 2026-09-24).
+		if es.liveReadNames == nil {
+			es.liveReadNames = map[string]bool{}
+		}
+		es.liveReadNames[name] = true
 	} else if !es.specUndefNames[name] || core.IsConcrete(*v) {
 		// A CONCRETE read of the name is a binding a later `def` made after
 		// the region (`if c [undef k] []  def k 6  k`): program order is
@@ -5826,6 +5851,41 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)),
 	}})
 	es.setProduced(*v, seq)
+}
+
+// mutableRefCarrierRead reports whether a check-mode read is of a mutable
+// reference — a flex list / map / xml, a store — that the pass holds as a
+// CARRIER with no compiled home: no producing event and no frame local for
+// its identity. A module-scope flex is normally read as the value its
+// `flex` call produced (a local re-push); after a multi-run body MUTATES
+// it in check mode (`def acc (flex [])  for-each [acc swap append drop]
+// xs  acc`) the binding holds the body run's re-modelled carrier, whose
+// identity nothing produced — so the read seats live (NoteLiveRead) and
+// re-resolves the registry's cell, the very object the body's own live
+// lookups mutated. A concrete flex, or a carrier some event produced,
+// keeps its home.
+func (es *EmitState) mutableRefCarrierRead(v core.Value) bool {
+	if !v.Carrier || v.ID == "" || v.Parent == nil {
+		return false
+	}
+	if !(v.Parent.ConformsTo(core.TFlexList) || v.Parent.ConformsTo(core.TFlexMap) ||
+		v.Parent.ConformsTo(core.TFlexXml) || v.Parent.ConformsTo(core.TStore)) {
+		return false
+	}
+	return !es.readHasHome(v)
+}
+
+// readHasHome reports whether a read value already has a compiled home:
+// a producing event, or a frame local of the current unit (a param, a
+// capture, a carried slot, a promoted value). An identity-less value has
+// none.
+func (es *EmitState) readHasHome(v core.Value) bool {
+	_, produced := es.producedBy[v.ID]
+	local := false
+	if n := len(es.units); n > 0 && es.units[n-1] != nil {
+		_, local = es.units[n-1].localByID[v.ID]
+	}
+	return v.ID != "" && (produced || local)
 }
 
 // placeRoutedLiveSlots marks, for a dispatch that ROUTES, every claimed
@@ -6191,10 +6251,13 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		}
 	}
 	rec := &fnUnitRec{name: name, nParams: len(args), nUnnamed: nUnnamed, caps: captures, generic: generic, returns: declared, locals: locals, pos: pos, reg: fnReg}
-	// The keep-defs body unit: opened at the very unit count the `do`
+	// The keep-defs body unit: opened at the very unit count the defs-keeping
 	// dispatch armed (keepDefsUnitDepth), never a fn unit the body's own
-	// analysis opens one level deeper.
-	rec.keepsDefs = es.keepDefsUnitDepth > 0 && len(es.units) == es.keepDefsUnitDepth
+	// analysis opens one level deeper — and only a TOKEN body, whose inputs
+	// are unnamed: a lambda callback (`each ([x] => […])`) runs in a frame of
+	// its own on the interpreter and leaks nothing, and its named params
+	// would ride the kept trail with the defs.
+	rec.keepsDefs = es.keepDefsUnitDepth > 0 && len(es.units) == es.keepDefsUnitDepth && nUnnamed == len(args)
 	es.fnRecs = append(es.fnRecs, rec)
 	es.fnUnits[key] = unit
 	// The enclosing-binding snapshots read the registry the unit RUNS in —
@@ -9312,13 +9375,11 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		return
 	}
 	es.noteFragRead(name)
-	if es.armBoundNames[name] {
-		// The name's runtime binding exists only through arm-resident
-		// installs — count, values, and definedness are body-run-dependent
-		// (`[] each [def x 5] x`: the interpreter raises undefined_word
-		// where the check model still holds x) — so a read here would bake
-		// the model's generalized value. Poison the placement gate: the
-		// regime's Finalize seam declines, and the interpreter owns the
+	if es.armBoundTypeNames[name] {
+		// The type's runtime node exists only through arm-resident installs
+		// — minted per element, its depth body-run-dependent — so a read
+		// here would bake the check pass's node. Poison the placement gate:
+		// the regime's Finalize seam declines, and the interpreter owns the
 		// shape (the parity oracle pins it). After a terminal top-level
 		// trap the read is unreachable — the compiled program truncates at
 		// the trap — so it poisons nothing, MarkUncompilable's own trap
@@ -9669,7 +9730,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
-		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
+		keepSkip: cur.keepsDefs && !keepInstallable(src, srcSeq, v),
 	}})
 	es.noteBindHazard(name)
 }
@@ -9677,16 +9738,19 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 // keepInstallable reports whether a KEEP-DEFS unit's def can install its
 // value at run time: the value has a home the install re-pushes from — a
 // producing event (promoted to a frame slot for the re-push), a frame
-// slot, an inert const, or a stripped-literal carrier resolveOperand
-// recovers as a const or local — exactly the sources lowerDynBind's
-// dyn-scope arm accepts. Anything else (a fn value, a splice marker, a
-// macro) is emitDynBind.keepSkip.
-func (es *EmitState) keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
-	if srcSeq >= 0 || src.kind == opLocal || core.IsInertConst(v) {
+// slot, or an inert const baked as it stands under a BUILTIN type.
+// Anything else — a fn value, a splice marker, a macro, and a literal
+// REPARENTED to a user type (`def y:P 5` over a refinement `P` the same
+// body mints: installed at run time BEFORE the body's type twin replays
+// the node, the binding answered `y is P` false — measured on the
+// analysis-order suite; the twin's replay, after the type's, keeps the
+// order the interpreter had) — is emitDynBind.keepSkip and keeps the
+// lowering it had.
+func keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
+	if srcSeq >= 0 || src.kind == opLocal {
 		return true
 	}
-	op, ok := es.resolveOperand(v)
-	return ok && (op.kind == opConst || op.kind == opLocal)
+	return core.IsInertConst(v) && (v.Parent == nil || v.Parent.Origin == core.OriginBuiltin)
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value
@@ -14086,6 +14150,7 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 // no effect of the statement runs twice (deoptPointFor). A start that is no
 // Body token, a unit with no body and a closure unit keep the slot push.
 func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
+	es.planKeepDefs(rec)
 	if len(rec.body) > 0 {
 		es.planReStepDeopts(u, rec)
 	}
@@ -14168,6 +14233,47 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	u.deoptEnv = true
 	u.deoptNames = names
 	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+}
+
+// inKeepDefsUnit reports whether the innermost open unit is a KEEP-DEFS
+// body unit (fnUnitRec.keepsDefs): its var pairs need their undef half's
+// event so planKeepDefs can pair the halves.
+func (es *EmitState) inKeepDefsUnit() bool {
+	n := len(es.openUnitRecs)
+	return n > 0 && es.fnRecs[es.openUnitRecs[n-1]].keepsDefs
+}
+
+// planKeepDefs stamps the var-pair skip on a KEEP-DEFS unit's def sites
+// before the unit is planned: a def whose name the same unit also UNDEFS
+// (`var`'s balanced teardown, RecordDynUndef's event) is a frame-local
+// pair the interpreter nets to nothing, so neither half touches the
+// registry — the def keeps its previous lowering (emitDynBind.keepSkip)
+// and the name never joins the leak (keepDefsUnitNames). At the root the
+// arm-resident bridge may still pair both halves with their twins, and a
+// stamped site takes the resident lowering first. Nothing for any other
+// unit.
+func (es *EmitState) planKeepDefs(rec *fnUnitRec) {
+	if rec == nil || !rec.keepsDefs || rec.frag == nil {
+		return
+	}
+	all, _, _ := collectPromotableEvents(rec.frag.events)
+	var undefs map[string]bool
+	for _, ev := range all {
+		if ev.kind == evDynBind && ev.dyn != nil && ev.dyn.undef {
+			if undefs == nil {
+				undefs = map[string]bool{}
+			}
+			undefs[ev.dyn.name] = true
+		}
+	}
+	if len(undefs) == 0 {
+		return
+	}
+	for _, ev := range all {
+		if ev.kind == evDynBind && ev.dyn != nil && ev.dyn.bindsValue() && undefs[ev.dyn.name] {
+			ev.dyn.keepSkip = true
+		}
+	}
 }
 
 // planReStepDeopts plans the unit's RE-STEP points (NUR124). A root event

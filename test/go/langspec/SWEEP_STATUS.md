@@ -27,7 +27,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `fnsig` | ✓ 11/14 | n/a | n/a | n/a | n/a | C | ✓ 11/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `for` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
-| `for-each` | F | ✓ 14/14 | ✓ 12/14 | F | F | F | F |
+| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | F | F | F | ✓ 14/14 |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
 | `gen` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
@@ -53,7 +53,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `usurp` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
 | `valof` | ✓ 14/14 | — | — | — | — | — | — |
 | `var` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
-| `walk` | F | ✓ 11/14 | ✓ 10/14 | F | F | F | F |
+| `walk` | ✓ 11/14 | ✓ 11/14 | ✓ 10/14 | F | F | F | ✓ 11/14 |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `word` | ✓ 13/14 | ✓ 7/14 | ✓ 12/14 | ✓ 5/14 | D! | ✓ 13/14 | ✓ 13/14 |
@@ -61,8 +61,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 153
-- failed: 26
+- pass: 157
+- failed: 22
 - islanded: 2
 - DIVERGED: 6
 - PANIC: 0
@@ -89,11 +89,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `emit` factory — **failed**: `import "boru:emitlang" end def mk fn [[][Function][(fn [[value:Any opts:Map] [String] ['UP']])]] end emit (mk) {a:1}` — residual value of unknown provenance
 - `emit` container — **DIVERGED**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — error divergence: compiled [boru/signature_error]: cannot call `emitlang-auto` — no signature matches the arguments   …
 - `fnsig` module-export — **check-reject**: `import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1` — check error: [boru/fnsig_invalid_spec]: fnsig: argument must be a concrete list   --> 1:82   1 | import module [def sg f…
-- `for-each` literal — **failed**: `def acc (flex []) end for-each [acc swap push] [1 2 3] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `for-each` factory — **failed**: `def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc` — function-valued operand at for-each (Stage 3)
 - `for-each` container — **failed**: `def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc` — higher-order `for-each` with a gradual-Any operand — the callback or the collection: ambiguous overload, no static com…
 - `for-each` module-export — **failed**: `import module [def acc (flex []) def stp fn [[e:Integer][Any][acc push e]] export "M" {stp: stp/v acc: acc}] end for-eac…` — function-valued operand at for-each (Stage 3)
-- `for-each` computed — **failed**: `def acc (flex []) end def b (quote [acc swap push]) end for-each b [1 2 3] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `force-arity` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end force-arity 2 (mk) 1 2` — residual value of unknown provenance
 - `forward-args` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end forward-args (mk) 10 3` — residual value of unknown provenance
 - `if` lambda — **failed**: `if true ([] => [1]) ([] => [2])` — unconsumed fn-value carrier in residual (closure render)
@@ -106,11 +104,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `receive` module-export — **failed**: `import module [def cl fn [[][List][(quote [{} [1] after 0 [0]])]] export "M" {cl: cl/v}] end receive M.cl` — code-body word receive (Stage 2)
 - `stack-args` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end 10 3 stack-args (mk)` — unconsumed fn-value carrier in residual (closure render)
 - `usurp` factory — **failed**: `def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end usurp (mk) 10 3` — residual value of unknown provenance
-- `walk` literal — **failed**: `def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} [dot path acc swap push] end size acc` — operand of unknown provenance or not statically materialisable at size
 - `walk` factory — **failed**: `def acc (flex []) end def mk fn [[][Function][(m:Any => [acc push m.path])]] end walk {mode: "depth"} {a:1 b:[2 3]} (mk)…` — code-body word walk (Stage 2)
 - `walk` container — **failed**: `def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc` — code-body word walk (Stage 2)
 - `walk` module-export — **failed**: `import module [def acc (flex []) def h fn [[m:Any][Any][acc push m.path]] export "M" {h: h/v acc: acc}] end walk {mode: …` — function value reaches walk (Stage 3)
-- `walk` computed — **failed**: `def acc (flex []) end def b (quote [dot path acc swap push]) end walk {mode: "depth"} {a:1 b:[2 3]} b end size acc` — operand of unknown provenance or not statically materialisable at size
 - `word` container — **DIVERGED**: `def m {f: ([n:Integer] => [n add 1])} end def dbl word m.f end 5 dbl` — error divergence: compiled [boru/internal_error]: bytecode: internal: splice of a code-bearing payload; the compiled run…
 
 ## Call-form variants that are not green
@@ -314,6 +310,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `var` literal · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` computed · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` computed · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `walk` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:117   1 | def zzvlam ([] => […
+- `walk` literal · for-body — **declined** — dynamic-scope def `acc` of unpromoted computed value
+- `walk` literal · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:25   1 | 7 def acc (flex []) end walk {mode: …
 - `walk` lambda · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:121   1 | def zzvlam ([] => […
 - `walk` lambda · for-body — **declined** — stack discipline: result operand of size is not on top
 - `walk` lambda · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:25   1 | 7 def acc (flex []) end walk {mode: …
@@ -321,6 +320,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` named-fn · for-body — **declined** — fn 'h' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `walk` named-fn · each-body — **declined** — fn each$body: arm-resident def `h` of unknown provenance
 - `walk` named-fn · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:70   1 | 7 def acc (flex []) end def h fn [[m…
+- `walk` computed · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:137   1 | def zzvlam ([] => […
+- `walk` computed · for-body — **declined** — dynamic-scope def `acc` of unpromoted computed value
+- `walk` computed · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:68   1 | 7 def acc (flex []) end def b (quote…
 - `while` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `while` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` literal · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance

@@ -65,6 +65,41 @@ func TestDoBodyDefLeaksToTheEnclosingScope(t *testing.T) {
 		// NUR201, below).
 		`def t 0 end do [def t 5 raise 'x'] end t`,
 		`def t 0 end do [def t 5 raise 'x'] error [drop 1] end t`,
+		// The MULTI-RUN bodies (each, fold, scan, var): the leak per
+		// element, read after the body — the last element's install, or at
+		// zero iterations the miss the interpreter raises — inside a loop
+		// (NUR200) and inside a fn frame.
+		`def t 0 end each [def t (t add 1) t] [1 2 3] drop end t`,
+		`def t 0 end each [def t 5 t] [1 2 3] drop end t`,
+		`each [def t 5 1] [1 2] drop end t`,
+		`[] each [def x 5] x`,
+		`[1 2] each [def x 5] x add 1`,
+		`fold [ def x 5 ] [10 20] 0  x add 1`,
+		`scan [ def x 5 ] [10 20]  x add 1`,
+		`[10 20] each [ var [[r] def x r x] ] end x`,
+		`def t 0 end for 3 [[1] each [def t 5] drop] end t`,
+		`def t 0 end for 3 [[1 2] each [def t (t add i)] drop] end t`,
+		`def f fn [[][Integer][def t 0 [1 2] each [def t (t add 1)] drop t]] end f`,
+		`def t 0 end def f fn [[][Integer][[1 2] each [def t 5] drop t]] end f end do [t]`,
+		`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`,
+		// A lambda callback is a frame of its own: no leak on either lane.
+		`def t 0 end each ([x:Integer] => [def t x x]) [1 2] drop end t`,
+		// A var pair inside the body nets to nothing: its def half never
+		// installs or leaks, and a lambda's own param of the leaked name is
+		// its own binding — never a live read of the registry (the frontier
+		// row `xs each [var [[a] (a comp)]]`, measured 2026-09-24).
+		`def a 7 end [1 2] each [var [[a] a]] end a`,
+		`import module [ def use fn [[comp:Function xs:List] [List] [ xs each [ var [[a] (a comp)] ] ]] export "S" {use: use/v} ] end S.use ([a:Integer] => [a mul 2]) [1 2 3]`,
+		`def a 7 end def f fn [[][Integer][do [var [[[a 1]] a add 1]]]] end f end a`,
+		`def a 7 end for 2 [do [var [[[a 1]] a add 1]]] end a`,
+		`def f fn [[][Integer][do [var [[[a 1]] a add 1]]]] end f`,
+		// A flex a multi-run body MUTATES, read back after it: the pass holds
+		// a re-modelled carrier with no compiled home, so the read seats live
+		// on the registry's cell (code-bodies.tsv L190, module-composition L92).
+		`def acc (flex []) end for-each [acc swap append drop] [1 2 3] end acc`,
+		`def acc (flex []) end each [acc swap append drop 1] [1 2 3] drop end acc`,
+		`def acc (flex []) end for-each [acc swap append drop] [1 2 3] end acc size`,
+		`def f fn [[][List][def acc (flex []) for-each [acc swap append drop] [1 2 3] acc]] end f`,
 		// The fn frame: the leak lives as long as the frame.
 		`def f fn [[x:Integer][Integer][def t 0 do [def t (x add 1)] t]] end f 4`,
 		`def t 0 end def f fn [[][Integer][do [def t 5] t]] end f end do [t]`,
@@ -88,33 +123,29 @@ func TestDoBodyDefLeaksToTheEnclosingScope(t *testing.T) {
 		t.Errorf("the keep-defs loop shape entered the interpreter: %v", entries)
 	}
 
-	// The remaining edge, counted: inside a fn whose RESULT is the leaked
-	// name after the loop, the loop's count-agnostic body (a `do` returns
-	// its whole residual) leaves the fn's residual a variadic loop value
-	// the unit's RET cannot seat, and the program declines — where it
-	// answered 0 for the interpreter's 5 before this change. Parity by the
-	// counted defect (compile_defect_test.go's ledger).
-	requireEngineParity(t, `def f fn [[][Integer][def t 0 for 3 [do [def t 5]] t]] end f`, false)
+	// The fn frame whose RESULT is the leaked name after the loop: the
+	// post-loop read resolves to the carried slot the do call refreshed (a
+	// read with a compiled home never seats live — readHasHome), so the
+	// fn's residual seats and both lanes answer 5 (it answered 0 before
+	// NUR199, and declined "result is a variadic loop value" between).
+	requireEngineParity(t, `def f fn [[][Integer][def t 0 for 3 [do [def t 5]] t]] end f`, true)
 }
 
-// TestEachBodyDefInLoopPending pins NUR200 as it stands: the MULTI-RUN
-// twin of NUR199. An `each` body that rebinds a loop-carried name —
-// `def t 0  for 3 [[1] each [def t 5] drop]  t` — leaks the binding per
-// element on the interpreter (5), while the compiled each$body unit keeps
-// the def frame-local: no arm-resident twin is adopted inside a loop
-// fragment (AdoptResidentTwins' root fence) and the carried slot keeps the
-// pre-loop value (0). The keep-defs mechanism of NUR199 is the `do` body's
-// (once-run, one install); a per-element install rides the resident-twin
-// bridge, which is fenced to the root stream today. Closing it must update
-// this pin.
-func TestEachBodyDefInLoopPending(t *testing.T) {
+// TestEachBodyDefInLoopResolves pins NUR200's close: the MULTI-RUN twin
+// of NUR199. An `each` body that rebinds a loop-carried name — `def t 0
+// for 3 [[1] each [def t 5] drop]  t` — leaks the binding per element on
+// the interpreter (5); the compiled each$body unit is a keep-defs unit
+// too now (its unstamped defs install through the kept OpBindDynScope
+// where no arm-resident twin is adopted — a loop fragment, a fn body),
+// the loop refreshes its carried slot after the call, and the read after
+// the body seats live. Both lanes answer 5; the lowering carries the
+// kept install, never the stale slot.
+func TestEachBodyDefInLoopResolves(t *testing.T) {
 	src := `def t 0 end for 3 [[1] each [def t 5] drop] end t`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[5]" {
-		t.Errorf("%q: the interpreter leaks the each body's def: %v / %v", src, gotI, errI)
-	}
-	if errC != nil || !compiled || fmt.Sprint(gotC) != "[0]" {
-		t.Errorf("%q: NUR200's compiled value %v / %v (compiled=%v), pinned as [0] — closing the divergence must update this pin", src, gotC, errC, compiled)
+	requireEngineParity(t, src, true)
+	dis := compileDisasm(t, src)
+	if !strings.Contains(dis, "BIND_DYN_SCOPE") || !strings.Contains(dis, "LOOKUP_DYN_SCOPE") {
+		t.Errorf("the each body's def must install through BIND_DYN_SCOPE and the loop re-read the name:\n%s", dis)
 	}
 }
 

@@ -13322,6 +13322,93 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR200 closed — the multi-run keep-defs body (2026-09-24)
+
+**The divergence.** NUR199's multi-run twin, recorded while closing it:
+`def t 0  for 3 [[1] each [def t 5] drop]  t` answered 0 for the
+interpreter's 5 — the each$body unit kept its def frame-local (no
+arm-resident twin is adopted inside a loop fragment, AdoptResidentTwins'
+root fence, and no twin is even noted there), so nothing installed the
+binding at run time and the carried slot kept the pre-loop value. Beside
+it, three corpus compile failures of the same family: code-bodies.tsv
+L183 (`each [def t (t add 1) t] [1 2 3] drop  t`, "residual value of
+unknown provenance" — the read after the body has no compiled home) and
+L190 / module-composition L92 (`def acc (flex [])  for-each [acc swap
+append drop] [1 2 3]  acc` — a flex the body MUTATES, read back), plus the
+twin regime's own read fence, "read of `t` after a multi-run body binds
+it", which declined every top-level read of a name an each body bound.
+
+**The mechanism, extended.** The keep-defs unit of NUR199 is armed for
+BodyMultiRunKeepsDefs words too (`tryRecordClosure`): a value def the
+root's arm-resident bridge PAIRED with a twin keeps its OpBindResident
+(the twin's placement); an unpaired one — inside a loop fragment, a fn
+body, a var pair's def half — lowers to the kept OpBindDynScope, once per
+element, left standing past the unit's RET for the enclosing frame to pop
+(a fn frame) or the run to keep (root). Only a TOKEN body is keep-defs
+(StartFnCompile's stamp requires unnamed inputs): a lambda callback
+(`each ([x] => […])`) runs in a frame of its own on the interpreter and
+leaks nothing, and its named params would ride the kept trail with the
+defs. After the call, NoteKeepDefsLeak runs for the multi-run words as it
+does for `do`: the carried slot's refresh (the loop shape above), and the
+names' live seat.
+
+**The live seat, widened.** A read of a leaked name seats live whatever
+the pass holds — a CONCRETE value included, where NUR199's arm kept a
+concrete bake. A multi-run body's leak is per element and absent at zero
+iterations (`[] each [def x 5]  x` is the interpreter's undefined_word
+where the pass's model still holds x), so the registry at the read is the
+one answer, and the names join Program.LiveReadNames so a miss RAISES as
+the interpreter raises, never defers. That retires the twin regime's read
+fence for VALUE names (`armBoundNames`): the fence stays for TYPE names
+(`armBoundTypeNames` — a per-element type install mints a node per
+element, and a type name has no live read). The frozen-read rows `def k 5
+def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f` compile
+with parity (`7 [9] 11`): the leak re-records the unit (the memo's key)
+and the top-level read seats live.
+
+**The mutated flex.** `def acc (flex [])  for-each [acc swap append drop]
+xs  acc` declined because the read after the body is a CARRIER the pass
+minted when the body's check-mode `append` re-modelled the binding — no
+producing event, no frame local, and not a concrete flex the tag hook
+names. NoteLiveRead's mutable-ref arm (`mutableRefCarrierRead`: a flex
+list / map / xml or a store carrier with no compiled home) seats such a
+read live: the registry's cell is the very object the body's own live
+lookups mutated. Four generated-sweep seeds compile with it (the
+`for-each` and `walk` seeds, literal and computed; the sweep's compile
+failures 29 -> 25) and their call forms are counted for the first time
+(197 -> 199: two `walk` for-body variants decline in the dynamic-scope def
+family, an existing decline).
+
+**Three fences, measured.** (1) A literal REPARENTED to a user type the
+same body mints (`do [def P (refine Integer)  def y:P 5]  y is P`):
+installed at run time before the type twin replays the node, the binding
+answered false — so `keepInstallable` admits an inert const only under a
+BUILTIN type, and such a def keeps its twin's replay (the analysis-order
+suite's parity row). (2) The live seat is for a read with NO compiled
+home: the corpus's frontier row `xs each [var [[a] (a comp)]]` over
+`([a:Integer] => [a mul 2])` seated the lambda's OWN param `a` live —
+another binding of the leaked name — and missed it in the registry
+(`readHasHome`: a producing event or a frame local keeps its home). (3) A
+`var` pair inside a keep-defs body nets to nothing: the undef half is
+recorded in such a unit too (RecordDynUndef) and `planKeepDefs` stamps
+the def half keepSkip at the unit's finish, so neither half touches the
+registry and the name never joins the leak (`def a 7  [1 2] each [var
+[[a] a]]  a` is 7 on both lanes, and so is `a` after `do [var [[[a 1]] a
+add 1]]` inside a fn or a loop).
+
+**Measured:** code-bodies.tsv 11 -> 9 (L183, L190) and module-composition.tsv 3 -> 2 (L92) — the corpus's compile failures 19 -> 16; the lang ledger's compile-failure line 287 -> 283 (the two frozen-read rows and a mutated-flex row compile, and NUR199's fn-frame edge `def f fn [[][Integer][def t 0 for 3 [do [def t 5]] t]]` compiles with parity: its post-loop read has a compiled home, the refreshed carried slot, and never seats live) and bail line 44 unchanged; the sweep's compile failures 29 -> 25 and call-form failures 197 -> 199 (the graduated seeds' variants, no new debt); the full corpus 8563 rows, 8206 -> 8209 compiled (L183, L190, L92), the interp-entry census 24 rows at its ceiling of 24, the engine-entry census 166 unattributed runs unchanged, the compute-gap gate 14 -> 11 (the same three rows; computeGapCeiling re-pinned), the region oracle's diverged-value 3 / over-claimed 1 as before, the runtime-defers ledger at 10, the reducible, diagnostic-parity and type-soundness gates at their values; the unit suites of core, eng, compiler, check, basic, lang and the arity gate green.
+
+**Pins.** lang `TestDoBodyDefLeaksToTheEnclosingScope` (the multi-run
+rows: each / fold / scan / var read-after, the zero-iteration miss, the
+loop shape, the fn frame, the frozen-read row, the lambda's own frame,
+the mutated flex read back at root and inside a fn),
+`TestEachBodyDefInLoopResolves` (the divergence, and the kept lowering),
+`TestModuleReadRebindCompilesWithParity` (the two graduated rows),
+`TestAnalysisOrderSoundFallbacks` (the drifted reason); the langspec
+multi-run parity oracle's read-after rows as parity rows; compiler
+`TestAdoptResidentTwinsFences` / `TestAdoptResidentTwinsTypeTwins` (the
+type-name fence kept, the value-name fence gone). Docs: the handover, NUR.md (NUR200 FIXED), this entry.
+
 ## NUR199 closed — the keep-defs body (2026-09-24)
 
 **The survey.** The corpus's twenty-one compile failures, listed by

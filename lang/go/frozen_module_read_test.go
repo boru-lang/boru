@@ -108,6 +108,11 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 		// and the memo sees it exactly as it sees a top-level one: the leaked
 		// binding's generation moved.
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [def k 9]  f`, "k", "value", "7 7 for 7 11"},
+		// The MULTI-RUN twin: an each body leaks its LAST iteration's def to
+		// module scope; the rebind re-records the unit (the memo's key), and
+		// the top-level read after the body seats live (NUR200's close).
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, "k", "value", "7 [9] 7 for 7 [9] 11"},
+		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, "k", "value", "7 [9 9] 7 for 7 [9 9] 11"},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [def T String]  f`, "T", "type", "true true for true false"},
 		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  ` +
 			`do [def g fn [[][Integer][2]]]  f`, "g", "call target", "1 1 for 1 2"},
@@ -150,7 +155,6 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 // routed op meets a live rebind only where no call site can re-record.
 func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 	// Legacy compile failure+fallback-parity contract: pins the one-release
-	const armRead = "twin regime: read of `k` after a multi-run body binds it"
 	// defer names the op's defer site for a row that compiles and hands the
 	// RUN to the interpreter; empty for a row that declines at check.
 	cases := []struct{ src, reason, defer_ string }{
@@ -166,12 +170,9 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		{`def k 5  def f fn [[] [Integer] [k/v add 2]]  f  undef k  f`, "check diagnostics", ""},
 		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  do [undef k]  f`, "check diagnostics", ""},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [undef T]  f`, "check diagnostics", ""},
-		// The MULTI-RUN twin of the rebind-site axis: an each body leaks its
-		// LAST iteration's def to module scope, and the top-level read after
-		// it is the arm-residency gate's. Measured `7 [9] 11` interpreted
-		// against `7 [9] 7` compiled before the arm.
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, armRead, ""},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, armRead, ""},
+		// The MULTI-RUN twin of the rebind-site axis, its VALUE rows moved to
+		// the parity test (NUR200's close): a TYPE the each body installs
+		// per element still declines on the twin regime's placement.
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  [1] each [def T String  1]  f`,
 			"twin regime: a bind transition has no stream placement", ""},
 	}
