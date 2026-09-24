@@ -110,8 +110,16 @@ var pinnedAritySites = map[string]int{
 	"core/go/macro_expand.go": 1,
 
 	// ── The checker's and VM's mirrors of that same matching.
-	"check/go/carrier.go":        13,
-	"check/go/method_shape.go":   1,
+	"check/go/carrier.go": 13,
+	// 1 -> 2 (2026-09-24, the written argument's fit, NUR194):
+	// shapedFnReadWindow guards `i-1 < len(shape.Params)` — a BOUNDS check
+	// on the claim's parameter-type slice, which may be shorter than the
+	// arity (nil where only the arity is known) — before asking whether a
+	// written token fits that parameter. It reads where the types END,
+	// never what a function of a given arity may do: every arity takes the
+	// same path, and the matching itself is SigTypeMatches, the argument
+	// rule's own arm.
+	"check/go/method_shape.go":   2,
 	"check/go/check_recovery.go": 1,
 	// A bounds check on a signature INDEX, not a decision about a function's
 	// shape (CompileFnSigUnit guarding fnDef.Signatures[sigIdx] before it

@@ -10441,7 +10441,9 @@ func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bo
 		if cu < 0 || cu >= len(es.fnRecs) {
 			return core.FnShape{}, false
 		}
-		s := core.FnShape{Arity: es.fnRecs[cu].nParams}
+		// The declared param types (SetUnitParamTypes) are the claim's
+		// Params, so the read model can ask whether a written token fits.
+		s := core.FnShape{Arity: es.fnRecs[cu].nParams, Params: es.fnRecs[cu].paramTypes}
 		if outs := es.fnRecs[cu].outOps; len(outs) == 1 {
 			if r, ok := es.closureOpShape(outs[0], depth+1); ok {
 				s.Result = &r
@@ -10449,8 +10451,15 @@ func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bo
 		}
 		return s, true
 	case opConst:
-		n, ok := constLambdaArity(es.consts, op.idx)
-		return core.FnShape{Arity: n}, ok
+		params, ok := constLambdaParams(es.consts, op.idx)
+		if !ok {
+			return core.FnShape{}, false
+		}
+		types := make([]*core.Type, len(params))
+		for i := range params {
+			types[i] = params[i].Type
+		}
+		return core.FnShape{Arity: len(params), Params: types}, true
 	}
 	return core.FnShape{}, false
 }
@@ -10614,12 +10623,19 @@ func (es *EmitState) producedConstLambda(id string) bool {
 // fn (`add/v`, a module export, a `FnUtil.const` result) as data where the
 // interpreter's word dispatch would apply it, so those keep the failure.
 func constLambdaArity(consts []core.Value, idx int) (int, bool) {
+	params, ok := constLambdaParams(consts, idx)
+	return len(params), ok
+}
+
+// constLambdaParams is constLambdaArity's source: the single own
+// signature's params of an anonymous, module-less const lambda with a body.
+func constLambdaParams(consts []core.Value, idx int) ([]core.FnParam, bool) {
 	if idx < 0 || idx >= len(consts) {
-		return 0, false
+		return nil, false
 	}
 	fd, ok := consts[idx].Data.(core.FnDefInfo)
 	if !ok || fd.Name != "" || fd.Module != "" {
-		return 0, false
+		return nil, false
 	}
 	own := 0
 	for i := range fd.Signatures {
@@ -10629,9 +10645,9 @@ func constLambdaArity(consts []core.Value, idx int) (int, bool) {
 	}
 	lam, hasOwn := fd.FirstOwnSig()
 	if own != 1 || !hasOwn || len(lam.Body()) == 0 {
-		return 0, false
+		return nil, false
 	}
-	return len(lam.Params), true
+	return lam.Params, true
 }
 
 // makeListRange reports whether any of a dispatch's args was produced by an

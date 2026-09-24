@@ -241,3 +241,38 @@ func TestShapedFnReadResultShape(t *testing.T) {
 		t.Errorf("the plain check's result carries the next level's claim, got %d/%v", n, ok)
 	}
 }
+
+// TestShapedFnReadArrivalUnfitWrittenArgument: a claim that knows the
+// wrapper's parameter types (FnShape.Params) declines a written token that
+// does not conform — the interpreter's matcher falls back from it to the
+// frame, which the window claim cannot model (NUR194) — and claims one
+// that does; a claim without types keeps the arity-only window.
+func TestShapedFnReadArrivalUnfitWrittenArgument(t *testing.T) {
+	r, rec, carrier, done := fraFix(t, 1)
+	defer done()
+	r.Check.NoteFnShape(carrier, core.FnShape{Arity: 1, Params: []*core.Type{core.TInteger}})
+	e := zzmsEngine(r, []core.Value{carrier, core.NewString("s"), core.NewEnd()})
+	if tryMemberFnArrivalDispatch(e, 0) || len(rec.dynCalls) != 0 {
+		t.Fatal("an unfit written argument must not be claimed")
+	}
+	if len(rec.reasons) != 1 || !strings.Contains(rec.reasons[0], "does not fit the wrapper's parameter") {
+		t.Errorf("the decline names the unfit argument, got %v", rec.reasons)
+	}
+	rec.reasons = nil
+	e = zzmsEngine(r, []core.Value{carrier, core.NewInteger(99), core.NewEnd()})
+	if !tryMemberFnArrivalDispatch(e, 0) || len(rec.dynCalls) != 1 || len(rec.reasons) != 0 {
+		t.Errorf("a fitting written argument is claimed as before: calls %d reasons %v", len(rec.dynCalls), rec.reasons)
+	}
+	// The plain-check half leaves an unfit window as it is.
+	r2, c2, done2 := frwFix(t, 1)
+	defer done2()
+	r2.Check.NoteFnShape(c2, core.FnShape{Arity: 1, Params: []*core.Type{core.TInteger}})
+	e2 := zzmsEngine(r2, []core.Value{c2, core.NewString("s"), core.NewEnd()})
+	if tryShapedFnReadWindow(e2, 0) || e2.Tape.Len() != 3 {
+		t.Error("the plain check does not collapse an unfit window")
+	}
+	e2 = zzmsEngine(r2, []core.Value{c2, core.NewInteger(99), core.NewEnd()})
+	if !tryShapedFnReadWindow(e2, 0) || e2.Tape.Len() != 2 {
+		t.Error("the plain check collapses a fitting window")
+	}
+}

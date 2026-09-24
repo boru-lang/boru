@@ -497,8 +497,12 @@ user still gets an answer while the case is open:
   12 — a closure a compiled program binds by `def` dispatches as the named
   fn it is inside every island, and `do`'s result model takes the
   computed-body hatch over such a carrier. A written operand the contract
-  does not take (`each [a5 "s" add] xs`, `do [a5 "s"]`) BAILS on the
-  shape claim, pinned as measured (NUR194).
+  does not take (`each [a5 "s" add] xs` is `['6s' '7s']`: the matcher
+  falls back from the token to the element; `do [a5 "s"]` the caught
+  raise) agrees too (NUR194, 2026-09-24): the shape claim carries the
+  wrapper's parameter types and the read window declines a token that
+  does not fit, so the body islands to the bridged dispatch; at the top
+  level `(a5 "s")` declines the program to the interpreter's raise.
 
   A BRANCH whose arm is a fn VALUE returns a value the interpreter
   re-steps, and the compiled lane re-steps it the same way since the

@@ -1575,6 +1575,15 @@ func (c *CheckState) MethodShapeMember(id string) (Value, bool) {
 type FnShape struct {
 	Arity  int
 	Result *FnShape
+	// Params is the wrapper's parameter types when the claim knows them —
+	// a compiled closure's unit, a const lambda's signature — one per
+	// Arity; nil when only the arity is known. The read model asks it
+	// whether a written token FITS before claiming it as an argument: the
+	// interpreter's matcher tries the token against the signature and
+	// falls back to the frame when it does not (`each [a5 "s" add] xs`
+	// is a5 over the element, then `"s" add`), a fallback the claim cannot
+	// model (NUR194, 2026-09-24).
+	Params []*Type
 }
 
 // NoteFnShape records the SHAPE of the fn value a computed-fn carrier stands
