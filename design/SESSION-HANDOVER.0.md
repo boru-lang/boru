@@ -158,7 +158,7 @@ branch-carried def"**; the re-estimate is
    bail would move a corpus ceiling by fn-value.tsv's two coincidental
    rows (L317/L318), which is the maintainer's call. The placed value
    inside a code body (the same day) compiled the `[(lambda)]` and
-   `[(mk 2)]` bodies into their units (five census rows left); the
+   `[(mk 2)]` bodies into their units (seven census rows left); the
    def-bound computed fn over the element (`each [a5] xs`) is the next
    cut — the trailing apply lowered inside a closure body — and the
    run-time list bodies (code-bodies.tsv's twenty) are S3's runtime

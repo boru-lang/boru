@@ -12980,7 +12980,7 @@ kept) and `branch_fn_value_test.go` (the word seated at the landing's
 pc); the inactive-recorder pins; the arity gate re-pinned at 17 for
 eng/go/vm.go (both comparisons match the argument rule).
 
-## S1b — the placed value inside a code body: five interp-entry census rows leave (2026-09-23)
+## S1b — the placed value inside a code body: seven interp-entry census rows leave (2026-09-23)
 
 **The measurement first.** The interp-entry census (75 rows) was read row
 by row from the corpus log, and its largest family is the code body a
