@@ -1102,6 +1102,11 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil {
 		return stack[:base], ent, nil
 	}
+	// A callee carrying a DETACHED unit — a module fn's own stamp — is hosted
+	// nested rather than islanded (vm_dyn_apply.go, dynApplyForeign).
+	if results, ran, err := vc.dynApplyForeign(fnVal, args, 0); ran {
+		return vc.dynForeignResults(results, err, stack, base, "dynamic result", curDebug, pc, reg)
+	}
 	// A MODIFIER WRAPPER re-dispatches what it wraps, and it does so by
 	// returning TOKENS — `( stack-part  orig  forward-part )` for the engine
 	// to step. That is why it lands here: a paren group needs a tape, and the
@@ -1139,6 +1144,9 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		}
 		if ent := vc.dynApplyEnter(inner, iargs); ent != nil {
 			return stack[:base], ent, nil
+		}
+		if results, ran, err := vc.dynApplyForeign(inner, iargs, 0); ran {
+			return vc.dynForeignResults(results, err, stack, base, "dynamic result", curDebug, pc, reg)
 		}
 	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
@@ -1547,6 +1555,9 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil {
 		return stack[:base], ent, nil
 	}
+	if results, ran, err := vc.dynApplyForeign(fnVal, args, 0); ran {
+		return vc.dynForeignResults(results, err, stack, base, "dynamic trailing-top result at fn-value apply", curDebug, pc, reg)
+	}
 	island := make([]core.Value, 0, n+1)
 	island = append(island, fnVal)
 	island = append(island, args...)
@@ -1764,6 +1775,13 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && (!one || dynMethodClaimOK(ent, 1)) {
 		return stack[:base], ent, nil
 	}
+	nout := 0
+	if one {
+		nout = 1
+	}
+	if results, ran, err := vc.dynApplyForeign(fnVal, args, nout); ran {
+		return commit(results, err)
+	}
 	return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
 }
 
@@ -1895,6 +1913,12 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	if ent := vc.dynApplyEnter(fnVal, args); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
 		return stack[:base], ent, nil
 	}
+	if results, ran, err := vc.dynApplyForeign(fnVal, args, spec.NOut); ran {
+		if err != nil {
+			return nil, nil, stampAt(err, curDebug, pc, reg)
+		}
+		return guard(results)
+	}
 	// A MODIFIER WRAPPER resolves to what it wraps, exactly as callDynamic
 	// resolves one (the chain walk and the permutation are the same): a
 	// def-bound `FnUtil.flip` wrapper over a compiled user fn enters that
@@ -1919,6 +1943,12 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 		if ent := vc.dynApplyEnter(inner, iargs); ent != nil && dynMethodClaimOK(ent, spec.NOut) {
 			return stack[:base], ent, nil
+		}
+		if results, ran, err := vc.dynApplyForeign(inner, iargs, spec.NOut); ran {
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return guard(results)
 		}
 	}
 	island := make([]core.Value, 0, n+1)
@@ -2073,6 +2103,11 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 	if len(tokens) > 0 && dynFrameSimpleWindow(tokens) {
 		if ent := vc.dynApplyEnter(tokens[0], tokens[1:]); ent != nil && (len(prefix) == 0 || ent.allForward) {
 			return stack[:base], ent, nil
+		}
+		if len(prefix) == 0 {
+			if results, ran, err := vc.dynApplyForeign(tokens[0], tokens[1:], 0); ran {
+				return vc.dynForeignResults(results, err, stack, base, "dynamic result", curDebug, pc, reg)
+			}
 		}
 		// A LONE fn token over a non-empty prefix collects every parameter
 		// from the prefix, top-down — the interpreter's re-step of a member

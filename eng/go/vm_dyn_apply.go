@@ -154,3 +154,70 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	}
 	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, fd.Name, sig), allForward: allForwardSig(sig)}
 }
+
+// dynApplyForeign applies a fn VALUE whose matched overload carries a
+// DETACHED compiled unit — a module fn's own stamp, its Program not the one
+// vc runs — by hosting that unit nested (runForeignUnit, the fn-VALUE seam's
+// discipline), where dynApplyEnter, which enters only an in-program unit as
+// a frame, declined it to the island: the interp-entry census's
+// callbacks.tsv:L146 (`M.run M.inc 5`, one export passed into another as its
+// callback), module-composition.tsv:L100 (an export fetched by get and
+// applied) and module-fnvalue-boundary.tsv:L51 (`apply1 A.pub 5`, a named
+// Function param), 2026-09-24. The match is the island's (core.MatchFnSig,
+// the interpreter's selection rule), and the arity must be the unit's own
+// (dynApplyEnter's shape rule), so a value the window does not fit stays the
+// island's to park or raise. The unit runs where its Program put it: each
+// unit carries its dispatch registry, so a module fn's free words resolve at
+// the module — the interpreter's rule for a foreign value
+// (design/FUNCTION-VALUE-SCOPE.0.md) — with the seam's freshness dance
+// (DepsFresh / JitRestamp at the value's home, as InvokeCompiled's).
+//
+// ran=false leaves the island exactly as it was: a quoted value (data), no
+// match, no ref or an unfinalized one, an in-program ref (dynApplyEnter's
+// own decline stands), a unit index outside its program, or — at a site
+// that CLAIMS a result count (nout > 0) — a contract that does not promise
+// exactly it. That claim is discharged before the run, off the applied
+// value's declared returns, the way dynMethodClaimOK discharges it before a
+// frame push: a hosted unit has run, effects and all, before its results
+// can be counted.
+func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
+	fd, isFn := fnVal.Data.(core.FnDefInfo)
+	if !isFn || fnVal.Quoted {
+		return nil, false, nil
+	}
+	sig := core.MatchFnSig(fnVal, args)
+	if sig == nil || len(sig.Params) != len(args) {
+		return nil, false, nil
+	}
+	if nout > 0 && len(sig.Returns) != nout {
+		return nil, false, nil
+	}
+	ref := compiler.CompiledRef(sig)
+	if ref == nil || ref.Prog == nil || ref.Prog == vc.p {
+		return nil, false, nil
+	}
+	home, _ := core.FnHome(vc.r, &fd)
+	if !ref.DepsFresh(home) {
+		if ref = ref.JitRestamp(home); ref == nil || ref.Prog == nil {
+			return nil, false, nil
+		}
+	}
+	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
+		return nil, false, nil
+	}
+	res, _, err = vc.runForeignUnit(ref, args)
+	return res, true, err
+}
+
+// dynForeignResults lands a hosted foreign unit's results where the island's
+// would land: the error stamped at the op as an island's is, the results
+// screened as an island's are, and the window replaced beneath them.
+func (vc *vmContext) dynForeignResults(results []core.Value, err error, stack []core.Value, base int, label string, curDebug []core.SrcPos, pc int, reg *core.Registry) ([]core.Value, *dynEnter, error) {
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if err := vc.screenResults(results, label, curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, nil, err
+	}
+	return append(stack[:base], results...), nil, nil
+}

@@ -13322,6 +13322,65 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The foreign-home fn value at the apply seam — four census rows leave (2026-09-24)
+
+**The rows.** Read from the 57-row interp-entry census, one mechanism (and a fourth row the measurement found, module-composition.tsv:L75 — a callback lambda applying a module fn fetched from an exported map, `each ([k:String] => [((M.tbl k get) 4)]) …`, once per element):
+callbacks.tsv:L146 (`M.run M.inc 5`, one export passed into another as its
+callback), module-composition.tsv:L100 (`5 (m 'f' get) apply`, an export
+fetched by get and applied) and module-fnvalue-boundary.tsv:L51 (`apply1
+A.pub 5`, a named Function param beside a main-program `secret`), each
+`vm:island-resolved`. Probed at the seam: the applied value's matched
+overload carries a compiled unit — the module fn's own stamp — whose
+Program is not the running one, and `dynApplyEnter`, which enters only an
+IN-PROGRAM unit as a frame (a detached ref's unit index means nothing
+against `p.Fns`), declined it to the island. The VM already knew how to
+host such a unit: `runForeignUnit` builds a nested vmContext bound to the
+ref's own Program for the callback seam (`InvokeCallback`'s nested half,
+vm_foreign_unit.go), and had never been offered an applied value.
+
+**The arm.** `dynApplyForeign` (vm_dyn_apply.go) sits after `dynApplyEnter`
+at every dynamic-apply site that falls to an island — the leading /
+trailing `CALL_DYNAMIC`, `CALL_DYN_TRAIL_TOP`, `CALL_DYN_APPLY_ONE`, the
+shaped method apply, the frame replay's `[fn, args…]` window, and the two
+modifier-unwrapped inners — and hosts a detached ref nested. The match is
+the island's (`core.MatchFnSig`) and the window must be the unit's own
+arity (`dynApplyEnter`'s shape rule), so a value the window does not fit
+stays the island's to park or raise; a quoted value is data; an in-program
+ref keeps `dynApplyEnter`'s own decline; the seam's freshness dance rides
+along (`DepsFresh` / `JitRestamp` at the value's home, as
+`InvokeCompiled`'s). A site that CLAIMS a result count (`apply`'s one, the
+method spec's `NOut`) has the claim discharged before the run off the
+value's declared returns — the way `dynMethodClaimOK` discharges it before
+a frame push — because a hosted unit has run, effects and all, before its
+results can be counted. The unit runs where its Program put it: every
+unit carries its dispatch registry, so the module fn's free words resolve
+at the module, the interpreter's rule for a foreign value
+(design/FUNCTION-VALUE-SCOPE.0.md) — `apply1 A.pub 5` answers the module's
+6 beside main's `secret`. Results land as an island's would
+(`dynForeignResults`: the error stamped at the op, the results screened,
+the window replaced). Not reached: the landing sites (a 0-arg value with
+its own claims), and the two rows of the family that were never this
+mechanism — module-fnvalue-boundary.tsv:L24 (`typeof (L.keep L.mk)`, the
+frame replay of an `args.0` read) and L32/L33 (a lambda carrying `break` /
+`continue`, which has no stamp to host).
+
+**A witness that bails, recorded.** The result-count decline is witnessed
+by a two-return module fn under `apply`'s one-result claim, which on both
+this tree and main takes the apply-one model's pre-existing bail (`apply
+over a gradual lead netted 2 value(s), not the one the model committed`);
+the row is in the unit suite to prove the arm stands aside before running
+anything, and the lang ledger's bail line moves 36 -> 37 for it, a defect
+that was there already, now counted.
+
+**Measured:** four interp-entry census rows leave and none enter (57 -> 53; the ceiling fails both ways): callbacks.tsv:L146, module-composition.tsv:L100, module-fnvalue-boundary.tsv:L51 and module-composition.tsv:L75 (a callback lambda applying a module fn fetched from an exported map, the same mechanism once per element). Engine entries 344 -> 335 (Engine.Run 344 -> 335, CallBoru 239 -> 235, vm:island-resolved 10 -> 7, vm:island 6 -> 4, RunResolved 67), measured with BORU_LOG_CENSUS_ROWS=1 against 017ea83. The lang ledger 282 / 37 (bail 36 -> 37, the claim witness); the region oracle 50700 reproduced (six more descriptors, the hosted units walked), diverged-value 3 (NUR152), over-claimed 1 (NUR141); the sweep ceilings unchanged (197 / 29 / 2 / 2), runtime defers 54, real programs 36 of 62.
+
+**Pins.** lang `foreign_fn_value_apply_test.go` (the four rows and three
+more shapes native and entering nothing; a raise inside the hosted unit
+and a no-match named, detailed and positioned alike; the claim witness);
+the arity gate re-pinned at 4 for eng/go/vm_dyn_apply.go (the window must
+be the unit's own arity — the argument rule); the interp-entry and
+engine-entry ceilings to the live values. Docs: the handover.
+
 ## The selective freshen — a fn body literal over a shared member compiles (2026-09-24)
 
 **The shape.** A fn-unit body literal that EMBEDS an enclosing binding's
