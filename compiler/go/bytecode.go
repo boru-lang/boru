@@ -387,6 +387,12 @@ const (
 	// straight-line code evaluates each literal once, and loop-spread
 	// consumption declines before lowering. Captured containers arrive through
 	// capture slots (locals), never consts, so closure identity is preserved.
+	// A body literal that EMBEDS an enclosing binding's container (`[c]` with
+	// `def c [9]` outside the fn) clones its SPINE only: Program.ConstKeep
+	// names the embedded members by ID and the clone returns them as they
+	// are (core.CloneValueKeeping), so the outer is fresh per call and the
+	// member stays the binding's one instance — the interpreter's per-call
+	// construction over a read (since 2026-09-24; the shape declined before).
 	OpPushConstFresh
 
 	// OpPushConstFreshLocal is the MULTI-read twin of OpPushConstFresh: a compound
@@ -1327,10 +1333,17 @@ type Program struct {
 	// across its read sites. Slot is frame-relative to the fn unit whose Code holds
 	// the op (each op appears in exactly one unit). Nil for programs with none.
 	ConstLocals []ConstLocalRef
-	Fns         []CompiledFn
-	Debug       []core.SrcPos // 1:1 with Code
-	MaxStack    int           // a floor when the program loops (results accumulate)
-	NumLocals   int
+	// ConstKeep names, per const-pool index, the value IDs a FRESH push of
+	// that const keeps shared instead of cloning (core.CloneValueKeeping): the
+	// enclosing bindings' containers a fn-unit body literal embeds, whose
+	// identity the interpreter's per-call construction preserves while the
+	// literal's own spine is minted anew. Read by OpPushConstFresh and
+	// OpPushConstFreshLocal; absent for a const with no embedded binding.
+	ConstKeep map[int]map[string]bool
+	Fns       []CompiledFn
+	Debug     []core.SrcPos // 1:1 with Code
+	MaxStack  int           // a floor when the program loops (results accumulate)
+	NumLocals int
 	// DynEnv marks a program containing a dynamic code-body dispatch
 	// (CompileDynBody — tryRecordDynBody): the VM brackets every CALL_USER
 	// frame with an args-stack push so a body's runtime sub-run reads `args`

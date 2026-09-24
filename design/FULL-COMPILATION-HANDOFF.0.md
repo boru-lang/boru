@@ -13322,6 +13322,66 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The selective freshen — a fn body literal over a shared member compiles (2026-09-24)
+
+**The shape.** A fn-unit body literal that EMBEDS an enclosing binding's
+container — `def c [9]  def mk fn [[] [List] [[c]]]` — is the
+interpreter's per-call construction of the OUTER list over the binding's
+ONE member instance: `(mk) eq (mk)` is false and `((mk) get 0) eq c` true.
+The fn-unit const rule had two moves, a deep-clone freshen
+(`OpPushConstFresh`, breaking the member's identity) and a shared const
+(breaking the outer's), and neither fit, so the shape declined (`fn body
+literal embeds an enclosing binding's container`, PR #225 P1's open item
+since the review that found it). The previous entry's NUR143 close made a
+real program meet the decline: gomod.boru's `candidate-bundle` writes
+`[[repo-entity] (each …) …]` over the module-level map, and once the
+unit's enclosing-binding snapshot read the module's own registry the
+literal was seen for what it is — kg/main.boru went into
+`realProgramLedger` for one merge.
+
+**The freshen.** The fresh push clones the literal's SPINE and keeps the
+embedded members: `core.CloneValueKeeping(v, keep)` is `CloneValue` with
+a keep set — a compound whose ID is in it comes back as the same instance
+and the clone continues around it (the cloner's one new field; the
+nested-literal and map arms are the walk it already had). The recorder
+collects the set at the materialise site (`embeddedEnclosingIDs`: every
+member whose ID is an enclosing binding's, at any depth of the literal's
+own spine, and nothing inside a kept member, whose contents are the
+binding's), stores it per const-pool index (`EmitState.constKeep`) and
+Finalize hands it to the Program (`Program.ConstKeep`, beside `Consts`),
+where both fresh pushes read it — the single-site `OpPushConstFresh` and
+the multi-read `OpPushConstFreshLocal`'s seat (`seatConstLocal`). A const
+with no embedded binding has no entry and clones as before. The decline
+site is gone (`MarkUncompilable` call sites 89 -> 88), so the shape
+compiles wherever it materialises: at any depth (`[[c] c]`), in a map
+literal (`{x:m}`), under the multi-read seat (`def t [c]  t drop  t`), and
+in a module fn over a module-level binding — kg/main.boru graduates again
+(real programs 35 -> 36 of 62, the ledger entry retired the same day it
+was recorded).
+
+**Why keeping by ID is the binding.** The keep set matches a member's ID
+against the IDs of the compound bindings visible at the unit's open
+(`enclosingIDs`, the same set the freshen rule reads). A clone carries a
+fresh ID (`withPayload`), so an ID match is the binding's own
+construction and the kept member IS the instance the interpreter's read
+hands back — the same instance the existing shared push gives a direct
+read of the binding. A binding re-def'd after the unit compiled is the
+one limit, and it is the shared push's limit already, not a new one.
+
+**Measured:** the lang ledger 283 -> 282 (TestPR225P1CompileFailures'
+row compiles; bail 36 unchanged); real programs 35 -> 36 of 62; the
+interp-entry census 57, engine entries 344, the region oracle and the
+sweep ceilings unchanged (the disposition census 92 -> 91, the embed site retired; the region oracle 50694 reproduced, diverged-value 3, over-claimed 1; the sweep ceilings 197 / 29 / 2 / 2, runtime defers 54).
+
+**Pins.** core `TestCloneValueKeeping` (the spine fresh, the member kept
+at both depths and in a map, an absent keep and a nil keep cloning
+plainly), compiler `TestEmbeddedEnclosingIDs` and
+`TestEmbeddedEnclosingIDsGuards` (depth, a kept member's contents not
+walked, scalars, the nil map), lang `fn_body_embed_keep_test.go` (ten
+rows, both identities on both lanes, no interpreter entry) and
+`TestPR225P1CompileFailures` (1) rewritten as parity; the real-program
+ledger minus kg/main.boru. Docs: the handover.
+
 ## S1b — the fn-util wrapper at the token seam, and the recorder's registry after a module body (2026-09-24)
 
 **Two census rows, two mechanisms — and a third the second exposed.** Read from the 62-row interp-entry

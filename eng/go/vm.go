@@ -2686,7 +2686,7 @@ func (vc *vmContext) unwindDynBinds(base int) {
 // per call, shared within a call, fresh across calls.
 func seatConstLocal(p *compiler.Program, locals []core.Value, cl compiler.ConstLocalRef) core.Value {
 	if locals[cl.Slot].Parent == nil {
-		locals[cl.Slot] = core.CloneValue(p.Consts[cl.ConstIdx])
+		locals[cl.Slot] = core.CloneValueKeeping(p.Consts[cl.ConstIdx], p.ConstKeep[cl.ConstIdx])
 	}
 	return locals[cl.Slot]
 }
@@ -2785,8 +2785,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		case compiler.OpPushConstFresh:
 			// Mint a fresh container identity for a compound literal the
 			// enclosing fn unit re-evaluates per call — interpreter parity
-			// for `(mk) eq (mk)` (see OpPushConstFresh in bytecode.go).
-			stack = append(stack, core.CloneValue(p.Consts[in.Arg]))
+			// for `(mk) eq (mk)` (see OpPushConstFresh in bytecode.go); the
+			// enclosing bindings' containers the literal embeds stay shared
+			// (Program.ConstKeep).
+			stack = append(stack, core.CloneValueKeeping(p.Consts[in.Arg], p.ConstKeep[int(in.Arg)]))
 		case compiler.OpPushConstFreshLocal:
 			// A multi-read compound body literal: construct ONE fresh instance per
 			// call, seated in a frame local, shared by every read site (see

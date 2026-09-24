@@ -71,19 +71,17 @@ var realProgramLedger = map[string]string{
 	// own entry point declined at `each` over a code body whose collection
 	// the pass could not type; each now declares CompileDynBody, so the
 	// dispatch lowers to a poly re-match over its own overloads instead of
-	// declining at the ambiguous-overload gate. It DECLINES AGAIN since
-	// 2026-09-24 (NUR143's close, the recorder's registry after a module
-	// body): a fn unit's enclosing-binding snapshot reads the unit's OWN
-	// registry, so a module fn's body literal that embeds a module-level
-	// container is seen for what it is — `[[repo-entity] …]` in
-	// gomod.boru's candidate-bundle, the interpreter's per-call outer list
-	// over the SHARED member map — which the fn-unit const rule can neither
-	// deep-freshen nor share, so it declines. The snapshot on the wrong
-	// registry (a nested import's) had let the literal be deep-cloned per
-	// call: an unsound compile, not a compiling program. A recorded defect,
-	// the step backwards argued here; the selective (spine-only) freshen
-	// (PR #225 P1's open item) graduates it and is the next cut.
-	"kg/main.boru": "fn body literal embeds an enclosing binding's container (per-call spine identity over a shared member)",
+	// declining at the ambiguous-overload gate. It declined again for one
+	// merge on 2026-09-24 (NUR143's close): once a fn unit's
+	// enclosing-binding snapshot read the unit's OWN registry, gomod.boru's
+	// candidate-bundle body literal `[[repo-entity] …]` — the interpreter's
+	// per-call outer list over the SHARED module-level map — was seen for
+	// what it is, which the fn-unit const rule could neither deep-freshen
+	// nor share (the wrong-registry snapshot had let it be deep-cloned per
+	// call, an unsound compile). GRADUATED AGAIN the same day by the
+	// selective (spine-only) freshen: the fresh push clones the literal's
+	// spine and keeps the embedded members (Program.ConstKeep,
+	// core.CloneValueKeeping).
 
 	// A dynamic-scope def of a value the pass could not promote.
 	"utils/cut.boru": "fn cli-usage-line: dynamic-scope def `ap2` of unpromoted computed value",

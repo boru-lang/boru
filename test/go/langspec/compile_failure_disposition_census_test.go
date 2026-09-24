@@ -89,7 +89,6 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 	"compiler/go/callable_words.go:tryRecordClosure#1":                {dispGeneric, 4, "a gradual-Any callback or collection: a runtime re-match — each/fold/scan/filter take it through CompileDynBody (S1a, 2026-09-19); the words that do not declare the flag still decline here"},
 	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#1": {dispGeneric, 4, "a code body naming a fn-local fn (NUR037), narrowed by the seventy-second increment to a CAPTURING local fn (a closure the frame placement cannot bake) or a def the unit's frames do not hold: a capture-free local fn's def is placed as a registry-visible install for the frame and the body resolves it on every path"},
 	"compiler/go/compiler_dispatch_record.go:recordDispatchOutcome#2": {dispGeneric, 6, "a context read inside an inline-lowered body: a per-region context frame (family K)"},
-	"compiler/go/emit.go:resolveOperand#1":                            {dispGeneric, 5, "a body literal embedding an enclosing container: construct the spine per call over a live member read"},
 	"compiler/go/emit.go:NotifyNameRebound#1":                         {dispGeneric, 4, "a frozen read in an ESCAPING unit (the memo re-records the rest, Stage 4b): the lookup half"},
 	"compiler/go/emit.go:NotifyNameRebound#2":                         {dispGeneric, 4, "the stored-handler latch, narrowed by the seventy-first increment to a dep the unit BAKED: a bare read of a module-scope value is seated live, a slot routes, a declared fn dispatched by name routes with a live lead (fnUnitRec.liveNames); what still declines is a lambda helper as the original binding (no declaration site for the routed op to locate a unit by) and a dep a nested closure body baked"},
 	"compiler/go/emit.go:RecordBranch#1":                              {dispGeneric, 7, "an arm the pass did not capture is a runtime value: compile it when it is known"},
@@ -237,7 +236,7 @@ func siteKeysIn(rel, src string) []string {
 // this number in the same change, so the history below records every
 // retirement. Equal to compileFailureSiteCeiling by construction (the two scans
 // count the same sites).
-const compileFailureDispositionCeiling = 92 // 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
+const compileFailureDispositionCeiling = 91 // 92 -> 91 on 2026-09-24 (the selective freshen): compiler/go/emit.go:resolveOperand#1 retired — a body literal embedding an enclosing binding's container no longer declines; the fresh push clones the literal's spine and keeps the embedded member (Program.ConstKeep), the disposition the row prescribed. Before: 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
 
 // dispositionFindings is the gate, factored so its negative arms can be
 // driven over synthetic input: every finding is one string, and an empty

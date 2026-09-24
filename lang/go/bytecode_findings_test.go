@@ -4682,28 +4682,20 @@ func TestTypedDefBindCompiles(t *testing.T) {
 }
 
 // PR #225 P1 review findings — two auto-dispatch/identity escapes, both
-// probe-confirmed divergences before the fix, both now compile failures.
+// probe-confirmed divergences before the fix; (1) compiles since
+// 2026-09-24 (the selective freshen), (2) is still a compile failure.
 func TestPR225P1CompileFailures(t *testing.T) {
-	// Legacy compile failure+fallback-parity contract: pins the one-release
 	// (1) A fn-body literal EMBEDDING an enclosing binding's container:
-	// interp = fresh spine + SHARED member, which neither a deep-clone
-	// freshen nor a shared const models — must decline; fallback restores
-	// parity (true).
+	// interp = fresh spine + SHARED member. Neither a deep-clone freshen
+	// nor a shared const modelled it, so it declined until the fresh push
+	// learned to keep the embedded member (Program.ConstKeep): the shape
+	// compiles, and both identities hold — fn_body_embed_keep_test.go pins
+	// the family.
 	const embeds = `def c [9] def mk fn [[] [List] [[c]]] ((mk) get 0) eq c`
-	prog, reason, _, _ := mustNew(t).CompileCheck(embeds)
-	if prog != nil {
-		t.Fatalf("embedded-binding literal compiled; want compile failure")
-	}
-	if !strings.Contains(reason, "embeds an enclosing binding") {
-		t.Errorf("compile failure reason = %q; want the embedded-binding identity reason", reason)
-	}
 	gotC, compiled, errC := mustNew(t).RunCompiled(embeds)
 	gotI, errI := mustNew(t).RunInterp(embeds)
-	if noteCompileDefect(t, embeds, gotC, errC) {
-		return
-	}
-	if compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[true]" {
-		t.Errorf("fallback parity: compiled=%v cErr=%v iErr=%v got %v vs %v (want [true])",
+	if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(gotI) != "[true]" {
+		t.Errorf("embedded-binding literal: compiled=%v cErr=%v iErr=%v got %v vs %v (want [true])",
 			compiled, errC, errI, gotC, gotI)
 	}
 
