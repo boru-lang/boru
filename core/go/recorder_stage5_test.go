@@ -121,7 +121,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive MayBeFn must be false")
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
-	e.NoteLandingNext(Value{}, LandingNextEnd, false)
+	e.NoteLandingNext(Value{}, LandingNextEnd, false, Value{})
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")
 	}

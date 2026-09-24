@@ -155,7 +155,13 @@ var pinnedAritySites = map[string]int{
 	// precondition) — before matching that contract over the element with
 	// MatchFnSig's rule. A unit with no contract (a quotation body) stands
 	// aside; the decision that follows is the signature's, never the count's.
-	"eng/go/vm.go": 15,
+	// 15 -> 17 on 2026-09-23 (the landing's overload walk, NUR190): both
+	// MATCH the argument rule — `sig.TotalArgs() == 0` reads the plan the
+	// interpreter's own matcher returned (its zero-argument fallback, the
+	// signature no forward token or stack value fills) to fire that
+	// overload, and `ArgCount: -1` is the unmodified call the landed value
+	// plans as (no `/N` at a value). Neither decides behaviour by arity.
+	"eng/go/vm.go": 17,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the

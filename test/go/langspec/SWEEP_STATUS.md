@@ -6,7 +6,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
-| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 10/14 | ✓ 12/14 | n/a | ✓ 13/14 |
+| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 12/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 13/14 | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
@@ -56,7 +56,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `walk` | F | ✓ 11/14 | ✓ 10/14 | F | F | F | F |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `word` | ✓ 13/14 | ✓ 5/14 | ✓ 12/14 | ✓ 5/14 | D! | ✓ 13/14 | ✓ 13/14 |
+| `word` | ✓ 13/14 | ✓ 7/14 | ✓ 12/14 | ✓ 5/14 | D! | ✓ 13/14 | ✓ 13/14 |
 | `xml-attr` | ✓ 14/14 | — | — | — | — | — | — |
 
 ## Cells
@@ -118,10 +118,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `__varundef` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `afn` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `afn` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `afn` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `afn` factory · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
 - `afn` container · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` container · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
 - `afn` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -328,12 +326,10 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` literal · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` lambda · paren-group — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
 - `word` lambda · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [5 fn]   --> 1:57   1 | def zzvlam ([] => [def dbl word…
-- `word` lambda · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `word` lambda · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` lambda · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · for-body — **declined** — for: body nets multiple values per iteration
-- `word` lambda · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `word` lambda · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` lambda · module-body — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
 - `word` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `word` named-fn · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance

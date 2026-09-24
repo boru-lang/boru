@@ -167,6 +167,28 @@ func TestEmitBranchLanding(t *testing.T) {
 	if len(code) != 1 {
 		t.Error("a consumed note lands nothing twice")
 	}
+	// A function word noted after the landing rides beside the op
+	// (LandingWords, NUR190) — when the target has a table; the arg carries
+	// bit 1 so the VM's landing knows to walk.
+	es.landingAfter = map[int]core.SrcPos{7: {Row: 2, Col: 3}}
+	es.landingNext = map[int]core.LandingNext{7: core.LandingNextWord}
+	es.landingBeneath = map[int]bool{}
+	es.landingWord = map[int]LandingWord{7: {Name: "z", Pos: core.SrcPos{Row: 2, Col: 9}}}
+	lw.emitBranchLanding(&EmitEvent{seq: 7})
+	if len(code) != 2 || code[1].Arg != 3 {
+		t.Errorf("the word's landing carries the walk bit: %v", code)
+	}
+	var tbl map[int]LandingWord
+	lw.landingWords = &tbl
+	es.landingAfter = map[int]core.SrcPos{7: {Row: 2, Col: 3}}
+	lw.emitBranchLanding(&EmitEvent{seq: 7})
+	if got := tbl[2]; got.Name != "z" || got.Pos.Col != 9 {
+		t.Errorf("the word is seated at the landing's pc: %v", tbl)
+	}
+	lw.seatLandingWord(LandingWord{})
+	if len(tbl) != 1 {
+		t.Error("no word, nothing seated")
+	}
 }
 
 func TestStatementBoundaryCrossing(t *testing.T) {

@@ -153,6 +153,58 @@ func TestNamedFnCandidatesRaiseAlike(t *testing.T) {
 	}
 }
 
+// TestNamedFnCandidatesWalk pins the landing's overload WALK (NUR190's
+// closed half, 2026-09-23): a DYNAMIC fn value under a FUNCTION word is
+// re-stepped by the interpreter over that word, so the landing runs the
+// interpreter's own plan over the value and the word — a mixed overload's
+// zero-argument fallback fires (`m.f z` is `[42 0]`; the wordless landing
+// stood aside and the residual apply answered 1), an anonymous fn parks as
+// data for the rest of the statement (`m.l z` is `[fn lam(Integer) 0]`, was
+// 1), a named fn with no overload taking the word raises, and an Any-typed
+// slot's speculative claim raises the strict barrier's stranded-forward
+// error on both lanes.
+func TestNamedFnCandidatesWalk(t *testing.T) {
+	const nfW = `def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end ` +
+		`def a fn [[x:Any] [Any] [x]] end def lam ([n:Integer] => [n add 1]) ` +
+		`def mk fn [[] [Map] [{f: h/v a: a/v l: lam/v}]] end def m (mk) end ` +
+		`def z fn [[] [Integer] [0]] end def k 5 `
+	rows := []struct{ src, want, note string }{
+		{nfW + `m.f z`, "[42 0]", "the zero-argument fallback fires under a user fn word (was 1)"},
+		{nfW + `m.f typeof`, "[Integer]", "and under a native word (was Function)"},
+		{nfW + `m.f z 9`, "[42 0 9]", "the rest of the statement follows"},
+		{nfW + `m.f k`, "[6]", "a value-bound word is collected by the unary (the Value note)"},
+		{nfW + `5 m.f`, "[6]", "a value beneath selects the unary (as before)"},
+		{nfW + `m.l z`, "[fn lam(Integer) 0]", "an anonymous fn parks at the word (was 1)"},
+		{nfW + `m.l z 5`, "[fn lam(Integer) 0 5]", "and stays data under the later entries"},
+		{nfW + `[1] each [drop m.f z]`, "[[0]]", "inside a code body"},
+		// The generated sweep's do-catch cell: a factory's 0-arg LAMBDA value
+		// under the `error` word parks (ADR-016), where the walk's fallback
+		// fired it in a draft.
+		{`do [def mk fn [[][Function][([] => [1])]] end if true (mk) [2]] error [dot code]`, "[fn]", "an anonymous 0-arg value under a word parks"},
+	}
+	for _, c := range rows {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if !compiled {
+			t.Errorf("%q: not compiled (%s): %v", c.src, c.note, errC)
+			continue
+		}
+		requireParity(t, c.src, gotC, errC, gotI, errI)
+		if fmt.Sprint(gotC) != c.want {
+			t.Errorf("%q: %v, want %s (%s)", c.src, gotC, c.want, c.note)
+		}
+	}
+	// A speculative claim (an Any-typed slot) strands at the word on both
+	// lanes: the same code, the same detail.
+	src := nfW + `m.a z`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled {
+		t.Fatalf("%q: not compiled: %v", src, errC)
+	}
+	if codeOf(errI) != "signature_error" || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 || len(gotI) != 0 {
+		t.Errorf("%q: compiled %v [%s] %s, interp %v [%s] %s", src, gotC, codeOf(errC), detailOf(errC), gotI, codeOf(errI), detailOf(errI))
+	}
+}
+
 // TestNamedFnCandidatesOpenShapes pins, as MEASURED, the neighbour this
 // increment leaves open (NUR190, recorded and pinned pending 2026-09-23): a
 // DYNAMIC fn value under a FUNCTION word whose arg-taking overload can claim
@@ -165,10 +217,24 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	const nfQ = `def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end ` +
 		`def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
-	rows := []struct{ src, interp, compiled, reason string }{
-		{nfQ + `m.f y`, "[y]", "[42 42]", ""},
-		{nfQ + `m.f z`, "[z]", "[z]", ""},
-		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args"},
+	// The landing's overload walk (the same day) settles the typed slot, the
+	// Any-typed claim and the anonymous park (TestNamedFnCandidatesWalk); the
+	// `/q` capture still stands aside (the residual apply answers by the
+	// word's result: `m.q z` is `[42 0]` for `[z]`), and a Function-typed
+	// slot's reference BAILS loudly where the wordless landing raised a
+	// false uncalled_function (`m.g z` is 7 interpreted) — the word's call
+	// is compiled after the landing and cannot be skipped.
+	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
+		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
+	rows := []struct {
+		src, interp, compiled, reason string
+		bail                          bool
+	}{
+		{nfQ + `m.f y`, "[y]", "[42 42]", "", false},
+		{nfQ + `m.f z`, "[z]", "[z]", "", false},
+		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
+		{nfR + `m.q z`, "[z]", "[42 0]", "", false},
+		{nfR + `m.g z`, "[7]", "", "takes the word `z` as its argument", true},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -176,8 +242,13 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 			t.Errorf("%q: interpreter %v err=%v, want %s", c.src, gotI, errI, c.interp)
 		}
 		if c.reason != "" {
-			if compiled || !strings.Contains(fmt.Sprint(errC), c.reason) {
-				t.Errorf("%q: want a sound decline %q, got compiled=%v %v err=%v", c.src, c.reason, compiled, gotC, errC)
+			if !strings.Contains(fmt.Sprint(errC), c.reason) || len(gotC) != 0 {
+				t.Errorf("%q: want a sound decline or bail %q, got compiled=%v %v err=%v", c.src, c.reason, compiled, gotC, errC)
+			}
+			// A BAIL — the program compiled and the runtime abandoned it — is
+			// the ledger's worse half and is booked (compile_defect_test.go).
+			if c.bail {
+				requireCompileDefect(t, c.src, gotC, errC)
 			}
 			continue
 		}

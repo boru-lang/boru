@@ -25,6 +25,23 @@ func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
 	return p.Fns[unit].DynApplyName[pc]
 }
 
+// landingWordAt is the function word seated beside the OpReStepLanding at pc
+// in the code that holds it (Program.LandingWords for the main code,
+// CompiledFn.LandingWords for a unit), or the zero LandingWord — see the
+// field.
+func landingWordAt(p *compiler.Program, unit, pc int) compiler.LandingWord {
+	if p == nil {
+		return compiler.LandingWord{}
+	}
+	if unit < 0 {
+		return p.LandingWords[pc]
+	}
+	if unit >= len(p.Fns) {
+		return compiler.LandingWord{}
+	}
+	return p.Fns[unit].LandingWords[pc]
+}
+
 // storeNameAt is the def name seated on the promoted STORE_LOCAL at pc in the
 // code that holds it (Program.StoreNames for the main code, CompiledFn.StoreNames
 // for a unit), or "" — see the field.

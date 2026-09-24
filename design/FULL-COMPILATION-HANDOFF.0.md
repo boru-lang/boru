@@ -12901,3 +12901,208 @@ crossing, the trailing arm's placed check); check
 `branch_fn_value_landing_test.go` (the what-follows and beneath notes);
 eng `vm_landing_candidate_test.go` (the raise, the data cases, the
 frame base); the inactive-recorder pins extended.
+
+## S1b — the landing's overload walk: NUR190's typed, Any-typed and anonymous halves closed (2026-09-23)
+
+**The measurement first.** NUR190 was recorded pending an hour earlier:
+a DYNAMIC fn value (a member of a Map a fn returned, `def m (mk) end
+m.f`) under a FUNCTION word is re-stepped by the interpreter over that
+word — execFnDefLiteral plans over the live tape — and the compiled
+landing stood aside for any arg-taking overload (NUR175's rule) while
+the residual apply took the word's RESULT. Probed before the design was
+chosen, with h = `[] -> 42` and `[n:Integer] -> n add 1`, a = `[x:Any]`,
+g = `[f:Function] -> 7`, lam an anonymous unary, z a 0-arg fn:
+
+| | interpreted | compiled before |
+|---|---|---|
+| `m.f z` | `[42 0]` (a typed slot stops at the word; the nullary fallback fires) | `[1]` |
+| `m.f typeof` | `[Integer]` | `[Function]` |
+| `m.l z` | `[fn lam(Integer) 0]` (the anonymous fn parks) | `[1]` |
+| `m.a z` | `signature_error` (the strict barrier strands the claim) | a false `uncalled_function` |
+| `m.g z` | `[7]` (the word's reference) | a false `uncalled_function` |
+| `m.q z` (q = `[]` and `[x:Atom/q]`) | `[z]` (the `/q` capture) | `[42 0]` |
+
+**The design.** The check pass already notes the word after a landing
+(NUR186's what-follows fact); the note now carries the word TOKEN
+(`NoteLandingNext`'s fourth argument), the recorder keeps it by the
+producing event (`landingWord`), the lowering seats it beside the landing
+op by pc (`Program.LandingWords` / `CompiledFn.LandingWords`,
+`seatLandingWord`) and sets bit 1 of the op's argument (`landingArg`),
+and the VM's landing, with the word and nothing beneath, runs the
+interpreter's own plan over a two-token window through the region host
+(`landingWalk`: `core.PlanMatch` over the value and `Word(name)`, the
+same call `DISPATCH_GENERIC` makes) and dispatches on the plan: no
+signature → a named fn raises, an anonymous or macro one parks INERT
+(`Quoted`, the VM's mark for a `/v` read, which `callDynamic` now reads
+as data in both forms — the later residual apply was what turned the
+park into 1); the zero-argument fallback → `landingFire` (the wordless
+landing's apply, factored out); a speculative claim (`specAt`) → the
+stranded-forward diagnostic pointing at the word, built as
+`DISPATCH_GENERIC` builds it; a `/q` claim → stands aside; a
+Function-typed claim → `vmDefer` ("vm:landing-claim"). The walk is the
+matcher's: the zero-argument fallback firing LAST, the `/q` preference
+when a word is next, the Function-slot reference and the Any-slot
+speculation are all `PlanMatch`'s own rules, re-implemented nowhere. One
+rule is execFnDefLiteral's rather than the matcher's, and the generated
+sweep caught the draft that forgot it: the ANONYMOUS-0-ARG PARK
+(ADR-016) — the fallback fires a named fn and parks a lambda or macro
+value, as the wordless landing does; `if/factory · do-catch` (`do [def
+mk fn [[][Function][([] => [1])]] end if true (mk) [2]] error [dot
+code]`, the lambda under the `error` word) answered 1 for `[fn]` until
+the arm was added, and is pinned.
+
+**What stays open, and why.** The `/q` capture and the Function-typed
+reference both need the word's compiled call SKIPPED — and every op after
+it re-planned, since the lowering shaped the program on the model that
+the word runs and the residual arm applies the value over its result (a
+skip leaves the stack one value short of the seat the lowering
+predicted; in a fn body the RET contract too). The faithful compiled
+treatment is a decline at lowering or a bail at the landing, and either
+moves a corpus ceiling by the two coincidental rows (fn-value.tsv's
+L317/L318, compile failures 21 → 23 or runtime defers 8 → 10) under the
+rule that ceilings only fall — the maintainer's call. The walk bails for
+the reference claim (no corpus row; the unit ledger's bail line carries
+the pin, 33 → 34, a pin not a regression) and stands aside for the
+capture (the coincidental rows keep passing; `m.q z` is pinned as
+measured).
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec, 1004 s) passes — compile failures 21 (the ledger's 21), compute gaps 16, islands 0, engine entries 408, runtime defers 8, interp-entry census rows 75, diagnostic parity divergences 348, property fuzz 2 seeds × 1500 programs with 0 divergences, the generated sweep at its pins (305 cells: pass 153, failed 26, islanded 2, diverged 6; 2142 call-form variants: pass 1909, declined 201, diverged 3); the gate report reads 11 open, 2 at end state, 0 tightened, 0 regressions; the lang unit ledger 280 / 34 at its ceilings (the bail line raised by the reference claim's pin); the arity gate re-pinned at 17 for eng/go/vm.go; the `MarkUncompilable` census 92.
+
+**Pins.** `named_fn_candidates_test.go` (lang/go: `TestNamedFnCandidatesWalk`,
+eight parity rows and the stranded claim raising alike on both lanes;
+`TestNamedFnCandidatesOpenShapes` extended with the capture's `[42 0]`
+and the reference's bail); eng `vm_landing_candidate_test.go`
+(`TestReStepLandingWalk`: every arm of the walk, the inert park through
+both apply forms, the wordless fallbacks; `TestLandingWordAt`); check
+`branch_fn_value_landing_test.go` (the word rides with the note);
+compiler `named_fn_candidates_test.go` (the walk bit, the first word
+kept) and `branch_fn_value_test.go` (the word seated at the landing's
+pc); the inactive-recorder pins; the arity gate re-pinned at 17 for
+eng/go/vm.go (both comparisons match the argument rule).
+
+## S1b — the placed value inside a code body: seven interp-entry census rows leave (2026-09-23)
+
+**The measurement first.** The interp-entry census (75 rows) was read row
+by row from the corpus log, and its largest family is the code body a
+native runs on the interpreter: `each`, `fold` and `do` handed a raw LIST
+where the closure-body probe declined the body, so the native's handler
+stepped it through `RunResolved` once per element. A trace on the probe's
+decline over code-bodies.tsv, fold-map-filter.tsv and callbacks.tsv
+classified the sixteen bodies that reach the probe: seven `unapplied
+fn-value in body residual (dynamic apply not lowered)` — a lambda literal
+or a factory's returned closure a user paren PLACED in the body (`0 fold
+[([a:Integer e:Integer] => [a add e])] [1 2 3]`, `each [(mk 2)] [1 2
+3]`); five `def-bound computed fn … the statement ends short of the
+wrapper's arity` — a def-bound closure read as the whole body over the
+element beneath (`each [a5] [1 2 3]`, the fn-util wrappers); two `do$body:
+body result of unknown provenance`, one gradual-Any overload, one
+recovered dispatch. The twenty-odd rows that never reach the probe are
+bodies that are RUN-TIME lists (a quoted list from a flex, a fn's result,
+a List param) — S3's runtime compilation, a different mechanism.
+
+**The fix, for the placed family.** The interpreter parks a value a user
+paren places inside a body exactly as it parks one at the top level (the
+park rule, design/PAREN-RESTEP-RULE.0.md): `each [(mk 2)] [1 2 3]` is
+`[fn fn fn]` interpreted, `0 fold [(lambda)] [1 2 3]` the lambda itself,
+and the handler reads the body's top result. So a placed value is no
+unapplied apply: `closureResidualHasUnappliedFn` (now a method) skips a
+value `parkedInBody` reports — a fn LITERAL a paren placed and no
+enclosing paren re-stepped (no producing event), or a USER FN's single
+returned closure (a user-call event, read in the unit's captured
+fragment, where its events sit at finish) that no enclosing paren
+re-steps — and the body compiles into its closure unit — `PUSH_CLOSURE
+each$body` with the lambda a constant and the factory's closure a call —
+where the native used to get the raw list. Parity held before through
+the interpreter; what changes is the seam. Two drafts read the placement
+record too widely and the unit suite caught both: the check pass places
+a closure a paren-APPLY produced (the module decliner's chain `(((A) 1)
+2) 3`, `TestModuleFnStampedAtLoadAndRerouted`) and one an enclosing paren
+RE-STEPS (`[add (2 (mk 1))]`, the curried chain's pending collection),
+and the interpreter applies both — so the rule admits the two producers
+that park and nothing the placement record alone vouches for. The
+decliner also surfaced NUR191, recorded: a MODULE fn's body re-steps a
+parked closure over the token after it (CallBoru's deferred residual
+sweep, 13 for `[(mk x) 3]`) where the main registry parks it on both
+lanes; present on main under the whole-program compile. The def-bound
+computed fn read over the element
+(`each [a5] xs`) stays open: it needs the trailing apply lowered inside a
+closure body — the residual `[elem, fnv]` re-pushed as `[fnv, elem]` and
+applied through OpCallDynamicTrailing, whose main-program form exists —
+and the check pass's shaped-read model standing aside instead of
+declining when the window is short but the frame holds the operand. That
+is the next cut in this family.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with three ratchets tightened — interp-entry census rows 75 → 68 (seven rows leave: fold-map-filter.tsv L86, L89, L240, L241, callbacks.tsv L75, bytecode-migrated.tsv L113 and L114; none enter), engine entries 408 → 392 (Engine.Run 392, CallBoru 239, RunResolved 90), the generated sweep's call-form failures 201 → 197 (the `afn` factory and `word` lambda do-body and do-catch variants graduate; 305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3) — and everything else at its ceiling: compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 280 / 34 at its ceilings; the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `placed_in_body_test.go` (lang/go: six parity rows that enter
+nothing, the handler's top-result read, and two rows measured open — the
+placed CALL of a def-bound closure and the def-bound computed fn over
+the element); compiler `named_fn_candidates_test.go`
+(`TestClosureResidualUnappliedFnSkipsPlaced`: a placed value and a parked
+returned closure skipped, a carrier over the element still an apply, an
+enclosing paren's re-step undoing the placement).
+
+## S1b — the def-bound computed fn read at a closure body's tail: the trailing apply over the live lookup (2026-09-24)
+
+**The shape.** The interp-entry census's code-body family, the second
+cut after the placed value: a def-bound COMPUTED fn read as the whole of
+a closure body over the element beneath — `def a5 (mk 5) end each [a5]
+[1 2 3]`, `filter [g1] xs`, `0 fold [s] xs` over a two-argument `s`, the
+fn-util wrappers `each [h] xs` with `def h (FnUtil.compose inc/v dbl/v)`.
+The interpreter dispatches the WORD `a5` over the frame's values (its
+stack phase, top-down), which is the body-tail trailing apply's contract
+(`OpCallDynTrailTop`, `callDynTrailTop`'s top-down binding); the check
+pass's shaped-read model declined the read (`the statement ends short of
+the wrapper's arity`), the closure body's probe failed and the native was
+handed the raw list to step on the interpreter once per element.
+
+**The fix, in four pieces, each found by the next probe.** (1) The check
+pass STANDS ASIDE instead of declining when the window is short but the
+closure unit's frame holds EXACTLY the arity (`tryShapedFnReadArrival`,
+`shortReadWindow`; exactly, not at least — a deeper frame declines to the
+island as before). (2) The unit's finish lowers the read at the residual's
+top as the trailing apply at the shape's claimed arity
+(`defReadFnTailArity`, `dynTrailName`), with the binding NAME seated
+beside the op so the VM's closure no-match raises the interpreter's own
+`cannot call `a5`` at the read (`callDynTrailTop`, a seated head over a
+`ClosurePayload`), and the read's lookup takes the DATA-position twin
+(`OpLookupDynScopeData`) so a binding holding a fn DEFINITION — the
+fn-util wrapper's product — pushes for the op to call where the dispatch
+lookup deferred. (3) The closure body's PROBE fork carries the top-level
+computed fn value-defs (`forkForProbe`, `rootComputedBindIDs`): the read
+carries the binding's ID, absent from Defs (installDef leaves such names
+to the compiled-closure machinery) and so from the unit's snapshot unless
+that map is there — the probe declined `body result of unknown
+provenance` where the real compile admitted it, and the placed CALL of a
+def-bound closure (`each [(f 1)] xs`, the placed-value increment's open
+row) compiles natively for the same reason. (4) Two guards the new
+arrival exposed: the `__RC` unnamed-arg trim (`trimUnconsumedUnnamed`)
+dropped the element from under the read in a DECLARED body (`filter`'s
+Boolean, `CALL_DYN_TRAIL_TOP underflow`) — exempt under a trailing apply,
+whose outOps are the op's window — and the park rule (`parkedInBody`)
+read a def READ of a placed closure as the parked value, since the read
+carries the placed value's ID and no body event, and `0 fold [s] xs` over
+a one-argument `s` compiled `[fn s(Integer)]` for the interpreter's 3; a
+bare name always calls (ADR-011), so a def read is never parked, and the
+unapplied-fn guard declines the body to the island. The tail rule fires
+only over the read's LIVE lookup (`opDynScope`): a fn-body-LOCAL computed
+def read from a nested closure resolves to the parent's event in the real
+compile and rescued live in the probe, and the two verdicts must be about
+one unit — that shape is NUR192, recorded, present on `main` as a false
+`undefined_word: a5` (the frame's dynamic-scope bind installs nothing for
+a closure value; the tail row is a loud compile failure now, the program
+falling back whole and answering).
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with two ratchets tightened — interp-entry census rows 68 → 62 (six rows leave: callbacks.tsv L83, L84, L155, L156, L158 and each-variants.tsv L204; none enter), engine entries 392 → 375 (Engine.Run 375, CallBoru 239, RunResolved 73) — and everything else at its ceiling: the generated sweep's call-form failures 197 (305 cells unchanged, 2142 variants: pass 1913, declined 197, diverged 3), compile failures 21, compute gaps 16, islands 0, runtime defers 8, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 281 / 34 (the compile line raised by the nested-def witness); the arity gate unchanged; the `MarkUncompilable` census 92.
+
+**Pins.** `def_fn_body_tail_test.go` (lang/go: five parity rows entering
+nothing — the each body, its stack form, fold's collect, a two-argument
+fold body, a filter body, the fn-util wrapper — plus the read under a
+later word (open, the read's own window); the no-match raising alike on
+both lanes, named and positioned at the read; the nested-def witness as
+a sound compile failure), `placed_in_body_test.go`'s two open rows moved
+to native; compiler `named_fn_candidates_test.go` (`TestDefReadFnTailArity`,
+the def read of a placed closure still an apply, the trim keeping a
+trailing apply's args), `unit_memo_test.go` (the probe fork's root
+computed binds, a clone); the lang ledger 280 -> 281 (the nested-def
+witness). Docs: NUR.md (NUR192 new), COMPILABLE-SUBSET.md, the handover.

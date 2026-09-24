@@ -19,6 +19,7 @@ type mayBeFnEmit struct {
 	landed  []string
 	next    []core.LandingNext
 	beneath []bool
+	words   []string
 }
 
 func (m *mayBeFnEmit) Active() bool           { return true }
@@ -26,9 +27,14 @@ func (m *mayBeFnEmit) MayBeFn(id string) bool { return m.maybe[id] }
 func (m *mayBeFnEmit) NoteReStepLanding(v core.Value, _ core.SrcPos) {
 	m.landed = append(m.landed, v.ID)
 }
-func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, beneath bool) {
+func (m *mayBeFnEmit) NoteLandingNext(_ core.Value, next core.LandingNext, beneath bool, word core.Value) {
 	m.next = append(m.next, next)
 	m.beneath = append(m.beneath, beneath)
+	name := ""
+	if w, err := core.AsWord(word); err == nil {
+		name = w.Name
+	}
+	m.words = append(m.words, name)
 }
 
 func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*core.Engine, *mayBeFnEmit, func()) {
@@ -131,6 +137,16 @@ func TestNoteReStepLandingNotesNext(t *testing.T) {
 		}
 		if rec.next[0] != tc.next || rec.beneath[0] != tc.beneath {
 			t.Errorf("%s: next = %v beneath = %v, want %v %v", tc.name, rec.next[0], rec.beneath[0], tc.next, tc.beneath)
+		}
+		// The function word itself rides with the note (the VM's landing
+		// walks the run-time fn's overloads over it, NUR190); nothing else does.
+		wantWord := ""
+		if tc.next == core.LandingNextWord {
+			w, _ := core.AsWord(tc.tape[1])
+			wantWord = w.Name
+		}
+		if rec.words[0] != wantWord {
+			t.Errorf("%s: word = %q, want %q", tc.name, rec.words[0], wantWord)
 		}
 	}
 }

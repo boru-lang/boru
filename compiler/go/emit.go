@@ -1072,6 +1072,12 @@ type EmitState struct {
 	// matches over them first and the residual arms own the outcome — the
 	// landing never raises over such a value (NUR175's rule).
 	landingBeneath map[int]bool
+	// landingWord is the FUNCTION WORD noted right after a landing
+	// (LandingNextWord), by the producing event's seq: the lowering seats it
+	// beside the landing op (LandingWords) so the VM's landing can walk the
+	// run-time fn's overloads over it as the interpreter's re-step does
+	// (NUR190).
+	landingWord map[int]LandingWord
 	// dynBoundClosures names the dyn-scope binds whose value is a COMPILED
 	// closure (a ClosurePayload). Applying one from compiled code is fine —
 	// §9b's factory family does exactly that — but an interpreter RE-RUN
@@ -1567,6 +1573,11 @@ type fnUnitRec struct {
 	// dynTrailPos is the apply WORD's position for a dynTrailApply tail —
 	// the op is stamped there so a runtime no-match raises at the word.
 	dynTrailPos core.SrcPos
+	// dynTrailName is the binding NAME of a def-bound computed fn READ at
+	// the body tail (defReadFnTailArity: `each [a5] xs`), seated beside the
+	// op (DynApplyName) so a no-match names the word the interpreter
+	// dispatches, and the op is stamped at the read.
+	dynTrailName string
 	// dynFrameW > 0 marks a body whose residual carries an UNAPPLIED runtime fn
 	// value beyond the frame-bottom re-push window — the shape the interpreter
 	// resolves by execFnDefLiteral's runtime rule against the LIVE frame. The
@@ -1922,6 +1933,17 @@ func (es *EmitState) forkForProbe() *EmitState {
 	for k, v := range es.storeHazard {
 		p.storeHazard[k] = v
 	}
+	// The top-level computed fn value-defs too (RecordDynBind's root arm): a
+	// closure body's unit snapshots them into its enclosing-binding IDs at
+	// open, and a def-bound computed fn READ at the body's tail (`each [a5]
+	// xs` with `def a5 (mk 5)`, the read carrying the binding's ID) reaches
+	// the dynamic-scope rescue only through that snapshot. Without it the
+	// probe declined the body ("body result of unknown provenance") where
+	// the real compile admitted it — the probe's verdict must be about the
+	// same unit. Copied, not shared: the probe opens no root unit, so it
+	// never writes the map, and a clone keeps that true by construction
+	// (2026-09-24).
+	p.rootComputedBindIDs = maps.Clone(es.rootComputedBindIDs)
 	return p
 }
 
@@ -6038,7 +6060,36 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			dynTrail := 0
 			if len(bodyStk) >= 2 {
 				top := bodyStk[len(bodyStk)-1]
-				if a := es.TrailingApplyArity(top.ID); a > 0 && a == len(bodyStk)-1 {
+				a := es.TrailingApplyArity(top.ID)
+				// A def-bound computed fn READ at a closure body's tail over
+				// the body's values (`each [a5] xs`): the interpreter's word
+				// dispatch takes its operands from the stack top-down, the
+				// same contract, at the shape's claimed arity (2026-09-24).
+				// Only over the read's LIVE lookup (opDynScope, the
+				// dynamic-scope rescue of an enclosing binding): a fn-body-
+				// local computed def read from a nested closure (`def g fn
+				// [[xs:List][List][def a5 (mk 5)  each [a5] xs]]`) resolves
+				// to the parent's event, unreachable from this frame, and
+				// lowering the apply over it failed the whole program
+				// ("result above a literal"); under the unapplied-fn guard
+				// below it is the loud compile failure instead (NUR192: the
+				// frame's dynamic-scope bind installs nothing for a closure
+				// value, so the live route cannot bind it yet).
+				if a == 0 && rec.closure && len(ops) > 0 && ops[len(ops)-1].kind == opDynScope {
+					if n, readName := es.defReadFnTailArity(top); n == len(bodyStk)-1 {
+						a = n
+						rec.dynTrailName = readName
+						rec.dynTrailPos = top.Pos()
+						// The read's live lookup feeds the apply the op
+						// performs, so it takes the data-position twin: a
+						// binding holding a fn DEFINITION (a fn-util
+						// wrapper's product, `def h (FnUtil.compose …)`)
+						// pushes for the op to call, where the dispatch
+						// lookup defers on it ("vm:dyn-scope-dispatching").
+						ops[len(ops)-1] = dataScopeOperand(ops[len(ops)-1].idx)
+					}
+				}
+				if a > 0 && a == len(bodyStk)-1 {
 					argsOK := true
 					for _, v := range bodyStk[:len(bodyStk)-1] {
 						if core.IsFnValueResidual(v) {
@@ -6158,7 +6209,16 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// strips the quote, and the caller decides whether to apply it —
 			// `((h 5) 2)` is 6, `(h 5) 2` the parked pair. Nothing is
 			// unapplied here.
-			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && closureResidualHasUnappliedFn(bodyStk) &&
+			// A value a user paren PLACED inside the body — a lambda literal
+			// or a factory's returned closure, `[(mk 2)]`, `[([n:Integer] =>
+			// [n mul 2])]` — is data on both lanes (the park rule,
+			// design/PAREN-RESTEP-RULE.0.md; the interpreter's body leaves
+			// `[fn fn fn]` for `each [(mk 2)] [1 2 3]`), so it is no
+			// unapplied apply: the body compiles and the handler reads the
+			// placed value as its result, where the native used to run the
+			// whole body on the interpreter (the interp-entry census's
+			// placed-in-body rows, 2026-09-23).
+			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag) &&
 				!(rec.plainLambda() && len(bodyStk) == 1 && (bodyStk[0].Quoted || rec.valReads[bodyStk[0].ID] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
@@ -8665,7 +8725,7 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 // and whether values sat beneath it in its frame (EmitRecorder; the
 // landingNext and landingBeneath fields). Nothing to record for a value with
 // no producing event — the landing itself was not noted for it either.
-func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneath bool) {
+func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneath bool, word core.Value) {
 	if !es.Active() {
 		return
 	}
@@ -8706,6 +8766,23 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	}
 	es.landingNext[pr.seq] = next
 	es.landingBeneath[pr.seq] = es.landingBeneath[pr.seq] || beneath
+	if w, err := core.AsWord(word); err == nil && w.Name != "" {
+		if es.landingWord == nil {
+			es.landingWord = map[int]LandingWord{}
+		}
+		if _, noted := es.landingWord[pr.seq]; !noted {
+			es.landingWord[pr.seq] = LandingWord{Name: w.Name, Pos: word.Pos()}
+		}
+	}
+}
+
+// landingWordAt is the function word noted after the event seq's landing
+// (the zero LandingWord when none was, or the note was not a word).
+func (es *EmitState) landingWordAt(seq int) LandingWord {
+	if es == nil {
+		return LandingWord{}
+	}
+	return es.landingWord[seq]
 }
 
 // mergeLandingNext joins two notes on one landing: a function word wins (a
@@ -8723,14 +8800,17 @@ func mergeLandingNext(a, b core.LandingNext) core.LandingNext {
 	return core.LandingNextBoundary
 }
 
-// landingArg is the OpReStepLanding argument for the event seq: 1 when the
-// interpreter's re-step of the landed value would find a CANDIDATE and
-// nothing beneath it in its frame — a function word after it, or a fn
-// frame's tail markers (the tape ended inside a unit whose frame has one,
-// frameTail) — so a named fn that matches nothing raises `uncalled_function`
-// at the landing (NUR186); 0 when nothing follows and the value stays data,
-// when a value-bound word follows and the residual arms model its
-// collection (LandingNextValue: `m.f k` is g over 2), or when values
+// landingArg is the OpReStepLanding argument for the event seq, a bit set:
+// bit 0 when the interpreter's re-step of the landed value would find a
+// CANDIDATE and nothing beneath it in its frame — a function word after it,
+// or a fn frame's tail markers (the tape ended inside a unit whose frame has
+// one, frameTail) — so a named fn that matches nothing raises
+// `uncalled_function` at the landing (NUR186); bit 1 when that candidate is
+// a FUNCTION WORD the lowering seats beside the op (LandingWords), so the
+// VM's landing walks the run-time fn's overloads over it exactly as the
+// interpreter's re-step plans (NUR190). 0 when nothing follows and the value
+// stays data, when a value-bound word follows and the residual arms model
+// its collection (LandingNextValue: `m.f k` is g over 2), or when values
 // beneath it are the residual arms' to apply it over.
 func (es *EmitState) landingArg(seq int, frameTail bool) int {
 	if es == nil || es.landingBeneath[seq] {
@@ -8738,6 +8818,9 @@ func (es *EmitState) landingArg(seq int, frameTail bool) int {
 	}
 	switch es.landingNext[seq] {
 	case core.LandingNextWord:
+		if es.landingWord[seq].Name != "" {
+			return 3
+		}
 		return 1
 	case core.LandingNextEnd:
 		if frameTail {
@@ -12644,7 +12727,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		SpecFnNames:     maps.Clone(es.specFnNames),
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames)}
-	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -12890,7 +12973,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// an ordinary fn falls through to curReg == vc.r (the fork).
 			cf.Reg = rec.reg
 		}
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
+		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -12944,26 +13027,11 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				}
 				return nil, reason, false
 			}
-			// A paren-bounded trailing fn-value apply body: outOps were seated as the
-			// full [args…, fn] (fn on top); collapse them to the one applied value with
-			// OpCallDynTrailTop before the RET (the captured/param fn auto-applies to
-			// its args exactly as the interpreter's paren auto-dispatch).
-			// No DynApplyName is seated here. Measured (cover-gate, 2026-09-06):
-			// every body-tail dynTrail the corpus reaches carries the `apply`
-			// flavour, so a name seated on this route would be dead code — the
-			// paren body-tail form the seat was written for either declines or
-			// lowers through the EVENT route (lowerCall), which does seat it.
-			if rec.dynTrailArity > 0 {
-				op := OpCallDynTrailTop
-				pos := rec.pos
-				if rec.dynTrailApply {
-					op = OpCallDynApplyTop // the `apply` word's unquote-then-apply
-					if rec.dynTrailPos != (core.SrcPos{}) {
-						pos = rec.dynTrailPos
-					}
-				}
-				flw.emit(op, rec.dynTrailArity, pos)
-			}
+			// A body-tail trailing fn-value apply (a paren-bounded apply, an
+			// `apply` word's, a def-bound computed fn read's): outOps were
+			// seated as the full [args…, fn]; collapse them to the one applied
+			// value before the RET (emitBodyTailApply).
+			flw.emitBodyTailApply(rec)
 			// A whole-frame dynamic-apply replay: outOps seated the FULL residual
 			// (frame re-push prefix included); replay the top dynFrameW token-region
 			// entries against it and let the RET apply the RetReplay discipline.
@@ -14946,14 +15014,85 @@ func residualLeadReStepped(stk []core.Value) bool {
 //
 // A SOLE inert fn-reference body (`each [cmp/v]`) is a concrete const — not a
 // carrier, not preceded by args — so it still compiles.
-func closureResidualHasUnappliedFn(bodyStk []core.Value) bool {
+func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *EmitFragment) bool {
 	for i, v := range bodyStk {
+		if es.parkedInBody(v, frag) {
+			continue
+		}
 		dynMaybeFn := v.Dynamic && core.SigTypeMatches(v, core.TFunction) && i+1 < len(bodyStk)
 		if core.IsFnTypedCarrier(v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
 			return true
 		}
 	}
 	return false
+}
+
+// parkedInBody reports whether a fn value in a closure body's residual is
+// DATA there on both lanes: a fn LITERAL a user paren placed and no
+// enclosing paren re-stepped (`[([n:Integer] => [n mul 2])]`, no producing
+// event), or a USER FN's single returned closure parked where it landed and
+// re-stepped by no enclosing paren (`[(mk 2)]`, NUR101's rule) — measured
+// `each [(mk 2)] [1 2 3]` is `[fn fn fn]` and `(mk 3) 5` the parked pair. A
+// closure a paren-apply PRODUCED (the module decliner's chain `(((A) 1) 2)
+// 3`, a call event rather than a user fn's return) and one an enclosing
+// paren RE-STEPS (`[add (2 (mk 1))]`, add over 3) are the interpreter's
+// applies, so their placement records alone do not prove data
+// (TestModuleFnStampedAtLoadAndRerouted's decliner and the curried chain's
+// pending collection caught the drafts that read them so).
+func (es *EmitState) parkedInBody(v core.Value, frag *EmitFragment) bool {
+	pr, produced := es.producedBy[v.ID]
+	if !produced {
+		// A def READ of a placed closure carries the placed value's ID and
+		// no body event, but a bare name always calls (ADR-011): `0 fold
+		// [s] [1 2 3]` with `def s (mk 0)` is the word `s` over the element,
+		// never the parked value — measured `[fn s(Integer)]` for the
+		// interpreter's 3 when the read passed as placed (2026-09-24).
+		return !es.isDefRead(v) && es.placedNotReStepped(v)
+	}
+	// The unit's events sit in its captured fragment at finish (TakeFragment
+	// moved them off the frame stack), so the producing event is read there
+	// first — the frame stack no longer holds it.
+	var ev *EmitEvent
+	if frag != nil {
+		for i := range frag.events {
+			if frag.events[i].seq == pr.seq {
+				ev = &frag.events[i]
+				break
+			}
+		}
+	}
+	if ev == nil {
+		ev = es.eventBySeq(pr.seq)
+	}
+	// An ENCLOSING paren re-steps the parked closure over the values beside
+	// it (`[add (2 (mk 1))]` is add over 3, the paren re-step rule), which
+	// the body's own residual models still own: not this rule's.
+	return ev != nil && ev.kind == evCallUser && ev.uc.nout == 1 && !es.parenReSteppedFn(v)
+}
+
+// defReadFnTailArity is the claimed arity of a def-bound computed fn READ
+// left on top of a closure body's residual — `each [a5] xs` with `def a5
+// (mk 5)`, the fn-util wrappers — and the binding's name. The interpreter
+// dispatches the WORD over the values beneath it (its stack phase,
+// top-down), which is the body-tail trailing apply's contract
+// (OpCallDynTrailTop, callDynTrailTop's top-down binding), so the read
+// lowers as one; the check pass stood aside for it with the carrier on the
+// stack (tryShapedFnReadArrival's short window inside a closure unit). A
+// `/v` read and a quoted value are data, and a value the recorder cannot
+// name is not a read.
+func (es *EmitState) defReadFnTailArity(v core.Value) (int, string) {
+	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(v) || es.placedValRead(v.ID) {
+		return 0, ""
+	}
+	name, read := es.DefReadName(v.ID)
+	if !read || es.reg == nil || es.reg.Check == nil {
+		return 0, ""
+	}
+	n, claimed := es.reg.Check.FnShapeArity(v.ID)
+	if !claimed || n == 0 {
+		return 0, ""
+	}
+	return n, name
 }
 
 // fnConcreteSingleValuedOrCarrier reports whether the fn VALUE v is safe to
@@ -15445,6 +15584,40 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 	es.dropStampRef(len(p.Fns) - 1)
 }
 
+// emitBodyTailApply lowers a unit's body-tail trailing fn-value apply
+// (dynTrailArity > 0): outOps were seated as the full [args…, fn] (fn on
+// top), and the op collapses them to the one applied value before the RET
+// — the captured/param fn auto-applies to its args exactly as the
+// interpreter's paren auto-dispatch. The `apply` word's tail takes
+// OpCallDynApplyTop (unquote, then apply) at the word's position. A
+// def-bound computed fn READ at the tail (defReadFnTailArity, dynTrailName)
+// seats the binding's name beside the op, so the VM's no-match raises the
+// interpreter's own `cannot call `a5“ at the read; the paren-bounded form
+// seats none (measured, cover-gate 2026-09-06: every paren body-tail
+// dynTrail the corpus reaches either declines or lowers through the EVENT
+// route, lowerCall, which seats its own). Split out of Finalize for
+// trimUnconsumedUnnamed's reason: Finalize sits on the gocyclo ceiling.
+func (lw *lowerer) emitBodyTailApply(rec *fnUnitRec) {
+	if rec.dynTrailArity == 0 {
+		return
+	}
+	op := OpCallDynTrailTop
+	pos := rec.pos
+	if rec.dynTrailApply {
+		op = OpCallDynApplyTop
+		if rec.dynTrailPos != (core.SrcPos{}) {
+			pos = rec.dynTrailPos
+		}
+	}
+	if rec.dynTrailName != "" {
+		if rec.dynTrailPos != (core.SrcPos{}) {
+			pos = rec.dynTrailPos
+		}
+		lw.seatDynApplyName(DynApplyHead{Name: rec.dynTrailName, Pos: pos})
+	}
+	lw.emit(op, rec.dynTrailArity, pos)
+}
+
 // trimUnconsumedUnnamed applies the __RC unnamed-arg allowance at LOWERING
 // time: a declared fn's residual bottoms that are (a) within the NUnnamed
 // window and (b) pure PARAM-LOCAL references are the frame's unconsumed
@@ -15464,8 +15637,14 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 // `return` it becomes is a STATEMENT that must be reached — and ADR-008's
 // floor is statements. The De Morgan'd version cost one uncovered statement
 // in compiler/go for a guard no corpus row declines.
+//
+// A body-tail trailing apply (dynTrailArity > 0) is exempt: its outOps are
+// the [args…, fn] window OpCallDynTrailTop consumes, so the param-local
+// bottoms are the apply's operands, not unconsumed args — `filter [g1] xs`
+// with `def g1 (mkgt 1)` trimmed the element from under the read and the
+// op underflowed (2026-09-24).
 func trimUnconsumedUnnamed(rec *fnUnitRec) {
-	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay {
+	if len(rec.returns) > 0 && rec.nUnnamed > 0 && len(rec.outOps) > len(rec.returns) && !rec.retReplay && rec.dynTrailArity == 0 {
 		if extra := len(rec.outOps) - len(rec.returns); extra <= rec.nUnnamed {
 			drop := 0
 			for drop < extra && rec.outOps[drop].kind == opLocal && rec.outOps[drop].idx < rec.nParams {

@@ -532,12 +532,15 @@ const (
 	OpBindGlobal
 	// OpLookupDynScopeData is the DATA-position twin of OpLookupDynScope: it
 	// reads the name's live dynamic-scope binding and PUSHES it, WITHOUT the
-	// FnDefInfo dispatch-defer. The emitter uses it only where a
-	// Signature.FnDataArgs slot proved the fn value is consumed as DATA (the
-	// parselang-fn-dispatch parser operand), so pushing the FnDefInfo binding is
-	// byte-identical to the interpreter reading the /q-captured name as data. It
-	// still defers on a genuine miss, an active token, and a class binding (a
-	// class read as data is not a parser).
+	// FnDefInfo dispatch-defer. The emitter uses it only where the fn value's
+	// consumer is proven: a Signature.FnDataArgs slot that takes it as DATA
+	// (the parselang-fn-dispatch parser operand), so pushing the FnDefInfo
+	// binding is byte-identical to the interpreter reading the /q-captured
+	// name as data; or the OpCallDynTrailTop the emitter lowers right after
+	// it for a def-bound fn read at a closure body's tail (`each [h] xs`),
+	// which calls what the lookup pushes. It still defers on a genuine miss,
+	// an active token, and a class binding (a class read as data is not a
+	// parser, and the tail rule never fires on one).
 	OpLookupDynScopeData
 	// OpBindTwin marks ONE bind-ledger transition's position in the
 	// instruction stream (§6.5's inert-emission stage): Arg indexes
@@ -1235,6 +1238,9 @@ type Program struct {
 	// unit is SHARED across fn values with identical bodies and inputs — the
 	// contract is the value's, not the body's.
 	ClosureRet map[int]ClosureRetSpec
+	// LandingWords is the main code's twin of CompiledFn.LandingWords (see
+	// there).
+	LandingWords map[int]LandingWord
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
@@ -1358,6 +1364,14 @@ type DynFrameWord struct {
 	// tuple is the longest LEADING RUN of non-read arguments — `(g 5 y 6)`
 	// reports `[5]`, not `[5 6]`. Measured 2026-09-07; NUR122.
 	Read bool
+}
+
+// LandingWord is one entry of Program.LandingWords / CompiledFn.LandingWords:
+// the function word after a landed value and that word's source position
+// (the interpreter's stranded-forward diagnostic points at it).
+type LandingWord struct {
+	Name string
+	Pos  core.SrcPos
 }
 
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the
@@ -1511,6 +1525,15 @@ type CompiledFn struct {
 	// Nil for an apply whose head was not a bare read (an event-produced
 	// fn, a `/v` delivery) — the nameless diagnostic stays exactly as it was.
 	DynApplyName map[int]DynApplyHead
+	// LandingWords is the FUNCTION WORD the check pass found right after a
+	// landed value, keyed by the landing op's own pc (OpReStepLanding with
+	// bit 1 of its argument set, landingArg). The interpreter's re-step of
+	// a fn value plans over the live tape — a `/q` slot captures the word,
+	// an Any-typed slot claims it and strands, a typed slot stops at it and
+	// the zero-argument fallback fires — so the VM's landing walks the
+	// run-time fn's overloads over exactly that token (NUR190). Nil where
+	// no landing has a word after it.
+	LandingWords map[int]LandingWord
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h

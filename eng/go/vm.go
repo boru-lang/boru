@@ -1013,7 +1013,9 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		}
 		return append(stack[:base], results...), nil, nil
 	}
-	if !core.IsAppliableFn(fnVal) {
+	// An INERT value — a `/v` read, or a fn value the landing parked as the
+	// interpreter's re-step did (landingWalk) — is data on both lanes too.
+	if fnVal.Quoted || !core.IsAppliableFn(fnVal) {
 		// Not callable: leave the value as the residual, matching the interpreter
 		// (it does not apply a non-Function). A trailing fn sits ON TOP of its
 		// args there, so rotate it up from the base; a leading fn stays below.
@@ -1116,7 +1118,7 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 // The *dynEnter return is the Apply kernel's outcome: non-nil means the callee
 // carried a compiled unit of THIS program and the run loop should enter it as a
 // frame (vm_dyn_apply.go), rather than the handler having islanded it.
-func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int, words []compiler.DynFrameWord, head compiler.DynApplyHead) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int, words []compiler.DynFrameWord, head compiler.DynApplyHead, lword compiler.LandingWord) ([]core.Value, *dynEnter, error) {
 	switch op {
 	case compiler.OpCallDynTrailTop:
 		return vc.callDynTrailTop(reg, arg, stack, curDebug, pc, head)
@@ -1138,7 +1140,7 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 	case compiler.OpCallDynMethod:
 		return vc.callDynMethod(reg, &vc.p.DynMethods[arg], stack, curDebug, pc)
 	case compiler.OpReStepLanding:
-		return vc.reStepLanding(reg, arg, frameBase, stack, curDebug, pc)
+		return vc.reStepLanding(reg, arg, frameBase, stack, curDebug, pc, lword)
 	default:
 		return vc.callDynamicOp(reg, op, arg, stack, curDebug, pc)
 	}
@@ -1170,7 +1172,7 @@ func (vc *vmContext) callDynamicOp(reg *core.Registry, op compiler.Opcode, arg i
 // not an optimisation: an island is an interpreter entry, and the project's
 // census counts every one. The island stays as the last resort for a fn the VM
 // cannot take — a detached ref, a shape whose params do not match the unit.
-func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int, lword compiler.LandingWord) ([]core.Value, *dynEnter, error) {
 	top := len(stack) - 1
 	if top < 0 {
 		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING stack underflow")
@@ -1201,6 +1203,12 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		return vc.landingResults(reg, stack, top, results, curDebug, pc)
 	}
 	if fnDef, ok := v.Data.(core.FnDefInfo); ok {
+		// A FUNCTION WORD follows and nothing sits beneath in the frame: the
+		// interpreter's re-step plans over that word, and the walk decides
+		// (NUR190) — the arms below are the wordless landing's.
+		if arg&2 != 0 && top == frameBase && lword.Name != "" && len(fnDef.OwnSigs()) > 0 {
+			return vc.landingWalk(reg, v, fnDef, lword, stack, top, curDebug, pc)
+		}
 		// No signature satisfiable with ZERO arguments: the re-step leaves the
 		// fn as DATA (`m.g` alone, where g takes one), so there is nothing to
 		// apply and — just as importantly — no island to pay for. A module
@@ -1256,21 +1264,34 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		if !core.FnValueOnlyZeroArgSigs(fnDef) {
 			return stack, nil, nil
 		}
-		// ONE result, because that is what the recorded landing claims and the
-		// stack shape the lowering predicted. A 0-return member (`def h fn
-		// [[] [] []] end`) is applied by the interpreter for its effect and
-		// leaves the stack as it found it; the landing cannot express that, so
-		// it stands aside here rather than failing the run at landingResults.
-		if sig := core.MatchFnSig(v, nil); sig == nil || len(sig.Returns) != 1 {
-			return stack, nil, nil
-		}
-		if vmNativeApplicable(vc.r, fnDef) {
-			if results, done, err := vc.tryNativeFnApply(v, nil); done {
-				if err != nil {
-					return nil, nil, stampAt(err, curDebug, pc, reg)
-				}
-				return vc.landingResults(reg, stack, top, results, curDebug, pc)
+		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
+	}
+	if ent := vc.dynApplyEnter(v, nil); ent != nil {
+		return stack[:top], ent, nil
+	}
+	results, err := vc.islandRun(reg, []core.Value{v})
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	return vc.landingResults(reg, stack, top, results, curDebug, pc)
+}
+
+// landingFire applies the landed named fn's zero-argument overload over the
+// empty window, ONE result, because that is what the recorded landing claims
+// and the stack shape the lowering predicted. A 0-return member (`def h fn
+// [[] [] []] end`) is applied by the interpreter for its effect and leaves
+// the stack as it found it; the landing cannot express that, so it stands
+// aside here rather than failing the run at landingResults.
+func (vc *vmContext) landingFire(reg *core.Registry, v core.Value, fnDef core.FnDefInfo, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	if sig := core.MatchFnSig(v, nil); sig == nil || len(sig.Returns) != 1 {
+		return stack, nil, nil
+	}
+	if vmNativeApplicable(vc.r, fnDef) {
+		if results, done, err := vc.tryNativeFnApply(v, nil); done {
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
 			}
+			return vc.landingResults(reg, stack, top, results, curDebug, pc)
 		}
 	}
 	if ent := vc.dynApplyEnter(v, nil); ent != nil {
@@ -1281,6 +1302,78 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		return nil, nil, stampAt(err, curDebug, pc, reg)
 	}
 	return vc.landingResults(reg, stack, top, results, curDebug, pc)
+}
+
+// landingWalk is the landing over a FUNCTION WORD (NUR190): the
+// interpreter's re-step of a fn value plans over the live tape
+// (execFnDefLiteral, PlanMatch), and with that word the next token the plan
+// is a function of the run-time fn's overloads — so the walk runs the SAME
+// plan over a two-token window, the value and the word, with nothing
+// beneath, and the outcome is the interpreter's:
+//
+//   - no overload matches: a named fn RAISES `uncalled_function` (a name
+//     always calls, ADR-011); an anonymous or macro value PARKS — data for
+//     the rest of the statement, which the value's inert mark says to every
+//     later arm (the residual apply would otherwise take the word's result:
+//     `m.l z` was 1 for `[fn lam(Integer) 0]`);
+//   - the plan claims the word for an Any-typed slot (a speculative claim,
+//     PlanMatch's specAt): the strict barrier raises the interpreter's
+//     stranded-forward `signature_error` (`m.a z`);
+//   - the zero-argument fallback: it FIRES for a named fn (`m.f z` with h's
+//     nullary and unary overloads is `[42 0]`; the wordless landing stood
+//     aside for the mixed overload, NUR175, and the residual apply answered
+//     1) and PARKS an anonymous or macro value, as the wordless landing
+//     does (ADR-016's anonymous-0-arg park);
+//   - a `/q` slot CAPTURES the word: the value stands aside as before and
+//     the residual apply keeps its answer — the word's call is already
+//     compiled after the landing and cannot be skipped, so the capture is
+//     the open half of NUR190 (fn-value.tsv's `m.f z` passes because z's
+//     result is its own atom);
+//   - a Function-typed slot takes the word's REFERENCE: the same skip is
+//     missing, and the run bails loudly rather than raising a false
+//     `uncalled_function` as the wordless landing did (`m.g z` is 7
+//     interpreted).
+func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.FnDefInfo, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	own := fnDef
+	own.Signatures = fnDef.OwnSigs()
+	h := newRegionHostOver(reg, []core.Value{v, core.NewWord(lword.Name)})
+	w := core.WordInfo{Name: fnDef.Name, ArgCount: -1}
+	if err := h.Collected(core.CollectForward(h, &own, w, 1)); err != nil { //covergate:allow the window is the value and one plain word: the pre-walk evaluates only parens, lists and sugar markers, and a Word token is none of them, so it returns nil; kept as the honest arm for a kernel change (§compiler)
+		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-walk", "RESTEP_LANDING at "+fnDef.Name+": the re-step's walk over `"+lword.Name+"` needs an evaluation this host cannot perform; the compiled runtime cannot execute it")
+	}
+	sig, positions, specAt := core.PlanMatch(h, h.win, reg, &own, w, nil, 0, false, false, false)
+	switch {
+	case sig == nil || sig.Fallback:
+		if fnDef.NamedDef() && !fnDef.Macro {
+			return nil, nil, stampAt(uncalledFunctionError(reg, fnDef), curDebug, pc, reg)
+		}
+		parked := v
+		parked.Quoted = true
+		stack[top] = parked
+		return stack, nil, nil
+	case specAt >= 0:
+		nf := 0
+		for _, at := range positions {
+			if at > 0 {
+				nf++
+			}
+		}
+		return nil, nil, stampAt(core.StrandedForwardDiag(reg.Source, fnDef.Name, nf-specAt, lword.Name, core.BarrierReceiverWord(reg, lword.Name), lword.Pos), curDebug, pc, reg)
+	case sig.TotalArgs() == 0:
+		// The interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral): a lambda
+		// or macro VALUE whose plan matched nothing is data — the wordless
+		// landing's rule, read here exactly as there (`if true (mk) [2]` with
+		// a factory's `([] => [1])` is `[fn]`, and the sweep's do-catch cell
+		// answered 1 while this arm was missing). Applied is the one
+		// exception in both places.
+		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
+			return stack, nil, nil
+		}
+		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
+	case sig.QuoteArgs != nil && sig.QuoteArgs[0]:
+		return stack, nil, nil
+	}
+	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step takes the word `"+lword.Name+"` as its argument (a Function-typed slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 }
 
 // uncalledFunctionError is the interpreter's own no-match raise for a named
@@ -1354,7 +1447,21 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
-	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
+	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// Under a seated NAME the op stands for a WORD dispatch (a def-bound
+		// computed fn read at a closure body's tail, `each [a5] xs`), and the
+		// interpreter raises `cannot call `a5`` where the closure's contract
+		// matches nothing — a paren-bounded VALUE apply parks instead.
+		if head.Name != "" {
+			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
+				if fnv, built := closureFnDef(fn, cl.Ident, func([]core.Value) ([]core.Value, error) { return nil, nil }); built {
+					fd, _ := fnv.Data.(core.FnDefInfo)
+					view := installedSigView(fd)
+					written := args[:min(head.NWritten, len(args))]
+					return nil, nil, stampAt(core.NoMatchDiag(reg.Source, head.Name, &view, written, head.Pos, core.ReorderHintFor(head.Name, &view, written)), curDebug, pc, reg)
+				}
+			}
+		}
 		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -3000,7 +3107,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if len(frames) > 0 {
 				fb = frames[len(frames)-1].stackBase
 			}
-			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), dynApplyNameAt(p, curUnit, pc))
+			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), dynApplyNameAt(p, curUnit, pc), landingWordAt(p, curUnit, pc))
 			if err != nil {
 				return nil, err
 			}
