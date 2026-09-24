@@ -616,14 +616,15 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 	if !read {
 		return false
 	}
-	n, claimed := r.Check.FnShapeArity(v.ID)
+	shape, claimed := r.Check.FnShapeOf(v.ID)
 	if !claimed {
 		return false
 	}
+	n := shape.Arity
 	decline := func(what string) bool {
 		return declineArrival(es, "def-bound computed fn `"+name+"`: "+what+" (the read's statement window — Stage 1)")
 	}
-	args, why := shapedFnReadWindow(e, valIdx, n)
+	args, why := shapedFnReadWindow(e, valIdx, shape)
 	if why != "" {
 		// The window is short but the FRAME holds exactly the operands — the
 		// element under a closure body's `[a5]` (`def a5 (mk 5)  each [a5] xs`)
@@ -650,10 +651,19 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 // before the wrapper's arity of tokens.
 const shortReadWindow = "the statement ends short of the wrapper's arity"
 
+// unfitWindowToken is shapedFnReadWindow's verdict when a written token
+// does not conform to the wrapper's parameter the claim knows: the
+// interpreter's matcher tries the token against the signature and, failing,
+// dispatches over the frame instead (or raises with nothing there) — a
+// fallback the window claim cannot model, so the read declines (NUR194).
+const unfitWindowToken = "a written argument does not fit the wrapper's parameter"
+
 // shapedFnReadWindow scans the wrapper's arity of tokens after valIdx for the
-// two read models: every token evaluation-fixed and inside the statement. why
-// names the first failure, and is empty when the window is whole.
-func shapedFnReadWindow(e *core.Engine, valIdx, n int) (args []core.Value, why string) {
+// two read models: every token evaluation-fixed, inside the statement and —
+// where the claim knows the parameter types — conforming to them. why names
+// the first failure, and is empty when the window is whole.
+func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []core.Value, why string) {
+	n := shape.Arity
 	if valIdx+n >= e.Tape.Len() {
 		return nil, shortReadWindow
 	}
@@ -665,6 +675,9 @@ func shapedFnReadWindow(e *core.Engine, valIdx, n int) (args []core.Value, why s
 		}
 		if !evalFixedWindowToken(tv) {
 			return nil, "an argument is not an evaluation-fixed value"
+		}
+		if i-1 < len(shape.Params) && shape.Params[i-1] != nil && !core.SigTypeMatches(tv, shape.Params[i-1]) {
+			return nil, unfitWindowToken
 		}
 		args[i-1] = tv
 		args[i-1].Eval = false
@@ -695,14 +708,14 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	if _, bound := core.CheckFnCarrierBoundName(r, v.ID); !bound {
 		return false
 	}
-	n, claimed := r.Check.FnShapeArity(v.ID)
+	shape, claimed := r.Check.FnShapeOf(v.ID)
 	if !claimed {
 		return false
 	}
-	if _, why := shapedFnReadWindow(e, valIdx, n); why != "" {
+	if _, why := shapedFnReadWindow(e, valIdx, shape); why != "" {
 		return false
 	}
-	e.Tape.Splice(valIdx, 1+n, shapedReadOut(r, v.ID))
+	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, v.ID))
 	return true
 }
 

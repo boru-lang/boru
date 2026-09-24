@@ -116,7 +116,7 @@ keep the two in sync in the same commit.
 | [NUR191](#nur191) | A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | FIXED 2026-09-24 (the do body's read — the handoff log's entry of that date), found the same day: a def-bound computed fn read inside a `do` body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` was `[12]` compiled for the interpreter's `[7 error(cannot call `a5` …)]` (the check pass modelled the do's result as the fn carrier and the program residual applied it over the 7; the island stepped the def-bound compiled closure as anonymous DATA and parked it over the empty frame where the interpreter's fn definition raises), `do [a5 7]` a `CALL_DYNAMIC underflow`. A closure a compiled program binds by `def` is now bridged into the word dispatch under its name (core `lookupUncachedBridged`, `dispatchesAsWord`; the aggregate never cached) and `do`'s result model takes the computed-body hatch when the body leaves such a carrier. The written operand the contract does not take is NUR194. |
-| [NUR194](#nur194) | A def-bound computed fn read with a WRITTEN operand its contract does not take: `def a5 (mk 5) end each [a5 "s" add] [1 2]` is `['6s' '7s']` interpreted (the matcher falls back from the written token to the frame's element) and a `shaped method apply a5: result count 2 violates the host-registered shape claim 1` bail compiled — the shaped read's window claims the written token as the argument; `do [a5 "s"]` the caught `cannot call` interpreted, the same bail compiled (`[fn a5(Integer) s]` on main, silent, before the do body's read). Recorded 2026-09-24 (the do body's read), present on `main` (db7cffb); loud since that increment. |
+| [NUR194](#nur194) | FIXED 2026-09-24 (the written argument's fit — the handoff log's entry of that date), found the same day: a def-bound computed fn read with a WRITTEN operand its contract does not take — `def a5 (mk 5) end each [a5 "s" add] [1 2]` is `['6s' '7s']` interpreted (the matcher falls back from the written token to the frame's element) and bailed compiled on the shaped read's claim (`result count 2 violates the host-registered shape claim 1`); `do [a5 "s"]` the caught `cannot call` interpreted, the same bail (`[fn a5(Integer) s]` on main before the do body's read, silent). The shape claim carries the wrapper's parameter types now (`FnShape.Params`, from the closure unit's declared params or a const lambda's signature) and the read window declines a written token that does not conform; the body islands and the island dispatches the word as the interpreter does, and the top-level `(a5 "s")` declines the program to the interpreter's own raise. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7424,11 +7424,25 @@ beneath, then the word — is the follow-on.
 
 ## NUR194 — a def-bound computed fn read with a written operand its contract does not take {#nur194}
 
-**Status:** RECORDED 2026-09-24 (the do body's read — the handoff log's
-entry of that date), found while pinning NUR193. Present on `main`
-(db7cffb); a loud bail since the do body's read (the `do` row was silent
-on `main`), pinned as measured in `TestDoBodyReadWrittenNoMatchBails`
-(the lang unit ledger's bail line 37 -> 39).
+**Status:** FIXED 2026-09-24 (the written argument's fit — the handoff
+log's entry of that date). RECORDED earlier the same day (the do body's
+read), found while pinning NUR193. Present on `main` (db7cffb); a loud
+bail there since the do body's read, silent for the `do` row before it.
+
+**The fix.** The shape claim carries the wrapper's PARAMETER TYPES
+(`core.FnShape.Params`: a compiled closure unit's declared params, a const
+lambda's signature; nil where only the arity is known, as for the fn-util
+wrappers), and the read model's window (`shapedFnReadWindow`) asks
+`SigTypeMatches` whether each written token fits before claiming it —
+declining with `a written argument does not fit the wrapper's parameter`
+when it does not. Inside a code body the decline is the closure probe's,
+so the body islands and the island dispatches the word exactly as the
+interpreter does (NUR193's bridge): `each [a5 "s" add] [1 2]` is `['6s'
+'7s']` on both lanes, `do [a5 "s"]` the caught raise on both. At the top
+level the decline is the program's, and the interpreter raises its own
+no-match (`(a5 "s")`). Pinned in `TestDoBodyReadWrittenNoMatchParity`
+(lang; the unit ledger's bail line 39 -> 37, the compile line 282 ->
+283), the check arrival tests and the compiler's shape-claim test.
 
 **Rule:** the interpreter's word dispatch matches its signatures over the
 written tokens AND the frame: a written token no signature takes is not
@@ -7436,8 +7450,9 @@ an argument, and the frame's values are tried.
 
 | witness (`def a5 (mk 5)`, `mk` returning `([n:Integer] => [n add k])`) | interpreted | compiled |
 |---|---|---|
-| `each [a5 "s" add] [1 2]` | `[['6s' '7s']]` (a5 over the element, then `"s" add`) | `shaped method apply a5: result count 2 violates the host-registered shape claim 1` |
-| `do [a5 "s"]` | `[error(cannot call `a5` — …)]` | the same bail (`[fn a5(Integer) s]` on `main`) |
+| `each [a5 "s" add] [1 2]` | `[['6s' '7s']]` (a5 over the element, then `"s" add`) | `shaped method apply a5: result count 2 violates the host-registered shape claim 1` on `main`; the same as interpreted since the fix |
+| `do [a5 "s"]` | `[error(cannot call `a5` — …)]` | the same bail (`[fn a5(Integer) s]` before the do body's read); the same as interpreted since the fix |
+| `(a5 "s")` | `signature_error: cannot call `a5`` | a compile failure since the fix, the interpreter's raise |
 
 **The defect, in one sentence.** The shaped fn read's window model
 (`tryShapedFnReadArrival`) claims the wrapper's arity of written tokens

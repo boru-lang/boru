@@ -174,9 +174,11 @@ branch-carried def"**; the re-estimate is
    for the interpreter's caught raise, silent on `main`) closed the same
    day: a closure a compiled program binds by `def` dispatches as the
    named fn it is inside every island (core's bridged Lookup), and `do`'s
-   result model no longer claims the carrier; NUR194 recorded on the way
-   (a written operand the contract does not take — a loud bail on the
-   shape claim, the read model's next cut). The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
+   result model no longer claims the carrier; NUR194 (a written operand
+   the contract does not take) closed the same day — the shape claim
+   carries the wrapper's parameter types and the read window declines a
+   token that does not fit, so the body islands to the bridged dispatch.
+   The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this
    family.
 2. **S4's evaluating host** — the knowledge-graph generator dies at

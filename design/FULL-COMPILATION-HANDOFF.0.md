@@ -13281,3 +13281,43 @@ booked, the unit ledger's bail line 37 -> 39), core
 lookup under the name, uncached; the dispatch over the frame; the raise
 over nothing; the collection barrier). Docs: NUR.md (NUR193 FIXED,
 NUR194 new), COMPILABLE-SUBSET.md, the handover.
+
+## S1b — the written argument's fit: NUR194 closed (2026-09-24)
+
+**The defect.** The shaped fn read model (`tryShapedFnReadArrival`)
+claimed the wrapper's ARITY of written tokens as the arguments without
+asking whether they fit: `def a5 (mk 5) end each [a5 "s" add] [1 2]`
+recorded a5 over `"s"`, and at run time the closure's no-match left the
+[fn, token] pair where the claim seated one result — a bail on the shape
+claim (`result count 2 violates the host-registered shape claim 1`),
+where the interpreter's matcher tries `"s"` against the signature, fails,
+and dispatches a5 over the frame's element instead (`['6s' '7s']`); `do
+[a5 "s"]` the same bail for the caught `cannot call`, and `[fn a5(Integer)
+s]` silently before the do body's read (NUR194).
+
+**The fix.** The shape claim carries the wrapper's PARAMETER TYPES:
+`core.FnShape.Params`, filled from the closure unit's declared params
+(`fnUnitRec.paramTypes`, the same types the VM enforces at `CALL_USER`)
+by `closureOpShape`, and from a const lambda's single own signature
+(`constLambdaParams`); nil where only the arity is known — the fn-util
+wrappers' claims stay as they were. `shapedFnReadWindow` takes the shape
+and declines a written token that does not conform (`core.SigTypeMatches`,
+the one arm every matcher funnels through): `a written argument does not
+fit the wrapper's parameter`. Inside a code body the decline is the
+closure probe's, so the body islands and the island dispatches the word
+exactly as the interpreter does — NUR193's bridge, the same day — and
+both rows agree; at the top level (`(a5 "s")`) the decline is the
+program's, and the interpreter raises its own no-match. The plain-check
+half leaves an unfit window uncollapsed.
+
+**Measured:** the full unfiltered corpus (`go test -timeout 40m` over test/go/langspec) passes with every gate at its ceiling and no row moving — the parameter-typed claim changes no corpus row's answer or entry: interp-entry census rows 62, engine entries 375 (Engine.Run 375, CallBoru 239, RunResolved 73), runtime defers 10, the bailing rows 54 (the ledger asserted over 130 files), the generated sweep's call-form failures 197, compile failures 21, compute gaps 16, islands 0, diagnostic parity 348, property fuzz 2 seeds × 1500 programs with 0 divergences; the gate report reads 0 regressions; the lang unit ledger 283 / 37 (the top-level witness on the compile line, the two body witnesses off the bail line); the arity gate re-pinned at 2 for check/go/method_shape.go; the `MarkUncompilable` census 92.
+
+**Pins.** lang `do_body_read_test.go` (`TestDoBodyReadWrittenNoMatchParity`:
+the two body rows with parity, the top-level row as a sound compile
+failure; the unit ledger's bail line 39 -> 37, the compile line 282 ->
+283), check `TestShapedFnReadArrivalUnfitWrittenArgument` (the decline,
+the fitting claim, the plain half), compiler `TestClosureOpShapeArms`
+(the param types on the claim); the arity gate re-pinned at 2 for
+check/go/method_shape.go (a bounds check on the claim's type slice, the
+matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
+COMPILABLE-SUBSET.md, the handover.

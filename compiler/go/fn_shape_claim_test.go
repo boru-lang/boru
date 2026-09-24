@@ -50,13 +50,19 @@ func TestDefReadName(t *testing.T) {
 func TestClosureOpShapeArms(t *testing.T) {
 	es := NewEmitState()
 	es.fnRecs = []*fnUnitRec{
-		{nParams: 1, outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}}, // mk2's first level
-		{nParams: 2, outOps: []EmitOperand{{kind: opEvent, idx: 0}}},           // its second, returning a value
+		{nParams: 1, paramTypes: []*core.Type{core.TInteger}, outOps: []EmitOperand{{kind: opClosure, closureUnit: 1}}}, // mk2's first level
+		{nParams: 2, outOps: []EmitOperand{{kind: opEvent, idx: 0}}},                                                    // its second, returning a value
 		{nParams: 3, outOps: []EmitOperand{{kind: opEvent, idx: 0}, {kind: opEvent, idx: 1}}},
 	}
 	s, ok := es.closureOpShape(EmitOperand{kind: opClosure, closureUnit: 0}, 0)
 	if !ok || s.Arity != 1 || s.Result == nil || s.Result.Arity != 2 || s.Result.Result != nil {
 		t.Errorf("a factory of factories claims the chain, got %+v/%v", s, ok)
+	}
+	// The unit's declared param types ride on the claim (NUR194: the read
+	// window asks them whether a written token fits); a unit without them
+	// claims the arity alone.
+	if len(s.Params) != 1 || s.Params[0] != core.TInteger || s.Result.Params != nil {
+		t.Errorf("the claim carries the unit's param types, got %v / %v", s.Params, s.Result.Params)
 	}
 	if s, ok := es.closureOpShape(EmitOperand{kind: opClosure, closureUnit: 2}, 0); !ok || s.Arity != 3 || s.Result != nil {
 		t.Errorf("a two-value body has no result shape, got %+v/%v", s, ok)
