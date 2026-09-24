@@ -264,6 +264,19 @@ type Registry struct {
 	// ref is an opaque *CompiledFnRef (S4 opaque handle) — the VM asserts.
 	NestedRunner func(ref any, args []Value) (result []Value, handled bool, err error)
 
+	// tokenBodyStamps is S3's unit cache for TOKEN bodies applied through
+	// the InvokeBody seam at run time — a quoted list read from a flex, a
+	// fn's result, a List param — which the compiled program could not
+	// lower because the body did not exist until it ran. Keyed by the body
+	// list's value ID and the seam's input count (one body may be applied
+	// under `each` with one input and under `fold` with two), the value a
+	// compiled ref or the VM's declined marker; the VM reads and writes it
+	// (TokenBodyStamp / SetTokenBodyStamp), core only carries it. Per
+	// registry, never shared with a fork (ForkConcurrent resets it): a
+	// stamp is compiled against THIS registry's bindings, and its freshness
+	// (DepSnap) is read against them too.
+	tokenBodyStamps map[string]any
+
 	// vmRunning latches non-zero (via sync/atomic) for the duration of a
 	// RunProgram on this registry. Because RunProgram installs/restores the
 	// shared Invoker (and the run mutates other shared scopes — Contexts, Defs,
@@ -2188,4 +2201,21 @@ func (r *Registry) enforceCallBoruReturns(sig *FnSig, name string, result []Valu
 		Decl:           sig.Decl,
 	}
 	return validateReturnTypesIn(r, rc, result[extra:extra+n], 0, r.Source)
+}
+
+// TokenBodyStamp reads the run-time stamp cached for a token body under key
+// (the body's value ID and input count, as the VM keys it); ok=false when the
+// body has not been seen. See tokenBodyStamps.
+func (r *Registry) TokenBodyStamp(key string) (any, bool) {
+	v, ok := r.tokenBodyStamps[key]
+	return v, ok
+}
+
+// SetTokenBodyStamp records a token body's run-time stamp — a compiled ref,
+// or the VM's declined marker so a body that cannot compile pays once.
+func (r *Registry) SetTokenBodyStamp(key string, v any) {
+	if r.tokenBodyStamps == nil {
+		r.tokenBodyStamps = map[string]any{}
+	}
+	r.tokenBodyStamps[key] = v
 }

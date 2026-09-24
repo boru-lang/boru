@@ -1,23 +1,24 @@
-# file	piece	note
+# See design/legacy/ENG-FOUR-PIECE.0.ignore.
 # The core, check and compiler pieces now live in their own top-level
+# file	piece	note
 # modules and eng imports them directly; the generated facade that used to
 # stand between them was retired once nothing referenced it. This map now
 # tracks only the eng piece itself — the bytecode VM.
-# See design/legacy/ENG-FOUR-PIECE.0.ignore.
 collect_seam_host_test.go	eng	foreign-host proof for core's exported collection seam (Stage 4)
 compiled_runtime_vm.go	eng	
 region_host.go	eng	
 region_oracle.go	eng	
-vm_generic.go	eng	
 vm.go	eng	
 vm_args_debug.go	eng	
 vm_args_release.go	eng	
 vm_callback_unit.go	eng
 vm_defer.go	eng	
 vm_dyn_apply.go	eng
+vm_dyn_words.go	eng
+vm_fnvalue_seam.go	eng	
 vm_foreign_unit.go	eng
+vm_generic.go	eng	
 vm_markwindow.go	eng	
 vm_poly_nomatch.go	eng	
 vm_rematch.go	eng	
-vm_dyn_words.go	eng
-vm_fnvalue_seam.go	eng	
+vm_token_body.go	eng	

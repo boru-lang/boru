@@ -79,7 +79,7 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 	// The value's own frame (see pushRootArgs): its call args ride in from
 	// the seam, for the DynEnv unit that reads them.
 	defer pushRootArgs(vc.r, ref.Prog, args)()
-	res, err = vc.hostForeign(ref.Prog, vc.r, ref.Unit, args, ref.Captures)
+	res, err = vc.hostForeign(ref.Prog, vc.r, ref.Unit, args, ref.Captures, false)
 	return res, true, err
 }
 
@@ -93,12 +93,13 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 // CALLING registry for a closure (invokeClosureOn's contract: a module
 // sub-registry or a per-connection fork resolves names as its own dispatch
 // would).
-func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value) ([]core.Value, error) {
+func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value, flowEscapes bool) ([]core.Value, error) {
 	r := vc.r
 	sub := &vmContext{
-		p:       p,
-		r:       r,
-		ceiling: vc.ceiling,
+		p:           p,
+		r:           r,
+		flowEscapes: flowEscapes,
+		ceiling:     vc.ceiling,
 		// The seam the host was entered through decides the hosted root RET's
 		// return discipline (runForeignUnit: the fn-VALUE seam; invokeClosureOn:
 		// the token seam).
