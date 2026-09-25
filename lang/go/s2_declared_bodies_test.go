@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -225,6 +226,18 @@ func TestApplyChainInFnBodyCompiles(t *testing.T) {
 	}
 }
 
+// TestApplyChainWrittenOperandDeclines pins the chain's admission: a later
+// step takes ONLY the previous step's result. An operand written between
+// two applies (`x y f/v apply z g/v apply`) is a token the interpreter's
+// re-stepped fn can forward-collect into the FIRST call, which no static
+// partition models (a Codex review of #508: `[4 13]` compiled against
+// `[7 10]` interpreted), so the body declines and both lanes agree.
+func TestApplyChainWrittenOperandDeclines(t *testing.T) {
+	fnValueM2CompileFailure(t, "apply chain with a written operand between steps",
+		`def add2 fn [[a:Integer b:Integer][Integer][a add b]] end def ar fn [[a:Integer b:Integer][List][args]] end def h fn [[f:Function g:Function x:Integer y:Integer z:Integer][Any][x y f/v apply z g/v apply]] end h add2/v ar/v 3 4 10`,
+		"apply of a dynamic fn value not at the body tail")
+}
+
 // TestComputedForBodyCompiles — `for` declares CompileDynBody (2026-09-25):
 // a COMPUTED loop body (a fn's result, a quoted list read at run time) lowers
 // to the plain CALL_NATIVE under DynEnv where the loop lowering has no tokens
@@ -232,24 +245,61 @@ func TestApplyChainInFnBodyCompiles(t *testing.T) {
 // compiled run — the index installed per iteration as the interpreter's, an
 // escaped body (break / continue) discarding that iteration's values
 // (code-bodies.tsv L141). A LITERAL body keeps the native loop lowering.
-func TestComputedForBodyCompiles(t *testing.T) {
+// TestComputedForBodyDeclines pins that a COMPUTED for body DECLINES at
+// compile time, and why. A hosted attempt (2026-09-25, withdrawn the same
+// day on a Codex review of #508) ran each iteration through the InvokeBody
+// seam and diverged from the interpreter's INLINE SPLICE on four measured
+// shapes, the witnesses below: the body reads the caller's stack beneath
+// the loop, its defs and undefs leak into the enclosing scope, a caught body
+// error leaves the iterator installed, and the zero-out event seated a
+// residual beneath the loop after the loop's values. No body activation
+// models the splice, so the row declines loud and both lanes agree through
+// the fallback (code-bodies.tsv L141).
+func TestComputedForBodyDeclines(t *testing.T) {
 	for _, src := range []string{
 		`def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)`,
-		`def mk fn [[n:Integer][List][quote [i n add]]] end for 3 (mk 10)`,
-		`def mk fn [[][List][quote [i 1 eq [break] [i] if]]] end for 5 (mk)`,
-		`def mk fn [[][List][quote [i 1 eq [continue] [i] if]]] end for 4 (mk)`,
-		`def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0) end 99`,
-		`def mk fn [[n:Integer][List][quote [i]]] end def t 0 end for 3 (mk 0) end t`,
-		// A def-bound quoted body is concrete at the check and keeps the
-		// native loop (it answered `[1 4 9 1 9]` when the dispatch was
-		// recorded twice — the concrete-body guard).
+		`def mk fn [[][List][quote [i add]]] end 9 for 1 (mk)`,
+		`def mk fn [[][List][quote [i]]] end 9 for 2 (mk)`,
+		`def x 99 end def mk fn [[][List][quote [def x i]]] end for 3 (mk) end x`,
+		`def x 99 end def mk fn [[][List][quote [undef x]]] end for 1 (mk) end x`,
+	} {
+		fnValueM2CompileFailure(t, "computed for body: "+src, src, "for: body not captured")
+	}
+	// The fourth divergence the review measured — a caught body error
+	// leaving the iterator installed — is the interpreter's own leak, literal
+	// bodies included, and present on main: NUR206, pinned as it stands by
+	// TestLoopIndexSurvivesCaughtErrorPending.
+	// A def-bound quoted body is concrete at the check and keeps the native
+	// loop; a literal body always did.
+	for _, src := range []string{
 		`def b (quote [i i mul]) end for [1 4] b`,
 		`for 3 [i]`,
 	} {
 		requireEngineParity(t, src, true)
 	}
-	dis := compileDisasm(t, `def b (quote [i i mul]) end for [1 4] b`)
-	if strings.Contains(dis, "CALL_NATIVE") && strings.Contains(dis, "; for ") {
-		t.Errorf("a concrete for body must keep the native loop lowering:\n%s", dis)
+}
+
+// TestLoopIndexSurvivesCaughtErrorPending pins NUR206 as it stands: a `for`
+// loop's index level survives an error the enclosing `do` catches on the
+// interpreter (the raise unwinds the spliced body before its move cleanup),
+// so a later read of the same name is the iteration's value (0) where the
+// compiled lane reads the outer binding (99). Present on main at 9e02915,
+// a literal or a computed body alike; an `each` body agrees on both lanes.
+// The direction is the interpreter's error unwind; closing it must update
+// this pin.
+func TestLoopIndexSurvivesCaughtErrorPending(t *testing.T) {
+	for _, src := range []string{
+		`def i 99 end do [for 3 [raise oops 'x']] error [drop] end i`,
+		`def i 99 end do [for 3 [raise oops 'x']] error [i]`,
+		`def i 99 end def mk fn [[][List][quote [raise oops 'x']]] end do [for 3 (mk)] error [drop] end i`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || fmt.Sprint(gotI) != "[0]" {
+			t.Errorf("%q: the interpreter's leaked index: want [0], got %v / %v", src, gotI, errI)
+		}
+		if !compiled || errC != nil || fmt.Sprint(gotC) != "[99]" {
+			t.Errorf("%q: NUR206 as it stands: the compiled lane reads the outer binding [99], got compiled=%v %v / %v", src, compiled, gotC, errC)
+		}
 	}
+	requireEngineParity(t, `def i 99 end do [[1 2] each [raise oops 'x']] error [i]`, true)
 }

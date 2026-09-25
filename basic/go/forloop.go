@@ -1,10 +1,6 @@
 package basic
 
-import (
-	"fmt"
-
-	core "github.com/boru-lang/boru/core/go"
-)
+import "fmt"
 
 // RunForLoop builds the mark+body+move tokens for a for loop and returns
 // them. The engine splices these onto the stack and processes them; the
@@ -25,19 +21,6 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 
 	if !IsConcrete(body) {
 		return nil, r.BoruError("for_error", "for: body must be a concrete list, got type literal", "for")
-	}
-	// Under a compiled run (the registry carries the VM's invoker) the
-	// handler is reached as a plain CALL_NATIVE for a COMPUTED body the
-	// recorder could not lower (`for 3 (mk 0)`, code-bodies.tsv L141; the
-	// dyn-body path, 2026-09-25): a tape-coupled result has no tape to run
-	// on there, so the loop is HOSTED — each iteration runs the body through
-	// the InvokeBody seam (the run-time token-body host) with the index
-	// installed as the interpreter installs it, the completed iterations'
-	// values accumulate, and an escaped body (break / continue, the flag
-	// InvokeBody leaves) discards that iteration's partial values exactly as
-	// handleLoopBreak / handleLoopContinue splice them away.
-	if r.Invoker != nil {
-		return runHostedForLoop(r, start, end, step, iterName, body)
 	}
 	_lst, _ := AsList(body)
 	bodySlice := _lst.Slice()
@@ -145,35 +128,3 @@ func ParseRange(elems []Value) (start, end, step int64, err error) {
 // a FlowCtrl signal on the Registry rather than returning a sentinel
 // error. FlowCtrl / FlowBreak / FlowContinue are re-exported via
 // aliases.go.
-
-// runHostedForLoop is RunForLoop's compiled-run twin: the counted loop driven
-// in Go over the InvokeBody seam (see RunForLoop). The index binding follows
-// the interpreter's discipline — installed for the first iteration, popped
-// and re-installed per iteration (DefStacks depth 1 throughout), uninstalled
-// at the end or at a break.
-func runHostedForLoop(r *Registry, start, end, step int64, iterName string, body Value) ([]Value, error) {
-	var out []Value
-	InstallDef(r, iterName, NewInteger(start))
-	for cur := start; (step > 0 && cur < end) || (step < 0 && cur > end); cur += step {
-		if cur != start {
-			UninstallDef(r, iterName)
-			InstallDef(r, iterName, NewInteger(cur))
-		}
-		res, err := InvokeBody(r, body, nil)
-		if err != nil {
-			UninstallDef(r, iterName)
-			return nil, err
-		}
-		if core.BodyEscaped(r) {
-			fc := r.FlowCtrl
-			r.FlowCtrl = FlowNone
-			if fc == FlowBreak {
-				break
-			}
-			continue
-		}
-		out = append(out, res...)
-	}
-	UninstallDef(r, iterName)
-	return out, nil
-}

@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8225** compilable, 338 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8225 |
+| compiled natively (fallback-free) | 8224 |
 | compiled with an interpreter island | 0 |
-| does not compile | 0 |
+| does not compile | 1 |
 | static check-error (invalid in both engines) | 338 |
 
-**8225 / 8225** compilable rows produce a Program (100% — 8225 of those fully native).
+**8224 / 8225** compilable rows produce a Program (99% — 8224 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,19 +22,29 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 0 | 0 | → 0 |
+| compile failures | 1 | 1 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
-| tier 2 reducible | 0 | 4 | → 0 |
+| tier 2 reducible | 1 | 4 | → 0 |
 | compute frontier | 0 | 5 | → 0 |
 
 ## Compile failures by reason
 
-_No compile failures._
+| count | bucket | root cause |
+| ---: | --- | --- |
+| 1 | other: for: body not captured | coverage |
+
+| root cause | compile failures |
+| --- | ---: |
+| correct-error | 0 |
+| soundness | 0 |
+| scheduling | 0 |
+| opcode | 0 |
+| coverage | 1 |
 
 ## Re-scoped P7 partition
 
-Over the 0 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **0** reducible (tier 2, TODO), **0** allowlisted error rows, **0** compute-frontier gaps.
+Over the 1 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **1** reducible (tier 2, TODO), **0** allowlisted error rows, **0** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -42,7 +52,9 @@ _None._
 
 ### tier 2 — reducible, not yet compiled
 
-_None._
+| count | word |
+| ---: | --- |
+| 1 | quote |
 
 ### compute frontier by reason
 

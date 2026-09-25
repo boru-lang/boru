@@ -16332,6 +16332,14 @@ func applyChainSteps(pend []pendingApply, bodyStk []core.Value, ops []EmitOperan
 		if at < 0 || at == from && k == 0 {
 			return nil
 		}
+		// A later step takes ONLY the previous step's result: an operand
+		// written between two applies (`x y f/v apply z g/v apply`) is a
+		// token the interpreter's re-stepped fn can forward-collect into the
+		// FIRST call, which no static partition models (a Codex review of
+		// #508: `[4 13]` compiled against `[7 10]` interpreted).
+		if k > 0 && at != from {
+			return nil
+		}
 		for _, v := range bodyStk[from:at] {
 			if core.IsFnValueResidual(v) {
 				return nil

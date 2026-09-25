@@ -14573,16 +14573,14 @@ the two seeds, the bare quoted reach as a residual, a def-bound one, a
 three-segment reach, `eq` of two, and the unquoted reach still
 evaluating). Docs: the handover.
 
-## The apply chain and the hosted for body — the corpus ledger empties (2026-09-25)
+## The apply chain lands, the hosted for body is withdrawn — callbacks leaves the ledger (2026-09-25)
 
 **The rows.** The last two lines of `test/go/langspec/compile_failures.tsv`:
 callbacks.tsv L125, a fn body applying two pending fn values over one
-window (`[x f/v apply g/v apply]`, "apply of a dynamic fn value not at the
-body tail"), and code-bodies.tsv L141, `for` over a COMPUTED body (`def b
-(mk) for 3 b`), which the fn-unit recorder declined at the concrete-body
-gate and the top-level emitter had no native loop for. With them the
-ledger has NO data line: every row of `lang/spec` compiles (the check-
-error rows aside) or runs natively.
+window (`[x f/v apply f/v apply]`, "apply of a dynamic fn value not at the
+body tail"), and code-bodies.tsv L141, `for` over a COMPUTED body (`for 3
+(mk 0)`). The first compiles; the second was compiled for one push and
+declines again — see below. The ledger keeps one line.
 
 **The apply chain** (compiler `emit.go`). A fn unit whose body tail holds
 two or more pending applies — the last on top, every operand a local or a
@@ -14592,42 +14590,59 @@ const, no fn-value argument — is an APPLY CHAIN (`fnUnitRec.applyChain`,
 `OpCallDynApplyOne` (the one-result event form, the defer on any other
 count) for every step but the last, `OpCallDynApplyTop` over the residual
 for the last. Nothing new in the VM. A step whose callee nets two values
-bails on the apply-one guard exactly as a single apply did (the pin below
-books it).
+bails on the apply-one guard exactly as a single apply did (the pin
+books it). **Admission:** a later step takes ONLY the previous step's
+result. An operand written between two applies (`x y f/v apply z g/v
+apply`) is a token the interpreter's re-stepped fn can forward-collect
+into the FIRST call — a Codex review of #508 measured `[4 13]` compiled
+against `[7 10]` interpreted — and no static partition models that, so
+the classifier declines it (`TestApplyChainWrittenOperandDeclines`).
 
-**The hosted for body** (basic `forloop.go`, `native_control.go`). `for`'s
-two signatures declare `CompileDynBody`; `forCarrierAnalyse` marks a
-non-concrete body non-lowerable, so the native loop stays the lowering
-for a literal body and the dyn-body path (CALL_NATIVE under DynEnv, the
-poly re-match) takes a computed one. Under a compiled run (`r.Invoker !=
-nil`) `RunForLoop` routes to `runHostedForLoop`: the iterator is a frame
-def re-installed per iteration, the body runs through `InvokeBody` (the
-VM hosts a token body), `core.BodyEscaped` ends the iteration (`break`
-stops, `continue` skips), and the results concatenate. `tryRecordDynBody`
-takes the Callable-less declaration: the single `NoEvalArgs` position is
-the body, and only a NON-concrete body routes here (a def-bound literal
-body keeps its native loop — the first cut double-lowered it).
+**The hosted for body, withdrawn.** The first push declared
+`CompileDynBody` on `for` and hosted a computed body's loop over the
+InvokeBody seam under a compiled run (`runHostedForLoop`: the iterator a
+frame def per iteration, `core.BodyEscaped` ending an iteration). The
+same Codex review measured four divergences, all confirmed on both lanes
+before the withdrawal: the spliced body reads the caller's stack beneath
+the loop (`9 for 1 (mk)` over `[i add]`: 9 interpreted, a signature error
+hosted); its defs and undefs leak into the enclosing scope (`for 3 (mk)`
+over `[def x i]` then `x`: 2 interpreted, 99 hosted; an `undef x` body
+makes the later read undefined interpreted and answers hosted); a caught
+body error leaves the iterator installed (`do [for 3 (mk)] error [i]`: 0
+interpreted, 99 hosted); and the zero-out variadic event seats a residual
+beneath the loop AFTER the loop's values (`9 for 2 (mk)`: `[9 0 1]`
+against `[0 1 9]`). The interpreter's `for` is an INLINE SPLICE into the
+caller's tape; a body activation models none of those four, and a
+computed body is invisible to the pass, so nothing static can screen
+them. The declaration, the host and the recorder's Callable-less
+dyn-body branch are removed; the row declines loud ("for: body not
+captured") with parity through the fallback, and the six programs are
+pinned as decline witnesses (`TestComputedForBodyDeclines`). What it
+would take: the token-body host running a body with the loop's inline
+semantics — the caller's stack beneath it and keep-defs bindings — which
+is S3's computed-body work, not a native's.
 
-**Measured.** compile failures 2 -> 0 (the ledger's last two rows;
-`compile_failures.tsv` keeps the header). lang `compileDefectCeiling`
-286 -> 285 (the M2 double-apply negative compiles with parity, its pin
-inverted); `bailDefectCeiling` 45 -> 46 (the chain's two-result step,
-booked as a pin). The filtered gates over callbacks, code-bodies,
-fold-map-filter, each-variants, control, fn-value and apply: 0 FAILED to
-compile, 0 mismatches. The core coverage gate (`make cover-gate-core`)
-is back at 100%: the 25 statements the standalone gate reported on main
-(the apply shapes, the curried chain, NUR180/184/192, the folded flex
-identity, isInertReach's error arm) are covered by real core tests, no
-allowlist entry.
+**Measured.** compile failures 2 -> 1 (callbacks leaves; code-bodies
+keeps L141). lang `compileDefectCeiling` and `bailDefectCeiling` as the
+ledger names them (the M2 double-apply negative compiles with parity, its
+pin inverted; the chain's two-result step booked as a bail pin; the
+withdrawal's witnesses booked as compile-failure pins). The filtered
+gates over callbacks, code-bodies, fold-map-filter, each-variants,
+control, fn-value and apply: 0 mismatches. The core coverage gate (`make
+cover-gate-core`) is back at 100%: the 25 statements the standalone gate
+reported on main (the apply shapes, the curried chain, NUR180/184/192,
+the folded flex identity, isInertReach's error arm) are covered by real
+core tests, no allowlist entry.
 
 **Pins.** lang `s2_declared_bodies_test.go`
 (`TestApplyChainInFnBodyCompiles`: four parity shapes, the two-result
 step's defer, the disassembly holding both apply ops;
-`TestComputedForBodyCompiles`: eight parity shapes with `break` and
-`continue`, a def-bound literal body keeping the native loop);
-`bytecode_fnvalue_m2_test.go` (the double apply, now a parity row).
+`TestApplyChainWrittenOperandDeclines`; `TestComputedForBodyDeclines`:
+the six decline witnesses, a def-bound literal body keeping the native
+loop); `bytecode_fnvalue_m2_test.go` (the double apply, now a parity
+row).
 
-**What is left.** Nothing on the corpus ledger. The runtime-defers
-ledger (`runtime_defers.tsv`) and the sweep's remaining cells are the
-open compilation debt, together with the NUR-caused rows recorded in
-`NUR.md`.
+**What is left.** code-bodies.tsv L141 on the corpus ledger (S3). The
+runtime-defers ledger (`runtime_defers.tsv`) and the sweep's remaining
+cells are the open compilation debt, together with the NUR-caused rows
+recorded in `NUR.md`.

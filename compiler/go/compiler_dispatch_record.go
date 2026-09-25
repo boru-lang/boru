@@ -727,46 +727,19 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 // cannot propagate break/continue across the handler boundary.
 func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	es, _ := r.Check.Recorder().(*EmitState)
-	if es == nil || !es.Active() || sig == nil ||
+	if es == nil || !es.Active() || sig == nil || sig.Callable == nil ||
 		!sig.CompileEffect.Has(core.CompileDynBody) {
 		return false
 	}
-	// The body position: the CallableSpec's, or — for a code-body word with
-	// no closure convention that still declares CompileDynBody (`for`, whose
-	// literal body takes the native loop lowering and whose computed body
-	// the handler hosts, 2026-09-25) — its one NoEvalArgs slot.
-	bp := -1
-	if sig.Callable != nil {
-		// A 0-result dispatch is admitted only for a word that DECLARES a
-		// 0-out body (`for-each`, BodyOut 0: the handler discards every
-		// invocation's result and produces nothing, so 0 is the word's own
-		// count); for any other word 0 results is the check pass's
-		// divergent-path shape.
-		if len(outs) == 0 && sig.Callable.BodyOut != 0 {
-			return false
-		}
-		bp = sig.Callable.BodyPos
-	} else {
-		for i := range args {
-			if sig.NoEvalArgs[i] {
-				if bp >= 0 {
-					return false
-				}
-				bp = i
-			}
-		}
-		// Only a COMPUTED body: a literal body took (or declined) the
-		// word's own lowering — `for`'s RecordLoop — and recording the
-		// dispatch again ran the loop twice (`for [1 4] b` over a def-bound
-		// quoted list answered `[1 4 9 1 9]`, measured). The check pass
-		// models a computed loop body as ZERO results (its count is the
-		// run's); the dyn-body result is variadic, so the count is the
-		// body's own at run time exactly as `do`'s.
-		if bp < 0 || bp >= len(args) || core.IsConcrete(args[bp]) {
-			return false
-		}
+	// A 0-result dispatch is admitted only for a word that DECLARES a 0-out
+	// body (`for-each`, BodyOut 0: the handler discards every invocation's
+	// result and produces nothing, so 0 is the word's own count); for any
+	// other word 0 results is the check pass's divergent-path shape.
+	if len(outs) == 0 && sig.Callable.BodyOut != 0 {
+		return false
 	}
-	if bp < 0 || bp >= len(args) {
+	bp := sig.Callable.BodyPos
+	if bp >= len(args) {
 		return false
 	}
 	body := args[bp]
@@ -791,7 +764,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// not yet fence at every consumer (a list literal's MAKE_LIST, a
 	// trailing apply), so a CONCRETE handler body the closure path declined
 	// keeps its decline (region_stack_read_test.go's two witnesses).
-	if sig.Callable != nil && sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
+	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
 		return false
 	}
 	// Every OTHER code-body slot the handler re-runs (walk's optional ascend
