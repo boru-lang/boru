@@ -45,6 +45,9 @@ func TestInactiveDispatchBraid(t *testing.T) {
 	if inactiveDispatchTryRecordPoly(nil, "", nil, nil, nil, core.SrcPos{}, false, nil, false, nil) {
 		t.Fatal("inactive poly record must decline")
 	}
+	if inactiveDispatchTryRecordDynBody(nil, "", nil, nil, nil, core.SrcPos{}) {
+		t.Fatal("inactive dyn-body record must decline")
+	}
 	if inactiveDispatchCompileUserPolyArms(nil, core.TheInactiveEmit, "", nil, nil) != nil {
 		t.Fatal("inactive poly-arm compile must decline")
 	}

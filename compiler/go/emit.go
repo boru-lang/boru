@@ -881,13 +881,21 @@ type EmitState struct {
 	// re-resolves the registry there, exactly where the interpreter reads
 	// it. Nil until first use.
 	keepLeakNames map[string]bool
-	// runtimeBound names a native the program calls BINDS at run time
-	// (`unpack [a b] d` over a source the pass cannot read — NoteRuntimeBind):
-	// the check pass's install of such a name is a stub, so the recorder
-	// emits no dyn-scope def for it (the native's own install is the
-	// bind), its twin is exempt from placement (the rollback removes the
-	// stub; the run re-installs), and its reads seat live (keepLeakNames).
-	runtimeBound map[string]bool
+	// runtimeStub latches, per name, the ONE install a native the program
+	// calls is about to make at run time (`unpack [a b] d` over a source the
+	// pass cannot read — NoteRuntimeBind, right before the handler's own
+	// installAndRecordDef): that install is a stub, so its twin is exempt
+	// from placement (runtimeTwins — the rollback removes the stub; the
+	// run's CALL_NATIVE re-installs) and the recorder emits no dyn-scope def
+	// for it (the native's own install is the bind). The latch is consumed
+	// by that install's RecordDynBind, so a LATER real `def a …` of the same
+	// name — in another fn unit, at the root — records exactly as before (a
+	// Codex review of #507 found the program-wide form suppressing it:
+	// `def h fn [[][Integer][def a 9 end a]]` answered the stub's 1). The
+	// reads seat live through keepLeakNames only while they have no
+	// compiled home, which a real def's read always has.
+	runtimeStub  map[string]bool
+	runtimeTwins map[int]bool
 	// pendingRuntimeBindCall latches between a binder handler's
 	// NoteRuntimeBind and the dispatch's RecordRuntimeBindDispatch.
 	pendingRuntimeBindCall bool
@@ -1990,7 +1998,8 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// unit whose defs lower differently.
 	p.keepDefsUnitDepth = es.keepDefsUnitDepth
 	p.keepLeakNames = maps.Clone(es.keepLeakNames)
-	p.runtimeBound = maps.Clone(es.runtimeBound)
+	p.runtimeStub = maps.Clone(es.runtimeStub)
+	p.runtimeTwins = maps.Clone(es.runtimeTwins)
 	// The residual-order hazard tables too (unit_memo.go): a read the real
 	// state saw in an enclosing fragment must count against a bind the
 	// probe records, or the probe admits a residual the real compile then
@@ -4995,6 +5004,15 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 	}
 	es.bindTwins = append(es.bindTwins, tr)
 	es.bindTwinEntries = append(es.bindTwinEntries, entry)
+	// The stub install a native re-makes at run time (NoteRuntimeBind's
+	// latch, still armed until the install's RecordDynBind consumes it):
+	// this twin is exempt from placement (Finalize's twin gate).
+	if es.runtimeStub[tr.Name] {
+		if es.runtimeTwins == nil {
+			es.runtimeTwins = map[int]bool{}
+		}
+		es.runtimeTwins[len(es.bindTwins)-1] = true
+	}
 	// A transition of a name a stored handler reads live: a live LEAD's
 	// new binding gets its units, so the routed op has the live
 	// signature's own; a live READ's new binding must be one the lookup
@@ -5225,10 +5243,10 @@ func (es *EmitState) NoteRuntimeBind(name string) {
 		es.keepLeakNames = map[string]bool{}
 	}
 	es.keepLeakNames[name] = true
-	if es.runtimeBound == nil {
-		es.runtimeBound = map[string]bool{}
+	if es.runtimeStub == nil {
+		es.runtimeStub = map[string]bool{}
 	}
-	es.runtimeBound[name] = true
+	es.runtimeStub[name] = true
 	es.pendingRuntimeBindCall = true
 	es.dynEnv = true
 }
@@ -9689,10 +9707,12 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.declineUndef(name, defAfterSpecUndef)
 		return
 	}
-	// A name a native binds at RUN time (NoteRuntimeBind): the check
-	// pass's install is a stub with no compiled home, and the native's
-	// CALL_NATIVE performs the real install — nothing to record here.
-	if es.runtimeBound[name] {
+	// THE install a native binds at RUN time (NoteRuntimeBind's latch, this
+	// name's one stub): the check pass's install has no compiled home, and
+	// the native's CALL_NATIVE performs the real install — nothing to record
+	// here. The latch is consumed: a later real def of the name records.
+	if es.runtimeStub[name] {
+		delete(es.runtimeStub, name)
 		return
 	}
 	if es.valBindEpoch == nil {
@@ -13611,11 +13631,13 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if es.armReadCompileFailure != "" {
 		return nil, es.armReadCompileFailure, false
 	}
-	// A twin of a name a native binds at run time (runtimeBound) describes
-	// the check pass's STUB install: the rollback removes it and the run's
-	// CALL_NATIVE re-installs the real value, so no op need replay it.
-	for i := range lw.p.BindTwins {
-		if es.runtimeBound[lw.p.BindTwins[i].Name] {
+	// The twin of a STUB install a native re-makes at run time
+	// (runtimeTwins, latched at its note): the rollback removes the stub and
+	// the run's CALL_NATIVE re-installs the real value, so no op need replay
+	// it. Only that one twin — a later real def of the same name keeps its
+	// placement duty.
+	for i := range es.runtimeTwins {
+		if i < len(lw.p.BindTwins) {
 			if twinExempt == nil {
 				twinExempt = map[int]bool{}
 			}

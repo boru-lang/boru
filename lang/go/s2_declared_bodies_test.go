@@ -135,6 +135,14 @@ func TestUnpackUnprovenSourceCompiles(t *testing.T) {
 		// A key the run-time source lacks raises the interpreter's own
 		// unpack_error from the emitted call, never a compile-time trap.
 		`def g fn [[d:Map][Integer][unpack [a b] d end a add b]] end g {a:1}`,
+		// A LATER real def of the same name — in another fn unit, at the
+		// root, before or after the unpack's fn — records as ever: the stub's
+		// suppression is one occurrence, not the name (a Codex review of
+		// #507 found the program-wide form answering the stub's 1 for h's 9).
+		`def g fn [[d:Map][Integer][unpack [a] d end a]] end def h fn [[][Integer][def a 9 end a]] end g {a:1} end h`,
+		`def h fn [[][Integer][def a 9 end a]] end def g fn [[d:Map][Integer][unpack [a] d end a]] end g {a:1} end h`,
+		`def g fn [[d:Map][Integer][unpack [a] d end a]] end g {a:1} end def a 9 end a`,
+		`def g fn [[d:Map][Integer][unpack [a] d end a]] end g {a:1} end def a 9 end def k fn [[][Integer][a add 1]] end k`,
 	} {
 		requireEngineParity(t, src, true)
 	}
