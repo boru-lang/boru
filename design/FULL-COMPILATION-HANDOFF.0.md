@@ -13322,6 +13322,51 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR099 closed — a capitalised fn body is refused (2026-09-25)
+
+**The divergence.** One spelling carried two jobs: a fn body meant a
+callable under a lower-case name and a membership test under a capitalised
+one, routed by counting its parameters (`isPredicateFnValue`, ADR-016's
+arity-keyed exception). So `def K fn [[a:Any b:Any][Any][a]] end K 1 2`
+bound a type nothing could inhabit and exited 0 with `K 1 2` on the stack,
+and `def I x:Integer => [add 1 x] end I 5` placed a type node for a call.
+`fnpred` (2026-08-25) gave predicates their own door; the arity route stayed
+until the corpus had moved.
+
+**The fix.** `InstallTypeBody` refuses a capitalised name over an
+UNDECLARED fn body — a fn definition or a compiled closure under Function
+(`isFnBodiedValue`) — with `def_error`, naming both ways out (`def K fnpred
+…`, or a lower-case name). A type literal that merely sits under Function (a
+module's exported member type, `MiniLang.Re`) keeps binding as an alias.
+`isPredicateFnValue` is deleted, `PredicateInputType` answers only for a
+declared predicate, and unify's predicate-reference arms key on
+`IsDeclaredPredicateFn`. `def` installs during the check pass, so both
+lanes refuse at the declaration. The corpus moved to `fnpred`: the spec
+rows (record, edge-types-2, compare, refine-flex, fnpred), behave.tsv, the
+Go test sites, core's fixtures (`MarkPredicateFn`), and the design examples'
+and editor samples' `def New fn …` constructors (now `def new fn …`,
+exported under the same `New` key). `stranded_type_call` stays for the one
+fn-bodied type node left, a declared predicate written as a call; its note,
+REFERENCE.md, CLI.md and OPEN-WORDS say so.
+
+**Found on the way — a rollback leak.** The lang ledger's one new decline
+(`code-body word if` in `def til fn [… for (xs size) [def idx i if … [break]
+[] def seen (seen add 1)] …]`) was not NUR099's: NUR214's fresh carry
+shifted the loop rounds' event order, and `EmitState.Rollback` reissued the
+discarded round's seqs without dropping the notes keyed by them. The routed
+`add`'s GENERIC flag landed on the next round's `if` branch event, so the
+double-record guard stopped eliding the `if`. Rollback now drops every
+seq-keyed note past the checkpoint (`eventInfo`, the re-step and landing
+notes, `argsProjSeq`, beside the placeholder marks it already dropped) and
+`constKeep` past the const pool's cut.
+
+**Pins.** core `TestNUR099CapitalisedFnBodyRefused`,
+`TestNUR099IsFnBodiedValueArms`; lang `TestStrandedTypeCallRefusedAtDeclaration`,
+`TestLoopRoundRollbackDropsEventNotes` (fails without the eventInfo drop);
+`lang/spec/fnpred.tsv` §5 (the legacy spelling and the combinator refused,
+the lower-case combinator callable) and `edge-types-2.tsv` (the lambda
+spelling refused).
+
 ## NUR112 closed — the plain check's stored member (2026-09-25)
 
 **The gap** (narrowed earlier the same day to a checker-model item). A fn

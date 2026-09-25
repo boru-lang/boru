@@ -48,15 +48,18 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	// analysis-only binding: compiled 0 vs interp undefined_word), as does an
 	// upstream `continue` (the bind is bypassed: compiled 0 vs undefined_word)
 	// and a downstream `break` (a discarded iteration's spill survived:
-	// compiled [5 5] vs interp [5]).
+	// compiled [5 5] vs interp [5]). Since NUR214 a loop that is not
+	// proven to run CARRIES its fresh `acc` in a bound-checked cell, so the
+	// four decline where the carried store meets the inner loop's variadic
+	// result, before the consumer's own fence.
 	mustFailToCompileWithParity(t,
-		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
+		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
+		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "consumes loop results")
+		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 3 [def acc (for 2 [5]) break] acc`, "consumes loop results")
+		`for 3 [def acc (for 2 [5]) break] acc`, "loop-carried store of a variadic result")
 }
 
 func TestS9SpliceComputedPayload(t *testing.T) { // §9.2b

@@ -857,11 +857,12 @@ type FnDefInfo struct {
 	// Predicate is true iff the FnDef was produced by the `fnpred` word —
 	// the author DECLARED this function to be a membership test, so
 	// InstallType routes a capitalised binding of it to the predicate-type
-	// branch. It is the explicit half of a routing decision that is
-	// otherwise made by counting parameters (isPredicateFnValue,
-	// PredicateInputType), which ADR-016 forbids: arity must never decide
-	// how a function behaves. A declared predicate says so; it is not
-	// inferred from its shape. NUR099.
+	// branch. It is the ONLY route: the former arity route (the retired
+	// isPredicateFnValue counted parameters, which ADR-016 forbids — arity
+	// must never decide how a function behaves) is gone, and InstallType
+	// refuses a capitalised binding of an undeclared fn body with
+	// def_error. A declared predicate says so; it is not inferred from its
+	// shape. NUR099.
 	//
 	// It is a DECLARATION, not a one-shot signal like Applied: it rides the
 	// value for its whole life, because "this function is a membership

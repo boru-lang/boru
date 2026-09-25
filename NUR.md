@@ -193,7 +193,7 @@ keep the two in sync in the same commit.
 | [NUR114](#nur114) | FIXED — verified 2026-09-25 (the token's own text — the handoff log's entry of that date): A compiled diagnostic's caret is always ONE character wide where the interpreter underlines the whole token: the compiler's debug table is `[]core.SrcPos` carrying only row and column, so `stampAt` has no token text to set `BoruError.Src` from and the renderer's `caretCount = len(sub)` falls to its minimum of 1. Found while closing NUR108 — the positions now match exactly and the underline still does not | closing NUR108, 2026-08-30 |
 | [NUR109](#nur109) | FIXED 2026-09-25 (the parser name bound on a branch — the handoff log's entry of that date): `parse` over an unbound def-scoped parser name raises `parse_error: the parser is not a usable function value` compiled and `parse_unknown_lang: no parser "op" is registered` interpreted. `TestParseFnDispatchMissParity`'s own header argues the compiled answer is the right one and asserted both lanes gave it — reading the interp side from `Run` | completing the NUR106 oracle sweep, 2026-08-27 |
 | [NUR101](#nur101) | FIXED 2026-09-25 (the verdict of 2026-08-27 landed and its last shape graduated — the handoff log's entry of that date): BROAD's placement depended on ENCLOSING CONTEXT: `(mk 1) 2` places (`fn (Integer) 2`) while `((mk 1) 2)` dispatches (`3`). **RULED 2026-08-26 "place uniformly"; the ruling's PREMISE was then FALSIFIED 2026-08-27** — the survivor count IS the question, and the enclosing group is a SECOND decision, not a modifier of the first. The interpreter was right all along; the COMPILER carried five silent miscompiles in both directions, hidden by 75 parity assertions that use post-Stage-J `Run` (the compiled path) as their interpreter oracle. See [design/PAREN-RESTEP-RULE.0.md](design/PAREN-RESTEP-RULE.0.md) | re-measuring §5.4 after #402, 2026-08-25; ruled 2026-08-26; ruling's premise falsified by measurement 2026-08-27 |
-| [NUR099](#nur099) | `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
+| [NUR099](#nur099) | FIXED 2026-09-25 (NUR099 closed — a capitalised fn body is refused — the handoff log's entry of that date): `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
 | [NUR100](#nur100) | ADR-016 ("arity and origin never change function behaviour") is contradicted by live code: `RunPredicate` admits or refuses a function as a predicate purely on its parameter count, and `smallerArityOverload` gates a compile refusal the same way | the maintainer's ruling that the ADR-016 rule is absolute, 2026-08-25 |
 | [NUR097](#nur097) | FIXED 2026-09-25 (the late-binding hint — the handoff log's entry of that date): One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`) |
 | [NUR102](#nur102) | FIXED 2026-09-25 (one run per dispatch — the handoff log's entry of that date): A predicate body runs a different number of times in each lane — overload pruning evaluates it 4× interpreted and 2× compiled, an effect-count divergence no differential gate can see because both lanes return the same value | the Stage-2 collection-kernel feasibility probe, 2026-08-25 |
@@ -213,9 +213,29 @@ requires.
 
 ## NUR099 — a fn body means a different thing under a capitalised name, and that is the only door to a predicate type {#nur099}
 
-**Status:** Pending (verdict: resolve by fix) · **Recorded:** 2026-08-25 ·
-**Surfaced by:** the maintainer's review of the §5.1 `stranded_type_call`
-diagnostic
+**Status:** FIXED 2026-09-25 (verdict: resolve by fix) · **Recorded:**
+2026-08-25 · **Surfaced by:** the maintainer's review of the §5.1
+`stranded_type_call` diagnostic
+
+**The fix.** A capitalised name over an UNDECLARED fn body — a fn
+definition or a compiled closure under Function — is refused at the
+declaration with `def_error` (`InstallTypeBody`, via `isFnBodiedValue`),
+naming both ways out: `def K fnpred …` for a predicate type, or a
+lower-case name for a function. A type literal that merely sits under
+Function (a module's exported member type) keeps binding as an alias. The
+arity route is gone: `isPredicateFnValue` is deleted, `PredicateInputType`
+answers only for a declared predicate, and unify's predicate-reference arms
+key on `IsDeclaredPredicateFn`. `def` installs during the check pass, so
+both lanes refuse. The corpus moved to `fnpred` first — the spec rows, the
+Go test sites, core's fixtures, and the design examples' `def New fn …`
+constructors (now `def new fn …`, exported under the same `New` key).
+`stranded_type_call` keeps the one fn-bodied type node left: a declared
+predicate written as a call. Pinned in `lang/spec/fnpred.tsv` §5 (the legacy
+spelling and `def K fn [[a:Any b:Any][Any][a]]` refused, the lower-case
+combinator callable), `lang/spec/edge-types-2.tsv` (the lambda spelling
+refused), `core/go/nur099_fnbody_test.go`, and
+`lang/go/test/stranded_type_call_test.go`. NUR100's §1 is untouched: a
+DECLARED predicate of the wrong arity still reaches `RunPredicate`'s count.
 
 **Rule:** boru refuses loudly, and at the declaration. A declaration the
 engine can already prove unusable is not accepted and left to fail later —
@@ -312,6 +332,13 @@ by:** the maintainer's ruling, 2026-08-25, that ADR-016's rule is absolute —
 "everything everywhere every time and always"
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
+
+**2026-09-25, after NUR099's close:** the arity route INTO the predicate
+branch is gone — only `fnpred` declares a predicate — so §1's count now
+judges only a DECLARED predicate of the wrong arity: `def K fnpred [[a:Any
+b:Any] [a]] end def z:K 5` still raises `RunPredicate: predicate must take
+exactly one argument` at the use, and `4 is K` answers false. Still no
+verdict on whether that declaration should be refused where it is written.
 
 **Rule:** ADR-016 — *"Every function behaves the same way whatever its arity
 and wherever it came from … this record forbids exceptions keyed on arity or

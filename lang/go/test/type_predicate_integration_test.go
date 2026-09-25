@@ -16,7 +16,7 @@ import (
 // inheritance, and DepScalar interaction.
 //
 // Test convention for predicate bodies:
-//   def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+//   def Pos fnpred [[n:Integer] [n gt 0]]
 // Boolean false signals "no match" (RunPredicate honors this in
 // addition to None); Boolean true is "match, candidate flows
 // through unchanged".
@@ -57,7 +57,7 @@ func runPredExpectErr(t *testing.T, src string) string {
 // =========================================================
 
 func TestPredicate_SigDispatch_Accepts(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def f fn [[x:Pos] [Integer] [x add 1]]
 f 5`)
 	if len(got) != 1 || got[0] != int64(6) {
@@ -66,7 +66,7 @@ f 5`)
 }
 
 func TestPredicate_SigDispatch_RejectsFailingPredicate(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def f fn [[x:Pos] [Integer] [x add 1]]
 f -3`)
 	if !strings.Contains(msg, "no signature matches") {
@@ -75,7 +75,7 @@ f -3`)
 }
 
 func TestPredicate_SigDispatch_RejectsWrongType(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def f fn [[x:Pos] [Any] [x]]
 f "hello"`)
 	if !strings.Contains(msg, "no signature matches") {
@@ -88,7 +88,7 @@ f "hello"`)
 // =========================================================
 
 func TestPredicate_Is_Accepts(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 5 is Pos`)
 	if got[0] != "true" {
 		t.Errorf("5 is Pos = %v, want true", got)
@@ -96,7 +96,7 @@ func TestPredicate_Is_Accepts(t *testing.T) {
 }
 
 func TestPredicate_Is_RejectsByPredicate(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 -3 is Pos`)
 	if got[0] != "false" {
 		t.Errorf("-3 is Pos = %v, want false (fails predicate)", got)
@@ -104,7 +104,7 @@ func TestPredicate_Is_RejectsByPredicate(t *testing.T) {
 }
 
 func TestPredicate_Is_RejectsByInputType(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 "hello" is Pos`)
 	if got[0] != "false" {
 		t.Errorf("\"hello\" is Pos = %v, want false (fails input-type gate)", got)
@@ -116,7 +116,7 @@ func TestPredicate_Is_RejectsByInputType(t *testing.T) {
 // =========================================================
 
 func TestPredicate_UnifyWord_Accepts(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 Pos unify 5`)
 	if len(got) != 2 || got[1] != "true" {
 		t.Errorf("Pos unify 5 = %v, want [5, true]", got)
@@ -127,7 +127,7 @@ Pos unify 5`)
 }
 
 func TestPredicate_UnifyWord_RejectsPredicate(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 Pos unify -3`)
 	if len(got) != 2 || got[1] != "false" {
 		t.Errorf("Pos unify -3 = %v, want [~unify-fail, false]", got)
@@ -135,7 +135,7 @@ Pos unify -3`)
 }
 
 func TestPredicate_UnifyWord_RejectsInputType(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 Pos unify "hello"`)
 	if len(got) != 2 || got[1] != "false" {
 		t.Errorf("Pos unify \"hello\" = %v, want [~unify-fail, false]", got)
@@ -144,7 +144,7 @@ Pos unify "hello"`)
 
 // Commutativity: unify is symmetric.
 func TestPredicate_UnifyWord_Commutative(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 (5 unify Pos) drop`)
 	if got[0] != int64(5) {
 		t.Errorf("5 unify Pos = %v, want [5]", got)
@@ -156,7 +156,7 @@ func TestPredicate_UnifyWord_Commutative(t *testing.T) {
 // =========================================================
 
 func TestPredicate_MakeRecord_Accepts(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def Rec refine Record [x:Pos]
 make Rec [5]`)
 	if got[0] != "{x:5}" {
@@ -165,7 +165,7 @@ make Rec [5]`)
 }
 
 func TestPredicate_MakeRecord_RejectsPredicate(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def Rec refine Record [x:Pos]
 make Rec [-3]`)
 	if !strings.Contains(msg, "is not a member of predicate") {
@@ -178,7 +178,7 @@ make Rec [-3]`)
 // =========================================================
 
 func TestPredicate_Typeof_ReportsPredicateType(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def x:Pos 5
 typeof x`)
 	if got[0] != "Pos" {
@@ -191,7 +191,7 @@ typeof x`)
 // =========================================================
 
 func TestPredicate_TypedList_AllSatisfy(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 [5,10] is [:Pos]`)
 	if got[0] != "true" {
 		t.Errorf("[5,10] is [:Pos] = %v, want true", got)
@@ -199,7 +199,7 @@ func TestPredicate_TypedList_AllSatisfy(t *testing.T) {
 }
 
 func TestPredicate_TypedList_RejectsFailing(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 [5,-3] is [:Pos]`)
 	if got[0] != "false" {
 		t.Errorf("[5,-3] is [:Pos] = %v, want false", got)
@@ -207,7 +207,7 @@ func TestPredicate_TypedList_RejectsFailing(t *testing.T) {
 }
 
 func TestPredicate_TypedMap_AllSatisfy(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 {a:5,b:10} is {:Pos}`)
 	if got[0] != "true" {
 		t.Errorf("{a:5,b:10} is {:Pos} = %v, want true", got)
@@ -215,7 +215,7 @@ func TestPredicate_TypedMap_AllSatisfy(t *testing.T) {
 }
 
 func TestPredicate_TypedMap_RejectsFailing(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 {a:5,b:-3} is {:Pos}`)
 	if got[0] != "false" {
 		t.Errorf("{a:5,b:-3} is {:Pos} = %v, want false", got)
@@ -227,7 +227,7 @@ func TestPredicate_TypedMap_RejectsFailing(t *testing.T) {
 // =========================================================
 
 func TestPredicate_InDisjunct_AcceptsPredicateBranch(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def D (Pos tor String)
 5 is D`)
 	if got[0] != "true" {
@@ -236,7 +236,7 @@ def D (Pos tor String)
 }
 
 func TestPredicate_InDisjunct_AcceptsOtherBranch(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def D (Pos tor String)
 "hi" is D`)
 	if got[0] != "true" {
@@ -245,7 +245,7 @@ def D (Pos tor String)
 }
 
 func TestPredicate_InDisjunct_RejectsNeither(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def D (Pos tor String)
 -3 is D`)
 	if got[0] != "false" {
@@ -258,7 +258,7 @@ def D (Pos tor String)
 // =========================================================
 
 func TestPredicate_RecordField_AcceptsValid(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def Point refine Record [x:Pos y:Pos]
 make Point [3 4]`)
 	if got[0] != "{x:3 y:4}" {
@@ -267,7 +267,7 @@ make Point [3 4]`)
 }
 
 func TestPredicate_RecordField_RejectsOneFailing(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def Point refine Record [x:Pos y:Pos]
 make Point [3 -4]`)
 	if !strings.Contains(msg, "y") || !strings.Contains(msg, "is not a member of predicate") {
@@ -280,7 +280,7 @@ make Point [3 -4]`)
 // =========================================================
 
 func TestPredicate_BehaveCompare(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 behave compare/q (fn [[a:Pos b:Pos] [Integer] [42]])
 def x:Pos 5
 def y:Pos 10
@@ -299,7 +299,7 @@ x cmp y`)
 // =========================================================
 
 func TestPredicate_OptionalField_AbsentOk(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 ({a:1} unify {a:Integer,b?:Pos}) drop`)
 	if got[0] != "{a:1}" {
 		t.Errorf("got %v, want {a:1} (absent optional omitted)", got)
@@ -307,7 +307,7 @@ func TestPredicate_OptionalField_AbsentOk(t *testing.T) {
 }
 
 func TestPredicate_OptionalField_NoneOk(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 ({a:1,b:None} unify {a:Integer,b?:Pos}) drop`)
 	if got[0] != "{a:1 b:None}" {
 		t.Errorf("got %v, want {a:1 b:None}", got)
@@ -319,7 +319,7 @@ func TestPredicate_OptionalField_NoneOk(t *testing.T) {
 // =========================================================
 
 func TestPredicate_TypedDefIsAncestor(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def x:Pos 5
 x is Integer`)
 	if got[0] != "true" {
@@ -328,7 +328,7 @@ x is Integer`)
 }
 
 func TestPredicate_TypedDefIsSelf(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def x:Pos 5
 x is Pos`)
 	if got[0] != "true" {
@@ -341,7 +341,7 @@ x is Pos`)
 // =========================================================
 
 func TestPredicate_TypedDefRejects(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def x:Pos -5`)
 	if !strings.Contains(msg, "Pos") && !strings.Contains(msg, "predicate") {
 		t.Errorf("got %q, want failure naming Pos/predicate", msg)
@@ -353,7 +353,7 @@ def x:Pos -5`)
 // =========================================================
 
 func TestPredicate_GuardIdiom_Accepts(t *testing.T) {
-	got := runPred(t, `def Bbd fn [x:Any Any [(x is String) and (x gte "b") and (x lte "d") guard x]]
+	got := runPred(t, `def Bbd fnpred x:Any [(x is String) and (x gte "b") and (x lte "d") guard x]
 "c" is Bbd`)
 	if got[0] != "true" {
 		t.Errorf(`"c" is Bbd = %v, want true`, got)
@@ -361,7 +361,7 @@ func TestPredicate_GuardIdiom_Accepts(t *testing.T) {
 }
 
 func TestPredicate_GuardIdiom_Rejects(t *testing.T) {
-	got := runPred(t, `def Bbd fn [x:Any Any [(x is String) and (x gte "b") and (x lte "d") guard x]]
+	got := runPred(t, `def Bbd fnpred x:Any [(x is String) and (x gte "b") and (x lte "d") guard x]
 "z" is Bbd`)
 	if got[0] != "false" {
 		t.Errorf(`"z" is Bbd = %v, want false`, got)
@@ -373,7 +373,7 @@ func TestPredicate_GuardIdiom_Rejects(t *testing.T) {
 // =========================================================
 
 func TestPredicate_CombinedRecordOptional(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def Cfg refine Record [width:Pos height:Pos]
 make Cfg [10 20]`)
 	if got[0] != "{width:10 height:20}" {
@@ -389,7 +389,7 @@ func TestPredicate_HigherOrderEach(t *testing.T) {
 	// `each` calls the body with each element. The body invokes f
 	// which has signature [x:Pos]; if any element fails the predicate
 	// the whole pipeline errors. With [1,2,3] all positive, all pass.
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def f fn [[x:Pos] [Integer] [x add 1]]
 [1,2,3] each [f]`)
 	if got[0] != "[2 3 4]" {
@@ -400,7 +400,7 @@ def f fn [[x:Pos] [Integer] [x add 1]]
 // Higher-order with a failing element: each errors at the failing
 // position because f's signature can't accept -2.
 func TestPredicate_HigherOrderEach_OneFails(t *testing.T) {
-	msg := runPredExpectErr(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	msg := runPredExpectErr(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def f fn [[x:Pos] [Integer] [x add 1]]
 [1,-2,3] each [f]`)
 	if !strings.Contains(msg, "no signature matches") {
@@ -416,7 +416,7 @@ def f fn [[x:Pos] [Integer] [x add 1]]
 // dispatcher picks the more-specific Pos sig for positive Integers,
 // the fallback for everything else.
 func TestPredicate_SigDispatch_MultipleOverloads(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 def classify fn [
   [x:Pos] [String] ["positive"]
   [x:Any] [String] ["other"]
@@ -445,7 +445,7 @@ classify "hi"`)
 // any predicate body returning Boolean false would be rejected.
 
 func TestPredicate_BooleanDomainAcceptsFalse(t *testing.T) {
-	got := runPred(t, `def Flag fn [[b:Boolean] [Boolean] [b]]
+	got := runPred(t, `def Flag fnpred [[b:Boolean] [b]]
 false is Flag`)
 	if got[0] != "true" {
 		t.Errorf("false is Flag = %v, want true (Boolean is the value domain)", got)
@@ -453,7 +453,7 @@ false is Flag`)
 }
 
 func TestPredicate_BooleanDomainAcceptsTrue(t *testing.T) {
-	got := runPred(t, `def Flag fn [[b:Boolean] [Boolean] [b]]
+	got := runPred(t, `def Flag fnpred [[b:Boolean] [b]]
 true is Flag`)
 	if got[0] != "true" {
 		t.Errorf("true is Flag = %v, want true", got)
@@ -464,7 +464,7 @@ true is Flag`)
 // here) still uses Boolean returns as verdicts — `n gt 0` returning
 // false means "no match".
 func TestPredicate_NonBooleanDomainTreatsFalseAsVerdict(t *testing.T) {
-	got := runPred(t, `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	got := runPred(t, `def Pos fnpred [[n:Integer] [n gt 0]]
 -3 is Pos`)
 	if got[0] != "false" {
 		t.Errorf("-3 is Pos = %v, want false (Boolean is verdict for Integer-domain predicate)", got)
@@ -474,7 +474,7 @@ func TestPredicate_NonBooleanDomainTreatsFalseAsVerdict(t *testing.T) {
 // Predicate whose input is Any also treats Boolean returns as values
 // (Any accepts Boolean).
 func TestPredicate_AnyDomainAcceptsFalse(t *testing.T) {
-	got := runPred(t, `def Always fn [[x:Any] [Any] [x]]
+	got := runPred(t, `def Always fnpred [[x:Any] [x]]
 false is Always`)
 	if got[0] != "true" {
 		t.Errorf("false is Always = %v, want true (Any domain accepts Boolean values)", got)

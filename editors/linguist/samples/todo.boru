@@ -26,14 +26,14 @@ import "boru:serve"          # send (fire-and-forget) into the notify sink
 # returning a `Service` (§2). `import` is the only loader; no plugin mechanism.
 # ---------------------------------------------------------------------------
 export "TodoStore" {
-  New: New/v
+  New: new/v
 }
 
 # `New {notify: <Service>}` -> Service
 #   `notify` is the event sink this store emits to on every mutation. Passing it
 #   in (rather than importing a singleton) keeps the store testable and lets the
 #   server wire the graph explicitly in app.boru.
-def New fn [[opts:Map] [Service] [
+def new fn [[opts:Map] [Service] [
   # Private state: a map of  user -> {todos: {id -> todo}  next: Integer}.
   # `state` is a mutable `Store`, safe to mutate in place because a service
   # handles ONE request at a time (§1 — the gen_server guarantee, no locks).

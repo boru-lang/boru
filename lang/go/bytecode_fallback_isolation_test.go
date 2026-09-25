@@ -105,7 +105,7 @@ func TestRunCompiledFallbackIsolation(t *testing.T) {
 		// rolled back on the compile-failure path.
 		`def C class {x:(flex [])} def p (make C {}) undef C end (p.x push 1) ($.1 [10 20 30] apply)`,
 		// fn registration under a capitalised name — a re-register clashes.
-		`def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] $.1 [10 20 30] apply`,
+		`def Positive fnpred n:Integer [if (n gt 0) [n] [None]] $.1 [10 20 30] apply`,
 		// native-module import whose namespace metadata a re-import degrades.
 		// The module-SYNTHETIC reads (`typeof MathUtil`, `MathUtil.$name`,
 		// `MathUtil.$module.name`) now const-fold and compile, so this pairs the

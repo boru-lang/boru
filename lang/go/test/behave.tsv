@@ -222,7 +222,7 @@ def Foo class {x:Integer} behave nodify/q (fn [[Foo Foo] [Any] [42]])	ERROR:1 ar
 # ---------------------------------------------------------------------
 # 5. PREDICATE-TYPE DISPATCH
 # ---------------------------------------------------------------------
-# `def Positive fn [n:Integer Integer [(n gt 0) guard n]]` declares a
+# `def Positive fnpred n:Integer [(n gt 0) guard n]` declares a
 # refinement of Integer. InstallType mints Positive's *Type with
 # parent=Integer (because PredicateInputType returns the concrete
 # input type). `def x:Positive 5` validates via the predicate body
@@ -236,31 +236,31 @@ def Foo class {x:Integer} behave nodify/q (fn [[Foo Foo] [Any] [42]])	ERROR:1 ar
 # Without a Positive Comparer installed, x y lt falls through to
 # Integer's lattice ancestor (Number's Comparer) — preserves the
 # default ordering.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] def x:Positive 5 def y:Positive 10 x y lt	true	default numeric ordering inherited via Positive→Integer→Number
+def Positive fnpred n:Integer [(n gt 0) guard n] def x:Positive 5 def y:Positive 10 x y lt	true	default numeric ordering inherited via Positive→Integer→Number
 
 # Installing Positive's Comparer (descending: `b a sub`) flips the
 # result. This row is the canary: if the typed-def rewrap fails,
 # Positive's Comparer is never found and lt stays at `true` (the
 # Integer default). It returns `false` only when dispatch finds
 # Positive's Comparer — proving the gotcha is closed.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] behave compare/q (fn [[Positive Positive] [Integer] [b a sub]]) def x:Positive 5 def y:Positive 10 x y lt	false	Positive's descending Comparer wins → 5 lt 10 = false
+def Positive fnpred n:Integer [(n gt 0) guard n] behave compare/q (fn [[Positive Positive] [Integer] [b a sub]]) def x:Positive 5 def y:Positive 10 x y lt	false	Positive's descending Comparer wins → 5 lt 10 = false
 
 # typeof on a typed-bound value reports the asserted type — Positive
 # in canonical form is just its leaf name.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] def x:Positive 5 typeof x	Positive	x dispatches as Positive
+def Positive fnpred n:Integer [(n gt 0) guard n] def x:Positive 5 typeof x	Positive	x dispatches as Positive
 
 # Validation gate still fires — a value failing the predicate body
 # (here, -3 doesn't satisfy `n gt 0`) is rejected at bind time.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] def x:Positive -3 x	ERROR:does not satisfy	predicate validation still enforced
+def Positive fnpred n:Integer [(n gt 0) guard n] def x:Positive -3 x	ERROR:does not satisfy	predicate validation still enforced
 
 # A Positive value still satisfies `is Integer` — the lattice walk
 # (Positive→Integer) keeps the parent relationship intact, so
 # downstream typed positions accepting Integer accept a Positive too.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] def x:Positive 5 x is Integer	true	Positive descends from Integer
+def Positive fnpred n:Integer [(n gt 0) guard n] def x:Positive 5 x is Integer	true	Positive descends from Integer
 
 # Canon override works on a predicate type — body returns a String
 # rendering.
-def Positive fn [n:Integer Integer [(n gt 0) guard n]] behave canon/q (fn [[Positive] [String] ['+'  a add]]) def x:Positive 7 x	+7	canon body produces a String render
+def Positive fnpred n:Integer [(n gt 0) guard n] behave canon/q (fn [[Positive] [String] ['+'  a add]]) def x:Positive 7 x	+7	canon body produces a String render
 
 # ---------------------------------------------------------------------
 # 6. OBJECT-TYPE DISPATCH ON TYPED DEFS

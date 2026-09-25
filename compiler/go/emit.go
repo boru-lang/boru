@@ -6573,11 +6573,8 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 			delete(es.constIDIdx, k)
 		}
 	}
-	for i := range es.freshenConst {
-		if i >= cp.consts {
-			delete(es.freshenConst, i)
-		}
-	}
+	dropKeysFrom(es.freshenConst, cp.consts)
+	dropKeysFrom(es.constKeep, cp.consts)
 	es.consts = es.consts[:cp.consts]
 	for k, i := range es.typeIdx {
 		if i >= cp.types {
@@ -6602,20 +6599,49 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 			delete(es.producedBy, id)
 		}
 	}
-	// A placeholder mark is keyed by event seq, and the seqs above the
-	// checkpoint are reissued by the next round: a discarded round's mark
-	// would otherwise land on whatever live read the stabilised round
-	// records under the same seq, lowering it to a placeholder push where
-	// a lookup is owed (review of #465: `for 2 [def a (a add 0.5)  k add k
-	// 1 drop]` after a placed undef drifted the routed claim).
-	for seq := range es.livePlaceholders {
+	// Every per-event note is keyed by event seq, and the seqs above the
+	// checkpoint are reissued by the next round: a discarded round's note
+	// would otherwise land on whatever event the stabilised round records
+	// under the same seq. A placeholder mark lowered a live read to a
+	// placeholder push where a lookup is owed (review of #465: `for 2 [def a
+	// (a add 0.5)  k add k 1 drop]` after a placed undef drifted the routed
+	// claim); a stale eventInfo flagged the next round's `if` branch event
+	// GENERIC — the flag of the routed `add` the discarded round recorded
+	// under that seq — so RecordCall's double-record guard stopped eliding
+	// the `if` and declined it as a code-body word (`for 4 [def idx i if (idx
+	// lt 2) [break] [] def seen (seen add 1)]`, once NUR214's fresh carry
+	// shifted the rounds' event order).
+	dropKeysAbove(es.livePlaceholders, cp.seq)
+	dropKeysAbove(es.eventInfo, cp.seq)
+	dropKeysAbove(es.reStepNotes, cp.seq)
+	dropKeysAbove(es.landingAfter, cp.seq)
+	dropKeysAbove(es.landingNext, cp.seq)
+	dropKeysAbove(es.landingBeneath, cp.seq)
+	dropKeysAbove(es.landingWord, cp.seq)
+	for id, seq := range es.argsProjSeq {
 		if seq > cp.seq {
-			delete(es.livePlaceholders, seq)
+			delete(es.argsProjSeq, id)
 		}
 	}
 	es.SiteCounts = cp.siteCounts
 	es.seq = cp.seq
 	es.captured = nil
+}
+
+// dropKeysAbove deletes m's entries keyed past seq — Rollback's trim of a
+// seq-keyed note map.
+func dropKeysAbove[V any](m map[int]V, seq int) {
+	dropKeysFrom(m, seq+1)
+}
+
+// dropKeysFrom deletes m's entries keyed at n or beyond — Rollback's trim of
+// a map keyed by a pool index the rollback truncates to n.
+func dropKeysFrom[V any](m map[int]V, n int) {
+	for k := range m {
+		if k >= n {
+			delete(m, k)
+		}
+	}
 }
 
 // fnArm bypasses AnalyseFnBody's suspension exactly once — set by

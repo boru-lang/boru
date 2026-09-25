@@ -1169,18 +1169,18 @@ func PredicateInputType(v Value) *Type {
 	if !ok {
 		return nil
 	}
+	// Only a DECLARED predicate (`fnpred`) has an input type: the
+	// parameter-count route that inferred one from a fn's shape was ADR-016's
+	// arity-keyed exception and is gone (NUR099).
+	if !info.Predicate {
+		return nil
+	}
 	sig, ok := info.FirstOwnSig()
-	if !ok || len(sig.Params) == 0 {
+	params := sig.Params
+	if !ok || len(params) == 0 {
 		return nil
 	}
-	// The parameter-COUNT test is the DEPRECATED route (NUR099/NUR100):
-	// ADR-016 forbids arity deciding how a function behaves. A `fnpred`
-	// declaration carries the fact explicitly and is believed whatever its
-	// shape; the count is consulted only for a body that never said so.
-	if !info.Predicate && len(sig.Params) != 1 {
-		return nil
-	}
-	t := sig.Params[0].Type
+	t := params[0].Type
 	if t == nil || t.Equal(TAny) {
 		return nil
 	}

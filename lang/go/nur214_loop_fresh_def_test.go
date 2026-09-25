@@ -76,3 +76,36 @@ func TestCondBoundDynamicReadRaises(t *testing.T) {
 		}
 	}
 }
+
+// TestLoopRoundRollbackDropsEventNotes pins the rollback fix NUR214's fresh
+// carry exposed. A non-final loop-analysis round is rolled back and its event
+// seqs are reissued; the per-event notes keyed by seq (eventInfo, the landing
+// and re-step notes) must go with the round, or the stabilised round's event
+// at a reissued seq inherits them. Here the discarded round's routed `add`
+// left its GENERIC flag on the seq the next round's `if` branch took, so the
+// branch dispatch was no longer elided and declined as a code-body word.
+// Both lanes must compile the loop and agree; the zero-trip and early-break
+// rows are the negative halves.
+func TestLoopRoundRollbackDropsEventNotes(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`def seen 0 for 4 [def idx i if (idx lt 2) [break] [] def seen (seen add 1)] seen`, "[0]"},
+		{`def seen 0 for 4 [def idx i if (idx gt 1) [break] [] def seen (seen add 1)] seen`, "[2]"},
+		{`def til fn [[xs:List] [Integer] [def seen 0 for (xs size) [def idx i if ((xs idx get) 0 lt) [break] [] def seen (seen add 1)] end seen]] (til [1 2 -1 4])`, "[2]"},
+		{`def til fn [[xs:List] [Integer] [def seen 0 for (xs size) [def idx i if ((xs idx get) 0 lt) [break] [] def seen (seen add 1)] end seen]] (til [])`, "[0]"},
+		{`def n (0 add 0) end def seen 0 for n [def idx i if (idx lt 2) [break] [] def seen (seen add 1)] idx`, "undefined_word"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		answer := func(got []any, err error) string {
+			if err != nil {
+				return codeOf(err)
+			}
+			return fmt.Sprint(got)
+		}
+		if got := answer(gotI, errI); got != c.want {
+			t.Errorf("%q: interpreted %s, want %s", c.src, got, c.want)
+		}
+		if got := answer(gotC, errC); !compiled || got != c.want {
+			t.Errorf("%q: compiled %s (compiled=%v), want %s", c.src, got, compiled, c.want)
+		}
+	}
+}

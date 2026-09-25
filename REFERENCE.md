@@ -1679,13 +1679,15 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]
 and `fnsig` do: `fnpred [[n:Integer] [eq 0 (mod 2 n)]]`.
 
 > **Say it with `fnpred`.** A capitalised `def` over a plain `fn` body —
-> `def Even fn n:Integer Boolean [...]` — also mints a predicate type, and
-> still works. But then the CASE of the name is what decides whether a body
-> is a callable function or a membership test, which is how `def I x:Integer
-> => [add 1 x]` silently becomes a type instead of a function: `I 5` places
-> the type node, never consumes the `5`, and exits 0. `boru check` reports
-> that shape as `stranded_type_call`. `fnpred` removes the guesswork —
-> lowercase names are functions, `fnpred` declares predicates.
+> `def Even fn n:Integer Boolean [...]`, or a lambda such as `def I
+> x:Integer => [add 1 x]` — is refused at the declaration with `def_error`.
+> It used to mint a predicate type, which let the CASE of the name decide
+> whether a body was a callable function or a membership test: `I 5` placed
+> the type node, never consumed the `5`, and exited 0. Now the rule is one
+> sentence — lowercase names are functions, `fnpred` declares predicates.
+> A declared predicate written as a call (`def Even fnpred … end Even 4`)
+> still strands its operand, and `boru check` reports that shape as
+> `stranded_type_call`.
 
 #### Recursion and tail calls
 

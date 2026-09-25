@@ -49,9 +49,13 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  def q:Positive 0  q	ERRO
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 4	4	a parameter admits a member
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5	ERROR:signature_error	…and dispatch declines a non-member
 #
-# §5  Same type as the capitalised-fn form it replaces
+# §5  The capitalised-fn form it replaces is refused at the declaration
+#     (NUR099): a fn body is a type only through fnpred, so the case of a
+#     name no longer decides whether a body is a function or a test.
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def p:Even 4  p	4	fnpred…
-def Even fn n:Integer Boolean [eq 0 (mod 2 n)]  def p:Even 4  p	4	…and the legacy capitalised-fn route agree
+def Even fn n:Integer Boolean [eq 0 (mod 2 n)]  def p:Even 4  p	ERROR:def_error	…and the legacy capitalised-fn spelling is refused at the declaration (NUR099): a fn body is a type only through fnpred
+def K fn [[a:Any b:Any][Any][a]] end  K 1 2	ERROR:def_error	the two-parameter combinator used to bind a type nothing could inhabit, silently — refused at the declaration
+def k fn [[a:Any b:Any][Any][a]] end  k 1 2	1	…and its lower-case spelling is the callable function
 #
 # §6  Negatives — the spec list takes PAIRS, not triples
 #     (both are runtime-only shape errors: the checker cannot statically

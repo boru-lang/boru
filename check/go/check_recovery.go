@@ -1377,11 +1377,15 @@ func init() { installAnalysisImpl() }
 
 // noteStrandedTypeCall reports §5.1's silent wrong answer: a capitalised
 // name bound to a FUNCTION body is a TYPE, so writing it in call position
-// never calls. `def I x:Integer => [add 1 x] end I 5` prints `I 5` and
+// never calls. `def I fnpred x:Integer [add 1 x] end I 5` prints `I 5` and
 // exits 0 — the minted lattice node is placed, the 5 is never consumed,
 // and nothing anywhere says so. The combinator literature is all capitals
 // (S, K, I, B, C, W, Y), so a reader transcribing it lands here first
 // (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1, recommendation 2).
+// Since NUR099 the undeclared spelling (`def I x:Integer => [add 1 x]`, a
+// plain `fn` body under a capitalised name) is refused at the declaration
+// with def_error, so the one fn-bodied type node left to strand is a
+// DECLARED predicate written as a call.
 //
 // The gate is deliberately narrow, because this is a hint and a false one
 // costs more than a missed one. It fires on a bare lattice node whose
@@ -1447,8 +1451,8 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 			Col:  v.Pos().Col,
 			Src:  v.Pos().Src,
 			Notes: []string{
-				"a def whose name is capitalised and whose body is a fn mints a TYPE " +
-					"(`4 is " + name + "` is the intended use); the fn body survives only as that type's content",
+				"a capitalised def binds a TYPE, and a fnpred body is that type's membership test " +
+					"(`4 is " + name + "` is the intended use), never a function to call",
 			},
 			// No Replacement: the fix is a COORDINATED rename — the
 			// declaration and every reference — and this diagnostic points at

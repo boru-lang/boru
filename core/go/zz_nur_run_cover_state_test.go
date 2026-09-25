@@ -432,11 +432,11 @@ func TestNurRunInactiveShareCheckStateFrom(t *testing.T) {
 // body is body, and returns the minted node with its PredicateUnifier.
 func nrcPredicateUnifier(t *testing.T, r *Registry, name string, input *Type, body []Value) (*Type, *PredicateUnifier) {
 	t.Helper()
-	fn := NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{{
+	fn := MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{{
 		Params:  []FnParam{{Name: "n", Type: input}},
 		Returns: []*Type{TBoolean},
 		Impl:    Boru(body),
-	}}})
+	}}}))
 	if err := InstallType(r, name, fn); err != nil {
 		t.Fatalf("InstallType(%s): %v", name, err)
 	}

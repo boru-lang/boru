@@ -64,7 +64,7 @@ def Foo String
 // None on fail / unified value on success; `is` collapses that to
 // Boolean: true iff non-None. Symmetric with the typed-def handler.
 
-const isBbdSource = `def Bbd fn [x:Any Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]]
+const isBbdSource = `def Bbd fnpred x:Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]
 `
 
 // `is` carries BarrierPos=1 (mirroring `or`): only its first arg can
@@ -95,7 +95,7 @@ func TestIsPredicate_FalseWrongType(t *testing.T) {
 func TestIsPredicate_TransformingPredicate(t *testing.T) {
 	// `is` only checks the success/failure flag; the transformed value
 	// is discarded by `is` (the Boolean answer is what matters).
-	got := runOne(t, `def Up fn [x:Any Any [if (x is String) [x upper] [None]]]
+	got := runOne(t, `def Up fnpred x:Any [if (x is String) [x upper] [None]]
 "hello" is Up`)
 	if len(got) != 1 || got[0] != "true" {
 		t.Errorf("\"hello\" is Up = %v, want [\"true\"]", got)

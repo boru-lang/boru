@@ -17,7 +17,7 @@ import (
 // arm commit baked `classify -3` to the Pos arm and raised signature_error
 // where the interpreter's runtime predicate run falls through to the Any arm.
 func TestPredicateOverloadDispatchCompiledParity(t *testing.T) {
-	src := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	src := `def Pos fnpred [[n:Integer] [n gt 0]]
 def classify fn [
   [x:Pos] [String] ["positive"]
   [x:Any] [String] ["other"]
@@ -60,7 +60,7 @@ classify "hi"`
 	// Negative: a SINGLE-overload predicate fn keeps the static unit — its
 	// CALL_USER param guard re-validates at entry and raises exactly the
 	// interpreter's no-match error.
-	one := `def Pos fn [[n:Integer] [Boolean] [n gt 0]] def only fn [[x:Pos] [String] ["p"]] only -3`
+	one := `def Pos fnpred [[n:Integer] [n gt 0]] def only fn [[x:Pos] [String] ["p"]] only -3`
 	c := mustNew(t)
 	_, _, errOC := c.RunCompiled(one)
 	if noteCompileDefect(t, one, nil, errOC) {
@@ -82,7 +82,7 @@ classify "hi"`
 	// candidate PASSES Pos: a concrete candidate that fails a pure predicate
 	// leaves one reachable arm and commits static since NUR141 (the
 	// `zpick -3` case below), and a static commit is not a bake.
-	zeroRet := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	zeroRet := `def Pos fnpred [[n:Integer] [n gt 0]]
 def shout fn [
   [x:Pos] [] ["p" print]
   [x:Any] [] ["o" print]
@@ -117,7 +117,7 @@ shout 5`
 	// leaves a residual (the interpreter's "residual IS the result" shape,
 	// which a 0-output call site cannot carry) — the hazard declines the
 	// program: silently interpreted, so parity holds and the compile failure is hidden.
-	declining := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
+	declining := `def Pos fnpred [[n:Integer] [n gt 0]]
 def zpick fn [
   [x:Pos] [] [x]
   [x:Any] [] [0]
