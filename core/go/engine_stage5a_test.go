@@ -1711,3 +1711,88 @@ func TestS5AExecFnDefLiteralClearsReachTag(t *testing.T) {
 		}
 	}
 }
+
+// --- EffectiveForwardLimit --------------------------------------------------
+
+// TestS5AEffectiveForwardLimit pins the exported wrapper the checker's
+// unmatched-dispatch recovery lays its assumed window out with: the
+// signature's barrier by default, 0 under a stack-forced call, the whole
+// arity under a forward-forced one, and BarrierAllForward handed back as is.
+func TestS5AEffectiveForwardLimit(t *testing.T) {
+	sig := &Signature{Args: []*Type{TAny, TAny, TAny}, BarrierPos: 1}
+	if got := EffectiveForwardLimit(sig, WordInfo{}); got != 1 {
+		t.Errorf("default = %d, want the barrier 1", got)
+	}
+	if got := EffectiveForwardLimit(sig, WordInfo{ForceStack: true}); got != 0 {
+		t.Errorf("ForceStack = %d, want 0", got)
+	}
+	if got := EffectiveForwardLimit(sig, WordInfo{ForceForward: true}); got != 3 {
+		t.Errorf("ForceForward = %d, want the arity 3", got)
+	}
+	all := &Signature{Args: []*Type{TAny}, BarrierPos: BarrierAllForward}
+	if got := EffectiveForwardLimit(all, WordInfo{}); got != BarrierAllForward {
+		t.Errorf("BarrierAllForward = %d, want it returned as is", got)
+	}
+}
+
+// --- foldedReferenceIdentity -------------------------------------------------
+
+// TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity pins the flex-member
+// map literal (foldedReferenceIdentity): a member whose const-fold holds a
+// FLEX is kept as the fold — the check pass needs the concrete value — but
+// under an ARMED recorder it takes the identity of the recorded run's
+// result, so RecordMakeMap resolves the member to an event and the map
+// assembles at run time from the reference the run mints then (`{a:(flex
+// [1])}` failed to compile where `[(flex [1])]` compiled). Both member
+// forms: the paren group (the inline context region) and the bare value
+// (the pooled sub-run). An unarmed recorder keeps the fold's own identity.
+// The fold seam stands in for the checker's concrete evaluation (core's
+// suite has no `flex` word), so the member expression is a literal whose
+// recorded run nets one value with a minted identity.
+func TestS5AAutoEvalMapFoldedFlexKeepsRecordedIdentity(t *testing.T) {
+	r := covRegistry(t, nil)
+	s5aCheckOn(t, r)
+	fold := NewFlexList([]Value{NewInteger(1)})
+	fold.ID = "flex-fold"
+	savedCE := CheckBraid.ConcreteEvalOnce
+	CheckBraid.ConcreteEvalOnce = func(*Engine, []Value) (Value, bool) { return fold, true }
+	defer func() { CheckBraid.ConcreteEvalOnce = savedCE }()
+	stub := &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
+	saved := r.Check.Emit
+	r.Check.Emit = stub
+	defer func() { r.Check.Emit = saved }()
+
+	eval := func() map[string]Value {
+		t.Helper()
+		om := NewOrderedMap()
+		om.Set("p", NewParenExpr([]Value{NewInteger(1)}))
+		om.Set("b", NewInteger(1))
+		e := s5aEng(t, r, nil, 0)
+		got, err := e.AutoEvalMap(NewMap(om), false, true)
+		if err != nil {
+			t.Fatalf("AutoEvalMap: %v", err)
+		}
+		gm, _ := AsMap(got)
+		out := map[string]Value{}
+		for _, k := range []string{"p", "b"} {
+			v, ok := gm.Get(k)
+			if !ok || !IsFlexList(v) {
+				t.Fatalf("member %s is the folded flex list, got %v/%v", k, v, ok)
+			}
+			out[k] = v
+		}
+		return out
+	}
+
+	for k, v := range eval() {
+		if v.ID == "" || v.ID == fold.ID {
+			t.Errorf("member %s under an armed recorder takes the recorded run's identity, got %q", k, v.ID)
+		}
+	}
+	stub.armed = false
+	for k, v := range eval() {
+		if v.ID != fold.ID {
+			t.Errorf("member %s under an unarmed recorder keeps the fold's identity, got %q", k, v.ID)
+		}
+	}
+}
