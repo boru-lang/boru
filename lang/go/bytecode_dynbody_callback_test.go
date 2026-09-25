@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -60,42 +59,22 @@ func TestDynamicCallbackPolyReMatches(t *testing.T) {
 	}
 }
 
-// TestDynamicCallbackStillDoesNotLowerWithoutTheFlag is the negative: a word that
-// does NOT declare CompileDynBody keeps the ambiguous-overload compile failure for the
-// same shapes, and the message names the gap. for-each is the case in point
-// (its handler reads the collection as a list, and it nets no result, which
-// the dyn-body seat also requires) and walk keeps its own code-body compile failure.
-func TestDynamicCallbackStillDoesNotLowerWithoutTheFlag(t *testing.T) {
-	for _, tc := range []struct{ label, src, want string }{
+// TestDynamicCallbackLowersOnceTheFlagIsDeclared was the negative of the
+// S1a admission — for-each and walk did NOT declare CompileDynBody, so a
+// map-field callback kept the ambiguous-overload compile failure and walk
+// its code-body one. Both declare the flag since 2026-09-25 (the fn-value
+// callback cells: tryRecordDynBody admits for-each's 0-result dispatch,
+// BodyOut 0 being the word's own count, and walk's hook slot is a code
+// body whatever its other flags), so the same two shapes compile under
+// DynEnv and answer as the interpreter does.
+func TestDynamicCallbackLowersOnceTheFlagIsDeclared(t *testing.T) {
+	for _, tc := range []struct{ label, src string }{
 		{"for-each with a map-field callback",
-			`def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc`,
-			"gradual-Any operand"},
+			`def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc`},
 		{"walk with a map-field hook",
-			`def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc`,
-			"code-body word walk"},
+			`def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc`},
 	} {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(tc.src)
-		if cerr != nil {
-			t.Fatalf("%s: check: %v", tc.label, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%s: must still fail to compile without the declaration:\n%s", tc.label, prog.Disassemble())
-			continue
-		}
-		if !strings.Contains(reason, tc.want) {
-			t.Errorf("%s: failed with %q, want a reason containing %q", tc.label, reason, tc.want)
-		}
-		b, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ierr := b.RunInterp(tc.src); ierr != nil {
-			t.Errorf("%s: the interpreter must still answer: %v", tc.label, ierr)
-		}
+		compiledEqualsInterp(t, tc.label, tc.src)
 	}
 }
 

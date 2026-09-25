@@ -595,8 +595,19 @@ func isInertReach(v Value) bool {
 		return false
 	}
 	info, err := AsReach(v)
-	if err != nil || info.Eval || len(info.Receiver) > 0 {
+	if err != nil {
 		return false
+	}
+	if info.Eval || len(info.Receiver) > 0 {
+		// A dot-access reach WITH a receiver (`m.f`, `M.inc`) is data in
+		// exactly one standing: QUOTED (`codequote m.f`, `quote m.f`), where
+		// neither engine expands it — the interpreter's stepLiteral leaves a
+		// Quoted value alone and the VM never expands a reach — so it bakes
+		// by value like the member case (inertReachMember: the receiver and
+		// key tokens themselves inert, no computed segment). An UNQUOTED
+		// receiver reach stays out: it is the structural token the engine
+		// lowers to a get-chain in place.
+		return v.Quoted && inertReachMember(v)
 	}
 	for _, seg := range info.Segments {
 		if seg.Computed || !IsInertConstMember(seg.KeyLit) {

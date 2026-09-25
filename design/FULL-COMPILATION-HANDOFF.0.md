@@ -14338,3 +14338,138 @@ the flex, and the sift row itself), compiler `TestBindRegistryRestores`
 the region oracle's ledger minus NUR143's two; the arity gate re-pinned at
 18 for eng/go/vm.go (the seam's signature-arity window, the argument
 rule's stack fill). Docs: the handover, NUR.md (NUR143 FIXED).
+
+## The peek bind and the RET-pinned branch — utils/cut.boru compiles (2026-09-25)
+
+**The row.** `utils/cut.boru`, the real-program ledger's last dyn-scope
+entry: `fn cli-usage-line: dynamic-scope def `ap2` of unpromoted computed
+value`. Two mechanisms, met in order.
+
+**The peek bind.** boru:cli's `cli-usage-line` binds a BRANCH value — `def
+ap2 (if (ap eq "") [""] [(join "" [" " ap])])` — and cut.boru arms DynEnv
+after that unit is compiled: cut-one's two `do […] error […]` bodies take
+the dyn-body path because their closure probe declines at cut-pick-rng's
+`for [a b]` (a computed range start, "Stage 2 follow-on"). Under DynEnv
+every def owes a registry-visible twin, and a branch merge has no frame
+slot the promotion machinery can seat (`planValueDefLocals` promotes calls;
+`promoteLateDynBind` seats single-output calls only), so `lowerDynBind`
+declined. The def binds IMMEDIATELY after its value event, so the value is
+live on the sim top: the bind now PEEKS it in place — `OpBindDynScopePeek`
+(compiler `bytecode.go`; the VM's `bindDynScopeMode`, eng `vm.go`), the
+twin of the root write-back's fast path — and leaves it for its downstream
+readers; the residual accounting is untouched. Taken only when the value is
+the sim top, non-variadic, and the bind owes no global write-back the fast
+path cannot also peek. The `walk` literal / computed for-body sweep
+variants (`for 2 [def acc (flex []) walk … size acc]`) lower their def now
+and reach the stack-discipline decline behind it — declined still, the
+count unchanged.
+
+**The RET-pinned branch.** With ap2 lowered, cut-walk's `def rc (cut-one
+…)` declined "cut-one: variadic fn result promoted to a frame slot":
+cut-one's residual is `if c [def a (do […] error […]) a] [def b (do […]
+error […]) b]` under `[Integer]`, a branch whose arms are `error` strips
+over dyn-body results — variadic by propagation — and the fn-unit rule
+exempted only a DIRECT dyn-body residual from the variadic marking under a
+declared tuple. The exemption's argument is the RET's: the arm's runtime
+values are real stack values before the frame's RET, where the declared
+tuple pins the count (the VM raises the interpreter's "expected N return
+value(s)"). So a catch-variadic CALL (`catchVariadicFor`'s two sites, a
+count-agnostic region residual) and a strip over such a value carry
+`callVariadic`, a branch whose every merge-reaching arm leaves exactly one
+such value inherits it (`branchArmsRetPinned`), and the fn-unit rule reads
+`retPinnedVariadic` — dynBodyResult or callVariadic. A count MISMATCH
+between arms (`if c [n] []`, TestEmitRaiseArmDivergence's pin), a
+multi-value arm, and a loop / branch region of any other kind keep the plain
+marking; a two-value catch arm under the one-value tuple keeps declining
+(the interpreter's count error is the answer).
+
+**Measured:** real programs 36 -> 37 of 62 (cut.boru retired from
+`realProgramLedger`); the lang, compiler, eng and core suites green; the
+sweep ceilings unchanged by this half (the for-body variants above moved
+reason only). A pre-existing VM crash met on the way, not chased: `def u fn
+[[s:String][String][ def ap2 (if …) do [ap2] ]]` (a do body reading a
+branch-valued def inside a fn) dies `index out of range` on main too.
+
+**Pins.** lang `dyn_scope_peek_bind_test.go` (`TestDynScopeDefOfBranchValueCompiles`:
+the late and the planned arming order, chained branch defs, the branch value
+as the fn result, BIND_DYN_SCOPE_PEEK in the stream;
+`TestRetPinnedVariadicBranchFnCompiles`: the cut-one shape at a root def
+and in an arm, a diverging arm beside the catch, the two-value arm still
+declining with the interpreter's count error as oracle). Docs: the
+handover.
+
+## The fn-value callback cells — for-each and walk declare CompileDynBody (2026-09-25)
+
+**The rows.** The generated sweep's `for-each` × factory / container /
+module-export and `walk` × factory / container / module-export: a callback
+that is a fn VALUE the closure path cannot compile — `for-each (mk) [1 2
+3]`, `for-each m.f …`, `for-each M.stp …`, `walk {…} {…} (mk)` / `hs.h` /
+`M.h` — declined "function-valued operand at for-each (Stage 3)", the
+ambiguous-overload decline (the container read), "code-body word walk
+(Stage 2)" and "function value reaches walk (Stage 3)", where `each`'s
+twins have compiled through the dyn-body path since S1a.
+
+**The fix.** Both words declare `CompileDynBody` (lang/go/native
+`native_array.go`, `natives.go`), and `tryRecordDynBody` admits a 0-result
+dispatch for a word whose Callable declares BodyOut 0 (for-each discards
+every invocation's result; 0 is the word's own count — every other word's
+0 results stays the divergent-path shape). Two hardenings ride along for
+walk: a code-body slot at the body position (NoEvalArgs) is a CODE body
+whatever the word's other flags — never the fixed value-eval that skips
+the variadic mark and the DynEnv arming — and every other concrete
+NoEvalArgs slot the handler re-runs (walk's optional ascend hook) is held
+to the body's sentinel and replay-hazard rules.
+
+**Measured:** sweep compile failures 25 -> 17 (the six cells above and
+codequote's two, next entry); the lang ledger 291 -> 287 (the unit-suite
+programs that pinned the words WITHOUT the flag compile with parity now —
+the S1a negative's two shapes, for-each's gradual-collection witness and
+three of the walk ascend negatives plus the hook-type mismatch; the three
+tests rewritten as parity pins: `TestDynamicCallbackLowersOnceTheFlagIsDeclared`,
+`TestForEachGradualCollectionReMatches`, `TestWalkHookClosureCompiles`'s
+parity rows; the capturing ascend lambda still declines); call-form failures 197 -> 234 — the eight
+graduating seeds bring 112 variants, 37 decline in existing families (the
+ceiling's comment names them per cell) and no variant that passed before
+fails now. Two for-body variants DIVERGE and are pinned: NUR205, an inline
+`import module […]` inside a loop body runs its module body ONCE compiled
+where the interpreter re-imports per iteration — present on main with no
+callback at all (`for 2 [import module [def acc (flex []) export "M" {acc:
+acc}] end M.acc push 1 end size M.acc]`, `[[1 1] 1 [1 1] 2]` for `[[1] 1
+[1] 1]`); the two new module-export seeds carry state (`acc`) and so
+witness it. The langspec gates over every spec file naming for-each or
+walk pass.
+
+**Pins.** lang `sweep_fn_value_cells_test.go`
+(`TestForEachFnValueCallbackCompiles`, `TestWalkFnValueHookCompiles`: the
+six seeds, their literal and lambda neighbours, the effects in the
+interpreter's order, a native dispatch with no island); the sweep ceilings
+and `sweepKnownMiscompiles` (NUR205's two programs); SWEEP_STATUS.md
+refreshed. Docs: the handover, NUR.md (NUR205).
+
+## The quoted receiver reach — codequote × container / module-export (2026-09-25)
+
+**The rows.** The sweep's `codequote` × container and × module-export:
+`typeof (codequote m.f)` and `typeof (codequote M.inc)` are the
+interpreter's `Reach` (the quoted dot-access is data) and declined "operand
+of unknown provenance or not statically materialisable at typeof": a reach
+WITH a receiver was never an inert const — only the receiverless lens
+(`$.name`) was — because an unquoted `m.f` is the structural token the
+engine lowers to a get-chain in place.
+
+**The fix.** `isInertReach` (core `value_classify.go`) admits a receiver
+reach in exactly one standing: QUOTED, with its receiver and key tokens
+inert members and no computed segment (`inertReachMember`, the rule a
+reach inside a never-evaluated compound already had). Neither engine
+expands a quoted reach — the interpreter's stepLiteral leaves a Quoted
+value alone, the VM never expands one — so it bakes by value and pushes,
+compares, renders and types identically.
+
+**Measured:** the two cells compile with parity (container 14/14 call
+forms, module-export 13/14 — the each-body form declines in the twin-regime
+family); counted in the previous entry's ceilings. The langspec gates over
+the spec files naming codequote or a quoted reach pass.
+
+**Pins.** lang `sweep_fn_value_cells_test.go` (`TestQuotedReceiverReachBakes`:
+the two seeds, the bare quoted reach as a residual, a def-bound one, a
+three-segment reach, `eq` of two, and the unquoted reach still
+evaluating). Docs: the handover.

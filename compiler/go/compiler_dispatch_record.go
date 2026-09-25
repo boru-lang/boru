@@ -708,7 +708,14 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	es, _ := r.Check.Recorder().(*EmitState)
 	if es == nil || !es.Active() || sig == nil || sig.Callable == nil ||
-		!sig.CompileEffect.Has(core.CompileDynBody) || len(outs) == 0 {
+		!sig.CompileEffect.Has(core.CompileDynBody) {
+		return false
+	}
+	// A 0-result dispatch is admitted only for a word that DECLARES a 0-out
+	// body (`for-each`, BodyOut 0: the handler discards every invocation's
+	// result and produces nothing, so 0 is the word's own count); for any
+	// other word 0 results is the check pass's divergent-path shape.
+	if len(outs) == 0 && sig.Callable.BodyOut != 0 {
 		return false
 	}
 	bp := sig.Callable.BodyPos
@@ -729,6 +736,16 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// do-unit registry-replay miscompile — see bodyHasReplayHazard).
 	if core.IsConcrete(body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
 		return false
+	}
+	// Every OTHER code-body slot the handler re-runs (walk's optional ascend
+	// hook, sig position 3) is held to the same two rules.
+	for i := range args {
+		if i == bp || !sig.NoEvalArgs[i] || !core.IsConcrete(args[i]) {
+			continue
+		}
+		if check.BodyHasSentinelDeep(r, args[i]) || bodyHasReplayHazard(args[i]) {
+			return false
+		}
 	}
 	// Every operand must have a compiled home: the body rides as a threaded
 	// runtime value (a param local / event result) or an inert const; other
@@ -780,7 +797,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// consumer (`print (if c [do {a:1}] [do {b:2}])`) the VM runs correctly. A
 	// CODE-BODY (List/CompileFallbackBody) or a GRADUAL (Dynamic) body — whose
 	// runtime net count / overload is genuinely variable — keeps the marking.
-	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody)
+	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
+	// CODE body whatever the word's other flags say.
+	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !sig.NoEvalArgs[bp]
 	if !fixedValueEval {
 		f.variadicResult = true
 	}
