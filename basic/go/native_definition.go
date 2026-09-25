@@ -193,10 +193,11 @@ var DefinitionNatives = []NativeFunc{
 				// `fn List [Integer] [size]` only failed loudly by accident,
 				// the body list running as code (NUR091). It raises instead,
 				// naming the rule.
-				Args:       []*Type{},
-				Impl:       Go(FnNoArgsHandler, RunInCheck()),
-				Returns:    []*Type{TFunction},
-				BarrierPos: -1,
+				Args:          []*Type{},
+				Impl:          Go(FnNoArgsHandler, RunInCheck()),
+				Returns:       []*Type{TFunction},
+				BarrierPos:    -1,
+				CompileEffect: CompileDiverges, // the handler always raises
 			},
 		},
 	},
@@ -631,6 +632,10 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		Impl:       Go(DefFormVia(base, offset, genChain), RunInCheck()),
 		Returns:    []*Type{},
 		BarrierPos: -1,
+		// A constructor that always raises (fn's 0-argument refusal,
+		// NUR091) raises the same way through its keyword form: the one
+		// compile fact the base declares that the form inherits.
+		CompileEffect: base.CompileEffect & CompileDiverges,
 	}
 	if len(noEval) > 0 {
 		sig.NoEvalArgs = noEval

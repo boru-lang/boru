@@ -13372,7 +13372,12 @@ no list, `def f fn List Any [1]` constructed nothing and stranded its
 operands, exit 0. `fn` carries an explicit 0-argument signature now, whose
 handler raises `signature_error` naming the rule, so the declaration
 fails at the declaration on both lanes whatever sits in its output slot
-(two `fn-triple.tsv` rows). NUR091 is FIXED.
+(two `fn-triple.tsv` rows); the signature is declared `CompileDiverges`
+and `def`'s synthesized keyword forms inherit that bit (the declaration
+census holds at 94). NUR091 is FIXED. Merged with main the same day: the
+lang ledger 291 -> 304 compile failures (sound declines, every one loud)
+and 44 -> 38 bails, code-bodies 5 -> 6 (NUR154's sound decline), the
+sweep at its ceilings, the commit gate green.
 
 ## NUR092 closed — the stale arm consults the corpus (2026-09-25)
 

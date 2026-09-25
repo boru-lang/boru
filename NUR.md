@@ -5826,8 +5826,11 @@ failed LOUDLY by accident (the body list ran as code and `size` raised).
 input/output/body triple after it — a bare List input is rejected by (tnot
 List) …"), so `def f fn List Any [1]`, `fn List Any [1]` and a bare `fn`
 all raise at the declaration on both lanes (the check pass reports it as
-the compile's reason). Pinned by two `fn-triple.tsv` rows, back in the
-corpus now that NUR092's stale arm consults the full breadth.
+the compile's reason). The signature is declared `CompileDiverges` (the
+handler always raises) and `def`'s synthesized keyword forms inherit that
+one bit, so the declaration census stays at its ceiling. Pinned by two
+`fn-triple.tsv` rows, back in the corpus now that NUR092's stale arm
+consults the full breadth.
 
 **Rule:** boru refuses loudly. `lang/spec/fn-triple.tsv` §4 pins the
 input guard's refusal as an ERROR row — *"a bare List type literal input

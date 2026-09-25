@@ -61,6 +61,7 @@ const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus 
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	"edge-modules-2.tsv": 1, // 2026-09-25 (NUR191): a module fn's return-count row raises only at run time (the frame's count is the runtime contract)
 	// callbacks.tsv: 3 ERROR rows, added 2026-09-25 with NUR205 (a named fn
 	// value's no-match on the callback seam raises uncalled_function as the
 	// interpreter's step of `h/v` does) — runtime raises over the callback's
