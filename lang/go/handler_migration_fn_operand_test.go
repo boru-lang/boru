@@ -18,8 +18,10 @@ import (
 // per-word pin: usurp / stack-args / forward-args [Function] and
 // force-arity [Integer Function] carry CompileStoresFn|CompileFnHandlerStrict
 // (the fn is validated as an FnDefInfo and stored in the wrapper for the
-// later re-dispatch), and their by-name Atom forms stay undeclared (the
-// quoted class, a different worklist line).
+// later re-dispatch), and their by-name Atom forms declare CompileResteps
+// (the quoted class, S2a of design/FULL-COMPILATION-REPLAN.0.md: the
+// quoted name resolves to a wrapper the tape re-steps — a declared
+// refusal, never an inert or key admission).
 func TestModifierValueFormsDeclareStoreFnStrict(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {
@@ -47,8 +49,8 @@ func TestModifierValueFormsDeclareStoreFnStrict(t *testing.T) {
 				}
 				continue
 			}
-			if sig.CompileEffect != core.CompileDefault {
-				t.Errorf("%s by-name form %v: CompileEffect %v, want none (the quoted class is not this pilot's)", word, sig.ArgTypes(), sig.CompileEffect)
+			if sig.CompileEffect != core.CompileResteps {
+				t.Errorf("%s by-name form %v: CompileEffect %v, want exactly CompileResteps (the re-stepped wrapper, declared as the refusal it is)", word, sig.ArgTypes(), sig.CompileEffect)
 			}
 		}
 		if valueForms != 1 {

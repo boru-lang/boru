@@ -41,6 +41,13 @@ var valofNatives = []NativeFunc{
 			QuoteArgs: map[int]bool{0: true},
 			Impl:      Go(valofHandler, RunInCheck(), Park()),
 			Returns:   []*Type{TAny},
+			// The handler-contract declaration (design/HANDLER-MIGRATION-
+			// LINE.0.md, the quoted class, S2a): the quoted name is resolved
+			// and its binding PARKED at the call site for the tape to carry —
+			// a re-stepping result the VM cannot reproduce by re-running the
+			// handler over a baked atom. Declared as the refusal it is
+			// (CompileResteps), never as an inert or key admission.
+			CompileEffect: CompileResteps,
 			// ParkResult: leave the resolved Function value as inert data at
 			// the call site instead of re-stepping it — so `valof f` behaves
 			// exactly like `f/v`, never auto-invoking (not even a 0-arg fn).
@@ -70,6 +77,17 @@ var valofNatives = []NativeFunc{
 				// (applyHandler still re-steps the fn).
 				ReturnsFn: applyReturns,
 				Returns:   []*Type{TAny}, BarrierPos: 0,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the fn-operand class, S2a): the handler MARKS the
+				// fn Applied and hands it back for the tape to apply against
+				// the values beneath — a re-stepping result. CompileReadsFn
+				// would be a permissive lie (a top-level fn-typed carrier
+				// would bake a CALL_NATIVE that leaves the marked fn as data),
+				// so the word declares the refusal, CompileResteps. The
+				// recorder owns the word by name besides (recordCallElided's
+				// fn-value elision, the pending-apply window,
+				// OpCallDynTrailTop), which the declaration leaves untouched.
+				CompileEffect: CompileResteps,
 			},
 			// Apply a Reach (a lens) to a receiver: `person $.name apply`
 			// rebinds the reach's receiver to `person` and evaluates it —
@@ -137,6 +155,13 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(usurpAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// The by-name form (the quoted class, S2a): the quoted name is
+				// resolved to its binding and the WRAPPER is returned for the
+				// tape to dispatch — the re-stepping result the CompileQuoteInert
+				// comment warns about. Declared as that refusal, CompileResteps;
+				// the check engine steps the wrapper and recordGradualWrap
+				// records its dispatch, exactly as before.
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -162,6 +187,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(stackArgsAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -189,6 +216,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forceArityAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -211,6 +240,8 @@ var valofNatives = []NativeFunc{
 				Impl:       Go(forwardArgsAtomHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// By-name form: the re-stepped wrapper (see usurp's Atom form).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
