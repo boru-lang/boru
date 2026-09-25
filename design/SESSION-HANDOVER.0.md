@@ -391,7 +391,10 @@ branch-carried def"**; the re-estimate is
    keeping NUR205), and main's NUR205 is CLOSED (the module replay's own
    bind: a module a loop or an arm may not bind as the replay does keeps
    no twin placement and declines); NUR214, found beside it (a fresh def
-   in a loop that may run zero times binds anyway), is the next record.
+   in a loop that may run zero times bound anyway), is CLOSED (the loop's
+   fresh cell), and NUR215 with it (a fn's dynamic read of a
+   conditionally bound name raises the interpreter's undefined_word);
+   NUR112 is CLOSED too (the plain check applies a stored fn member).
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 

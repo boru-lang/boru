@@ -209,6 +209,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.BeginLoopCarried()
 	e.EndLoopCarried()
 	e.NoteLoopCarried("n", Value{}, Value{})
+	e.NoteLoopFresh("n", Value{})
 	if e.Checkpoint() != nil {
 		t.Fatal("inactive Checkpoint must be nil")
 	}

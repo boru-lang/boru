@@ -13322,6 +13322,73 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR112 closed — the plain check's stored member (2026-09-25)
+
+**The gap** (narrowed earlier the same day to a checker-model item). A fn
+value stored in a map and read as a member dispatches over what follows on
+both lanes (`def m {a:size/v}  m.a [1 2 3]` is 3), but the PLAIN check
+read the member as a dynamic Any — the compile pass's model, whose arrival
+the shaped method model claims — and so claimed the member and its
+argument as the residual, `[dynamic(Any) List]` where one Integer runs.
+
+**The fix.** `getNodeReturns` reads a stored FnDefInfo member as the value
+itself when the recorder is not armed, so the plain pass re-steps and
+dispatches it as the run does; the compile pass is untouched (the armed
+recorder keeps the dynamic carrier and `NoteMethodShape`). Measured over
+the corpus: the accuracy ratchet, the type-soundness gate and the
+diagnostic-surface parity unchanged.
+
+**Pins.** lang `TestPlainCheckAppliesStoredFnMember` (four programs: the
+checked residual, parity, the interpreter's value).
+
+## NUR215 closed — the conditionally bound name's miss (2026-09-25)
+
+**The divergence.** A name bound only on some paths — an arm's def with no
+pre binding (NUR110's branch-carried cell), a fresh def in a loop that may
+run zero times (NUR214's) — is read by its own unit through the
+bound-checked cell, but a fn reading it DYNAMICALLY reaches the VM's
+`OpLookupDynScope`, whose miss bailed (`internal_error`: dynamic-scope
+read miss) where the interpreter raises `undefined_word`: `def c (1 gt 2)
+end if c [def k 5] [] def g fn [[][Any][k]] end g`, and the loop twin.
+
+**The fix.** The Program carries the cells' names (`CondBoundNames`,
+filled by `noteCondBound` from the branch's unbound arm and from
+`NoteLoopFresh`), and a dynamic-scope miss on one is the interpreter's
+`undefined_word`, raised at the read — the rule `SpecUndefNames` and
+`LiveReadNames` already follow. A path that ran the binding installs the
+name (the arm's registry twin, the loop body's carried dyn-scope bind), so
+the read finds it.
+
+**Pins.** lang `TestCondBoundDynamicReadRaises` (both shapes both ways).
+
+## NUR214 closed — the loop's fresh cell (2026-09-25)
+
+**The divergence** (found closing NUR205). A FRESH def inside a loop that
+may run zero times bound anyway on the compiled lane: `def n (0 add 0) end
+for n [def x 5] x` answered `5` (the read const-folded the body's value)
+and `for n [def x (n add 5)] x` an empty stack (the body's promoted slot,
+never stored) where the interpreter raises `undefined_word`; `while` and a
+fn body the same. NUR110's loop twin — NUR110 measured only a static `for
+0`, which the pass prunes.
+
+**The fix**, on the loop-carried mechanism NUR110's branch fix came from.
+The loop join (`AnalyseLoopBody`) gives a fresh name bound in a loop that
+is not proven to run a post-loop binding of its own, a carrier
+(`JoinCarriers(v, v)`, `loopFreshCarriable` screening out types, fn values
+and modules), and `NoteLoopFresh` seats it in the unit's cell for the
+name with NO init: from the second analysis round the body's def stores
+into the cell and installs the name per iteration (the carried def's
+dyn-scope bind), and the joined carrier's reads load the cell
+bound-checked. The carrier's twin replays nothing ahead of the loop. NUR204's
+index guard (`boundLocals[pre] == name`) read a fresh cell as a loop index
+and refused a second loop's re-carry (`for n [def x i] for 2 [def x (x add
+10)] x` declined); `loopFresh` tells them apart.
+
+**Pins.** lang `TestLoopFreshDefZeroTrips` (thirteen shapes: zero trips
+raise on both lanes; a loop that ran reads its last binding; nested,
+container, fn-body and while forms; the re-carry). Found beside it and
+closed with it: NUR215.
+
 ## NUR205 closed — the module replay's own bind (2026-09-25)
 
 **The divergence** (main's record, found by the sweep's callback cells).

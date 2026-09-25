@@ -514,6 +514,11 @@ type EmitRecorder interface {
 	BeginLoopCarried()
 	EndLoopCarried()
 	NoteLoopCarried(name string, joined, pre Value)
+	// NoteLoopFresh carries a FRESH name — one the body binds with no
+	// pre-loop binding — for a loop that may run zero times (NUR214): a
+	// slot with no init, read bound-checked after the loop. Inactive:
+	// no-op.
+	NoteLoopFresh(name string, joined Value)
 	Checkpoint() EmitCheckpoint
 	Rollback(cp EmitCheckpoint)
 	CanSeatAcrossFragment(v Value) bool
@@ -694,6 +699,7 @@ func (inactiveEmit) RecordInterpXml(XmlTmpl, []Value, Value, SrcPos) bool { retu
 func (inactiveEmit) BeginLoopCarried()                    {}
 func (inactiveEmit) EndLoopCarried()                      {}
 func (inactiveEmit) NoteLoopCarried(string, Value, Value) {}
+func (inactiveEmit) NoteLoopFresh(string, Value)          {}
 func (inactiveEmit) Checkpoint() EmitCheckpoint           { return nil }
 func (inactiveEmit) Rollback(EmitCheckpoint)              {}
 func (inactiveEmit) CanSeatAcrossFragment(Value) bool     { return false }

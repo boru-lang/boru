@@ -2457,6 +2457,15 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 					// joined ID so the next round's / post-loop reads resolve.
 					es.NoteLoopCarried(k, j, pre)
 				}
+			} else if loopCapture && !proven && loopFreshCarriable(k, v) {
+				// A FRESH name in a loop that may run zero times is bound
+				// after the loop only if the body ran: the post-loop
+				// binding is a carrier with its own identity (no read can
+				// fold the body's value into it), carried in a slot with no
+				// init and read bound-checked (NUR214).
+				j := core.JoinCarriers(v, v)
+				joined[k] = j
+				es.NoteLoopFresh(k, j)
 			} else {
 				joined[k] = v
 			}
@@ -2524,6 +2533,15 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	}
 	resume()
 	return stk
+}
+
+// loopFreshCarriable reports whether a fresh name's body value can ride a
+// frame slot: a plain value. A type binding, a fn value or a module keeps
+// its own machinery (their readers read the payload), exactly the classes
+// the branch's condBoundCarrier leaves alone.
+func loopFreshCarriable(name string, v core.Value) bool {
+	return !core.IsCapitalisedName(name) && !core.IsFnValueResidual(v) && !core.IsBareTypeNode(v) &&
+		!core.IsModuleFamilyValue(v) && !(v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
 }
 
 // loopModuleUnplaceable reports whether the loop's body binds a MODULE (an

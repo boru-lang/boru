@@ -1552,6 +1552,16 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		isClosureBearingWrapper(val) {
 		return []Value{CloneValue(val)}
 	}
+	// On a PLAIN check (no compile pass recording) a stored fn value is read
+	// as itself, so the pass dispatches it over what follows exactly as the
+	// run does — `def m {a:size/v}  m.a [1 2 3]` leaves one Integer, not the
+	// member and its argument (NUR112). The compile pass keeps the dynamic
+	// carrier below: its arrival is claimed through the shaped method model.
+	if r != nil && !r.Check.Recorder().Armed() && val.Parent.ConformsTo(TFunction) {
+		if _, ok := val.Data.(FnDefInfo); ok {
+			return []Value{CloneValue(val)}
+		}
+	}
 	if val.Parent.ConformsTo(TFunction) ||
 		IsReach(val) || IsSplice(val) {
 		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):

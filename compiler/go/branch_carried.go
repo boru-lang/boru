@@ -166,6 +166,7 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 			u.boundLocals = map[string]string{}
 		}
 		u.boundLocals[j.Joined.ID] = j.Name
+		es.noteCondBound(j.Name)
 	}
 	// The residual-order hazard (unit_memo.go): a fragment that read the
 	// name BEFORE this branch's stores, through THIS SLOT, holds a read whose

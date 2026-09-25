@@ -1366,6 +1366,14 @@ type Program struct {
 	// read is the interpreter's undefined_word, raised as SpecUndefNames'
 	// is.
 	LiveReadNames map[string]bool
+	// CondBoundNames is every name a bound-checked cell carries — a name
+	// bound only on some paths: a branch arm's def with no pre binding
+	// (NUR110) or a fresh def in a loop that may run zero times (NUR214).
+	// The cell answers the unit's own reads; a DYNAMIC read of the name
+	// (a fn's OpLookupDynScope) that misses is the path that skipped the
+	// binding, the interpreter's undefined_word, raised as SpecUndefNames'
+	// is (NUR215).
+	CondBoundNames map[string]bool
 	// ReplayBase is the twin regime's ROLLBACK BASE (§6.5): the program
 	// registry's runtime-visible bindings as they stood when the recorder
 	// first bound it (EmitState.BindRegistry — before the check pass

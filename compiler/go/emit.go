@@ -1414,7 +1414,10 @@ type EmitState struct {
 	liveLeadNames map[string]bool
 	// liveReadNames is every module-scope value a stored-ref unit reads
 	// bare, seated live (NoteLiveRead's stored-dep arm).
-	liveReadNames    map[string]bool
+	liveReadNames map[string]bool
+	// condBoundNames is every name a bound-checked cell carries
+	// (Program.CondBoundNames, noteCondBound).
+	condBoundNames   map[string]bool
 	livePlaceholders map[int]bool
 }
 
@@ -1459,6 +1462,10 @@ type emitUnit struct {
 	// (OpPushLocalBound), which raises undefined_word on the zero slot, the
 	// interpreter's answer on the path that skipped the arm (NUR110).
 	boundLocals map[string]string
+	// loopFresh holds the joined bindings NoteLoopFresh carried (NUR214):
+	// bound-checked like an arm-bound name, but a later loop's rebind of
+	// the name carries it as any pre-loop binding — they are not an index.
+	loopFresh map[string]bool
 	// reg is the compiled fn's OWNING registry (a module sub-registry for a
 	// module-preamble fn; the main registry otherwise). Finalize stamps it
 	// on the CompiledFn when it differs from the check registry, and the VM
@@ -5135,7 +5142,7 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 	// (lowerDynBind), and the pre-loop binding of the same name is
 	// untouched — the lexical index scope, NUR204. Carrying it wrote the
 	// body's value back to the root (`def i 0  for 3 [def i 9]  i` was 9).
-	if pre.ID != "" && u != nil && u.boundLocals[pre.ID] == name {
+	if pre.ID != "" && u != nil && u.boundLocals[pre.ID] == name && !u.loopFresh[pre.ID] {
 		return
 	}
 	if es.carriedNames == nil {
@@ -5209,6 +5216,66 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 	if bname := u.boundLocals[pre.ID]; bname != "" {
 		u.boundLocals[joined.ID] = bname
 	}
+}
+
+// NoteLoopFresh is NoteLoopCarried for a FRESH name — one the loop body
+// binds with no pre-loop binding — in a loop that may run zero times
+// (NUR214). The name takes the unit's cell for it exactly as a carried
+// rebind does (each body def a store into it, RecordDefRebind, and its
+// install a per-iteration dyn-scope bind), but with NO init: the slot starts
+// as the zero Value, "unbound", which is what the interpreter leaves when
+// the body never runs. The joined binding's reads after the loop load the
+// slot BOUND-CHECKED (boundLocals — OpPushLocalBound raises the
+// interpreter's undefined_word on the zero slot); the joined binding is a
+// carrier, so its twin replays nothing ahead of the body (ApplyBindTwin's
+// carrier skip). Called at the end of every analysis round, like its twin:
+// from the second round on the body's defs store into the cell.
+func (es *EmitState) NoteLoopFresh(name string, joined core.Value) {
+	if !es.Active() || len(es.loopCarried) == 0 || joined.ID == "" {
+		return
+	}
+	scope := es.loopCarried[len(es.loopCarried)-1]
+	if scope.unitDepth != len(es.units) {
+		return
+	}
+	u := es.units[len(es.units)-1]
+	slot, seen := scope.slots[name]
+	if !seen {
+		if s, ok := es.carriedSlot(name); ok {
+			slot = s
+		} else if s, ok := u.nameSlots[name]; ok {
+			slot = s
+		} else {
+			slot = u.numLocals
+			u.numLocals++
+			u.setNameSlot(name, slot)
+		}
+		scope.slots[name] = slot
+	}
+	if es.carriedNames == nil {
+		es.carriedNames = map[string]bool{}
+	}
+	es.carriedNames[name] = true
+	u.localByID[joined.ID] = slot
+	if u.boundLocals == nil {
+		u.boundLocals = map[string]string{}
+	}
+	u.boundLocals[joined.ID] = name
+	if u.loopFresh == nil {
+		u.loopFresh = map[string]bool{}
+	}
+	u.loopFresh[joined.ID] = true
+	es.noteCondBound(name)
+}
+
+// noteCondBound records a name a bound-checked cell carries for the
+// Program (CondBoundNames): a dynamic read of it that misses is the path
+// that skipped its binding (NUR215).
+func (es *EmitState) noteCondBound(name string) {
+	if es.condBoundNames == nil {
+		es.condBoundNames = map[string]bool{}
+	}
+	es.condBoundNames[name] = true
 }
 
 // RecordBindTwin appends one bind-ledger transition to the pass's twin table
@@ -13757,7 +13824,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		SpecUndefNames:  maps.Clone(es.specUndefNames),
 		SpecFnNames:     maps.Clone(es.specFnNames),
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
-		LiveReadNames:   maps.Clone(es.liveReadNames)}
+		LiveReadNames:   maps.Clone(es.liveReadNames),
+		CondBoundNames:  maps.Clone(es.condBoundNames)}
 	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
