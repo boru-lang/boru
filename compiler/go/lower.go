@@ -413,6 +413,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		lw.vm[len(lw.vm)-1].seq == d.srcSeq && lw.vm[len(lw.vm)-1].idx == 0 &&
 		!lw.variadic[d.srcSeq]
 	src := d.src
+	peekDyn := false
 	if needDyn || !fastGlobal {
 		switch {
 		case d.srcSeq >= 0 && lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal && lw.bodyVariadic[d.srcSeq]:
@@ -473,10 +474,22 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// promotion there is no way to duplicate it for the registry install;
 			// decline (compile failure).
 			slot, ok := lw.promoted[d.srcSeq]
-			if !ok {
+			switch {
+			case ok:
+				src = localOperand(slot)
+			case needDyn && (!needGlobal || fastGlobal) && !lw.dead[d.srcSeq] && len(lw.vm) > 0 &&
+				lw.vm[len(lw.vm)-1].seq == d.srcSeq && lw.vm[len(lw.vm)-1].idx == 0:
+				// The value the promotion machinery cannot seat — a branch
+				// merge (`def ap2 (if …)`), a loop value — is LIVE on the sim
+				// top: the def binds immediately after its value event. Peek
+				// it in place for the dyn-scope install (OpBindDynScopePeek,
+				// the twin of the write-back's fast path above) and leave it
+				// for its downstream consumers, the residual accounting
+				// untouched. (Not variadic: that arm returned above.)
+				peekDyn = true
+			default:
 				return "dynamic-scope def `" + d.name + "` of unpromoted computed value"
 			}
-			src = localOperand(slot)
 		case src.kind == opNone:
 			// A literal binding: bake the recorded value verbatim, UNPOOLED (it
 			// may carry a reparented tag a same-canon source literal must not
@@ -496,7 +509,9 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			}
 		}
 	}
-	if needDyn {
+	if needDyn && peekDyn {
+		lw.emit(OpBindDynScopePeek, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+	} else if needDyn {
 		// The bind's own re-push of the source is not a READ of the name
 		// (a deopt tests at the consumer's push — deoptAtSlot).
 		lw.binding = true

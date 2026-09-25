@@ -180,6 +180,19 @@ type eventFlags struct {
 	// whose 0-value runtime shape the interpreter tolerates and fixed
 	// consumers must keep declining.
 	dynBodyResult bool
+	// callVariadic marks a CALL event whose variadicResult stands for a
+	// runtime-variable count of REAL stack values — a fallible multi-value
+	// catch body's shrinking count (catchVariadicFor), a count-agnostic
+	// region residual, or a strip-input word (`error`) over such a value —
+	// as opposed to a variadic BRANCH / LOOP region. Like dynBodyResult,
+	// a DECLARED return tuple pins the count at the frame's RET (the VM
+	// raises the interpreter's "expected N return value(s)"), so a fn whose
+	// residual is such a call — or a branch whose arms are all such calls
+	// (branchArmsRetPinned) — is not variadic-returning under a declared
+	// tuple, and its call sites seat the declared shape (utils/cut.boru's
+	// cut-one: `if c [def a (do […] error […]) a] [def b (do […] error […])
+	// b]` under `[Integer]`).
+	callVariadic bool
 	// variadicResult marks an event whose result count is RUNTIME-VARIABLE — a
 	// loop, or a branch whose arms leave different / multiple counts (`if c [] [a
 	// b]`). Only a variadic-absorbing position (the program residual or a
@@ -4747,8 +4760,58 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	if !zeroOut && es.branchVariadicResult(b) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		if es.branchArmsRetPinned(b) {
+			f.callVariadic = true
+		}
 		es.eventInfo[seq] = f
 	}
+}
+
+// retPinnedVariadic reports whether the event at seq is a variadic producer
+// whose runtime results are REAL stack values — a dyn-body dispatch
+// (dynBodyResult), a catch-variadic or strip-propagated call, or a branch
+// whose arms are all such (callVariadic) — so that a DECLARED return tuple
+// over it pins the count at the frame's RET.
+func (es *EmitState) retPinnedVariadic(seq int) bool {
+	fi := es.eventInfo[seq]
+	return fi.dynBodyResult || fi.callVariadic
+}
+
+// branchArmsRetPinned reports whether an `if` is variadic ONLY because its
+// arms' results are RET-PINNED calls: every arm that reaches the merge
+// leaves exactly one value, and that value is a retPinnedVariadic event's —
+// a dyn-do dispatch under `error` (`if c [def a (do […] error […]) a] [def
+// b (do […] error […]) b]`, utils/cut.boru's cut-one), or a nested branch
+// of them. Such a branch INHERITS the marking (callVariadic): the arm's
+// runtime values are real stack values delivered before the frame's RET,
+// where a declared return tuple pins the count exactly as it does for the
+// direct dyn-body residual (the VM's RET raises the interpreter's "expected
+// N return value(s)"), so a fn whose residual is this branch is not
+// variadic-returning under a declared tuple and its call sites seat the
+// declared shape. A count MISMATCH between the arms (`if c [n] []`), a
+// multi-value arm, or an arm whose value is a variadic loop / branch of any
+// other kind keeps the plain variadic marking (TestEmitRaiseArmDivergence).
+func (es *EmitState) branchArmsRetPinned(b core.BranchRecord) bool {
+	armDyn := func(stk []core.Value) bool {
+		if len(stk) != 1 {
+			return false
+		}
+		pr, ok := es.producedBy[stk[0].ID]
+		return ok && es.retPinnedVariadic(pr.seq)
+	}
+	if b.ConstCond != nil {
+		return armDyn(b.ThenStk)
+	}
+	if !b.HasElse {
+		return false
+	}
+	thenFrag, elsFrag := asFragment(b.Then), asFragment(b.Els)
+	thenDiv := thenFrag != nil && fragDiverges(thenFrag)
+	elsDiv := elsFrag != nil && fragDiverges(elsFrag)
+	if thenDiv && elsDiv {
+		return false
+	}
+	return (thenDiv || armDyn(b.ThenStk)) && (elsDiv || armDyn(b.ElsStk))
 }
 
 // branchVariadicResult reports whether an `if` produces a RUNTIME-VARIABLE result
@@ -6624,7 +6687,9 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// already-variadic fn — RecordUserCall flags that on the event). A call
 			// site marks its result variadic (lowerUserCall) so only a
 			// variadic-absorbing position consumes it. EXCEPTION: a DECLARED
-			// return tuple over a DYN-BODY residual (dynBodyResult) overrides
+			// return tuple over a DYN-BODY residual (dynBodyResult) — or a
+			// catch-variadic CALL's, or a branch whose arms are all such
+			// (callVariadic, retPinnedVariadic) — overrides
 			// the marking — the sub-run's results are real stack values at the
 			// RET, where the VM enforces the declared count exactly as the
 			// interpreter ("expected N return value(s)"), so the call site may
@@ -6637,7 +6702,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// differently, and the pinned divergence test
 			// (TestEmitRaiseArmDivergence) requires the failure.
 			if n := len(ops); n > 0 && ops[n-1].kind == opEvent && es.eventInfo[ops[n-1].idx].variadicResult &&
-				!(len(rec.returns) > 0 && es.eventInfo[ops[n-1].idx].dynBodyResult) {
+				!(len(rec.returns) > 0 && es.retPinnedVariadic(ops[n-1].idx)) {
 				rec.variadic = true
 			}
 			forceOrder = es.residualForceOrderFor(dynTrail, rec, ops, vals)
@@ -8051,6 +8116,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	if es.catchVariadicFor(sig) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		f.callVariadic = true
 		es.eventInfo[seq] = f
 	}
 	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
@@ -11528,6 +11594,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	if es.catchVariadicFor(sig) || regionResidual {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		f.callVariadic = true
 		es.eventInfo[seq] = f
 	}
 	// VARIADIC PROPAGATION through a strip-input dispatch (L-DO part 2):
@@ -11543,6 +11610,10 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 			if pr, ok := es.producedBy[args[i].ID]; ok && es.eventInfo[pr.seq].variadicResult {
 				f := es.eventInfo[seq]
 				f.variadicResult = true
+				// The strip's result is real stack values exactly when
+				// the region beneath it is (a RET-pinned count carries
+				// through the strip; a loop / branch region's does not).
+				f.callVariadic = es.retPinnedVariadic(pr.seq)
 				es.eventInfo[seq] = f
 				break
 			}

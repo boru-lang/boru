@@ -348,7 +348,7 @@ var allArrayNatives = []NativeFunc{
 		// throwaway sentinel just to satisfy each's "body produced a
 		// result" rule. See §7.4 in the DX report.
 		Name:          "for-each",
-		CompileEffect: CompileFallbackBody,
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// The body compiles to a per-element closure exactly as each's does
 		// (the forty-fourth increment). Three of each's flags are NOT set
 		// here, and the differences are the word's own:
