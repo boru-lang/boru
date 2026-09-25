@@ -258,22 +258,30 @@ user still gets an answer while the case is open:
   wrap produced (`usurp (forward-args (m.s))`, path-modifier.tsv:52-55) and
   the dynamic-Any `m.a` read (path-modifier.tsv:17) keep their poly record
   and compile; the `m.a` form over a closure is NUR158's open half.
-- **Fn-operand words still undeclared** (the pilot's open half, 7 of the
-  census's 11 fn-operand signatures): `apply [Function]` — the recorder owns
-  it by NAME (`recordCallElided`'s fn-value elision, the pending-apply
-  window, `OpCallDynTrailTop`) and no flag says "applies its operand through
-  the Apply kernel"; `CompileReadsFn` would be a permissive lie (a top-level
+- **Fn-operand words that RE-STEP their operand** (the pilot's former open
+  half, 7 of the census's fn-operand signatures — declared `CompileResteps`
+  on 2026-09-25, S2a): `apply [Function]` — the recorder owns it by NAME
+  (`recordCallElided`'s fn-value elision, the pending-apply window,
+  `OpCallDynTrailTop`) and no flag says "applies its operand through the
+  Apply kernel"; `CompileReadsFn` would be a permissive lie (a top-level
   fn-typed carrier would bake a `CALL_NATIVE` whose handler leaves the marked
   fn as DATA — the S1 fn-value line owns the word). `mini` / `parse` /
   `emit` value forms (`(Function String Map)`, `(Function String)`,
   `(Function Map Any)`, `(Function Any)`, `(Function Any Any)`) — the
   handler returns a SPLICE, `<fn> <src> <opts> end`, that applies the fn on
-  the tape: a token-returning macro, the brief's REWRITE class, not a
-  declaration (`CompileReadsFn`/`CompileStoresFn` promise the fn is never
-  invoked on the tape). The check pass models the expansion (`RunInCheck`)
-  and the recorder refuses the residual (`mini`/`emit` over a computed fn:
-  "residual value of unknown provenance") or records the parser dispatch
-  (`parse`, `recordParseLangFnDispatch` + `FnDataArgs`).
+  the tape: a token-returning macro, the brief's REWRITE class, not an
+  admission (`CompileReadsFn`/`CompileStoresFn` promise the fn is never
+  invoked on the tape). What they now declare is the REFUSAL itself:
+  `CompileResteps` (core/go/value.go), read by `RecordCallOperands` before
+  any inert-slot admission and by the two quoted-operand gates before
+  `quotedKeySig` / `quoteInertOK` — the triple's `tapeBound: Yes` as a
+  flag rather than the zero value's silence. The check pass still models
+  the expansion (`RunInCheck`) and the recorder still refuses the residual
+  (`mini`/`emit` over a computed fn: "residual value of unknown
+  provenance") or records the parser dispatch (`parse`,
+  `recordParseLangFnDispatch` + `FnDataArgs`); the same flag sits on the
+  by-name modifier forms, `valof` and the kind-quoted `mini`/`parse`/`emit`
+  overloads, whose result is a wrapper, a parked binding or a splice.
 - **Code-body word** — a `NoEvalArgs` body that is not inert (a computed paren,
   or a body carrying a flow-control sentinel that targets an enclosing frame).
 - **Code-body naming a FN-LOCAL fn** (NUR037) — a body word whose current

@@ -78,6 +78,13 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackAllHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the quoted class, S2a): the quoted `all` is a
+				// literal keyword the handler consumes verbatim — inert data.
+				// The word runs in check mode (the bindings must exist for the
+				// checker), so the recorder never reaches it through the
+				// quoted-operand gates; the flag answers the census.
+				CompileEffect: CompileQuoteInert,
 			},
 			// `unpack 'boru:time-util'`: import a module and bind every word
 			// of every export namespace as a bare local — `now`, `sleep`, …
@@ -104,6 +111,10 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackModuleExportHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The quoted export name is the KEY the handler reads to select
+				// one export namespace of the module (see `unpack all`'s note on
+				// why the flag answers the census rather than lowering).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},

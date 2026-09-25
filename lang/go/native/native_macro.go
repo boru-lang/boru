@@ -111,18 +111,31 @@ var macroNatives = []NativeFunc{
 		// from the collected values whether or not they are concrete), so
 		// the checker steps the expansion and validates the call against
 		// the kind's standard signature.
+		//
+		// The handler-contract declaration (design/HANDLER-MIGRATION-LINE.0.md,
+		// S2a) on every overload — the quoted kind AND the fn value form — is
+		// CompileResteps: the handler returns a SPLICE the tape runs, so
+		// neither the kind atom nor the transducer fn is data a CALL_NATIVE
+		// could bake (CompileQuoteInert / CompileReadsFn would promise
+		// exactly that). The check engine steps the expansion and the
+		// recorder follows it, unchanged; the flag names the refusal the
+		// zero value used to make silently. Same for `emit` and `parse`.
 		Signatures: []Signature{
 			{
-				Args:      []*Type{TAtom, TString, TMap},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(miniHandler, RunInCheck()),
-				Returns:   []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TString, TMap},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(miniHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:      []*Type{TAtom, TString},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(miniHandler, RunInCheck()),
-				Returns:   []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TString},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(miniHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			// The mini-language VALUE form — `mini <fn> <src> <opts?>`:
 			// the first operand IS the transducer, a fn (or a word bound to
@@ -130,14 +143,18 @@ var macroNatives = []NativeFunc{
 			// the standard [src opts] prefix. Every fn value — anonymous
 			// literal, def'd fn, module export — is TFunction (ADR-011).
 			{
-				Args:    []*Type{TFunction, TString, TMap},
-				Impl:    Go(miniHandler, RunInCheck()),
-				Returns: []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TString, TMap},
+				Impl:          Go(miniHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:    []*Type{TFunction, TString},
-				Impl:    Go(miniHandler, RunInCheck()),
-				Returns: []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TString},
+				Impl:          Go(miniHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -166,23 +183,30 @@ var macroNatives = []NativeFunc{
 		// when the leading operand is a literal map/list/scalar (data-first,
 		// no kind). The handler then classifies an Atom slot 0 as kind-or-data.
 		Signatures: []Signature{
+			// CompileResteps on the kind and fn forms: the splice (see mini).
 			{
-				Args:      []*Type{TAtom, TAny, TAny},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(emitHandler, RunInCheck()),
-				Returns:   []*Type{TString}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny, TAny},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(emitHandler, RunInCheck()),
+				Returns:       []*Type{TString},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:      []*Type{TAtom, TAny},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(emitHandler, RunInCheck()),
-				Returns:   []*Type{TString}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(emitHandler, RunInCheck()),
+				Returns:       []*Type{TString},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:      []*Type{TAtom},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(emitHandler, RunInCheck()),
-				Returns:   []*Type{TString}, BarrierPos: -1,
+				Args:          []*Type{TAtom},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(emitHandler, RunInCheck()),
+				Returns:       []*Type{TString},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			// The emitter VALUE form — `emit <fn> <opts?> <data>`: the first
 			// operand IS the emitter, a fn whose every signature is
@@ -191,14 +215,18 @@ var macroNatives = []NativeFunc{
 			// operand would silently route to emit_auto and JSON-emit the fn
 			// value itself.
 			{
-				Args:    []*Type{TFunction, TAny, TAny},
-				Impl:    Go(emitHandler, RunInCheck()),
-				Returns: []*Type{TString}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TAny, TAny},
+				Impl:          Go(emitHandler, RunInCheck()),
+				Returns:       []*Type{TString},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:    []*Type{TFunction, TAny},
-				Impl:    Go(emitHandler, RunInCheck()),
-				Returns: []*Type{TString}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TAny},
+				Impl:          Go(emitHandler, RunInCheck()),
+				Returns:       []*Type{TString},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
 				Args:    []*Type{TAny, TAny},
@@ -235,28 +263,38 @@ var macroNatives = []NativeFunc{
 		// word bound to one): `parse <fn> <opts?> <source>` expands to the
 		// direct call `<fn> <source> <opts> end` with no kind lookup, so a
 		// parser can be used without registering it under a kind name.
+		//
+		// CompileResteps on every overload: the splice (see mini).
 		Signatures: []Signature{
 			{
-				Args:      []*Type{TAtom, TMap, TAny},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(parseHandler, RunInCheck()),
-				Returns:   []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TMap, TAny},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(parseHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:      []*Type{TAtom, TAny},
-				QuoteArgs: map[int]bool{0: true},
-				Impl:      Go(parseHandler, RunInCheck()),
-				Returns:   []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TAny},
+				QuoteArgs:     map[int]bool{0: true},
+				Impl:          Go(parseHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:    []*Type{TFunction, TMap, TAny},
-				Impl:    Go(parseHandler, RunInCheck()),
-				Returns: []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TMap, TAny},
+				Impl:          Go(parseHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 			{
-				Args:    []*Type{TFunction, TAny},
-				Impl:    Go(parseHandler, RunInCheck()),
-				Returns: []*Type{TAny}, BarrierPos: -1,
+				Args:          []*Type{TFunction, TAny},
+				Impl:          Go(parseHandler, RunInCheck()),
+				Returns:       []*Type{TAny},
+				BarrierPos:    -1,
+				CompileEffect: CompileResteps,
 			},
 		},
 	},

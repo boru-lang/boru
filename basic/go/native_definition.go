@@ -49,6 +49,16 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(DefHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the quoted class, S2a): the quoted operand is the
+				// NAME of a registry write — a key the handler reads, never a
+				// literal it bakes. The recorder never reaches `def` through
+				// the quoted-operand gates (it runs in check mode and is
+				// lowered by the binder hooks: RecordDef / RecordDefRebind /
+				// the promoted value-def locals), so the flag is the census's
+				// answer, not a lowering; the same holds for undef,
+				// __varundef and the synthesized keyword forms below.
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -68,6 +78,8 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(undefHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The name of a registry removal: a key (see def's Atom form).
+				CompileEffect: CompileQuoteKey,
 			},
 			{
 				Args:       []*Type{TString, TFnUndef},
@@ -81,6 +93,8 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(UndefFnHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The name whose overloads are removed: a key (see def's Atom form).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -111,6 +125,9 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(varUndefHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The var splice's cleanup unbind names its key exactly as
+				// `undef name` does (see def's Atom form).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -617,6 +634,24 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		Impl:       Go(DefFormVia(base, offset, genChain), RunInCheck()),
 		Returns:    []*Type{},
 		BarrierPos: -1,
+		// The handler-contract declaration (design/HANDLER-MIGRATION-LINE.0.md,
+		// the quoted class, S2a). The Atom-name form quotes the NAME of the
+		// registry write — a key the handler reads (CompileQuoteKey, as def's
+		// plain Atom form). The String-name form's only quoted operands are the
+		// constructor keywords (`fn`, `class`, `gen …`), Pattern-pinned
+		// literals the match itself consumes: inert data (CompileQuoteInert).
+		// Either way the recorder never reaches a def form through the
+		// quoted-operand gates (check mode; the binder hooks lower it), so the
+		// flag answers the census, it lowers nothing. A form that carries a
+		// NoEvalArgs position (the gen chain's params list, a constructor
+		// whose base sig takes a raw body) is the census's CODE-BODY class
+		// and owes a different declaration (S2b); it is left undeclared here.
+	}
+	if len(noEval) == 0 {
+		sig.CompileEffect = CompileQuoteInert
+		if nameQuote {
+			sig.CompileEffect = CompileQuoteKey
+		}
 	}
 	if len(noEval) > 0 {
 		sig.NoEvalArgs = noEval

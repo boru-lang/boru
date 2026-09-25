@@ -225,3 +225,55 @@ No declaration in `core/go/value.go` means "refuse here, by name": the
 refusal is `CompileDefault`'s zero value, which the census counts as
 undeclared — a refusing declaration (a tri-state `tapeBound: Yes`) is
 the triple's C1 and is not yet a flag.
+
+**2026-09-25 — S2a: the 35 declaration-only handlers, and a flag for the
+refusal.** Ceiling `undeclaredHandlerCeiling` 94 → 59; the quoted and
+fn-operand classes are at ZERO undeclared, and what remains is the code-body
+class (59), S2b's. Per word, the honest declaration:
+
+- `def` — `[Atom Any]` and the synthesized Atom-named keyword forms
+  (`[Atom Atom Any Node]`, `[Atom Atom Any]`, `[Atom Atom Map]` ×2) declare
+  **`CompileQuoteKey`**: the quoted operand is the NAME of a registry write, a
+  key the handler reads. The String-named keyword forms (`[String Atom Any
+  Node]`, `[String Atom Any]`, `[String Atom Map]` ×2) declare
+  **`CompileQuoteInert`**: their only quoted operand is the Pattern-pinned
+  constructor keyword, a literal the match itself consumes. `undef [Atom]`,
+  `undef [Atom FunctionSignature]` and `__varundef [Atom]` declare
+  `CompileQuoteKey` (the name of a removal). The synthesizer
+  (`synthDefKeywordSigNamed`) declares ONLY the forms with no `NoEvalArgs`
+  position — a keyword form whose constructor takes a raw body, or the gen
+  chain's params list, is the census's code-body class and was left alone,
+  which the first cut got wrong (the census read 27 for a moment).
+- `describe [Atom]` and `unpack all m` — `CompileQuoteInert` (the atom is
+  the datum, consumed verbatim); `xml-attr [Atom Xml]` and `unpack Export
+  'mod'` — `CompileQuoteKey` (a key the handler reads).
+- The dispatch-manipulating meta words' by-name forms — `usurp [Atom]`,
+  `stack-args [Atom]`, `forward-args [Atom]`, `force-arity [Integer Atom]` —
+  with `valof [Atom]`, the kind-quoted `mini` ×2 / `parse` ×2 / `emit` ×3
+  forms, and the fn-operand class's `apply [Function]` and `mini` ×2 /
+  `parse` ×2 / `emit` ×2 value forms, declare **`CompileResteps`**, a NEW
+  flag (core/go/value.go): the handler's result is RE-STEPPED by the engine
+  — a wrapper, a parked binding, a splice, a marked fn — never a value a
+  `CALL_NATIVE` could bake. It is the refusal the previous note said was
+  "not yet a flag" (the triple's `tapeBound: Yes`), now written down. The
+  recorder's three gates read it FIRST, before and regardless of any
+  admission the same sig carries: `recordCallCompileFailure`'s quoted arm
+  (the reason names the declaration), `quoteOperandInertOK` and
+  `recordPolyCall`'s quoted line, and `RecordCallOperands`' fn-slot arm. No
+  new MarkUncompilable site — the disposition census pins their count — so
+  the refusal rides the existing arms with a named reason. Pinned in
+  `compiler/go/resteps_declaration_test.go` against sigs that carry
+  `CompileQuoteKey | CompileQuoteInert` / `CompileReadsFn` beside it, and
+  the per-word set in `lang/go/handler_migration_s2a_test.go`.
+
+Every `CompileResteps` declarer today also runs in check mode, so the
+RunInCheckMode screen reaches the gates before the flag does and no recorded
+program changes; `describe`'s quoted form (not check-mode) may now bake a
+CALL_NATIVE over the inert atom, and `xml-attr`'s quoted form rides the key
+admission — both with parity. Gates over the words' families (35 spec files:
+usurp, path-modifier, apply, fn-value, modifiers, valof, callbacks,
+forward-barrier, the minilang/parselang/emitlang/parse modules, unpack, xml,
+the three corpus files, as, def-node-binding, macro, open-words, …) are
+unchanged before and after, and every per-file compile-failure and
+runtime-defer ledger line held exactly. The `apply` / `mini` / `parse` /
+`emit` paragraph of `COMPILABLE-SUBSET.md` §5 now records the declaration.
