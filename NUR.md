@@ -126,6 +126,7 @@ keep the two in sync in the same commit.
 | [NUR201](#nur201) | A callee's def before a raise the caller TRAPS — `def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t` — is the interpreter's `[error(x) 9]` (a raise skips the frame's def-cleanup tail, so the callee's binding leaks) and the compiled lane's `[error(x) 0]` (the frame installs nothing a trap could keep; an installed one is unwound with the frame on the error path). The interpreter's is the questionable rule. Present on main at 3768c46; found while closing NUR199. Fence: `TestCalleeDefSurvivesTrappedRaisePending`. |
 | [NUR202](#nur202) | FIXED 2026-09-24 (the keep-defs token body — the handoff log's entry of that date), found the same day: the closure unit compiles (the unapplied-fn gate exempts a unit's own untouched inputs — an argument enters the frame resolved and is never stepped), and the run-time stamp of a token body is a keep-defs unit whose kept installs the host hands to the enclosing context's trail, its own defs left out of the stamp's dependency snapshot; `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]]  f [1 2 3]` is [[1 2 3]] on both lanes and code-bodies.tsv L189 compiles. The original text: A keep-defs token body over a GRADUAL list inside a fn — `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]` — is the interpreter's `[[1 2 3]]` (eachHandler drives InvokeBody per element on the shared registry, so the def leaks to the next element) and the compiled lane's `[[1 1 1]]`: the body lowers as a CONST the native runs (PUSH_CONST_FRESH, the S1a dynamic-callback path) and that run reads 0 at every element. Over a literal list the body is a closure unit and agrees; the Integer-returning twin (code-bodies.tsv L189) declines loudly. Present on main at 3768c46. Fence: `TestKeepDefsConstBodyOverGradualListPending`. |
 | [NUR203](#nur203) | A keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
+| [NUR204](#nur204) | A body def of the for loop's OWN index — `def i 0 end for 3 [def i 9] end i` — is the interpreter's 2 (the loop leaves its index level bound past the loop: the last index; 0 inside a nested loop, whose outer cleanup pops it) and was the compiled lane's 9 on main (the loop carried the def and wrote the body's value back), for a native or a user-call value alike, inside a fn and through an arm too; neither is the pre-loop 0 a lexical loop scope would give. The compiled lane DECLINES the shape loudly now (the for's index name rides RecordLoop into the loop event). Present on main at 3768c46; found while landing the user-call write-back. Fence: `TestForIndexDefInBodyPending`. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7447,6 +7448,59 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 (NUR186) answers the same rows the interpreter raises on when nothing
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
+
+## NUR204 — a body def of the for loop's own index: the interpreter's index level, the compiled lane's write-back {#nur204}
+
+**Status:** Pending (recorded 2026-09-24, found while landing the user-call
+write-back promotion — the handoff log's "the user-call write-back" entry).
+Present on main before that change (measured on a clean worktree at
+3768c46: the native shapes below compiled to the same wrong values; the
+user-call twin declined "unpromoted computed value" until the promotion
+reached it). The compiled lane DECLINES the shape now, loudly, on both
+paths.
+
+**Rule:** a compiled program answers as the interpreter does — what a
+counted loop leaves bound under its own index name after the loop is the
+same on both lanes.
+
+**Divergence.**
+
+```
+def i 0 end for 3 [def i 9] end i
+  interpreted   [2]
+  compiled      [9]     (before the decline)
+def i 0 end for 3 [for 2 [def i 9]] end i
+  interpreted   [0]
+  compiled      [9]     (before the decline)
+def i 0 end for 3 [def i (i add 1) i] end i
+  interpreted   [1 2 3 2]
+  compiled      [1 2 3 3]
+```
+
+The interpreter's `for` binds its index as a def-stack level it rebinds
+per iteration; a body `def i` pushes a level above it, and the loop's
+cleanup pops one level — so the INDEX level survives the loop, bound to
+the last index (2), where the plain `def i 7  for 3 [i]  i` restores 7,
+and an inner loop's leftover is popped by the outer loop's own cleanup
+(0). The compiled loop carried the body's def as the loop-carried root def
+it is by name and wrote the body's value back (9), inside a fn frame the
+same (a frame slot), through an `if` arm the same. Neither lane answers
+what a lexical loop scope would (the pre-loop 0).
+
+**Fence.** `TestForIndexDefInBodyPending` (lang
+loop_carried_user_call_test.go) pins the interpreter's values and the
+compiled lane's decline ("def of the enclosing for loop's own index `i`
+inside its body", lowerDynBind over loopCtx.iterName — the for's index
+name rides RecordLoop into emitLoop.iterName now), so closing it is loud.
+
+**Verdict:** none yet. The interpreter's leftover index level is the
+questionable half (a loop's index should not outlive the loop when its
+body rebinds it, any more than when it does not), and the compiled lane's
+write-back the other; whichever rule is chosen, the loud decline stands
+until the index level is modelled. A `do [def i …]` inside the body (a
+keep-defs unit) is not gated — the body's def installs live there and the
+loop's own accounting decides what survives; measured neither way yet.
+
 
 ## NUR203 — a dynamic keep-defs body's leak is invisible to the fn's later reads {#nur203}
 

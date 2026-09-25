@@ -256,7 +256,15 @@ branch-carried def"**; the re-estimate is
    its closure, and a run-time token body's stamp is a keep-defs unit whose
    kept installs the host hands to the enclosing trail; code-bodies L189
    compiles, 13 -> 12; NUR203 recorded on the way: the fn's read after a
-   DYNAMIC keep-defs body keeps its compile-time home, 0 for 3, fenced); filter's predicate
+   DYNAMIC keep-defs body keeps its compile-time home, 0 for 3, fenced); the
+   user-call write-back lands the same day (the handoff log's "the user-call
+   write-back" entry: a user call whose result a loop-carried root def
+   writes back is promoted to a frame slot like a native producer, so
+   `while [i lt 3] [def i (inc i)]` and its `apply` spellings compile —
+   callbacks L89 and module-composition L104, 12 -> 10; NUR204 recorded on
+   the way: a body def of the for loop's OWN index is the interpreter's
+   leftover index level (2) and was the compiled lane's write-back (9),
+   silent on main — the shape declines loudly now, fenced); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this

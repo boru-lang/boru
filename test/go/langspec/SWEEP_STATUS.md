@@ -54,7 +54,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `valof` | ✓ 14/14 | — | — | — | — | — | — |
 | `var` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `walk` | ✓ 11/14 | ✓ 11/14 | ✓ 10/14 | F | F | F | ✓ 11/14 |
-| `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
+| `while` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `word` | ✓ 13/14 | ✓ 7/14 | ✓ 12/14 | ✓ 5/14 | D! | ✓ 13/14 | ✓ 13/14 |
 | `xml-attr` | ✓ 14/14 | — | — | — | — | — | — |
@@ -319,7 +319,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` computed · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:137   1 | def zzvlam ([] => […
 - `walk` computed · for-body — **declined** — dynamic-scope def `acc` of unpromoted computed value
 - `walk` computed · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:68   1 | 7 def acc (flex []) end def b (quote…
+- `while` literal · for-body — **declined** — def of the enclosing for loop's own index `i` inside its body (NUR204)
 - `while` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `while` computed · for-body — **declined** — def of the enclosing for loop's own index `i` inside its body (NUR204)
 - `while` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` literal · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` lambda · paren-group — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference

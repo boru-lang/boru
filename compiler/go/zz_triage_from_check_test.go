@@ -332,13 +332,13 @@ func TestRecordDynApplyDeclines(t *testing.T) {
 func TestRecordLoopCompileFailures(t *testing.T) {
 	// body == nil.
 	es := NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), nil, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("nil loop body should decline")
 	}
 	// range of unknown provenance (start unresolvable).
 	es = NewEmitState()
-	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(carrierVal(core.TInteger), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unresolvable range should decline")
 	}
@@ -346,13 +346,13 @@ func TestRecordLoopCompileFailures(t *testing.T) {
 	es = NewEmitState()
 	start := core.NewCarrier(core.TInteger)
 	seedProduced(es, start, 1)
-	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(start, core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("computed loop start should decline")
 	}
 	// iterator slot not registered (all-const range, empty body).
 	es = NewEmitState()
-	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", core.NewInteger(0), 0, core.SrcPos{})
+	es.RecordLoop(core.NewInteger(0), core.NewInteger(5), core.NewInteger(1), &EmitFragment{}, nil, "it", "i", core.NewInteger(0), 0, core.SrcPos{})
 	if es.Compilable {
 		t.Fatal("unregistered iterator should decline")
 	}

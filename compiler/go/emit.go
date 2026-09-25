@@ -398,7 +398,13 @@ type emitLoop struct {
 	hasBodyOut bool // false: the body nets no value per iteration (or diverges)
 	multiOut   bool // the body nets >1 value per iteration (net drivers): residualN reconciliation
 	iterSlot   int
-	pos        core.SrcPos
+	// iterName is a counted loop's index NAME (`i`, or the name a `for`
+	// form binds): a body def of that very name is NUR204's shape, declined
+	// by lowerDynBind (the interpreter leaves the index level bound past the
+	// loop where the compiled loop wrote the body's value back). Empty for
+	// a condition loop (RecordWhile: a scratch iterator nothing names).
+	iterName string
+	pos      core.SrcPos
 	// carried seeds the loop-carried def slots (a pre-loop `def` the body
 	// REBINDS, read on a later iteration or after the loop) with their
 	// pre-loop values — lowered right after FOR_SETUP, before the first
@@ -7204,7 +7210,7 @@ func (es *EmitState) captureArmResidual(frag *EmitFragment, stk []core.Value) {
 // dispatch's result carrier — registered so the dispatch isn't
 // re-recorded, and marked VARIADIC at lowering, so only the program
 // residual may absorb the accumulation.
-func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID string, out core.Value, regionN int, pos core.SrcPos) {
+func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID, iterName string, out core.Value, regionN int, pos core.SrcPos) {
 	body := asFragment(bodyRef)
 	if !es.Active() {
 		return
@@ -7233,7 +7239,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 		es.MarkUncompilable("for: computed range start/step (Stage 2 follow-on)")
 		return
 	}
-	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, pos: pos, carried: carried, carriedNames: carriedNames}
+	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, iterName: iterName, pos: pos, carried: carried, carriedNames: carriedNames}
 	es.recordLoopEvent("for", lp, body, bodyStk, iterID, out, regionN, "")
 }
 

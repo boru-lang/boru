@@ -13322,6 +13322,62 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The user-call write-back — a carried root def computed by a user fn (2026-09-24)
+
+**The rows.** callbacks.tsv L89 (`def inc fn [[n:Integer][Integer][n add
+1]]  def i 0  while [i lt 3] [def i (i inc/v apply)]  i`) and
+module-composition.tsv L104 (its module-export twin, `def i (i M.inc/v
+apply)`) declined "dynamic-scope def `i` of unpromoted computed value" —
+and so did the plainest spelling, `while [i lt 3] [def i (inc i)]` for ANY
+user fn `inc`, where `def i (i add 1)` always compiled.
+
+**The cause.** A loop-carried ROOT def binds twice: the carried STORE
+pops its value into the loop's frame slot, and the root write-back
+(OpBindGlobal, rootBindWritesBack — a computed value's registry binding is
+the run's, not the model's) re-pushes it for the registry. A NATIVE
+producer's result is promoted to a frame slot unconditionally on valueDef
+(planValueDefLocals), so both readers load the slot; a USER call's
+single-use result stays on the sim by design (a harness may feed on it in
+ways the ref count cannot see), and its plain loop-carried store source
+is exempt from the valueDef promotion (the store seats it off the sim
+top). So the store popped the call's result, the write-back's peek fast
+path (the value live on top) found nothing, and lowerDynBind's computed
+arm had no promoted slot: every gate off (keeps, dynEnv, deopt,
+dynScope, routed), `vmlen=0` at the bind, measured.
+
+**The fix.** collectWriteBackSources (planValueDefLocals' writeBackSrc): a producer whose result a
+carried root def binds with a write-back joins the user-call promotion
+triggers — store once at the call (lowerUserCallResult's promoted arm),
+the carried store loads the slot, the write-back re-pushes it — exactly
+the native path. The `while`, `for`, `apply` and module-export spellings
+compile with parity; a fn-frame twin (a frame slot, no write-back) and
+the native producer are untouched.
+
+**Found on the way — NUR204.** The `for` spelling with the loop's OWN
+index — `def i 0  for 3 [def i 9]  i` — is 2 on the interpreter (the
+loop leaves its index level bound past the loop; 0 inside a nested loop,
+whose outer cleanup pops it) and was 9 compiled for a native value on
+main, a silent miscompile; the promotion would have extended it to a
+user-call value where the shape declined before. The for's index NAME
+rides RecordLoop now (the recorder interface's iterName, emitLoop.iterName,
+loopCtx.iterName while the body lowers), and lowerDynBind declines a body
+def of the enclosing counted loop's own index on both paths, inside a fn
+and through an arm alike — loud where it was silent, the S1a trade in its
+right direction. Recorded and fenced (TestForIndexDefInBodyPending, the
+interpreter's values pinned). A `do [def i …]` inside the body is a
+keep-defs unit the gate does not reach; measured neither way yet.
+
+**Measured:** callbacks.tsv 3 -> 2 (L89), module-composition.tsv 2 -> 1
+(L104) — the corpus's compile failures 12 -> 10; the full corpus 8563 rows / 8213 -> 8215 compiled with the compute-gap gate 7 -> 5 (the two dynamic-scope def gaps), the interp-entry census 23, the engine-entry census 164, the runtime-defer census 10 and the sweep's call-form failures 195 -> 197 (the `while` seed's two for-body variants, NUR204's loud decline — debt put back on purpose), every other gate at its value;
+the lang ledger 285 -> 291 (NUR204's six fence witnesses, booked) with 44 bails unchanged; the unit suites of core, eng, compiler,
+check, basic, lang, the specfix build and the arity gate green.
+
+**Pins.** lang TestUserCallSourceOfCarriedRootDefCompiles (the spellings,
+the lowering: CALL_USER feeding BIND_GLOBAL, no island),
+TestForIndexDefInBodyPending (NUR204's fence). Docs: NUR.md (NUR204
+Pending), this entry, the handover.
+
+
 ## The keep-defs token body — NUR202 closed, code-bodies L189 compiles (2026-09-24)
 
 **The rows.** code-bodies.tsv L189 (`def f fn [[xs:List][Integer][def t 0
