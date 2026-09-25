@@ -8,7 +8,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 12/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 13/14 | n/a |
-| `behave` | F | n/a | F | F | F | F | n/a |
+| `behave` | ✓ 11/14 | n/a | ✓ 11/14 | ✓ 10/14 | F | ✓ 13/14 | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
 | `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 7/14 | ✓ 12/14 | ✓ 13/14 |
@@ -61,8 +61,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 157
-- failed: 22
+- pass: 161
+- failed: 18
 - islanded: 2
 - DIVERGED: 6
 - PANIC: 0
@@ -75,11 +75,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells that are not green
 
-- `behave` literal — **failed**: `def Temp refine Integer end behave canon/q (fn [[t:Temp][String]['T']]) end canon (make Temp 5)` — quoted-operand word behave
-- `behave` named-fn — **failed**: `def Temp refine Integer end def c fn [[t:Temp][String]['T']] end behave canon/q c/v end canon (make Temp 5)` — quoted-operand word behave
-- `behave` factory — **failed**: `def Temp refine Integer end def mk fn [[][Function][(fn [[t:Temp][String]['T']])]] end behave canon/q (mk) end canon (ma…` — quoted-operand word behave
-- `behave` container — **failed**: `def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)` — quoted-operand word behave
-- `behave` module-export — **failed**: `import module [def Temp refine Integer def c fn [[t:Temp][String]['T']] export "M" {c: c/v Temp: Temp}] end behave canon…` — quoted-operand word behave
+- `behave` container — **failed**: `def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)` — dynamic input at behave
 - `case` module-export — **DIVERGED**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional t…
 - `codequote` literal — **DIVERGED**: `typeof (codequote (1 add 2))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
 - `codequote` lambda — **DIVERGED**: `typeof (codequote ([] => [1]))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
@@ -131,6 +127,17 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` factory · module-body — **declined** — fn zzvmod: result above a literal (Stage 3)
 - `apply` factory · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `apply` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `behave` literal · fn-body — **declined** — check diagnostics
+- `behave` literal · lambda-body — **declined** — check diagnostics
+- `behave` literal · for-body — **declined** — check diagnostics
+- `behave` named-fn · fn-body — **declined** — check diagnostics
+- `behave` named-fn · lambda-body — **declined** — check diagnostics
+- `behave` named-fn · for-body — **declined** — check diagnostics
+- `behave` factory · fn-body — **declined** — check diagnostics
+- `behave` factory · lambda-body — **declined** — check diagnostics
+- `behave` factory · for-body — **declined** — check diagnostics
+- `behave` factory · each-body — **declined** — fn each$body: arm-resident def `mk` of unknown provenance
+- `behave` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload

@@ -45,7 +45,10 @@ import (
 // coincidence; booked by choice on the per-file ledger of deferred
 // compilation failures (runtime_defers.tsv, runtime_defer_ledger_test.go),
 // which names every row this count counts.
-const bailDefectCeiling = 54
+// 54 -> 51 on 2026-09-25 (the strict-Any dyn-body recovery): fold-map-filter.tsv
+// L246–L248 run natively where they bailed at the rematch trap
+// (runtime_defers.tsv's fold-map-filter line deleted).
+const bailDefectCeiling = 51
 
 var bailDefects = struct {
 	mu      sync.Mutex

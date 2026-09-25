@@ -5241,21 +5241,18 @@ func (es *EmitState) NoteRuntimeBind(name string) {
 // event result) — and the handler binds the names on the run-time registry
 // exactly as the interpreter's does. A no-op when the latch is clear (the
 // ordinary elision of a compile-time word stands); an operand with no
-// compiled home declines loudly.
+// compiled home hands the dispatch to RecordCall, whose compile-time-word
+// arm declines it loudly (no decline site of its own — the site census).
 func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature, args []core.Value, pos core.SrcPos) {
 	if !es.Active() || !es.pendingRuntimeBindCall {
 		return
 	}
 	es.pendingRuntimeBindCall = false
-	if sig == nil {
-		es.MarkUncompilable("run-time bind at " + word + " without a signature")
-		return
-	}
 	ops := make([]EmitOperand, len(args))
 	for i := range args {
 		op, ok := es.resolveOperand(args[i])
 		if !ok {
-			es.MarkUncompilable("run-time bind operand of unknown provenance at " + word)
+			es.RecordCall(word, sig, args, nil, pos, false, false)
 			return
 		}
 		ops[i] = op
