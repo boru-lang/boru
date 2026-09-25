@@ -388,7 +388,7 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 	if r.Check.Compiling || r.Check.Recorder().Active() {
 		return false
 	}
-	if tryShapedFnReadWindow(e, valIdx) {
+	if tryFnShapeTypedWindow(e, valIdx) || tryShapedFnReadWindow(e, valIdx) {
 		return true
 	}
 	v := e.Tape.At(valIdx)
@@ -717,6 +717,84 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	}
 	e.Tape.Splice(valIdx, 1+shape.Arity, shapedReadOut(r, v.ID))
 	return true
+}
+
+// tryFnShapeTypedWindow is the plain check's model of a fn-SHAPE-typed
+// carrier's apply (NUR096). A value typed by a fn shape (`def T fnsig
+// [[Integer] [Integer Integer]]`, then a T-typed class field read) IS a
+// function at run time — the shape's membership, enforced at make and set,
+// admits nothing else — and the interpreter re-steps it here, collecting
+// its argument window: `c.op 10` is [10 10]. The pass held the carrier and
+// its argument instead, [T Integer], which a single-return shape hid (the
+// top slot matched) and a multi-return shape exposed. The shape's declared
+// signature is the model: its parameter count of evaluation-fixed tokens
+// that fit its parameter types is consumed, and one carrier per declared
+// return takes their place — sound for any stored fn, whose returns the
+// shape covers. Anything else is left as it was: an arity-0 shape (whether
+// a stored 0-arg fn fires depends on the fn, not the shape), a parameter
+// the types alone do not decide, a window the claim cannot fill.
+func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
+	v := e.Tape.At(valIdx)
+	if v.Quoted || v.Dynamic || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+		return false
+	}
+	shape, ok := fnShapeTypedClaim(e.Registry, v)
+	if !ok || shape.Arity == 0 {
+		return false
+	}
+	if _, why := shapedFnReadWindow(e, valIdx, shape); why != "" {
+		return false
+	}
+	out := make([]core.Value, len(shape.Returns))
+	for i, rt := range shape.Returns {
+		if rt == nil || rt.Equal(core.TAny) {
+			out[i] = core.NewDynamicCarrier(core.TAny)
+		} else {
+			out[i] = core.NewCarrier(rt)
+		}
+	}
+	e.Tape.Splice(valIdx, 1+shape.Arity, out...)
+	return true
+}
+
+// fnShapeTypedClaim is the declared signature a fn-shape-typed carrier
+// stands for: the claim noted where the carrier was minted (an anonymous
+// shape's field read — the carrier's own type is then the bare
+// FunctionSignature node, which has lost the shape), else the content of
+// the named shape node that types it. One signature of plain parameters,
+// or no claim.
+func fnShapeTypedClaim(r *core.Registry, v core.Value) (core.FnShape, bool) {
+	if s, ok := r.Check.FnShapeOf(v.ID); ok {
+		return s, s.ReturnsKnown
+	}
+	content, ok := core.TypeContentOf(*v.Parent)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	info, ok := content.Data.(core.FnUndefInfo)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	return FnShapeOfSpec(info)
+}
+
+// FnShapeOfSpec is the exact claim a fn-shape spec makes: its one
+// signature's parameter types and declared returns. A shape of several
+// signatures, or a parameter that is optional, patterned or quoted (whose
+// arity or admission the types alone do not decide), makes no claim.
+func FnShapeOfSpec(info core.FnUndefInfo) (core.FnShape, bool) {
+	if len(info.Sigs) != 1 {
+		return core.FnShape{}, false
+	}
+	spec := info.Sigs[0]
+	params := make([]*core.Type, len(spec.Params))
+	for i, p := range spec.Params {
+		if p.Optional || p.Pattern != nil || p.Quote {
+			return core.FnShape{}, false
+		}
+		params[i] = p.Type
+	}
+	return core.FnShape{Arity: len(params), Params: params, Returns: spec.Returns, ReturnsKnown: true}, true
 }
 
 // shapedReadOut mints the read models' one result for the carrier id's

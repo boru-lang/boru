@@ -88,3 +88,46 @@ func TestNamedValueNoMatchOnTheSeamRaises(t *testing.T) {
 		t.Errorf("anonymous lambda: interpreter = %v / %v, want [[Integer fn (Integer)]]", got, err)
 	}
 }
+
+// TestClassMemberValueMarkerIsData pins NUR216's close — NUR213's twin for a
+// CLASS member and for the window spellings. A `/v` after a member read says
+// DATA: the run-time peek quotes the concrete fn and leaves it beside its
+// neighbours. The pass quotes the carrier it holds (the standalone-marker
+// drop), and now no residual arm applies a quoted value: the fn-typed
+// carrier lead arm (`c.op/v 5` compiled 6 for `fn (Integer) 5`) and the
+// verbatim window islands (`3 c.op/v 2` compiled [3 3], `3 4 c.op/v`
+// compiled [3 5]; the map twins likewise). The class shapes compile and
+// agree; the map window twins decline at the existing residual limit ("call
+// result above a literal"), as NUR213's `5 m.f/v` does, and the fallback
+// answers as the interpreter. The unmarked reads still apply.
+func TestClassMemberValueMarkerIsData(t *testing.T) {
+	const cls = `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) `
+	const anon = `def C class {op:(fnsig Integer Integer)} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) `
+	const m = `def m {f: (fn [[x:Integer] [Integer] [x add 1]])} `
+	for _, c := range []struct{ src, want string }{
+		{cls + "c.op/v 5", "[fn (Integer) 5]"},
+		{cls + "5 c.op/v", "[5 fn (Integer)]"},
+		{cls + "3 c.op/v 2", "[3 fn (Integer) 2]"},
+		{cls + "3 4 c.op/v", "[3 4 fn (Integer)]"},
+		{anon + "c.op/v 5", "[fn (Integer) 5]"},
+		// The unmarked reads are calls, on both lanes.
+		{cls + "c.op 5", "[6]"},
+		{cls + "3 c.op 2", "[3 3]"},
+		{m + "3 m.f 2", "[3 3]"},
+		{m + "3 4 m.f", "[3 5]"},
+	} {
+		requireSameVerdict(t, c.src)
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: interpreter = %v / %v, want %s", c.src, got, err, c.want)
+		}
+	}
+	for _, c := range []struct{ src, want string }{
+		{m + "3 m.f/v 2", "[3 fn (Integer) 2]"},
+		{m + "3 4 m.f/v", "[3 4 fn (Integer)]"},
+	} {
+		requireEngineParity(t, c.src, false)
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: interpreter = %v / %v, want %s", c.src, got, err, c.want)
+		}
+	}
+}

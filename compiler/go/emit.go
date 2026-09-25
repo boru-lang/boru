@@ -10841,6 +10841,14 @@ func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
 // fn takes the 7 beneath) is the trailing apply it is and not the data the
 // widened merge type read (NUR159).
 func (es *EmitState) fnLikeResidual(v core.Value) bool {
+	// A QUOTED value is data by the `/v` marker's intent (the pass records
+	// it on the value — the standalone-marker drop, NUR213), so no window
+	// arm may apply it: the verbatim island re-stepped the fn live, and
+	// `3 m.f/v 2` / `3 4 c.op/v` answered [3 3] / [3 5] compiled for the
+	// interpreter's [3 fn 2] / [3 4 fn] (NUR216).
+	if v.Quoted {
+		return false
+	}
 	return v.Dynamic || core.IsFnValueResidual(v) || core.IsFnTypedCarrier(v) || es.mayBeFnUnsettled(v)
 }
 
@@ -13153,8 +13161,12 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// over them is a later statement's operand fed to an earlier call —
 	// `def r (2 (mk 1)) end r` compiled 3 for the interpreter's `[fn 2]`
 	// (NUR184). With no arm to seat it the carrier declines below.
+	// A QUOTED lead is data here too, as in the dynamic arm above: a `/v`
+	// after a class member read (`c.op/v 5`) quotes the fn-SHAPE-typed
+	// carrier the pass holds, where the run-time peek quotes the concrete fn
+	// — `fn (Integer) 5` interpreted, and this arm applied it to 6 (NUR216).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
-		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
+		!residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
 		!es.forwardLeftoverFn(residual[0]) {
 		applyDynamic = !anyFnOrDynamicTail(residual)
 		// When the carrier's closure arity is statically recoverable (its

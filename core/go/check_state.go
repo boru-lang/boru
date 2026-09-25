@@ -1790,6 +1790,13 @@ type FnShape struct {
 	// is a5 over the element, then `"s" add`), a fallback the claim cannot
 	// model (NUR194, 2026-09-24).
 	Params []*Type
+	// Returns is the claimed fn's RESULT types when the claim knows them
+	// exactly — a fn-SHAPE-typed member read, whose declared shape fixes
+	// what any stored fn returns (NUR096). ReturnsKnown says the list IS
+	// the claim, so an empty list means "returns nothing"; without it a
+	// read model keeps its one-dynamic-result rule.
+	Returns      []*Type
+	ReturnsKnown bool
 }
 
 // NoteFnShape records the SHAPE of the fn value a computed-fn carrier stands

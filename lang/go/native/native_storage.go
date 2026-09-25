@@ -1738,7 +1738,18 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 	if ft == nil || ft.ConformsTo(TFunction) {
 		return dyn
 	}
-	return []Value{NewCarrier(ft)}
+	out := NewCarrier(ft)
+	// An ANONYMOUS fn-shape field (`{op:(fnsig Integer Integer)}`) types its
+	// carrier by the bare FunctionSignature node, which has lost the shape:
+	// note the declared signature by the carrier's id, so the plain check's
+	// shape window models the member's apply as a named shape's is (NUR096).
+	// A plain check only — the compile pass keeps its own member models.
+	if info, ok := fv.Data.(FnUndefInfo); ok && !r.Check.Recorder().Armed() {
+		if s, claim := check.FnShapeOfSpec(info); claim {
+			r.Check.NoteFnShape(out, s)
+		}
+	}
+	return []Value{out}
 }
 
 // getResourceReturns is getObjectReturns for the Resource/Entity

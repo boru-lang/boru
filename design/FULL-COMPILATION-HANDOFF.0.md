@@ -13322,6 +13322,60 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR216 closed — the quoted lead is data on every arm (2026-09-25)
+
+**The divergence** (recorded and closed the same day, found closing
+NUR096). `c.op/v 5` over a class member typed by a fn shape answered `6`
+compiled for the interpreter's `fn (Integer) 5`; the window spellings `3
+c.op/v 2` and `3 4 c.op/v` applied too, and so did NUR213's map member in
+those two spellings.
+
+**The fix.** NUR213 quoted the value a standalone `/v` follows and taught
+the DYNAMIC lead arm to honour the quote. A class member read is a
+fn-shape-typed carrier, not dynamic, so it took the Function-carrier lead
+arm, which now skips a quoted lead as well; and `fnLikeResidual` — the one
+classifier the trailing apply and both verbatim window islands share —
+answers false for a quoted value. Class spellings compile and agree; the
+map window twins decline at the existing "call result above a literal"
+limit (as `5 m.f/v` does) and answer by fallback.
+
+**Pins.** lang `TestClassMemberValueMarkerIsData` (nine agreeing shapes,
+the unmarked reads among them; the two map window twins through
+`requireEngineParity`).
+
+## NUR096 closed — the check applies a fn-shape member (2026-09-25)
+
+**The divergence.** A class field typed by a fn SHAPE holds a function at
+run time, and both lanes re-step it over its argument window — `c.op 10` is
+`[10 10]` for `def T fnsig [[Integer] [Integer Integer]]`. The plain check
+held the member carrier and its argument, `[T Integer]`: invisible for a
+one-result shape (the soundness comparison is top-aligned) and a type
+violation for a two-result one, which is why the multi-return rows could not
+live in `class.tsv`.
+
+**The fix.** `tryFnShapeTypedWindow` (check/go/method_shape.go), first in
+the plain-check fn-value models: a non-dynamic carrier typed by a fn shape
+with one signature of plain parameters, followed by that many
+evaluation-fixed tokens that fit, is replaced by one carrier per declared
+return (a dynamic one for an Any return). The claim is the named shape's
+own content, or — for an anonymous shape, whose carrier is typed by the
+bare FunctionSignature node — the signature `getObjectReturns` notes by the
+carrier's id at the read (`FnShape` grew `Returns` / `ReturnsKnown`, so an
+empty list can mean "returns nothing"). The compile pass is untouched: its
+member models already lowered the apply. Stands aside for a paren that
+places the fn, `/v`, an unfit or missing argument, arity 0, and several
+signatures or an optional / patterned / quoted parameter.
+
+**Found on the way.** `c.op/v 5` over the same class member answers
+`fn (Integer) 5` interpreted and `6` compiled — the class-instance twin of
+NUR213's map fix, pre-existing (measured with this change stashed).
+Recorded as NUR216 and taken next.
+
+**Pins.** lang `TestPlainCheckModelsFnShapeMemberApply` (checked stack and
+both lanes, with the paren and unfit-argument negatives); check
+`TestFnShapeTypedWindowNamedShape`, `…NotedClaim`, `…Declines`,
+`TestFnShapeOfSpecDeclines`; `class.tsv`'s two multi-return rows.
+
 ## NUR099 closed — a capitalised fn body is refused (2026-09-25)
 
 **The divergence.** One spelling carried two jobs: a fn body meant a

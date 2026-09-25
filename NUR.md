@@ -136,6 +136,7 @@ keep the two in sync in the same commit.
 | [NUR213](#nur213) | FIXED 2026-09-25 (the marker's intent on the value — the handoff log's entry of that date): the check pass quotes the dynamic member read a standalone marker qualifies (the drop of the marker at the pointer, where the concrete value's peek quotes it at run time), and the residual layout leaves a quoted lead or trailing value alone; `m.f/v 5` is `fn (Integer) 5` on both lanes, `5 m.f/v` declines at an existing residual limit and answers by fallback. The original text: A `/v`-marked MAP MEMBER read with arguments beside it is applied on the compiled lane and data on the interpreter: `def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5` is `fn (Integer) 5` interpreted (the marker says data; the 5 strands on top) and `6` compiled, `5 m.f/v` is `5 fn (Integer)` for `6` — the checker's shaped member apply (`RecordDynMethod` through the method-shape model) collects the window past the reach's dispatch-modifier marker as if it were not there; `m.f/v` alone agrees (`fn (Integer)`, the alone-in-a-live-reach-group rung). Silent, pre-existing at the merge base (measured on `wt-head`, 2026-09-25) | closing NUR212, 2026-09-25 |
 | [NUR214](#nur214) | FIXED 2026-09-25 (the loop's fresh cell — the handoff log's entry of that date): a fresh name a loop body binds, in a loop not proven to run, is carried in the unit's cell with NO init (NoteLoopFresh) — each body def stores into it, its install a per-iteration dyn-scope bind — and the post-loop binding is a carrier aliased to the cell and read BOUND-CHECKED, so a zero-trip read raises `undefined_word` on both lanes and a loop that ran reads its last binding; a dynamic read of the name from a fn after a zero-trip loop is the interpreter's `undefined_word` too (NUR215, closed with it). The original text: A FRESH `def` inside a loop that may run ZERO times binds anyway on the compiled lane: `def n (0 add 0) end for n [def x 5] x` answers `5` compiled and raises `undefined_word` interpreted; `for n [def x (n add 5)] x` answers an empty stack compiled (the unset slot) for the same raise, and `while` and a fn body (`f 0`) do the same. NUR110's loop twin: NUR110 measured only a STATIC `for 0`, which the pass prunes, and closed the branch with a bound-checked slot the loop never got. | closing NUR205, 2026-09-25 |
 | [NUR215](#nur215) | FIXED 2026-09-25 (the conditionally bound name's miss — the handoff log's entry of that date): the Program names every bound-checked cell's name (CondBoundNames: an arm's def with no pre binding, NUR110; a fresh def in a loop that may run zero times, NUR214), so a fn's dynamic read of one that misses raises the interpreter's `undefined_word` at the read, as a speculative undef's name does. The original text: a fn that reads such a name DYNAMICALLY on the path that skipped its binding — `def c (1 gt 2) end if c [def k 5] [] def g fn [[][Any][k]] end g`, `def n (0 add 0) end for n [def x 5] def g fn [[][Any][x]] end g` — bailed compiled (`internal_error`: dynamic-scope read miss) where the interpreter raises `undefined_word`; loud on both lanes, the error's code non-uniform. | closing NUR214, 2026-09-25 |
+| [NUR216](#nur216) | FIXED 2026-09-25 (the quoted lead is data on every arm — the handoff log's entry of that date): no residual arm applies a value a `/v` marker quoted — the fn-typed carrier lead arm and the verbatim window islands now ask what the dynamic lead arm already asked (NUR213) — so a CLASS member's `c.op/v 5` is `fn (Integer) 5` on both lanes, and the window spellings `3 c.op/v 2` / `3 4 c.op/v` compile and agree; the map twins `3 m.f/v 2` / `3 4 m.f/v` decline at the existing residual limit ("call result above a literal") and answer by fallback. The original text: a `/v`-marked CLASS member read with arguments beside it was applied compiled and data interpreted — `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op/v 5` answered `6` compiled for the interpreter's `fn (Integer) 5`, `3 c.op/v 2` `[3 3]` for `[3 fn (Integer) 2]`, `3 4 c.op/v` `[3 5]` for `[3 4 fn (Integer)]`, and NUR213's map member in the two window spellings the same way. Silent, pre-existing (measured with NUR096's change stashed) | closing NUR096, 2026-09-25 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -181,7 +182,7 @@ keep the two in sync in the same commit.
 | [NUR088](#nur088) | FIXED 2026-09-25 (six spellings, one form — the handoff log's entry of that date): One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2) |
 | [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §1.1) |
 | [NUR091](#nur091) | FIXED 2026-09-25 (the fn that took nothing — the handoff log's entry of that date): A malformed `fn` declaration fails LOUDLY or SILENTLY depending on its output slot: `fn List [Integer] [size]` raises signature_error, `fn List Any [1]` strands its operands and binds nothing, exit 0 | the function-type prototype, 2026-08-19 |
-| [NUR096](#nur096) | The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
+| [NUR096](#nur096) | FIXED 2026-09-25 (NUR096 closed — the check applies a fn-shape member — the handoff log's entry of that date): The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
 | [NUR092](#nur092) | FIXED 2026-09-25 (the stale arm consults the corpus — the handoff log's entry of that date): `varyCompileFailureLedger`'s stale arm is corpus-sensitive: adding an UNRELATED spec row can displace a seed from the hash-ordered 32-seed sample, empty a bucket, and instruct the author to delete a ledger entry whose refusal class is still live at larger breadth | adding NUR091's spec rows, 2026-08-19 |
 | [NUR110](#nur110) | A FRESH `def` inside a branch that DID NOT RUN binds the name anyway in the compiled lane: `if false [def op 1] [0] end op` answers `[0 1]` compiled and `undefined_word` interpreted. The family-L CondBodyDepth gate only fires when a redefinition DROPS an existing overload, so shadowing is refused and fresh definition is not | measuring NUR109's premise, 2026-08-28 |
 | [NUR122](#nur122) | FIXED 2026-09-25 (the read's own token — the handoff log's entry of that date): A bare-name dispatch of a fn-typed frame binding whose runtime value does not match is a NAMED no-match on the interpreter and something else on the compiled lane: `def f fn [[g:Function x:Integer][Integer][g x]]  f (z:String => [z]) 5` raises `signature_error: cannot call `g`` interpreted and `type_error: f: expected 1 return value(s), got 2 — [fn (String) 5]` compiled (the frame replay parks the value); the paren spelling `(g x)` raises the no-match with an EMPTY name (`cannot call `` `) at the body's position; a 0-arg `g` fires interpreted (`[42 5]`) and parks compiled (`[fn 5]`); and inside a RETURNED closure the same paren spelling over a captured NAMED fn names that fn instead of the param — `def app fn [[g:Function][Function][( fn [[x:Integer][Integer][(g x)]] )]]  def h (app add/v)  (h 5)` raises `cannot call `g`` at 1:64 interpreted and `cannot call `add`` at 1:80 compiled, both exit 1 (measured 2026-09-05 on main, a COMPILING row). Same shape family as NUR119: the compiled value has no binding name and no named-dispatch semantics RE-MEASURED 2026-09-06: the NUR123 deopt increments moved two of the three without this record being touched — `f (z:String => [z]) 5` now AGREES in message and position (`cannot call `g`` at 1:43), and `f ([] => [42]) 5` agrees in message (`[42 5]`, was `[fn 5]`) with only its POSITION still differing (interp 1:50, compiled 1:43); the returned-lambda `(g x)` row is unchanged. What remains is one position-only divergence plus the lambda-VALUE body's empty dispatch name. FIXED 2026-09-06 (the nineteenth increment) for the DISPATCH NAME and its position: the trailing apply's head carries the binding name and read position it was recorded under (`CompiledFn.DynApplyName`), so `(g 5)` raises `cannot call `g`` at the read on both lanes — message, code, caret, candidate notes and forward-args help alike — for a plain fn body, a lambda VALUE's body and a capture (`app add/v` named `add` at 1:80 and now names `g` at 1:64). What remains is the position-only row (`f ([] => [42]) 5`, interp 2:1 vs compiled 1:43) and the WRITTEN-TUPLE half already recorded below: a WORD argument is substituted onto the value stack before the head dispatches, so the interpreter's tuple is empty (`takes 1 argument, but none were supplied`) where the compiled lane names the applied value. FIXED 2026-09-07 (the twenty-first increment): both ops hand NoMatchDiag the leading run (fnUnitRec.localReads → DynApplyHead.NWritten and DynFrameWord.Read), and all eight witnesses reach parity. The rule the nineteenth increment recorded was wrong three ways — the tuple is a PREFIX not a filter (`(g 5 y 6)` writes `[5]`, not `[5 6]`), the gap spans OpCallDynFrame as well as the trailing apply (multi-arg applies lower there), and the discriminator is SYNTACTIC not an operand kind (a body-local bound to a literal folds to PUSH_CONST and is still not written) — so closing it needs the SYNTACTIC fact rather than the lowered operand — which `NoteLocalRead` already records ungated for every bare read (`rec.localReads`), so no kernel change and no relaxation of noteWordRead's fn gate. RENAME half FIXED 2026-09-07 (the twenty-sixth increment): the interpreter's frame binding NAMES a fn value bound for a named param (`installDef`: `fnDef.Name = name`) and the VM bound it verbatim, so a COMPILING row rendered differently — `def f fn [[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3` was `fn g(Integer) 3` interpreted and `fn (Integer) 3` compiled; `nameFrameFns` now names an `FnDefInfo` of this registry at every frame entry, and the row, its returned-closure twin `[g/v]` and the nameless-builder no-match (`(g/v 5)` → ``cannot call `g` `` on both lanes) agree. STILL OPEN: a MODULE WRAPPER bound for a named param keeps its own name and signatures on the compiled lane (`(f MathUtil.sqrt/v) 16.0` renders `fn sqrt(Number) 16.0` for the interpreter's `fn g(BigDecimal) or (BigInteger) or (Float) or (Integer) 16.0` — installDef's rebinding path installs the inner native's overloads under the param's name, a registry-visible install the VM does not mirror; the wrapper still dispatches), and the position-only row `f ([] => [42]) 5` (interp 1:50, compiled 1:43). | measuring the closure-capture family's blocker (a), 2026-09-05 |
@@ -6198,9 +6199,29 @@ empty a ledger bucket, pinned as a test.
 
 ## NUR096 — the checker still models a fn-shape-typed member apply as the inert fn it was before NUR095 {#nur096}
 
-**Status:** Pending · **Recorded:** 2026-08-20 · **Surfaced by:** adding
-two multi-return rows to `lang/spec/class.tsv` to pin the NUR095
+**Status:** FIXED 2026-09-25 · **Recorded:** 2026-08-20 · **Surfaced by:**
+adding two multi-return rows to `lang/spec/class.tsv` to pin the NUR095
 retirement and watching `TestCheckTypeSoundness` fail on both
+
+**The fix.** The plain check applies a fn-SHAPE-typed carrier the way both
+lanes apply the fn it stands for (`tryFnShapeTypedWindow`, first in the
+plain-check fn-value models): the shape's one declared signature is the
+claim — a named shape's own content, or, for an anonymous `{op:(fnsig …)}`
+field whose carrier is typed by the bare FunctionSignature node, the
+signature `getObjectReturns` notes at the read (`FnShape.Returns`,
+`ReturnsKnown`) — and its parameter count of evaluation-fixed tokens that
+fit its parameter types is replaced by one carrier per declared return.
+That is sound for any stored fn, whose returns the shape covers. It stands
+aside where the run keeps the fn a value (a paren that places it, `/v`, an
+argument that does not fit, no argument) and for a shape the types alone do
+not decide (arity 0, several signatures, an optional, patterned or quoted
+parameter). `c.op 10` over a two-result shape checks `[Integer Integer]`
+where it checked `[T Integer]`. The two multi-return rows live in
+`class.tsv` again (named and anonymous shape), and the production-registry
+runs agree with them — the earlier review's `fn … 10` was the paren
+spelling, which places the fn on every lane. Pinned: lang
+`TestPlainCheckModelsFnShapeMemberApply`, check
+`TestFnShapeTypedWindow*` / `TestFnShapeOfSpecDeclines`.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The retirement test
 was tried: with the two multi-return rows in `class.tsv` (`10 10`), the
@@ -8317,6 +8338,45 @@ map_literal_flex_member_test.go): the shapes above, nested loops, the
 loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
+
+## NUR216 — a `/v`-marked class member read with arguments beside it is applied compiled, data interpreted {#nur216}
+
+**Status:** FIXED 2026-09-25 (the quoted lead is data on every arm — the
+handoff log's entry of that date) · **Recorded:** 2026-09-25 · **Surfaced
+by:** closing NUR096, probing the `/v` spelling of the fn-shape member.
+
+**Rule:** `/v` marks a value as data wherever it is written, on both lanes
+(NUR213's rule).
+
+**Divergence.**
+
+```
+def T fnsig Integer Integer def C class {op:T}
+def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])})
+c.op/v 5      interp: fn (Integer) 5      compiled: 6
+3 c.op/v 2    interp: 3 fn (Integer) 2    compiled: 3 3
+3 4 c.op/v    interp: 3 4 fn (Integer)    compiled: 3 5
+def m {f: (fn [[x:Integer] [Integer] [x add 1]])}
+3 m.f/v 2     interp: 3 fn (Integer) 2    compiled: 3 3
+3 4 m.f/v     interp: 3 4 fn (Integer)    compiled: 3 5
+```
+
+NUR213 taught the pass to QUOTE the value a standalone `/v` marker follows
+(the run-time peek quotes the concrete fn) and the DYNAMIC lead arm of the
+residual layout to honour the quote. A class member read is not dynamic —
+it is a carrier typed by the member's fn shape — so it reached the
+Function-carrier lead arm, which never asked; and the verbatim window
+islands (`OpCallDynamicMixed`, mixed and trailing) classify through
+`fnLikeResidual`, which did not ask either, so they re-stepped the fn live.
+Silent; pre-existing.
+
+**The fix.** A quoted value is data on every arm: the Function-carrier lead
+arm skips a quoted lead, and `fnLikeResidual` answers false for a quoted
+value, so neither window island claims it. The class spellings compile and
+agree; the map window twins decline at the existing residual limit ("call
+result above a literal") — NUR213's `5 m.f/v` does the same — and the
+fallback answers as the interpreter. Pinned by lang
+`TestClassMemberValueMarkerIsData`.
 
 ## NUR214 — a fresh def in a loop that may not run binds anyway {#nur214}
 
