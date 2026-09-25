@@ -1293,7 +1293,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, out, regionN, args[countArg].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, iterName, out, regionN, args[countArg].Pos())
 	}
 	// A body that nets ZERO values per iteration (every pass drops / is pure
 	// side effect) leaves the stack untouched at run time — BOTH engines net

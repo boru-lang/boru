@@ -52,6 +52,12 @@ func TestQuotationBodyDefReadParity(t *testing.T) {
 		{qdLocal + `each [f/v apply] [1 2 3]`, "[2 3 4]", "the /v read applied (as before)"},
 		{qdTbl + `def f M.tbl.inc end f 5`, "6", "the word call (as before)"},
 		{`def z fn [[][Integer][7]] end def tbl {z: z/v} end def f tbl.z end each [f] [1 2]`, "[7 7]", "a 0-arg member is the landing's at the def (as before)"},
+		// the loop-carried root def computed by the /v-marked export under
+		// apply (L104 and its local twin): declined "dynamic-scope def `i` of
+		// unpromoted computed value" until the user-call write-back promoted
+		// the call's result for the carried store and the write-back alike
+		{qdModule + `def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i`, "3", "module-composition L104: the carried root def computed by the export under apply"},
+		{`def inc fn n:Integer Integer [n add 1] end def i 0 end while [i lt 3] [def i (i inc/v apply)] end i`, "3", "its local twin (callbacks L89)"},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -90,14 +96,15 @@ func TestQuotationBodyDefReadNoMatchParity(t *testing.T) {
 }
 
 // TestQuotationBodyDefReadSoundCompileFailures: the neighbours that DECLINE,
-// each with the interpreter's own answer beside it. L104 is one: it used to
+// each with the interpreter's own answer beside it. L104 was one: it used to
 // compile to a runaway loop (`tape_exhausted`) because the apply inside its
-// body never fired; with the apply recorded it declines where its local
-// twin always did — the dynamic-scope def family's own gate, loud.
+// body never fired; with the apply recorded it declined where its local
+// twin always did — the dynamic-scope def family's own gate, loud — until
+// the user-call write-back (2026-09-25) promoted the call's result for the
+// carried root def's write-back; both spellings compile with parity now
+// (TestQuotationBodyDefReadParity's last rows).
 func TestQuotationBodyDefReadSoundCompileFailures(t *testing.T) {
 	rows := []struct{ src, reason, interp string }{
-		{qdModule + `def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i`, "dynamic-scope def `i`", "[3]"},
-		{`def inc fn n:Integer Integer [n add 1] end def i 0 end while [i lt 3] [def i (i inc/v apply)] end i`, "dynamic-scope def `i`", "[3]"},
 		{qdLocal + `0 fold [add f] [1 2 3]`, "result above a literal", "[9]"},
 	}
 	for _, c := range rows {

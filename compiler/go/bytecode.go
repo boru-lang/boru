@@ -960,8 +960,11 @@ type RestampBox struct {
 	fd     core.FnDefInfo
 	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
-	Tries  int
-	Cur    *CompiledFnRef
+	// keepsDefs: a TOKEN body's stamp (StampTokenBody) — the re-stamp opens
+	// the same keep-defs unit the first stamp did (NUR202).
+	keepsDefs bool
+	Tries     int
+	Cur       *CompiledFnRef
 }
 
 // DepSnapEntry is one dep's binding state at stamp time (see DepSnap).

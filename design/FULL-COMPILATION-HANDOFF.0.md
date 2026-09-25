@@ -13322,6 +13322,189 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The user-call write-back — a carried root def computed by a user fn (2026-09-24)
+
+**The rows.** callbacks.tsv L89 (`def inc fn [[n:Integer][Integer][n add
+1]]  def i 0  while [i lt 3] [def i (i inc/v apply)]  i`) and
+module-composition.tsv L104 (its module-export twin, `def i (i M.inc/v
+apply)`) declined "dynamic-scope def `i` of unpromoted computed value" —
+and so did the plainest spelling, `while [i lt 3] [def i (inc i)]` for ANY
+user fn `inc`, where `def i (i add 1)` always compiled.
+
+**The cause.** A loop-carried ROOT def binds twice: the carried STORE
+pops its value into the loop's frame slot, and the root write-back
+(OpBindGlobal, rootBindWritesBack — a computed value's registry binding is
+the run's, not the model's) re-pushes it for the registry. A NATIVE
+producer's result is promoted to a frame slot unconditionally on valueDef
+(planValueDefLocals), so both readers load the slot; a USER call's
+single-use result stays on the sim by design (a harness may feed on it in
+ways the ref count cannot see), and its plain loop-carried store source
+is exempt from the valueDef promotion (the store seats it off the sim
+top). So the store popped the call's result, the write-back's peek fast
+path (the value live on top) found nothing, and lowerDynBind's computed
+arm had no promoted slot: every gate off (keeps, dynEnv, deopt,
+dynScope, routed), `vmlen=0` at the bind, measured.
+
+**The fix.** collectWriteBackSources (planValueDefLocals' writeBackSrc): a producer whose result a
+carried root def binds with a write-back joins the user-call promotion
+triggers — store once at the call (lowerUserCallResult's promoted arm),
+the carried store loads the slot, the write-back re-pushes it — exactly
+the native path. The `while`, `for`, `apply` and module-export spellings
+compile with parity; a fn-frame twin (a frame slot, no write-back) and
+the native producer are untouched.
+
+**Found on the way — NUR204.** The `for` spelling with the loop's OWN
+index — `def i 0  for 3 [def i 9]  i` — is 2 on the interpreter (the
+loop leaves its index level bound past the loop; 0 inside a nested loop,
+whose outer cleanup pops it) and was 9 compiled for a native value on
+main, a silent miscompile; the promotion would have extended it to a
+user-call value where the shape declined before. The for's index NAME
+rides RecordLoop now (the recorder interface's iterName, emitLoop.iterName,
+loopCtx.iterName while the body lowers), and lowerDynBind declines a body
+def of the enclosing counted loop's own index on both paths, inside a fn
+and through an arm alike — loud where it was silent, the S1a trade in its
+right direction. Recorded and fenced (TestForIndexDefInBodyPending, the
+interpreter's values pinned). A `do [def i …]` inside the body is a
+keep-defs unit the gate does not reach; measured neither way yet.
+
+**Measured:** callbacks.tsv 3 -> 2 (L89), module-composition.tsv 2 -> 1
+(L104) — the corpus's compile failures 12 -> 10; the full corpus 8563 rows / 8213 -> 8215 compiled with the compute-gap gate 7 -> 5 (the two dynamic-scope def gaps), the interp-entry census 23, the engine-entry census 164, the runtime-defer census 10 and the sweep's call-form failures 195 -> 197 (the `while` seed's two for-body variants, NUR204's loud decline — debt put back on purpose), every other gate at its value;
+the lang ledger 285 -> 291 (NUR204's six fence witnesses, booked) with 44 bails unchanged; the unit suites of core, eng, compiler,
+check, basic, lang, the specfix build and the arity gate green.
+
+**Pins.** lang TestUserCallSourceOfCarriedRootDefCompiles (the spellings,
+the lowering: CALL_USER feeding BIND_GLOBAL, no island),
+TestForIndexDefInBodyPending (NUR204's fence). Docs: NUR.md (NUR204
+Pending), this entry, the handover.
+
+
+## The keep-defs token body — NUR202 closed, code-bodies L189 compiles (2026-09-24)
+
+**The rows.** code-bodies.tsv L189 (`def f fn [[xs:List][Integer][def t 0
+each [def t (t add 1) t] xs drop t]]  f [1 2 3]`) declined "fn f: body
+result of unknown provenance", and its List-returning twin (`… [List][def
+t 0 each [def t (t add 1) t] xs]]`) COMPILED to `[[1 1 1]]` for the
+interpreter's `[[1 2 3]]` — NUR202, recorded in the previous entry. Over a
+GRADUAL list (a fn's `xs:List` param) the each body was not a closure unit
+but a const the native ran per element (PUSH_CONST_FRESH then CALL_NATIVE
+each), and that run did not leak the body's def to the next element.
+
+**Two causes.** The closure unit declined in its probe: "closure
+each$body: unapplied fn-value in body residual (dynamic apply not
+lowered)" — the body's residual is [element, t], the element an Any
+carrier for a gradual list, and closureResidualHasUnappliedFn read a
+dynamic Any that PRECEDES other values as a value that might auto-apply
+on the interpreter (`r.<gen> args`, the trailing-arg miscompile the gate
+exists for). An INPUT of the unit is not that: an argument enters the
+frame resolved, before the step region, and is never stepped on either
+lane (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore), so an untouched
+input left in the residual is inert data whatever its runtime type. The
+gate exempts a unit's own untouched inputs (a param local by ID), and the
+body compiles to its each$body closure — the kept install of NUR200 — so
+L189 compiles with parity and the List twin answers `[[1 2 3]]`.
+
+The path the decline took is the S3 run-time stamp (vm_token_body.go:
+StampTokenBody over StampDetachedSig, a synthetic anonymous fn over the
+tokens), whose unit unwound its dyn-scope installs at its RET like any fn
+unit — where the interpreter's InvokeBody leaks EVERY token body's defs
+(RunResolved on the shared registry, no def cleanup): `def t (t add 1)`
+installed t, the RET popped it, the next element read 0. A token body's
+stamp is a KEEP-DEFS unit now: stampDetachedSig takes the mode
+(StampTokenBody passes it; a fn VALUE's stamp keeps its frame-local defs,
+the interpreter's CallBoru tears them down with the frame), arms
+keepDefsUnitDepth at the root unit count so StartFnCompile stamps the
+unit — compileStoredFnUnit copies the arming to its probe state, or the
+probe's verdict is about a unit whose defs lower differently — and the
+re-stamp box carries the flag (RestampBox.keepsDefs). The VM side: the
+hosted unit's kept installs stay on the SUB-context's trail (hostForeign
+builds a fresh vmContext per hosted run), where nothing would ever pop
+them, so hostForeign hands them to the enclosing context's trail after the
+run — the enclosing activation's RET, the run's end at root, or an error
+unwind truncates them as its own; a kept unit's raise keeps them too, the
+interpreter's leak-then-raise. And the stamp's dependency snapshot leaves
+the body's own defs out (bodyDefNames: `def NAME`, nested lists, the `var`
+splice's three declaration forms): with `t` in it, the body's own rebind
+of `t` read as staleness, the body re-stamped at every element and, past
+RestampMaxTries, ran the rest on the interpreter — three unattributed
+entries over seven elements, measured. The unit reads `t` live
+(LOOKUP_DYN_SCOPE, the enclosing-binding arm) and installs it live
+(BIND_DYN_SCOPE), so its own rebinding is no staleness; a run-time body
+over seven elements stamps once and runs on the VM.
+
+**Found on the way — NUR203.** The fn's later READ after a DYNAMIC
+keep-defs body — `def f fn [[b:List xs:List][Integer][def t 0 each b xs
+drop t]]  f (quote [def t (t add 1) t]) [1 2 3]` — is 3 interpreted and 0
+compiled: the run-time body leaks into the registry now, but the compile
+pass never sees the body's tokens, so NoteKeepDefsLeak names nothing and
+the read keeps its compile-time home. Recorded and fenced
+(TestDynamicKeepDefsBodyLeakInFnPending); the root twin agrees. Present
+on main at 3768c46 (the same 0, with the leak never made). Also seen:
+`def f fn [[b:List][Integer][def t 0 do b t]]  f (quote [def t 5])` bails
+at run time ("CALL_DYN_FRAME underflow", the compiled run falls back to
+the interpreter's 5) — present on main, not a divergence, in the
+whole-frame replay of a dynamic `do` body inside a fn.
+
+**Measured:** code-bodies.tsv 6 -> 5 (L189) — the corpus's compile
+failures 13 -> 12; the full corpus 8563 rows / 8212 -> 8213 compiled with the interp-entry census 24 -> 23 (a run-time token body that rebinds a name it reads no longer re-stamps past its budget), the engine-entry census 166 -> 164 (the same body's three entries less its one stamp), the runtime-defer census 10 and the compute-gap gate 8 -> 7 (L189's operand-provenance gap), every other gate at its value; the lang ledger
+285 / 44 unchanged; the unit suites of core, eng, compiler, check, basic,
+lang and the arity gate green.
+
+**Pins.** lang TestKeepDefsTokenBodyOverGradualListCompiles (the
+compile-time and run-time shapes, the frame teardown, no interpreter
+entry over seven elements), TestDynamicKeepDefsBodyLeakInFnPending
+(NUR203's fence); compiler TestBodyDefNames. Docs: NUR.md (NUR202 FIXED,
+NUR203 Pending), this entry, the handover.
+
+
+## The var splice's token sites — the root `do [var …]` twin places (2026-09-24)
+
+**The row.** code-bodies.tsv L197 (`do [var [[[k 1]] k add 1]]`) declined
+"twin regime: a bind transition has no stream placement (a multi-run-body
+or post-trap twin), so the rollback would lose it" — at the ROOT only:
+inside a fn unit or a loop fragment the same shape compiled, and the
+hand-written pair `do [def k 1 k add 1 undef k]` always compiled at the
+root.
+
+**The cause.** `var` splices `def k 1 end … __varundef k` onto the tape
+(basic/go's VarHandler), and the synthesized tokens carried no source
+position. A bind transition takes its site from the value's position or,
+failing that, from the word dispatching (core's bindSitePos falls back to
+CurWordPos, the tape token's own position): the def's twin had the value
+`1`'s site, the UNDEF's twin — `__varundef` supplies no value — had the
+synthesized token's 0:0. The root's adoption of a once-run keep-defs
+body's twins (AdoptBodyTwins) keys on the body's token sites and skips a
+twin with no site, so the undef twin stayed table-only and unplaced, and
+the full-placement gate (twinsFullyPlaced) declined the program.
+
+**The fix.** The synthesized `def`, name, `__varundef` and name tokens
+carry the declaration NAME's position (WithPos): the def's site is the
+declaration, the undef's the same token, both inside the body's sites, so
+the twins adopt as placed BIND_TWIN replays exactly as the hand-written
+pair does. VarHandler only; no compiler change.
+
+**Found on the way — NUR202.** Measuring L189 (`def f fn
+[[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]]  f
+[1 2 3]`, "fn f: body result of unknown provenance") beside its
+List-returning twin: the twin COMPILES, to `[[1 1 1]]` for the
+interpreter's `[[1 2 3]]` — over a GRADUAL list the each body lowers as a
+const the native runs per element (PUSH_CONST_FRESH then CALL_NATIVE each,
+the S1a dynamic-callback path) and that run does not leak the body's def to
+the next element, where the interpreter's eachHandler drives InvokeBody on
+the shared registry with no def cleanup. Recorded and fenced
+(TestKeepDefsConstBodyOverGradualListPending); present on main at 3768c46
+(the same wrong value on a clean worktree). The next increment: the
+const-body run of a keep-defs body leaks as InvokeBody does, or declines.
+
+**Measured:** code-bodies.tsv 7 -> 6 (L197) — the corpus's compile
+failures 14 -> 13; the full corpus 8563 rows / 8211 -> 8212 compiled with the interp-entry census 24, the engine-entry census 166, the runtime-defer census 10, the compute-gap gate 9 -> 8 (L197's twin-regime gap) and the sweep's call-form failures 197 -> 195 (two `var`-bearing variants under a root do body compile), every other gate at its value; the lang ledger
+285 / 44 unchanged; the unit suites of core, eng, compiler, check, basic,
+lang and the arity gate green.
+
+**Pins.** lang TestVarInRootDoBodyCompiles (the root shapes, the placed
+replays, the shapes that compiled before), TestKeepDefsConstBodyOverGradualListPending
+(NUR202's fence). Docs: NUR.md (NUR202 Pending), this entry, the handover.
+
+
 ## The variadic loop body — a 0-or-1 branch as a loop's per-iteration result (2026-09-24)
 
 **The rows.** code-bodies.tsv L181 (`def t 0  for 2 [if true [def t (t

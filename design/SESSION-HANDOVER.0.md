@@ -243,7 +243,28 @@ branch-carried def"**; the re-estimate is
    body lands the same day (the handoff log's "the variadic loop body"
    entry: a loop body whose one result is a 0-or-1 branch is admitted,
    the S5 first-value bind over such a loop declining instead;
-   code-bodies L181 / L182 compile, 16 -> 14); filter's predicate
+   code-bodies L181 / L182 compile, 16 -> 14); the var splice's
+   token sites land the same day (the handoff log's "the var splice's
+   token sites" entry: `var`'s synthesized def and __varundef tokens carry
+   the declaration name's position, so the root `do [var …]` twins adopt
+   and place — code-bodies L197 compiles, 14 -> 13; NUR202 recorded on the
+   way: a keep-defs body over a GRADUAL list runs as a const the native
+   drives and its def does not leak, `[[1 1 1]]` for `[[1 2 3]]`, fenced); the
+   keep-defs token body lands the same day (the handoff log's "the keep-defs
+   token body" entry: NUR202 closed — the unapplied-fn gate exempts a unit's
+   own untouched inputs so the each body over a gradual list compiles to
+   its closure, and a run-time token body's stamp is a keep-defs unit whose
+   kept installs the host hands to the enclosing trail; code-bodies L189
+   compiles, 13 -> 12; NUR203 recorded on the way: the fn's read after a
+   DYNAMIC keep-defs body keeps its compile-time home, 0 for 3, fenced); the
+   user-call write-back lands the same day (the handoff log's "the user-call
+   write-back" entry: a user call whose result a loop-carried root def
+   writes back is promoted to a frame slot like a native producer, so
+   `while [i lt 3] [def i (inc i)]` and its `apply` spellings compile —
+   callbacks L89 and module-composition L104, 12 -> 10; NUR204 recorded on
+   the way: a body def of the for loop's OWN index is the interpreter's
+   leftover index level (2) and was the compiled lane's write-back (9),
+   silent on main — the shape declines loudly now, fenced); filter's predicate
    seam for a Go-implemented value and a `flip`ped wrapper are the
    family's open rows. The run-time list bodies (code-bodies.tsv's twenty) are S3's runtime
    compilation. Most of the interp-entry census rows are still this
