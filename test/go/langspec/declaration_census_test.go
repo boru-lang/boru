@@ -51,8 +51,26 @@ import (
 // class's set/del cluster: the sixteen quoted-receiver overloads of `set`
 // and `del` — Store, Map, Class, FlexMap, FlexXml, WeakFlexMap,
 // WeakFlexXml, Micron — declared CompileQuoteKey, which let the
-// recorder's by-name set/del exemption go) -> 0 (Stage 6).
-const undeclaredHandlerCeiling = 94
+// recorder's by-name set/del exemption go) -> 59 (2026-09-25, S2a of
+// design/FULL-COMPILATION-REPLAN.0.md: the 35 declaration-only handlers.
+// The quoted class, 28: `def`'s nine forms, `undef` ×2 and `__varundef`
+// declare CompileQuoteKey (the NAME of a registry write or removal);
+// `describe [Atom]` and `unpack all` CompileQuoteInert (a literal the
+// handler consumes verbatim); `xml-attr [Atom Xml]` and `unpack Export
+// 'mod'` CompileQuoteKey (a key the handler reads); the by-name modifier
+// forms — `usurp`, `stack-args`, `forward-args`, `force-arity` — with
+// `valof` and the `mini` ×2 / `parse` ×2 / `emit` ×3 kind forms declare
+// CompileResteps, the NEW flag that names the re-stepping refusal (their
+// result is a wrapper, a parked binding or a splice the tape runs, never
+// a value a CALL_NATIVE could bake). The fn-operand class, 7: `apply
+// [Function]` and the `mini` ×2 / `parse` ×2 / `emit` ×2 value forms
+// declare CompileResteps too (the marked fn / the splice re-stepped on
+// the tape — CompileReadsFn would be a permissive lie). The 59 left are
+// the code-body class, S2b's: `def`'s keyword forms whose constructor
+// takes a raw body or a gen params list (NoEvalArgs) are among them and
+// were deliberately NOT declared by S2a, although they share a
+// synthesizer with the quoted forms) -> 0 (Stage 6).
+const undeclaredHandlerCeiling = 59
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.

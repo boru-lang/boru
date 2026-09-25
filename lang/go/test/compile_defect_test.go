@@ -31,7 +31,12 @@ import (
 const (
 	// Set 2026-09-19, the change that removed the interpreter fallbacks.
 	// Not new bugs: each one was already there and counted by nothing.
-	refDefectCeiling = 111
+	// 111 -> 102 on 2026-09-25 (the S2 declarations, the recovery's
+	// dyn-body route and the run-time bind): nine language tests answer
+	// on the compiled lane now — the behave rows (the quoted behaviour
+	// name bakes as an inert const), the unpack-over-a-param rows (the
+	// run-time bind), a bare-`args` read and the strict-Any fold rows.
+	refDefectCeiling = 102
 )
 
 var refDefects = struct {

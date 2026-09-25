@@ -119,8 +119,17 @@ var pinnedAritySites = map[string]int{
 	// never what a function of a given arity may do: every arity takes the
 	// same path, and the matching itself is SigTypeMatches, the argument
 	// rule's own arm.
-	"check/go/method_shape.go":   2,
-	"check/go/check_recovery.go": 1,
+	"check/go/method_shape.go": 2,
+	// 1 -> 2 (2026-09-25, the strict-Any dyn-body recovery):
+	// widestSatisfiableOverload compares `n > best.TotalArgs()` to pick,
+	// among a word's overloads whose FULL operand window exists at the
+	// call site, the one of greatest arity — the matching rule's own
+	// choice (the interpreter's first match consumes the widest window it
+	// can: fold's seeded form over its seedless one), never a decision
+	// about what a function of a given arity may do; the run-time poly
+	// re-match over that window then matches by type exactly as
+	// CALL_NATIVE_POLY does.
+	"check/go/check_recovery.go": 2,
 	// A bounds check on a signature INDEX, not a decision about a function's
 	// shape (CompileFnSigUnit guarding fnDef.Signatures[sigIdx] before it
 	// compiles that one signature's body as a dispatch of it would — the

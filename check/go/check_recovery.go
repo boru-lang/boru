@@ -997,36 +997,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// eval-map tape.Set) — the runtime interpreter's sigError reads exactly
 	// this state (plan 3c).
 	noMatchProbe := e.PolyNoMatchProbe(w.Name, pos)
-	args := make([]core.Value, len(positions))
-	for i, p := range positions {
-		av := e.Tape.At(p)
-		// Resolve simple word references to their def bindings — the
-		// tape still holds raw Words for forward operands at this
-		// recovery point, and both the partition probe below and the
-		// assumed sig's ReturnsFn want values, not names.
-		if core.IsWord(av) {
-			if wi, werr := core.AsWord(av); werr == nil {
-				if top, ok := e.Registry.Defs.Top(wi.Name); ok {
-					av = top
-					e.Registry.Check.RecordUse(wi.Name)
-				}
-			}
-		}
-		// Auto-evaluate a raw eval-map operand exactly as the runtime match's
-		// execMatch would (word members resolve against the live frame, the
-		// recorder assembles a per-run OpMakeMap): the recovery otherwise
-		// hands the RAW source map to the poly record, which either baked a
-		// live word member as a frozen const (the repl-eval `{line: src}`
-		// request map) or declines. Errors leave the raw operand — the
-		// assumed-sig model stays as before.
-		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
-			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
-				e.Tape.Set(p, ev)
-				av = ev
-			}
-		}
-		args[i] = av
-	}
+	args := recoveryArgsAt(e, positions)
 	// Strict disjunct rescue (design/legacy/checker-accuracy-review.10.ignore A1):
 	// the whole disjunct matched no signature, but individual
 	// alternatives may dispatch fine. If at least one does, splice the
@@ -1114,6 +1085,31 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// export). For a core builtin e.registry is the main registry, so
 		// PolyRef.Reg then equals the VM's own registry — the no-op the
 		// get/add path already relied on.
+		// A CompileDynBody word (each/fold/scan/filter/do) over a STRICT
+		// Any operand — a declared `xs:Any` param handed to `fold`, a
+		// class field's Any-typed list — never reaches tryRecordPoly (a
+		// code-body word), but the dyn-body recorder is exactly its
+		// landing (S1a): a poly re-match over the word's own overloads
+		// under DynEnv, the handler picking the overload the live value
+		// matches and raising the interpreter's own no-signature verdict
+		// when none does (fold-map-filter.tsv L249, 2026-09-25). The window
+		// is the WIDEST overload this site can supply, not the best-fit
+		// guess: fold's seeded and seedless forms differ in arity, and the
+		// interpreter's first match takes the seed whenever it is there —
+		// a 2-operand window over `0 fold [add] b.data` left the seed on
+		// the stack (`0 6`), measured before this rule.
+		if sig != nil && sig.Callable != nil && sig.CompileEffect.Has(core.CompileDynBody) && AnyAnyCarrier(args) {
+			if dsig, dpos, dn := widestSatisfiableOverload(e, fn, w); dsig != nil {
+				dargs := recoveryArgsAt(e, dpos)
+				resume := es.Suspend()
+				dres := CarrierResults(e.Registry, w.Name, dsig, dargs, pos, nil, false)
+				resume()
+				if dispatchTryRecordDynBody(e.Registry, w.Name, dsig, core.SigOrderArgs(dargs, dn), dres, pos) {
+					spliceCheckResults(e, dpos, dres)
+					return nil
+				}
+			}
+		}
 		if sw := core.SigOrderArgs(args, nStack); dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, e.Registry, true, noMatchProbe.Spec(fn, sw)) {
 			spliceCheckResults(e, positions, results)
 			return nil
@@ -1540,4 +1536,65 @@ func parenPlacedFnCarrier(e *core.Engine, idx int) bool {
 	}
 	cs.ParenPlacedFnIDs[v.ID] = true
 	return true
+}
+
+// recoveryArgsAt resolves the operand values at the recovery's tape
+// positions: a raw Word forward operand resolves to its def binding (the
+// tape still holds Words at this point, and the partition probe and the
+// assumed sig's ReturnsFn want values), and a raw eval-map operand is
+// auto-evaluated exactly as the runtime match's execMatch would (word
+// members resolve against the live frame, the recorder assembles a per-run
+// OpMakeMap) — the recovery otherwise hands the RAW source map to the poly
+// record, which either baked a live word member as a frozen const (the
+// repl-eval `{line: src}` request map) or declines. Errors leave the raw
+// operand, so the assumed-sig model stays as before.
+func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
+	args := make([]core.Value, len(positions))
+	for i, p := range positions {
+		av := e.Tape.At(p)
+		if core.IsWord(av) {
+			if wi, werr := core.AsWord(av); werr == nil {
+				if top, ok := e.Registry.Defs.Top(wi.Name); ok {
+					av = top
+					e.Registry.Check.RecordUse(wi.Name)
+				}
+			}
+		}
+		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
+			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
+				e.Tape.Set(p, ev)
+				av = ev
+			}
+		}
+		args[i] = av
+	}
+	return args
+}
+
+// widestSatisfiableOverload picks, among a word's non-fallback overloads,
+// the one of GREATEST arity whose full operand window exists at this call
+// site (checkModeFallbackPositionsFor supplies every position), first in
+// match order among equals; nil when none is satisfiable. The dyn-body
+// recovery re-matches the live values over this window at run time, and
+// the interpreter's first match consumes the widest window it can — so a
+// narrower window would leave an operand behind.
+func widestSatisfiableOverload(e *core.Engine, fn *core.FnDefInfo, w core.WordInfo) (*core.Signature, []int, int) {
+	var best *core.Signature
+	var bestPos []int
+	bestN := 0
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.Fallback {
+			continue
+		}
+		n := s.TotalArgs()
+		sp, nStack := checkModeFallbackPositionsFor(e, s, w)
+		if len(sp) != n {
+			continue
+		}
+		if best == nil || n > best.TotalArgs() {
+			best, bestPos, bestN = s, sp, nStack
+		}
+	}
+	return best, bestPos, bestN
 }

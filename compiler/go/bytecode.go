@@ -662,6 +662,17 @@ const (
 	// fold / scan, whose resident type twin mints per element and leaks).
 	// Zero stack effect.
 	OpBindFnType
+	// OpBindDynScopePeek is OpBindDynScope for a computed def's value that
+	// sits LIVE on the unit sim for its downstream readers: it installs the
+	// top value under the name in Program.Consts[Arg] exactly as
+	// OpBindDynScope does, and leaves the value in place. The install arm's
+	// twin of the GlobalBindSpec / ResidentBindSpec peek mode: a def binds
+	// immediately after its value event, so the value is on top when the
+	// bind runs and the def consumes nothing the compiled model still needs.
+	// This is how a dyn-scope def of an UNPROMOTED computed value lowers —
+	// a branch merge (`def x (if …)`) or a loop value a frame slot cannot
+	// seat — under the widened environment (dynEnv, a deopt unit).
+	OpBindDynScopePeek
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -729,6 +740,7 @@ var opcodeNames = [...]string{
 	OpBindResident:         "BIND_RESIDENT",
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
+	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
 }
 
 func (o Opcode) String() string {
@@ -1751,7 +1763,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope, OpUndefDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:

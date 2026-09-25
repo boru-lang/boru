@@ -118,12 +118,12 @@ branch-carried def"**; the re-estimate is
    apply at a paren's tail" entry: the trailing apply's window trim
    declines a 0-arg callee instead of recording a signature-less native
    call the disassembler crashed on; the sweep's crash ceiling is 0),
-   NUR206 (the handoff log's "the marker is no argument" entry: the
+   NUR212 (the handoff log's "the marker is no argument" entry: the
    forward claim probe answers no claim for a reach's `/v` marker, so a
    module member with an Any first parameter binds through `def`) and
-   NUR205 (the handoff log's "the named value's no-match on the seam"
+   NUR211 (the handoff log's "the named value's no-match on the seam"
    entry: a named fn value's no-match on the callback seam raises
-   uncalled_function as the word does, past step 0 too), and NUR207 (the
+   uncalled_function as the word does, past step 0 too), and NUR213 (the
    handoff log's "the marker's intent on the value" entry: the check pass
    quotes the dynamic member read a `/v` marker qualifies, and the
    residual layout leaves a quoted lead alone — `m.f/v 5` is data on
@@ -160,7 +160,7 @@ branch-carried def"**; the re-estimate is
    milestone batch of 2026-09-25 also re-derived the compiled twin of
    NUR172's attempted window (`rematchWritten` feeds the poly no-match
    spec and the runtime rematch, whose render bound is an index tuple
-   now) and scoped NUR207's quoting to dynamic and carrier values;
+   now) and scoped NUR213's quoting to dynamic and carrier values;
    NUR150 and NUR151, closed in their own PRs, are marked FIXED. Two
    silent miscompiles the chain's probes found, both CLOSED now: NUR180
    (a trailing paren apply's Any result inside an UNNAMED-param frame,

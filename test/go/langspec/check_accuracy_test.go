@@ -69,7 +69,7 @@ var unflaggedPins = map[string]int{
 	// param guard raises the signature_error; added 2026-09-25.
 	"refine-flex.tsv":    1,
 	"edge-modules-2.tsv": 1, // 2026-09-25 (NUR191): a module fn's return-count row raises only at run time (the frame's count is the runtime contract)
-	// callbacks.tsv: 3 ERROR rows, added 2026-09-25 with NUR205 (a named fn
+	// callbacks.tsv: 3 ERROR rows, added 2026-09-25 with NUR211 (a named fn
 	// value's no-match on the callback seam raises uncalled_function as the
 	// interpreter's step of `h/v` does) — runtime raises over the callback's
 	// per-element candidates, which the checker's static pass cannot see.

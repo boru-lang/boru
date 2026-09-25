@@ -4156,28 +4156,31 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 		}
 	}
 
-	// NEGATIVES — every neighbouring ascend shape whose runtime tokens are NOT
-	// provably empty must still DECLINE (the compile failure), and
-	// the fallback must agree with the interpreter.
+	// The neighbouring ascend shapes whose runtime tokens are NOT provably
+	// empty used to DECLINE (the code-body compile failure). Since walk
+	// declares CompileDynBody (2026-09-25, the fn-value callback cells) the
+	// closure path's decline falls to the dyn-body seat: the walk lowers to
+	// a CALL_NATIVE under DynEnv, the flex ascend rides as the runtime value
+	// it is, and the handler classifies the hooks as the interpreter's walk
+	// does — so these compile and agree, the hook-type mismatch raising the
+	// same walk_error on both lanes.
+	for _, src := range []string{
+		`def acc (flex ["s"])  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
+		`def acc (flex [])  def z (push "x" acc)  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
+		`def acc (flex [])  for 2 [ walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append]) acc drop ]  acc`,
+		`walk {mode: "depth"} {a:1} (s:String => [s drop])`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	// NEGATIVES — the ascend shape that still DECLINES (the compile
+	// failure), and the fallback must agree with the interpreter.
 	failures := []struct{ name, src, want string }{
-		{"non-empty flex ascend (tokens not provably empty)",
-			`def acc (flex ["s"])  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
-			"code-body word walk"},
-		{"mutated-before-walk flex ascend (an event since construction)",
-			`def acc (flex [])  def z (push "x" acc)  walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append])  acc`,
-			"code-body word walk"},
-		{"loop-nested flex ascend (iteration 2 sees iteration 1's appends)",
-			`def acc (flex [])  for 2 [ walk {mode: "depth"} {a:1} (m:Any => [acc (m.path) append]) acc drop ]  acc`,
-			"code-body word walk"},
 		// (The two-lambda ascend shape moved to the PARITY table above at
 		// Stage M2d: the ascend lambda now compiles to its own closure unit,
 		// per design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore M2d.)
 		{"capturing ascend lambda (lexical capture — stays declined)",
 			`def f fn [[p:String] [Map] [walk {mode: "depth"} {a:1} (m:Any => [m.path drop]) (m:Any => [p drop])]] f "s"`,
 			"code-body word walk"},
-		{"hook param type rejects the payload (runtime raises, compile declines)",
-			`walk {mode: "depth"} {a:1} (s:String => [s drop])`,
-			"function value reaches walk"},
 	}
 	for _, c := range failures {
 		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)

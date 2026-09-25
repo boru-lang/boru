@@ -335,7 +335,7 @@ def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end do [
 def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end for 2 [f 'z']	'z' 'z'	…and inside a loop body
 def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end [(do [f/v])] join ','	'fn f(Integer)'	the capturing twin was always named — the rule is one for both representations
 #
-# §15  A `/v` ON A MAP MEMBER IS DATA BESIDE ITS ARGUMENTS (NUR207, closed
+# §15  A `/v` ON A MAP MEMBER IS DATA BESIDE ITS ARGUMENTS (NUR213, closed
 #      2026-09-25): the marker qualifies the member read, so the value never
 #      applies over what follows it — the 5 strands on top, on both lanes.
 def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5	fn [[a:Integer][Integer][word(a) word(add) 1]] 5	the marked member is data; the argument strands

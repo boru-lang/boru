@@ -209,7 +209,12 @@ var ControlNatives = []NativeFunc{
 		// runtime identity probe strips the unconsumed error from the residual
 		// bottom (ErrorHandler), so the closure nets ONE value either way and
 		// compiles natively instead of islanding.
-		CompileEffect: CompileFallbackBody,
+		// CompileDynBody (2026-09-25): a COMPUTED handler body — a List
+		// param, a fn's result — lowers to a plain CALL_NATIVE under the
+		// program's DynEnv mode where the closure path declined, exactly as
+		// `do`'s does: ErrorHandler runs the body through the InvokeBody
+		// seam, which stamps a run-time token body and hosts it on the VM.
+		CompileEffect: CompileFallbackBody | CompileDynBody,
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, StripsUnconsumedInput: true, Inputs: func(_ []Value) []Value {
 			return []Value{NewCarrier(TError)}
 		}},

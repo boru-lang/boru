@@ -82,9 +82,6 @@ var realProgramLedger = map[string]string{
 	// selective (spine-only) freshen: the fresh push clones the literal's
 	// spine and keeps the embedded members (Program.ConstKeep,
 	// core.CloneValueKeeping).
-
-	// A dynamic-scope def of a value the pass could not promote.
-	"utils/cut.boru": "fn cli-usage-line: dynamic-scope def `ap2` of unpromoted computed value",
 }
 
 // realProgramRoots are the directories holding programs a developer actually

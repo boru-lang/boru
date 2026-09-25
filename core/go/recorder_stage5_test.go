@@ -110,6 +110,16 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordMakeListInner(nil, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordMakeListInner must decline")
 	}
+	// The 2026-09-25 seams: the args projection, the run-time bind and its
+	// dispatch, the container-read paren lead.
+	if e.RecordArgsProjection(nil, nil, Value{}, SrcPos{}) {
+		t.Fatal("inactive RecordArgsProjection must decline")
+	}
+	e.NoteRuntimeBind("x")
+	e.RecordRuntimeBindDispatch("w", nil, nil, SrcPos{})
+	if e.ContainerReadResult("id") {
+		t.Fatal("inactive ContainerReadResult must decline")
+	}
 	if e.RecordMakeMap(nil, nil, nil, false, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordMakeMap must decline")
 	}

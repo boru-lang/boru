@@ -3575,6 +3575,13 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if err != nil {
 		return e.stampErrPos(e.maybeAddFnShapeHint(err))
 	}
+	// A check-mode-run binder word that bound RUN-TIME names in this
+	// dispatch (`unpack` over a source the pass cannot read — the handler's
+	// NoteRuntimeBind) is emitted as the call it is; the recorder's latch
+	// decides, so every other compile-time word keeps its elision.
+	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
+		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
+	}
 	if e.recorder != nil {
 		e.recordDispatch(match.Name, n, results)
 	}
@@ -4125,7 +4132,7 @@ func (e *Engine) stepLiteral() error {
 			// peek and stays data. Quote the carrier as the peek would, or
 			// the pass's residual carries an unquoted fn lead beside the 5
 			// and the residual layout applies it (resolveDynamicApply):
-			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR207).
+			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR213).
 			if valIdx > 0 {
 				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
 					prev.Quoted = true
@@ -7295,7 +7302,7 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		// is never an argument: it fell to the literal arm below, where an
 		// `Any` parameter matched it, so a `/v`-marked module member with
 		// an Any first parameter read as a call head that would claim its
-		// own marker and `def g M.up1/v` collected nothing (NUR206).
+		// own marker and `def g M.up1/v` collected nothing (NUR212).
 		return Value{}, probeNone
 	case IsWord(v):
 		wi, werr := AsWord(v)
@@ -8280,7 +8287,12 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// admitted beside the member-fn read (the container-member calls,
 	// 2026-09-22): the guarded op applies the runtime value and defers on
 	// anything else, the same contract the tagged read takes.
-	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) {
+	// A lead that is the RESULT of a container read the pass could not
+	// type — a flex member (`((reg.cb) 5)`, callbacks.tsv L61), a gradual
+	// map field — is admitted the same way (2026-09-25): the guarded op
+	// applies whatever the read yields and defers on a non-callable value,
+	// exactly as the interpreter's paren leaves a non-fn lead as data.
+	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) && !es.ContainerReadResult(fnVal.ID) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}

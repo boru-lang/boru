@@ -18,6 +18,7 @@ func installDispatchBraid() {
 	check.DispatchBraid.RecordOutcome = recordDispatchOutcome
 	check.DispatchBraid.TryFoldScalarConst = tryFoldScalarConst
 	check.DispatchBraid.TryRecordPoly = tryRecordPoly
+	check.DispatchBraid.TryRecordDynBody = tryRecordDynBody
 	check.DispatchBraid.CompileUserPolyArms = func(r *core.Registry, es core.EmitRecorder, word string, args []core.Value, committedReturns []*core.Type) check.UserPolyPlan {
 		if p := tryCompileUserPolyArms(r, es, word, args, committedReturns); p != nil {
 			return p

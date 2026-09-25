@@ -478,7 +478,7 @@ const (
 	// declared analogue of the get/getr/set exemption. Do NOT set it on a
 	// dispatch-manipulating meta word (usurp / force-arity / valof) whose quoted
 	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
-	// the handler.
+	// the handler: those declare CompileResteps, the named refusal.
 	CompileQuoteInert
 	// CompileQuoteKey marks a word whose implicit-quote (QuoteArgs) operand is a
 	// KEY the handler READS at dispatch — the atom field name of a container write
@@ -497,7 +497,13 @@ const (
 	// (setDelKernelSig, NUR057) at the recorder's two quoted-operand gates. As with
 	// CompileQuoteInert, do NOT set it on a dispatch-manipulating meta word whose
 	// quoted operand drives a RE-STEPPING result the VM cannot reproduce by
-	// re-running the handler.
+	// re-running the handler (CompileResteps). The binding words carry it too:
+	// `def name …` / `undef name` / `__varundef name` quote the NAME of a
+	// registry write or removal, and `unpack Export 'mod'` the export it
+	// selects — a key the handler reads, never a literal it bakes; the recorder
+	// reaches none of them through the quoted-operand gates (they run in check
+	// mode and are lowered by the binder hooks), so the flag is the census's
+	// answer for them, not a lowering.
 	CompileQuoteKey
 	// CompileDiverges marks a word whose handler ALWAYS raises (it never returns
 	// normally) — `raise`, the user-error constructor. A call to it is recorded as
@@ -602,6 +608,34 @@ const (
 	// stored closure fine) is unaffected. Non-capturing handlers stamp
 	// either way.
 	CompileFnHandlerStrict
+	// CompileResteps marks a word whose handler's RESULT is RE-STEPPED by the
+	// engine rather than delivered as a value: a token SPLICE the tape runs
+	// (`mini` / `parse` / `emit` expand to the standard transducer call —
+	// `MiniLang.lang_<kind> <src> <opts> end`, or `<fn> <src> <opts> end` for
+	// the value form), a dispatch-manipulating meta word's re-dispatch (the
+	// by-name `usurp` / `stack-args` / `forward-args` / `force-arity` forms
+	// resolve the quoted name and return a wrapper the tape then dispatches;
+	// `valof` parks a resolved binding at the call site), or `apply`'s marked
+	// fn, which the tape applies to the values beneath it. The VM cannot
+	// reproduce such a result by re-running the handler over baked operands —
+	// a CALL_NATIVE would leave the splice or the marked fn on the stack as
+	// DATA — so the flag DECLARES the refusal the recorder used to make on the
+	// zero value's silence: it is the handler-contract triple's `tapeBound:
+	// Yes` (design/FULL-COMPILATION.0.md §6.8) written down, a named refusal
+	// rather than a fallback. The quoted-operand gates (recordCallCompileFailure,
+	// quoteOperandInertOK, recordPolyCall's quoted line) decline a declaring
+	// sig by this flag's name, before and regardless of any admission it also
+	// carries, and RecordCallOperands declines a fn-operand slot the same way.
+	// Neither CompileQuoteInert nor CompileQuoteKey may be set beside it as an
+	// admission: a re-stepped result is never "the same handler over the same
+	// baked value". Every declarer today also runs in check mode, where the
+	// check engine steps the handler's result and the recorder follows the
+	// re-stepped stream (a splice records as the expanded call; a wrapper's
+	// dispatch records through recordGradualWrap; apply's identity result is
+	// elided by name and its re-step records the real dispatch), so the flag
+	// changes no recorded program: it names what the RunInCheckMode screen and
+	// the by-name apply arms were carrying.
+	CompileResteps
 )
 
 // CompileDefault is an ordinary word: no compile-relevant capability. A

@@ -41,6 +41,12 @@ var DispatchBraid = struct {
 	// TryRecordPoly offers a hazardous dispatch to the poly recorder
 	// (the VM re-match lowering) and reports whether it was taken.
 	TryRecordPoly func(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos, disjunctStraddle bool, ownerReg *core.Registry, dynamicRecovery bool, noMatch *core.PolyNoMatchSpec) bool
+	// TryRecordDynBody offers a CompileDynBody word's dispatch that the
+	// recovery could not match statically — a strict-Any collection
+	// operand, a declared `xs:Any` param under fold — to the dyn-body
+	// recorder (a poly re-match over the word's own overloads under
+	// DynEnv, S1a's mechanism) and reports whether it was taken.
+	TryRecordDynBody func(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool
 	// CompileUserPolyArms bakes every same-arity overload's body unit
 	// for a user-poly re-match plan (nil = the bake declined an arm).
 	CompileUserPolyArms func(r *core.Registry, es core.EmitRecorder, word string, args []core.Value, committedReturns []*core.Type) UserPolyPlan
@@ -52,6 +58,7 @@ var DispatchBraid = struct {
 	RecordOutcome:       inactiveDispatchRecordOutcome,
 	TryFoldScalarConst:  inactiveDispatchTryFoldScalarConst,
 	TryRecordPoly:       inactiveDispatchTryRecordPoly,
+	TryRecordDynBody:    inactiveDispatchTryRecordDynBody,
 	CompileUserPolyArms: inactiveDispatchCompileUserPolyArms,
 	PlanUserPoly:        inactiveDispatchPlanUserPoly,
 }
@@ -67,6 +74,10 @@ func inactiveDispatchTryFoldScalarConst(*core.Registry, *core.Signature, []core.
 }
 
 func inactiveDispatchTryRecordPoly(*core.Registry, string, *core.Signature, []core.Value, []core.Value, core.SrcPos, bool, *core.Registry, bool, *core.PolyNoMatchSpec) bool {
+	return false
+}
+
+func inactiveDispatchTryRecordDynBody(*core.Registry, string, *core.Signature, []core.Value, []core.Value, core.SrcPos) bool {
 	return false
 }
 
@@ -91,6 +102,10 @@ func dispatchTryFoldScalarConst(r *core.Registry, sig *core.Signature, args []co
 
 func dispatchTryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos, disjunctStraddle bool, ownerReg *core.Registry, dynamicRecovery bool, noMatch *core.PolyNoMatchSpec) bool {
 	return DispatchBraid.TryRecordPoly(r, word, sig, args, outs, pos, disjunctStraddle, ownerReg, dynamicRecovery, noMatch)
+}
+
+func dispatchTryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
+	return DispatchBraid.TryRecordDynBody(r, word, sig, args, outs, pos)
 }
 
 func dispatchCompileUserPolyArms(r *core.Registry, es core.EmitRecorder, word string, args []core.Value, committedReturns []*core.Type) UserPolyPlan {

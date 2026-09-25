@@ -5,7 +5,7 @@ package core
 // evaluation (NUR197), the positioned while-condition error (NUR130), the
 // no-match window and anchors (NUR171 / NUR172), the fn-return parks on the
 // foreign-registry paths (NUR191), the carrier bookkeeping for the
-// compiler (NUR207 / NUR210), the dispatch-modifier probe (NUR206), the
+// compiler (NUR213 / NUR210), the dispatch-modifier probe (NUR212), the
 // folded-fn queueing (NUR105) and the unit-scoped definite trap (NUR134).
 // Programs are hand-built token slices (core has no parser) or hand-built
 // tape states driving one step helper, positive and negative paired.
@@ -348,7 +348,7 @@ func TestNurRunExecFnDefSigParksForeignFnReturn(t *testing.T) {
 	}
 }
 
-// --- carrier bookkeeping for the compiler (NUR207 / NUR210) -----------------------
+// --- carrier bookkeeping for the compiler (NUR213 / NUR210) -----------------------
 
 // Pins that a dispatch-modifier marker reaching the pointer standalone quotes
 // a preceding carrier (fn-typed or dynamic) before it is dropped, and leaves
