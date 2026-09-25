@@ -467,7 +467,7 @@ type EmitRecorder interface {
 	// cover branching, so the one caller that needed it punched through.
 	TakeFragment() EmitFragmentRef
 	RecordBranch(b BranchRecord)
-	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID string, out Value, regionN int, pos SrcPos)
+	RecordLoop(start, end, step Value, body EmitFragmentRef, bodyStk []Value, iterID, iterName string, out Value, regionN int, pos SrcPos)
 	// RecordWhile is RecordLoop for a CONDITION loop (`while [cond] [body]`,
 	// the thirty-seventh increment): cond and body are the two captured
 	// fragments, condStk / bodyStk their analysed residuals, iterID the
@@ -561,7 +561,7 @@ func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
 func (inactiveEmit) RecordBranch(BranchRecord)     {}
 func (inactiveEmit) RecordWhile(EmitFragmentRef, EmitFragmentRef, []Value, []Value, string, Value, SrcPos) {
 }
-func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, Value, int, SrcPos) {
+func (inactiveEmit) RecordLoop(Value, Value, Value, EmitFragmentRef, []Value, string, string, Value, int, SrcPos) {
 }
 
 func (inactiveEmit) MarkUncompilable(string) {}

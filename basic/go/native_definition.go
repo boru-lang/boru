@@ -1538,6 +1538,13 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 
 	var result []Value
 	var varNames []string
+	// varSites holds each declaration NAME token, the site the synthesized
+	// def and __varundef tokens carry (WithPos): a token without a position
+	// gives its bind transition no site — the compile pass keys the twins a
+	// root do body leaves for adoption on the body's token sites, and a
+	// site-less undef twin stayed unplaced, declining every root
+	// `do [var [[[k 1]] …]]` (code-bodies.tsv L197, measured 2026-09-24).
+	var varSites []Value
 
 	for _, decl := range decls.Slice() {
 		switch {
@@ -1545,7 +1552,8 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 			_as0, _ := AsWord(decl)
 			name := _as0.Name
 			varNames = append(varNames, name)
-			result = append(result, NewWord("def"), NewWord(name), NewEnd())
+			varSites = append(varSites, decl)
+			result = append(result, WithPos(NewWord("def"), decl), WithPos(NewWord(name), decl), NewEnd())
 
 		case decl.Parent.Equal(TList) && decl.Data != nil:
 			declElems, _ := AsList(decl)
@@ -1562,14 +1570,16 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 				return nil, r.BoruError("var_error", "var: declaration name must be a word or string", "var")
 			}
 			varNames = append(varNames, name)
-			result = append(result, NewWord("def"), NewWord(name))
+			varSites = append(varSites, declElems.Get(0))
+			result = append(result, WithPos(NewWord("def"), declElems.Get(0)), WithPos(NewWord(name), declElems.Get(0)))
 			result = append(result, declElems.Slice()[1:]...)
 			result = append(result, NewEnd())
 
 		case decl.Parent.ConformsTo(TString):
 			name, _ := AsString(decl)
 			varNames = append(varNames, name)
-			result = append(result, NewWord("def"), NewWord(name), NewEnd())
+			varSites = append(varSites, decl)
+			result = append(result, WithPos(NewWord("def"), decl), WithPos(NewWord(name), decl), NewEnd())
 
 		default:
 			return nil, fmt.Errorf("var: invalid declaration: %s", decl.String())
@@ -1584,7 +1594,7 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	// dedicated 1-arg word dispatches identically in check and at runtime, which
 	// is what lets a var-body compile to a closure unit.
 	for i := len(varNames) - 1; i >= 0; i-- {
-		result = append(result, NewWord("__varundef"), NewWord(varNames[i]))
+		result = append(result, WithPos(NewWord("__varundef"), varSites[i]), WithPos(NewWord(varNames[i]), varSites[i]))
 	}
 
 	return result, nil

@@ -261,7 +261,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, "i", out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}
@@ -516,7 +516,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			regionN = int(staticCount) * len(stk)
 		}
 		frag := es.TakeFragment()
-		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, out, regionN, args[0].Pos())
+		es.RecordLoop(startV, endV, stepV, frag, stk, iter.ID, "i", out, regionN, args[0].Pos())
 	}
 	if len(stk) == 0 && (!es.Active() || !lowerable) {
 		return []core.Value{}

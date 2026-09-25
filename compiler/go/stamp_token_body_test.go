@@ -30,12 +30,15 @@ func TestStampTokenBodyGuards(t *testing.T) {
 	if ref, ok := StampTokenBody(r, hazard, []*core.Type{core.TInteger}, core.SrcPos{}); ok || ref != nil {
 		t.Fatal("a body with a replay hazard must decline")
 	}
-	// A nil input type declares Any. On this bare registry (no word library,
-	// no check pass to speak of) the detached stamp itself declines, and the
-	// call must decline cleanly rather than panic; the positive path — a
-	// typed and an untyped input over a real registry — is the lang pins'
+	// A nil input type declares Any, and the body stamps even on this bare
+	// registry (no word library): its residual is the untouched Any input
+	// beneath the literal, which the unapplied-fn gate used to read as a
+	// dynamic value that might auto-apply (the stamp declined here until
+	// NUR202's close exempted a unit's own untouched inputs — an argument
+	// enters the frame resolved and is never stepped). The typed and
+	// untyped inputs over a real registry are the lang pins'
 	// (runtime_token_body_test.go).
-	if ref, ok := StampTokenBody(r, one, []*core.Type{nil}, core.SrcPos{}); ok || ref != nil {
-		t.Fatalf("a bare registry's stamp must decline cleanly: ok=%v ref=%v", ok, ref)
+	if ref, ok := StampTokenBody(r, one, []*core.Type{nil}, core.SrcPos{}); !ok || ref == nil {
+		t.Fatalf("a nil input type declares Any and the literal body stamps: ok=%v ref=%v", ok, ref)
 	}
 }

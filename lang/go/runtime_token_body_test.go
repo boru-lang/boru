@@ -80,7 +80,7 @@ var runtimeTokenBodyRows = []struct {
 	{"a heterogeneous collection compiles once per input type", `def mk fn [[][List][quote [typeof]]] end each (mk) [1 "a" [2]]`, "[[Integer ProperString List]]", true},
 	{"one body under two seam arities", `def mk fn [[][List][quote [add 1]]] end def b (mk) each b [1 2] fold b [1 2] 0`, "[[2 3] 3]", true},
 	// A token body that is one map literal bearing paren groups compiles
-	// in-frame since NUR203's close (the closure records the assembly), so
+	// in-frame since NUR209's close (the closure records the assembly), so
 	// the dyn-scope rescue's family no longer keeps the interpreter here.
 	{"a map literal with paren groups compiles in-frame (was open, L77)", `do [{a:(1 add 2) b:(2 mul 3)}]`, "[{a:3 b:6}]", true},
 	// Open, each keeping the interpreter as before: an empty body and `args`

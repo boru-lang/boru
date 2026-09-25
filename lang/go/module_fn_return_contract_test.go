@@ -124,7 +124,7 @@ func TestModuleFnReturnContractIsTheFrames(t *testing.T) {
 	}
 }
 
-// TestModuleFnNamedValueThroughReachPending pins NUR204 as it stands: a
+// TestModuleFnNamedValueThroughReachPending pins NUR210 as it stands: a
 // module fn returning a NAMED fn value, called through its reach group with
 // a value beneath — `5 M.ff` over `def ff fn [[][Function][inc/v]]` — is 6
 // on the interpreter (the reach group `( M dot ff )` never parks: its
@@ -145,7 +145,7 @@ func TestModuleFnNamedValueThroughReachPending(t *testing.T) {
 			t.Errorf("%q: the interpreter re-steps the reach group's named survivor: %v / %v", c.src, gotI, errI)
 		}
 		if errC != nil || !compiled || fmt.Sprint(gotC) != c.wantC {
-			t.Errorf("%q: NUR204's compiled value %v / %v (compiled=%v), pinned as %s — closing the divergence must update this pin", c.src, gotC, errC, compiled, c.wantC)
+			t.Errorf("%q: NUR210's compiled value %v / %v (compiled=%v), pinned as %s — closing the divergence must update this pin", c.src, gotC, errC, compiled, c.wantC)
 		}
 	}
 }

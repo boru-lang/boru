@@ -57,6 +57,20 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // owns r (store words and codec resolution run on the registry executing
 // them, so this holds at every trigger site).
 func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos) (*CompiledFnRef, bool) {
+	return stampDetachedSig(r, fd, sigIdx, pos, false)
+}
+
+// stampDetachedSig is StampDetachedSig with the unit's KEEP-DEFS mode:
+// keepsDefs marks a TOKEN body stamp (StampTokenBody), whose unit is a
+// keep-defs unit exactly as a compile-time do/each body's is — its value
+// defs install as kept registry bindings that outlive the unit's RET
+// (CompiledFn.KeepsDefs), the leak the interpreter's InvokeBody delivers
+// for every token body (RunResolved on the shared registry, no def
+// cleanup): `def t 0 each [def t (t add 1) t] xs` over a gradual list read
+// 0 at every element, `[[1 1 1]]` for the interpreter's `[[1 2 3]]`
+// (NUR202). A fn VALUE's stamp keeps its frame-local defs — the
+// interpreter's CallBoru tears them down with the frame.
+func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos, keepsDefs bool) (*CompiledFnRef, bool) {
 	if r == nil || !r.RuntimeStampingEnabled() {
 		return nil, false
 	}
@@ -88,6 +102,13 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 		// Re-entrancy fence — see EmitState.inStampCompile. Measured before it
 		// existed: lang/go/modules went from 77s to not finishing.
 		es.inStampCompile = true
+		if keepsDefs {
+			// Armed at the root unit count: the unit compileStoredFnUnit opens
+			// next is the token body's (StartFnCompile stamps the unit opened
+			// at exactly this count, and only a body whose inputs are all
+			// unnamed — the seam's params).
+			es.keepDefsUnitDepth = len(es.units)
+		}
 	}
 	// An identity-less capture value (minted at pure runtime, where the
 	// mode-gated ID elision skips minting) cannot key its positional capture
@@ -116,6 +137,17 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// against — the analysis inside compileStoredFnUnit installs and restores
 	// its own body-local bindings.
 	deps := es.storedHandlerDeps(fd.Signatures[sigIdx].Body())
+	if keepsDefs {
+		// A name the KEEP-DEFS body defs itself is read live in its unit (the
+		// enclosing-binding lookup) and installed live (the kept
+		// OpBindDynScope), so the body's own rebinding of it is no staleness:
+		// left in the snapshot, `[def t (t add 1) t]` re-stamped at every
+		// element and, past the re-stamp budget, ran the rest on the
+		// interpreter (three entries over seven elements, measured).
+		for name := range bodyDefNames(fd.Signatures[sigIdx].Body()) {
+			delete(deps, name)
+		}
+	}
 	unit, ok := es.compileStoredFnUnit(fd, sigIdx, pos)
 	if !ok {
 		// The probe's latched reason when it gave one; the report printer
@@ -170,7 +202,7 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// invoke time (jitRestamp) instead of degrading permanently to CallBoru.
 	// fd here carries the §7a identity-minted capture clone, so a re-stamp
 	// needs no re-clone.
-	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos}
+	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs}
 	r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Stamped: true})
 	return ref, true
 }
@@ -205,7 +237,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 		return nil
 	}
 	box.Tries++
-	nr, ok := StampDetachedSig(r, box.fd, box.sigIdx, box.pos)
+	nr, ok := stampDetachedSig(r, box.fd, box.sigIdx, box.pos, box.keepsDefs)
 	if !ok {
 		return nil
 	}
@@ -424,5 +456,61 @@ func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Ty
 		params[i] = core.FnParam{Type: t}
 	}
 	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
-	return StampDetachedSig(r, fd, 0, pos)
+	return stampDetachedSig(r, fd, 0, pos, true)
+}
+
+// bodyDefNames collects the names a token body binds with `def` (and the
+// `var` splice's declarations), nested lists included: the names whose
+// rebinding by the body is the body's own act, not a dependency moving
+// under a keep-defs stamp (stampDetachedSig).
+func bodyDefNames(tokens []core.Value) map[string]bool {
+	names := map[string]bool{}
+	var walk func(toks []core.Value)
+	addDecl := func(decl core.Value) {
+		switch {
+		case core.IsWord(decl):
+			w, _ := core.AsWord(decl)
+			names[w.Name] = true
+		case decl.Parent.Equal(core.TList) && core.IsConcrete(decl):
+			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Get(0)) {
+				w, _ := core.AsWord(dl.Get(0))
+				names[w.Name] = true
+			}
+		case decl.Parent.ConformsTo(core.TString):
+			s, _ := core.AsString(decl)
+			names[s] = true
+		}
+	}
+	walk = func(toks []core.Value) {
+		for i, tok := range toks {
+			if core.IsWord(tok) {
+				w, _ := core.AsWord(tok)
+				switch w.Name {
+				case "def":
+					if i+1 < len(toks) && core.IsWord(toks[i+1]) {
+						nw, _ := core.AsWord(toks[i+1])
+						names[nw.Name] = true
+					}
+				case "var":
+					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(toks[i+1]) {
+						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Get(0)) {
+							if decls, err := core.AsList(vl.Get(0)); err == nil {
+								for _, d := range decls.Slice() {
+									addDecl(d)
+								}
+							}
+						}
+					}
+				}
+				continue
+			}
+			if tok.Parent.Equal(core.TList) && core.IsConcrete(tok) {
+				if l, err := core.AsList(tok); err == nil {
+					walk(l.Slice())
+				}
+			}
+		}
+	}
+	walk(tokens)
+	return names
 }

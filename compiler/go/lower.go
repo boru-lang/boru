@@ -81,7 +81,7 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	}
 	head := len(*lw.code)
 	fn := lw.emit(OpForNext, 0, lp.pos)
-	lw.loops = append(lw.loops, loopCtx{nextPC: head})
+	lw.loops = append(lw.loops, loopCtx{nextPC: head, iterName: lp.iterName})
 	// A CONDITION loop (RecordWhile, `while [cond] [body]`): the condition's
 	// one value is tested at the head of every iteration — falsy jumps to the
 	// FLOW_BREAK placed past the back-edge, which pops the loop frame and
@@ -372,6 +372,19 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// write-back is emitted, because the twin's replay must then leave the
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
+	// A body def of the enclosing counted loop's OWN index — `def i 0  for 3
+	// [def i 9]  i` — declines (NUR204): the interpreter leaves the loop's
+	// index level bound past the loop (2, the last index, at the root; the
+	// outer loop's restore inside a nested one), where the compiled loop
+	// carried the def and wrote the body's value back (9) — a silent
+	// miscompile on main until the user-call write-back promotion reached
+	// the shape, when it declined as "unpromoted" instead. Loud on both
+	// paths until the index level is modelled.
+	for _, lc := range lw.loops {
+		if lc.iterName != "" && lc.iterName == d.name {
+			return "def of the enclosing for loop's own index `" + d.name + "` inside its body (NUR204)"
+		}
+	}
 	// A KEEP-DEFS unit (`do`'s body) installs EVERY value def: the
 	// interpreter runs the body in the caller's frame and the binding
 	// leaks, so each is registry-visible — a kept OpBindDynScope the VM
@@ -672,6 +685,10 @@ func (lw *lowerer) lowerStore(ev *EmitEvent) string {
 // (lowerBreak) — so the loop needs only its depth recorded here.
 type loopCtx struct {
 	nextPC int
+	// iterName is a counted loop's index name while its body lowers (empty
+	// for a condition loop): lowerDynBind declines a body def of that name
+	// (NUR204).
+	iterName string
 }
 
 type lowerer struct {
@@ -2112,6 +2129,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 			storeSource[ev.store.src.idx] = true
 		}
 	}
+	writeBackSrc := collectWriteBackSources(allEvents)
 	for _, ev := range allEvents {
 		// A fragment's residual event (an `if` arm / loop body result) PRODUCED INSIDE
 		// the fragment must stay on that fragment's simulated stack for the arm-result
@@ -2222,7 +2240,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		// buried (main's mid-body burial promotion) joins the trigger list
 		// unchanged — its own storeSrc/variadic exclusions were applied at
 		// marking time.
-		promoteUser := isUser && (forceOrder[ev.seq] || refs[ev.seq] >= 2 || buried[ev.seq] ||
+		promoteUser := isUser && (forceOrder[ev.seq] || refs[ev.seq] >= 2 || buried[ev.seq] || writeBackSrc[ev.seq] ||
 			(es.dynEnv && es.eventInfo[ev.seq].valueDef) ||
 			(captured[ev.seq] && es.eventInfo[ev.seq].valueDef) ||
 			(fragRef[ev.seq] && !fragInternal[ev.seq] && es.eventInfo[ev.seq].valueDef) ||
@@ -2775,6 +2793,27 @@ func collectRootBindConsumes(events []EmitEvent, dead map[int]bool) map[int]bool
 		d := ev.dyn
 		if d.srcSeq >= 0 && dead[d.srcSeq] && rootBindWritesBack(d) {
 			out[d.srcSeq] = true
+		}
+	}
+	return out
+}
+
+// collectWriteBackSources marks every producer whose result a loop-CARRIED
+// root def binds with a cross-request WRITE-BACK (rootBindWritesBack): the
+// carried store pops the value off the sim top, and the OpBindGlobal that
+// follows needs it a second time — the peek fast path that serves a plain
+// root def is gone with the store. A native producer already promotes on
+// valueDef; a USER call's plain store source was left on the sim, and its
+// write-back declined "dynamic-scope def `i` of unpromoted computed value"
+// (`def i 0  while [i lt 3] [def i (inc i)]` for any user fn `inc`;
+// callbacks.tsv L89, module-composition L104 — the `apply` spellings of the
+// same bind). planValueDefLocals feeds the set into the user-call promotion
+// triggers.
+func collectWriteBackSources(events []*EmitEvent) map[int]bool {
+	out := map[int]bool{}
+	for _, ev := range events {
+		if ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq >= 0 && ev.dyn.carried && rootBindWritesBack(ev.dyn) {
+			out[ev.dyn.srcSeq] = true
 		}
 	}
 	return out

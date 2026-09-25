@@ -134,7 +134,20 @@ func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit i
 			fr.Invoker = nil
 		}
 	}()
-	return sub.enterBodyUnit(reg, unit, bindUnitLocals(reg, &p.Fns[unit], inputs, captures))
+	res, err := sub.enterBodyUnit(reg, unit, bindUnitLocals(reg, &p.Fns[unit], inputs, captures))
+	// A KEEP-DEFS unit hosted here (a run-time token body, StampTokenBody:
+	// NUR202) leaves the installs its run made on the sub-context's trail,
+	// for "the enclosing frame" to pop — and that frame is THIS context's
+	// current activation (the native that drove the body runs inside it),
+	// so the entries move to this trail, where the activation's RET, the
+	// run's end at root, or an error unwind truncates them exactly as its
+	// own. Every other unit unwound its trail at its own RET (nothing to
+	// move); a kept unit's raise keeps them too, the interpreter's
+	// leak-then-raise.
+	if len(sub.dynBinds) > 0 {
+		vc.dynBinds = append(vc.dynBinds, sub.dynBinds...)
+	}
+	return res, err
 }
 
 // closureProgram answers whether cl was minted by a program OTHER than the one

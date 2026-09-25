@@ -398,7 +398,13 @@ type emitLoop struct {
 	hasBodyOut bool // false: the body nets no value per iteration (or diverges)
 	multiOut   bool // the body nets >1 value per iteration (net drivers): residualN reconciliation
 	iterSlot   int
-	pos        core.SrcPos
+	// iterName is a counted loop's index NAME (`i`, or the name a `for`
+	// form binds): a body def of that very name is NUR204's shape, declined
+	// by lowerDynBind (the interpreter leaves the index level bound past the
+	// loop where the compiled loop wrote the body's value back). Empty for
+	// a condition loop (RecordWhile: a scratch iterator nothing names).
+	iterName string
+	pos      core.SrcPos
 	// carried seeds the loop-carried def slots (a pre-loop `def` the body
 	// REBINDS, read on a later iteration or after the loop) with their
 	// pre-loop values — lowered right after FOR_SETUP, before the first
@@ -3504,6 +3510,10 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// "function-valued operand at filter (Stage 3)".
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
+	// And the keep-defs arming of a token body's stamp (stampDetachedSig):
+	// the probe must open the same keep-defs unit the real pass opens, or
+	// its verdict is about a unit whose defs lower differently.
+	probe.keepDefsUnitDepth = es.keepDefsUnitDepth
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
@@ -6633,7 +6643,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// placed value as its result, where the native used to run the
 			// whole body on the interpreter (the interp-entry census's
 			// placed-in-body rows, 2026-09-23).
-			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag) &&
+			if dynTrail == 0 && rec.closure && rec.dynFrameW == 0 && es.closureResidualHasUnappliedFn(bodyStk, rec.frag, u, len(args)) &&
 				!(rec.plainLambda() && len(bodyStk) == 1 && (bodyStk[0].Quoted || rec.valReads[bodyStk[0].ID] > 0)) {
 				es.MarkUncompilable("closure " + name + ": unapplied fn-value in body residual (dynamic apply not lowered)")
 				return
@@ -7364,7 +7374,7 @@ func (es *EmitState) captureArmResidual(frag *EmitFragment, stk []core.Value) {
 // dispatch's result carrier — registered so the dispatch isn't
 // re-recorded, and marked VARIADIC at lowering, so only the program
 // residual may absorb the accumulation.
-func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID string, out core.Value, regionN int, pos core.SrcPos) {
+func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFragmentRef, bodyStk []core.Value, iterID, iterName string, out core.Value, regionN int, pos core.SrcPos) {
 	body := asFragment(bodyRef)
 	if !es.Active() {
 		return
@@ -7393,7 +7403,7 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 		es.MarkUncompilable("for: computed range start/step (Stage 2 follow-on)")
 		return
 	}
-	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, pos: pos, carried: carried, carriedNames: carriedNames}
+	lp := &emitLoop{start: startOp, end: endOp, step: stepOp, iterSlot: -1, iterName: iterName, pos: pos, carried: carried, carriedNames: carriedNames}
 	es.recordLoopEvent("for", lp, body, bodyStk, iterID, out, regionN, "")
 }
 
@@ -15631,10 +15641,26 @@ func residualLeadReStepped(stk []core.Value) bool {
 //
 // A SOLE inert fn-reference body (`each [cmp/v]`) is a concrete const — not a
 // carrier, not preceded by args — so it still compiles.
-func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *EmitFragment) bool {
+func (es *EmitState) closureResidualHasUnappliedFn(bodyStk []core.Value, frag *EmitFragment, u *emitUnit, nInputs int) bool {
 	for i, v := range bodyStk {
 		if es.parkedInBody(v, frag) {
 			continue
+		}
+		// An UNTOUCHED INPUT of the unit left in the residual — the element
+		// a body ignores, beneath its result (`each [def t (t add 1) t] xs`
+		// over a gradual list, the element an Any carrier) — is inert on both
+		// lanes: an argument enters the frame RESOLVED, before the step
+		// region, so it is never stepped and never auto-applies whatever its
+		// runtime type (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
+		// Untouched means still at its own position AND never re-produced by
+		// an event: a stack word that MOVES it (`[g/v] each [5 swap]`, `[5
+		// tuck]`) hands it back to the pointer, where the interpreter steps
+		// it and a fn value applies to what lies beneath (15, measured) —
+		// that value keeps the shapes below.
+		if slot, isIn := u.localByID[v.ID]; isIn && v.ID != "" && slot < nInputs && slot == i {
+			if _, produced := es.producedBy[v.ID]; !produced {
+				continue
+			}
 		}
 		dynMaybeFn := v.Dynamic && core.SigTypeMatches(v, core.TFunction) && i+1 < len(bodyStk)
 		if core.IsFnTypedCarrier(v) || dynMaybeFn || (core.IsFnValueResidual(v) && (i > 0 || i+1 < len(bodyStk))) {
