@@ -1646,6 +1646,16 @@ type fnUnitRec struct {
 	// is captured at the paren-collapse boundary (registerTrailingApply) where the
 	// group size is known; the flattened residual cannot recover it.
 	dynTrailArity int
+	// applyChain is a body whose residual is a CHAIN of `apply`-word
+	// applications over Function-typed carriers — `x f/v apply f/v apply`
+	// (callbacks.tsv L125, 2026-09-25): every operand inert (a param local,
+	// a const), each pending apply's window the whole residual beneath its
+	// fn. Lowered by emitBodyTailApply as pushes and applies interleaved:
+	// every step but the last is the ONE-result event form (the next step's
+	// window is that one value plus its own operands; another count defers),
+	// the last the whole-residual tail apply the RET counts. outOps stay
+	// empty — the chain pushes its own operands.
+	applyChain []applyStep
 	// dynTrailApply marks a dynTrail that came through the `apply` WORD (the
 	// unit's pendingApply, Stage M2a) rather than a paren boundary: the unit
 	// lowering emits OpCallDynApplyTop — applyHandler's unquote-then-apply —
@@ -6557,6 +6567,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// `(a:Any => [b:Any => [a/v]]) p/v apply` hands the projection
 			// to the pair), and the op's window binds it the same way — so
 			// the window takes every value beneath, fn-valued or not.
+			var applyChain []applyStep
 			if pend := u.pendingApply; len(pend) > 0 {
 				if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
 					bodyStk[len(bodyStk)-1].ID == pend[0].id {
@@ -6565,6 +6576,19 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 					// applies (OpCallDynApplyTop), unlike the paren case.
 					rec.dynTrailApply = true
 					rec.dynTrailPos = pend[0].pos
+				}
+				// A CHAIN of applies over inert operands (`x f/v apply f/v
+				// apply`, 2026-09-25): every step's window is the whole
+				// residual beneath its fn, as applyHandler re-steps; the
+				// steps lower interleaved with their pushes
+				// (emitBodyTailApply), each but the last committed to one
+				// result.
+				if dynTrail == 0 && !rec.closure && len(pend) >= 2 {
+					if applyChain = applyChainSteps(pend, bodyStk, ops); applyChain != nil {
+						dynTrail = len(bodyStk) - 1
+						rec.dynTrailApply = true
+						rec.dynTrailPos = pend[len(pend)-1].pos
+					}
 				}
 				if dynTrail == 0 {
 					es.MarkUncompilable("fn " + name + ": apply of a dynamic fn value not at the body tail (Stage 3)")
@@ -6682,6 +6706,14 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			}
 			rec.dynTrailArity = dynTrail
 			rec.outOps = ops
+			if applyChain != nil {
+				// The chain pushes its own operands (emitBodyTailApply);
+				// the residual seating and the single tail apply stand down.
+				rec.applyChain = applyChain
+				rec.dynTrailArity = 0
+				rec.outOps = nil
+				ops, vals = nil, nil
+			}
 			// VARIADIC-RETURNING fn: the body residual's defining (top) event leaves
 			// a runtime-variable count (a variadic branch / loop, or a call to an
 			// already-variadic fn — RecordUserCall flags that on the event). A call
@@ -16262,6 +16294,70 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 	es.dropStampRef(len(p.Fns) - 1)
 }
 
+// applyStep is one application of an applyChain: the operands it pushes
+// (its arguments after the previous step's result, then its fn), the window
+// size the op consumes beneath the fn, and the apply word's position.
+type applyStep struct {
+	ops []EmitOperand
+	n   int
+	pos core.SrcPos
+}
+
+// applyChainSteps classifies a fn body's residual as an applyChain (see
+// fnUnitRec.applyChain): pend are the unit's pending `apply`-word
+// applications in program order, bodyStk / ops the residual bottom-up.
+// Every pending fn must sit in the residual in that order with the last on
+// top, every operand must be inert (a local or a const — re-pushable at the
+// step that consumes it), and no step's argument may be a fn value (the
+// single tail apply's own rule). nil when the shape does not fit.
+func applyChainSteps(pend []pendingApply, bodyStk []core.Value, ops []EmitOperand) []applyStep {
+	if len(pend) < 2 || len(ops) != len(bodyStk) || bodyStk[len(bodyStk)-1].ID != pend[len(pend)-1].id {
+		return nil
+	}
+	for _, op := range ops {
+		if op.kind != opLocal && op.kind != opConst {
+			return nil
+		}
+	}
+	var steps []applyStep
+	from := 0
+	for k, pa := range pend {
+		at := -1
+		for i := from; i < len(bodyStk); i++ {
+			if bodyStk[i].ID == pa.id {
+				at = i
+				break
+			}
+		}
+		if at < 0 || at == from && k == 0 {
+			return nil
+		}
+		// A later step takes ONLY the previous step's result: an operand
+		// written between two applies (`x y f/v apply z g/v apply`) is a
+		// token the interpreter's re-stepped fn can forward-collect into the
+		// FIRST call, which no static partition models (a Codex review of
+		// #508: `[4 13]` compiled against `[7 10]` interpreted).
+		if k > 0 && at != from {
+			return nil
+		}
+		for _, v := range bodyStk[from:at] {
+			if core.IsFnValueResidual(v) {
+				return nil
+			}
+		}
+		n := at - from
+		if k > 0 {
+			n++ // the previous step's one result beneath this step's operands
+		}
+		steps = append(steps, applyStep{ops: append([]EmitOperand(nil), ops[from:at+1]...), n: n, pos: pa.pos})
+		from = at + 1
+	}
+	if from != len(bodyStk) {
+		return nil
+	}
+	return steps
+}
+
 // emitBodyTailApply lowers a unit's body-tail trailing fn-value apply
 // (dynTrailArity > 0): outOps were seated as the full [args…, fn] (fn on
 // top), and the op collapses them to the one applied value before the RET
@@ -16276,6 +16372,19 @@ func (es *EmitState) unreachableUnitStub(p *Program, rec *fnUnitRec, regionFloor
 // route, lowerCall, which seats its own). Split out of Finalize for
 // trimUnconsumedUnnamed's reason: Finalize sits on the gocyclo ceiling.
 func (lw *lowerer) emitBodyTailApply(rec *fnUnitRec) {
+	if len(rec.applyChain) > 0 {
+		for i, st := range rec.applyChain {
+			for _, op := range st.ops {
+				lw.pushOperand(op, st.pos)
+			}
+			if i < len(rec.applyChain)-1 {
+				lw.emit(OpCallDynApplyOne, st.n, st.pos)
+			} else {
+				lw.emit(OpCallDynApplyTop, st.n, st.pos)
+			}
+		}
+		return
+	}
 	if rec.dynTrailArity == 0 {
 		return
 	}

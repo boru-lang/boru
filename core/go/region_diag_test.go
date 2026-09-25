@@ -72,3 +72,34 @@ func TestNoMatchOverWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestUndefinedWordDiagWithExtraCandidates pins the VM's undefined_word
+// diagnostic over a compiled frame's LOCALS (UndefinedWordDiagWith): the
+// extra names join the registry's candidates for the did-you-mean line, and
+// when the nearest miss is a builtin word the describe pointer follows it.
+func TestUndefinedWordDiagWithExtraCandidates(t *testing.T) {
+	r := covRegistry(t, nil)
+	pos := SrcPos{Row: 2, Col: 4}
+
+	// A frame local no registry names: the one did-you-mean line.
+	ae := UndefinedWordDiagWith(r, "src", "frobnicatorx", pos, []string{"frobnicatorz"})
+	if ae.Code != "undefined_word" || ae.Row != 2 || ae.Col != 4 || ae.Src != "frobnicatorx" {
+		t.Fatalf("diagnostic shape: %+v", ae)
+	}
+	if len(ae.Suggestions) != 1 || !strings.Contains(ae.Suggestions[0].Message, "`frobnicatorz`") {
+		t.Errorf("a near-miss local yields the one did-you-mean line, got %+v", ae.Suggestions)
+	}
+
+	// The nearest miss is a builtin (a reserved literal): the describe
+	// pointer arrives with the fix.
+	ae = UndefinedWordDiagWith(r, "src", "TRUE", pos, []string{"true"})
+	if len(ae.Suggestions) != 2 || !strings.Contains(ae.Suggestions[0].Message, "`true`") ||
+		!strings.Contains(ae.Suggestions[1].Message, "boru describe true") {
+		t.Errorf("a builtin near-miss adds the describe pointer, got %+v", ae.Suggestions)
+	}
+
+	// No extras: the plain UndefinedWordDiag path.
+	if plain := UndefinedWordDiag(r, "src", "frobnicatorx", pos); len(plain.Suggestions) != 0 {
+		t.Errorf("without the local the registry alone has no near miss, got %+v", plain.Suggestions)
+	}
+}
