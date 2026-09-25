@@ -2314,6 +2314,16 @@ const FnAnalysisQuota = 64
 // `continue` bypassed the bind, `break` kept a discarded iteration's
 // value) breaks. A non-proven loop body still analyses identically — it
 // just declines the split (NestedBodyDepth != LoopBodyDepth).
+// isBindName reports whether name is one of a loop's own bind variables.
+func isBindName(bindNames []string, name string) bool {
+	for _, n := range bindNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value, provenTrips bool) []core.Value {
 	proven := provenTrips && !BodyHasSentinel(body)
 	// Loop-lowering hook (`for`): when armed, register the loop
@@ -2353,7 +2363,13 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		// generation is not stable; the next round reads the carrier from
 		// its first token and re-mints nothing, so it settles.
 		specGen := r.Check.SpecUndefGen
+		// The bind names' pre-push depths: the body may push levels of a bind
+		// name above the loop's own (`for 3 [def i 9]`), and the loop's
+		// lexical scope ends with the round — pop to these depths after it,
+		// not one level (NUR204: the index level survived the analysis too).
+		bindDepths := make([]int, len(bindNames))
 		for i, n := range bindNames {
+			bindDepths[i] = r.Defs.Depth(n)
 			r.Defs.Push(n, bindVals[i])
 		}
 		// Checkpoint the recording pools before an armed round: only the FINAL
@@ -2376,7 +2392,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Check.LoopBodyDepth--
 		}
 		for i := len(bindNames) - 1; i >= 0; i-- {
-			r.Defs.Pop(bindNames[i])
+			for r.Defs.Depth(bindNames[i]) > bindDepths[i] {
+				r.Defs.Pop(bindNames[i])
+			}
 		}
 		// Expose the original pre-loop bindings before re-joining.
 		for i := len(installed) - 1; i >= 0; i-- {
@@ -2394,6 +2412,14 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		sort.Strings(names)
 		for _, k := range names {
 			v := adds[k]
+			// A body def of one of the loop's OWN bind names (its index)
+			// rebinds the iteration's binding and ends with it — the
+			// lexical index scope (NUR204): it is neither joined into the
+			// post-loop binding nor loop-carried (the lowering stores it
+			// into the index slot).
+			if isBindName(bindNames, k) {
+				continue
+			}
 			if pre, ok := r.Defs.Top(k); ok {
 				// An add that is only a NARROWING of the enclosing binding —
 				// narrowDynamicUses preserves the value's ID, so same ID as
@@ -2866,7 +2892,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	if r.Check.FnInflight == nil {
 		r.Check.FnInflight = map[string]bool{}
 	}
-	if cached, ok := r.Check.FnSummaries[key]; ok {
+	if cached, ok := r.Check.FnSummaries[key]; ok && !r.Check.ForceFnReanalysis {
 		return cached
 	}
 	// Per-fn analysis quota (A9): a polymorphic helper reached with

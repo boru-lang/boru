@@ -215,9 +215,7 @@ func (l *pinLedger) checkRetired(t testing.TB) {
 
 // knownPositionLoss pins rows whose compiled error carries no SOURCE POSITION
 // where the interpreter's does.
-var knownPositionLoss = &pinLedger{name: "knownPositionLoss", pins: map[string]string{
-	"reach.tsv:L52": "NUR171 — the compiled no-match diagnostic carries no source position: the recorder gives PolyNoMatchSpec no dispatch position and the debug table has none at that pc, so the raise has nothing to stamp (the interpreter's re-run used to supply it)",
-}}
+var knownPositionLoss = &pinLedger{name: "knownPositionLoss", pins: map[string]string{}}
 
 // knownDiagDrift pins rows whose two lanes describe the SAME failure in
 // different words — the notes, suggestions or secondary spans differ while

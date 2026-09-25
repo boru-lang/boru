@@ -1345,6 +1345,7 @@ func installCheckBraid() {
 	core.CheckBraid.DeclineForwardStackDrift = DeclineForwardStackDrift
 	core.CheckBraid.DeclineStrandedMemberFn = declineStrandedMemberFn
 	core.CheckBraid.ShareCheckState = shareCheckState
+	core.CheckBraid.ShareCheckStateFrom = shareCheckStateFrom
 	core.CheckBraid.SpliceAnonCheckResult = spliceAnonCheckResult
 	core.CheckBraid.SpliceCheckResults = spliceCheckResults
 	core.CheckBraid.SpliceFnValueCheckResult = SpliceFnValueCheckResult

@@ -118,7 +118,11 @@ func TestClosureCaptureOpenShapes(t *testing.T) {
 	if !compiled || errC != nil || errI != nil {
 		t.Fatalf("compiled=%v errC=%v errI=%v", compiled, errC, errI)
 	}
-	if c, i := strings.TrimSpace(fmt.Sprint(gotC)), strings.TrimSpace(fmt.Sprint(gotI)); !strings.Contains(c, "fn sqrt(Number) 16") || !strings.Contains(i, "fn g(") {
-		t.Errorf("measured, open: compiled %s / interpreted %s", c, i)
+	// Closed 2026-09-25 (NUR123): the VM's frame naming binds a foreign
+	// trivial-delegation wrapper for a named param as the inner native's
+	// overloads under the param's name (core.WrapperUnderName — installDef's
+	// own rebinding), so both lanes render `fn g(...) 16.0`.
+	if c, i := strings.TrimSpace(fmt.Sprint(gotC)), strings.TrimSpace(fmt.Sprint(gotI)); c != i || !strings.Contains(i, "fn g(") {
+		t.Errorf("the wrapper under the param's name: compiled %s / interpreted %s", c, i)
 	}
 }

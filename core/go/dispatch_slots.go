@@ -66,13 +66,18 @@ var CheckBraid = struct {
 	DeclineForwardStackDrift     func(e *Engine, sig *Signature, positions []int)
 	DeclineStrandedMemberFn      func(e *Engine, positions []int)
 	ShareCheckState              func(e *Engine, capturedReg *Registry) func()
-	SpliceAnonCheckResult        func(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error
-	SpliceCheckResults           func(e *Engine, positions []int, results []Value)
-	SpliceFnValueCheckResult     func(e *Engine, valIdx, nArgs int, fnDef FnDefInfo, sig *FnSig, args []Value) error
-	TagCheckModeDefRead          func(e *Engine, top *Value, name string, pos SrcPos)
-	TryDynamicFnValueDispatch    func(e *Engine, valIdx int) bool
-	TryMemberFnArrivalDispatch   func(e *Engine, valIdx int) bool
-	NoteReStepLanding            func(e *Engine, valIdx int)
+	// ShareCheckStateFrom points owner's Check at caller's for the returned
+	// restore's lifetime (the same transient sharing ShareCheckState does
+	// for a dispatch): the end-of-pass drain analyses an exported module
+	// fn's body in its own registry under the importing pass (NUR128).
+	ShareCheckStateFrom        func(owner, caller *Registry) func()
+	SpliceAnonCheckResult      func(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error
+	SpliceCheckResults         func(e *Engine, positions []int, results []Value)
+	SpliceFnValueCheckResult   func(e *Engine, valIdx, nArgs int, fnDef FnDefInfo, sig *FnSig, args []Value) error
+	TagCheckModeDefRead        func(e *Engine, top *Value, name string, pos SrcPos)
+	TryDynamicFnValueDispatch  func(e *Engine, valIdx int) bool
+	TryMemberFnArrivalDispatch func(e *Engine, valIdx int) bool
+	NoteReStepLanding          func(e *Engine, valIdx int)
 	// ParenPlacedFnCarrier reports whether the value at idx is an
 	// analysis-pass carrier the check side knows to be a FUNCTION (a
 	// pinpointed member-fn read, whose fn identity lives in the recorder's
@@ -103,6 +108,7 @@ var CheckBraid = struct {
 	DeclineForwardStackDrift:     inactiveDeclineForwardStackDrift,
 	DeclineStrandedMemberFn:      inactiveDeclineStrandedMemberFn,
 	ShareCheckState:              inactiveShareCheckState,
+	ShareCheckStateFrom:          inactiveShareCheckStateFrom,
 	SpliceAnonCheckResult:        inactiveSpliceAnonCheckResult,
 	SpliceCheckResults:           inactiveSpliceCheckResults,
 	SpliceFnValueCheckResult:     inactiveSpliceFnValueCheckResult,
@@ -151,6 +157,7 @@ func inactiveDeclineStrandedMemberFn(e *Engine, positions []int) {}
 func inactiveNoteReStepLanding(e *Engine, valIdx int) {}
 
 func inactiveShareCheckState(e *Engine, capturedReg *Registry) func() { return func() {} }
+func inactiveShareCheckStateFrom(owner, caller *Registry) func()      { return func() {} }
 
 func inactiveSpliceAnonCheckResult(e *Engine, valIdx, nArgs int, sig *FnSig, args []Value, captures []CapturedBinding) error {
 	return nil

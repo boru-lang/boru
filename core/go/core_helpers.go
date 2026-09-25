@@ -39,6 +39,18 @@ func InstallFrameBinding(r *Registry, name string, body Value) {
 }
 
 func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...bool) {
+	// A root-level def under the check pass — not a frame binding, not a
+	// def inside a fn body's analysis — is a late-binding site for the
+	// hint (NUR097).
+	// The site is the def-NAME token InstallAndRecordDef staged for the bind
+	// ledger (PendingBindPos) — a fn value carries no position of its own.
+	if !shadow && r != nil && r.Check.IsActive() && len(r.Check.FnNameStack) == 0 {
+		pos := r.Check.PendingBindPos
+		if pos.Row == 0 {
+			pos = body.Pos()
+		}
+		r.Check.NoteRootDefSite(name, pos)
+	}
 	// The rebind notification, seated with the operation rather than with the
 	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every
 	// twin note below makes: a SHADOWING install is InstallFrameBinding's —
@@ -85,49 +97,15 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if FnHomeForeign(r, &fnDef) {
-			reg := fnDef.Registry
-			own := fnDef.OwnSigs()
-			// EVERY own sig must be a trivial delegation to the SAME
-			// inner native — a multi-overload wrapper (e.g. IO.write)
-			// carries one delegation FnSig per overload. Requiring only
-			// a single sig here used to drop multi-sig wrappers onto the
-			// body-splice path below, where the wrapper's own UNLOCKED
-			// FnSigs were installed — so a later overlapping `def` could
-			// silently replace a module word instead of raising
-			// locked_signature (the inner native's sigs are locked).
-			innerName := ""
-			allTrivial := len(own) > 0
-			for i := range own {
-				target, ok := trivialDelegationTarget(&own[i])
-				if !ok || (innerName != "" && target != innerName) {
-					allTrivial = false
-					break
-				}
-				innerName = target
+		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
+			r.Defs.Push(name, rebound)
+			if !shadow {
+				r.NoteBindTransition(BindDef, name, body.Pos())
 			}
-			if allTrivial {
-				if inner := reg.Lookup(innerName); inner != nil && len(inner.Signatures) > 0 {
-					rebound := FnDefInfo{
-						Name:           name,
-						Signatures:     append([]Signature(nil), inner.Signatures...),
-						MaxForwardArgs: inner.MaxForwardArgs,
-						Registry:       reg,
-						// A trivial-delegation rebind is the inner word under
-						// another name — the record's own case — so it inherits
-						// the inner word's identity token (NUR031).
-						ident: inner.ident,
-					}
-					r.Defs.Push(name, NewFunction(rebound))
-					if !shadow {
-						r.NoteBindTransition(BindDef, name, body.Pos())
-					}
-					if !shadow && r.ready && r.OnRegisterHook != nil {
-						r.OnRegisterHook(name)
-					}
-					return
-				}
+			if !shadow && r.ready && r.OnRegisterHook != nil {
+				r.OnRegisterHook(name)
 			}
+			return
 		}
 
 		// Remove any previous DefStack entries whose signatures overlap
@@ -326,6 +304,48 @@ func UninstallDef(r *Registry, name string) {
 	// Recorded AFTER the pop so Depth is the post-transition depth, which is
 	// what a twin has to reproduce (§6.5).
 	r.NoteBindTransition(BindUndef, name, SrcPos{})
+}
+
+// WrapperUnderName is the module-wrapper rebinding (installDef's own case)
+// as a value: a FOREIGN trivial-delegation wrapper — what `import` produces
+// for each export — bound under name is the INNER native's overloads under
+// that name, exactly as dot-access dispatches it. The compiled frame binds a
+// wrapper for a named param the same way (eng's nameFrameFns), so `(f
+// MathUtil.sqrt/v) 16.0` renders the param's name over the inner overloads
+// on both lanes (NUR123). ok is false for anything else.
+func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
+	if !FnHomeForeign(r, &fnDef) {
+		return Value{}, false
+	}
+	reg := fnDef.Registry
+	own := fnDef.OwnSigs()
+	innerName := ""
+	allTrivial := len(own) > 0
+	for i := range own {
+		target, ok := trivialDelegationTarget(&own[i])
+		if !ok || (innerName != "" && target != innerName) {
+			allTrivial = false
+			break
+		}
+		innerName = target
+	}
+	if !allTrivial {
+		return Value{}, false
+	}
+	inner := reg.Lookup(innerName)
+	if inner == nil || len(inner.Signatures) == 0 {
+		return Value{}, false
+	}
+	return NewFunction(FnDefInfo{
+		Name:           name,
+		Signatures:     append([]Signature(nil), inner.Signatures...),
+		MaxForwardArgs: inner.MaxForwardArgs,
+		Registry:       reg,
+		// A trivial-delegation rebind is the inner word under another
+		// name — the record's own case — so it inherits the inner word's
+		// identity token (NUR031).
+		ident: inner.ident,
+	}), true
 }
 
 // buildFnBodyHandler produces the dispatch Handler for one boru fn

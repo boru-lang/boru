@@ -13,8 +13,9 @@
 # yields the code as a value. It used to surface from the end-of-run residue
 # drain, outside every handler. The COMPILE status is unchanged: still a sound
 # compile failure, which is what this ledger tracks.
-import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
-import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
+# GRADUATED 2026-09-25 (NUR134): the two def-msg rows compile — the do-body
+# unit raises the definite no-match in place (a unit-scoped trap) and the do's
+# model is the caught Error — and moved to lang/spec/bytecode-migrated.tsv.
 # DISCOVERY (2026-07-13): the next row COMPILES natively today — parse has a
 # pure ReturnsFn dry-pass, so with a CONSTANT argument the checker proves the
 # call cannot raise at this input and soundly seats the exact arity. It stays

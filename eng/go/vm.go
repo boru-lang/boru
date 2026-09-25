@@ -420,7 +420,19 @@ func nameFrameFns(r *core.Registry, fn *compiler.CompiledFn, locals []core.Value
 			continue
 		}
 		fd, ok := locals[i].Data.(core.FnDefInfo)
-		if !ok || fd.Name == name || core.FnHomeForeign(r, &fd) {
+		if !ok || fd.Name == name {
+			continue
+		}
+		if core.FnHomeForeign(r, &fd) {
+			// A FOREIGN trivial-delegation wrapper (a module export) bound
+			// for a named param is the inner native's overloads under the
+			// param's name — installDef's own rebinding, which the payload
+			// rename could not mirror (NUR123): `(f MathUtil.sqrt/v) 16.0`
+			// rendered `fn sqrt(Number)` for the interpreter's `fn
+			// g(BigDecimal) or … 16.0`. Any other foreign value is left alone.
+			if v, rebound := core.WrapperUnderName(r, name, fd); rebound {
+				locals[i] = v
+			}
 			continue
 		}
 		fd.Name = name
@@ -1581,6 +1593,14 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	}
 	top := len(stack) - 1
 	fnVal := stack[top]
+	// A VALUE delivery — a `/v` read the recorder marked
+	// (DynApplyHead.ValueDelivery) — is applied when an overload takes the
+	// window and otherwise left as DATA beside it on the interpreter: a
+	// value, not the word dispatch a bare read makes, so no signature_error
+	// (NUR124's fifth witness: `(g/v 5)` over a String-only g is `[fn 5]`
+	// and the frame's count error on both lanes, where the VM raised
+	// `cannot call `g`` through the nameless no-match builder).
+	delivered := head.ValueDelivery
 	// The op stands for a READ-SUBSTITUTED trailing fn (RecordDynApply fires
 	// at the paren collapse of a WORD-read arrival, where the interpreter's
 	// substitution strips one quote level before the auto-apply). A compiled
@@ -1611,6 +1631,9 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		// computed fn read at a closure body's tail, `each [a5] xs`), and the
 		// interpreter raises `cannot call `a5`` where the closure's contract
 		// matches nothing — a paren-bounded VALUE apply parks instead.
+		if fn, known := vc.closureUnit(cl); delivered && known && !closureMatchesArgs(fn, args) {
+			return parkedWindow(stack, base, top, head), nil, nil // a /v-delivered closure the window does not fit stays data
+		}
 		if head.Name != "" {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
 				if fnv, built := closureFnDef(fn, cl.Ident, func([]core.Value) ([]core.Value, error) { return nil, nil }); built {
@@ -1667,6 +1690,9 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		}
 		return append(stack[:base], results...), nil, nil
 	}
+	if delivered && core.MatchFnSig(fnVal, args) == nil {
+		return parkedWindow(stack, base, top, head), nil, nil // a /v-delivered fn the window does not fit stays data
+	}
 	if err := noMatchIfSigged(reg, fnVal, args, curDebug, pc, reg, head); err != nil {
 		return nil, nil, err
 	}
@@ -1695,6 +1721,21 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		return nil, nil, err
 	}
 	return append(stack[:base], results...), nil, nil
+}
+
+// parkedWindow is the residual a value-delivered fn the window does not fit
+// leaves on the interpreter: the window in its WRITTEN order. A trailing
+// window (`(5 g/v)`) is already the stack's order, fn on top; one that wrote
+// the fn FIRST (`(g/v 5)`, Leading or WrittenFirst) puts it back beneath its
+// arguments.
+func parkedWindow(stack []core.Value, base, top int, head compiler.DynApplyHead) []core.Value {
+	if !head.Leading && !head.WrittenFirst {
+		return stack
+	}
+	win := make([]core.Value, 0, top-base+1)
+	win = append(win, stack[top])
+	win = append(win, stack[base:top]...)
+	return append(stack[:base], win...)
 }
 
 // noMatchIfSigged raises when fnVal is a Function carrying OWN SIGNATURES none
@@ -2665,6 +2706,15 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 	if !core.IsAppliableFn(v) {
 		return stack, false, nil
 	}
+	if spec.Bail {
+		// A GUARD (DeoptSpec.Bail): the interpreter dispatches this read as
+		// a word and no island can take the statement over here, so the
+		// slot push the unit lowered would answer wrong. A designed defer,
+		// loud (compiledRunError reports it) where it used to be silent
+		// (NUR123's `5 j typeof`).
+		return nil, false, vmErrAt(curDebug, pc, fmt.Sprintf(
+			"gradual read `%s` holds a fn the interpreter dispatches here and the unit could not re-step (NUR123)", spec.Name))
+	}
 	if spec.Token < 0 || spec.Token >= len(fn.Body) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
@@ -3011,6 +3061,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		// (untagged units — the ordinary case — cost one branch, no atomic load)
 		// and is small enough to inline, so the hot loop keeps its complexity.
 		curReg.NoteVMCoverage(curDebug, pc)
+		// Each op is one dispatch: a predicate verdict memoised by the
+		// previous op (RunPredicate, NUR102) must not answer this one.
+		r.ClearPredMemo()
 		switch in.Op {
 		case compiler.OpPushConst:
 			stack = append(stack, p.Consts[in.Arg])
@@ -3485,7 +3538,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// kernel's own MatchSignature (matchUserPoly), then enter its unit
 			// exactly as OpCallUser does — pop the args into frame locals (the
 			// match window IS the popped window, sig position 0 = top of stack),
-			// re-check the param contract, push a frame.
+			// re-check the param contract, push a frame. One dispatch (the
+			// loop cleared the predicate memo before this op), so the
+			// re-match and the re-check share one run of each predicate.
 			unit, sigArgs, err := vc.matchUserPoly(&p.UserPolys[in.Arg], stack, curDebug, pc)
 			if err != nil {
 				return nil, err
@@ -3504,6 +3559,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					nl[i].Quoted = true
 				}
 			}
+			// The re-check asks each predicate type again; RunPredicate's
+			// per-dispatch memo (cleared before the re-match) answers it
+			// without a second run of the body (NUR102).
 			if err := checkParamContract(r, fn, nl); err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}

@@ -72,6 +72,11 @@ func TestMarkWindowDoCatchCompiles(t *testing.T) {
 		mwDocMod + `do [(if true [M.boom 5] [7]) 8] error [dot code]`,
 		// The dry-pass-proven raising constant (the StructUtil chained leaf).
 		`import "boru:struct-util"  def g StructUtil.parse/v  do [(g "") 2] error [dot code]`,
+		// GRADUATED 2026-09-25 (NUR134): the module export's definite
+		// no-match in the region — the do-body unit raises it in place (a
+		// unit-scoped trap) and the do's model is the caught Error, so the
+		// promoted def read compiles and agrees (`uncalled_function`).
+		mwDocMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
 	}
 	for i, src := range rows {
 		t.Run(fmt.Sprintf("row-%d", i), func(t *testing.T) {
@@ -102,9 +107,8 @@ func TestMarkWindowDeclinesKeepParity(t *testing.T) {
 	// widening would have to graduate — see the ledger note in
 	// frontier-do-catch.tsv — but this row can no longer reach it. Parity is
 	// what this test actually guards, and it holds either way.
-	mwFailedToCompileWithParity(t,
-		mwDocMod+`def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
-		"check diagnostics")
+	// GRADUATED 2026-09-25 (NUR134): the promoted def read above compiles
+	// now — it moved to TestMarkWindowDoCatchCompiles.
 	// GRADUATED 2026-07-17 (§9.1): the module-export-in-region row compiles —
 	// the identity-less ExtensionPayload out mints an ID at the dyn-body
 	// record, restoring its event linkage, so the mark window owns the

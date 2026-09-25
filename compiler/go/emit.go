@@ -892,6 +892,14 @@ type EmitState struct {
 	// re-resolves the registry there, exactly where the interpreter reads
 	// it. Nil until first use.
 	keepLeakNames map[string]bool
+	// dynLeakNames is every name a keep-defs word over a DYNAMIC body may
+	// have rebound in the unit that dispatched it (noteDynKeepDefsLeak):
+	// the body's tokens are unknowable, so every name the unit value-defs
+	// before the dispatch is a candidate, and a later read of one seats
+	// live WHATEVER its compiled home — the registry, where the body's
+	// per-element install put the value, is the one answer (NUR203:
+	// `def t 0 each b xs drop t` inside a fn read the pre-call 0).
+	dynLeakNames map[string]bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -1768,6 +1776,13 @@ type fnUnitRec struct {
 	// their points when the unit cannot bind them after all.
 	rootFrame     int
 	deoptChildren []int
+	// trapSeq is the seq of a UNIT-scoped trap (recordUnitTrap): a definite
+	// runtime raise at the unit's root frame. The unit's events after it are
+	// unreachable and are dropped at finish; the unit diverges (no RET).
+	trapSeq int
+	// bails are the unit's GUARD points (deoptPoint.bail): gradual reads
+	// no island could take over, guarded at their value instead.
+	bails []deoptPoint
 }
 
 // deoptPoint is one gradual word read the unit lowers as a DEOPT
@@ -1794,6 +1809,15 @@ type deoptPoint struct {
 	// interpreter splices back onto the tape and steps; token is where the
 	// island resumes after them.
 	restep bool
+	// bail marks a GUARD, not a deopt: a gradual read whose statement no
+	// island can take over (its start is deferred — `5 j typeof`, the
+	// literal pending beneath the read — or the unit's names cannot be
+	// bound registry-visibly). The read keeps its slot push, and the guard
+	// raises a designed defer at the point when the value IS a fn — the
+	// word dispatch the interpreter makes there and the slot push cannot
+	// (NUR123's last shape): loud, where it used to be a silent wrong
+	// answer. No island, no prefix, no names.
+	bail bool
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -2345,6 +2369,11 @@ func (es *EmitState) MarkUncompilable(reason string) {
 		// trap and drops the residual, so its failure is moot (e.g. `getr` of a
 		// missing module-namespace key: the getr IS the trap, and its own
 		// operand-provenance residual must not decline the program).
+		return
+	}
+	if es.inTrappedUnit() {
+		// The same argument, scoped to a body unit (recordUnitTrap): the
+		// unit raises at its trap, and finish drops what follows.
 		return
 	}
 	es.Compilable = false
@@ -4456,7 +4485,8 @@ func fragDiverges(frag *EmitFragment) bool {
 		// out of the VM run and the catching word (do/error) wraps it.
 		return true
 	}
-	return last.kind == evBreak || last.kind == evContinue
+	// A unit trap (recordUnitTrap) raises the same way.
+	return last.kind == evBreak || last.kind == evContinue || last.kind == evTrap
 }
 
 // fragDivergesDeep reports whether a LOWERED fragment definitely leaves the
@@ -4476,7 +4506,7 @@ func fragDivergesDeep(frag *EmitFragment) bool {
 
 func eventDivergesDeep(ev *EmitEvent) bool {
 	switch ev.kind {
-	case evBreak, evContinue:
+	case evBreak, evContinue, evTrap:
 		return true
 	case evCall:
 		// A CompileDiverges word (raise) never returns past this call — the
@@ -5012,11 +5042,20 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 	if scope.unitDepth != len(es.units) {
 		return
 	}
+	u := es.units[len(es.units)-1]
+	// The loop's OWN bind variable (its index, named at the round's entry —
+	// NameLocal) is never loop-carried: a body def of it rebinds the
+	// ITERATION's binding, which the lowering stores into the index slot
+	// (lowerDynBind), and the pre-loop binding of the same name is
+	// untouched — the lexical index scope, NUR204. Carrying it wrote the
+	// body's value back to the root (`def i 0  for 3 [def i 9]  i` was 9).
+	if pre.ID != "" && u != nil && u.boundLocals[pre.ID] == name {
+		return
+	}
 	if es.carriedNames == nil {
 		es.carriedNames = map[string]bool{}
 	}
 	es.carriedNames[name] = true
-	u := es.units[len(es.units)-1]
 	slot, seen := scope.slots[name]
 	if !seen {
 		// An enclosing armed loop already carrying this name owns the cell —
@@ -5309,6 +5348,46 @@ func (es *EmitState) NoteKeepDefsLeak(pos core.SrcPos) {
 		es.keepLeakNames = map[string]bool{}
 	}
 	for _, name := range sorted {
+		es.keepLeakNames[name] = true
+		if slot, ok := es.carriedSlot(name); ok {
+			es.appendEvent(EmitEvent{kind: evStore, store: &emitStore{src: dynScopeOperand(es.intern(core.NewString(name))), slot: slot, pos: pos}})
+			es.noteStoreHazard(name, slot)
+		}
+	}
+}
+
+// noteDynKeepDefsLeak is NoteKeepDefsLeak's twin for a keep-defs word
+// over a DYNAMIC body (tryRecordDynBody: a List param, a def-bound quoted
+// list) dispatched inside a unit: the pass never sees the body's tokens,
+// so the names it may rebind are unknown — every name the dispatching
+// unit value-defs before the call is taken as leaked (dynLeakNames, so
+// the read seats live whatever its home; keepLeakNames; a carried slot
+// refreshed from the registry as NoteKeepDefsLeak does). The root is
+// left alone: a root read is live already (NUR203's own measurement).
+func (es *EmitState) noteDynKeepDefsLeak(pos core.SrcPos) {
+	if es.TopFrameOnly() {
+		return
+	}
+	cur := es.frames[len(es.frames)-1]
+	var names []string
+	seen := map[string]bool{}
+	for i := range cur {
+		ev := &cur[i]
+		if ev.kind != evDynBind || ev.dyn == nil || !ev.dyn.bindsValue() || ev.dyn.keepSkip || seen[ev.dyn.name] {
+			continue
+		}
+		seen[ev.dyn.name] = true
+		names = append(names, ev.dyn.name)
+	}
+	sort.Strings(names)
+	if len(names) > 0 && es.dynLeakNames == nil {
+		es.dynLeakNames = map[string]bool{}
+	}
+	if len(names) > 0 && es.keepLeakNames == nil {
+		es.keepLeakNames = map[string]bool{}
+	}
+	for _, name := range names {
+		es.dynLeakNames[name] = true
 		es.keepLeakNames[name] = true
 		if slot, ok := es.carriedSlot(name); ok {
 			es.appendEvent(EmitEvent{kind: evStore, store: &emitStore{src: dynScopeOperand(es.intern(core.NewString(name))), slot: slot, pos: pos}})
@@ -5939,7 +6018,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
-	} else if (es.keepLeakNames[name] && !es.readHasHome(*v)) || es.mutableRefCarrierRead(*v) {
+	} else if (es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])) || es.mutableRefCarrierRead(*v) {
 		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak), or a mutable
 		// reference — a flex, a store — the pass now holds as a CARRIER
 		// with no compiled home (a body's check-mode mutation re-modelled
@@ -6428,6 +6507,22 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	finish = func(bodyStk []core.Value) {
 		resume()
 		rec.frag = asFragment(es.TakeFragment())
+		if rec.trapSeq != 0 {
+			// A unit trap (recordUnitTrap) ends the unit: keep the events up
+			// to and including it — their effects run first, as in the
+			// interpreter — and drop the unreachable rest. The twins the tail
+			// recorded are unreachable transitions, as truncateAtTrap's are.
+			kept := eventsThroughSeq(rec.frag.events, rec.trapSeq)
+			for _, ev := range rec.frag.events[len(kept):] {
+				if ev.kind == evBindTwin && ev.twin != nil {
+					if es.supersededTwins == nil {
+						es.supersededTwins = map[int]bool{}
+					}
+					es.supersededTwins[ev.twin.idx] = true
+				}
+			}
+			rec.frag.events = kept
+		}
 		// forceOrder mirrors Finalize's program-residual promotion for THIS
 		// unit: when the residual is out of order (an event result above an
 		// inert bottom), every residual event is promoted to a frame local so
@@ -7137,6 +7232,19 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	// which is what tells a bare read apart from an `apply`-word arrival.
 	headName := es.dynApplyHeadName(es.openUnitRec(), fn, args)
 	headName.Leading = lead
+	if rec := es.openUnitRec(); rec != nil && headName.Name == "" && rec.valReads[fn.ID] > 0 {
+		headName.ValueDelivery = true
+	}
+	if !lead && fn.Pos().Row > 0 && len(args) > 0 {
+		first := true
+		for _, a := range args {
+			if a.Pos().Row == 0 || !posAfter(a.Pos(), fn.Pos()) {
+				first = false
+				break
+			}
+		}
+		headName.WrittenFirst = first
+	}
 	// The paren window consumed a bare read of this local (NUR123
 	// accounting): an accepted value-semantics lowering.
 	es.creditWordRead(fn.ID)
@@ -7450,6 +7558,16 @@ func (es *EmitState) RecordWhile(condRef, bodyRef core.EmitFragmentRef, condStk,
 // (failure != "") is raised here under the loop's word, so the two loops
 // share one failure site.
 func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragment, bodyStk []core.Value, iterID string, out core.Value, regionN int, failure string) {
+	// The per-iteration hazards a loop body's residual is asked about
+	// (NUR129): a named fn value, and a reach group's DYNAMIC survivor
+	// (CheckState.ReachSurvivorFnIDs — `m.f` over `{f: g/v}`), both the
+	// interpreter's re-step at the iteration's end.
+	loopHazards := []func(core.Value) string{loopNamedFnHazard, func(v core.Value) string {
+		if v.Dynamic && v.ID != "" && es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] {
+			return "is a reach group's survivor the interpreter re-steps per iteration (NUR129)"
+		}
+		return ""
+	}}
 	if failure != "" {
 		es.MarkUncompilable(word + ": " + failure)
 		return
@@ -7515,12 +7633,15 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 				body.residualOps = inertOps
 			}
 			// A named fn value among the per-iteration values is the
-			// interpreter's re-step (NUR129); residualStands declines it
-			// through the shared site — asked only for the named ones.
+			// interpreter's re-step (NUR129), and so is a reach group's
+			// DYNAMIC survivor (`m.f` over `{f: g/v}` — the pass cannot
+			// type the member, the interpreter re-steps whatever it holds);
+			// residualStands declines them through the shared site — asked
+			// only for those.
 			for i := range bodyStk {
-				if loopNamedFnHazard(bodyStk[i]) != "" {
+				if firstHazard(bodyStk[i], loopHazards) != "" {
 					op, okOp := es.resolveOperand(bodyStk[i])
-					if !es.residualStands(word+": ", bodyStk[i], op, okOp, body, "body result", loopNamedFnHazard) {
+					if !es.residualStands(word+": ", bodyStk[i], op, okOp, body, "body result", loopHazards...) {
 						return
 					}
 				}
@@ -7529,7 +7650,7 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 			lp.bodyOut, lp.hasBodyOut, lp.multiOut = bodyOut, true, true
 		} else {
 			bodyOut, ok := es.resolveOperand(bodyStk[len(bodyStk)-1])
-			if !es.residualStands(word+": ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result", loopNamedFnHazard) {
+			if !es.residualStands(word+": ", bodyStk[len(bodyStk)-1], bodyOut, ok, body, "body result", loopHazards...) {
 				return
 			}
 			lp.bodyOut, lp.hasBodyOut = bodyOut, true
@@ -7909,6 +8030,57 @@ func (es *EmitState) RecordTrap(code, detail, word, hint string, pos core.SrcPos
 		pos:  pos,
 	}})
 	return true
+}
+
+// RecordUnitTrapErr records a fully-built interpreter error as a UNIT-scoped
+// trap (recordUnitTrap) — never the terminal top-level one: its caller is an
+// analysis below the uncaught top level (a `do` body, a fn body), where a
+// program-ending trap would be wrong. Declines outside a body unit.
+func (es *EmitState) RecordUnitTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
+	if ae == nil || !es.Active() || len(es.units) <= 1 {
+		return false
+	}
+	return es.recordUnitTrap(EmitTrap{
+		spec: TrapSpec{
+			Code: ae.Code, Detail: ae.Detail, Word: ae.Src, Hint: ae.Hint,
+			Spans: ae.Spans, Notes: ae.Notes, Suggestions: ae.Suggestions,
+		},
+		pos: pos,
+	})
+}
+
+// recordUnitTrap records a definite runtime raise INSIDE a body unit (NUR134):
+// the same raise the terminal top-level trap compiles, scoped to the unit.
+// It takes only the unit's ROOT frame — a raise inside one of its branch arms
+// or loop bodies is conditional, and the truncation below would drop the
+// arm's siblings — and the first trap per unit wins, as at the top level.
+// The unit's events after the trap are unreachable (the interpreter raises
+// here and never reaches them): MarkUncompilable ignores marks while a
+// trapped unit is open, finish drops the tail, and the unit DIVERGES — its
+// OpTrap is its last op and it has no RET — so the raise propagates out of
+// the VM run to whatever catches it (a `do … error` body), exactly as the
+// interpreter's does. A trap at the top level keeps RecordTrap's own path.
+func (es *EmitState) recordUnitTrap(t EmitTrap) bool {
+	rec := es.openUnitRec()
+	if rec == nil || !es.atUnitRootFrame() {
+		return false
+	}
+	if rec.trapSeq != 0 {
+		return true
+	}
+	rec.trapSeq = es.appendEvent(EmitEvent{kind: evTrap, trap: t})
+	return true
+}
+
+// inTrappedUnit reports whether recording is inside a unit whose trap has
+// already fired (recordUnitTrap): everything it records is unreachable.
+func (es *EmitState) inTrappedUnit() bool {
+	for _, i := range es.openUnitRecs {
+		if es.fnRecs[i].trapSeq != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // RecordTrapErr is RecordTrap for a fully-built interpreter BoruError: it
@@ -8923,6 +9095,23 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		ops[i] = op
 	}
 	return ops, true
+}
+
+// boundSlotsOf maps a unit's bound-checked frame slots to the carried name
+// each may leave never stored (boundLocals, branch_carried.go), for the
+// lowerer: a promoted event operand that lands in such a slot lost the
+// join's guarded carrier on its way there.
+func boundSlotsOf(u *emitUnit) map[int]string {
+	if u == nil || len(u.boundLocals) == 0 {
+		return nil
+	}
+	out := map[int]string{}
+	for id, name := range u.boundLocals {
+		if slot, ok := u.localByID[id]; ok {
+			out[slot] = name
+		}
+	}
+	return out
 }
 
 // valueDivergingWord reports whether any overload of word in the registry
@@ -13304,7 +13493,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		SpecFnNames:     maps.Clone(es.specFnNames),
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames)}
-	lw := &lowerer{es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -13552,7 +13741,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		cf.KeepsDefs = rec.keepsDefs
-		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -14324,7 +14513,18 @@ func (es *EmitState) namedFnUnmatchedAtTail(v core.Value) bool {
 // the body ride on the unit for the VM. A diverging body has no RET to
 // resume at and seats none.
 func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool) {
-	if !rec.deoptEnv || diverged {
+	if diverged {
+		return
+	}
+	// A guard (deoptPoint.bail) needs no island environment: it tests the
+	// value where its statement begins and raises rather than resumes.
+	for _, d := range rec.bails {
+		seatDeoptPoint(flw, rec, d)
+	}
+	if !rec.deoptEnv {
+		if len(rec.bails) > 0 {
+			flw.deoptTable = &cf.Deopts
+		}
 		return
 	}
 	flw.deoptNames = rec.deoptNames
@@ -14340,35 +14540,47 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 		}
 	}
 	for _, d := range rec.deopts {
-		if d.restep {
-			// Tested right after the event's op, over the results it left
-			// (emitReStepAfter, NUR124).
-			if flw.deoptAfterSeq == nil {
-				flw.deoptAfterSeq = map[int]deoptPoint{}
-			}
-			flw.deoptAfterSeq[d.seq] = d
-			continue
-		}
-		if !d.atPush {
-			flw.deopts = append(flw.deopts, d)
-			continue
-		}
-		// Tested where the read's value is pushed: a capture's own slot, or
-		// the def's promoted source (a deopt unit promotes the sources its
-		// islands read).
-		slot := d.slot
-		if slot < 0 {
-			s, ok := rec.promoted[d.seq]
-			if !ok {
-				continue
-			}
-			slot = s
-		}
-		if flw.deoptAtSlot == nil {
-			flw.deoptAtSlot = map[int]deoptPoint{}
-		}
-		flw.deoptAtSlot[slot] = d
+		seatDeoptPoint(flw, rec, d)
 	}
+}
+
+// seatDeoptPoint hands one point to the lowerer by where it tests: a
+// re-step after its event (NUR124), a push-tested point at its slot, any
+// other before its statement's first root op.
+func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
+	if d.restep {
+		// Tested right after the event's op, over the results it left
+		// (emitReStepAfter, NUR124).
+		if flw.deoptAfterSeq == nil {
+			flw.deoptAfterSeq = map[int]deoptPoint{}
+		}
+		flw.deoptAfterSeq[d.seq] = d
+		return
+	}
+	if !d.atPush {
+		flw.deopts = append(flw.deopts, d)
+		return
+	}
+	// Tested where the read's value is pushed: a capture's own slot, or
+	// the def's promoted source (a deopt unit promotes the sources its
+	// islands read). A guard over an unpromoted source tests before the
+	// statement instead, at the value's stack home.
+	slot := d.slot
+	if slot < 0 {
+		s, ok := rec.promoted[d.seq]
+		if !ok {
+			if d.bail {
+				d.atPush = false
+				flw.deopts = append(flw.deopts, d)
+			}
+			return
+		}
+		slot = s
+	}
+	if flw.deoptAtSlot == nil {
+		flw.deoptAtSlot = map[int]deoptPoint{}
+	}
+	flw.deoptAtSlot[slot] = d
 }
 
 // stampDeoptRet seats the unit's RET pc on every deopt point the lowerer
@@ -14430,6 +14642,13 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		}
 		if d, ok := es.deoptPointFor(u, rec, id, seq, slot, name, rec.wordReadFirst[id]); ok {
 			rec.deopts = append(rec.deopts, d)
+		} else if lambda && (d.atPush || d.start.Row > 0) {
+			// Only a LAMBDA value's body: its captured read has no other
+			// home once the point declines. A code body's read may still be
+			// taken by the forward-drift window or the closure-word bridge
+			// (`each [f add 10]` over a def-bound member read), so it keeps
+			// the slot push as before.
+			rec.bails = append(rec.bails, bailPoint(d))
 		}
 	}
 	if len(rec.deopts) == 0 {
@@ -14481,6 +14700,19 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	u.deoptEnv = true
 	u.deoptNames = names
 	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+}
+
+// bailPoint demotes a deopt point no island can serve to a GUARD
+// (deoptPoint.bail): the same value home and test position, no island
+// state. A point placed at the read's push keeps its push test; any other
+// tests before its statement's first root op, as a deopt would.
+func bailPoint(d deoptPoint) deoptPoint {
+	d.bail = true
+	d.token = -1
+	if !d.atPush && d.start.Row == 0 {
+		d.start = d.pos
+	}
+	return d
 }
 
 // inKeepDefsUnit reports whether the innermost open unit is a KEEP-DEFS
@@ -15958,6 +16190,16 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	}
 	pr, ok := es.producedBy[v.ID]
 	if !ok {
+		return false
+	}
+	// A REACH group's lone survivor is never placed: the group's collapse
+	// re-steps it over the values beneath, a call result included — `5
+	// M.ff` applies the returned `fn inc` to the 5 on the interpreter
+	// (NUR210). The check pass records the survivor at the collapse
+	// (CheckState.ReachSurvivorFnIDs); an ENCLOSING user paren that then
+	// parks the same value (`5 (M.ff)` is `[5 fn inc]` on both lanes)
+	// records its placement (ParenPlacedFnIDs), and the placement wins.
+	if es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID] && !es.reg.Check.ParenPlacedFnIDs[v.ID] {
 		return false
 	}
 	var ev *EmitEvent

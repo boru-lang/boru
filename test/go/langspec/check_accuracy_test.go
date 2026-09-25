@@ -41,7 +41,7 @@ import (
 // wrongly errors on. A ratchet held at zero: any rise is a checker regression.
 // The historical rationale that used to live here inline moved to
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "False positives").
-const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter decline the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
+const pinnedFalsePositives = 13 // LOWERED 16 -> 13 (2026-09-25, the reverse-order NUR run: the predicate runs for real over a concrete candidate, NUR141, and the do-body raise watch, NUR134, clear three value rows the checker used to flag). Before: RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter decline the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
 
 // unflaggedPins is the PER-SPEC-FILE count of `ERROR:` rows the checker leaves
 // silent — overwhelmingly runtime-only / value-dependent errors (malformed
@@ -61,6 +61,13 @@ const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus 
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	// refine-flex.tsv: the `Sorted` predicate over a map BUILT by `set`
+	// (L29) — the candidate reaches the predicate-typed param as a check
+	// CARRIER, which the predicate unifier admits since NUR102 (only the
+	// run can tell a carrier's membership; rejecting it committed the
+	// wrong arm — `we (f 2)` answered int-arm for even-arm). The runtime's
+	// param guard raises the signature_error; added 2026-09-25.
+	"refine-flex.tsv":    1,
 	"edge-modules-2.tsv": 1, // 2026-09-25 (NUR191): a module fn's return-count row raises only at run time (the frame's count is the runtime contract)
 	// callbacks.tsv: 3 ERROR rows, added 2026-09-25 with NUR205 (a named fn
 	// value's no-match on the callback seam raises uncalled_function as the
@@ -121,7 +128,11 @@ var unflaggedPins = map[string]int{
 	// classes that the checker in fact DOES flag — the malformed spec lists
 	// (`fnpred_invalid_spec`) and the unknown param type. Measured with
 	// BORU_LOG_UNFLAGGED=1; only the five membership rows remain.
-	"fnpred.tsv": 5,
+	//
+	// 5 -> 0, 2026-09-25 (NUR141): the check pass RUNS a pure predicate over
+	// a concrete candidate instead of admitting it, so the five membership
+	// rows are flagged statically now.
+
 	// fn-value.tsv: the §7 bare read of a Function param (NUR123) — the
 	// checker binds a CARRIER for the param, which no signature can
 	// dispatch, so the no-match a 1-arg lambda raises when read with no
@@ -181,9 +192,10 @@ var unflaggedPins = map[string]int{
 	// review — a multi-byte fill exceeding maxStringResultBytes) is a
 	// value-dependent resource bound, the runtime's job.
 	"edge-scalars-3.tsv": 1,
-	"edge-types-2.tsv":   3,
-	"edge-types-3.tsv":   3,
-	"error.tsv":          1,
+	// edge-types-2.tsv: 3 -> 0 (2026-09-25, NUR141 — the predicate rows,
+	// run for real over their concrete candidates, are flagged).
+	"edge-types-3.tsv": 3,
+	"error.tsv":        1,
 	// flex.tsv: 9 -> 10 with the NUR022 `del` rows. The tenth is the Store
 	// delete-then-read row, unflagged for exactly the reason accessor.tsv's
 	// entry above gives — a context store is OPEN-WORLD, so a static miss
@@ -302,7 +314,9 @@ var unflaggedPins = map[string]int{
 	// of them and misses one — the enforcement itself is a RUNTIME check
 	// on the CallBoru dispatch path, so a violation the static pass
 	// cannot resolve to a concrete return value stays the runtime's job.
-	"record.tsv":            3,
+	// 3 -> 2 (2026-09-25, NUR141): the predicate's failing branch is
+	// flagged now that the pure predicate runs over the concrete candidate.
+	"record.tsv":            2,
 	"scalar-micron-ops.tsv": 1,
 	"storage.tsv":           1,
 	"usurp.tsv":             1,

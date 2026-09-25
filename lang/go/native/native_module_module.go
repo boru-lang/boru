@@ -307,7 +307,16 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		resolved := NewOrderedMap()
 		for _, key := range rawMap.Keys() {
 			val, _ := rawMap.Get(key)
-			resolved.Set(key, resolveModuleExport(modReg, val))
+			ev := resolveModuleExport(modReg, val)
+			resolved.Set(key, ev)
+			// An exported fn's body gets the declaration-shaped analysis a
+			// top-level fn gets at construction, on the IMPORTING pass, in
+			// the module registry it was written in (NUR128: a module
+			// body's own check is inactive, so a dead branch in an exported
+			// fn was reported only when someone called it).
+			if fd, isFn := ev.Data.(FnDefInfo); isFn {
+				NoteFnBodyPendingIn(parent, modReg, fd)
+			}
 		}
 		exports[name] = resolved
 	}

@@ -183,6 +183,17 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	}
 }
 
+// isFrameArgsList reports whether v is the check engine's CURRENT frame's
+// `args` list — the value the `args` word reads (core_helpers.go pushes it
+// per call; `args.N` is its static index read).
+func isFrameArgsList(es *EmitState, v core.Value) bool {
+	if es == nil || es.reg == nil || es.reg.Args == nil || v.ID == "" {
+		return false
+	}
+	top, ok, err := es.reg.Args.Top()
+	return err == nil && ok && top.ID == v.ID
+}
+
 // tryFoldStaticIndex folds a `get` / `getr` over a CONCRETE list with a STATIC,
 // in-range, non-negative integer index to the element's existing operand —
 // emitting nothing, since the result already has a compiled home. Its purpose is
@@ -213,6 +224,21 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 	elem := lst.Get(int(n))
 	if _, ok := es.resolveOperand(elem); !ok {
 		return false // element has no compiled home (e.g. an un-interned literal) — decline
+	}
+	// A fn-typed element is not folded: the fold hands the element's own
+	// carrier back with no event to test after it, and the interpreter
+	// re-steps what the read leaves — `[5 h/v] get 1 drop 7` inside
+	// `def f fn [[h:Function][Any][…]]` answered 7 for the interpreter's
+	// `uncalled_function` (NUR124's fold witness). The ordinary get event
+	// records, and its fn-typed result takes the re-step note. The frame's
+	// own `args` list is the one receiver that KEEPS the fold: `args.N` is
+	// a value read by the language's contract — "an unnamed fn-value arg
+	// is real data — readable via args.N and returnable, exactly like a
+	// named binding read via /v" (module-fnvalue-boundary.tsv:L24) — and
+	// the unfolded event's receiver has no compiled home (the VM keeps no
+	// args stack), so the exclusion turned four such rows into declines.
+	if (core.IsFnTypedCarrier(elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
+		return false
 	}
 	outs[0] = elem
 	return true
@@ -769,6 +795,13 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	f := es.eventInfo[seq]
 	f.dynBodyResult = true
+	// A keep-defs word (each / fold / do …) over a DYNAMIC body leaks the
+	// body's defs into the dispatching unit's frame, and the pass cannot
+	// know which names: the unit's later reads of its own defs seat live
+	// (noteDynKeepDefsLeak, NUR203).
+	if cs := sig.Callable; cs != nil && (cs.BodyOnceKeepsDefs || cs.BodyMultiRunKeepsDefs) {
+		es.noteDynKeepDefsLeak(pos)
+	}
 	// A VALUE-EVAL body (`do {map}`) — a CONCRETE, non-dynamic Map arg on the
 	// non-fallback (value-eval) sig — produces EXACTLY len(outs) values
 	// deterministically (the evaluated map: always one). Its result count is

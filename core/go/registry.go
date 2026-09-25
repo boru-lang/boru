@@ -121,7 +121,10 @@ type Registry struct {
 	// Contexts is the scoped context stack; top = current engine's context Store. See contextstack.go.
 	Contexts *ContextStack
 	// Args is the per-call args list stack. See argsstack.go.
-	Args     *ArgsStack
+	Args *ArgsStack
+	// predMemo memoises RunPredicate's run-time verdicts within one
+	// dispatch (predMemoKey → matched); ClearPredMemo drops it.
+	predMemo map[string]bool
 	Manager  any            // external manager (e.g. UniversalManager) for SDK operations
 	SDKCache map[string]any // cached SDK instances keyed by spec name
 	BaseDir  string         // base directory for resolving relative file paths (set by loadFileModule)
@@ -2118,7 +2121,67 @@ func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, 
 // r.types via `type Foo …` and pushes onto the context stack are
 // rolled back. r.defStacks is already protected by CallBoru's own
 // snapshot.
+// predMemoKey identifies one predicate question at run time: the predicate
+// fn value and the candidate's canonical form.
+func predMemoKey(constraint, candidate Value) string {
+	id := constraint.ID
+	if id == "" {
+		// The interpreter's predicate fn carries no value ID (the check
+		// pass mints those): its boru body's implementation is the identity.
+		fd, ok := constraint.Data.(FnDefInfo)
+		if !ok || len(fd.Signatures) == 0 {
+			return ""
+		}
+		bi, ok := fd.Signatures[0].Impl.(*BoruImpl)
+		if !ok {
+			return ""
+		}
+		id = fmt.Sprintf("impl:%p", bi)
+	}
+	return id + "|" + Canon([]Value{candidate})
+}
+
+// ClearPredMemo forgets every memoised predicate verdict (RunPredicate's
+// run-time memo): called where an effect may have changed a predicate's
+// basis — a dispatch commit and a statement end.
+func (r *Registry) ClearPredMemo() {
+	if r != nil && r.predMemo != nil {
+		r.predMemo = nil
+	}
+}
+
 func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched bool, err error) {
+	// One run per dispatch (NUR102). The interpreter asks a predicate type
+	// the same question at every planning phase of one pending word —
+	// collection, the candidate scan, the arrival, the final match: four
+	// runs of `def Even fnpred n:Integer [print "P" eq 0 (mod 2 n)]` for
+	// `we 4`, where the compiled lane's runtime re-match asks once. The
+	// verdict over the same predicate and the same candidate is memoised
+	// until an effect may have moved its basis (ClearPredMemo at a dispatch
+	// commit and at a statement end), so a predicate body's effects happen
+	// once per dispatch on both lanes. Analysis keeps its own path.
+	memoKey := ""
+	if !r.analysisActive() && IsConcrete(candidate) {
+		memoKey = predMemoKey(constraint, candidate)
+		if memoKey != "" {
+			if hit, ok := r.predMemo[memoKey]; ok {
+				if hit {
+					return candidate, true, nil
+				}
+				return Value{}, false, nil
+			}
+		}
+	}
+	if memoKey != "" {
+		defer func() {
+			if err == nil {
+				if r.predMemo == nil {
+					r.predMemo = map[string]bool{}
+				}
+				r.predMemo[memoKey] = matched
+			}
+		}()
+	}
 	if !constraint.Parent.Equal(TFunction) {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint is not a fn (got %s)", constraint.Parent.String())
 	}
@@ -2130,10 +2193,16 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	if !ok || len(predSig.Params) != 1 {
 		return Value{}, false, fmt.Errorf("RunPredicate: predicate must take exactly one argument")
 	}
-	// CheckMode: accept the binding without running the body. Real
-	// predicate behaviour is asserted at runtime; here we only need
-	// the analyser to keep flowing past the typed slot.
-	if r != nil && r.analysisMode() {
+	// CheckMode: a CARRIER candidate is accepted without running the body —
+	// the analyser's proper optimism, so it keeps flowing past the typed
+	// slot. A CONCRETE candidate over an effect-free body runs the
+	// predicate FOR REAL, with analysis suspended around the run (the const
+	// fold's own discipline, concreteEvalOnce): the check pass's admission
+	// then agrees with the runtime's — `f 5` over `n:Even` is refused
+	// statically as it is at run time, where the pass's plan used to claim
+	// the slot (NUR141). A run that errors admits, as before.
+	analysis := r != nil && r.analysisMode()
+	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate) || !predicateBodyPure(r, predSig) || New(r).exprHasEffect(predSig.Body())) {
 		return candidate, true, nil
 	}
 	// Input-type gate: a predicate's declared input type acts as a
@@ -2151,6 +2220,78 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 			return candidate, false, nil
 		}
 	}
+	if analysis {
+		prevMode := r.Check.Mode
+		r.Check.Mode = false
+		defs := r.Defs.Snapshot()
+		restoreAtt := r.SetInterpAttribution("check:predicate")
+		out, matched, err = r.runPredicateBody(fnDef, predSig, candidate)
+		restoreAtt()
+		r.Defs.Restore(defs)
+		r.Check.Mode = prevMode
+		if err != nil {
+			return candidate, true, nil
+		}
+		return out, matched, nil
+	}
+	return r.runPredicateBody(fnDef, predSig, candidate)
+}
+
+// predicateBodyPure reports whether a predicate's body is a function of its
+// parameter alone — every word in it is the parameter or a NATIVE word — so
+// its verdict over a concrete candidate at analysis time is the verdict at
+// run time. A body reading a user def (`n gt limit`) is not: the def may be
+// rebound between the analysis and the call, so the pass keeps its
+// optimism for it (NUR141).
+func predicateBodyPure(r *Registry, predSig *FnSig) bool {
+	param := ""
+	if len(predSig.Params) == 1 {
+		param = predSig.Params[0].Name
+	}
+	var pure func(items []Value) bool
+	pure = func(items []Value) bool {
+		for _, it := range items {
+			if w, err := AsWord(it); err == nil {
+				if w.Name == param || !userDefined(r, w.Name) {
+					continue
+				}
+				return false
+			}
+			if lst, err := AsList(it); err == nil && !lst.IsNil() {
+				if !pure(lst.Slice()) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return pure(predSig.Body())
+}
+
+// userDefined reports whether name resolves to a USER definition — a value
+// def, or a fn with a boru body — the bindings a later `def` may move. A
+// native word (a Go implementation) and an unbound name are not.
+func userDefined(r *Registry, name string) bool {
+	v, ok := r.Defs.Top(name)
+	if !ok {
+		return false
+	}
+	fd, isFn := v.Data.(FnDefInfo)
+	if !isFn {
+		return true
+	}
+	for i := range fd.Signatures {
+		if _, boru := fd.Signatures[i].Impl.(*BoruImpl); boru {
+			return true
+		}
+	}
+	return false
+}
+
+// runPredicateBody runs a predicate's body over a candidate and decodes its
+// verdict — the runtime half of RunPredicate, which the check pass shares
+// for a concrete candidate (NUR141).
+func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate Value) (out Value, matched bool, err error) {
 	// Sandbox the call so a mischievous predicate body can't mutate
 	// r.types or the context stack out from under the surrounding
 	// program.

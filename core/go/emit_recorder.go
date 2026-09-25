@@ -263,6 +263,10 @@ type EmitRecorder interface {
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
+	// RecordUnitTrapErr records a definite runtime raise inside the open
+	// body unit — scoped to that unit, never the program's terminal trap
+	// (NUR134: a module export's no-match inside a `do` body).
+	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
 	RecordDispatchRematchValues(word string, vals []Value, written []int, pos SrcPos) bool
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
@@ -601,6 +605,7 @@ func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
+func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
 func (inactiveEmit) RecordDispatchRematchValues(string, []Value, []int, SrcPos) bool {
 	return false
 }

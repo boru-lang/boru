@@ -1461,6 +1461,13 @@ type ForCont struct {
 	Step     int64   // increment per iteration
 	Body     []Value // original body tokens (replayed each iteration)
 	Results  []Value // accumulated results from completed iterations
+	// IterDepth is the index binding's def-stack depth at loop entry — the
+	// floor of the loop's LEXICAL index scope: a body `def` of the index
+	// name pushes above it and ends with the iteration, and the loop's end
+	// pops the index level too, so the pre-loop binding shows after the
+	// loop whether or not the body rebinds it (NUR204). 0 when unknown (a
+	// continuation built without it), which pops one level as before.
+	IterDepth int
 
 	// While mode — a `while` loop rides the same continuation and
 	// mark/move machinery as `for`, so break/continue's loop resolvers

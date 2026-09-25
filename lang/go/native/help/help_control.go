@@ -235,8 +235,8 @@ func init() {
 		},
 		Examples: []string{
 			`def double fn x:Integer Integer [x mul 2] double 5 ; # => 10`,
-			`def triple fn x:Integer [Integer] [x mul 3] triple 5 ; # => 15 (3-arg form)`,
-			`def add10 fn Integer [Integer] [10 add] add10 5 ; # => 15 (unnamed param)`,
+			`def triple fn x:Integer Integer [x mul 3] triple 5 ; # => 15 (3-arg form)`,
+			`def add10 fn Integer Integer [10 add] add10 5 ; # => 15 (unnamed param)`,
 			`def si1 fn [s:String i:Integer [convert Integer s]] si1 '1' ; # => 1 (named return)`,
 		},
 	})

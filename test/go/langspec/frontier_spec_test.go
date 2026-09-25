@@ -276,8 +276,9 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// frontier-do-catch.tsv, and the check-vs-run divergence recorded in the
 	// design note's §6). The L-DO promotion work below is still what would
 	// graduate the SHAPE; these two rows can no longer witness it.
-	docMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`:  {why: "plan Phase 5 (L-DO part 2): variadic region under a def binding — now check-rejected first (failed fn-value dispatch)", failsWith: "check diagnostics"},
-	docMod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`: {why: "plan Phase 5 (L-DO part 2): same shape, no raise at this input — likewise check-rejected first", failsWith: "check diagnostics"},
+	// GRADUATED 2026-09-25 (NUR134): both rows compile — the do-body unit
+	// raises the definite no-match in place and the do's model is the
+	// caught Error — and moved to lang/spec/bytecode-migrated.tsv.
 	// PR #280 review's promotion-gate representative (the variation
 	// differential's prefix-stack find): a BRANCH-VARIANT multi-out do body
 	// (0-or-2 values per arm) is variadic without any raise in sight, and a

@@ -26,6 +26,16 @@ var ErrUnnamedApply = errors.New(
 	"stackform: cannot replay a function-value application — " +
 		"the op vocabulary can call a word by name but cannot apply a value")
 
+// ErrApplyReStep reports a form carrying the `apply` word's dispatch of a fn
+// value (Call.ReStep): the handler hands the value back for the engine to
+// re-step, and the fn's own dispatch is recorded right after it, so the
+// form holds the same application twice. Replaying it as written applies
+// the fn twice (`5 f/v apply` replayed 7 for 6, measured 2026-09-25), so
+// the form declines instead (NUR077's Hole 2).
+var ErrApplyReStep = errors.New(
+	"stackform: cannot replay the apply word's re-step — " +
+		"the applied fn's own dispatch is recorded a second time")
+
 // Flatten serialises a StackForm into a token sequence the kernel
 // engine can execute. Because the form is already strict-stack, the
 // serialisation is direct: each PushLit emits its value, each Call
@@ -75,6 +85,35 @@ func flattenStamped(form *StackForm) ([]core.Value, map[string]bool) {
 			// with all args already on the stack below it.
 			w := core.NewWordModified(o.Name, o.Arity, true, false)
 			out = append(out, w)
+			// A statement end after every call PARKS a Function-valued
+			// result: re-encountered at the pointer, an unquoted fn value
+			// dispatches at once (stepLiteral's guard), collecting whatever
+			// follows as its window — the arguments the Apply below would
+			// hand it, in the wrong order. Behind an End it stays data on
+			// the stack until the Apply re-steps it (NUR077). After any
+			// other result the End is inert.
+			out = append(out, core.NewEnd())
+		case Apply:
+			// The fn value sits BENEATH its Arity args (the recorder fires
+			// them in stack-replay order, the first param's value on top —
+			// the layout the named forward path records); `apply` wants the
+			// value on TOP of that window, so it is rotated up: [fn a] →
+			// `swap` → [a fn]; [fn b a] → `rot` → [b a fn]. Arity 0 applies
+			// the value in place. Wider arities are declined by Replayable
+			// before this runs (NUR077).
+			// The shuffle re-steps the fn value on top of its window and
+			// the End that follows resolves it from the stack — the
+			// interpreter's own binding rule, top of stack first (the same
+			// engine path `args… (fn) ;` takes). Arity 0 has no window to
+			// rotate; `apply` applies the parked value where it stands.
+			switch o.Arity {
+			case 0:
+				out = append(out, core.NewWord("apply"))
+			case 1:
+				out = append(out, core.NewWord("swap"), core.NewEnd())
+			case 2:
+				out = append(out, core.NewWord("rot"), core.NewEnd())
+			}
 		case Quote:
 			// nested form serialises to a list literal. The list
 			// is marked Quoted so the kernel doesn't auto-eval it
@@ -109,6 +148,13 @@ func Replayable(form *StackForm) error {
 		switch o := op.(type) {
 		case Call:
 			if o.Name == "" {
+				return ErrUnnamedApply
+			}
+			if o.ReStep {
+				return ErrApplyReStep
+			}
+		case Apply:
+			if o.Arity > 2 {
 				return ErrUnnamedApply
 			}
 		case Quote:

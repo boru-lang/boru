@@ -341,10 +341,31 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// this body is not a program error — raise CaughtBodyDepth so those
 	// emitters (CheckAddUniqueDiagnostic, emitIndexOOB) stay silent here.
 	r.Check.CaughtBodyDepth++
+	// A body that raises UNCONDITIONALLY at its own level — a module
+	// export's definite no-match, `(true 5 M.dec)` (NUR134) — leaves the
+	// failed call's wreckage in the analysed residual, and the wreckage
+	// escaped the bracket: re-stepped on the enclosing tape, it dispatched
+	// again outside the caught region and was reported as an uncaught
+	// program error. At run time `do` catches the raise and yields ONE
+	// Error value; model exactly that.
+	r.Check.PushRaiseWatch()
 	// Leak fidelity: do-body defs stay bound in the enclosing scope, exactly
 	// as the runtime leaves them (RunCarrierBodyKeepDefs doc).
 	stk := RunCarrierBodyKeepDefs(r, body)
+	raised, snap := r.Check.PopRaiseWatch()
 	r.Check.CaughtBodyDepth--
+	if raised {
+		// The defs the body makes AFTER the raise never happen: `do [raise
+		// bad_input "boom" def x 1] … x` is undefined_word (or the earlier
+		// binding) on the interpreter, and the keep-defs model leaked x = 1
+		// into the enclosing scope, which the compiled lane then folded.
+		for _, k := range r.Defs.Names() {
+			if r.Defs.Depth(k) > snap[k] {
+				r.Defs.Truncate(k, snap[k])
+			}
+		}
+		return []Value{NewCarrier(TError)}
+	}
 	// A def-bound COMPUTED fn read inside the body stands in the residual
 	// as its CARRIER (the side table's; the body's check-time run notes no
 	// read), where the interpreter's word dispatch calls it — over the

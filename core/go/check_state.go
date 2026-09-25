@@ -9,6 +9,7 @@ package core
 // CheckState methods here beside their type.
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -198,6 +199,12 @@ type CheckState struct {
 	// is a working program). Raised around doListReturnsFn's body run;
 	// consulted by CheckAddUniqueDiagnostic and emitIndexOOB.
 	CaughtBodyDepth int
+	// RaiseWatches is the stack of `do`-body raise watches (NUR134): a
+	// caught body's analysis pushes one at its own nesting level, and a
+	// DEFINITE failed dispatch at exactly that level (NoteDefiniteRaise)
+	// marks it hit — the body raises unconditionally at run time, so the
+	// `do` result is one Error, not the failed call's wreckage.
+	RaiseWatches []RaiseWatch
 
 	// NestedBodyDepth, when > 0, marks analysis running inside ANY nested
 	// body region (RunCarrierBodyWithDefs — if/case branches, loop bodies,
@@ -356,6 +363,35 @@ type CheckState struct {
 	// compiler's residual lowering, which must not lower a placed lead as
 	// an apply (`(m dot f) 5` is two values; `m.f 5` still applies).
 	ParenPlacedFnIDs map[string]bool
+	// ReachSurvivorFnIDs records the analysis-pass fn-typed CARRIERS a
+	// REACH-lowered group's collapse left as its lone survivor (`M.ff` is
+	// `( M dot ff )`; the module fn's call inside it returned a Function
+	// carrier). A reach group never parks — its collapse re-steps the
+	// survivor over the values beneath, whatever produced it — so the
+	// compiler's residual lowering must not treat such a call result as
+	// PLACED data (callResultPlaced): `5 M.ff` over `def ff fn
+	// [[][Function][inc/v]]` is 6 on the interpreter and seated `[5 fn
+	// inc]` compiled (NUR210). Recorded at the collapse (tagReachCollapsedFn),
+	// keyed by value ID like ParenPlacedFnIDs.
+	ReachSurvivorFnIDs map[string]bool
+	// ForceFnReanalysis makes AnalyseFnBody run a body past a cached summary
+	// for its key: the end-of-pass drain's declaration-shaped run of an
+	// exported module fn (NUR128) comes AFTER the pass's call-shape runs of
+	// the same fn, whose summaries would otherwise answer for it — and only
+	// the declaration-shaped run reports a property of the code (a dead
+	// branch, suppressed under a call shape). Set around that run only.
+	ForceFnReanalysis bool
+	// RootDefSites records, per name, the positions of its ROOT-level defs
+	// in program order (installDef, outside any fn body's analysis): the
+	// late-binding hint's evidence (EmitLateBindingHints, NUR097) — a fn
+	// body reads a module-scope name that a LATER def in the same file
+	// rebinds, and module names resolve late.
+	RootDefSites map[string][]SrcPos
+	// FnReads maps a named fn under analysis to every name its body reads
+	// (recordUse while FnNameStack is non-empty) — the late-binding hint's
+	// other half (NUR097): a read of a name that RootDefSites shows rebound
+	// after the fn's own def.
+	FnReads map[string]map[string]bool
 
 	// ParenReSteppedFnIDs records the opposite fact, and the two together are
 	// the paren re-step rule (design/PAREN-RESTEP-RULE.0.md): the carriers an
@@ -789,6 +825,10 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// the table is the single source of truth; TestCheckSeverityTableComplete
 	// gates that every emitted code has an entry).
 	"unused_def": SeverityWarning,
+	// A fn body reads a module-scope name a LATER root def rebinds — the
+	// closure computes with the later binding (NUR097, Allowed with this
+	// hint as the mitigation).
+	"late_binding": SeverityInfo,
 	// §5.1's silent stranding: a capitalised `def` given a fn body binds a
 	// TYPE, so the name in call position never calls — the lattice node and
 	// the operands written after it are simply left on the residual. WARNING,
@@ -975,6 +1015,21 @@ func (c *CheckState) Clone() *CheckState {
 	cp.BindLedger = append([]BindTransition(nil), c.BindLedger...)
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
+	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
+	if c.RaiseWatches != nil {
+		cp.RaiseWatches = make([]RaiseWatch, len(c.RaiseWatches))
+		for i, w := range c.RaiseWatches {
+			w.Snap = cloneIntMap(w.Snap)
+			cp.RaiseWatches[i] = w
+		}
+	}
+	if c.RootDefSites != nil {
+		cp.RootDefSites = make(map[string][]SrcPos, len(c.RootDefSites))
+		for k, v := range c.RootDefSites {
+			cp.RootDefSites[k] = append([]SrcPos(nil), v...)
+		}
+	}
+	cp.FnReads = cloneNestedSet(c.FnReads)
 	cp.ParenReSteppedFnIDs = cloneMap(c.ParenReSteppedFnIDs)
 	cp.WordReadFnIDs = cloneMap(c.WordReadFnIDs)
 	cp.ForwardLeftoverFnIDs = cloneMap(c.ForwardLeftoverFnIDs)
@@ -1077,6 +1132,7 @@ func (c *CheckState) Begin() func() {
 	c.FnBodyDepth = 0
 	c.CallShapeDepth = 0
 	c.CaughtBodyDepth = 0
+	c.RaiseWatches = nil
 	c.NestedBodyDepth = 0
 	c.CondBodyDepth = 0
 	c.RolledBackBodyDepth = 0
@@ -1094,6 +1150,10 @@ func (c *CheckState) Begin() func() {
 	c.Compiling = false
 	c.FnCarrierReadSubstituted = false
 	c.ParenPlacedFnIDs = nil
+	c.ReachSurvivorFnIDs = nil
+	c.ForceFnReanalysis = false
+	c.RootDefSites = nil
+	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
 	c.WordReadFnIDs = nil
 	c.ForwardLeftoverFnIDs = nil
@@ -1368,6 +1428,16 @@ func (c *CheckState) recordUse(name string) {
 		c.DefsUsed = map[string]bool{}
 	}
 	c.DefsUsed[name] = true
+	if n := len(c.FnNameStack); n > 0 {
+		fn := c.FnNameStack[n-1]
+		if c.FnReads == nil {
+			c.FnReads = map[string]map[string]bool{}
+		}
+		if c.FnReads[fn] == nil {
+			c.FnReads[fn] = map[string]bool{}
+		}
+		c.FnReads[fn][name] = true
+	}
 }
 
 // EmitUnusedDefDiagnostics walks the set of defs installed during a
@@ -1389,6 +1459,142 @@ func (c *CheckState) EmitUnusedDefDiagnostics() {
 			Row:    pos.Row,
 			Col:    pos.Col,
 		})
+	}
+}
+
+// NoteRootDefSite records a root-level def of name at pos (NUR097).
+func (c *CheckState) NoteRootDefSite(name string, pos SrcPos) {
+	if c == nil || name == "" || pos.Row == 0 {
+		return
+	}
+	if c.RootDefSites == nil {
+		c.RootDefSites = map[string][]SrcPos{}
+	}
+	c.RootDefSites[name] = append(c.RootDefSites[name], pos)
+}
+
+// cloneIntMap deep-copies a name → depth map (nil stays nil).
+func cloneIntMap(m map[string]int) map[string]int {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// RaiseWatch is one `do`-body raise watch (CheckState.RaiseWatches): the
+// nesting and fn-body depths the body's own statements analyse at, and
+// whether a definite raise happened there.
+type RaiseWatch struct {
+	Nested, Fn int
+	Hit        bool
+	// Snap is the def-stack depths at the FIRST hit: the defs the body
+	// makes after it never happen at run time (PopRaiseWatch's caller rolls
+	// them back).
+	Snap map[string]int
+}
+
+// PushRaiseWatch opens a raise watch for a body about to be analysed one
+// nesting level below the current one.
+func (c *CheckState) PushRaiseWatch() {
+	if c == nil {
+		return
+	}
+	c.RaiseWatches = append(c.RaiseWatches, RaiseWatch{Nested: c.NestedBodyDepth + 1, Fn: c.FnBodyDepth})
+}
+
+// PopRaiseWatch closes the innermost raise watch and reports whether the
+// body raised unconditionally at its own level, with the def-stack depths
+// at that raise.
+func (c *CheckState) PopRaiseWatch() (bool, map[string]int) {
+	if c == nil || len(c.RaiseWatches) == 0 {
+		return false, nil
+	}
+	w := c.RaiseWatches[len(c.RaiseWatches)-1]
+	c.RaiseWatches = c.RaiseWatches[:len(c.RaiseWatches)-1]
+	return w.Hit, w.Snap
+}
+
+// NoteDefiniteRaise marks the innermost raise watch hit when the analysis
+// sits at that watch's own level — a raise nested in a branch arm, a loop
+// body or a called fn's body is conditional or someone else's, and does
+// not count. snap is taken only for the first hit.
+func (c *CheckState) NoteDefiniteRaise(snap func() map[string]int) {
+	if c == nil || len(c.RaiseWatches) == 0 {
+		return
+	}
+	w := &c.RaiseWatches[len(c.RaiseWatches)-1]
+	if w.Hit || c.NestedBodyDepth != w.Nested || c.FnBodyDepth != w.Fn {
+		return
+	}
+	w.Hit = true
+	w.Snap = snap()
+}
+
+// EmitLateBindingHints emits the late-binding hint (NUR097, info): a named
+// fn whose body dispatches a module-scope name that a LATER root def of
+// the same file rebinds. A parameter or a body-local def is captured; a
+// module-scope name resolves late through the def stack, so the later def
+// changes what the existing closure computes — allowed (top-level
+// liveness is what makes redefinition and the REPL coherent), and worth
+// saying where the source makes it visible. Called at the end of the
+// pass, beside EmitUnusedDefDiagnostics.
+func (c *CheckState) EmitLateBindingHints() {
+	if c == nil || len(c.FnReads) == 0 || len(c.RootDefSites) == 0 {
+		return
+	}
+	fns := make([]string, 0, len(c.FnReads))
+	for fn := range c.FnReads {
+		fns = append(fns, fn)
+	}
+	sort.Strings(fns)
+	for _, fn := range fns {
+		fnSites := c.RootDefSites[fn]
+		if len(fnSites) == 0 {
+			continue
+		}
+		fnPos := fnSites[len(fnSites)-1]
+		names := make([]string, 0, len(c.FnReads[fn]))
+		for name := range c.FnReads[fn] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if name == fn {
+				continue
+			}
+			// A RE-binding: the name was bound by a root def BEFORE the fn
+			// (the binding its body was analysed against) and again after.
+			// A name first defined later is an ordinary forward reference —
+			// the body resolves it at call time, as every fn body does — and
+			// hints nothing.
+			boundBefore := false
+			for _, site := range c.RootDefSites[name] {
+				if site.Row < fnPos.Row || (site.Row == fnPos.Row && site.Col < fnPos.Col) {
+					boundBefore = true
+					break
+				}
+			}
+			if !boundBefore {
+				continue
+			}
+			for _, site := range c.RootDefSites[name] {
+				if site.Row < fnPos.Row || (site.Row == fnPos.Row && site.Col <= fnPos.Col) {
+					continue
+				}
+				c.AddDiagnostic(CheckDiagnostic{
+					Code:   "late_binding",
+					Detail: "`" + fn + "` reads `" + name + "`, re-def'ed at line " + strconv.Itoa(site.Row) + "; module names resolve late — the fn computes with the later binding (route the name through a parameter to freeze it)",
+					Word:   fn,
+					Row:    site.Row,
+					Col:    site.Col,
+				})
+				break
+			}
+		}
 	}
 }
 

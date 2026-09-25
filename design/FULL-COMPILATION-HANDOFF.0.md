@@ -13322,6 +13322,209 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR134 closed — the unit trap and the caught Error (2026-09-25)
+
+The module export's no-match inside a `do` body was reported by a FOURTH
+dispatch: the body's residual carried the failed call's wreckage out of
+the caught bracket as the do's results and the enclosing tape re-stepped it
+at the uncaught top level. `DoListReturnsFn` now watches its body
+(`CheckState.RaiseWatches`): a definite no-match or a `raise` at the body's
+own level marks the watch, the do's model is one Error carrier, and the defs
+the body made after the raise are rolled back. The compiled do-body unit
+raises in place: `RecordUnitTrapErr` records a unit-scoped trap at the
+unit's root frame (first wins), `MarkUncompilable` ignores the dead tail
+while a trapped unit is open, finish drops the tail (its twins join
+`supersededTwins`), and `fragDiverges` / `eventDivergesDeep` treat a trap
+as the fragment's end (no RET). Found and fixed with it, pre-existing and
+silent: `def x 0 do [raise bad_input "boom" def x 1] error [dot code] x`
+compiled to 1 for the interpreter's 0 (the keep-defs model leaked the def
+the raise skipped). Pin: `TestModuleNoMatchInDoBodyIsCaught`.
+
+## NUR101 closed — the paren re-step pair, already landed (2026-09-25)
+
+A register-only close: the 2026-08-27 verdict (compiler-side, the
+`ParenPlacedFnIDs` / `ParenReSteppedFnIDs` pair read at the collapse)
+landed that day and the four shapes it left refusing graduated with the
+curried chain on 2026-09-22 (`[((mk 1) 2)]` is `[[3]]` on both lanes).
+Measured today: `(mk 1) 2` places, `((mk 1) 2)` re-steps, `def h (mk 1)
+end  h 2` is 3, the standing measurement passes. The record stayed
+Pending only for want of an update.
+
+## NUR102 closed — one predicate run per dispatch (2026-09-25)
+
+An effectful `fnpred` body ran four times interpreted (the pending word's
+four planning phases — collection, candidate scan, arrival, final match —
+each asking the predicate type) and twice compiled (the poly re-match and
+the entry guard behind it). `RunPredicate` memoises its run-time verdict
+per (predicate, candidate) until an effect may have moved the basis
+(`ClearPredMemo` at a dispatch commit and a statement end; an ID-less
+interpreter predicate keys on its boru body), and the VM skips
+`checkParamContract` behind a runtime poly re-match. Found with it and
+fixed: a CARRIER candidate against a predicate-typed arm was rejected by
+the lattice walk at analysis, so `we (f 2)` committed the Integer arm and
+answered int-arm for the interpreter's even-arm — the predicate unifier
+admits a check-mode carrier of its input type, the arm stays reachable,
+the call goes poly. Also closed today: NUR104 (Allowed — the install-time
+resolution of inline record fields is the uniform rule; four spellings
+pinned on both lanes) and NUR103 resolved by the diagnostic-surface gate
+(the mini-redis instance survives only in the full module context; the
+`undefined_word` class is ledgered, `fn_body_error` graduated). Pins:
+`TestPredicateRunsOncePerDispatch`, `TestRecordTypeSpellingsAgree`.
+
+## NUR109 closed — the parser name bound on a branch (2026-09-25)
+
+Re-derived with NUR110 closed: the interpreter's `parse_unknown_lang` is
+the consistent answer for a parser name bound only in a branch that did
+not run. The compiled lane still raised `parse_error` because the QUOTED
+atom resolved through the registry to the arm's own `Parse.parser` event
+(a fn-valued arm def is not carried by the branch join — `carryBranchJoin`
+leaves fn values alone — so no bound-check guarded it) and the lowering
+pushed the promoted slot verbatim: the zero slot. No op re-resolves a name
+at run time, so `lowerCall` DECLINES a `parselang-fn-dispatch` whose
+parser operand is a slot a branch arm's promoted event fills (the
+lowerer's `rootSeqs`) or a bound-checked carried slot (`boundSlots`); the
+interpreter answers on both twins. Pin: `TestParseFnDispatchMissParity`.
+Also narrowed today: NUR112 (the extension is irrelevant; the member
+read's widening is the designed model at `getNodeReturns`), left pending
+on Stage 8 with its retirement condition.
+
+## NUR077 closed — the Apply op (2026-09-25)
+
+The StackForm's dedicated `Apply{Arity}` op lands (`lang/go/stackform`):
+recorded at `execFnDefSig`'s nameless `OnCall("")`, replayed as the
+window's rotation (`swap` / `rot`) plus a statement end that resolves the
+re-stepped value from the stack — the interpreter's own binding rule. Two
+recorder defects under it: `recordDispatch` credited a dispatching
+Function result a skip it never spends (the credit ate the application's
+first argument — `(m.f 7 2)` recorded `7 apply/2`), now it counts only
+results that push; and a replayed fn result dispatched at the pointer
+before the rotation, so every `Call` flattens with a statement end behind
+it (parks a Function result, inert otherwise). Hole 2 — the `apply` word's
+double recording — declines (`Call.ReStep`, `ErrApplyReStep`): replayed as
+written it ran the fn twice (7 for 6). Pins: the three witnesses and a
+two-argument member replay; the three double-recorded shapes decline; the
+literal-accounting pin holds.
+
+## NUR097 closed — the late-binding hint (2026-09-25)
+
+The Allowed verdict's mitigation exists: `late_binding` (info). The check
+pass records each named fn's body reads (`CheckState.FnReads`, from
+`recordUse` under the fn-name stack) and every root def site
+(`RootDefSites`, the def-NAME token InstallAndRecordDef stages — a fn
+value carries no position), and `EmitLateBindingHints` reports, with the
+unused-def pass, a name bound by a root def BEFORE the fn and re-bound by
+one AFTER it. A name first defined after the fn is a forward reference and
+hints nothing — the first cut hinted those, and the diagnostic-surface
+sweep caught them as compile-only (the compile surface re-analyses the body
+at the call, where the late name resolves). `CheckState.Clone` deep-copies
+both maps (the lifecycle pin).
+
+## NUR123 closed — the guarded gradual read (2026-09-25)
+
+The last open shape, a gradual captured read with a value pending beneath
+it (`5 j typeof`), kept its slot push silently where the point planner
+declined (`[5 Function]` for `[5 Integer]`, masked by the frame's count).
+A point no island can serve — a deferred start, or an environment the unit
+cannot bind — demotes to a GUARD (`deoptPoint.bail`, `bailPoint`,
+`DeoptSpec.Bail`, seated without a deopt environment): `OpDeoptIfFn` tests
+the value where the statement begins and raises a designed defer when it
+holds an appliable fn, passing the slot push through otherwise. Loud in the
+bail ledger where it was silent. Pin: `TestGradualReadWithPendingValueGuards`.
+
+## NUR124 closed — the value-delivered window parks (2026-09-25)
+
+The fifth witness (`(g/v 5)` over a String-only g): the interpreter leaves a
+`/v`-delivered fn the window does not fit as DATA beside its window, the VM
+raised `cannot call `g`` through the nameless builder. `callDynTrailTop`
+parks a value-delivered head (the recorder seats no name for it) that
+matches nothing, in WRITTEN order (`DynApplyHead.Leading` /
+`WrittenFirst`; a nameless head is seated for the flag), so both lanes
+raise the frame's count error over `[fn g(String) 5]`; a matching window
+still applies. Every other witness of the record agrees on both lanes or
+declines loudly (measured). Pin: `TestDynApplyHeadNameNamelessArm`, a
+parity pin now.
+
+## NUR128 closed — the export-time analysis (2026-09-25)
+
+`export` queues each exported fn value for the end-of-pass body check on
+the importing pass (`NoteFnBodyPendingIn`), and the drain shares that
+pass's check state into the module registry for the analysis
+(`CheckBraid.ShareCheckStateFrom`), so a module fn gets the
+declaration-shaped run a top-level fn gets at construction, in the
+registry it was written in: its dead branch warns whether or not anyone
+calls it (`TestModuleExportedFnBodyAnalysedAtExport`). The run keeps
+only its structural findings (`unreachable_branch` — a real app's module
+fns came back with false `no_signature` / `undefined_word` otherwise) and
+bypasses the pass's call-shape summaries (`CheckState.ForceFnReanalysis`).
+NUR128 is FIXED.
+
+## NUR129 closed — the reach survivor's iteration (2026-09-25)
+
+The dynamic loop residual that turns out callable is a reach group's
+survivor — a member fn read the pass cannot type; the collapse records it
+(`ReachSurvivorFnIDs`, NUR210's mark widened to dynamic survivors) and
+`RecordLoop` declines a body that leaves one beside the named-fn hazard
+(`loopHazards`), so `for 2 [m.f]` over `{f: g/v}` answers the
+interpreter's `uncalled_function` by fallback where it compiled `[fn g fn
+g]`; typed member reads and paren residuals keep their compiles
+(`TestLoopReachSurvivorDeclinesSoundly`). NUR129 is FIXED.
+
+## NUR141 closed — the predicate runs for real (2026-09-25)
+
+`RunPredicate` runs an effect-free predicate over a CONCRETE candidate for
+real under analysis, the const fold's own discipline (mode suspended, the
+def table restored, an erroring run admits as before), so the check pass's
+plan refuses `f 5` over `n:Even` exactly as the runtime does; a carrier
+stays admitted. The region oracle's `over-claimed` entry is retired
+(`TestPredicateAdmissionAgreesWithTheRuntime`). NUR141 is FIXED.
+
+## NUR171 closed — the lens's own token (2026-09-25)
+
+`lowerReach` anchors a segment's `dot` at the segment's key token when the
+receiver carries no position — the lens unit's synthesized receiver — so
+the compiled no-match raise inside `5 $.name apply` is positioned (`1:5`,
+the key; the interpreter's `1:1` is the receiver) and
+`knownPositionLoss["reach.tsv:L52"]` is retired
+(`TestLensNoMatchKeepsAPositionCompiled`). NUR171 is FIXED.
+
+## NUR203 closed — the dynamic body's leak (2026-09-25)
+
+A keep-defs word over a DYNAMIC body (a List param, a def-bound quoted
+list) inside a fn leaks the body's defs into the fn's frame, and the pass
+cannot know which names: every name the unit value-defined before the
+dispatch is taken as leaked (`noteDynKeepDefsLeak`, from
+`tryRecordDynBody` — `keepLeakNames` and the new `dynLeakNames`, so a
+later read seats live whatever its compiled home, and a carried slot is
+refreshed from the registry). `def f fn [[b:List xs:List][Integer][def t
+0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` is 3 on
+both lanes (`TestDynamicKeepDefsBodyLeaksToTheFn`). NUR203 is FIXED.
+
+## NUR204 closed — the lexical index scope (2026-09-25)
+
+A body def of a counted loop's OWN index rebinds the iteration's binding
+and nothing else, on both lanes. Interpreter: `ForCont.IterDepth` records
+the index level's depth at entry and `popIterLevels` pops the body's
+levels with the iteration and the index level with the loop (done, break
+and fault-unwind paths); the check pass's loop analysis pops its bind
+names to their pre-push depths and neither joins nor carries them
+(`isBindName`). Compiler: `lowerDynBind` stores the def into the loop's
+index slot (`storeBindInto`, the twin marked written back; `loopCtx`
+carries `iterSlot`) instead of declining, and `NoteLoopCarried` skips the
+loop's own bind variable. `def i 0 end for 3 [def i 9] end i` is 0
+everywhere, `for 3 [def i (i add 1) i]` leaves `1 2 3 0`
+(`TestForIndexDefInBodyIsTheIterations`). NUR204 is FIXED.
+
+## NUR210 closed — the reach group's survivor (2026-09-25)
+
+A reach group never parks: its collapse re-steps the lone survivor over
+the values beneath, a call result included. The check pass now records a
+fn-typed CARRIER survivor at the collapse (`CheckState.ReachSurvivorFnIDs`,
+beside the concrete named value's `ReachGroup` tag), and the residual
+lowering's placed-call gate exempts it unless an enclosing user paren
+placed the same value, so `5 M.ff` and `M.ff 5` over a module fn returning
+`inc/v` are 6 on both lanes and `5 (M.ff)` stays parked
+(`TestModuleFnNamedValueThroughReachApplies`). NUR210 is FIXED.
+
 ## NUR081 closed — one contract for the family (2026-09-25)
 
 `Test.skip`'s property form applies `Test.check-prop`'s argument contract

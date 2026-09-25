@@ -339,6 +339,7 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 	native.RunPendingFnBodyChecks(a.registry)
 	a.registry.RescueForwardRefDiagnostics()
 	a.registry.Check.EmitUnusedDefDiagnostics()
+	a.registry.Check.EmitLateBindingHints()
 	if err != nil {
 		return CheckResult{Diagnostics: a.registry.Check.Diagnostics}, err
 	}
@@ -481,6 +482,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	native.RunPendingFnBodyChecks(a.registry)
 	a.registry.RescueForwardRefDiagnostics()
 	a.registry.Check.EmitUnusedDefDiagnostics()
+	a.registry.Check.EmitLateBindingHints()
 
 	res := CheckResult{
 		Diagnostics:              a.registry.Check.Diagnostics,

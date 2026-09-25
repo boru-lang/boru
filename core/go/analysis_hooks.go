@@ -252,10 +252,22 @@ func RunLoopBodyAnalysis(r *Registry, body Value, bindNames []string, bindVals [
 // Atom)`. End of pass is where the environment is complete; see
 // CheckState.PendingFnBodies.
 func NoteFnBodyPending(r *Registry, fnDef FnDefInfo) {
-	if r == nil || !r.Check.IsActive() {
+	NoteFnBodyPendingIn(r, r, fnDef)
+}
+
+// NoteFnBodyPendingIn queues a fn VALUE written in reg for the end-of-pass
+// body check of owner's pass: a module's exported fn is queued at EXPORT
+// time on the importing pass (owner), to be analysed in the module
+// registry (reg) it was written in — the declaration-shaped run a module
+// fn never got, because a module body runs with its own check inactive
+// (its exports need concrete names), so its dead branches were reported
+// only when someone called it (NUR128). The drain shares owner's check
+// state into reg for the analysis (CheckBraid.ShareCheckStateFrom).
+func NoteFnBodyPendingIn(owner, reg *Registry, fnDef FnDefInfo) {
+	if owner == nil || reg == nil || !owner.Check.IsActive() {
 		return
 	}
-	r.Check.PendingFnBodies = append(r.Check.PendingFnBodies, PendingFnBody{Reg: r, Fn: fnDef})
+	owner.Check.PendingFnBodies = append(owner.Check.PendingFnBodies, PendingFnBody{Reg: reg, Fn: fnDef})
 }
 
 // RunPendingFnBodyChecks drains the queue, at end of pass and before the
@@ -278,8 +290,36 @@ func RunPendingFnBodyChecks(r *Registry) {
 		for _, pb := range batch {
 			// In the registry the body was WRITTEN in: a handler lambda inside
 			// an imported module reads that module's own words, which the
-			// importer's registry cannot see.
-			AnalysisImpl.FnConstructionPass(pb.Reg, "", pb.Fn)
+			// importer's registry cannot see. A module registry's own check
+			// is inactive (NUR128): share this pass's state into it for
+			// the analysis, so the module fn's diagnostics land here.
+			// Under its NAME when it has one (an exported module fn): the
+			// dynamic-scope rescue and the return-conformance messages key
+			// on the reading fn's name, and a nameless analysis loses them
+			// (NUR105's first discovery). A body analysed in ANOTHER
+			// registry (an exported module fn, NUR128) is a declaration-
+			// shaped run over the module's own scope with the importer's
+			// state — speculative where the two disagree — so only its
+			// STRUCTURAL findings are kept (a dead branch, the class the
+			// record is about); a name or a dispatch it cannot resolve
+			// there reports nothing, as NUR105's third discovery rules.
+			before := len(r.Check.Diagnostics)
+			restore := CheckBraid.ShareCheckStateFrom(pb.Reg, r)
+			// Past the pass's call-shape summaries of the same fn: the
+			// declaration-shaped run is the one entitled to report.
+			r.Check.ForceFnReanalysis = pb.Reg != r
+			AnalysisImpl.FnConstructionPass(pb.Reg, pb.Fn.Name, pb.Fn)
+			r.Check.ForceFnReanalysis = false
+			restore()
+			if pb.Reg != r {
+				kept := r.Check.Diagnostics[:before]
+				for _, d := range r.Check.Diagnostics[before:] {
+					if d.Code == "unreachable_branch" {
+						kept = append(kept, d)
+					}
+				}
+				r.Check.Diagnostics = kept
+			}
 		}
 	}
 }

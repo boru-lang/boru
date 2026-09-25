@@ -33,12 +33,13 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 	copy(bodyCopy, bodySlice)
 
 	cont := &ForCont{
-		Registry: r,
-		IterName: iterName,
-		Current:  start,
-		End:      end,
-		Step:     step,
-		Body:     bodyCopy,
+		Registry:  r,
+		IterName:  iterName,
+		Current:   start,
+		End:       end,
+		Step:      step,
+		Body:      bodyCopy,
+		IterDepth: r.Defs.Depth(iterName),
 	}
 
 	// Build the stack segment: mark + body + move.

@@ -366,7 +366,26 @@ branch-carried def"**; the re-estimate is
    rows inert on the PRODUCTION registry (recorded on NUR096, still
    pending), and left the design-level records with dated review lines
    (NUR124, 123, 112, 104, 103, 102, 100, 097, 079, 078, 077, 076, 075,
-   074, 072, 065, 064, 063, 060, 026, 009).
+   074, 072, 065, 064, 063, 060, 026, 009). After the merge with main the
+   run went on down the register: NUR210 (the reach group's survivor),
+   NUR204 (the lexical index scope, both lanes) and NUR203 (the dynamic
+   body's leak) are CLOSED (the handoff log's entries of 2026-09-25), and
+   below them NUR171 (the lens's own token), NUR141 (the predicate runs
+   for real), NUR129 (the reach survivor's iteration) and NUR128 (the
+   export-time analysis); then NUR124 (the value-delivered window parks),
+   NUR123 (the guarded gradual read: the last shape is a loud designed
+   defer), NUR097 (the late-binding hint), NUR077 (the StackForm Apply
+   op, the apply word's double recording declined) and NUR109 (the parser
+   name bound on a branch declines to the interpreter's kind lookup),
+   NUR104 (Allowed: the install-time resolution of inline record fields)
+   and NUR102 (one predicate run per dispatch on both lanes, and the
+   carrier candidate's arm kept reachable), NUR134 (the unit-scoped trap
+   and the caught Error; a def after a raise in a do body no longer leaks),
+   and NUR101 closed on the
+   register (its verdict landed on 2026-08-27, the last shape graduated on
+   2026-09-22); NUR112 is narrowed to Stage 8
+   (the member read's designed widening) and NUR103 resolved by the
+   diagnostic-surface gate (its mini-redis instance ledgered).
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 

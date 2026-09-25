@@ -193,10 +193,15 @@ func TestRunPredicateArms(t *testing.T) {
 	if _, _, err := r.RunPredicate(boom, core.NewInteger(5)); err == nil {
 		t.Error("raising predicate must surface its error")
 	}
-	// Check-mode short-circuit: matched without running the body.
+	// Check mode: a CONCRETE candidate runs the (effect-free) body for real,
+	// so the pass's admission agrees with the runtime's (NUR141); a CARRIER
+	// candidate short-circuits to match — the analyser's optimism.
 	done := r.Check.Begin()
-	if _, ok, err := r.RunPredicate(no, core.NewInteger(5)); !ok || err != nil {
-		t.Errorf("check-mode must short-circuit to match: ok=%v err=%v", ok, err)
+	if _, ok, err := r.RunPredicate(no, core.NewInteger(5)); ok || err != nil {
+		t.Errorf("check-mode must run a concrete candidate for real: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := r.RunPredicate(no, core.NewCarrier(core.TInteger)); !ok || err != nil {
+		t.Errorf("check-mode must admit a carrier candidate: ok=%v err=%v", ok, err)
 	}
 	done()
 }

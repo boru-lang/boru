@@ -382,7 +382,29 @@ func (e *Engine) unwindLiveLoops() {
 		if info.Cont == nil || info.Cont.WhileCond != nil || info.Cont.IterName == "" || !e.marks[info.To] {
 			continue
 		}
-		UninstallDef(info.Cont.Registry, info.Cont.IterName)
+		popIterLevels(info.Cont, true)
+	}
+}
+
+// popIterLevels restores a counted loop's index name to its entry depth
+// (ForCont.IterDepth): the levels a body `def` of the index pushed above
+// it (`for 3 [def i 9]`) are the iteration's own and end with it, and when
+// the loop is DONE the index level goes too, so the pre-loop binding shows
+// after the loop as it does when the body never rebinds — the index level
+// used to survive the loop bound to the last index, 2 for `def i 0  for 3
+// [def i 9]  i` (NUR204). A continuation with no recorded depth pops one
+// level, as before.
+func popIterLevels(cont *ForCont, done bool) {
+	if cont.IterDepth <= 0 {
+		UninstallDef(cont.Registry, cont.IterName)
+		return
+	}
+	floor := cont.IterDepth
+	if done {
+		floor--
+	}
+	for cont.Registry.Defs.Depth(cont.IterName) > floor {
+		UninstallDef(cont.Registry, cont.IterName)
 	}
 }
 
@@ -3198,6 +3220,9 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 
 // execMatch executes a matched signature, splicing args and results.
 func (e *Engine) execMatch(match *MatchResult) error {
+	// A dispatch commit may move a predicate's basis: forget the memoised
+	// verdicts (RunPredicate, NUR102).
+	e.Registry.ClearPredMemo()
 	// Per-export module policy gate (NUR045): every named- and value-
 	// dispatch route funnels its matched signature through here — the
 	// direct wrapper call (`TimeUtil.sleep 800`), the module-preamble
@@ -4810,10 +4835,20 @@ func lowerReach(info ReachInfo) []Value {
 		anchor = info.Receiver[0]
 	}
 	for _, seg := range info.Segments {
+		// The dispatch word takes the receiver's position; a receiver
+		// without one — the lens unit's synthesized `__reach_recv`
+		// (compiledLensSig), whose compiled no-match raise then read
+		// "source position unknown" where the interpreter's expansion
+		// underlines the receiver (NUR171) — takes the segment's own key
+		// token, so the raise is positioned on both lanes.
+		segAnchor := anchor
+		if segAnchor.Pos().Row == 0 && seg.KeyLit.Pos().Row != 0 {
+			segAnchor = seg.KeyLit
+		}
 		if seg.Getr {
-			out = append(out, WithPos(NewWord("dotr"), anchor))
+			out = append(out, WithPos(NewWord("dotr"), segAnchor))
 		} else {
-			out = append(out, WithPos(NewWord("dot"), anchor))
+			out = append(out, WithPos(NewWord("dot"), segAnchor))
 		}
 		if seg.Computed {
 			out = append(out, NewParenExpr(seg.KeyExpr))
@@ -5867,7 +5902,18 @@ func (e *Engine) recordDispatch(name string, arity int, results []Value) {
 		e.recorder.OnCall(name, arity, 0)
 		return
 	}
-	e.recorder.OnCall(name, arity, len(results))
+	// A result that DISPATCHES when re-encountered (an unquoted fn value —
+	// `afn`'s, `get`'s or `dot`'s) never fires OnPushLit, so crediting it
+	// leaves an unspendable skip that swallows the next real literal: the
+	// argument of the application that follows it (NUR077; the same rule
+	// stepCloseParen's survivor accounting applies).
+	n := 0
+	for _, v := range results {
+		if !FnValueDispatchesAtPointer(v) {
+			n++
+		}
+	}
+	e.recorder.OnCall(name, arity, n)
 }
 
 // trivialDelegationTarget reports the inner native name a wrapper FnSig
@@ -6100,6 +6146,20 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				fv := e.Tape.At(valIdx)
 				fv.FailedDispatch = true
 				e.Tape.Set(valIdx, fv)
+				// A DEFINITE failure — every value the match examined is the
+				// value the runtime examines — raises at run time whatever the
+				// region: the enclosing `do` body models it (NUR134), and below
+				// the uncaught top level the compiled body unit raises it in
+				// place (a unit-scoped trap) instead of lowering the wreckage.
+				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !fv.Dynamic
+				if definite {
+					e.Registry.Check.NoteDefiniteRaise(e.Registry.Defs.Snapshot)
+				}
+				if definite && e.Registry.analysisCompiling() && !e.Registry.analysisAtUncaughtTopLevel() {
+					e.Registry.analysisRecorder().RecordUnitTrapErr(
+						makeBoruErrorAt("uncalled_function", detail, fnDef.Name,
+							e.effectiveSource(), hint, pos), pos)
+				}
 				if e.Registry.analysisAtUncaughtTopLevel() {
 					// The old note here read: "NOT a RuntimeMirror — a mirror
 					// promises the program still compiles and raises the identical
@@ -6712,6 +6772,21 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	if fd, isFn := v.Data.(FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
 		v.ReachGroup = true
 		e.Tape.Set(idx, v)
+	}
+	// Under the check pass the survivor may be a CARRIER — fn-typed, the
+	// declared return of a call the group made (`M.ff` over a module fn
+	// returning `[Function]`), or DYNAMIC, a member read the pass cannot
+	// type (`m.f` over `{f: g/v}`). The collapse re-steps it just the same,
+	// so the compiler must not read the call's result as placed data
+	// (callResultPlaced, NUR210), and a loop body that leaves one is the
+	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
+	// (CheckState.ReachSurvivorFnIDs).
+	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(v) || v.Dynamic) {
+		cs := e.Registry.Check
+		if cs.ReachSurvivorFnIDs == nil {
+			cs.ReachSurvivorFnIDs = map[string]bool{}
+		}
+		cs.ReachSurvivorFnIDs[v.ID] = true
 	}
 }
 
@@ -7523,6 +7598,7 @@ func (e *Engine) stepEnd() error {
 	// Statement boundary: void-group records do not blame failures
 	// across statements (ERRORS.8.md §3).
 	e.voidGroups = e.voidGroups[:0]
+	e.Registry.ClearPredMemo()
 	endIdx := e.Pointer
 	// The recorder learns where the boundary fell (NUR187): the residual's
 	// apply arms never carry a fn value's collection across it.
@@ -7782,8 +7858,11 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		(cont.Step < 0 && cont.Current > cont.End)
 
 	if moreIterations {
-		// Update iterator: uninstall old value, install new one.
-		// This keeps the DefStacks depth at 1 throughout the loop.
+		// Update iterator: pop the levels the body pushed above the index
+		// (its lexical scope ends with the iteration, NUR204), then
+		// uninstall the old value and install the new one — the index
+		// level's depth is the loop's throughout.
+		popIterLevels(cont, false)
 		UninstallDef(cont.Registry, cont.IterName)
 		InstallDef(cont.Registry, cont.IterName, NewInteger(cont.Current))
 
@@ -7818,8 +7897,9 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		return nil
 	}
 
-	// Done — uninstall iterator, splice in accumulated results.
-	UninstallDef(cont.Registry, cont.IterName)
+	// Done — the index level and any body level above it go (NUR204), then
+	// splice in the accumulated results.
+	popIterLevels(cont, true)
 	delete(e.marks, info.To)
 	e.Tape.Splice(markIdx, moveIdx-markIdx+1, cont.Results...)
 	e.Pointer = markIdx
@@ -8059,8 +8139,9 @@ func (e *Engine) handleLoopBreak() bool {
 				// would otherwise leak the per-call stacks (fn_frame.go).
 				e.unwindLiveFrames(markIdx, i)
 
-				// Uninstall iterator, splice in accumulated results.
-				UninstallDef(info.Cont.Registry, info.Cont.IterName)
+				// Uninstall the iterator (and any body level above it,
+				// NUR204), splice in accumulated results.
+				popIterLevels(info.Cont, true)
 				delete(e.marks, info.To)
 				e.Tape.Splice(markIdx, i-markIdx+1, info.Cont.Results...)
 				e.Pointer = markIdx

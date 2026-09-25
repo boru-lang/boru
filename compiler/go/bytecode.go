@@ -1456,6 +1456,16 @@ type DynApplyHead struct {
 	// then steps a leading window's arguments AFTER the result lands and
 	// keeps a trailing window's beneath it.
 	Leading bool
+	// WrittenFirst marks a TRAILING-classified window whose fn was
+	// nevertheless written BEFORE its arguments (`(g/v 5)`: a `/v` delivery
+	// takes the trailing artifact). It decides only the PARKED residual's
+	// order — a value the window does not fit stays where it was written.
+	WrittenFirst bool
+	// ValueDelivery marks a lead delivered by a `/v` read of a binding
+	// (fnUnitRec.valReads): a VALUE, not the word dispatch a bare read
+	// makes, so a window it does not fit leaves it as data (NUR124's fifth
+	// witness) rather than raising the no-match.
+	ValueDelivery bool
 }
 
 type CompiledFn struct {
@@ -1669,6 +1679,10 @@ type DeoptSpec struct {
 	Results int
 	Token   int
 	RetPC   int
+	// Bail marks a GUARD: no island resumes here. When the read's value is
+	// a fn the VM raises a designed defer — the interpreter dispatches the
+	// word at this point and the unit's slot push cannot (NUR123).
+	Bail bool
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1816,7 +1830,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
 		case OpDeoptIfFn:
-			if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
+			if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail {
+				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn (guard)", in.Arg)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)

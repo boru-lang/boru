@@ -42,11 +42,16 @@ classify "hi"`
 		t.Errorf("parity: compiled=%v interp=%v (err=%v)", gotC, gotI, errI)
 	}
 
-	// The hazardous sites ride CALL_USER_POLY; the String call has ONE
-	// reachable arm (no hazard) and keeps the static CALL_USER commit.
+	// A hazardous site rides CALL_USER_POLY; a call with ONE reachable arm
+	// keeps the static CALL_USER commit. Since NUR141 the check pass RUNS a
+	// pure predicate over a concrete candidate instead of admitting it:
+	// `classify -3` fails Pos at analysis exactly as at run time, so only
+	// the Any arm is reachable and it commits static; `classify 5` passes
+	// Pos and still sees both arms, so it alone stays poly; the String call
+	// never reached the Pos arm.
 	dis := compileDisasm(t, src)
-	if strings.Count(dis, "CALL_USER_POLY") != 2 {
-		t.Errorf("want the two Integer calls on CALL_USER_POLY:\n%s", dis)
+	if strings.Count(dis, "CALL_USER_POLY") != 1 {
+		t.Errorf("want only `classify 5` on CALL_USER_POLY:\n%s", dis)
 	}
 	if !strings.Contains(dis, "CALL_USER ") {
 		t.Errorf("the single-reachable-arm String call must stay static:\n%s", dis)
@@ -73,13 +78,16 @@ classify "hi"`
 
 	// A ZERO-return overload set BAKES (COMPILE FAILURE-CLOSURE.0 §6a): every arm
 	// nets zero values, so the call site records a 0-output poly call and
-	// the VM's runtime re-match picks the arm — output parity included.
+	// the VM's runtime re-match picks the arm — output parity included. The
+	// candidate PASSES Pos: a concrete candidate that fails a pure predicate
+	// leaves one reachable arm and commits static since NUR141 (the
+	// `zpick -3` case below), and a static commit is not a bake.
 	zeroRet := `def Pos fn [[n:Integer] [Boolean] [n gt 0]]
 def shout fn [
   [x:Pos] [] ["p" print]
   [x:Any] [] ["o" print]
 ]
-shout -3`
+shout 5`
 	e := mustNew(t)
 	var eOut bytes.Buffer
 	e.SetOutput(&eOut)
@@ -98,8 +106,8 @@ shout -3`
 		t.Errorf("zero-return poly parity: compiled=%v out=%q interp=%v out=%q (err=%v)",
 			gotZ, eOut.String(), gotZI, fOut.String(), errZI)
 	}
-	if eOut.String() != "o\n" {
-		t.Errorf("zero-return poly output = %q, want \"o\\n\"", eOut.String())
+	if eOut.String() != "p\n" {
+		t.Errorf("zero-return poly output = %q, want \"p\\n\"", eOut.String())
 	}
 	if zDis := compileDisasm(t, zeroRet); !strings.Contains(zDis, "CALL_USER_POLY") {
 		t.Errorf("zero-return poly call must ride CALL_USER_POLY:\n%s", zDis)
@@ -115,13 +123,16 @@ def zpick fn [
   [x:Any] [] [0]
 ]
 zpick -3`
+	// With the pure predicate run for real over the concrete -3 (NUR141)
+	// only the `[x:Any] [] [0]` arm is reachable, so there is no poly bake
+	// to decline: the call commits to that arm and both lanes deliver its
+	// residual (the bake's hazard used to decline this program outright).
 	g := mustNew(t)
 	prog, reason, _, cerr := g.CompileCheck(declining)
-	if cerr != nil || prog != nil ||
-		!strings.Contains(reason, "fn-predicate-typed overload dispatch at `zpick`") {
-		t.Errorf("declining poly bake must decline with the hazard reason: prog=%v reason=%q err=%v",
-			prog != nil, reason, cerr)
+	if cerr != nil || prog == nil {
+		t.Errorf("a statically resolved predicate arm compiles: prog=%v reason=%q err=%v", prog != nil, reason, cerr)
 	}
+	requireEngineParity(t, declining, true)
 	h := mustNew(t)
 	if got, ierr := h.RunInterp(declining); ierr != nil || fmt.Sprint(got) != "[0]" {
 		t.Errorf("the declined program must interpret cleanly: got=%v err=%v", got, ierr)

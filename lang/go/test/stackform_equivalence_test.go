@@ -303,64 +303,78 @@ func TestStackFormEquivalence_UserFunctions(t *testing.T) {
 	}
 }
 
-// TestStackFormRefusesFunctionValueApplication pins the NEGATIVE half: a
-// program the recorder cannot capture faithfully must be DECLINED, never
-// replayed to a different answer than it was recorded from.
-//
-// Applying a function VALUE — an inline lambda, or a fn read out of a
-// container — is not expressible: `Call{Name, Arity}` re-invokes by name and
-// does not consume a receiver, while an application consumes the fn value the
-// stack already holds. Recording it as a Call would strand that value; the op
-// vocabulary needs an apply-style Op it does not have (NUR077).
-//
-// Before this, these silently evaluated to the FUNCTION rather than its
-// result — the same class of quiet wrongness the over-count caused, and the
-// reason the PBT shrinker could report a counterexample its generator cannot
-// produce.
-func TestStackFormRefusesFunctionValueApplication(t *testing.T) {
+// TestStackFormReplaysFunctionValueApplication pins NUR077's close: applying
+// a function VALUE — an inline lambda, a fn read out of a container — records
+// as an Apply op (the fn value beneath its Arity args, consumed by the
+// application), which Eval replays through `apply` over the value rotated
+// to the top, so the round trip holds. A wider application than the
+// vocabulary's rotations reach (arity 3 and up) still declines loudly
+// rather than replaying to a different answer.
+func TestStackFormReplaysFunctionValueApplication(t *testing.T) {
 	for _, src := range []string{
-		// The in-group spelling: the lambda dispatches at the pointer with
-		// its forward arg. (The old row `([n:Integer] => [n add 1]) 5`
-		// stopped being an application under the BROAD park — the paren
-		// places the lambda and the 5 rides — so it records as data and
-		// replays fine; NUR073 clause 3.)
 		`(n:Integer => [n add 1] 5)`,
 		`def fs [ fn [[n:Integer] [Integer] [n add 1]] ] ((fs get 0) 5)`,
 		`def m {f: (fn [[n:Integer] [Integer] [n add 1]])} (m.f 5)`,
+		`def m {f: (fn [[a:Integer b:Integer] [Integer] [a sub b]])} (m.f 7 2)`,
 	} {
 		t.Run(src, func(t *testing.T) {
-			r := stackformReg(t)
-			tokens, err := parser.Parse(src)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, form, err := stackform.Compile(r, tokens)
-			if err != nil {
-				t.Fatalf("compile %q: %v", src, err)
-			}
-			if err := stackform.Replayable(form); !errors.Is(err, stackform.ErrUnnamedApply) {
-				t.Errorf("%q: Replayable = %v, want ErrUnnamedApply\n  form: %s",
-					src, err, stackform.Pretty(form))
-			}
-			if _, err := stackform.Eval(stackformReg(t), form); !errors.Is(err, stackform.ErrUnnamedApply) {
-				t.Errorf("%q: Eval = %v, want it to decline rather than replay", src, err)
-			}
+			equivalentRun(t, src)
 		})
 	}
-
-	// POSITIVE control: an ordinary named call in the same suite must stay
-	// replayable, so the compile failure cannot silently widen to everything.
+	wide := `def m {f: (fn [[a:Integer b:Integer c:Integer] [Integer] [a add b add c]])} (m.f 1 2 3)`
 	r := stackformReg(t)
-	tokens, err := parser.Parse(`def inc fn [[n:Integer] [Integer] [n add 1]] inc 5`)
+	tokens, err := parser.Parse(wide)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, form, err := stackform.Compile(r, tokens)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile %q: %v", wide, err)
 	}
-	if err := stackform.Replayable(form); err != nil {
-		t.Errorf("a named fn call must stay replayable, got %v", err)
+	if err := stackform.Replayable(form); !errors.Is(err, stackform.ErrUnnamedApply) {
+		t.Errorf("%q: Replayable = %v, want ErrUnnamedApply for a 3-argument application\n  form: %s", wide, err, stackform.Pretty(form))
+	}
+	if _, err := stackform.Eval(stackformReg(t), form); !errors.Is(err, stackform.ErrUnnamedApply) {
+		t.Errorf("%q: Eval = %v, want it to decline rather than replay", wide, err)
+	}
+}
+
+// TestStackFormDeclinesApplyWordReStep pins NUR077's "Hole 2": the `apply`
+// word hands its fn back for the engine to re-step, so the fn's own
+// dispatch is recorded right after the word's (`… apply f`, `… apply
+// apply/1`) — the same application twice. Replayed as written the fn ran
+// twice (7 for 6; [6 10] for [5 10]) or the second `apply` met no fn. The
+// recorder marks the word's Call (Call.ReStep) and the form declines.
+func TestStackFormDeclinesApplyWordReStep(t *testing.T) {
+	for _, src := range []string{
+		`def f fn [[n:Integer][Integer][n add 1]] end 5 f/v apply`,
+		`5 (fn [[n:Integer][Integer][n add 1]]) apply`,
+		`def f fn [[n:Integer][Integer][n add 1]] end 5 (f/v) apply 9`,
+	} {
+		r := stackformReg(t)
+		tokens, err := parser.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, form, err := stackform.Compile(r, tokens)
+		if err != nil {
+			t.Fatalf("compile %q: %v", src, err)
+		}
+		if err := stackform.Replayable(form); !errors.Is(err, stackform.ErrApplyReStep) {
+			t.Errorf("%q: Replayable = %v, want ErrApplyReStep\n  form: %s", src, err, stackform.Pretty(form))
+		}
+		if _, err := stackform.Eval(stackformReg(t), form); !errors.Is(err, stackform.ErrApplyReStep) {
+			t.Errorf("%q: Eval = %v, want it to decline rather than replay", src, err)
+		}
+	}
+	// The Reach overload returns a value, not a fn to re-step: no mark.
+	lens := `{name: 'ada'} $.name apply`
+	r := stackformReg(t)
+	tokens, _ := parser.Parse(lens)
+	if _, form, err := stackform.Compile(r, tokens); err == nil {
+		if err := stackform.Replayable(form); err != nil {
+			t.Errorf("%q: a lens apply replays: %v\n  form: %s", lens, err, stackform.Pretty(form))
+		}
 	}
 }
 

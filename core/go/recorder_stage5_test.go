@@ -94,6 +94,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordTrapErr(nil, SrcPos{}) {
 		t.Fatal("inactive RecordTrapErr must decline")
 	}
+	if e.RecordUnitTrapErr(nil, SrcPos{}) {
+		t.Fatal("inactive RecordUnitTrapErr must decline")
+	}
 	if e.RecordDispatchRematchValues("w", nil, nil, SrcPos{}) {
 		t.Fatal("inactive RecordDispatchRematchValues must decline")
 	}

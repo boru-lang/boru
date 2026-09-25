@@ -574,6 +574,7 @@ var (
 	NewEnd                = core.NewEnd
 	NewOptionsType        = core.NewOptionsType
 	NewOrderedMap         = core.NewOrderedMap
+	NoteFnBodyPendingIn   = core.NoteFnBodyPendingIn
 	NewParenExpr          = core.NewParenExpr
 	NewPathon             = core.NewPathon
 	NewPathonVol          = core.NewPathonVol

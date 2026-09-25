@@ -124,28 +124,27 @@ func TestModuleFnReturnContractIsTheFrames(t *testing.T) {
 	}
 }
 
-// TestModuleFnNamedValueThroughReachPending pins NUR210 as it stands: a
-// module fn returning a NAMED fn value, called through its reach group with
-// a value beneath — `5 M.ff` over `def ff fn [[][Function][inc/v]]` — is 6
-// on the interpreter (the reach group `( M dot ff )` never parks: its
-// collapse re-steps the lone survivor, a named fn at the pointer, which
-// dispatches over the 5 — ADR-011, a name always calls) and `[5 fn
-// inc(Integer)]` on the compiled lane, which seats the returned value as
-// data; `M.ff 5` the same, 6 for `[fn inc(Integer) 5]`. The main-registry
-// twin `5 ff` parks on both lanes (the frame path), and so does the
-// parenthesised `5 (M.ff)`. Closing it must update this pin.
-func TestModuleFnNamedValueThroughReachPending(t *testing.T) {
+// TestModuleFnNamedValueThroughReachApplies pins NUR210's close: a module
+// fn's NAMED fn value read through its reach group (`M.ff` is `( M dot ff
+// )`) is the group's lone survivor, and a reach group never parks — its
+// collapse re-steps the survivor over the values beneath, a call result
+// included — so `5 M.ff` and `M.ff 5` are 6 on both lanes (the check pass
+// records the survivor at the collapse, CheckState.ReachSurvivorFnIDs, and
+// the residual lowering no longer reads the call's result as placed). A
+// USER paren around the read still parks it on both lanes.
+func TestModuleFnNamedValueThroughReachApplies(t *testing.T) {
 	const mod = `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end `
-	for _, c := range []struct{ src, wantI, wantC string }{
-		{mod + `5 M.ff`, "[6]", "[5 fn inc(Integer)]"},
-		{mod + `M.ff 5`, "[6]", "[fn inc(Integer) 5]"},
+	for _, c := range []struct{ src, want string }{
+		{mod + `5 M.ff`, "[6]"},
+		{mod + `M.ff 5`, "[6]"},
+		{mod + `5 (M.ff)`, "[5 fn inc(Integer)]"},
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if errI != nil || fmt.Sprint(gotI) != c.wantI {
-			t.Errorf("%q: the interpreter re-steps the reach group's named survivor: %v / %v", c.src, gotI, errI)
+		if errI != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: interpreted %v / %v, want %s", c.src, gotI, errI, c.want)
 		}
-		if errC != nil || !compiled || fmt.Sprint(gotC) != c.wantC {
-			t.Errorf("%q: NUR210's compiled value %v / %v (compiled=%v), pinned as %s — closing the divergence must update this pin", c.src, gotC, errC, compiled, c.wantC)
+		if errC != nil || !compiled || fmt.Sprint(gotC) != c.want {
+			t.Errorf("%q: compiled %v / %v (compiled=%v), want %s", c.src, gotC, errC, compiled, c.want)
 		}
 	}
 }
