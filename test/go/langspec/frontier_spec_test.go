@@ -134,11 +134,6 @@ func TestFrontierSpecInterp(t *testing.T) {
 	}
 }
 
-// docMod is the shared module preamble of the do-catch rows (a value-
-// dependently-raising fn and an always-raising one, reached as M.dec/M.boom).
-// Must match the TSV rows byte-for-byte — the orphan arm catches drift.
-const docMod = `import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end `
-
 // hof* — shared def prefixes of the frontier-hof-audit.tsv rows (the
 // higher-order audit's §1 programs, design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore).
 // Must match the TSV rows byte-for-byte — the orphan arm catches drift.

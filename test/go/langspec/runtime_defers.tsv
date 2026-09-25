@@ -33,6 +33,10 @@
 # scan over a class member's Any-typed list, run natively through the
 # dyn-body poly re-match the recovery now records (widest satisfiable
 # overload) instead of bailing at the rematch trap.
+# fnpred.tsv left the ledger on 2026-09-25 (NUR141, the check pass runs a
+# PURE predicate over a concrete candidate): L34, L38, L43, L46 — `def
+# q:Even 5` and its twins — are the static check error the run raised, so
+# the program never runs compiled; record.tsv's L178 went the same way.
 bignum.tsv	10	L108, L109, L123–L129, L131: convert's own errors under the compiled runtime (a Float to a BigInteger/BigDecimal, the accuracy options), no defer site
 class.tsv	4	L98–L101: `undef Point` then a read of the instance — "unresolvable type operand Point", no defer site
 convert-ideal.tsv	1	L33: `convert Integer (make Foo {})` — vm:poly-no-match at convert (the canonical signature_error)
@@ -42,13 +46,12 @@ edge-quote-3.tsv	1	L56: `macroexpand (tw2 7) get 1` — "tape-coupled handler re
 edge-scalars-3.tsv	2	L68: StringUtil.pad's own size guard, no defer site; L218: `convert Integer none` — vm:poly-no-match at convert
 flex.tsv	7	L69–L72: make's own source errors (a FlexMap from a list, …), no defer site; L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0)
 fn-value.tsv	2	L317, L318: `m.f z`, `m get 'f' z` — vm:landing-quote-claim, a `/q` slot CAPTURES the following word (NUR190; booked by choice 2026-09-24, the deferral over an over-wide decline)
-fnpred.tsv	4	L34, L38, L43, L46: `def q:Even 5` — the predicate type's own rejection under the compiled runtime, no defer site
 generics.tsv	1	L56: `def b:(Box of [Integer]) {value:'no'}` — make's own field error, no defer site
 module-fmt.tsv	3	L65–L67: Fmt.format-with's own rule errors, no defer site
 module-matrix.tsv	1	L60: MatrixUtil.create's own ragged-row error, no defer site
 module-net.tsv	2	L30, L31: Net.prepare/direct's own missing-spec errors, no defer site
 module-query.tsv	1	L49: Query.from's own unknown-table error, no defer site
 module-struct.tsv	2	L99, L100: StructUtil.setpath's own make errors, no defer site
-record.tsv	3	L97, L98: make's own field errors on a refined Record; L178: a predicate type's rejection — no defer site
+record.tsv	2	L97, L98: make's own field errors on a refined Record — no defer site (L178, a predicate type's rejection, is a static check error since NUR141)
 resource.tsv	1	L156: `def e:Entity {kind:'api'}` — make's own missing-field error, no defer site
 weak-flex.tsv	2	L36, L37: make's own source errors on a weak flex, no defer site

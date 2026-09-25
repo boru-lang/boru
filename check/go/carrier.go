@@ -2366,6 +2366,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	var installed []string
 	diagBase := len(r.Check.Diagnostics)
 	prev := map[string]core.Value{}
+	// The last two rounds' joined bindings: a module the body binds is
+	// compared across them (declineLoopModuleBinds).
+	var lastJoined, prevJoined map[string]core.Value
 	for round := 0; round < loopAnalysisRounds; round++ {
 		r.Check.TruncateDiagnostics(diagBase)
 		// A speculative undef inside the body generalises an enclosing
@@ -2467,6 +2470,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Defs.Push(k, jv)
 			installed = append(installed, k)
 		}
+		prevJoined, lastJoined = lastJoined, joined
 		// Stabilised when the body adds no bindings (the common single-round
 		// case) or the joined bindings equal the previous round's. The final
 		// round is the one that stabilises, or the last permitted round.
@@ -2508,10 +2512,58 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	// corpus could not see the gap: like NUR110's branch-arm class, every
 	// loop-body def it holds sits inside a fn body, where FnBodyDepth
 	// suppresses the note; the synthetic while row supplies it.
+	// A module bind the join's one replay cannot stand for is noted with
+	// its placement WITHHELD (the recorder suspended), so the program
+	// declines at the twin regime's full-placement gate (NUR205).
+	resume := func() {}
+	if loopModuleUnplaceable(installed, lastJoined, prevJoined, proven) {
+		resume = es.Suspend()
+	}
 	for _, k := range installed {
 		r.NoteBindTransition(core.BindDef, k, core.SrcPos{})
 	}
+	resume()
 	return stk
+}
+
+// loopModuleUnplaceable reports whether the loop's body binds a MODULE (an
+// `import` inside the body) that the compiled lane's one replay of the
+// check pass's bind — the join's twin, placed before the loop — does not
+// stand for, where the interpreter imports per iteration (NUR205). Two
+// shapes differ from that replay: a loop that may run ZERO times (the
+// interpreter never binds the name; the replay has already bound it), and
+// a module that is a NEW instance per import — an inline `import module
+// […]` runs its body again each time, so state the body mints (`def acc
+// (flex [])`) is fresh per iteration on the interpreter and shared by every
+// iteration of the compiled loop. A module the loader caches (a `boru:`
+// import) is the same instance every time, so a loop that provably runs
+// keeps its one replay. The last two analysis rounds tell the cases apart:
+// a cached module's namespace shares its export map across them, a re-run
+// inline module's does not.
+func loopModuleUnplaceable(installed []string, last, prev map[string]core.Value, proven bool) bool {
+	for _, k := range installed {
+		v := last[k]
+		if !core.IsModuleFamilyValue(v) {
+			continue
+		}
+		if !proven {
+			return true
+		}
+		if pv, ok := prev[k]; ok && moduleExports(pv) != moduleExports(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// moduleExports is the export map a module namespace value shares with
+// every other namespace of the same loaded module (native.NewModuleNamespace
+// binds the module's own map, not a copy); nil for a value with none.
+func moduleExports(v core.Value) *core.OrderedMap {
+	if mp, ok := v.Data.(core.MapPayload); ok {
+		return mp.M
+	}
+	return nil
 }
 
 // FnAnalysisKey builds the memo key for one fn-body analysis: scope id +

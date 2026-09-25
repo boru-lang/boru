@@ -823,7 +823,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		elseValue = &v
 		elseStk = []Value{v}
 	}
-	joins := InstallJoinedDefs(r, thenDefs, elseDefs)
+	joins := installArmJoins(r, args[0], thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
@@ -1014,6 +1014,36 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	return es.TakeFragment(), stk
 }
 
+// installArmJoins is InstallJoinedDefs for an `if` whose arms were both
+// analysed, with the one bind its join cannot replay withheld: a MODULE an
+// arm binds (an `import` inside it) on a path that may skip the arm — either
+// arm of a condition the model cannot decide, or the arm a concrete Boolean
+// does not take. The join's twin replays the check pass's bind at the
+// branch's position whichever arm runs, so the compiled program would bind
+// a name the interpreter leaves unbound (`undefined_word`); noted with the
+// recorder suspended, the twin keeps no placement and the program declines
+// at the twin regime's full-placement gate (NUR205). The arm a decided
+// condition takes runs every time, so its one replay stands.
+func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Value) []BranchJoin {
+	decided, taken := false, false
+	if IsConcrete(cond) && cond.Parent != nil && cond.Parent.Equal(TBoolean) {
+		if b, err := AsBoolean(cond); err == nil {
+			decided, taken = true, b
+		}
+	}
+	withhold := false
+	for _, v := range thenDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && taken))
+	}
+	for _, v := range elseDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && !taken))
+	}
+	if withhold {
+		defer r.Check.Recorder().Suspend()()
+	}
+	return InstallJoinedDefs(r, thenDefs, elseDefs)
+}
+
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
@@ -1035,7 +1065,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
-	joins := InstallJoinedDefs(r, thenDefs, nil)
+	joins := installArmJoins(r, args[0], thenDefs, nil)
 	var out Value
 	zeroGuard := len(thenStk) == 0
 	if zeroGuard {

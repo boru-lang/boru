@@ -307,11 +307,12 @@ func RunPendingFnBodyChecks(r *Registry) {
 			restore := CheckBraid.ShareCheckStateFrom(pb.Reg, r)
 			// Past the pass's call-shape summaries of the same fn: the
 			// declaration-shaped run is the one entitled to report.
-			r.Check.ForceFnReanalysis = pb.Reg != r
+			foreign := !pb.Reg.SameHome(r)
+			r.Check.ForceFnReanalysis = foreign
 			AnalysisImpl.FnConstructionPass(pb.Reg, pb.Fn.Name, pb.Fn)
 			r.Check.ForceFnReanalysis = false
 			restore()
-			if pb.Reg != r {
+			if foreign {
 				kept := r.Check.Diagnostics[:before]
 				for _, d := range r.Check.Diagnostics[before:] {
 					if d.Code == "unreachable_branch" {

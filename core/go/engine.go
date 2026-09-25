@@ -3218,6 +3218,16 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 	return true
 }
 
+// recordRuntimeBindDispatch emits a check-mode-run binder word that bound
+// RUN-TIME names in this dispatch (`unpack` over a source the pass cannot
+// read — the handler's NoteRuntimeBind) as the call it is; the recorder's
+// latch decides, so every other compile-time word keeps its elision.
+func (e *Engine) recordRuntimeBindDispatch(match *MatchResult) {
+	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
+		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
+	}
+}
+
 // execMatch executes a matched signature, splicing args and results.
 func (e *Engine) execMatch(match *MatchResult) error {
 	// A dispatch commit may move a predicate's basis: forget the memoised
@@ -3575,13 +3585,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if err != nil {
 		return e.stampErrPos(e.maybeAddFnShapeHint(err))
 	}
-	// A check-mode-run binder word that bound RUN-TIME names in this
-	// dispatch (`unpack` over a source the pass cannot read — the handler's
-	// NoteRuntimeBind) is emitted as the call it is; the recorder's latch
-	// decides, so every other compile-time word keeps its elision.
-	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
-		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
-	}
+	e.recordRuntimeBindDispatch(match)
 	if e.recorder != nil {
 		e.recordDispatch(match.Name, n, results)
 	}

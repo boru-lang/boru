@@ -255,7 +255,8 @@ func TestNurRunPredicateBodyPure(t *testing.T) {
 		{"nested pure list", sig(NewList([]Value{NewWord("n"), NewInteger(1)})), true},
 		{"user def", sig(NewWord("n"), NewWord("nrcuserval")), false},
 		{"user def nested in a list", sig(NewList([]Value{NewWord("nrcuserval")})), false},
-		{"no params", &FnSig{Impl: Boru([]Value{NewWord("nrcuserval")})}, false},
+		// No zero-parameter row: RunPredicate refuses any predicate that
+		// does not take exactly one parameter before it asks.
 	} {
 		if got := predicateBodyPure(r, tc.sig); got != tc.want {
 			t.Errorf("%s: predicateBodyPure = %v, want %v", tc.name, got, tc.want)

@@ -2636,16 +2636,12 @@ func (vc *vmContext) gateNamedCall(curReg *core.Registry, word string, have, nee
 	return vc.gateWord(curReg, word)
 }
 
-// bindDynScope executes one OpBindDynScope: install the top value under the
-// name for dynamic-scope readers (OpLookupDynScope), through the same
-// installer the interpreter's `def` runs; record the prior depth so the
-// frame's RET (or the error unwind) truncates the binding stack back.
-func (vc *vmContext) bindDynScope(curReg *core.Registry, p *compiler.Program, arg int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
-	return vc.bindDynScopeMode(curReg, p, arg, stack, curDebug, pc, true)
-}
-
-// bindDynScopeMode is bindDynScope with the pop as a choice: OpBindDynScope
-// pops the value it installs (the lowering pushed a copy for the install),
+// bindDynScopeMode executes one OpBindDynScope or OpBindDynScopePeek:
+// install the top value under the name for dynamic-scope readers
+// (OpLookupDynScope), through the same installer the interpreter's `def`
+// runs, and record the prior depth so the frame's RET (or the error unwind)
+// truncates the binding stack back. The pop is a choice: OpBindDynScope pops
+// the value it installs (the lowering pushed a copy for the install),
 // OpBindDynScopePeek leaves it in place (the value is live on the sim for
 // its downstream readers).
 func (vc *vmContext) bindDynScopeMode(curReg *core.Registry, p *compiler.Program, arg int, stack []core.Value, curDebug []core.SrcPos, pc int, pop bool) ([]core.Value, error) {

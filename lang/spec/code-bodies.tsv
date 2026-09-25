@@ -139,7 +139,7 @@ def mk fn [[n:Integer][List][quote [add 1]]] end fold (mk 0) [1 2 3] 0	4	…as a
 def mk fn [[n:Integer][List][quote [gt 1]]] end filter (mk 0) [1 2 3]	[2 3]	…as a filter predicate — DOES NOT COMPILE: "code-body word filter (Stage 2)"
 def mk fn [[n:Integer][List][quote [add]]] end scan (mk 0) [1 2 3]	[1 3 6]	…as a scan step — DOES NOT COMPILE: "code-body word scan (Stage 2)"
 def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)	0 1 2	…as a `for` body — DOES NOT COMPILE: "for: body not captured"
-def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)	'one'	…as a `case` clause list — DOES NOT COMPILE: HARD ERROR: error: [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional trailing default)
+def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)	'one'	…as a `case` clause list — DOES NOT COMPILE: the clause list a fn returns declines soundly (NUR154; it compiled to a case_error hard error before)
 def mkb fn [[][List][quote [add 1]]] end each (mkb) [1 2 3]	[2 3 4]	a zero-argument body factory driving an each — DOES NOT COMPILE: "code-body word each (Stage 2)"
 def pickbody fn [[f:Boolean][List][if f [(quote [add 1])] [(quote [mul 2])]]] end each (pickbody true) [1 2 3]	[2 3 4]	a body CHOSEN by a branch, then driven — DOES NOT COMPILE: "code-body word each (Stage 2)"
 def b (if true [(quote [add 1])] [(quote [mul 2])]) end each b [1 2 3]	[2 3 4]	…the same choice made inline and bound — DOES NOT COMPILE: "code-body word each (Stage 2)"

@@ -1026,6 +1026,15 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 			shrunkInput = genSv
 			shrunkSource = genSrc
 			shrunkCost = genCost
+			// The program-level rewrites narrow the GENERATOR, never the
+			// value its call produces (the generator-semantic rewrites are
+			// PBT-PLAN Stage 5's deferred family): `r.int 0 1000` shrinks
+			// its bound to the last one that still fails, and the value it
+			// draws there is no smaller. The value-level reducer finishes
+			// the job over that value, and wins when it costs less.
+			if v, src, cost := shrinkFailingInput(parent, genSv, propSigC, args[2], maxShrinks); src != "" && cost < genCost {
+				shrunkInput, shrunkSource, shrunkCost = v, src, cost
+			}
 		} else {
 			shrunkInput, shrunkSource, shrunkCost = shrinkFailingInput(
 				parent, failingInput, propSigC, args[2], maxShrinks)

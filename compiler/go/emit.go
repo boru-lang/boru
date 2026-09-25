@@ -6562,6 +6562,26 @@ func (es *EmitState) FnBodyGuard() func() {
 	return es.Suspend()
 }
 
+// truncateUnitAtTrap ends a unit at its unit trap (recordUnitTrap): the
+// events up to and including it stay — their effects run first, as in the
+// interpreter — and the unreachable rest is dropped. The twins the tail
+// recorded are unreachable transitions, as truncateAtTrap's are.
+func (es *EmitState) truncateUnitAtTrap(rec *fnUnitRec) {
+	if rec.trapSeq == 0 {
+		return
+	}
+	kept := eventsThroughSeq(rec.frag.events, rec.trapSeq)
+	for _, ev := range rec.frag.events[len(kept):] {
+		if ev.kind == evBindTwin && ev.twin != nil {
+			if es.supersededTwins == nil {
+				es.supersededTwins = map[int]bool{}
+			}
+			es.supersededTwins[ev.twin.idx] = true
+		}
+	}
+	rec.frag.events = kept
+}
+
 // StartFnCompile reserves (or finds) the compiled unit for one fn
 // overload at one arg shape and, when fresh, opens a fn recording
 // scope: a new local-numbering unit with the arg carriers registered
@@ -6652,22 +6672,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 	finish = func(bodyStk []core.Value) {
 		resume()
 		rec.frag = asFragment(es.TakeFragment())
-		if rec.trapSeq != 0 {
-			// A unit trap (recordUnitTrap) ends the unit: keep the events up
-			// to and including it — their effects run first, as in the
-			// interpreter — and drop the unreachable rest. The twins the tail
-			// recorded are unreachable transitions, as truncateAtTrap's are.
-			kept := eventsThroughSeq(rec.frag.events, rec.trapSeq)
-			for _, ev := range rec.frag.events[len(kept):] {
-				if ev.kind == evBindTwin && ev.twin != nil {
-					if es.supersededTwins == nil {
-						es.supersededTwins = map[int]bool{}
-					}
-					es.supersededTwins[ev.twin.idx] = true
-				}
-			}
-			rec.frag.events = kept
-		}
+		es.truncateUnitAtTrap(rec)
 		// forceOrder mirrors Finalize's program-residual promotion for THIS
 		// unit: when the residual is out of order (an event result above an
 		// inert bottom), every residual event is promoted to a frame local so

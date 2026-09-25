@@ -13322,6 +13322,94 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR205 closed — the module replay's own bind (2026-09-25)
+
+**The divergence** (main's record, found by the sweep's callback cells).
+An `import` is a compile-time word: the check pass runs it and the
+compiled program replays its one bind — for an import inside a loop body
+or an `if` arm, the JOIN's twin, placed at the construct's position. Where
+that replay is not the interpreter's bind the answer was silently wrong:
+`for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc
+push 1 end size M.acc]` was `[[1 1] 1 [1 1] 2]` compiled for the
+interpreter's `[[1] 1 [1] 1]` (the interpreter re-imports per iteration,
+so the inline module's state is fresh each time), and — measured closing
+it — a loop that may run zero times (`def n (0 add 0) end for n [import …]
+M.a`, `while [false] [import …] M.a`) and an arm that may not run (`if c
+[import "boru:math-util"] [] MathUtil.$name`) answered a value where the
+interpreter raises `undefined_word`.
+
+**The fix.** The one twin the replay cannot stand for is noted with the
+recorder SUSPENDED, so it keeps no placement and the program declines at
+the twin regime's full-placement gate — the existing site, so the
+compile-failure site census does not grow. The loop (check/go
+`AnalyseLoopBody`, `loopModuleUnplaceable`) withholds a module bind when
+the loop is not proven to run, or when the body's import mints a NEW
+instance per run: the last two analysis rounds' namespaces share no export
+map (an inline `import module […]`), where a `boru:` module the loader
+caches answers the same map. The `if` (basic `installArmJoins`, both
+forms) withholds it on an arm that may not run — either arm of an
+undecided condition, the arm a concrete Boolean does not take.
+
+**Edges kept.** A cached `boru:` import in a loop that runs (`for 2
+[import "boru:math-util" end MathUtil.$name]`), and the arm a decided
+condition takes (`if true [import …]`, the vary if-then transform), keep
+their one replay and agree.
+
+**Found beside it, recorded as NUR214:** the same zero-trip loop binds a
+FRESH value def anyway — `def n (0 add 0) end for n [def x 5] x` answers
+`5` compiled for the interpreter's `undefined_word` — NUR110's loop twin.
+
+**Pins.** lang `TestModuleBindInLoopOrArmDeclines` (six declines, the
+interpreter's answers) and `TestModuleBindReplayStandsWhereItIsTheBind`
+(three parity rows); the sweep's two NUR205 pins retired (the for-body
+variants decline now).
+
+## The merge with main's #507 — the colliding register numbers and the gate's fallout (2026-09-25)
+
+**The merge.** Ten conflicts, every one resolved by keeping both sides:
+both new opcodes (OpBindFnType, OpBindDynScopePeek); the static-index fold
+keeps NUR124's fn-element guard and then main's args-projection retraction;
+the emit state keeps NUR203's dynamic keep-defs leak beside main's
+run-time bind latch; the keyword form inherits the base's CompileDiverges
+and takes main's S2a quote declaration (a bit set); the frame's error path
+(NUR201's fault-return unwind) supersedes `unwindFrameTailOnError`, whose
+teardown already calls main's `UninstallFrameBinding`. **The register:**
+main's new NUR205 keeps its number; this run's NUR205, NUR206 and NUR207
+(all closed) are NUR211, NUR212 and NUR213 everywhere they are cited.
+
+**The fallout, fixed.** `TestCheckProp_ShrinksFailingInput` shrank to 40
+for 10: NUR077's recorder fix records the generator's bound faithfully
+(`r.int 0 1000` was recorded without its 1000), so the program-level
+reducer now improves the form — but only narrows the generator — and its
+answer stood where the value-level reducer used to run; the value-level
+reducer now finishes a program-level shrink and wins when it costs less.
+The arity gate: the predicate memo key and the pure-body screen read no
+arity (the key walks the signatures; the screen reads RunPredicate's one
+guaranteed parameter), and StackForm's replay arities are pinned as the
+argument rule they are. The sentinel gate: NUR128's foreign-registry test
+reads `Registry.SameHome`. `late_binding` (NUR097) is registered as a
+kernel code. `fn`'s describe data and the fn-model golden carry NUR091's
+0-argument signature (its def-form mirrors included).
+
+**Measured and re-pinned, every move named.** The lang ledger 299 / 40
+(the two sides compose from the merge base's 291 / 44; NUR205's six
+declines). The langspec: engine entries 165 -> 183 and interp-entry
+census rows 24 -> 36 (thirteen rows the run ADDED enter on known seams —
+callbacks, fn-value and user-types rows pinned for NUR166, NUR211,
+NUR168, NUR158 and NUR167 — and code-bodies L77 leaves; measured with
+BORU_LOG_CENSUS_ROWS=1 against 00ec530); type-soundness 4 -> 7 (three
+rows the run added: NUR201's two `do [g]` pins and the parked module
+closure); code-bodies.tsv 1 -> 2 (L142 declines soundly, NUR154); bail
+rows 51 -> 46 (the fnpred rows and record.tsv L178 are static check
+errors since NUR141; runtime_defers.tsv's fnpred line deleted); the sweep
+13 -> 15 failures and 245 -> 234 call-form failures (thirty-four
+graduations, eighteen NUR205 declines, NUR162's two, and three sound
+declines owed a look — `def` × container under fn-/lambda-body, `afn` ×
+factory under module-body); SWEEP_STATUS.md refreshed. NUR109's decline
+learnt the call's own arm (`slotStoredInScope`): a def in the same arm
+dominates the dispatch, so the vary if-then / if-else wraps of
+module-parse.tsv L41 compile again.
+
 ## NUR134 closed — the unit trap and the caught Error (2026-09-25)
 
 The module export's no-match inside a `do` body was reported by a FOURTH

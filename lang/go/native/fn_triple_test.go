@@ -173,11 +173,12 @@ func TestDescribeFnShowsTripleSig(t *testing.T) {
 	if info == nil {
 		t.Fatal("no FuncInfo for fn")
 	}
-	if len(info.Sigs) != 2 {
-		t.Fatalf("fn: want 2 sigs in describe data, got %d", len(info.Sigs))
+	if len(info.Sigs) != 3 {
+		t.Fatalf("fn: want 3 sigs in describe data, got %d", len(info.Sigs))
 	}
 	// Match order: the 3-arg triple sig sorts first (arity), the
-	// spec-list sig second.
+	// spec-list sig second, and the 0-argument refusal last (NUR091: a
+	// bare `fn` raises through a declared signature of its own).
 	if len(info.Sigs[0].Args) != 3 || info.Sigs[0].Args[0] != "(tnot List)" {
 		t.Fatalf("fn sig 0: want triple form with (tnot List) input, got %v", info.Sigs[0].Args)
 	}
@@ -186,6 +187,9 @@ func TestDescribeFnShowsTripleSig(t *testing.T) {
 	}
 	if len(info.Sigs[1].Args) != 1 {
 		t.Fatalf("fn sig 1: want the 1-arg spec-list form, got %v", info.Sigs[1].Args)
+	}
+	if len(info.Sigs[2].Args) != 0 {
+		t.Fatalf("fn sig 2: want the 0-argument refusal, got %v", info.Sigs[2].Args)
 	}
 }
 

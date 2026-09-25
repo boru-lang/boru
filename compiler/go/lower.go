@@ -298,6 +298,43 @@ func rootBindWritesBack(d *emitDynBind) bool {
 	return true
 }
 
+// lowerSpecFnBind lowers the PLACED install of a speculative fn def (the
+// seventieth increment): the fn value bakes unpooled and is installed at its
+// site — inside the arm, so it binds exactly when the arm runs. At root,
+// OpBindResident installs through the interpreter's own installer (an
+// overlapping redefinition drops the standing overload as installDef's
+// filter does) and persists, as the interpreter's module-scope def does;
+// inside a unit the def is a FRAME binding, so OpBindDynScope installs it and
+// the frame's RET unwinds it, as the interpreter's teardown pops it. Never
+// left unlowered.
+func (lw *lowerer) lowerSpecFnBind(d *emitDynBind) {
+	lw.pushOperand(ConstOperand(lw.es.internUnpooled(d.val)), d.pos)
+	if d.root {
+		idx := len(lw.p.ResidentBinds)
+		lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{Name: d.name, Twin: -1, Pop: true})
+		lw.emit(OpBindResident, idx, d.pos)
+	} else {
+		lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+	}
+	lw.vm = lw.vm[:len(lw.vm)-1]
+}
+
+// storeIndexBind lowers a body def of an enclosing counted loop's OWN index
+// (lowerDynBind's doc): done is true when the def named a loop's index and
+// was stored into its slot (or declined with reason).
+func (lw *lowerer) storeIndexBind(d *emitDynBind, twin int) (reason string, done bool) {
+	for i := len(lw.loops) - 1; i >= 0; i-- {
+		if lc := lw.loops[i]; lc.iterName != "" && lc.iterName == d.name {
+			if reason := lw.storeBindInto(d, lc.iterSlot, "the loop's own index", true); reason != "" {
+				return reason, true
+			}
+			lw.markTwinWrittenBack(twin)
+			return "", true
+		}
+	}
+	return "", false
+}
+
 // lowerDynBind emits the registry-visible twin of a `def` whose name some
 // OpLookupDynScope reads (the DynScopeNames set): push the bound value's
 // operand, then OpBindDynScope pops it into r.Defs under the name (the VM
@@ -318,25 +355,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		return ""
 	}
 	if d.specFn {
-		// The PLACED install of a speculative fn def (the seventieth
-		// increment): the fn value bakes unpooled and is installed at its
-		// site — inside the arm, so it binds exactly when the arm runs. At
-		// root, OpBindResident installs through the interpreter's own
-		// installer (an overlapping redefinition drops the standing
-		// overload as installDef's filter does) and persists, as the
-		// interpreter's module-scope def does; inside a unit the def is a
-		// FRAME binding, so OpBindDynScope installs it and the frame's RET
-		// unwinds it, as the interpreter's teardown pops it. Never left
-		// unlowered.
-		lw.pushOperand(ConstOperand(lw.es.internUnpooled(d.val)), d.pos)
-		if d.root {
-			idx := len(lw.p.ResidentBinds)
-			lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{Name: d.name, Twin: -1, Pop: true})
-			lw.emit(OpBindResident, idx, d.pos)
-		} else {
-			lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
-		}
-		lw.vm = lw.vm[:len(lw.vm)-1]
+		lw.lowerSpecFnBind(d)
 		return ""
 	}
 	if d.typeInstall && d.fnType != nil && lw.isFnUnit {
@@ -382,14 +401,8 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// the def as a loop-carried root def and write the body's value back
 	// (9), then declined loudly (NUR204); the twin is marked written back so
 	// its replay installs no registry level for the iteration's binding.
-	for i := len(lw.loops) - 1; i >= 0; i-- {
-		if lc := lw.loops[i]; lc.iterName != "" && lc.iterName == d.name {
-			if reason := lw.storeBindInto(d, lc.iterSlot, "the loop's own index", true); reason != "" {
-				return reason
-			}
-			lw.markTwinWrittenBack(twin)
-			return ""
-		}
+	if reason, done := lw.storeIndexBind(d, twin); done {
+		return reason
 	}
 	// A KEEP-DEFS unit (`do`'s body) installs EVERY value def: the
 	// interpreter runs the body in the caller's frame and the binding

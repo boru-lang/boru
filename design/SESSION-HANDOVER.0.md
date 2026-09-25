@@ -385,7 +385,13 @@ branch-carried def"**; the re-estimate is
    register (its verdict landed on 2026-08-27, the last shape graduated on
    2026-09-22); NUR112 is narrowed to Stage 8
    (the member read's designed widening) and NUR103 resolved by the
-   diagnostic-surface gate (its mini-redis instance ledgered).
+   diagnostic-surface gate (its mini-redis instance ledgered). Main's #507
+   is merged in (the handoff log's "The merge with main's #507" entry: this
+   run's NUR205, NUR206 and NUR207 are NUR211, NUR212 and NUR213 now, main
+   keeping NUR205), and main's NUR205 is CLOSED (the module replay's own
+   bind: a module a loop or an arm may not bind as the replay does keeps
+   no twin placement and declines); NUR214, found beside it (a fresh def
+   in a loop that may run zero times binds anyway), is the next record.
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 

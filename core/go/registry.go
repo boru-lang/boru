@@ -2124,21 +2124,27 @@ func (r *Registry) ResolveTypedNameValue(v Value) (resolved Value, name string, 
 // predMemoKey identifies one predicate question at run time: the predicate
 // fn value and the candidate's canonical form.
 func predMemoKey(constraint, candidate Value) string {
-	id := constraint.ID
-	if id == "" {
-		// The interpreter's predicate fn carries no value ID (the check
-		// pass mints those): its boru body's implementation is the identity.
-		fd, ok := constraint.Data.(FnDefInfo)
-		if !ok || len(fd.Signatures) == 0 {
-			return ""
-		}
-		bi, ok := fd.Signatures[0].Impl.(*BoruImpl)
-		if !ok {
-			return ""
-		}
-		id = fmt.Sprintf("impl:%p", bi)
+	key := "|" + Canon([]Value{candidate})
+	if constraint.ID != "" {
+		return constraint.ID + key
 	}
-	return id + "|" + Canon([]Value{candidate})
+	// The interpreter's predicate fn carries no value ID (the check pass
+	// mints those): its first signature's boru body is the identity.
+	fd, ok := constraint.Data.(FnDefInfo)
+	if !ok {
+		return ""
+	}
+	// An overload-list presence test, not an arity: a predicate with no
+	// signature has no body to key on.
+	own := fd.Signatures
+	if len(own) == 0 {
+		return ""
+	}
+	bi, ok := own[0].Impl.(*BoruImpl)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("impl:%p", bi) + key
 }
 
 // ClearPredMemo forgets every memoised predicate verdict (RunPredicate's
@@ -2244,10 +2250,9 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 // rebound between the analysis and the call, so the pass keeps its
 // optimism for it (NUR141).
 func predicateBodyPure(r *Registry, predSig *FnSig) bool {
-	param := ""
-	if len(predSig.Params) == 1 {
-		param = predSig.Params[0].Name
-	}
+	// RunPredicate has already refused a predicate that does not take
+	// exactly one parameter (NUR100 §1's site), so there is one to read.
+	param := predSig.Params[0].Name
 	var pure func(items []Value) bool
 	pure = func(items []Value) bool {
 		for _, it := range items {

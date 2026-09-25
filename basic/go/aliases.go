@@ -455,6 +455,7 @@ var (
 	IsBareTypeNode           = core.IsBareTypeNode
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsConcrete               = core.IsConcrete
+	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsRecordShape            = core.IsRecordShape
 	IsTypeBody               = core.IsTypeBody

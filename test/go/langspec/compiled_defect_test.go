@@ -48,7 +48,13 @@ import (
 // 54 -> 51 on 2026-09-25 (the strict-Any dyn-body recovery): fold-map-filter.tsv
 // L246–L248 run natively where they bailed at the rematch trap
 // (runtime_defers.tsv's fold-map-filter line deleted).
-const bailDefectCeiling = 51
+// 51 -> 46 on 2026-09-25 (NUR141, the merge with the reverse-order NUR run):
+// fnpred.tsv L34, L38, L43, L46 and record.tsv L178 — `def q:Even 5`, a
+// predicate type's own rejection — are the static check error the run
+// raised, now that the check pass runs a PURE predicate over a concrete
+// candidate; the programs never run compiled (runtime_defers.tsv's fnpred
+// line deleted, record.tsv's lowered to 2).
+const bailDefectCeiling = 46
 
 var bailDefects = struct {
 	mu      sync.Mutex

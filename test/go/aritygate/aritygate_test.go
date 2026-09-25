@@ -351,9 +351,18 @@ var pinnedAritySites = map[string]int{
 	// aside so CallBoru raises what it raised. Matching machinery, not a
 	// decision by arity.
 	"lang/go/native/body_sig_stamp.go": 1,
-	"lang/go/stackform/walk.go":        1,
-	"basic/go/native_control.go":       1,
-	"basic/go/native_definition.go":    1,
+	// A StackForm replays a RECORDED call: its Arity is how many operands
+	// the recorder saw the call take, the argument rule as it ran, never a
+	// function's parameter count. walk.go's structural equality compares
+	// it for a named Call and (1 -> 2, 2026-09-25, NUR077) for the new
+	// Apply of a fn value; eval.go's Replayable declines an Apply over
+	// more than two recorded operands, which no stack shuffle (swap, rot)
+	// can lift the applied value above — how the replay DELIVERS the
+	// arguments, not what a fn may do by its count.
+	"lang/go/stackform/walk.go":     2,
+	"lang/go/stackform/eval.go":     1,
+	"basic/go/native_control.go":    1,
+	"basic/go/native_definition.go": 1,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,
