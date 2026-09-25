@@ -38,6 +38,20 @@ func InstallFrameBinding(r *Registry, name string, body Value) {
 	installDef(r, name, body, true)
 }
 
+// UninstallFrameBinding pops a binding InstallFrameBinding pushed — a
+// param or a capture at a frame's teardown. The push was a SHADOWING
+// install that noted no bind transition (a frame binding is scoped to one
+// call, never a transition that outlives the pass), so its pop notes none
+// either: UninstallDef's BindUndef note here ledgered a root-depth undef of
+// a callee's param whenever a fn ran through CallBoru at FnBodyDepth 0 (a
+// module fn applied inside a re-matched `each` body), a twin no op could
+// place, and the program declined "twin regime" (each-variants.tsv L206,
+// 2026-09-25). The rebind notification is skipped for the same reason the
+// push skipped it.
+func UninstallFrameBinding(r *Registry, name string) {
+	r.Defs.Pop(name)
+}
+
 func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...bool) {
 	// The rebind notification, seated with the operation rather than with the
 	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every

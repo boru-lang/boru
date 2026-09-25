@@ -211,7 +211,7 @@ func (e *Engine) teardownFrameState(scan frameTailScan) error {
 	// order in the scan. The gate proved every name takes undef's
 	// plain UninstallDef path.
 	for _, name := range scan.UndefNames {
-		UninstallDef(e.Registry, name)
+		UninstallFrameBinding(e.Registry, name)
 	}
 	return nil
 }

@@ -293,8 +293,14 @@ func TestCompiledArgsWordFallsBack(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", c.src, err)
 		}
-		if compiled {
-			t.Errorf("%q took the compiled path; a fn reading bare `args` must fall back", c.src)
+		// Since 2026-09-25 the bare `args` projection in a fn unit has a
+		// compiled home — an OpMakeList over the param locals
+		// (RecordArgsProjection) — so the shape takes the compiled path and
+		// answers as the interpreter does (TestArgsProjectionCompiles pins
+		// the lowering); the legacy fallback contract this test carried is
+		// retired with it.
+		if !compiled {
+			t.Errorf("%q must take the compiled path (the args projection is assembled from the param locals)", c.src)
 		}
 		if len(out) != 1 || out[0] != c.want {
 			t.Fatalf("%q = %v, want %v", c.src, out, c.want)

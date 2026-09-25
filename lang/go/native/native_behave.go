@@ -57,7 +57,13 @@ var behaveNative = NativeFunc{
 
 			// String form for the behavior name (`behave "compare" fn […]`).
 			-1,
-			CompileEffect: CompileStoresFn,
+			// The quoted behaviour NAME is inert data the handler reads
+			// verbatim (a table key: `canon`, `compare`), so the atom form
+			// bakes as a plain CALL_NATIVE once the fn operand is inert too
+			// (S2-line, 2026-09-25): the VM runs the same handler over the
+			// same baked atom and fn, installing the behaviour on the
+			// run-time registry's type exactly as the interpreter does.
+			CompileEffect: CompileStoresFn | CompileQuoteInert,
 		},
 
 		{

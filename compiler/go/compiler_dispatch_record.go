@@ -214,6 +214,13 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 	if _, ok := es.resolveOperand(elem); !ok {
 		return false // element has no compiled home (e.g. an un-interned literal) — decline
 	}
+	// An `args` projection with a recorded home (RecordArgsProjection):
+	// the fold retracts its OpMakeList when nothing else consumed it, and
+	// stands aside — the get records over the produced list — when it
+	// cannot.
+	if !es.retractArgsProjection(recv.ID) {
+		return false
+	}
 	outs[0] = elem
 	return true
 }
@@ -728,6 +735,16 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// mutation the check pass already applied and half-rolled-back (the
 	// do-unit registry-replay miscompile — see bodyHasReplayHazard).
 	if core.IsConcrete(body) && (check.BodyHasSentinelDeep(r, body) || bodyHasReplayHazard(body)) {
+		return false
+	}
+	// An error HANDLER (`error`, StripsUnconsumedInput) takes the dyn-body
+	// path only for a COMPUTED body (a List param, a fn's result — code-
+	// bodies.tsv L152): its run-time result count is the handler body's own
+	// (0 for `[drop]`, 1 for a pass-through), which the variadic mark does
+	// not yet fence at every consumer (a list literal's MAKE_LIST, a
+	// trailing apply), so a CONCRETE handler body the closure path declined
+	// keeps its decline (region_stack_read_test.go's two witnesses).
+	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
 		return false
 	}
 	// Every operand must have a compiled home: the body rides as a threaded

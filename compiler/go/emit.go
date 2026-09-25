@@ -881,6 +881,16 @@ type EmitState struct {
 	// re-resolves the registry there, exactly where the interpreter reads
 	// it. Nil until first use.
 	keepLeakNames map[string]bool
+	// runtimeBound names a native the program calls BINDS at run time
+	// (`unpack [a b] d` over a source the pass cannot read — NoteRuntimeBind):
+	// the check pass's install of such a name is a stub, so the recorder
+	// emits no dyn-scope def for it (the native's own install is the
+	// bind), its twin is exempt from placement (the rollback removes the
+	// stub; the run re-installs), and its reads seat live (keepLeakNames).
+	runtimeBound map[string]bool
+	// pendingRuntimeBindCall latches between a binder handler's
+	// NoteRuntimeBind and the dispatch's RecordRuntimeBindDispatch.
+	pendingRuntimeBindCall bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -1252,8 +1262,11 @@ type EmitState struct {
 	// value-copied EmitEvent struct (a flag set after append wouldn't reach the
 	// frame/fragment copies).
 	eventInfo map[int]eventFlags
-	consts    []core.Value
-	constIdx  map[string]int // CanonValue → Consts index
+	// argsProjSeq maps an `args` projection list's ID to its OpMakeList
+	// event (RecordArgsProjection), for the args.N fold's retraction.
+	argsProjSeq map[string]int
+	consts      []core.Value
+	constIdx    map[string]int // CanonValue → Consts index
 	// constIDIdx pools COMPOUND consts by value ID: the same materialised
 	// List/Map value (same ID, same payload pointer — already identity-
 	// aliased) reuses one Consts slot, so freshenFnUnitConsts' push-site
@@ -1977,6 +1990,7 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// unit whose defs lower differently.
 	p.keepDefsUnitDepth = es.keepDefsUnitDepth
 	p.keepLeakNames = maps.Clone(es.keepLeakNames)
+	p.runtimeBound = maps.Clone(es.runtimeBound)
 	// The residual-order hazard tables too (unit_memo.go): a read the real
 	// state saw in an enclosing fragment must count against a bind the
 	// probe records, or the probe admits a residual the real compile then
@@ -5195,6 +5209,59 @@ func (es *EmitState) NoteKeepDefsLeak(pos core.SrcPos) {
 			es.noteStoreHazard(name, slot)
 		}
 	}
+}
+
+// NoteRuntimeBind — a name a native the program calls binds at RUN time
+// (`unpack [a b] d` over a param Map: the check pass reads a stub and binds
+// Any carriers with no home). The read side is the keep-defs leak's rule
+// (NoteLiveRead: a read with no compiled home seats live on the registry),
+// and the program runs under DynEnv so a compiled fn frame unwinds the
+// native's install exactly as the interpreter's frame does (2026-09-25).
+func (es *EmitState) NoteRuntimeBind(name string) {
+	if !es.Active() || name == "" {
+		return
+	}
+	if es.keepLeakNames == nil {
+		es.keepLeakNames = map[string]bool{}
+	}
+	es.keepLeakNames[name] = true
+	if es.runtimeBound == nil {
+		es.runtimeBound = map[string]bool{}
+	}
+	es.runtimeBound[name] = true
+	es.pendingRuntimeBindCall = true
+	es.dynEnv = true
+}
+
+// RecordRuntimeBindDispatch — the dispatch of a check-mode-run binder word
+// (`unpack`) whose handler bound RUN-TIME names in this very dispatch
+// (NoteRuntimeBind's latch): the check pass's stub installs are not the
+// bind, so the call itself is emitted — a plain 0-result CALL_NATIVE over
+// its operands (the names list, an inert const; the source, a local or an
+// event result) — and the handler binds the names on the run-time registry
+// exactly as the interpreter's does. A no-op when the latch is clear (the
+// ordinary elision of a compile-time word stands); an operand with no
+// compiled home declines loudly.
+func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature, args []core.Value, pos core.SrcPos) {
+	if !es.Active() || !es.pendingRuntimeBindCall {
+		return
+	}
+	es.pendingRuntimeBindCall = false
+	if sig == nil {
+		es.MarkUncompilable("run-time bind at " + word + " without a signature")
+		return
+	}
+	ops := make([]EmitOperand, len(args))
+	for i := range args {
+		op, ok := es.resolveOperand(args[i])
+		if !ok {
+			es.MarkUncompilable("run-time bind operand of unknown provenance at " + word)
+			return
+		}
+		ops[i] = op
+	}
+	es.SiteCounts[SiteDynamic]++
+	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: 0, pos: pos}})
 }
 
 // closureLatch — see the lastClosure field doc.
@@ -9597,6 +9664,12 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.declineUndef(name, defAfterSpecUndef)
 		return
 	}
+	// A name a native binds at RUN time (NoteRuntimeBind): the check
+	// pass's install is a stub with no compiled home, and the native's
+	// CALL_NATIVE performs the real install — nothing to record here.
+	if es.runtimeBound[name] {
+		return
+	}
 	if es.valBindEpoch == nil {
 		es.valBindEpoch = map[string]int{}
 	}
@@ -10206,6 +10279,27 @@ func (es *EmitState) MemberFnRead(id string) bool {
 	}
 	_, ok := es.memberFnReads[id]
 	return ok
+}
+
+// ContainerReadResult reports whether id is the result of a recorded
+// container read — a get/dot-family dispatch (mono or poly) — whose static
+// type the check pass could not narrow: a flex member (`reg.cb` over a flex
+// registry, whose shape is not threaded on the compile pass), a gradual map
+// field. The paren-bounded leading apply (core's recordParenLeadingApply)
+// admits such a lead beside the tagged member-fn read and the fn-typed
+// carrier (callbacks.tsv L61, `((reg.cb) 5)`, 2026-09-25): the guarded
+// OpCallDynMethod applies the runtime value and DEFERS on a non-callable
+// value or a result-count mismatch, the same contract the tagged read takes.
+func (es *EmitState) ContainerReadResult(id string) bool {
+	if es == nil || es.producedBy == nil {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	if !ok {
+		return false
+	}
+	ev := es.eventBySeq(pr.seq)
+	return ev != nil && ev.kind == evCall && (core.IsGetWord(ev.call.word) || core.IsGetrWord(ev.call.word))
 }
 
 // memberFnReadValue returns the uniquely-resolved member FN value tagged for
@@ -10982,6 +11076,56 @@ func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core
 		return false
 	}
 	return es.RecordMakeListInner(r, ins, out, pos)
+}
+
+// RecordArgsProjection records the `args` projection inside a fn unit — the
+// list of the frame's param carriers, which the check pass hands out with no
+// event (check's specialWordResults) — as an OpMakeList over the param
+// locals, assembled per call exactly as a `[a b]` literal in the same body
+// is (code-bodies.tsv L174, `fn [[a b][List][args]]`, 2026-09-25). The
+// event is remembered by the list's ID so an `args.N` that folds to the
+// element (tryFoldStaticIndex) can RETRACT it when it is still the frame's
+// last event — the indexed read keeps lowering to the bare local, and a
+// projection some other consumer took stays put.
+func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+	if !es.Active() || out.ID == "" {
+		return false
+	}
+	if !es.RecordMakeListInner(r, ins, out, pos) {
+		return false
+	}
+	pr, ok := es.producedBy[out.ID]
+	if !ok {
+		return false
+	}
+	if es.argsProjSeq == nil {
+		es.argsProjSeq = map[string]int{}
+	}
+	es.argsProjSeq[out.ID] = pr.seq
+	return true
+}
+
+// retractArgsProjection removes the args projection's OpMakeList event for
+// id when it is the current frame's LAST event (nothing recorded between
+// the projection and the folding get), so a folded `args.N` leaves no
+// unconsumed list on the sim. Reports whether the event is gone (or was
+// never an args projection) — a projection that cannot be retracted keeps
+// its event, and the caller must not fold over it.
+func (es *EmitState) retractArgsProjection(id string) bool {
+	seq, ok := es.argsProjSeq[id]
+	if !ok {
+		return true
+	}
+	n := len(es.frames) - 1
+	fr := es.frames[n]
+	if len(fr) == 0 || fr[len(fr)-1].seq != seq {
+		return false
+	}
+	es.frames[n] = fr[:len(fr)-1]
+	delete(es.producedBy, id)
+	delete(es.eventInfo, seq)
+	delete(es.argsProjSeq, id)
+	return true
 }
 
 // RecordMakeListInner is the guard-free core of RecordMakeList: it resolves the
@@ -13441,6 +13585,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.p.storedFnRefs = es.storedFnRefs
 	if es.armReadCompileFailure != "" {
 		return nil, es.armReadCompileFailure, false
+	}
+	// A twin of a name a native binds at run time (runtimeBound) describes
+	// the check pass's STUB install: the rollback removes it and the run's
+	// CALL_NATIVE re-installs the real value, so no op need replay it.
+	for i := range lw.p.BindTwins {
+		if es.runtimeBound[lw.p.BindTwins[i].Name] {
+			if twinExempt == nil {
+				twinExempt = map[int]bool{}
+			}
+			twinExempt[i] = true
+		}
 	}
 	if !twinsFullyPlaced(lw.p, twinExempt) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false

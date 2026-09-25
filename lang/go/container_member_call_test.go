@@ -62,40 +62,29 @@ func TestContainerMemberCallParity(t *testing.T) {
 	}
 }
 
-// TestContainerMemberCallSoundCompileFailures pins the neighbour that still
-// DECLINES, with the interpreter's answer beside it: a flex registry's fn
+// TestContainerMemberCallFlexFieldCompiles — the neighbour that used to
+// DECLINE, with the interpreter's answer beside it: a flex registry's fn
 // field. The flex SHAPE — the check pass's record of what `set` wrote — is
 // not threaded on the compile pass (setFlexMapReturns keeps the legacy
-// carrier there), so the read is dynamic Any and the paren lead has no fn
-// type to admit it on. Callbacks L61 stays on the ledger for that reason.
-func TestContainerMemberCallSoundCompileFailures(t *testing.T) {
-	rows := []struct{ src, reason, interp string }{
-		{`def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end ((reg.cb) 5)`, "dynamic value precedes args", "[6]"},
-		{`def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end (reg.cb 5)`, "dynamic value precedes args", "[6]"},
+// carrier there), so the read is dynamic Any and the paren lead had no fn
+// type to admit it on. Since 2026-09-25 a paren lead that is the RESULT of
+// a get/dot read the pass could not type is admitted to the guarded paren
+// apply (core.EmitRecorder.ContainerReadResult): the op applies the runtime
+// value and defers on a non-callable one, so callbacks L61 left the ledger.
+func TestContainerMemberCallFlexFieldCompiles(t *testing.T) {
+	rows := []struct{ src, want string }{
+		{`def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end ((reg.cb) 5)`, "[6]"},
+		{`def reg (flex {}) end def h fn [[n:Integer][Integer][n add 1]] end reg set 'cb' h/v drop end (reg.cb 5)`, "[6]"},
 	}
 	for _, c := range rows {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: check: %v", c.src, cerr)
-		}
-		if prog != nil {
-			t.Errorf("%q: compiled — expected a compile failure", c.src)
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if !compiled {
+			t.Errorf("%q: not compiled", c.src)
 			continue
 		}
-		if !strings.Contains(reason, c.reason) {
-			t.Errorf("%q: declined %q, want %q", c.src, reason, c.reason)
-		}
-		d, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		gotI, errI := d.RunInterp(c.src)
-		if errI != nil || fmt.Sprint(gotI) != c.interp {
-			t.Errorf("%q: interpreter %v err=%v, want %s", c.src, gotI, errI, c.interp)
+		requireParity(t, c.src, gotC, errC, gotI, errI)
+		if fmt.Sprint(gotC) != c.want {
+			t.Errorf("%q: %v, want %s", c.src, gotC, c.want)
 		}
 	}
 }

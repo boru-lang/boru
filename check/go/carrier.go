@@ -647,6 +647,19 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 			return nil, false
 		}
 		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {
+			// A bare `args` read in a fn unit (`fn [[a b][List][args]]`)
+			// used to leave the projection with no compiled home ("body
+			// result of unknown provenance"); the recorder assembles it per
+			// call from the param locals (RecordArgsProjection), and an
+			// `args.N` fold retracts the assembly (2026-09-25).
+			if es := r.Check.Recorder(); es.Active() {
+				if lst, lerr := core.AsList(top); lerr == nil && !lst.IsNil() {
+					if top.ID == "" {
+						top.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+					}
+					es.RecordArgsProjection(r, lst.Slice(), top, pos)
+				}
+			}
 			// In compile mode `args.N` folds to a frame local (PUSH_LOCAL N)
 			// for named AND unnamed params alike: an unnamed param is a
 			// local re-pushed onto the operand stack at unit entry, and the

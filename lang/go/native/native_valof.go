@@ -385,6 +385,17 @@ func valofHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	// fn binding that suppresses the call; for any other binding it is
 	// the identity. No kind gate — that is what makes one spelling able
 	// to read a slot whose kind is not known statically (NUR085).
+	//
+	// Under the check pass the read is a def read like the bare word's
+	// (tagCheckModeDefRead's NoteLiveRead): a mutable reference the pass
+	// holds as a homeless carrier — a module-scope flex a multi-run body
+	// mutated, `for-each [… acc …] xs  join ',' (valof acc)` — seats live
+	// on the registry's cell instead of leaving `join` an operand of
+	// unknown provenance (module-composition.tsv L93, 2026-09-25); every
+	// other read is untouched by the note.
+	if reg != nil && reg.Check.IsActive() {
+		reg.Check.Recorder().NoteLiveRead(&v, name, args[0].Pos())
+	}
 	return []Value{v}, nil
 }
 

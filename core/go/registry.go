@@ -1799,7 +1799,7 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	}
 	r.PopFnBaseline()
 	for i := len(names) - 1; i >= 0; i-- {
-		UninstallDef(r, names[i])
+		UninstallFrameBinding(r, names[i])
 	}
 
 	// Remove defs that were added during body execution.

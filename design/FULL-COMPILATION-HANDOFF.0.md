@@ -14338,3 +14338,90 @@ the flex, and the sift row itself), compiler `TestBindRegistryRestores`
 the region oracle's ledger minus NUR143's two; the arity gate re-pinned at
 18 for eng/go/vm.go (the seam's signature-arity window, the argument
 rule's stack fill). Docs: the handover, NUR.md (NUR143 FIXED).
+
+## The S2 declarations, the recovery's dyn-body route and the run-time bind — eight corpus rows leave (2026-09-25)
+
+**The rows.** Eight of the corpus's ten remaining compile failures, one
+mechanism each, worked in the order the probes suggested:
+
+- code-bodies.tsv L228 (`behave canon/q (fn …)`): `behave`'s quoted
+  behaviour NAME is a table key the handler reads verbatim, so the atom
+  sig declares `CompileQuoteInert` beside its `CompileStoresFn`; the
+  dispatch bakes as a plain CALL_NATIVE and the VM installs the behaviour
+  on the run-time registry's type as the interpreter does.
+- code-bodies.tsv L152 (`do [raise oops 'x'] error b` over a List param):
+  `error` declares `CompileDynBody`; a COMPUTED handler body lowers to the
+  CALL_NATIVE under DynEnv as `do`'s does (ErrorHandler runs it through
+  the InvokeBody seam). A CONCRETE handler body the closure path declined
+  keeps declining (tryRecordDynBody's StripsUnconsumedInput arm): the
+  handler's run-time count is its body's own, and the variadic mark is not
+  yet fenced at a list literal's MAKE_LIST or a trailing apply (measured:
+  both region_stack_read witnesses ran to an underflow when admitted).
+- callbacks.tsv L61 (`((reg.cb) 5)` over a flex registry): a paren lead
+  that is the RESULT of a get/dot read the pass could not type is admitted
+  to the guarded paren apply beside the tagged member-fn read
+  (`EmitRecorder.ContainerReadResult`); the op applies the runtime value
+  and defers on a non-callable one.
+- fold-map-filter.tsv L249 (`0 fold [add] xs` over a declared `xs:Any`
+  param): a CompileDynBody word whose STRICT-Any operand matched no
+  overload recovers to the dyn-body poly re-match (a new braid slot,
+  `DispatchBraid.TryRecordDynBody`) over the word's WIDEST satisfiable
+  overload — fold's seeded and seedless forms differ in arity, and a
+  best-fit 2-operand window over `0 fold [add] b.data` left the seed on
+  the stack (`0 6`) before the rule. The same route runs fold-map-filter
+  L246–L248 (a class field's Any-typed list) natively where they bailed at
+  the rematch trap; the recovery's route is gated on a strict-Any operand
+  so a disjunct-carrier row (the variadic-if rematch pin) keeps its trap.
+- code-bodies.tsv L174 (`fn [[a b][List][args]]`): the bare `args`
+  projection in a fn unit is assembled per call from the param locals
+  (`RecordArgsProjection`, an OpMakeList as a `[a b]` literal in the same
+  body is), and an `args.N` fold RETRACTS the assembly when it is still
+  the frame's last event, so the indexed read keeps the bare local.
+- code-bodies.tsv L173 (`unpack [a b] d` over a Map param): an unpack
+  over an UNPROVEN source no longer latches the suppressed-error flag,
+  nor records the trap that had compiled the top-level spelling
+  `unpack [a b] (f)` to an unpack_error the interpreter never raised — a
+  live miscompile on main, closed. The names are RUN-TIME binds: the
+  handler notes them (`NoteRuntimeBind`: the reads seat live, the program
+  runs under DynEnv), the dispatch is emitted as the CALL_NATIVE it is
+  (`RecordRuntimeBindDispatch`, from execMatch after a check-mode-run
+  handler), the stub installs record no dyn-scope def and no twin, and
+  the bound values are GRADUAL so a downstream `add` poly re-matches. The
+  interpreter's own discipline is kept: an unpack inside a fn rebinds an
+  outer name past the call on both lanes (`def a 100 … g {a:1 b:2} end a`
+  → `[3 1]`).
+- each-variants.tsv L206 (`each [M.dbl] [1 2]` over a module's anonymous
+  export): the module fn applied inside the re-matched body runs through
+  CallBoru at FnBodyDepth 0, and its frame teardown ledgered the PARAM's
+  pop as a root-depth BindUndef no op could place. A frame binding's pop
+  notes no transition, as its shadowing push never did
+  (`core.UninstallFrameBinding`, used by every frame teardown path).
+- module-composition.tsv L93 (`join ',' (valof acc)` after a for-each
+  body mutated the flex): valof's check-mode read is a def read like the
+  bare word's, so the homeless carrier seats live on the registry's cell
+  (NoteLiveRead from valofHandler).
+
+**What stays, and why.** callbacks.tsv L125 (`x f/v apply f/v apply`, two
+pending applies in one fn body): the unit's finish lowers ONE whole-
+residual apply at the tail; a chain needs each apply emitted as a one-
+result-guarded event over the residual beneath its fn, which is the fn-
+unit lowering's next cut. code-bodies.tsv L141 (`for 3 (mk 0)`, a computed
+loop body): RunForLoop returns tape tokens (a mark, the body, a move-cont)
+the VM cannot run, so a run-time loop body needs its own op or an
+InvokeBody-per-iteration host — S2b's code-body words on units.
+
+**Measured:** corpus compile failures 10 -> 2 (callbacks 1, code-bodies
+1; every other file left the ledger), the runtime-defer ledger 54 -> 51
+(fold-map-filter's three rematch bails run natively), the filtered gates
+over the touched families green (differential 0 mismatches, the bind
+ledger and twin gates 0 mismatched, the interp-entry census within its
+ceiling), the unit suites of core, check, compiler, eng, basic and lang's
+native and modules packages green. Pins moved with the shapes: the
+container-member flex-field pin, the bare-`args` fallback pin, the
+variadic-if rematch pin (unchanged, the recovery's gate keeps it).
+
+**Pins.** lang s2_declared_bodies_test.go (one test per mechanism, parity
+on both lanes and the lowering where it matters); the rewritten
+container_member_call_test.go pin; bytecode_fallback_isolation_test.go's
+args pin inverted. Docs: compile_failures.tsv and runtime_defers.tsv (the
+per-file notes), this entry.
