@@ -14425,3 +14425,16 @@ on both lanes and the lowering where it matters); the rewritten
 container_member_call_test.go pin; bytecode_fallback_isolation_test.go's
 args pin inverted. Docs: compile_failures.tsv and runtime_defers.tsv (the
 per-file notes), this entry.
+
+**Found in review (PR #507, Codex).** The run-time bind's first cut kept a
+program-wide `runtimeBound` name set, which suppressed EVERY later def of a
+name an unproven unpack had stubbed: `def g fn [[d:Map][Integer][unpack [a]
+d end a]] end def h fn [[][Integer][def a 9 end a]] end g {a:1} end h`
+compiled `[1 1]` for the interpreter's `[1 9]` — a miscompile the pins had
+not reached. The suppression is one OCCURRENCE now: a per-name latch
+(`runtimeStub`) armed by NoteRuntimeBind right before the handler's own
+install, consumed by that install's RecordDynBind, with the twin exemption
+the index latched at that install's RecordBindTwin (`runtimeTwins`). Four
+parity cases added to TestUnpackUnprovenSourceCompiles. The same review
+named the inactive-recorder and inactive-braid defaults the coverage gate
+needs pinned; both are.
