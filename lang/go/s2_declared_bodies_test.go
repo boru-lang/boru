@@ -191,3 +191,65 @@ func TestValofOfMutatedFlexSeatsLive(t *testing.T) {
 		requireEngineParity(t, src, true)
 	}
 }
+
+// TestApplyChainInFnBodyCompiles — a CHAIN of `apply`-word applications over
+// a Function-typed param inside a fn body (`x f/v apply f/v apply`,
+// callbacks.tsv L125, 2026-09-25): every step's window is the whole residual
+// beneath its fn, as applyHandler re-steps; the steps lower interleaved with
+// their operand pushes (fnUnitRec.applyChain, emitBodyTailApply), each but
+// the last committed to ONE result (OpCallDynApplyOne — another count
+// defers), the last the whole-residual tail apply the RET counts.
+func TestApplyChainInFnBodyCompiles(t *testing.T) {
+	for _, src := range []string{
+		`def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply-twice inc/v 5`,
+		`def ap3 fn [[f:Function x:Integer][Integer][x f/v apply f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  ap3 inc/v 5`,
+		`def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def dbl fn [[n:Integer][Integer][n mul 2]]  apply-twice dbl/v 5`,
+		`def ap fn [[f:Function g:Function x:Integer][Integer][x f/v apply g/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  def dbl fn [[n:Integer][Integer][n mul 2]]  ap inc/v dbl/v 5`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	// A step netting TWO values is not the one the model committed: the
+	// event form defers, and the interpreter's own answer stands.
+	requireEngineParity(t, `def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def two fn [[n:Integer][Integer Integer][n n]]  apply-twice two/v 5`, false)
+	// A no-match on the second step raises the interpreter's own
+	// uncalled_function on both lanes (the taxonomy the corpus compares;
+	// the position differs — NUR171's class).
+	src := `def ap fn [[f:Function x:Integer y:Integer][Integer][x y f/v apply f/v apply]]  def add2 fn [[a:Integer b:Integer][Integer][a add b]]  ap add2/v 5 6`
+	_, _, errC, _, errI := runBothEngines(t, src)
+	if codeOf(errC) != "uncalled_function" || codeOf(errI) != "uncalled_function" {
+		t.Errorf("%q: want uncalled_function on both lanes, got compiled=%v interp=%v", src, errC, errI)
+	}
+	dis := compileDisasm(t, `def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply-twice inc/v 5`)
+	if !strings.Contains(dis, "CALL_DYN_APPLY_ONE") || !strings.Contains(dis, "CALL_DYN_APPLY_TOP") {
+		t.Errorf("the chain must lower as a one-result step and a tail apply:\n%s", dis)
+	}
+}
+
+// TestComputedForBodyCompiles — `for` declares CompileDynBody (2026-09-25):
+// a COMPUTED loop body (a fn's result, a quoted list read at run time) lowers
+// to the plain CALL_NATIVE under DynEnv where the loop lowering has no tokens
+// to capture, and RunForLoop hosts the loop over the InvokeBody seam under a
+// compiled run — the index installed per iteration as the interpreter's, an
+// escaped body (break / continue) discarding that iteration's values
+// (code-bodies.tsv L141). A LITERAL body keeps the native loop lowering.
+func TestComputedForBodyCompiles(t *testing.T) {
+	for _, src := range []string{
+		`def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)`,
+		`def mk fn [[n:Integer][List][quote [i n add]]] end for 3 (mk 10)`,
+		`def mk fn [[][List][quote [i 1 eq [break] [i] if]]] end for 5 (mk)`,
+		`def mk fn [[][List][quote [i 1 eq [continue] [i] if]]] end for 4 (mk)`,
+		`def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0) end 99`,
+		`def mk fn [[n:Integer][List][quote [i]]] end def t 0 end for 3 (mk 0) end t`,
+		// A def-bound quoted body is concrete at the check and keeps the
+		// native loop (it answered `[1 4 9 1 9]` when the dispatch was
+		// recorded twice — the concrete-body guard).
+		`def b (quote [i i mul]) end for [1 4] b`,
+		`for 3 [i]`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	dis := compileDisasm(t, `def b (quote [i i mul]) end for [1 4] b`)
+	if strings.Contains(dis, "CALL_NATIVE") && strings.Contains(dis, "; for ") {
+		t.Errorf("a concrete for body must keep the native loop lowering:\n%s", dis)
+	}
+}

@@ -144,17 +144,25 @@ var ControlNatives = []NativeFunc{
 		Name: "for",
 
 		Signatures: []Signature{
+			// CompileDynBody (2026-09-25): a COMPUTED body — a fn's result, a
+			// quoted list read at run time — lowers to a plain CALL_NATIVE
+			// under DynEnv where the loop lowering has no tokens to capture
+			// (code-bodies.tsv L141, `for 3 (mk 0)`); RunForLoop hosts the
+			// loop over the InvokeBody seam under a compiled run. A literal
+			// body keeps the native loop lowering (RecordLoop).
 			{
 				Args:       []*Type{TInteger, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForCountHandler),
 				ReturnsFn:  forIntegerListReturnsFn, BarrierPos: -1,
+				CompileEffect: CompileDynBody,
 			},
 			{
 				Args:       []*Type{TList, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForRangeHandler),
 				ReturnsFn:  forListListReturnsFn, BarrierPos: -1,
+				CompileEffect: CompileDynBody,
 			},
 		},
 	},
@@ -1265,6 +1273,12 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 				}
 			}
 		}
+	}
+	// A COMPUTED body (a carrier) has no tokens for the loop lowering to
+	// capture: leave the dispatch to the recorder's dyn-body path
+	// (CompileDynBody, 2026-09-25) instead of recording a loop with no body.
+	if !IsConcrete(body) {
+		lowerable = false
 	}
 	if lowerable {
 		es.ArmLoopCapture()

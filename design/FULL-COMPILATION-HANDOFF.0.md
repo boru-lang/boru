@@ -14572,3 +14572,62 @@ the spec files naming codequote or a quoted reach pass.
 the two seeds, the bare quoted reach as a residual, a def-bound one, a
 three-segment reach, `eq` of two, and the unquoted reach still
 evaluating). Docs: the handover.
+
+## The apply chain and the hosted for body — the corpus ledger empties (2026-09-25)
+
+**The rows.** The last two lines of `test/go/langspec/compile_failures.tsv`:
+callbacks.tsv L125, a fn body applying two pending fn values over one
+window (`[x f/v apply g/v apply]`, "apply of a dynamic fn value not at the
+body tail"), and code-bodies.tsv L141, `for` over a COMPUTED body (`def b
+(mk) for 3 b`), which the fn-unit recorder declined at the concrete-body
+gate and the top-level emitter had no native loop for. With them the
+ledger has NO data line: every row of `lang/spec` compiles (the check-
+error rows aside) or runs natively.
+
+**The apply chain** (compiler `emit.go`). A fn unit whose body tail holds
+two or more pending applies — the last on top, every operand a local or a
+const, no fn-value argument — is an APPLY CHAIN (`fnUnitRec.applyChain`,
+`applyChainSteps`): the tail's dynamic region is the whole window, and
+`emitBodyTailApply` emits each step over its own operand window —
+`OpCallDynApplyOne` (the one-result event form, the defer on any other
+count) for every step but the last, `OpCallDynApplyTop` over the residual
+for the last. Nothing new in the VM. A step whose callee nets two values
+bails on the apply-one guard exactly as a single apply did (the pin below
+books it).
+
+**The hosted for body** (basic `forloop.go`, `native_control.go`). `for`'s
+two signatures declare `CompileDynBody`; `forCarrierAnalyse` marks a
+non-concrete body non-lowerable, so the native loop stays the lowering
+for a literal body and the dyn-body path (CALL_NATIVE under DynEnv, the
+poly re-match) takes a computed one. Under a compiled run (`r.Invoker !=
+nil`) `RunForLoop` routes to `runHostedForLoop`: the iterator is a frame
+def re-installed per iteration, the body runs through `InvokeBody` (the
+VM hosts a token body), `core.BodyEscaped` ends the iteration (`break`
+stops, `continue` skips), and the results concatenate. `tryRecordDynBody`
+takes the Callable-less declaration: the single `NoEvalArgs` position is
+the body, and only a NON-concrete body routes here (a def-bound literal
+body keeps its native loop — the first cut double-lowered it).
+
+**Measured.** compile failures 2 -> 0 (the ledger's last two rows;
+`compile_failures.tsv` keeps the header). lang `compileDefectCeiling`
+286 -> 285 (the M2 double-apply negative compiles with parity, its pin
+inverted); `bailDefectCeiling` 45 -> 46 (the chain's two-result step,
+booked as a pin). The filtered gates over callbacks, code-bodies,
+fold-map-filter, each-variants, control, fn-value and apply: 0 FAILED to
+compile, 0 mismatches. The core coverage gate (`make cover-gate-core`)
+is back at 100%: the 25 statements the standalone gate reported on main
+(the apply shapes, the curried chain, NUR180/184/192, the folded flex
+identity, isInertReach's error arm) are covered by real core tests, no
+allowlist entry.
+
+**Pins.** lang `s2_declared_bodies_test.go`
+(`TestApplyChainInFnBodyCompiles`: four parity shapes, the two-result
+step's defer, the disassembly holding both apply ops;
+`TestComputedForBodyCompiles`: eight parity shapes with `break` and
+`continue`, a def-bound literal body keeping the native loop);
+`bytecode_fnvalue_m2_test.go` (the double apply, now a parity row).
+
+**What is left.** Nothing on the corpus ledger. The runtime-defers
+ledger (`runtime_defers.tsv`) and the sweep's remaining cells are the
+open compilation debt, together with the NUR-caused rows recorded in
+`NUR.md`.
