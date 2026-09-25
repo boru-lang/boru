@@ -23,7 +23,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -156,15 +155,9 @@ func discover(targets []string) ([]string, error) {
 			add(t)
 			continue
 		}
-		if err := walkDir(t, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !d.IsDir() && strings.HasSuffix(path, "_test.boru") {
-				add(path)
-			}
-			return nil
-		}); err != nil {
+		// The shared walk skips `.boru/` (the build and install cache), as
+		// fmt's and check's do (NUR082).
+		if err := pathutil.WalkSources(t, walkDir, "_test.boru", add); err != nil {
 			return nil, err
 		}
 	}

@@ -13322,6 +13322,95 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR081 closed — one contract for the family (2026-09-25)
+
+`Test.skip`'s property form applies `Test.check-prop`'s argument contract
+before it parks the property: `runs` below 1 and `max-shrinks` below 0
+raise `range_error` blamed on `Test.skip` (`requirePropCountFor`,
+lang/go/modules/test.go), where the skip used to record `{ok:true
+runs:0}` for counts its sibling refuses. Pinned by two `module-test.tsv`
+rows. NUR081 is FIXED.
+
+## NUR082 closed — one walk for the tree commands (2026-09-25)
+
+`pathutil.WalkSources` is the one tree walk `fmt`, `check` and `test`
+share — the `.boru/` skip and the filename suffix live in it — so `boru
+test`'s discovery no longer descends into the package directory
+(`TestDiscoverSkipsPackageDir`). NUR082 is FIXED.
+
+## NUR083 closed — the script's own directory (2026-09-25)
+
+`run` and `debug` anchor a script's relative imports at the script's own
+directory, as `check` and `build` do: `lang.Options.BaseDir` (applied to
+the registry by `lang.New`) is set from the script path in run.go and
+debugcmd.go, and both pre-flights go through `PreflightColorAt` with the
+same anchor; `-e` and the REPL keep the process cwd. `boru run sub/m.boru`
+succeeds from the parent directory
+(`TestRunAnchorsRelativeImportsAtTheScript`). NUR083 is FIXED.
+
+## NUR084 closed — fmt answers -h (2026-09-25)
+
+`boru fmt -h` (and `--help`, `help`) prints its usage to stdout and exits
+0, as `check` does, instead of reading `-h` as a file to format
+(`TestFmtHelpExitsZero`). NUR084 is FIXED.
+
+## NUR088 closed — six spellings, one form (2026-09-25)
+
+`elideFnTriple` reads a `fn` wrapper as `params… ret body` — the body is
+the last list, the return the token before it (bracketed or bare), the
+params everything else (one bracketed list or a bare run) — and
+`elideBareTripleRet` handles the wrapperless spelling, so each of the five
+non-target spellings of a single-param signature formats to `fn x:Integer
+Integer [mul 2 x]`; the irreducible shapes pass through
+(`TestFormatCollapsesEverySingleParamFnSpelling`). NUR088 is FIXED.
+
+## NUR091 closed — the fn that took nothing (2026-09-25)
+
+`fn`'s silent path was the synthesized 0-argument fallback: with the
+triple's `(tnot List)` rejecting the input and the spec-list form finding
+no list, `def f fn List Any [1]` constructed nothing and stranded its
+operands, exit 0. `fn` carries an explicit 0-argument signature now, whose
+handler raises `signature_error` naming the rule, so the declaration
+fails at the declaration on both lanes whatever sits in its output slot
+(two `fn-triple.tsv` rows). NUR091 is FIXED.
+
+## NUR092 closed — the stale arm consults the corpus (2026-09-25)
+
+`TestVariationDifferential`'s stale arms re-check the UNSAMPLED rest of the
+corpus (lazily, once) before calling a ledger bucket or a pinned variant
+stale (`ledgerStale`, `TestLedgerStaleConsultsFullBreadth`), so an
+unrelated spec row that displaces a seed from the hash-ordered sample can
+no longer instruct the author to delete a live class's entry. NUR092 is
+FIXED.
+
+## NUR096 measured — the production registry's inert member (2026-09-25)
+
+The record's retirement test was tried and failed one lane deeper: with
+the two multi-return fnsig rows in `class.tsv`, the default runner and
+`TestCheckTypeSoundness` agree on `10 10` (the check pass now models the
+apply), but `TestSpecProd` — the production registry, no check pass —
+leaves the multi-return member inert (`fn [[x:Integer] [Integer Integer]
+[x x]] 10`) where the single-return rows apply. Rows withdrawn; NUR096
+stays pending on that measurement.
+
+## NUR105 closed — the folded map member (2026-09-25)
+
+The last position. A map-literal member is a check-mode CONST FOLD
+(`constFoldContainerVal`, a concrete sub-run with the pass OFF), so a
+lambda written there was queued by nobody; the fold now queues every fn
+value inside the folded constant (`noteFoldedFnBodies` →
+`NoteFnBodyPending`) and the end-of-pass drain analyses it like the
+list twin — `def m {k:([x:Any] => [nosuchw 1])}` reports `undefined_word`
+at 1:23. NUR105 is FIXED.
+
+## NUR119 closed — the param's name on both lanes (2026-09-25)
+
+Verified on the record's witnesses after the fn-value seam work of this
+run: `(app (z:Integer => [mul 3 z]))` and the `Any`-typed twin render `fn
+g(Integer)` on both lanes, and `app sq/v` declines on the compiled lane
+under the render gate rather than answering under another name
+(`TestFnValueReadThroughParamRendersAlike`). NUR119 is FIXED.
+
 ## NUR122 closed — the read's own token (2026-09-25)
 
 **The divergence.** A compiled fn-value apply had no name and no named-dispatch semantics: `f (z:String => [z]) 5` raised a return-count error compiled for the interpreter's `cannot call \`g\``, `f ([] => [42]) 5` agreed on the message and not the position (1:50 / 1:43), and a returned lambda's `(g x)` named an empty head at the unit's position (1:80) for the interpreter's `g` at 1:64. Recorded 2026-09-05; the NUR123 deopt increments closed the first two messages, and the paren-window spelling stayed open.

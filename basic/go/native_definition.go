@@ -184,6 +184,20 @@ var DefinitionNatives = []NativeFunc{
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
 			},
+			{
+				// The 0-argument spelling is never a construction: `fn` with
+				// nothing it can take is a declaration the two forms both
+				// rejected — `def f fn List Any [1]` used to fall to the
+				// synthesized 0-arg fallback and strand its operands silently
+				// (`[1] Any List` left behind, nothing bound, exit 0), where
+				// `fn List [Integer] [size]` only failed loudly by accident,
+				// the body list running as code (NUR091). It raises instead,
+				// naming the rule.
+				Args:       []*Type{},
+				Impl:       Go(FnNoArgsHandler, RunInCheck()),
+				Returns:    []*Type{TFunction},
+				BarrierPos: -1,
+			},
 		},
 	},
 	{
@@ -1604,6 +1618,20 @@ func FnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: list length must be a non-zero multiple of 3 (input output body triples); use `fnsig` for the type-only form, or the 3-arg form `fn input output body` for a single triple with a non-list input", "fn"))
 	}
 	return FnConstruct(r, elems, genSpec)
+}
+
+// FnNoArgsHandler — the loud refusal of a `fn` that took nothing (NUR091):
+// neither the spec-list form nor the triple matched what was written after
+// it, and a declaration both forms reject is reported at the declaration,
+// whatever sat in its slots. A bare `List` input is the shape that lands
+// here — the `(tnot List)` rule means a single List-typed param must be
+// written in the spec-list form. A pending gen spec is consumed like every
+// other fn failure.
+func FnNoArgsHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	genSpec := r.TakePendingGen()
+	return failGenErr(r, genSpec, r.BoruErrorHint("signature_error",
+		"fn: expected a spec list or an input/output/body triple after it — a bare List input is rejected by (tnot List); a single List-typed param needs the spec-list form", "fn",
+		"hint: write the triple as a list: fn [[xs:List] [Output] [body]]"))
 }
 
 // FnTripleHandler — the 3-arg single-triple form `fn input output body`.

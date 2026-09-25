@@ -568,7 +568,7 @@ func firstHazard(v core.Value, hazards []func(core.Value) string) string {
 // (Integer)]`), and a dynamic residual keeps its compile (the common `for
 // 3 [(f i)]` family) as the record asks.
 func loopNamedFnHazard(v core.Value) string {
-	if fd, isFn := v.Data.(core.FnDefInfo); isFn && !v.Quoted && !v.Carrier && !fd.Anonymous && fd.Name != "" {
+	if fd, isFn := v.Data.(core.FnDefInfo); isFn && !v.Quoted && !v.Carrier && fd.NamedDef() {
 		return "is a named fn value the interpreter re-steps per iteration (NUR129)"
 	}
 	return ""

@@ -127,6 +127,12 @@ type Options struct {
 	// everything after the script path; nil leaves the slot uninstalled,
 	// which IO.args renders as an empty list.
 	ScriptArgs []string
+	// BaseDir anchors the program's relative imports (`import "./lib.boru"`)
+	// when set. The CLI's `run` and `debug` pass the script's own directory,
+	// so a file means the same wherever the process was started — the rule
+	// `check` and `build` already follow (NUR083); `-e` and the REPL, which
+	// have no file, leave it empty and the process cwd stands.
+	BaseDir string
 	// Env is the environment view surfaced as IO.env. Nil installs none,
 	// and IO.env then reports every name as unset — the runtime never
 	// reads the real process environment unless a host hands it over.
@@ -194,6 +200,9 @@ func New(opts ...Options) (*Boru, error) {
 	}
 	if o.ScriptArgs != nil {
 		native.SetHostScriptArgs(reg, o.ScriptArgs)
+	}
+	if o.BaseDir != "" {
+		reg.BaseDir = o.BaseDir
 	}
 	reg.SetParseFunc(parser.Parse)
 	modules.InstallResolver(reg)

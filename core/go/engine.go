@@ -5279,7 +5279,43 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 	if !ok || !ConstFoldAgrees(one, two) {
 		return Value{}, false
 	}
+	// The fold ran with the check pass OFF (a concrete sub-run), so a fn
+	// value it built was queued by nobody — a lambda written as a map
+	// member (`{k:([x:Any] => [nosuchw 1])}`) went unanalysed where its
+	// list-literal twin, which never folds, was analysed (NUR105's last
+	// position). The body is still WRITTEN in this program: queue it as
+	// construction would have.
+	noteFoldedFnBodies(e.Registry, one)
 	return one, true
+}
+
+// noteFoldedFnBodies queues every fn value inside a folded constant for the
+// end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
+// containsCapturingFn does.
+func noteFoldedFnBodies(r *Registry, v Value) {
+	if fd, ok := v.Data.(FnDefInfo); ok {
+		NoteFnBodyPending(r, fd)
+		return
+	}
+	if !IsConcrete(v) {
+		return
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				noteFoldedFnBodies(r, val)
+			}
+		}
+		return
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				noteFoldedFnBodies(r, lst.Get(i))
+			}
+		}
+	}
 }
 
 // the function. If the FnDef carries a captured Registry (closure from a

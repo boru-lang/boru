@@ -781,6 +781,20 @@ func testSummaryShapeReturns(_ []native.Value, _ *native.Registry) []native.Valu
 // never counts as a failure. See §11b.4.
 func runSkipProp(parent *native.Registry, args []native.Value) ([]native.Value, error) {
 	name, _ := args[0].AsConcreteString()
+	// The same argument contract as Test.check-prop: a skipped property is a
+	// drop-in for a checked one, so a count check-prop refuses (`runs < 1`,
+	// `max-shrinks < 0`) is refused here too, before the skip is recorded —
+	// one word family, one contract (NUR081).
+	if len(args) >= 6 {
+		runs, _ := args[3].AsConcreteInteger()
+		maxShrinks, _ := args[5].AsConcreteInteger()
+		if err := requirePropCountFor(parent, "Test.skip", "runs", runs, 1); err != nil {
+			return nil, err
+		}
+		if err := requirePropCountFor(parent, "Test.skip", "max-shrinks", maxShrinks, 0); err != nil {
+			return nil, err
+		}
+	}
 	result := native.NewOrderedMap()
 	result.Set("name", native.NewString(name))
 	result.Set("ok", native.NewBoolean(true))
@@ -873,10 +887,16 @@ func checkPropBody(parent *native.Registry, sigC *native.FnSig, params []native.
 // `seed` is deliberately unconstrained: every integer, negative
 // included, is a legal seed for the per-iteration rand instance.
 func requirePropCount(parent *native.Registry, name string, got, min int64) error {
+	return requirePropCountFor(parent, "Test.check-prop", name, got, min)
+}
+
+// requirePropCountFor is requirePropCount blamed on the word that read the
+// count — check-prop, or its drop-in skip (NUR081).
+func requirePropCountFor(parent *native.Registry, word, name string, got, min int64) error {
 	if got < min {
 		return parent.BoruError("range_error",
-			fmt.Sprintf("Test.check-prop: %s must be %d or more (got %d)", name, min, got),
-			"Test.check-prop")
+			fmt.Sprintf("%s: %s must be %d or more (got %d)", word, name, min, got),
+			word)
 	}
 	return nil
 }

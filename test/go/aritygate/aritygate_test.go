@@ -176,7 +176,15 @@ var pinnedAritySites = map[string]int{
 	// mirrored for a Go-implemented fn value handed to a native's body
 	// seam; every arity takes the same path and the match is
 	// tryNativeFnApply's.
-	"eng/go/vm.go": 18,
+	// 18 -> 22 (2026-09-25, the no-match window and the fn-value body's
+	// own args): the closure-invocation seam brackets a fn value's body
+	// with the value's OWN call args, slicing the inputs the unit declared
+	// out of the seam's window (`fn.NArgs <= len(args)`: the argument
+	// rule's own count, NUR166), and polyHasArity asks whether some
+	// non-fallback overload declares exactly the k inputs the poly seat is
+	// retrying at — overload selection by declared signature (NUR147).
+	// Neither decides behaviour by arity.
+	"eng/go/vm.go": 22,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -310,8 +318,13 @@ var pinnedAritySites = map[string]int{
 	//    present it (help text, macro expansion, behaviour install, codecs).
 	"lang/go/native/native_behave.go": 8,
 	"lang/go/native/help/help.go":     8,
-	"lang/go/native/native_macro.go":  5,
-	"lang/go/native/native_help.go":   3,
+	// 5 -> 4 (2026-09-25): the runtime `parse <fn>` dispatch's overload-list
+	// presence test now reads the value's own signature list through a
+	// local (`len(own) == 0`, the list a fn-shaped value resolves to) — the
+	// same OVERLOAD-LIST presence test as before, which the walker no
+	// longer sees as a selector; no site changed meaning.
+	"lang/go/native/native_macro.go": 4,
+	"lang/go/native/native_help.go":  3,
 	// 1 -> 2: the runtime `parse <fn>` dispatch reads whether a registry
 	// binding carries any overloads AT ALL before matching against them
 	// (parseFnNativeApply, mirroring eng/go/vm.go::tryNativeFnApply). It is an

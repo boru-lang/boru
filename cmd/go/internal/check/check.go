@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -250,21 +249,7 @@ func resolveTargets(args []string) ([]Target, error) {
 			continue
 		}
 		var found []string
-		if err := walkDir(t, func(path string, d fs.DirEntry, werr error) error {
-			if werr != nil {
-				return werr
-			}
-			if d.IsDir() {
-				if d.Name() == ".boru" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if strings.HasSuffix(path, ".boru") {
-				found = append(found, path)
-			}
-			return nil
-		}); err != nil {
+		if err := pathutil.WalkSources(t, walkDir, ".boru", func(path string) { found = append(found, path) }); err != nil {
 			return nil, err
 		}
 		sort.Strings(found)

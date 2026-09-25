@@ -11,7 +11,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `behave` | F | n/a | F | F | F | F | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
-| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 7/14 | ✓ 12/14 | ✓ 13/14 |
+| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 5/14 | ✓ 12/14 | ✓ 13/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
 | `describe` | ✓ 14/14 | — | — | — | — | — | — |
 | `do` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
@@ -138,6 +138,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `def` container · fn-body — **declined** — dynamic value precedes residual args (fn-value-call boundary)
+- `def` container · lambda-body — **declined** — dynamic value precedes residual args (fn-value-call boundary)
 - `def` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · if-then — **declined** — if: then-branch result of unknown provenance

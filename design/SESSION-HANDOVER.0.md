@@ -337,6 +337,15 @@ branch-carried def"**; the re-estimate is
    meeting the caller's — never seeded, or it commits the name to dynamic
    scope program-wide), a `word`/fn/type/module value bound in an arm, an
    arm def inside a computed `do` body.
+   The reverse-order run's last batch (2026-09-25) closed NUR119,
+   NUR105, NUR092, NUR091, NUR088, NUR084, NUR083, NUR082 and NUR081 (the
+   handoff log's entries of that date, "the param's name on both lanes"
+   down to "one contract for the family"), measured NUR109 and NUR089
+   (still open, dated notes on the records), found NUR096's multi-return
+   rows inert on the PRODUCTION registry (recorded on NUR096, still
+   pending), and left the design-level records with dated review lines
+   (NUR124, 123, 112, 104, 103, 102, 100, 097, 079, 078, 077, 076, 075,
+   074, 072, 065, 064, 063, 060, 026, 009).
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 

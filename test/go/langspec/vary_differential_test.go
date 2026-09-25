@@ -48,6 +48,36 @@ func TestVariationDifferential(t *testing.T) {
 	}
 	sample := vary.Sample(seeds, n)
 
+	// NUR092: the sample is a hash-ordered PREFIX of the corpus, so adding an
+	// unrelated spec row can displace the one seed that exercised a ledgered
+	// bucket or a pinned variant. A stale arm therefore never reports on the
+	// sample alone: it re-checks the UNSAMPLED rest of the corpus first
+	// (lazily, once — the full sweep is slow and an emptied bucket is rare)
+	// and calls the entry stale only when the class is gone at full breadth.
+	var rest map[string]int
+	var restDiverged map[string]bool
+	recheck := func() {
+		if rest != nil {
+			return
+		}
+		rest, restDiverged = map[string]int{}, map[string]bool{}
+		all := vary.Sample(seeds, 0) // priority order; the sample is its prefix
+		if len(all) <= len(sample) {
+			return
+		}
+		for _, v := range vary.SweepSeeds(all[len(sample):], nil) {
+			if v.Transform == "seed" {
+				continue
+			}
+			switch v.Res.Outcome {
+			case vary.Diverged:
+				restDiverged[v.Src] = true
+			case vary.Declined, vary.Islanded:
+				rest[varyBucket(v.Res.Detail)]++
+			}
+		}
+	}
+
 	variants := vary.SweepSeeds(sample, nil)
 	observed := map[string]int{}
 	divergedSeen := map[string]bool{}
@@ -83,11 +113,20 @@ func TestVariationDifferential(t *testing.T) {
 	}
 	if n >= defaultVarySeeds || n <= 0 {
 		for bucket, why := range varyCompileFailureLedger {
-			if observed[bucket] == 0 {
-				t.Errorf("stale varyCompileFailureLedger bucket %q — no variant declines in it any more; graduate it (delete the entry).\n  was red because: %s", bucket, why)
+			if ledgerStale(observed[bucket], func() int { recheck(); return rest[bucket] }) {
+				t.Errorf("stale varyCompileFailureLedger bucket %q — no variant declines in it any more, at the default breadth or the full corpus; graduate it (delete the entry).\n  was red because: %s", bucket, why)
+			} else if observed[bucket] == 0 {
+				t.Logf("varyCompileFailureLedger bucket %q is unsampled at breadth %d but live at full breadth (%d variant(s)) — not stale (NUR092)", bucket, len(sample), rest[bucket])
 			}
 		}
 		for src, why := range varyKnownMiscompiles {
+			if !divergedSeen[src] {
+				recheck()
+			}
+			if !divergedSeen[src] && restDiverged[src] {
+				t.Logf("varyKnownMiscompiles pin unsampled at breadth %d but still diverging at full breadth — not stale (NUR092):\n  variant: %.160s", len(sample), src)
+				continue
+			}
 			if !divergedSeen[src] {
 				t.Errorf("stale varyKnownMiscompiles pin — this variant no longer diverges; graduate it (delete the pin; also graduate the frontier-do-registry-replay rows if the class is fixed).\n  variant: %.120s…\n  was red because: %s", src, why)
 			}
@@ -96,6 +135,15 @@ func TestVariationDifferential(t *testing.T) {
 	t.Logf("variation census: %d seeds (%d skipped) → pass=%d declined=%d islanded=%d diverged-known=%d interp-reject=%d check-reject=%d; compile failure buckets: %v",
 		len(sample), skipped, counts[vary.Pass], counts[vary.Declined], counts[vary.Islanded],
 		len(divergedSeen), counts[vary.InterpReject], counts[vary.CheckReject], observed)
+}
+
+// ledgerStale is the stale verdict for one ledger entry: unobserved in the
+// sample AND, consulted only then, unobserved in the rest of the corpus. An
+// entry the default breadth merely failed to sample is not stale — the rule
+// NUR092 pins (a corpus row unrelated to a refusal class cannot instruct the
+// author to delete the class's ledger entry).
+func ledgerStale(inSample int, inRest func() int) bool {
+	return inSample == 0 && inRest() == 0
 }
 
 // varyBucket normalises a compile failure/island detail into a stable ledger key:

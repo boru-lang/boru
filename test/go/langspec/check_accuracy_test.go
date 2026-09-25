@@ -286,7 +286,8 @@ var unflaggedPins = map[string]int{
 	// (runs < 1, max-shrinks < 0) are RUNTIME value checks — the
 	// signature slots are plain Integer, so the checker cannot see
 	// the domain statically.
-	"module-test.tsv":      3,
+	"module-test.tsv": 5, // 3 -> 5 (2026-09-25, NUR081): two `Test.skip` count rows raise range_error at run time, a value contract the checker does not model
+
 	"module-time.tsv":      2,
 	"module-tui.tsv":       5,
 	"module-vault-tui.tsv": 1,
