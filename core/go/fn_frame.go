@@ -323,7 +323,7 @@ func (e *Engine) unwindFrameTail(openIdx, to int) {
 				_ = PopFrameArgs(e.Registry)
 			case w.Name == "undef" && w.ForceForward && j+1 < to && IsWord(e.Tape.At(j+1)):
 				nw, _ := AsWord(e.Tape.At(j + 1))
-				UninstallDef(e.Registry, nw.Name)
+				UninstallFrameBinding(e.Registry, nw.Name)
 				j++
 			}
 		}

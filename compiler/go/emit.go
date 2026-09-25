@@ -180,6 +180,19 @@ type eventFlags struct {
 	// whose 0-value runtime shape the interpreter tolerates and fixed
 	// consumers must keep declining.
 	dynBodyResult bool
+	// callVariadic marks a CALL event whose variadicResult stands for a
+	// runtime-variable count of REAL stack values — a fallible multi-value
+	// catch body's shrinking count (catchVariadicFor), a count-agnostic
+	// region residual, or a strip-input word (`error`) over such a value —
+	// as opposed to a variadic BRANCH / LOOP region. Like dynBodyResult,
+	// a DECLARED return tuple pins the count at the frame's RET (the VM
+	// raises the interpreter's "expected N return value(s)"), so a fn whose
+	// residual is such a call — or a branch whose arms are all such calls
+	// (branchArmsRetPinned) — is not variadic-returning under a declared
+	// tuple, and its call sites seat the declared shape (utils/cut.boru's
+	// cut-one: `if c [def a (do […] error […]) a] [def b (do […] error […])
+	// b]` under `[Integer]`).
+	callVariadic bool
 	// variadicResult marks an event whose result count is RUNTIME-VARIABLE — a
 	// loop, or a branch whose arms leave different / multiple counts (`if c [] [a
 	// b]`). Only a variadic-absorbing position (the program residual or a
@@ -881,6 +894,24 @@ type EmitState struct {
 	// re-resolves the registry there, exactly where the interpreter reads
 	// it. Nil until first use.
 	keepLeakNames map[string]bool
+	// runtimeStub latches, per name, the ONE install a native the program
+	// calls is about to make at run time (`unpack [a b] d` over a source the
+	// pass cannot read — NoteRuntimeBind, right before the handler's own
+	// installAndRecordDef): that install is a stub, so its twin is exempt
+	// from placement (runtimeTwins — the rollback removes the stub; the
+	// run's CALL_NATIVE re-installs) and the recorder emits no dyn-scope def
+	// for it (the native's own install is the bind). The latch is consumed
+	// by that install's RecordDynBind, so a LATER real `def a …` of the same
+	// name — in another fn unit, at the root — records exactly as before (a
+	// Codex review of #507 found the program-wide form suppressing it:
+	// `def h fn [[][Integer][def a 9 end a]]` answered the stub's 1). The
+	// reads seat live through keepLeakNames only while they have no
+	// compiled home, which a real def's read always has.
+	runtimeStub  map[string]bool
+	runtimeTwins map[int]bool
+	// pendingRuntimeBindCall latches between a binder handler's
+	// NoteRuntimeBind and the dispatch's RecordRuntimeBindDispatch.
+	pendingRuntimeBindCall bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -1252,8 +1283,11 @@ type EmitState struct {
 	// value-copied EmitEvent struct (a flag set after append wouldn't reach the
 	// frame/fragment copies).
 	eventInfo map[int]eventFlags
-	consts    []core.Value
-	constIdx  map[string]int // CanonValue → Consts index
+	// argsProjSeq maps an `args` projection list's ID to its OpMakeList
+	// event (RecordArgsProjection), for the args.N fold's retraction.
+	argsProjSeq map[string]int
+	consts      []core.Value
+	constIdx    map[string]int // CanonValue → Consts index
 	// constIDIdx pools COMPOUND consts by value ID: the same materialised
 	// List/Map value (same ID, same payload pointer — already identity-
 	// aliased) reuses one Consts slot, so freshenFnUnitConsts' push-site
@@ -1977,6 +2011,8 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// unit whose defs lower differently.
 	p.keepDefsUnitDepth = es.keepDefsUnitDepth
 	p.keepLeakNames = maps.Clone(es.keepLeakNames)
+	p.runtimeStub = maps.Clone(es.runtimeStub)
+	p.runtimeTwins = maps.Clone(es.runtimeTwins)
 	// The residual-order hazard tables too (unit_memo.go): a read the real
 	// state saw in an enclosing fragment must count against a bind the
 	// probe records, or the probe admits a residual the real compile then
@@ -4724,8 +4760,58 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	if !zeroOut && es.branchVariadicResult(b) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		if es.branchArmsRetPinned(b) {
+			f.callVariadic = true
+		}
 		es.eventInfo[seq] = f
 	}
+}
+
+// retPinnedVariadic reports whether the event at seq is a variadic producer
+// whose runtime results are REAL stack values — a dyn-body dispatch
+// (dynBodyResult), a catch-variadic or strip-propagated call, or a branch
+// whose arms are all such (callVariadic) — so that a DECLARED return tuple
+// over it pins the count at the frame's RET.
+func (es *EmitState) retPinnedVariadic(seq int) bool {
+	fi := es.eventInfo[seq]
+	return fi.dynBodyResult || fi.callVariadic
+}
+
+// branchArmsRetPinned reports whether an `if` is variadic ONLY because its
+// arms' results are RET-PINNED calls: every arm that reaches the merge
+// leaves exactly one value, and that value is a retPinnedVariadic event's —
+// a dyn-do dispatch under `error` (`if c [def a (do […] error […]) a] [def
+// b (do […] error […]) b]`, utils/cut.boru's cut-one), or a nested branch
+// of them. Such a branch INHERITS the marking (callVariadic): the arm's
+// runtime values are real stack values delivered before the frame's RET,
+// where a declared return tuple pins the count exactly as it does for the
+// direct dyn-body residual (the VM's RET raises the interpreter's "expected
+// N return value(s)"), so a fn whose residual is this branch is not
+// variadic-returning under a declared tuple and its call sites seat the
+// declared shape. A count MISMATCH between the arms (`if c [n] []`), a
+// multi-value arm, or an arm whose value is a variadic loop / branch of any
+// other kind keeps the plain variadic marking (TestEmitRaiseArmDivergence).
+func (es *EmitState) branchArmsRetPinned(b core.BranchRecord) bool {
+	armDyn := func(stk []core.Value) bool {
+		if len(stk) != 1 {
+			return false
+		}
+		pr, ok := es.producedBy[stk[0].ID]
+		return ok && es.retPinnedVariadic(pr.seq)
+	}
+	if b.ConstCond != nil {
+		return armDyn(b.ThenStk)
+	}
+	if !b.HasElse {
+		return false
+	}
+	thenFrag, elsFrag := asFragment(b.Then), asFragment(b.Els)
+	thenDiv := thenFrag != nil && fragDiverges(thenFrag)
+	elsDiv := elsFrag != nil && fragDiverges(elsFrag)
+	if thenDiv && elsDiv {
+		return false
+	}
+	return (thenDiv || armDyn(b.ThenStk)) && (elsDiv || armDyn(b.ElsStk))
 }
 
 // branchVariadicResult reports whether an `if` produces a RUNTIME-VARIABLE result
@@ -4981,6 +5067,15 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 	}
 	es.bindTwins = append(es.bindTwins, tr)
 	es.bindTwinEntries = append(es.bindTwinEntries, entry)
+	// The stub install a native re-makes at run time (NoteRuntimeBind's
+	// latch, still armed until the install's RecordDynBind consumes it):
+	// this twin is exempt from placement (Finalize's twin gate).
+	if es.runtimeStub[tr.Name] {
+		if es.runtimeTwins == nil {
+			es.runtimeTwins = map[int]bool{}
+		}
+		es.runtimeTwins[len(es.bindTwins)-1] = true
+	}
 	// A transition of a name a stored handler reads live: a live LEAD's
 	// new binding gets its units, so the routed op has the live
 	// signature's own; a live READ's new binding must be one the lookup
@@ -5195,6 +5290,56 @@ func (es *EmitState) NoteKeepDefsLeak(pos core.SrcPos) {
 			es.noteStoreHazard(name, slot)
 		}
 	}
+}
+
+// NoteRuntimeBind — a name a native the program calls binds at RUN time
+// (`unpack [a b] d` over a param Map: the check pass reads a stub and binds
+// Any carriers with no home). The read side is the keep-defs leak's rule
+// (NoteLiveRead: a read with no compiled home seats live on the registry),
+// and the program runs under DynEnv so a compiled fn frame unwinds the
+// native's install exactly as the interpreter's frame does (2026-09-25).
+func (es *EmitState) NoteRuntimeBind(name string) {
+	if !es.Active() || name == "" {
+		return
+	}
+	if es.keepLeakNames == nil {
+		es.keepLeakNames = map[string]bool{}
+	}
+	es.keepLeakNames[name] = true
+	if es.runtimeStub == nil {
+		es.runtimeStub = map[string]bool{}
+	}
+	es.runtimeStub[name] = true
+	es.pendingRuntimeBindCall = true
+	es.dynEnv = true
+}
+
+// RecordRuntimeBindDispatch — the dispatch of a check-mode-run binder word
+// (`unpack`) whose handler bound RUN-TIME names in this very dispatch
+// (NoteRuntimeBind's latch): the check pass's stub installs are not the
+// bind, so the call itself is emitted — a plain 0-result CALL_NATIVE over
+// its operands (the names list, an inert const; the source, a local or an
+// event result) — and the handler binds the names on the run-time registry
+// exactly as the interpreter's does. A no-op when the latch is clear (the
+// ordinary elision of a compile-time word stands); an operand with no
+// compiled home hands the dispatch to RecordCall, whose compile-time-word
+// arm declines it loudly (no decline site of its own — the site census).
+func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature, args []core.Value, pos core.SrcPos) {
+	if !es.Active() || !es.pendingRuntimeBindCall {
+		return
+	}
+	es.pendingRuntimeBindCall = false
+	ops := make([]EmitOperand, len(args))
+	for i := range args {
+		op, ok := es.resolveOperand(args[i])
+		if !ok {
+			es.RecordCall(word, sig, args, nil, pos, false, false)
+			return
+		}
+		ops[i] = op
+	}
+	es.SiteCounts[SiteDynamic]++
+	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: 0, pos: pos}})
 }
 
 // closureLatch — see the lastClosure field doc.
@@ -6542,7 +6687,9 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// already-variadic fn — RecordUserCall flags that on the event). A call
 			// site marks its result variadic (lowerUserCall) so only a
 			// variadic-absorbing position consumes it. EXCEPTION: a DECLARED
-			// return tuple over a DYN-BODY residual (dynBodyResult) overrides
+			// return tuple over a DYN-BODY residual (dynBodyResult) — or a
+			// catch-variadic CALL's, or a branch whose arms are all such
+			// (callVariadic, retPinnedVariadic) — overrides
 			// the marking — the sub-run's results are real stack values at the
 			// RET, where the VM enforces the declared count exactly as the
 			// interpreter ("expected N return value(s)"), so the call site may
@@ -6555,7 +6702,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// differently, and the pinned divergence test
 			// (TestEmitRaiseArmDivergence) requires the failure.
 			if n := len(ops); n > 0 && ops[n-1].kind == opEvent && es.eventInfo[ops[n-1].idx].variadicResult &&
-				!(len(rec.returns) > 0 && es.eventInfo[ops[n-1].idx].dynBodyResult) {
+				!(len(rec.returns) > 0 && es.retPinnedVariadic(ops[n-1].idx)) {
 				rec.variadic = true
 			}
 			forceOrder = es.residualForceOrderFor(dynTrail, rec, ops, vals)
@@ -7969,6 +8116,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	if es.catchVariadicFor(sig) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		f.callVariadic = true
 		es.eventInfo[seq] = f
 	}
 	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
@@ -8337,10 +8485,16 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		//     clause always bakes a plain CALL_NATIVE.)
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("code-body word " + word + " (Stage 2)")
-	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK:
+	case hasUncoveredQuoteArg(sig) && (restepsSig(sig) || (!core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK)):
 		// Implicit-quote operands (usurp, force-arity, ref-family):
 		// dispatch-manipulating meta words whose results the engine
-		// re-steps. get/getr/set/del are exempt — plain accessors/mutators whose
+		// re-steps. Since S2a of design/FULL-COMPILATION-REPLAN.0.md those
+		// words DECLARE the refusal — CompileResteps (restepsSig), read
+		// FIRST and regardless of any admission the sig also carries, so a
+		// declared re-stepper never rides quotedKeySig or quoteInertOK; the
+		// reason names the declaration. An undeclared quoted operand still
+		// declines on the zero value's silence, as before.
+		// get/getr/set/del are exempt — plain accessors/mutators whose
 		// quoted key is an inert Atom const (its fn-valued module-resolution
 		// case is elided above; a dynamic or fn-valued result still declines via
 		// the later cases). For `set` the quoted key is the atom field name of
@@ -8365,8 +8519,12 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// DSL's table names (`Query.from people`, `Query.join visits`): the inner
 		// native is reached via the wrapper's trivial delegation, so the
 		// interpreter runs the SAME handler with the same baked atom.
+		reason := "quoted-operand word " + word
+		if restepsSig(sig) {
+			reason += " (declared CompileResteps: its result is re-stepped by the engine, not delivered as a value)"
+		}
 		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("quoted-operand word " + word)
+		es.MarkUncompilable(reason)
 	case sig.CoreDefault && check.AnyNonConcreteOperand(args):
 		// A CoreDefault overload (the within-type scalar/Micron arithmetic
 		// defaults) is UNLOCKED: a runtime value whose tag is a strict
@@ -8483,6 +8641,17 @@ func quotedKeySig(sig *core.Signature) bool {
 	return sig != nil && sig.CompileEffect.Has(core.CompileQuoteKey)
 }
 
+// restepsSig reports whether a signature DECLARES that its handler's result is
+// RE-STEPPED by the engine (CompileResteps — the by-name modifier words, valof,
+// the mini/parse/emit splices, apply). It is the declared form of the refusal
+// the quoted-operand and fn-operand gates used to make on the zero value's
+// silence, and it is read BEFORE any admission (quotedKeySig, quoteInertOK, the
+// store-fn / reads-fn slots): a re-stepped result is never "the same handler
+// over the same baked value", so a sig carrying both declines by this one.
+func restepsSig(sig *core.Signature) bool {
+	return sig != nil && sig.CompileEffect.Has(core.CompileResteps)
+}
+
 func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) bool {
 	if !core.DynStackShuffleWords[word] {
 		return false
@@ -8522,11 +8691,18 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 	inertFn := introspect || sig.CompileEffect.Has(core.CompileStoresFn)
 	for i, t := range sig.ArgTypes() {
 		if t != nil && t.ConformsTo(core.TFunction) {
-			if inertFn || sig.FnInertArgs[i] {
+			if (inertFn || sig.FnInertArgs[i]) && !restepsSig(sig) {
 				continue
 			}
+			reason := "function-valued operand at " + word + " (Stage 3)"
+			if restepsSig(sig) {
+				// The declared form of this refusal (CompileResteps): apply and
+				// the mini/parse/emit value forms re-step the fn on the tape,
+				// and say so; the declaration outranks any inert-slot admission.
+				reason = "function-valued operand at " + word + " (declared CompileResteps: the handler re-steps it on the tape)"
+			}
 			es.SiteCounts[SiteMeta]++
-			es.MarkUncompilable("function-valued operand at " + word + " (Stage 3)")
+			es.MarkUncompilable(reason)
 			return nil, false
 		}
 	}
@@ -9597,6 +9773,14 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.declineUndef(name, defAfterSpecUndef)
 		return
 	}
+	// THE install a native binds at RUN time (NoteRuntimeBind's latch, this
+	// name's one stub): the check pass's install has no compiled home, and
+	// the native's CALL_NATIVE performs the real install — nothing to record
+	// here. The latch is consumed: a later real def of the name records.
+	if es.runtimeStub[name] {
+		delete(es.runtimeStub, name)
+		return
+	}
 	if es.valBindEpoch == nil {
 		es.valBindEpoch = map[string]int{}
 	}
@@ -10206,6 +10390,27 @@ func (es *EmitState) MemberFnRead(id string) bool {
 	}
 	_, ok := es.memberFnReads[id]
 	return ok
+}
+
+// ContainerReadResult reports whether id is the result of a recorded
+// container read — a get/dot-family dispatch (mono or poly) — whose static
+// type the check pass could not narrow: a flex member (`reg.cb` over a flex
+// registry, whose shape is not threaded on the compile pass), a gradual map
+// field. The paren-bounded leading apply (core's recordParenLeadingApply)
+// admits such a lead beside the tagged member-fn read and the fn-typed
+// carrier (callbacks.tsv L61, `((reg.cb) 5)`, 2026-09-25): the guarded
+// OpCallDynMethod applies the runtime value and DEFERS on a non-callable
+// value or a result-count mismatch, the same contract the tagged read takes.
+func (es *EmitState) ContainerReadResult(id string) bool {
+	if es == nil || es.producedBy == nil {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	if !ok {
+		return false
+	}
+	ev := es.eventBySeq(pr.seq)
+	return ev != nil && ev.kind == evCall && (core.IsGetWord(ev.call.word) || core.IsGetrWord(ev.call.word))
 }
 
 // memberFnReadValue returns the uniquely-resolved member FN value tagged for
@@ -10984,6 +11189,56 @@ func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core
 	return es.RecordMakeListInner(r, ins, out, pos)
 }
 
+// RecordArgsProjection records the `args` projection inside a fn unit — the
+// list of the frame's param carriers, which the check pass hands out with no
+// event (check's specialWordResults) — as an OpMakeList over the param
+// locals, assembled per call exactly as a `[a b]` literal in the same body
+// is (code-bodies.tsv L174, `fn [[a b][List][args]]`, 2026-09-25). The
+// event is remembered by the list's ID so an `args.N` that folds to the
+// element (tryFoldStaticIndex) can RETRACT it when it is still the frame's
+// last event — the indexed read keeps lowering to the bare local, and a
+// projection some other consumer took stays put.
+func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+	if !es.Active() || out.ID == "" {
+		return false
+	}
+	if !es.RecordMakeListInner(r, ins, out, pos) {
+		return false
+	}
+	pr, ok := es.producedBy[out.ID]
+	if !ok {
+		return false
+	}
+	if es.argsProjSeq == nil {
+		es.argsProjSeq = map[string]int{}
+	}
+	es.argsProjSeq[out.ID] = pr.seq
+	return true
+}
+
+// retractArgsProjection removes the args projection's OpMakeList event for
+// id when it is the current frame's LAST event (nothing recorded between
+// the projection and the folding get), so a folded `args.N` leaves no
+// unconsumed list on the sim. Reports whether the event is gone (or was
+// never an args projection) — a projection that cannot be retracted keeps
+// its event, and the caller must not fold over it.
+func (es *EmitState) retractArgsProjection(id string) bool {
+	seq, ok := es.argsProjSeq[id]
+	if !ok {
+		return true
+	}
+	n := len(es.frames) - 1
+	fr := es.frames[n]
+	if len(fr) == 0 || fr[len(fr)-1].seq != seq {
+		return false
+	}
+	es.frames[n] = fr[:len(fr)-1]
+	delete(es.producedBy, id)
+	delete(es.eventInfo, seq)
+	delete(es.argsProjSeq, id)
+	return true
+}
+
 // RecordMakeListInner is the guard-free core of RecordMakeList: it resolves the
 // element operands and appends the OpMakeList event. RecordMakeList wraps it with
 // the top-frame restriction (a fn-body residual list must fall back). The other
@@ -11339,6 +11594,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	if es.catchVariadicFor(sig) || regionResidual {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		f.callVariadic = true
 		es.eventInfo[seq] = f
 	}
 	// VARIADIC PROPAGATION through a strip-input dispatch (L-DO part 2):
@@ -11354,6 +11610,10 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 			if pr, ok := es.producedBy[args[i].ID]; ok && es.eventInfo[pr.seq].variadicResult {
 				f := es.eventInfo[seq]
 				f.variadicResult = true
+				// The strip's result is real stack values exactly when
+				// the region beneath it is (a RET-pinned count carries
+				// through the strip; a loop / branch region's does not).
+				f.callVariadic = es.retPinnedVariadic(pr.seq)
 				es.eventInfo[seq] = f
 				break
 			}
@@ -13441,6 +13701,19 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	lw.p.storedFnRefs = es.storedFnRefs
 	if es.armReadCompileFailure != "" {
 		return nil, es.armReadCompileFailure, false
+	}
+	// The twin of a STUB install a native re-makes at run time
+	// (runtimeTwins, latched at its note): the rollback removes the stub and
+	// the run's CALL_NATIVE re-installs the real value, so no op need replay
+	// it. Only that one twin — a later real def of the same name keeps its
+	// placement duty.
+	for i := range es.runtimeTwins {
+		if i < len(lw.p.BindTwins) {
+			if twinExempt == nil {
+				twinExempt = map[int]bool{}
+			}
+			twinExempt[i] = true
+		}
 	}
 	if !twinsFullyPlaced(lw.p, twinExempt) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false

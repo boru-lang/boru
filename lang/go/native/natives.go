@@ -343,6 +343,12 @@ var Natives = []NativeFunc{
 	// happens in the handler. See walk_core.go.
 	{
 		Name: "walk",
+		// CompileDynBody: a hook the closure path cannot compile — a fn VALUE
+		// from a factory, a container member, a module export, or a hook the
+		// pass could not type — lowers to a CALL_NATIVE under DynEnv, the
+		// handler classifying the runtime value exactly as the interpreter's
+		// dispatch does (the S1a rule each/fold/scan/filter follow).
+		CompileEffect: CompileDynBody,
 		// The DESCEND hook (sig position 2) compiles to a closure unit the
 		// handler drives through InvokeBody (walkClassifyHook already
 		// classifies a compiled closure). Visit-only: hook results are

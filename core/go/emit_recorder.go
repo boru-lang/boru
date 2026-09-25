@@ -267,6 +267,24 @@ type EmitRecorder interface {
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
+	// RecordArgsProjection gives the `args` projection inside a fn unit —
+	// the list of the frame's param carriers — a compiled home: an
+	// OpMakeList over the param locals, assembled per call. An `args.N`
+	// that folds to the element retracts it (tryFoldStaticIndex), so the
+	// common indexed read still lowers to the bare local.
+	RecordArgsProjection(r *Registry, ins []Value, out Value, pos SrcPos) bool
+	// NoteRuntimeBind records that NAME is bound at run time by a native
+	// the program calls (`unpack` over a source the pass cannot read), so
+	// every later read with no compiled home seats LIVE on the registry
+	// (the keep-defs leak's rule) and the program runs under DynEnv, whose
+	// frames unwind the binding as the interpreter's do.
+	NoteRuntimeBind(name string)
+	// RecordRuntimeBindDispatch records the dispatch of a check-mode-run
+	// binder word whose handler noted run-time binds in THIS dispatch
+	// (NoteRuntimeBind's latch): the call is emitted as a plain 0-result
+	// native call so the run performs the bind. A no-op when the latch is
+	// clear — the ordinary elision of a compile-time word stands.
+	RecordRuntimeBindDispatch(word string, sig *Signature, args []Value, pos SrcPos)
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
@@ -316,6 +334,13 @@ type EmitRecorder interface {
 	PendingClosureApply(body []Value) (Value, bool)
 	NoteMemberFnRead(id string, member Value)
 	MemberFnRead(id string) bool
+	// ContainerReadResult reports whether id is the result of a recorded
+	// container READ — a get/dot-family dispatch, mono or poly — whose
+	// static type the pass could not narrow (a flex member, a gradual map
+	// field). The paren-bounded leading apply admits such a lead beside
+	// the tagged member-fn read and the fn-typed carrier: the guarded op
+	// applies the runtime value and defers on anything else.
+	ContainerReadResult(id string) bool
 	// NoteCollectionHazard marks the fn-typed value id as an UNAPPLIED lead
 	// a later dispatch collected past (Engine.noteCollectionHazards,
 	// NUR121); CollectionHazard reads the mark. A marked lead is never
@@ -603,8 +628,11 @@ func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, int, SrcPo
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }
-func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool      { return false }
-func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool { return false }
+func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool         { return false }
+func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool    { return false }
+func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool   { return false }
+func (inactiveEmit) NoteRuntimeBind(string)                                        {}
+func (inactiveEmit) RecordRuntimeBindDispatch(string, *Signature, []Value, SrcPos) {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false
 }
@@ -617,6 +645,7 @@ func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
 func (inactiveEmit) MemberFnRead(string) bool                               { return false }
+func (inactiveEmit) ContainerReadResult(string) bool                        { return false }
 func (inactiveEmit) NoteCollectionHazard(string)                            {}
 func (inactiveEmit) CollectionHazard(string) bool                           { return false }
 func (inactiveEmit) ProducedLeadApplies(string, []Value) (*Type, bool)      { return nil, false }

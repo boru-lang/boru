@@ -55,6 +55,13 @@ func init() {
 					QuoteArgs: map[int]bool{0: true},
 					Impl:      Go(describeWordHandler),
 					Returns:   []*Type{}, BarrierPos: -1,
+					// The handler-contract declaration (design/HANDLER-
+					// MIGRATION-LINE.0.md, the quoted class, S2a): the quoted
+					// word is the datum the handler documents, consumed
+					// verbatim — so `describe foo` bakes as a CALL_NATIVE over
+					// the inert atom and the VM prints what the interpreter
+					// prints (the same handler, the same registry).
+					CompileEffect: CompileQuoteInert,
 				},
 				{Args: []*Type{}, Impl: Go(describeSelfHandler), Returns: []*Type{}, BarrierPos: -1},
 			},

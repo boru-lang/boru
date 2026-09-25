@@ -138,35 +138,26 @@ func TestForEachLambdaConventionMatchesTheInterpreter(t *testing.T) {
 	}
 }
 
-// TestForEachKeepsTheAmbiguousOverloadCompileFailure is the flag NOT set, and why.
-// CrossCollectionTokenShape licenses committing to the List overload for a
-// statically-ambiguous (gradual-Any) collection, because each's handler
-// delegates to the map iteration when the runtime value turns out to be a
-// map. forEachHandler does not — it reads args[1] as a list — so committing
-// would raise where the interpreter iterates. The compile failure is the sound
-// fallback, and `each` compiling the same shape is what makes the
-// difference visible.
-func TestForEachKeepsTheAmbiguousOverloadCompileFailure(t *testing.T) {
-	const src = `def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
+// TestForEachGradualCollectionReMatches is CrossCollectionTokenShape still
+// NOT set on for-each, and why that no longer costs the compile: the flag
+// licenses committing to the List overload for a statically-ambiguous
+// (gradual-Any) collection because each's handler delegates to the map
+// iteration at run time, and forEachHandler does not (it reads args[1] as
+// a list). Since for-each declares CompileDynBody (2026-09-25) the gradual
+// collection takes the dyn-body seat's POLY re-match instead — the runtime
+// value picks the List or the Map overload exactly as the interpreter's
+// dispatch does — so both branches of the factory compile and agree.
+func TestForEachGradualCollectionReMatches(t *testing.T) {
+	for _, src := range []string{
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk false) end d for-each [drop]`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def acc (flex []) end def d (mk true) end d for-each [acc swap push] end acc`,
+		`def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def acc (flex []) end def d (mk false) end d for-each [acc swap push] end acc`,
+	} {
+		requireEngineParity(t, src, true)
 	}
-	prog, reason, _, cerr := a.CompileCheck(src)
-	if cerr != nil {
-		t.Fatalf("check: %v", cerr)
-	}
-	if prog != nil {
-		t.Fatalf("a gradual collection must decline, not commit to the List overload:\n%s", prog.Disassemble())
-	}
-	if !strings.Contains(reason, "gradual-Any operand") {
-		t.Errorf("declined %q, want the ambiguous-overload compile failure", reason)
-	}
-	b, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ierr := b.RunInterp(src); ierr != nil {
-		t.Errorf("the interpreter must still answer: %v", ierr)
+	dis := compileDisasm(t, `def mk fn [[f:Boolean] [Any] [if f [[1 2]] [{a:1}]]] end def d (mk true) end d for-each [drop]`)
+	if !strings.Contains(dis, "for-each/2 (poly)") {
+		t.Errorf("a gradual collection must poly re-match for-each's overloads, not commit to one:\n%s", dis)
 	}
 }

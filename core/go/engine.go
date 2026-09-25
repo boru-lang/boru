@@ -3440,6 +3440,13 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if err != nil {
 		return e.stampErrPos(e.maybeAddFnShapeHint(err))
 	}
+	// A check-mode-run binder word that bound RUN-TIME names in this
+	// dispatch (`unpack` over a source the pass cannot read — the handler's
+	// NoteRuntimeBind) is emitted as the call it is; the recorder's latch
+	// decides, so every other compile-time word keeps its elision.
+	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
+		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
+	}
 	if e.recorder != nil {
 		e.recordDispatch(match.Name, n, results)
 	}
@@ -7519,7 +7526,7 @@ func (e *Engine) unwindFrameTailOnError(info DefCleanupInfo, markerIdx int) {
 		if err != nil {
 			break
 		}
-		UninstallDef(e.Registry, nm.Name)
+		UninstallFrameBinding(e.Registry, nm.Name)
 		i += 2
 	}
 }
@@ -8008,7 +8015,12 @@ func (e *Engine) recordParenLeadingApply(es EmitRecorder, first, openIdx, closeI
 	// admitted beside the member-fn read (the container-member calls,
 	// 2026-09-22): the guarded op applies the runtime value and defers on
 	// anything else, the same contract the tagged read takes.
-	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) {
+	// A lead that is the RESULT of a container read the pass could not
+	// type — a flex member (`((reg.cb) 5)`, callbacks.tsv L61), a gradual
+	// map field — is admitted the same way (2026-09-25): the guarded op
+	// applies whatever the read yields and defers on a non-callable value,
+	// exactly as the interpreter's paren leaves a non-fn lead as data.
+	if !es.MemberFnRead(fnVal.ID) && !IsFnTypedCarrier(fnVal) && !es.ContainerReadResult(fnVal.ID) {
 		es.MarkUncompilable("fn-value application bounded by a paren (dynamic value precedes args)")
 		return closeIdx
 	}

@@ -78,6 +78,13 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackAllHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The handler-contract declaration (design/HANDLER-MIGRATION-
+				// LINE.0.md, the quoted class, S2a): the quoted `all` is a
+				// literal keyword the handler consumes verbatim — inert data.
+				// The word runs in check mode (the bindings must exist for the
+				// checker), so the recorder never reaches it through the
+				// quoted-operand gates; the flag answers the census.
+				CompileEffect: CompileQuoteInert,
 			},
 			// `unpack 'boru:time-util'`: import a module and bind every word
 			// of every export namespace as a bare local — `now`, `sleep`, …
@@ -104,6 +111,10 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackModuleExportHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// The quoted export name is the KEY the handler reads to select
+				// one export namespace of the module (see `unpack all`'s note on
+				// why the flag answers the census rather than lowering).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -242,6 +253,13 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 	if !ok {
 		if r.Check.IsActive() {
 			val = NewCarrier(TAny)
+			// An UNPROVEN source binds a value the pass knows nothing
+			// about: a GRADUAL Any, so a downstream dispatch over it
+			// poly re-matches at run time (as a `x:Any` param's does)
+			// instead of recovering to a strict no-match (2026-09-25).
+			if !proven {
+				val.Dynamic = true
+			}
 			// A miss against a PROVEN (concrete) source is a guaranteed
 			// runtime unpack_error — flag it (a RuntimeMirror: the trap
 			// below compiles the identical error, and the compile failure loop
@@ -254,14 +272,26 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 					"unpack: key "+srcKey+" not found in source", "unpack", pos)
 			}
 			// Lenient binding either way, but the interpreter errors at
-			// runtime. Record a TERMINAL trap so a bytecode compile raises
-			// the byte-identical unpack_error here (the same detail as the
-			// non-check branch below) instead of declining; if the trap can't
-			// be recorded (a nested unpack), keep the blanket-compile failure flag so
-			// the program falls back.
-			if !r.Check.Recorder().RecordTrap("unpack_error",
+			// runtime — ONLY against a PROVEN source. Record a TERMINAL trap
+			// so a bytecode compile raises the byte-identical unpack_error
+			// here (the same detail as the non-check branch below) instead
+			// of declining; if the trap can't be recorded (a nested unpack),
+			// keep the blanket-compile failure flag so the program falls
+			// back. An UNPROVEN source (a carrier Map — a param, a fn's
+			// result) misses through the stub getter whatever it holds, and
+			// the run-time unpack over the real value succeeds or raises on
+			// its own: a trap here compiled `unpack [a b] (f)` over a
+			// computed `{a:1 b:2}` to an unpack_error the interpreter never
+			// raised (a live miscompile until 2026-09-25), and the latch
+			// declined the same shape inside a fn. Neither is recorded for
+			// an unproven source; the dispatch lowers as the plain
+			// CALL_NATIVE it is, binding the names at run time.
+			if proven && !r.Check.Recorder().RecordTrap("unpack_error",
 				"unpack: key "+srcKey+" not found in source", "unpack", "", pos) {
 				r.Check.SuppressedRuntimeError = true
+			}
+			if !proven {
+				r.Check.Recorder().NoteRuntimeBind(localName)
 			}
 		} else {
 			return r.BoruError("unpack_error", "unpack: key "+srcKey+" not found in source", "unpack")

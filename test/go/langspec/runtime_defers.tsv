@@ -29,6 +29,10 @@
 # First written 2026-09-24 from the walk's standing bails (52 rows) plus the
 # two rows booked by choice that day (fn-value.tsv L317/L318, NUR190's `/q`
 # capture deferred at the landing's walk).
+# fold-map-filter.tsv left the ledger on 2026-09-25: L246–L248, fold/each/
+# scan over a class member's Any-typed list, run natively through the
+# dyn-body poly re-match the recovery now records (widest satisfiable
+# overload) instead of bailing at the rematch trap.
 bignum.tsv	10	L108, L109, L123–L129, L131: convert's own errors under the compiled runtime (a Float to a BigInteger/BigDecimal, the accuracy options), no defer site
 class.tsv	4	L98–L101: `undef Point` then a read of the instance — "unresolvable type operand Point", no defer site
 convert-ideal.tsv	1	L33: `convert Integer (make Foo {})` — vm:poly-no-match at convert (the canonical signature_error)
@@ -39,7 +43,6 @@ edge-scalars-3.tsv	2	L68: StringUtil.pad's own size guard, no defer site; L218: 
 flex.tsv	7	L69–L72: make's own source errors (a FlexMap from a list, …), no defer site; L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0)
 fn-value.tsv	2	L317, L318: `m.f z`, `m get 'f' z` — vm:landing-quote-claim, a `/q` slot CAPTURES the following word (NUR190; booked by choice 2026-09-24, the deferral over an over-wide decline)
 fnpred.tsv	4	L34, L38, L43, L46: `def q:Even 5` — the predicate type's own rejection under the compiled runtime, no defer site
-fold-map-filter.tsv	3	L246–L248: fold/each/scan over a class member's Any-typed list — vm:rematch-matched (the static model failed, the run matched)
 generics.tsv	1	L56: `def b:(Box of [Integer]) {value:'no'}` — make's own field error, no defer site
 module-fmt.tsv	3	L65–L67: Fmt.format-with's own rule errors, no defer site
 module-matrix.tsv	1	L60: MatrixUtil.create's own ragged-row error, no defer site

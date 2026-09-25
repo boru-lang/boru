@@ -70,6 +70,13 @@ func rsrDoesNotCompile(t *testing.T, src, wantReason, wantInterp string) {
 // INTERPRETER executing arbitrary code, so what it appends is not bounded by
 // the modelled out: a maybe-raising body can pass a Function through the
 // handler, and the interpreter re-steps it against the value beneath.
+//
+// `error` declares CompileDynBody since 2026-09-25, but only a COMPUTED
+// handler body takes that path: a concrete `[drop]` the closure path
+// declined keeps declining (tryRecordDynBody's StripsUnconsumedInput arm),
+// because the handler's run-time result count is its body's own and the
+// variadic mark is not yet fenced at this shape's consumers (measured: the
+// raise arm ran to a CALL_DYNAMIC underflow).
 func TestFallbackRegionMayCarryACallable(t *testing.T) {
 	rsrDoesNotCompile(t,
 		`def xs [1] def g fn x:Integer Integer [x add 1] 5 do [if ((xs 0 getr) eq 1) [g/v] [1 div 0]] error [drop]`,
@@ -79,6 +86,11 @@ func TestFallbackRegionMayCarryACallable(t *testing.T) {
 // TestFallbackInputIsAStackRead — finding 2. The FALLBACK op pops its own
 // inputs; a mark opened above one of them leaves the op popping from beneath
 // its own mark, and MAKE_LIST_TO_MARK then collects an empty run.
+//
+// The same concrete-handler rule keeps this one declined (measured with
+// the handler on the dyn-body path: the raise arm ran to a MAKE_LIST
+// underflow — the list literal is a fixed-arity consumer of a result whose
+// count is the handler body's own).
 func TestFallbackInputIsAStackRead(t *testing.T) {
 	rsrDoesNotCompile(t,
 		`def xs [1] [do [1 div (xs 0 getr)] error [drop]]`,
