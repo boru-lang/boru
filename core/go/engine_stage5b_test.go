@@ -5,7 +5,7 @@ package core
 // execFnDefSig cross-registry analysis, forward-scan helpers
 // (dispatchModAt, tagReachCollapsedFn, expandScanSugar,
 // reachCallHeadBarrier, ReachFnWouldClaim), policyGateWord,
-// strandedForwardError, unwindFrameTailOnError, mark/move + flow-ctrl
+// strandedForwardError, mark/move + flow-ctrl
 // resolvers, stepCloseParen's check-mode fn-value boundary
 // (recordParenLeadingApply / parenLeadFnApplyIdx /
 // recordParenLeadFnApply), the RecorderSkipper hook,
@@ -568,26 +568,6 @@ func TestS5BStrandedForwardBarrierReceiverNote(t *testing.T) {
 	err := e.strandedForwardError("recvw")
 	if err == nil || !strings.Contains(err.Error(), "seals off") {
 		t.Fatalf("want the barrier-receiver note, got %v", err)
-	}
-}
-
-func TestS5BUnwindFrameTailStopsAtForeignWord(t *testing.T) {
-	// The undef-pair replay stops at the first non-undef token
-	// (line 6735).
-	r := covRegistry(t, nil)
-	InstallDef(r, "x", NewInteger(1))
-	e := NewTop(r)
-	e.Tape = NewTape([]Value{
-		NewInteger(0), // marker slot (content irrelevant)
-		NewWord("__pa"),
-		NewWordModified("undef", -1, false, true),
-		NewWord("x"),
-		NewWord("cadd"),
-		NewWord("cadd"),
-	}, StackHeadroom)
-	e.unwindFrameTailOnError(DefCleanupInfo{Registry: r, SkipCleanup: true}, 0)
-	if _, ok := r.Defs.Top("x"); ok {
-		t.Error("the undef pair must uninstall x")
 	}
 }
 

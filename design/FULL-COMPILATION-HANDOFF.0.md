@@ -13322,6 +13322,72 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR201 closed — the frame's error path (2026-09-25)
+
+**The divergence.** Recorded while closing NUR199: `def t 0  def g fn
+[[][Integer][def t 9 raise 'x']]  do [g]  t` was the interpreter's
+`[error(x) 9]` and the compiled lane's `[error(x) 0]`, silently, and so
+was the param twin `def g fn [[t:Integer][Integer][raise 'x']]  do [g 9]
+t`. The interpreter's raise abandoned the sub-engine's tape with the
+callee's frame still open on it — its `__DC __pa undef…` tail unstepped —
+so the callee's body-local def, its params and captures, and its per-call
+Args list and FnBaseline all stayed on the registry when `do` trapped
+the error and resumed. The VM's frame unwinds with the error
+(`vmContext.run`'s deferred unwind), and CallBoru's sub-run — the fn-VALUE
+seam's frame — tears its own frame down inline whether or not the body
+erred; only the SPLICED frame, the interpreter's ordinary fn dispatch,
+leaked. The record's verdict pointed at the interpreter, and that is where
+the fix is.
+
+**The mechanism.** `Engine.faultReturn` is the one exit every run-loop
+error takes (the trace's pause-before-unwind hook); it now tears down
+every fn frame the error leaves OPEN on the tape — `unwindLiveFrames(0,
+len)`, the same walk a break/continue discarding a region takes: a frame
+whose open paren has stepped and whose matching close is at or past the
+pointer, unwound innermost first through `unwindFrameTail` (the `__DC`
+truncation, the `__pa` Args/FnBaseline pop, the force-forward undef pairs;
+the ReturnCheck skipped, an aborted body having nothing to check). Every
+frame beneath the raise goes with it — `do [h]` over an `h` that calls
+`g` restores the root's `t`, not h's 7 — because the error abandons the
+whole tape, not one frame of it. The residual-eval error at the
+DefCleanup marker (a computing body's pending container raising —
+`{a:(raise 'x')}` as the body's last token) used to replay its tail AT
+the marker (`unwindFrameTailOnError`, PR #260); that frame is one of the
+live frames the fault return now unwinds, so the marker-site replay is
+retired — kept, it would run the tail twice, and the second run pops the
+CALLER's args entry and its same-named binding. `TestRunErrorUnwindsFrameOnceAfterResidualError`
+pins the once.
+
+**What does not change.** A `do` body's own def under the same raise
+still leaks on both lanes (`def t 0  do [def t 5 raise 'x']  t` is 5,
+NUR199's row): a `do` body is not a frame, and its sub-engine's tape has
+no frame open when the raise abandons it. The top-level program error
+unwinds too, which the REPL sees: a raise inside a fn no longer leaves
+the callee's locals bound for the next line.
+
+**Measured:** the lang unit ledger 285 / 44 unchanged (the pinned rows
+moved from a pending pin to parity rows, none declines or bails); the
+unit suites of core, eng, compiler, check, basic and the lang root
+package green; the commit gate's smoke corpus and fn-locals-scope.tsv
+at their ceilings with no row moving — the corpus carried no trapped
+raise inside a frame with a def before it, which is why the divergence
+was recorded from a probe and not from a row.
+
+**Pins.** lang `TestCalleeDefTornDownOnTrappedRaise` (keep_defs_leak_test.go:
+the shape and its neighbours — the param twin, nested frames, the raise
+in a paren group, a callback body, a residual container and a native
+error, a lambda value and an applied fn value, the trap inside a fn frame
+and a loop, an `error` handler — as parity rows, and the interpreter's
+own answers: the callee's local, param and args list gone, the frame
+beneath the raise reading its own); core `TestRunErrorUnwindsLiveFrame`
+and `TestRunErrorUnwindsFrameOnceAfterResidualError`
+(fn_frame_unwind_test.go, over a hand-built frame beneath a caller
+binding of the param's name — replayed, and replayed once);
+fn-locals-scope.tsv §12's three new rows; lang/go/test's
+`TestResidualErrorTearsDownFrame` unchanged (the residual-eval twin, now
+served by the fault return). Docs: NUR.md (NUR201 FIXED), the handover,
+this entry.
+
 ## The variadic loop body — a 0-or-1 branch as a loop's per-iteration result (2026-09-24)
 
 **The rows.** code-bodies.tsv L181 (`def t 0  for 2 [if true [def t (t

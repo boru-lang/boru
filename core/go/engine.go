@@ -331,13 +331,30 @@ func (e *Engine) SetSource(src string) {
 // faultReturn fires the trace one final time — with a "fault: <err>"
 // note and step -1 — before Run surfaces err, so a debug host can pause
 // AT the raise with the tape and pointer still live (pause-before-
-// unwind, design/BORU-DEBUGGER.0.md §6.1). Every Run-loop error return
-// routes through it; a nil trace makes it a pass-through, so the
-// non-debug error path is unchanged.
+// unwind, design/BORU-DEBUGGER.0.md §6.1), and then tears down every fn
+// frame the error leaves OPEN on this tape. Every Run-loop error return
+// routes through it; a nil trace makes the trace half a pass-through.
+//
+// The unwind is the frame's error-path contract: the error abandons the
+// tape, so a spliced frame whose open paren has stepped but whose cleanup
+// tail (`__DC __pa undef…`, fn_frame.go) has not — the callee that raised,
+// and every caller frame still open beneath it — would otherwise keep
+// its per-call state on the registry: the body-local defs, the Args list
+// and FnBaseline, the captures and params. A `do` trapping the error
+// upstream then resumed with the callee's bindings leaked into the
+// caller's scope — `def t 0  def g fn [[][Integer][def t 9 raise 'x']]  do
+// [g]  t` read 9 where the compiled lane, whose frame unwinds with the
+// error, reads 0 (NUR201) — and the args stack a level too deep. The
+// frames unwind innermost-first, exactly as a break/continue discarding
+// the region unwinds them (unwindLiveFrames), and as CallBoru's sub-run
+// tears its own frame down inline on the same error; a frame that raised
+// while evaluating its residual in-frame (stepDefCleanup) is one such
+// live frame, so its tail replays here once, not at the marker as well.
 func (e *Engine) faultReturn(err error) error {
 	if e.trace != nil {
 		e.trace(-1, e.Pointer, e.Tape.Snapshot(), "fault: "+err.Error())
 	}
+	e.unwindLiveFrames(0, e.Tape.Len())
 	return err
 }
 
@@ -7445,14 +7462,12 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 				ev, err = e.autoEvalList(v, true)
 			}
 			if err != nil {
-				// The error unwinds the run, so the frame's remaining
-				// parked tail (__pa, the undef pairs) never steps —
-				// replay its registry effects before propagating,
-				// exactly as CallBoru's inline cleanup runs on a body
-				// error. Otherwise a do-error trap upstream would
-				// resume with the callee's params/args/locals still
-				// bound in the caller's scope.
-				e.unwindFrameTailOnError(info, markerIdx)
+				// The error unwinds the run, and the frame's remaining
+				// parked tail (__pa, the undef pairs) never steps: the
+				// run's fault return replays it — this frame is still
+				// open on the tape — so a do-error trap upstream resumes
+				// without the callee's params/args/locals bound in the
+				// caller's scope (faultReturn).
 				return err
 			}
 			ev.Eval = false
@@ -7484,43 +7499,6 @@ func truncateFrameDefs(info DefCleanupInfo) {
 		for reg.Defs.Depth(name) > prevLen {
 			UninstallDef(reg, name)
 		}
-	}
-}
-
-// unwindFrameTailOnError replays the frame tail's registry effects when
-// the in-frame residual evaluation raises: the truncation this marker
-// owns, then — best-effort, only when the canonical parked tail is
-// actually next on the tape — the __pa Args/baseline pop and the undef
-// pairs, exactly the operations the parked tokens would have performed
-// had the error not discarded them. Mirrors probeTailCall's forward walk.
-func (e *Engine) unwindFrameTailOnError(info DefCleanupInfo, markerIdx int) {
-	if !info.SkipCleanup {
-		truncateFrameDefs(info)
-	}
-	i := markerIdx + 1
-	if i >= e.Tape.Len() {
-		return
-	}
-	if w, err := AsWord(e.Tape.At(i)); err != nil || w.Name != "__pa" {
-		// A bare marker outside a canonical frame tail (a sweep re-run,
-		// a synthetic tape) — nothing further to replay.
-		return
-	}
-	if err := PopFrameArgs(e.Registry); err != nil {
-		return
-	}
-	i++
-	for i+1 < e.Tape.Len() {
-		u, err := AsWord(e.Tape.At(i))
-		if err != nil || u.Name != "undef" || !u.ForceForward {
-			break
-		}
-		nm, err := AsWord(e.Tape.At(i + 1))
-		if err != nil {
-			break
-		}
-		UninstallDef(e.Registry, nm.Name)
-		i += 2
 	}
 }
 

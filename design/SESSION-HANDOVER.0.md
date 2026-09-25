@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-22**.
+Last updated: **2026-09-25**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -233,7 +233,11 @@ branch-carried def"**; the re-estimate is
    a leaked name's read seats live; `for 3 [do [def t 5]]  t` was 0 for
    the interpreter's 5 on main — NUR199, closed — and code-bodies L180 /
    L186 compile, 13 -> 11; NUR201, a callee's def outliving a trapped
-   raise on the interpreter only, is recorded against the interpreter);
+   raise on the interpreter only, is recorded against the interpreter —
+   and CLOSED 2026-09-25 by the frame's error path, the handoff log's
+   entry of that name: the interpreter's fault return tears down every
+   fn frame the error leaves open on the tape, so `do [g]  t` is
+   `[error(x) 0]` on both lanes);
    the multi-run keep-defs body closes NUR200 the same day (the handoff
    log's "NUR200 closed" entry: each / fold / scan bodies are keep-defs
    units too, every read of a leaked name seats live — the twin regime's
