@@ -9,12 +9,12 @@ Corpus: **8563** spec value rows (**8225** compilable, 338 statically invalid in
 
 | outcome | rows |
 | --- | ---: |
-| compiled natively (fallback-free) | 8212 |
+| compiled natively (fallback-free) | 8213 |
 | compiled with an interpreter island | 0 |
-| does not compile | 13 |
+| does not compile | 12 |
 | static check-error (invalid in both engines) | 338 |
 
-**8212 / 8225** compilable rows produce a Program (99% — 8212 of those fully native).
+**8213 / 8225** compilable rows produce a Program (99% — 8213 of those fully native).
 
 ## Ceilings (downward ratchets toward runtime independence)
 
@@ -22,17 +22,17 @@ The compiler is interpreter-independent once compile failures and islands both r
 
 | ratchet | current | ceiling | finish line |
 | --- | ---: | ---: | --- |
-| compile failures | 13 | 13 | → 0 |
+| compile failures | 12 | 12 | → 0 |
 | interpreter islands (OpFallback) | 0 | 0 | → 0 |
 | tier 1 interpreter-only | 0 | 3 | capped (permanent) |
 | tier 2 reducible | 4 | 4 | → 0 |
-| compute frontier | 8 | 8 | → 0 |
+| compute frontier | 7 | 7 | → 0 |
 
 ## Compile failures by reason
 
 | count | bucket | root cause |
 | ---: | --- | --- |
-| 3 | operand provenance | soundness |
+| 2 | operand provenance | soundness |
 | 2 | other: dynamic-scope def `i` of unpromoted computed value | coverage |
 | 1 | code-body word (NoEvalArgs) | coverage |
 | 1 | dispatch recovery (best guess) | soundness |
@@ -46,14 +46,14 @@ The compiler is interpreter-independent once compile failures and islands both r
 | root cause | compile failures |
 | --- | ---: |
 | correct-error | 1 |
-| soundness | 4 |
+| soundness | 3 |
 | scheduling | 0 |
 | opcode | 0 |
 | coverage | 8 |
 
 ## Re-scoped P7 partition
 
-Over the 13 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **8** compute-frontier gaps.
+Over the 12 not-fully-native rows (declined or islanded): **0** interpreter-only (tier 1, permanent), **4** reducible (tier 2, TODO), **1** allowlisted error rows, **7** compute-frontier gaps.
 
 ### tier 1 — interpreter-only (permanent home of the island)
 
@@ -71,7 +71,7 @@ _None._
 
 | count | reason |
 | ---: | --- |
-| 3 | operand provenance |
+| 2 | operand provenance |
 | 2 | other: dynamic-scope def `i` of unpromoted computed value |
 | 1 | dispatch recovery (best guess) |
 | 1 | other: fn apply-twice: apply of a dynamic fn value not at the body tail (Stage 3) |

@@ -124,7 +124,8 @@ keep the two in sync in the same commit.
 | [NUR199](#nur199) | FIXED 2026-09-24 (the keep-defs body — the handoff log's entry of that date), found the same day: a `do` body's closure unit is a keep-defs unit — every value def installs through a kept OpBindDynScope the VM leaves standing past the unit's RET for the enclosing frame to pop (CompiledFn.KeepsDefs), the enclosing loop refreshes its carried slot from the registry after the call, a leaked name's later read seats live at its token, and the adopted twin is marked written back; `def t 0  for 3 [do [def t 5]]  t` is 5 on both lanes, `for 3 [do [def t (t add 1)]]` compiles (code-bodies.tsv 13 -> 11). The original text: A `do` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [do [def t 5]] end t`, `for 3 [do [def t (i add 1)]]` — is the interpreter's 5 / 3 (the body runs in the caller's frame and its def leaks) and the compiled lane's 0: the do$body unit kept the def frame-local and the loop's carried slot never saw it; the computed twin `for 3 [do [def t (t add 1)]]` declined instead ("dynamic-scope def `t` of unpromoted computed value"). Present on main at 3768c46. Fence: `TestDoBodyDefLeaksToTheEnclosingScope`. | found while surveying the corpus's compile failures (2026-09-24) |
 | [NUR200](#nur200) | FIXED 2026-09-24 (the multi-run keep-defs body — the handoff log's entry of that date), found the same day: a multi-run body's unpaired value defs install through the kept OpBindDynScope (a loop fragment, a fn body), the enclosing loop refreshes its carried slot after the call, and every read of a leaked name seats live — the last element's install, or the interpreter's undefined_word at zero iterations; the twin regime's read fence is retired for value names. `def t 0  for 3 [[1] each [def t 5] drop]  t` is 5 on both lanes; code-bodies.tsv L183/L190 and module-composition L92 compile (the mutated flex read back seats live too). The original text: An `each` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [[1] each [def t 5] drop] end t` — is the interpreter's 5 (the body leaks its def per element) and the compiled lane's 0: no arm-resident twin is adopted inside a loop fragment (the bridge's root fence), so nothing installs the binding at run time and the carried slot keeps the pre-loop value; NUR199's multi-run twin. Present on main at 3768c46; found while closing NUR199. Fence: `TestEachBodyDefInLoopResolves`. | found while closing NUR199 (2026-09-24) |
 | [NUR201](#nur201) | A callee's def before a raise the caller TRAPS — `def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t` — is the interpreter's `[error(x) 9]` (a raise skips the frame's def-cleanup tail, so the callee's binding leaks) and the compiled lane's `[error(x) 0]` (the frame installs nothing a trap could keep; an installed one is unwound with the frame on the error path). The interpreter's is the questionable rule. Present on main at 3768c46; found while closing NUR199. Fence: `TestCalleeDefSurvivesTrappedRaisePending`. |
-| [NUR202](#nur202) | A keep-defs token body over a GRADUAL list inside a fn — `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]` — is the interpreter's `[[1 2 3]]` (eachHandler drives InvokeBody per element on the shared registry, so the def leaks to the next element) and the compiled lane's `[[1 1 1]]`: the body lowers as a CONST the native runs (PUSH_CONST_FRESH, the S1a dynamic-callback path) and that run reads 0 at every element. Over a literal list the body is a closure unit and agrees; the Integer-returning twin (code-bodies.tsv L189) declines loudly. Present on main at 3768c46. Fence: `TestKeepDefsConstBodyOverGradualListPending`. |
+| [NUR202](#nur202) | FIXED 2026-09-24 (the keep-defs token body — the handoff log's entry of that date), found the same day: the closure unit compiles (the unapplied-fn gate exempts a unit's own untouched inputs — an argument enters the frame resolved and is never stepped), and the run-time stamp of a token body is a keep-defs unit whose kept installs the host hands to the enclosing context's trail, its own defs left out of the stamp's dependency snapshot; `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]]  f [1 2 3]` is [[1 2 3]] on both lanes and code-bodies.tsv L189 compiles. The original text: A keep-defs token body over a GRADUAL list inside a fn — `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]` — is the interpreter's `[[1 2 3]]` (eachHandler drives InvokeBody per element on the shared registry, so the def leaks to the next element) and the compiled lane's `[[1 1 1]]`: the body lowers as a CONST the native runs (PUSH_CONST_FRESH, the S1a dynamic-callback path) and that run reads 0 at every element. Over a literal list the body is a closure unit and agrees; the Integer-returning twin (code-bodies.tsv L189) declines loudly. Present on main at 3768c46. Fence: `TestKeepDefsConstBodyOverGradualListPending`. |
+| [NUR203](#nur203) | A keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7447,13 +7448,76 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
 
+## NUR203 — a dynamic keep-defs body's leak is invisible to the fn's later reads {#nur203}
+
+**Status:** Pending (recorded 2026-09-24, found while closing NUR202 — the
+handoff log's "the keep-defs token body" entry). Present on main before
+that change (measured on a clean worktree at 3768c46: the same wrong
+value, for the opposite reason — the run-time body's def never reached the
+registry at all).
+
+**Rule:** a compiled program answers as the interpreter does — a body a
+keep-defs word runs in the caller's frame leaks its defs to that frame,
+whether the body is a literal or a value.
+
+**Divergence.**
+
+```
+def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]
+  interpreted   [3]
+  compiled      [0]
+```
+
+The body is a VALUE (a List param; a def-bound quoted list is the same),
+so the compile pass never sees its tokens: the dispatch records as a
+dynamic body (tryRecordDynBody), the run-time stamp of the body keeps its
+defs in the registry per element now (NUR202's close — the each's result
+list is right), but the fn's read of `t` after the call keeps its
+compile-time home: NoteKeepDefsLeak seats a later read live only for the
+names a COMPILED keep-defs unit defs, and a body the pass cannot see names
+nothing, so the read answers the pre-call 0. The same shape at the ROOT
+agrees (`def t 0  def b (quote [def t (t add 1) t])  each b [1 2 3] drop
+t` is 3 on both lanes: a root read is live). `fold` over a dynamic body
+diverges the same way.
+
+**Fence.** `TestDynamicKeepDefsBodyLeakInFnPending` (lang
+keep_defs_leak_test.go) pins both lanes as they stand, so closing it is
+loud.
+
+**Verdict:** none yet. Directed at the compiled lane: after a keep-defs
+dispatch over a DYNAMIC body, the unit's later name reads must be live
+(the body may have rebound any of them) and its carried slots refreshed —
+the dynamic-environment mode's own rule, extended from the reads a body
+makes to the reads that follow it — or the shape must decline.
+
+
 ## NUR202 — a keep-defs body over a gradual list runs as a const the native drives, and its def does not leak {#nur202}
 
-**Status:** Pending (recorded 2026-09-24, found while measuring the
-code-bodies compile failures after the keep-defs bodies landed — the
-handoff log's "the var splice's token sites" entry). Present on main
-before the keep-defs bodies (measured on a clean worktree at 3768c46:
-the same shape compiled to the same wrong value).
+**Status:** FIXED 2026-09-24 (the keep-defs token body — the handoff log's
+entry of that date). Recorded 2026-09-24, found while measuring the
+code-bodies compile failures after the keep-defs bodies landed.
+
+**The fix.** Two halves. The closure unit for `[def t (t add 1) t]` over
+a gradual list declined in its probe — "unapplied fn-value in body
+residual" — because the untouched Any ELEMENT beneath `t` read as a
+dynamic value that might auto-apply; an input enters the frame resolved
+and is never stepped on either lane, so the gate
+(closureResidualHasUnappliedFn) exempts a unit's own untouched inputs,
+and the body compiles to its each$body closure (the kept install of
+NUR200), the Integer-returning twin (code-bodies.tsv L189) with it. And
+the path the decline took — the body as a const the native runs, stamped
+at run time as a detached unit (StampTokenBody) — is a KEEP-DEFS unit now
+(stampDetachedSig arms the unit flag for a token body's stamp; the
+re-stamp box carries it), the host hands the unit's kept installs to the
+enclosing context's trail (hostForeign, so the enclosing frame's exit
+pops them as its own), and the body's own defs are left out of the
+stamp's dependency snapshot (bodyDefNames — its rebinding of `t`
+re-stamped the body at every element and, past the budget, ran the rest
+on the interpreter: three entries over seven elements, measured). The
+run-time bodies — `each b xs` with `b` a List param bound to `[def t (t
+add 1) t]` — stamp once and run the whole list on the VM, and the each's
+result agrees; the fn's later READ of `t` after such a dynamic body is
+NUR203.
 
 **Rule:** a compiled program answers as the interpreter does — a
 multi-run body's def leaks one install per element on both lanes.
@@ -7483,11 +7547,10 @@ OpBindDynScope of NUR200) and agrees. The Integer-returning twin —
 keep_defs_leak_test.go) pins both lanes as they stand, so closing it is
 loud.
 
-**Verdict:** none yet. Directed at the compiled lane: a keep-defs token
-body the lowering hands the native as a const must leak its defs as the
+**Verdict:** the compiled lane's, as the recording directed: a keep-defs
+token body the lowering hands the native as a const leaks its defs as the
 interpreter's InvokeBody does (the per-element install with the runtime
-value), or the shape must decline — a silent miscompile is the one
-outcome the S1a trade forbids.
+value), and the closure the const stood in for compiles.
 
 
 ## NUR201 — a callee's def survives a trapped raise on the interpreter, not on the VM {#nur201}

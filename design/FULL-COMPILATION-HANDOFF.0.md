@@ -13322,6 +13322,84 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The keep-defs token body — NUR202 closed, code-bodies L189 compiles (2026-09-24)
+
+**The rows.** code-bodies.tsv L189 (`def f fn [[xs:List][Integer][def t 0
+each [def t (t add 1) t] xs drop t]]  f [1 2 3]`) declined "fn f: body
+result of unknown provenance", and its List-returning twin (`… [List][def
+t 0 each [def t (t add 1) t] xs]]`) COMPILED to `[[1 1 1]]` for the
+interpreter's `[[1 2 3]]` — NUR202, recorded in the previous entry. Over a
+GRADUAL list (a fn's `xs:List` param) the each body was not a closure unit
+but a const the native ran per element (PUSH_CONST_FRESH then CALL_NATIVE
+each), and that run did not leak the body's def to the next element.
+
+**Two causes.** The closure unit declined in its probe: "closure
+each$body: unapplied fn-value in body residual (dynamic apply not
+lowered)" — the body's residual is [element, t], the element an Any
+carrier for a gradual list, and closureResidualHasUnappliedFn read a
+dynamic Any that PRECEDES other values as a value that might auto-apply
+on the interpreter (`r.<gen> args`, the trailing-arg miscompile the gate
+exists for). An INPUT of the unit is not that: an argument enters the
+frame resolved, before the step region, and is never stepped on either
+lane (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore), so an untouched
+input left in the residual is inert data whatever its runtime type. The
+gate exempts a unit's own untouched inputs (a param local by ID), and the
+body compiles to its each$body closure — the kept install of NUR200 — so
+L189 compiles with parity and the List twin answers `[[1 2 3]]`.
+
+The path the decline took is the S3 run-time stamp (vm_token_body.go:
+StampTokenBody over StampDetachedSig, a synthetic anonymous fn over the
+tokens), whose unit unwound its dyn-scope installs at its RET like any fn
+unit — where the interpreter's InvokeBody leaks EVERY token body's defs
+(RunResolved on the shared registry, no def cleanup): `def t (t add 1)`
+installed t, the RET popped it, the next element read 0. A token body's
+stamp is a KEEP-DEFS unit now: stampDetachedSig takes the mode
+(StampTokenBody passes it; a fn VALUE's stamp keeps its frame-local defs,
+the interpreter's CallBoru tears them down with the frame), arms
+keepDefsUnitDepth at the root unit count so StartFnCompile stamps the
+unit — compileStoredFnUnit copies the arming to its probe state, or the
+probe's verdict is about a unit whose defs lower differently — and the
+re-stamp box carries the flag (RestampBox.keepsDefs). The VM side: the
+hosted unit's kept installs stay on the SUB-context's trail (hostForeign
+builds a fresh vmContext per hosted run), where nothing would ever pop
+them, so hostForeign hands them to the enclosing context's trail after the
+run — the enclosing activation's RET, the run's end at root, or an error
+unwind truncates them as its own; a kept unit's raise keeps them too, the
+interpreter's leak-then-raise. And the stamp's dependency snapshot leaves
+the body's own defs out (bodyDefNames: `def NAME`, nested lists, the `var`
+splice's three declaration forms): with `t` in it, the body's own rebind
+of `t` read as staleness, the body re-stamped at every element and, past
+RestampMaxTries, ran the rest on the interpreter — three unattributed
+entries over seven elements, measured. The unit reads `t` live
+(LOOKUP_DYN_SCOPE, the enclosing-binding arm) and installs it live
+(BIND_DYN_SCOPE), so its own rebinding is no staleness; a run-time body
+over seven elements stamps once and runs on the VM.
+
+**Found on the way — NUR203.** The fn's later READ after a DYNAMIC
+keep-defs body — `def f fn [[b:List xs:List][Integer][def t 0 each b xs
+drop t]]  f (quote [def t (t add 1) t]) [1 2 3]` — is 3 interpreted and 0
+compiled: the run-time body leaks into the registry now, but the compile
+pass never sees the body's tokens, so NoteKeepDefsLeak names nothing and
+the read keeps its compile-time home. Recorded and fenced
+(TestDynamicKeepDefsBodyLeakInFnPending); the root twin agrees. Present
+on main at 3768c46 (the same 0, with the leak never made). Also seen:
+`def f fn [[b:List][Integer][def t 0 do b t]]  f (quote [def t 5])` bails
+at run time ("CALL_DYN_FRAME underflow", the compiled run falls back to
+the interpreter's 5) — present on main, not a divergence, in the
+whole-frame replay of a dynamic `do` body inside a fn.
+
+**Measured:** code-bodies.tsv 6 -> 5 (L189) — the corpus's compile
+failures 13 -> 12; the full corpus 8563 rows / 8212 -> 8213 compiled with the interp-entry census 24 -> 23 (a run-time token body that rebinds a name it reads no longer re-stamps past its budget), the engine-entry census 166 -> 164 (the same body's three entries less its one stamp), the runtime-defer census 10 and the compute-gap gate 8 -> 7 (L189's operand-provenance gap), every other gate at its value; the lang ledger
+285 / 44 unchanged; the unit suites of core, eng, compiler, check, basic,
+lang and the arity gate green.
+
+**Pins.** lang TestKeepDefsTokenBodyOverGradualListCompiles (the
+compile-time and run-time shapes, the frame teardown, no interpreter
+entry over seven elements), TestDynamicKeepDefsBodyLeakInFnPending
+(NUR203's fence); compiler TestBodyDefNames. Docs: NUR.md (NUR202 FIXED,
+NUR203 Pending), this entry, the handover.
+
+
 ## The var splice's token sites — the root `do [var …]` twin places (2026-09-24)
 
 **The row.** code-bodies.tsv L197 (`do [var [[[k 1]] k add 1]]`) declined

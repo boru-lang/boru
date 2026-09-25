@@ -170,23 +170,92 @@ func TestCalleeDefSurvivesTrappedRaisePending(t *testing.T) {
 	}
 }
 
-// TestKeepDefsConstBodyOverGradualListPending pins NUR202 as it stands: a
-// keep-defs token body over a GRADUAL list inside a fn unit — `def f fn
+// TestKeepDefsTokenBodyOverGradualListCompiles pins NUR202's close: a
+// keep-defs token body over a GRADUAL list inside a fn — `def f fn
 // [[xs:List][List][def t 0 each [def t (t add 1) t] xs]]  f [1 2 3]` —
-// lowers the body as a CONST the native runs per element (PUSH_CONST_FRESH
-// then CALL_NATIVE each, the dynamic-callback path), and that run does not
-// leak the body's def where the interpreter's each does: `[[1 2 3]]`
-// interpreted, `[[1 1 1]]` compiled. The same body over a literal list
-// compiles to a closure unit and agrees. Closing it must update this pin.
-func TestKeepDefsConstBodyOverGradualListPending(t *testing.T) {
-	src := `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[[1 2 3]]" {
-		t.Errorf("%q: the interpreter leaks the body's def per element: %v / %v", src, gotI, errI)
+// answered `[[1 1 1]]` for the interpreter's `[[1 2 3]]`. Two things
+// were wrong. The closure unit declined in its probe ("unapplied fn-value
+// in body residual"): the untouched Any ELEMENT beneath `t` read as a
+// dynamic value that might auto-apply, where an input enters the frame
+// resolved and is never stepped on either lane — the gate exempts a
+// unit's own untouched inputs now, so the body compiles to its each$body
+// closure (the kept install of NUR200) and the Integer-returning twin
+// (code-bodies.tsv L189) compiles with it. And the fallback the decline
+// took — the body as a CONST the native runs, stamped at run time as a
+// detached unit (StampTokenBody) — unwound its defs at its RET where the
+// interpreter's InvokeBody leaks every token body's: a token body's stamp
+// is a keep-defs unit now, the host hands its kept installs to the
+// enclosing context's trail, and the body's own defs are left out of the
+// stamp's dependency snapshot (its rebinding of `t` re-stamped the body
+// at every element and, past the budget, ran the rest on the
+// interpreter). The run-time bodies below reach that path directly.
+func TestKeepDefsTokenBodyOverGradualListCompiles(t *testing.T) {
+	for _, src := range []string{
+		`def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]`,
+		`def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3 4 5 6 7]`,
+		`def f fn [[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]] end f [1 2 3]`,
+		`def f fn [[xs:List][Integer][def t 0 each [def t (t add 1)] xs drop t]] end f [1 2 3]`,
+		`def f fn [[xs:List][List][each [] xs]] end f [1 2 3]`,
+		// An input a stack word RE-PRODUCES at its own position is no longer
+		// untouched (the gate keeps its shapes for it); these carry no fn
+		// value, so they compile either way.
+		`def f fn [[xs:List][List][each [dup drop] xs]] end f [1 2 3]`,
+		`def f fn [[xs:List][Integer][0 fold [swap swap drop] xs]] end f [1 2 3]`,
+		// A body that exists only at run time: the stamped unit keeps its
+		// defs per element, as InvokeBody does — the body's own reads see
+		// the previous element's install, and a root read after it is live.
+		`def f fn [[b:List xs:List][List][def t 0 each b xs]] end f (quote [def t (t add 1) t]) [1 2 3 4 5 6 7]`,
+		`def t 0 end def b (quote [def t (t add 1) t]) end each b [1 2 3] drop end t`,
+		`def t 0 end def b (quote [def t (t add 1) add]) end fold b [1 2 3] 0 drop end t`,
+		// A lambda callback is a frame of its own: no leak on either lane.
+		`def f fn [[xs:List][Integer][def t 0 each ([x:Integer] => [def t 9 x]) xs drop t]] end f [1 2]`,
+	} {
+		requireEngineParity(t, src, true)
 	}
-	if errC != nil || !compiled || fmt.Sprint(gotC) != "[[1 1 1]]" {
-		t.Errorf("%q: NUR202's compiled value %v / %v (compiled=%v), pinned as [[1 1 1]] — closing the divergence must update this pin", src, gotC, errC, compiled)
+	// The leak is torn down with the fn frame on both lanes: the read after
+	// the call is the interpreter's undefined_word, and the check pass
+	// mirrors it (an erroring program, not a compiler defect — so it is not
+	// booked in the compile-defect ledger).
+	src := `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3] end t`
+	gotC, compiled, errC, _, errI := runBothEngines(t, src)
+	if codeOf(errI) != "undefined_word" || compiled || len(gotC) != 0 || errC == nil || !strings.Contains(errC.Error(), "undefined word: t") {
+		t.Errorf("%q: the fn's leak must not outlive its frame on either lane: interp %v; compiled=%v %v / %v", src, errI, compiled, gotC, errC)
 	}
-	// The literal-list twin lowers as a closure unit and agrees.
-	requireEngineParity(t, `def f fn [[][List][def t 0 each [def t (t add 1) t] [1 2 3]]] end f`, true)
+	// No interpreter entry: the run-time body stamps once and the whole
+	// list runs on the VM (the stamp's snapshot leaves the body's own defs
+	// out, so its rebinding of `t` is no staleness).
+	for _, src := range []string{
+		`def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3 4 5 6 7]`,
+		`def f fn [[b:List xs:List][List][def t 0 each b xs]] end f (quote [def t (t add 1) t]) [1 2 3 4 5 6 7]`,
+	} {
+		if entries, _ := unattributedEntries(t, src); len(entries) != 0 {
+			t.Errorf("%q: the keep-defs body entered the interpreter: %v", src, entries)
+		}
+	}
+}
+
+// TestDynamicKeepDefsBodyLeakInFnPending pins NUR203 as it stands: a
+// keep-defs word over a DYNAMIC body (a List param, a def-bound quoted
+// list) inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b
+// xs drop t]]  f (quote [def t (t add 1) t]) [1 2 3]` — leaks the body's
+// def per element on the interpreter (3), and the compiled lane's later
+// read of `t` in the fn answers the pre-call value (0): the run-time
+// stamped body installs the leak in the registry (NUR202's close), but the
+// compile pass cannot know which names a body it never sees will rebind, so
+// the fn's later read keeps its compile-time home instead of seating live
+// (NoteKeepDefsLeak names only a compiled unit's defs). The same shape at
+// the root agrees (a root read is live). Closing it must update this pin.
+func TestDynamicKeepDefsBodyLeakInFnPending(t *testing.T) {
+	for _, src := range []string{
+		`def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
+		`def f fn [[b:List xs:List][Integer][def t 0 fold b xs 0 drop t]] end f (quote [def t (t add 1) add]) [1 2 3]`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || fmt.Sprint(gotI) != "[3]" {
+			t.Errorf("%q: the interpreter leaks the dynamic body's def into the fn's frame: %v / %v", src, gotI, errI)
+		}
+		if errC != nil || !compiled || fmt.Sprint(gotC) != "[0]" {
+			t.Errorf("%q: NUR203's compiled value %v / %v (compiled=%v), pinned as [0] — closing the divergence must update this pin", src, gotC, errC, compiled)
+		}
+	}
 }
